@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Get version
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build binaries
+        run: |
+          mkdir -p dist
+          targets=(
+            "linux   amd64 tide-linux-x86_64"
+            "linux   arm64 tide-linux-aarch64"
+            "darwin  amd64 tide-darwin-x86_64"
+            "darwin  arm64 tide-darwin-aarch64"
+          )
+          for entry in "${targets[@]}"; do
+            read -r goos goarch name <<< "$entry"
+            CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch go build \
+              -ldflags="-s -w -X main.version=${{ steps.version.outputs.tag }}" \
+              -o "dist/$name" \
+              .
+            tar -czf "dist/$name.tar.gz" -C dist "$name"
+            rm "dist/$name"
+            echo "Built dist/$name.tar.gz"
+          done
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Tide ${{ steps.version.outputs.tag }}"
+          body: |
+            ## Tide ${{ steps.version.outputs.tag }}
+
+            ### Install
+
+            Download a binary below for your platform and add it to your PATH.
+
+            Or build from source:
+            ```bash
+            git clone https://github.com/allisonhere/tide
+            cd tide
+            go build -o tide .
+            ```
+          files: dist/*.tar.gz

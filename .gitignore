@@ -1,0 +1,17 @@
+.gocache/
+.gomodcache/
+.gotmp/
+.tmp_help_render/
+.cursor/
+vendor/
+*.db
+*.db.migrated
+tide
+# Original oversized demo export; README uses optimized tide.gif. -allie
+tide.GIF
+deploy.sh
+plan.md
+status.md
+nvim.log
+greader-browse-plan.md
+kitty-graphics-plan.md

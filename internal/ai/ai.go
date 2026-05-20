@@ -1,0 +1,56 @@
+package ai
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/allisonhere/tide/internal/config"
+)
+
+// Summarizer generates a short summary of an article.
+type Summarizer interface {
+	Summarize(ctx context.Context, title, content string) (string, error)
+	ProviderName() string
+}
+
+// New returns the configured Summarizer, or an error if none is configured.
+func New(cfg config.AIConfig) (Summarizer, error) {
+	switch cfg.Provider {
+	case "openai":
+		if cfg.OpenAIKey == "" {
+			return nil, fmt.Errorf("OpenAI API key not set")
+		}
+		return &openAI{key: cfg.OpenAIKey}, nil
+	case "claude":
+		if cfg.ClaudeKey == "" {
+			return nil, fmt.Errorf("Claude API key not set")
+		}
+		return &claude{key: cfg.ClaudeKey}, nil
+	case "gemini":
+		if cfg.GeminiKey == "" {
+			return nil, fmt.Errorf("Gemini API key not set")
+		}
+		return &gemini{key: cfg.GeminiKey}, nil
+	case "ollama":
+		u := cfg.OllamaURL
+		if u == "" {
+			u = "http://localhost:11434"
+		}
+		m := cfg.OllamaModel
+		if m == "" {
+			m = "llama3.2"
+		}
+		return &ollama{url: u, model: m}, nil
+	default:
+		return nil, fmt.Errorf("no AI provider configured")
+	}
+}
+
+const summaryPrompt = "Summarize this article in 3-5 sentences. Be concise and factual. Return only the summary, no preamble.\n\nTitle: %s\n\n%s"
+
+func truncateContent(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
+}
