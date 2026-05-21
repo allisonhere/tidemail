@@ -70,15 +70,15 @@ func TestAccountManagerFormStaysCompactInShortView(t *testing.T) {
 	am.imapHostInput.SetValue("imap.example.com")
 	am.smtpHostInput.SetValue("smtp.example.com")
 
-	view := am.View(74, 16, BuildStyles(CatppuccinMocha, "compact"))
+	view := am.View(74, 24, BuildStyles(CatppuccinMocha, "compact"))
 
 	for _, want := range []string{"Name", "IMAP Host", "SMTP Host", "Username", "From", "TEST", "CANCEL"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expected compact account form to keep %q visible, got %q", want, view)
 		}
 	}
-	if strings.Count(view, "\n") > 15 {
-		t.Fatalf("expected compact account form to fit 16 lines, got %d lines", strings.Count(view, "\n")+1)
+	if strings.Count(view, "\n") > 23 {
+		t.Fatalf("expected compact account form to fit 24 lines, got %d lines", strings.Count(view, "\n")+1)
 	}
 }
 

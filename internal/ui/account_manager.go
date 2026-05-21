@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -618,18 +619,7 @@ func (am AccountManager) updateConfirmDelete(msg tea.Msg, keys KeyMap) (AccountM
 
 func (am *AccountManager) advanceField(delta int) {
 	next := int(am.focusedField) + delta
-	// Skip TLS toggles from tab navigation — they're toggled with space
-	for i := 0; i < int(amFieldCount); i++ {
-		if next < 0 {
-			next = int(amFieldCount) - 1
-		} else if next >= int(amFieldCount) {
-			next = 0
-		}
-		if amField(next) != amFieldIMAPTLS && amField(next) != amFieldSMTPTLS {
-			break
-		}
-		next += delta
-	}
+	next = ((next % int(amFieldCount)) + int(amFieldCount)) % int(amFieldCount)
 	am.focusField(amField(next))
 }
 
@@ -788,18 +778,36 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 
 	fieldW := max(12, width-18)
 	row := func(label string, ti textinput.Model, focused bool) string {
-		bg := chrome.baseBg
+		bg := chrome.surfaceBg
 		if focused {
 			bg = chrome.fieldBg
 		}
+		ti.Prompt = ""
 		ti.PromptStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.accent)
 		ti.TextStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.text)
 		ti.PlaceholderStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.muted)
-		ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
-		ti.Width = max(8, fieldW-2)
+		if focused {
+			ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
+		} else {
+			_ = ti.Cursor.SetMode(cursor.CursorHide)
+		}
 		labelW := max(10, width-fieldW)
-		left := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(labelW).Padding(0, 1).Render(label)
-		right := lipgloss.NewStyle().Background(bg).Width(fieldW).Padding(0, 1).Render(ti.View())
+		ti.Width = fieldW
+		left := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, labelW-2)).Padding(0, 1).Render(label)
+		var fieldView string
+		if focused {
+			fieldView = ti.View()
+		} else {
+			val := ti.Value()
+			if val == "" {
+				fieldView = lipgloss.NewStyle().Background(bg).Foreground(chrome.muted).Render(ti.Placeholder)
+			} else if ti.EchoMode == textinput.EchoPassword {
+				fieldView = lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Render(strings.Repeat("*", len([]rune(val))))
+			} else {
+				fieldView = lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Render(val)
+			}
+		}
+		right := lipgloss.NewStyle().Background(bg).Render(fieldView)
 		return lipgloss.JoinHorizontal(lipgloss.Left, left, right)
 	}
 	tlsRow := func(label string, on bool, focused bool) string {
@@ -807,26 +815,27 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 		if on {
 			val = "on"
 		}
-		bg := chrome.baseBg
-		if focused {
-			bg = chrome.fieldBg
-		}
 		labelW := max(10, width-fieldW)
-		left := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(labelW).Padding(0, 1).Render(label)
-		right := lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Width(fieldW).Padding(0, 1).Render("[space] " + val)
+		fg := chrome.text
+		if focused {
+			fg = chrome.accent
+		}
+		left := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, labelW-2)).Padding(0, 1).Render(label)
+		right := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(fg).Width(max(1, fieldW-2)).Padding(0, 1).Render("[space] " + val)
 		return lipgloss.JoinHorizontal(lipgloss.Left, left, right)
 	}
 
+	blank := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
 	rows := []string{
-		row("Name", am.nameInput, am.focusedField == amFieldName),
-		row("IMAP Host", am.imapHostInput, am.focusedField == amFieldIMAPHost),
-		row("IMAP Port", am.imapPortInput, am.focusedField == amFieldIMAPPort),
-		tlsRow("IMAP TLS", am.imapTLS, am.focusedField == amFieldIMAPTLS),
-		row("SMTP Host", am.smtpHostInput, am.focusedField == amFieldSMTPHost),
-		row("SMTP Port", am.smtpPortInput, am.focusedField == amFieldSMTPPort),
-		tlsRow("SMTP TLS", am.smtpTLS, am.focusedField == amFieldSMTPTLS),
-		row("Username", am.userInput, am.focusedField == amFieldUser),
-		row("Password", am.passInput, am.focusedField == amFieldPass),
+		row("Name", am.nameInput, am.focusedField == amFieldName), blank,
+		row("IMAP Host", am.imapHostInput, am.focusedField == amFieldIMAPHost), blank,
+		row("IMAP Port", am.imapPortInput, am.focusedField == amFieldIMAPPort), blank,
+		tlsRow("IMAP TLS", am.imapTLS, am.focusedField == amFieldIMAPTLS), blank,
+		row("SMTP Host", am.smtpHostInput, am.focusedField == amFieldSMTPHost), blank,
+		row("SMTP Port", am.smtpPortInput, am.focusedField == amFieldSMTPPort), blank,
+		tlsRow("SMTP TLS", am.smtpTLS, am.focusedField == amFieldSMTPTLS), blank,
+		row("Username", am.userInput, am.focusedField == amFieldUser), blank,
+		row("Password", am.passInput, am.focusedField == amFieldPass), blank,
 		row("From", am.fromInput, am.focusedField == amFieldFrom),
 	}
 
