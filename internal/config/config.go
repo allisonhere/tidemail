@@ -67,6 +67,7 @@ type AIConfig struct {
 
 type AccountConfig struct {
 	Name     string `toml:"name"`
+	Provider string `toml:"provider"`
 	IMAPHost string `toml:"imap_host"`
 	IMAPPort int    `toml:"imap_port"`
 	IMAPTLS  bool   `toml:"imap_tls"`

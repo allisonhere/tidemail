@@ -260,7 +260,8 @@ const (
 type amField int
 
 const (
-	amFieldName amField = iota
+	amFieldProvider amField = iota
+	amFieldName
 	amFieldIMAPHost
 	amFieldIMAPPort
 	amFieldIMAPTLS
@@ -294,6 +295,7 @@ type AccountManager struct {
 	passInput     textinput.Model
 	fromInput     textinput.Model
 
+	provider      string
 	focusedField  amField
 	editAccountID int64
 
@@ -303,7 +305,7 @@ type AccountManager struct {
 }
 
 func NewAccountManager(database *db.DB) AccountManager {
-	am := AccountManager{db: database, imapTLS: true, smtpTLS: true}
+	am := AccountManager{db: database, provider: "Custom", imapTLS: true, smtpTLS: true}
 	am.nameInput = newAMInput("display name", false)
 	am.imapHostInput = newAMInput("imap.example.com", false)
 	am.imapPortInput = newAMInput("993", false)
@@ -374,6 +376,10 @@ func (am *AccountManager) focusField(f amField) {
 }
 
 func (am *AccountManager) populateFormFrom(acfg config.AccountConfig) {
+	am.provider = acfg.Provider
+	if am.provider == "" {
+		am.provider = "Custom"
+	}
 	am.nameInput.SetValue(acfg.Name)
 	am.imapHostInput.SetValue(acfg.IMAPHost)
 	am.imapPortInput.SetValue(strconv.Itoa(acfg.IMAPPort))
@@ -395,7 +401,8 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 	if smtpPort == 0 {
 		smtpPort = 587
 	}
-	return config.AccountConfig{
+	cfg := config.AccountConfig{
+		Provider: am.provider,
 		Name:     strings.TrimSpace(am.nameInput.Value()),
 		IMAPHost: strings.TrimSpace(am.imapHostInput.Value()),
 		IMAPPort: imapPort,
@@ -407,6 +414,15 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 		Password: am.passInput.Value(),
 		From:     strings.TrimSpace(am.fromInput.Value()),
 	}
+	if preset, ok := providerPresets[am.provider]; ok {
+		cfg.IMAPHost = preset.IMAPHost
+		cfg.IMAPPort = preset.IMAPPort
+		cfg.IMAPTLS = preset.IMAPTLS
+		cfg.SMTPHost = preset.SMTPHost
+		cfg.SMTPPort = preset.SMTPPort
+		cfg.SMTPTLS = preset.SMTPTLS
+	}
+	return cfg
 }
 
 func (am AccountManager) selectedAccount() *db.Account {
@@ -533,6 +549,17 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 		am.advanceField(1)
 	case keyMatches(km, keys.Up):
 		am.advanceField(-1)
+	case am.focusedField == amFieldProvider && (keyMatches(km, keys.Left) || keyMatches(km, keys.Right)):
+		for i, p := range providerList {
+			if p == am.provider {
+				if keyMatches(km, keys.Right) {
+					am.provider = providerList[(i+1)%len(providerList)]
+				} else {
+					am.provider = providerList[(i-1+len(providerList))%len(providerList)]
+				}
+				break
+			}
+		}
 	case keyMatches(km, keys.Backspace):
 		// let input handle it
 		fallthrough
@@ -619,11 +646,22 @@ func (am AccountManager) updateConfirmDelete(msg tea.Msg, keys KeyMap) (AccountM
 
 func (am *AccountManager) advanceField(delta int) {
 	next := int(am.focusedField) + delta
-	next = ((next % int(amFieldCount)) + int(amFieldCount)) % int(amFieldCount)
+	for i := 0; i < int(amFieldCount); i++ {
+		next = ((next % int(amFieldCount)) + int(amFieldCount)) % int(amFieldCount)
+		if am.provider == "Custom" {
+			break
+		}
+		f := amField(next)
+		if f < amFieldIMAPHost || f > amFieldSMTPTLS {
+			break
+		}
+		next += delta
+	}
 	am.focusField(amField(next))
 }
 
 func (am *AccountManager) resetForm() {
+	am.provider = "Custom"
 	am.nameInput.Reset()
 	am.imapHostInput.Reset()
 	am.imapPortInput.SetValue("993")
@@ -777,6 +815,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 	header := renderManagerHeader(title, width, chrome)
 
 	fieldW := max(12, width-18)
+	labelW := max(10, width-fieldW)
 	row := func(label string, ti textinput.Model, focused bool) string {
 		bg := chrome.surfaceBg
 		if focused {
@@ -791,7 +830,6 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 		} else {
 			_ = ti.Cursor.SetMode(cursor.CursorHide)
 		}
-		labelW := max(10, width-fieldW)
 		ti.Width = fieldW
 		left := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, labelW-2)).Padding(0, 1).Render(label)
 		var fieldView string
@@ -815,7 +853,6 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 		if on {
 			val = "on"
 		}
-		labelW := max(10, width-fieldW)
 		fg := chrome.text
 		if focused {
 			fg = chrome.accent
@@ -825,19 +862,55 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 		return lipgloss.JoinHorizontal(lipgloss.Left, left, right)
 	}
 
+	providerRow := func(focused bool) string {
+		fg := chrome.text
+		if focused {
+			fg = chrome.accent
+		}
+		idx := 0
+		for i, p := range providerList {
+			if p == am.provider {
+				idx = i
+				break
+			}
+		}
+		val := "◀ " + providerList[idx] + " ▶"
+		left := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, labelW-2)).Padding(0, 1).Render("Provider")
+		right := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(fg).Width(max(1, fieldW-2)).Padding(0, 1).Render(val)
+		return lipgloss.JoinHorizontal(lipgloss.Left, left, right)
+	}
+
 	blank := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
 	rows := []string{
+		providerRow(am.focusedField == amFieldProvider), blank,
 		row("Name", am.nameInput, am.focusedField == amFieldName), blank,
-		row("IMAP Host", am.imapHostInput, am.focusedField == amFieldIMAPHost), blank,
-		row("IMAP Port", am.imapPortInput, am.focusedField == amFieldIMAPPort), blank,
-		tlsRow("IMAP TLS", am.imapTLS, am.focusedField == amFieldIMAPTLS), blank,
-		row("SMTP Host", am.smtpHostInput, am.focusedField == amFieldSMTPHost), blank,
-		row("SMTP Port", am.smtpPortInput, am.focusedField == amFieldSMTPPort), blank,
-		tlsRow("SMTP TLS", am.smtpTLS, am.focusedField == amFieldSMTPTLS), blank,
-		row("Username", am.userInput, am.focusedField == amFieldUser), blank,
-		row("Password", am.passInput, am.focusedField == amFieldPass), blank,
-		row("From", am.fromInput, am.focusedField == amFieldFrom),
 	}
+	if am.provider == "Custom" {
+		rows = append(rows,
+			row("IMAP Host", am.imapHostInput, am.focusedField == amFieldIMAPHost), blank,
+			row("IMAP Port", am.imapPortInput, am.focusedField == amFieldIMAPPort), blank,
+			tlsRow("IMAP TLS", am.imapTLS, am.focusedField == amFieldIMAPTLS), blank,
+			row("SMTP Host", am.smtpHostInput, am.focusedField == amFieldSMTPHost), blank,
+			row("SMTP Port", am.smtpPortInput, am.focusedField == amFieldSMTPPort), blank,
+			tlsRow("SMTP TLS", am.smtpTLS, am.focusedField == amFieldSMTPTLS), blank,
+		)
+	}
+	userLabel := "Username"
+	passInput := am.passInput
+	if preset, ok := providerPresets[am.provider]; ok {
+		userLabel = "Email"
+		passInput.Placeholder = preset.PassHint
+	}
+	rows = append(rows,
+		row(userLabel, am.userInput, am.focusedField == amFieldUser), blank,
+		row("Password", passInput, am.focusedField == amFieldPass), blank,
+	)
+	if am.provider == "Gmail" {
+		hintLeft := lipgloss.NewStyle().Background(chrome.baseBg).Width(max(1, labelW-2)).Padding(0, 1).Render("")
+		hintRight := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, fieldW-2)).Padding(0, 1).Render("Google account → Security → App passwords")
+		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Left, hintLeft, hintRight), blank)
+	}
+	rows = append(rows, row("From", am.fromInput, am.focusedField == amFieldFrom))
 
 	statusLine := ""
 	if am.statusMsg != "" {

@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -96,6 +97,7 @@ type Model struct {
 	mailboxes         []db.Mailbox
 	sidebarRows       []sidebarRow
 	sidebarCursor     int
+	sidebarOffset     int
 	collapsedAccounts map[int64]bool
 
 	messages         []db.Message
@@ -403,6 +405,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.sidebarCursor = clamp(m.sidebarCursor, 0, max(0, len(m.sidebarRows)-1))
+		m.clampSidebarOffset()
 		if len(m.mailboxes) == 0 {
 			m.clearMessages()
 			if statusCmd != nil {
@@ -520,6 +523,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.clearStatusCmd()
 		}
 		m.sidebarCursor = 0
+		m.sidebarOffset = 0
 		m.messageCursor = 0
 		m.clearMessages()
 		m.accountManager = m.newAccountManager()
@@ -950,6 +954,7 @@ func (m Model) handleUp() (tea.Model, tea.Cmd) {
 	case paneAccounts:
 		if m.sidebarCursor > 0 {
 			m.sidebarCursor--
+			m.clampSidebarOffset()
 			if m.selectedUnifiedInbox() {
 				return m, m.loadUnifiedInboxCmd()
 			}
@@ -985,6 +990,7 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 	case paneAccounts:
 		if m.sidebarCursor < len(m.sidebarRows)-1 {
 			m.sidebarCursor++
+			m.clampSidebarOffset()
 			if m.selectedUnifiedInbox() {
 				return m, m.loadUnifiedInboxCmd()
 			}
@@ -1235,6 +1241,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.overlay = overlayNone
 			m.sidebarCursor = 0
+			m.sidebarOffset = 0
 			m.messageCursor = 0
 			m.clearMessages()
 			return m, m.loadAccountsCmd()
@@ -1470,7 +1477,9 @@ func (m Model) renderAccountsPane() string {
 	title := m.renderPaneHeader(paneAccounts, "Accounts", focused, innerW)
 	rows := []string{title}
 
-	for i, row := range m.sidebarRows {
+	end := min(m.sidebarOffset+m.sidebarVisibleRows(), len(m.sidebarRows))
+	for i := m.sidebarOffset; i < end; i++ {
+		row := m.sidebarRows[i]
 		selected := i == m.sidebarCursor
 		switch row.kind {
 		case rowKindAccount:
@@ -2891,12 +2900,37 @@ func summaryFilename(title string) string {
 func (m *Model) rebuildSidebar() {
 	m.sidebarRows = buildSidebarRows(m.accounts, m.mailboxes, m.collapsedAccounts)
 	m.sidebarCursor = clamp(m.sidebarCursor, 0, max(0, len(m.sidebarRows)-1))
+	m.clampSidebarOffset()
+}
+
+func (m Model) sidebarVisibleRows() int {
+	return max(1, m.mainHeight()-2) // mainHeight minus title row and footer row
+}
+
+func (m *Model) clampSidebarOffset() {
+	visible := m.sidebarVisibleRows()
+	if m.sidebarCursor < m.sidebarOffset {
+		m.sidebarOffset = m.sidebarCursor
+	}
+	if m.sidebarCursor >= m.sidebarOffset+visible {
+		m.sidebarOffset = m.sidebarCursor - visible + 1
+	}
+	m.sidebarOffset = clamp(m.sidebarOffset, 0, max(0, len(m.sidebarRows)-visible))
 }
 
 func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed map[int64]bool) []sidebarRow {
-	byAccount := make(map[int64][]int64)
+	byAccount := make(map[int64][]db.Mailbox)
 	for _, mb := range mailboxes {
-		byAccount[mb.AccountID] = append(byAccount[mb.AccountID], mb.ID)
+		byAccount[mb.AccountID] = append(byAccount[mb.AccountID], mb)
+	}
+	for id := range byAccount {
+		slices.SortStableFunc(byAccount[id], func(a, b db.Mailbox) int {
+			ra, rb := mailboxRank(a.Name), mailboxRank(b.Name)
+			if ra != rb {
+				return ra - rb
+			}
+			return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+		})
 	}
 	rows := make([]sidebarRow, 0, len(accounts)+len(mailboxes)+1)
 	if len(accounts) > 0 {
@@ -2907,11 +2941,33 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 		if collapsed[acc.ID] {
 			continue
 		}
-		for _, mbID := range byAccount[acc.ID] {
-			rows = append(rows, sidebarRow{kind: rowKindMailbox, mailboxID: mbID})
+		for _, mb := range byAccount[acc.ID] {
+			rows = append(rows, sidebarRow{kind: rowKindMailbox, mailboxID: mb.ID})
 		}
 	}
 	return rows
+}
+
+func mailboxRank(name string) int {
+	lower := strings.ToLower(name)
+	if i := strings.LastIndex(lower, "/"); i >= 0 {
+		lower = strings.TrimSpace(lower[i+1:])
+	}
+	switch lower {
+	case "inbox":
+		return 0
+	case "sent", "sent items", "sent mail":
+		return 1
+	case "drafts":
+		return 2
+	case "archive", "all mail":
+		return 3
+	case "trash", "deleted items", "deleted messages":
+		return 4
+	case "junk", "spam", "junk e-mail", "junk email":
+		return 5
+	}
+	return 6
 }
 
 func (m Model) newAccountManager() AccountManager {
