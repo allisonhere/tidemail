@@ -96,19 +96,27 @@ func (db *DB) SearchMessages(mailboxID int64, query string) ([]Message, error) {
 }
 
 func (db *DB) GetMessage(id int64) (Message, error) {
-	rows, err := db.Query(`
+	var m Message
+	var flagsJSON string
+	var dateUnix int64
+	var read, att int
+	err := db.QueryRow(`
 		SELECT id, mailbox_id, uid, message_id, subject, from_addr, to_addr, cc_addr,
 		       reply_to, date, body_text, body_html, summary, flags, read, has_attachment
-		FROM messages WHERE id = ?`, id)
+		FROM messages WHERE id = ?`, id).
+		Scan(&m.ID, &m.MailboxID, &m.UID, &m.MessageID, &m.Subject,
+			&m.From, &m.To, &m.CC, &m.ReplyTo, &dateUnix,
+			&m.BodyText, &m.BodyHTML, &m.Summary, &flagsJSON, &read, &att)
 	if err != nil {
 		return Message{}, err
 	}
-	defer rows.Close()
-	msgs, err := scanMessages(rows)
-	if err != nil || len(msgs) == 0 {
-		return Message{}, err
+	json.Unmarshal([]byte(flagsJSON), &m.Flags) //nolint:errcheck
+	if dateUnix > 0 {
+		m.Date = time.Unix(dateUnix, 0)
 	}
-	return msgs[0], nil
+	m.Read = read != 0
+	m.HasAttachment = att != 0
+	return m, nil
 }
 
 func (db *DB) UpsertMessage(m Message) error {
@@ -159,7 +167,7 @@ func (db *DB) MarkRead(id int64, read bool) error {
 }
 
 func (db *DB) MarkAllRead(mailboxID int64) error {
-	_, err := db.Exec(`UPDATE messages SET read = 1 WHERE mailbox_id = ?`, mailboxID)
+	_, err := db.Exec(`UPDATE messages SET read = 1 WHERE mailbox_id = ? AND read = 0`, mailboxID)
 	return err
 }
 

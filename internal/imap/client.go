@@ -119,17 +119,7 @@ func (c *Client) MarkSeen(ctx context.Context, mailboxName string, uid uint32, s
 	return c.conn.Store(imap.UIDSetNum(imap.UID(uid)), flags, nil).Close()
 }
 
-func (c *Client) MoveMessage(ctx context.Context, mailboxName string, uid uint32, targetMailbox string) error {
-	if c.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	if _, err := c.conn.Select(mailboxName, nil).Wait(); err != nil {
-		return fmt.Errorf("select %s: %w", mailboxName, err)
-	}
-	uidSet := imap.UIDSetNum(imap.UID(uid))
-	if _, err := c.conn.Copy(uidSet, targetMailbox).Wait(); err != nil {
-		return fmt.Errorf("copy to %s: %w", targetMailbox, err)
-	}
+func (c *Client) markDeletedAndExpunge(uidSet imap.UIDSet) error {
 	flags := &imap.StoreFlags{
 		Op:     imap.StoreFlagsAdd,
 		Silent: true,
@@ -144,7 +134,7 @@ func (c *Client) MoveMessage(ctx context.Context, mailboxName string, uid uint32
 	return nil
 }
 
-func (c *Client) DeleteMessage(ctx context.Context, mailboxName string, uid uint32) error {
+func (c *Client) MoveMessage(ctx context.Context, mailboxName string, uid uint32, targetMailbox string) error {
 	if c.conn == nil {
 		return fmt.Errorf("not connected")
 	}
@@ -152,16 +142,18 @@ func (c *Client) DeleteMessage(ctx context.Context, mailboxName string, uid uint
 		return fmt.Errorf("select %s: %w", mailboxName, err)
 	}
 	uidSet := imap.UIDSetNum(imap.UID(uid))
-	flags := &imap.StoreFlags{
-		Op:     imap.StoreFlagsAdd,
-		Silent: true,
-		Flags:  []imap.Flag{imap.FlagDeleted},
+	if _, err := c.conn.Copy(uidSet, targetMailbox).Wait(); err != nil {
+		return fmt.Errorf("copy to %s: %w", targetMailbox, err)
 	}
-	if err := c.conn.Store(uidSet, flags, nil).Close(); err != nil {
-		return fmt.Errorf("mark deleted: %w", err)
+	return c.markDeletedAndExpunge(uidSet)
+}
+
+func (c *Client) DeleteMessage(ctx context.Context, mailboxName string, uid uint32) error {
+	if c.conn == nil {
+		return fmt.Errorf("not connected")
 	}
-	if _, err := c.conn.UIDExpunge(uidSet).Collect(); err != nil {
-		return fmt.Errorf("expunge: %w", err)
+	if _, err := c.conn.Select(mailboxName, nil).Wait(); err != nil {
+		return fmt.Errorf("select %s: %w", mailboxName, err)
 	}
-	return nil
+	return c.markDeletedAndExpunge(imap.UIDSetNum(imap.UID(uid)))
 }

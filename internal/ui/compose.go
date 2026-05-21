@@ -69,11 +69,7 @@ func NewReply(original db.Message, acfg config.AccountConfig) ComposeModel {
 	}
 	c.subjectInput.SetValue(subject)
 	c.inReplyTo = original.MessageID
-	refs := original.MessageID
-	if original.MessageID != "" {
-		refs = original.MessageID
-	}
-	c.references = refs
+	c.references = original.MessageID
 	return c
 }
 
@@ -210,10 +206,11 @@ func parseAddressList(s string) []string {
 
 func (c ComposeModel) View(width, height int, styles Styles) string {
 	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
-	header := renderManagerHeader("COMPOSE", width, chrome)
+	title := "COMPOSE"
 	if c.inReplyTo != "" {
-		header = renderManagerHeader("REPLY", width, chrome)
+		title = "REPLY"
 	}
+	header := renderManagerHeader(title, width, chrome)
 
 	inputW := max(10, width-4)
 	styledInput := func(ti textinput.Model, focused bool) string {

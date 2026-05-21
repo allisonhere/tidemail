@@ -160,17 +160,19 @@ func (db *DB) FindArchiveMailbox(accountID int64) (Mailbox, error) {
 	if err != nil {
 		return Mailbox{}, err
 	}
-	for _, mb := range mailboxes {
+	var nameMatch *Mailbox
+	for i, mb := range mailboxes {
 		for _, flag := range mb.Flags {
 			if strings.EqualFold(flag, `\Archive`) {
 				return mb, nil
 			}
 		}
-	}
-	for _, mb := range mailboxes {
-		if isCommonArchiveMailboxName(mb.Name) || isCommonArchiveMailboxName(mb.DisplayName) {
-			return mb, nil
+		if nameMatch == nil && (isCommonArchiveMailboxName(mb.Name) || isCommonArchiveMailboxName(mb.DisplayName)) {
+			nameMatch = &mailboxes[i]
 		}
+	}
+	if nameMatch != nil {
+		return *nameMatch, nil
 	}
 	return Mailbox{}, fmt.Errorf("archive mailbox not found")
 }

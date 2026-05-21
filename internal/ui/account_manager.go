@@ -17,8 +17,6 @@ import (
 )
 
 // ── managerChrome ─────────────────────────────────────────────────────────────
-// Shared visual chrome used by account manager, settings, and overlays.
-// Moved here from the deleted feed_manager.go.
 
 type managerChrome struct {
 	baseBg             lipgloss.Color
@@ -181,16 +179,6 @@ func renderManagerSection(label, body string, chrome managerChrome, labelActive 
 	w := lipgloss.Width(body)
 	style := chrome.sectionLabel
 	if labelActive {
-		style = chrome.sectionLabelActive
-	}
-	styledLabel := style.Width(w).Render(label)
-	return lipgloss.JoinVertical(lipgloss.Left, styledLabel, body)
-}
-
-func renderManagerPaneSection(label, body string, focused bool, chrome managerChrome) string {
-	w := lipgloss.Width(body)
-	style := chrome.sectionLabel
-	if focused {
 		style = chrome.sectionLabelActive
 	}
 	styledLabel := style.Width(w).Render(label)
@@ -499,33 +487,36 @@ func (am AccountManager) updateList(msg tea.Msg, keys KeyMap) (AccountManager, t
 	return am, nil, false
 }
 
+func (am *AccountManager) updateFocusedInput(msg tea.Msg) tea.Cmd {
+	var cmd tea.Cmd
+	switch am.focusedField {
+	case amFieldName:
+		am.nameInput, cmd = am.nameInput.Update(msg)
+	case amFieldIMAPHost:
+		am.imapHostInput, cmd = am.imapHostInput.Update(msg)
+	case amFieldIMAPPort:
+		am.imapPortInput, cmd = am.imapPortInput.Update(msg)
+	case amFieldSMTPHost:
+		am.smtpHostInput, cmd = am.smtpHostInput.Update(msg)
+	case amFieldSMTPPort:
+		am.smtpPortInput, cmd = am.smtpPortInput.Update(msg)
+	case amFieldUser:
+		am.userInput, cmd = am.userInput.Update(msg)
+	case amFieldPass:
+		am.passInput, cmd = am.passInput.Update(msg)
+	case amFieldFrom:
+		am.fromInput, cmd = am.fromInput.Update(msg)
+	}
+	return cmd
+}
+
 func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, tea.Cmd, bool) {
 	if am.busy {
 		return am, nil, false
 	}
 	km, ok := msg.(tea.KeyMsg)
 	if !ok {
-		// Forward to focused input
-		var cmd tea.Cmd
-		switch am.focusedField {
-		case amFieldName:
-			am.nameInput, cmd = am.nameInput.Update(msg)
-		case amFieldIMAPHost:
-			am.imapHostInput, cmd = am.imapHostInput.Update(msg)
-		case amFieldIMAPPort:
-			am.imapPortInput, cmd = am.imapPortInput.Update(msg)
-		case amFieldSMTPHost:
-			am.smtpHostInput, cmd = am.smtpHostInput.Update(msg)
-		case amFieldSMTPPort:
-			am.smtpPortInput, cmd = am.smtpPortInput.Update(msg)
-		case amFieldUser:
-			am.userInput, cmd = am.userInput.Update(msg)
-		case amFieldPass:
-			am.passInput, cmd = am.passInput.Update(msg)
-		case amFieldFrom:
-			am.fromInput, cmd = am.fromInput.Update(msg)
-		}
-		return am, cmd, false
+		return am, am.updateFocusedInput(msg), false
 	}
 	switch {
 	case keyMatches(km, keys.Cancel):
@@ -537,6 +528,10 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 		return am.submitForm()
 	case keyMatches(km, keys.Tab):
 		am.advanceField(1)
+	case keyMatches(km, keys.Down):
+		am.advanceField(1)
+	case keyMatches(km, keys.Up):
+		am.advanceField(-1)
 	case keyMatches(km, keys.Backspace):
 		// let input handle it
 		fallthrough
@@ -560,27 +555,7 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 			am.advanceField(1)
 			return am, nil, false
 		}
-		// Forward keystroke to focused input
-		var cmd tea.Cmd
-		switch am.focusedField {
-		case amFieldName:
-			am.nameInput, cmd = am.nameInput.Update(msg)
-		case amFieldIMAPHost:
-			am.imapHostInput, cmd = am.imapHostInput.Update(msg)
-		case amFieldIMAPPort:
-			am.imapPortInput, cmd = am.imapPortInput.Update(msg)
-		case amFieldSMTPHost:
-			am.smtpHostInput, cmd = am.smtpHostInput.Update(msg)
-		case amFieldSMTPPort:
-			am.smtpPortInput, cmd = am.smtpPortInput.Update(msg)
-		case amFieldUser:
-			am.userInput, cmd = am.userInput.Update(msg)
-		case amFieldPass:
-			am.passInput, cmd = am.passInput.Update(msg)
-		case amFieldFrom:
-			am.fromInput, cmd = am.fromInput.Update(msg)
-		}
-		return am, cmd, false
+		return am, am.updateFocusedInput(msg), false
 	}
 	return am, nil, false
 }
@@ -644,11 +619,10 @@ func (am AccountManager) updateConfirmDelete(msg tea.Msg, keys KeyMap) (AccountM
 func (am *AccountManager) advanceField(delta int) {
 	next := int(am.focusedField) + delta
 	// Skip TLS toggles from tab navigation — they're toggled with space
-	for {
+	for i := 0; i < int(amFieldCount); i++ {
 		if next < 0 {
 			next = int(amFieldCount) - 1
-		}
-		if next >= int(amFieldCount) {
+		} else if next >= int(amFieldCount) {
 			next = 0
 		}
 		if amField(next) != amFieldIMAPTLS && amField(next) != amFieldSMTPTLS {
@@ -692,10 +666,19 @@ func (am AccountManager) View(width, height int, styles Styles) string {
 func (am AccountManager) viewList(width, height int, chrome managerChrome, styles Styles) string {
 	header := renderManagerHeader("ACCOUNTS", width, chrome)
 
+	mailboxCounts := make(map[int64]int, len(am.accounts))
+	for _, mb := range am.mailboxes {
+		mailboxCounts[mb.AccountID]++
+	}
+	cfgByName := make(map[string]config.AccountConfig, len(am.configs))
+	for _, c := range am.configs {
+		cfgByName[c.Name] = c
+	}
+
 	rows := []string{}
 	for i, acc := range am.accounts {
 		selected := i == am.cursor
-		rows = append(rows, am.renderAccountCard(width, acc, selected, chrome, styles))
+		rows = append(rows, am.renderAccountCard(width, acc, selected, chrome, styles, mailboxCounts[acc.ID], cfgByName[acc.Name]))
 	}
 
 	if len(am.accounts) == 0 {
@@ -744,19 +727,17 @@ func (am AccountManager) viewList(width, height int, chrome managerChrome, style
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
-func (am AccountManager) renderAccountCard(width int, acc db.Account, selected bool, chrome managerChrome, styles Styles) string {
+func (am AccountManager) renderAccountCard(width int, acc db.Account, selected bool, chrome managerChrome, styles Styles, mailboxCount int, acfg config.AccountConfig) string {
 	name := acc.Name
 	if name == "" {
 		name = fmt.Sprintf("Account %d", acc.ID)
 	}
-	acfg, _ := am.configForAccount(acc)
 	email := acfg.User
 	if email == "" {
 		email = "not configured"
 	}
 	imapServer := compactServer(acfg.IMAPHost, acfg.IMAPPort, acfg.IMAPTLS, "TLS")
 	smtpServer := compactServer(acfg.SMTPHost, acfg.SMTPPort, acfg.SMTPTLS, "STARTTLS")
-	mailboxCount := am.mailboxCount(acc.ID)
 	status := fmt.Sprintf("%d mailboxes", mailboxCount)
 	if mailboxCount == 1 {
 		status = "1 mailbox"
@@ -800,16 +781,6 @@ func compactServer(host string, port int, tls bool, tlsLabel string) string {
 		host += "  " + tlsLabel + " on"
 	}
 	return host
-}
-
-func (am AccountManager) mailboxCount(accountID int64) int {
-	count := 0
-	for _, mb := range am.mailboxes {
-		if mb.AccountID == accountID {
-			count++
-		}
-	}
-	return count
 }
 
 func (am AccountManager) viewForm(width, height int, chrome managerChrome, title string) string {
