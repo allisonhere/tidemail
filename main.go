@@ -11,7 +11,6 @@ import (
 
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
-	"github.com/allisonhere/tide/internal/feed"
 	"github.com/allisonhere/tide/internal/ui"
 )
 
@@ -46,8 +45,6 @@ func main() {
 		fmt.Print(setBG)
 		defer fmt.Print(resetBG)
 	}
-	feed.SetMaxFeedBodyBytes(cfg.Feed.MaxBodyMiB << 20)
-
 	// --preview-manual-update: open Settings on Updates with a demo manual-install command (dev UI).
 	model := ui.NewModel(database, cfg, resolvedVersion(), previewManualUpdate)
 	p := tea.NewProgram(model,

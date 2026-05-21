@@ -42,8 +42,8 @@ func TestDefaultConfigIncludesUpdateDefaults(t *testing.T) {
 	if cfg.Updates.CheckIntervalHours != 24 {
 		t.Fatalf("expected 24 hour update interval, got %d", cfg.Updates.CheckIntervalHours)
 	}
-	if cfg.Source != (SourceConfig{}) {
-		t.Fatalf("expected default source config to be empty, got %#v", cfg.Source)
+	if len(cfg.Accounts) != 0 {
+		t.Fatalf("expected default accounts to be empty, got %#v", cfg.Accounts)
 	}
 }
 
@@ -51,7 +51,7 @@ func TestLoadPreservesUpdateConfig(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
-	cfgPath := filepath.Join(dir, "rss", "config.toml")
+	cfgPath := filepath.Join(dir, "tidemail", "config.toml")
 	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
 		t.Fatalf("mkdir config dir: %v", err)
 	}
@@ -67,9 +67,6 @@ focus_line = false
 browser = ""
 density = "compact"
 
-[feed]
-max_body_mib = 10
-
 [updates]
 check_on_startup = false
 check_interval_hours = 12
@@ -79,10 +76,17 @@ available_version = "v1.3.0"
 available_summary = "New version available."
 available_published_unix = 1710001234
 
-[source]
-greader_url = "https://rss.example.com/api/greader.php"
-greader_login = "alice"
-greader_password = "secret"
+[[account]]
+name = "Personal"
+imap_host = "imap.example.com"
+imap_port = 993
+imap_tls = true
+smtp_host = "smtp.example.com"
+smtp_port = 587
+smtp_tls = true
+user = "alice"
+password = "secret"
+from = "alice@example.com"
 `
 	if err := os.WriteFile(cfgPath, []byte(data), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -113,14 +117,20 @@ greader_password = "secret"
 	if cfg.Updates.AvailablePublished != 1710001234 {
 		t.Fatalf("unexpected available_published_unix: %d", cfg.Updates.AvailablePublished)
 	}
-	if cfg.Source.GReaderURL != "https://rss.example.com/api/greader.php" {
-		t.Fatalf("unexpected greader_url: %q", cfg.Source.GReaderURL)
+	if len(cfg.Accounts) != 1 {
+		t.Fatalf("expected one account, got %d", len(cfg.Accounts))
 	}
-	if cfg.Source.GReaderLogin != "alice" {
-		t.Fatalf("unexpected greader_login: %q", cfg.Source.GReaderLogin)
+	if cfg.Accounts[0].Name != "Personal" {
+		t.Fatalf("unexpected account name: %q", cfg.Accounts[0].Name)
 	}
-	if cfg.Source.GReaderPassword != "secret" {
-		t.Fatalf("unexpected greader_password: %q", cfg.Source.GReaderPassword)
+	if cfg.Accounts[0].IMAPHost != "imap.example.com" {
+		t.Fatalf("unexpected imap host: %q", cfg.Accounts[0].IMAPHost)
+	}
+	if cfg.Accounts[0].User != "alice" {
+		t.Fatalf("unexpected account user: %q", cfg.Accounts[0].User)
+	}
+	if cfg.Accounts[0].Password != "secret" {
+		t.Fatalf("unexpected account password: %q", cfg.Accounts[0].Password)
 	}
 	if cfg.Display.Density != "compact" {
 		t.Fatalf("expected display density compact, got %q", cfg.Display.Density)

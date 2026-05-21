@@ -27,6 +27,9 @@ require (
 	github.com/clipperhouse/stringish v0.1.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/emersion/go-imap/v2 v2.0.0-beta.8 // indirect
+	github.com/emersion/go-message v0.18.2 // indirect
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect

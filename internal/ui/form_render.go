@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -107,6 +108,27 @@ func renderInsetControl(control string, width, inset int, chrome managerChrome) 
 		Render(control)
 	right := lipgloss.NewStyle().Background(chrome.baseBg).Render(strings.Repeat(" ", rightW))
 	return left + controlCell + right
+}
+
+func renderTextInput(input textinput.Model, width int, focused, masked bool, chrome managerChrome) string {
+	if width <= 0 {
+		return ""
+	}
+	input.Width = width
+	if focused {
+		input.Focus()
+	} else {
+		input.Blur()
+	}
+	if masked {
+		input.EchoMode = textinput.EchoPassword
+	}
+	view := truncateStyled(input.View(), width, chrome.baseBg)
+	return lipgloss.NewStyle().
+		Background(chrome.baseBg).
+		Foreground(chrome.text).
+		Width(width).
+		Render(view)
 }
 
 func renderFormFieldHeader(label string, focused bool, status string, width int, chrome managerChrome) string {

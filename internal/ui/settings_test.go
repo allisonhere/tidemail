@@ -1196,17 +1196,26 @@ func TestSettingsFeedsSectionShowsFeedMaxSizeFieldOnly(t *testing.T) {
 	}
 }
 
-func TestSettingsApplyToPreservesSourceConfig(t *testing.T) {
+func TestSettingsApplyToPreservesAccountConfig(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Source.GReaderURL = "https://rss.example.com/api/greader.php"
-	cfg.Source.GReaderLogin = "alice"
-	cfg.Source.GReaderPassword = "secret"
+	cfg.Accounts = []config.AccountConfig{{
+		Name:     "Personal",
+		IMAPHost: "imap.example.com",
+		IMAPPort: 993,
+		IMAPTLS:  true,
+		SMTPHost: "smtp.example.com",
+		SMTPPort: 587,
+		SMTPTLS:  true,
+		User:     "alice",
+		Password: "secret",
+		From:     "alice@example.com",
+	}}
 
 	s := newSettings(cfg, settingsUpdateState{})
 	got := s.ApplyTo(cfg)
 
-	if got.Source != cfg.Source {
-		t.Fatalf("expected settings save to preserve hidden source config, got %#v want %#v", got.Source, cfg.Source)
+	if len(got.Accounts) != len(cfg.Accounts) || got.Accounts[0] != cfg.Accounts[0] {
+		t.Fatalf("expected settings save to preserve account config, got %#v want %#v", got.Accounts, cfg.Accounts)
 	}
 }
 

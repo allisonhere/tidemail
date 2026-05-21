@@ -34,39 +34,31 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 			},
 		},
 		{
-			name: "Articles / Content",
+			name: "Messages / Content",
 			entries: []entry{
 				{keys.Up.Help().Key + "/" + keys.Down.Help().Key, "move content focus line; scroll only when needed"},
-				{keys.MarkRead.Help().Key, "mark read; next article in list"},
-				{keys.MarkAllRead.Help().Key, "mark current feed as read"},
-				{keys.OpenBrowser.Help().Key, "open selected link (content) or article URL"},
+				{keys.MarkRead.Help().Key, "mark read; next message in list"},
+				{keys.MarkAllRead.Help().Key, "mark current mailbox as read"},
+				{keys.OpenBrowser.Help().Key, "open selected link"},
 				{keys.NextLink.Help().Key, "next actionable link in content"},
 				{keys.PrevLink.Help().Key, "previous actionable link in content"},
-				{keys.Search.Help().Key, "search articles in current feed"},
+				{keys.Search.Help().Key, "search messages in current mailbox"},
 				{keys.UnreadOnly.Help().Key, "toggle unread-only view"},
+				bind(keys.Archive),
+				{keys.Delete.Help().Key, "delete selected message"},
+				bind(keys.Compose),
+				bind(keys.Reply),
 			},
 		},
 		{
-			name: "Feeds",
+			name: "Accounts",
 			entries: []entry{
-				bind(keys.Refresh),
-				bind(keys.RefreshAll),
-				bind(keys.FeedManager),
-				{keys.Add.Help().Key, "add feed from anywhere"},
-			},
-		},
-		{
-			name: "Feed Manager",
-			entries: []entry{
-				{keys.Add.Help().Key, "add feed or GReader source"},
-				{keys.AddFolder.Help().Key, "add folder"},
-				{keys.Enter.Help().Key, "browse remote feed / edit local feed / enter form"},
-				{keys.Left.Help().Key, "from field start, back to left list"},
-				{keys.Edit.Help().Key, "edit local feed or GReader settings"},
-				{keys.Move.Help().Key, "move feed to a folder"},
-				{keys.Delete.Help().Key, "delete selected local feed"},
-				bind(keys.Import),
-				bind(keys.Export),
+				bind(keys.Sync),
+				bind(keys.SyncAll),
+				bind(keys.AccountManager),
+				{keys.Add.Help().Key, "add account"},
+				{keys.Edit.Help().Key, "edit account"},
+				{keys.Delete.Help().Key, "delete account"},
 			},
 		},
 		{
@@ -74,13 +66,13 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 			entries: []entry{
 				{"S → Display", "layout density: comfortable or compact (default compact)"},
 				{"S → Display", "focus line: highlight current readable content line"},
-				{"S → Display", "actionable article links: show links block and enable link navigation"},
+				{"S → Display", "actionable links: show links block and enable link navigation"},
 			},
 		},
 		{
 			name: "Summary Overlay",
 			entries: []entry{
-				{keys.Summary.Help().Key, "AI summary from articles or content"},
+				{keys.Summary.Help().Key, "AI summary from messages or content"},
 				{keys.CopyText.Help().Key, "copy summary"},
 				{keys.SaveMD.Help().Key, "save summary as .md"},
 			},
@@ -90,6 +82,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 			entries: []entry{
 				bind(keys.ThemePicker),
 				bind(keys.Settings),
+				bind(keys.Command),
 				bind(keys.UpdateInstall),
 				bind(keys.UpdateIgnore),
 				bind(keys.Help),
@@ -110,7 +103,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 			Render("  Help — Keyboard Shortcuts"),
 		"",
 		styles.HelpSectionBody.Width(contentW).Render(
-			"The status bar always shows these shortcuts on the left: m feed manager · S settings · / search · ? help.",
+			"The status bar always shows these shortcuts on the left: m accounts · S settings · / search · ? help.",
 		),
 		"",
 	}

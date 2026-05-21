@@ -11,7 +11,6 @@ import (
 	"time"
 	"unicode"
 
-	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -23,8 +22,7 @@ import (
 	"github.com/allisonhere/tide/internal/ai"
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
-	"github.com/allisonhere/tide/internal/feed"
-	"github.com/allisonhere/tide/internal/greader"
+	imapClient "github.com/allisonhere/tide/internal/imap"
 	"github.com/allisonhere/tide/internal/update"
 )
 
@@ -33,22 +31,23 @@ import (
 type pane int
 
 const (
-	paneFeeds pane = iota
-	paneArticles
+	paneAccounts pane = iota
+	paneMessages
 	paneContent
 )
 
 type sidebarRowKind int
 
 const (
-	rowKindFolder sidebarRowKind = iota
-	rowKindFeed
+	rowKindUnified sidebarRowKind = iota
+	rowKindAccount
+	rowKindMailbox
 )
 
 type sidebarRow struct {
-	kind     sidebarRowKind
-	folderID int64
-	feedID   int64
+	kind      sidebarRowKind
+	accountID int64
+	mailboxID int64
 }
 
 type overlayMode int
@@ -58,13 +57,14 @@ const (
 	overlayQuitConfirm
 	overlaySearch
 	overlayThemePicker
-	overlayFeedManager
+	overlayAccountManager
 	overlayHelp
-	overlayFetchError // fetch-error details for a single feed
 	overlaySettings
 	overlayUpdateConfirm
 	overlayContentSearch
 	overlaySummary
+	overlayCompose
+	overlayCommandPalette
 )
 
 type updateState int
@@ -86,36 +86,29 @@ type Model struct {
 	db  *db.DB
 	cfg config.Config
 
-	// Runtime services are kept on the model so commands can snapshot what they need before running async. -allie
 	currentVersion string
 	updater        *update.Updater
 
-	// Layout and focus are the root of every render decision; pane state should stay independent of overlays. -allie
 	width, height int
 	focused       pane
 
-	// Feed pane state owns the sidebar projection, while feeds/folders remain the source data from DB + remote source. -allie
-	// Feed pane
-	feeds            []db.Feed
-	folders          []db.Folder
-	sidebarRows      []sidebarRow
-	sidebarCursor    int
-	collapsedFolders map[int64]bool
+	accounts          []db.Account
+	mailboxes         []db.Mailbox
+	sidebarRows       []sidebarRow
+	sidebarCursor     int
+	collapsedAccounts map[int64]bool
 
-	// Article pane keeps the unfiltered cache and current filtered projection so search/unread toggles do not re-query. -allie
-	// Article pane
-	articles         []db.Article
-	filteredArticles []db.Article
-	articleCursor    int
+	messages         []db.Message
+	filteredMessages []db.Message
+	messageCursor    int
 	listOffset       int
 	searchQuery      string
 	showUnreadOnly   bool
 
-	// Content pane
 	viewport             viewport.Model
 	contentLinks         []string
 	contentLinkIdx       int
-	contentArticleID     int64
+	contentMessageID     int64
 	contentFocusLine     int
 	contentLineCount     int
 	contentFocusable     []bool
@@ -124,48 +117,32 @@ type Model struct {
 	contentSearchMatches []int
 	contentSearchIdx     int
 
-	// Help overlay
-	helpVP viewport.Model
+	helpVP        viewport.Model
+	overlay       overlayMode
+	searchInput   textinput.Model
+	commandInput  textinput.Model
+	commandCursor int
 
-	// Overlays / inputs
-	overlay     overlayMode
-	searchInput textinput.Model
-
-	// Theme
 	confirmedTheme int
 	activeTheme    int
 	styles         Styles
 	themeCursor    int
 
-	// Feed manager (delegate)
-	feedManager FeedManager
+	accountManager AccountManager
+	compose        ComposeModel
 
-	// Status
 	statusMsg string
 	statusErr bool
 
-	// Fetch error details overlay
-	lastFetchError *feed.FetchResult
+	syncing map[int64]bool
+	spinner spinner.Model
 
-	// Async
-	refreshing  map[int64]bool
-	spinner     spinner.Model
-	mdConverter *md.Converter
+	firstLoad              bool
+	pendingSelectMailboxID int64
+	keys                   KeyMap
 
-	// Startup selection is deferred until FeedsLoadedMsg so feed-manager saves can select rows after reload. -allie
-	firstLoad           bool  // true until the initial FeedsLoadedMsg is processed
-	pendingSelectFeedID int64 // select this feed when FeedsLoadedMsg arrives
-	keys                KeyMap
-
-	// Settings overlay
 	settings Settings
 
-	// Optional Google Reader-compatible source
-	greaderClient  *greader.Client
-	greaderStreams map[int64]string
-
-	// Update fields mirror Settings state so background checks, prompts, and modal actions share one lifecycle. -allie
-	// Update flow
 	updateState          updateState
 	updateInfo           update.ReleaseInfo
 	updateInfoFresh      bool
@@ -175,12 +152,10 @@ type Model struct {
 	updateDismissed      bool
 	pendingUpdateInstall bool
 
-	// Dev-only: launch with Settings > Updates showing the manual-install preview; avoids persisting demo update state.
 	previewManualUpdateUI bool
 
-	// AI summary overlay
-	summarizer        ai.Summarizer // nil when not configured
-	summaryArticle    db.Article
+	summarizer        ai.Summarizer
+	summaryMessage    db.Message
 	summaryGenerating bool
 	summaryErr        string
 }
@@ -189,11 +164,15 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 	merged, themeIdx := MergedThemeFromConfig(cfg)
 
 	si := textinput.New()
-	si.Placeholder = "search articles..."
+	si.Placeholder = "search messages..."
 	si.CharLimit = 100
 
+	ci := textinput.New()
+	ci.Placeholder = "type a command..."
+	ci.CharLimit = 100
+
 	csi := textinput.New()
-	csi.Placeholder = "find in article..."
+	csi.Placeholder = "find in message..."
 	csi.CharLimit = 100
 
 	sp := spinner.New()
@@ -202,9 +181,6 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 	} else {
 		sp.Spinner = spinner.Dot
 	}
-	// Leave Style empty so frames are plain text; foreground-only styling caused holes
-	// when composed with StatusSpinner.Render on the status bar. Sidebar/summary wrap rows
-	// with their own styles.
 	sp.Style = lipgloss.NewStyle()
 
 	summarizer, _ := ai.New(cfg.AI)
@@ -215,17 +191,16 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		currentVersion:        currentVersion,
 		previewManualUpdateUI: previewManualUpdate,
 		updater:               update.New(),
-		focused:               paneFeeds,
+		focused:               paneAccounts,
 		confirmedTheme:        themeIdx,
 		activeTheme:           themeIdx,
 		styles:                BuildStyles(merged, cfg.Display.Density),
-		feedManager:           NewFeedManager(database),
+		accountManager:        NewAccountManager(database),
 		searchInput:           si,
+		commandInput:          ci,
 		spinner:               sp,
-		refreshing:            make(map[int64]bool),
-		collapsedFolders:      map[int64]bool{},
-		mdConverter:           md.NewConverter("", true, nil),
-		greaderStreams:        map[int64]string{},
+		syncing:               make(map[int64]bool),
+		collapsedAccounts:     map[int64]bool{},
 		firstLoad:             true,
 		keys:                  DefaultKeys,
 		summarizer:            summarizer,
@@ -234,7 +209,6 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		contentSearchInput:    csi,
 		contentSearchIdx:      -1,
 	}
-	m.resetSourceClient()
 	m.restoreCachedUpdateState()
 	if previewManualUpdate {
 		m.applyManualUpdatePreview()
@@ -243,7 +217,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 }
 
 func (m Model) Init() tea.Cmd {
-	cmds := []tea.Cmd{m.loadFeedsCmd(), m.spinner.Tick}
+	cmds := []tea.Cmd{m.loadAccountsCmd(), m.spinner.Tick}
 	if !m.previewManualUpdateUI {
 		if cmd := m.maybeCheckForUpdatesCmd(false); cmd != nil {
 			cmds = append(cmds, cmd)
@@ -263,17 +237,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.viewport = viewport.New(m.contentBodyWidth(), m.contentBodyHeight())
 		m.viewport.Style = lipgloss.NewStyle()
-		if len(m.filteredArticles) > 0 {
-			m.setViewportArticle(m.filteredArticles[m.articleCursor])
+		if len(m.filteredMessages) > 0 {
+			m.setViewportMessage(m.filteredMessages[m.messageCursor])
 			m.ensureContentFocusVisible()
 		}
 		if m.overlay == overlayHelp {
 			m.resetHelpVP()
-		}
-		if m.overlay == overlayFeedManager {
-			fm := m.feedManager
-			fm.syncTextInputWidthsForRightPane(feedManagerRightPaneWidth(m.width))
-			m.feedManager = fm
 		}
 		return m, nil
 
@@ -385,357 +354,234 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Quit
 
-	case FeedsLoadedMsg:
-		// Reloads preserve the user's sidebar intent, unless a save flow requested a specific feed selection. -allie
-		if msg.Err != nil && len(msg.Feeds) == 0 && len(msg.Folders) == 0 && len(msg.RemoteStreams) == 0 {
-			m.greaderStreams = map[int64]string{}
-			m.feeds = nil
-			m.folders = nil
+	case AccountsLoadedMsg:
+		if msg.Err != nil && len(msg.Accounts) == 0 && len(msg.Mailboxes) == 0 {
+			m.accounts = nil
+			m.mailboxes = nil
 			m.rebuildSidebar()
-			m.clearArticles()
+			m.clearMessages()
 			m.setStatus(msg.Err.Error(), true)
 			return m, m.clearStatusCmd()
 		}
 		prevKind, prevID := m.currentSidebarSelection()
-		m.feeds = msg.Feeds
-		m.folders = msg.Folders
-		m.greaderStreams = msg.RemoteStreams
-		if m.greaderStreams == nil {
-			m.greaderStreams = map[int64]string{}
-		}
+		m.accounts = msg.Accounts
+		m.mailboxes = msg.Mailboxes
 		statusCmd := tea.Cmd(nil)
 		if msg.Err != nil {
 			m.setStatus(msg.Err.Error(), true)
 			statusCmd = m.clearStatusCmd()
 		}
 		m.rebuildSidebar()
-		isFirstLoad := m.firstLoad
 		m.firstLoad = false
-		if m.pendingSelectFeedID != 0 {
+		if prevID == 0 && prevKind == rowKindMailbox {
+			m.sidebarCursor = 0
+		}
+		if m.pendingSelectMailboxID != 0 {
 			for i, row := range m.sidebarRows {
-				if row.kind == rowKindFeed && row.feedID == m.pendingSelectFeedID {
+				if row.kind == rowKindMailbox && row.mailboxID == m.pendingSelectMailboxID {
 					m.sidebarCursor = i
 					break
 				}
 			}
-			m.pendingSelectFeedID = 0
+			m.pendingSelectMailboxID = 0
 		} else if prevID != 0 {
 			for i, row := range m.sidebarRows {
 				if row.kind == prevKind {
-					if row.kind == rowKindFeed && row.feedID == prevID {
+					if row.kind == rowKindUnified {
 						m.sidebarCursor = i
 						break
 					}
-					if row.kind == rowKindFolder && row.folderID == prevID {
+					if row.kind == rowKindMailbox && row.mailboxID == prevID {
 						m.sidebarCursor = i
 						break
 					}
-				}
-			}
-		} else {
-			for i, row := range m.sidebarRows {
-				if row.kind == rowKindFeed {
-					m.sidebarCursor = i
-					break
+					if row.kind == rowKindAccount && row.accountID == prevID {
+						m.sidebarCursor = i
+						break
+					}
 				}
 			}
 		}
 		m.sidebarCursor = clamp(m.sidebarCursor, 0, max(0, len(m.sidebarRows)-1))
-		if m.overlay == overlayFeedManager && m.feedManager.mode == fmList {
-			m.feedManager.setData(m.feeds, m.folders)
-			if feed := m.selectedFeed(); feed != nil {
-				m.feedManager.selectFeed(feed.ID)
-			} else if folderID, ok := m.selectedFolderID(); ok && folderID >= 0 {
-				m.feedManager.selectFolder(folderID)
+		if len(m.mailboxes) == 0 {
+			m.clearMessages()
+			if statusCmd != nil {
+				return m, statusCmd
 			}
-		}
-		if len(m.feeds) == 0 {
-			m.clearArticles()
 			return m, nil
 		}
 		cmds := []tea.Cmd{}
-		if selected := m.selectedFeed(); selected != nil {
-			cmds = append(cmds, m.loadUnreadArticlesCmd(selected.ID))
+		if m.selectedUnifiedInbox() {
+			cmds = append(cmds, m.loadUnifiedInboxCmd())
+		} else if selected := m.selectedMailbox(); selected != nil {
+			cmds = append(cmds, m.loadUnreadMessagesCmd(selected.ID))
 		} else {
-			m.clearArticles()
-		}
-		// Only auto-refresh on startup — manual refresh uses f/F keys.
-		if isFirstLoad {
-			for _, f := range m.feeds {
-				if m.isRemoteFeed(f.ID) {
-					continue
-				}
-				cmds = append(cmds, m.refreshFeedCmd(f.ID, f.URL, false))
-			}
+			m.clearMessages()
 		}
 		if statusCmd != nil {
 			cmds = append(cmds, statusCmd)
 		}
 		return m, tea.Batch(cmds...)
 
-	case ArticlesLoadedMsg:
-		// Ignore stale article loads from a previously selected feed; async loads can race with sidebar movement. -allie
+	case MessagesLoadedMsg:
 		if msg.Err != nil {
-			if selected := m.selectedFeed(); selected != nil && msg.FeedID == selected.ID {
-				m.clearArticles()
+			if selected := m.selectedMailbox(); selected != nil && msg.MailboxID == selected.ID {
+				m.clearMessages()
 			}
 			m.setStatus(msg.Err.Error(), true)
 			return m, m.clearStatusCmd()
 		}
-		if selected := m.selectedFeed(); selected != nil && msg.FeedID == selected.ID {
-			m.articles = msg.Articles
+		if (msg.MailboxID == 0 && m.selectedUnifiedInbox()) || (func() bool {
+			selected := m.selectedMailbox()
+			return selected != nil && msg.MailboxID == selected.ID
+		}()) {
+			m.messages = msg.Messages
 			m.applyFilter()
-			m.articleCursor = clamp(m.articleCursor, 0, max(0, len(m.filteredArticles)-1))
+			m.messageCursor = clamp(m.messageCursor, 0, max(0, len(m.filteredMessages)-1))
 			m.listOffset = 0
-			var cmd tea.Cmd
-			if len(m.filteredArticles) > 0 {
-				m.setViewportArticle(m.filteredArticles[m.articleCursor])
-				cmd = m.maybeFetchArticleContentCmd(m.filteredArticles[m.articleCursor])
+			if len(m.filteredMessages) > 0 {
+				m.setViewportMessage(m.filteredMessages[m.messageCursor])
 			}
-			return m, cmd
 		}
 		return m, nil
 
-	case FeedRefreshedMsg:
-		delete(m.refreshing, msg.FeedID)
+	case MailboxSyncedMsg:
+		delete(m.syncing, msg.MailboxID)
 		if msg.Err != nil {
-			r := msg.Result
-			if r != nil {
-				friendly := r.FriendlyMessage()
-				if r.HasDetails() && msg.Manual {
-					// Show error details overlay for manually triggered single-feed refresh.
-					m.lastFetchError = r
-					m.overlay = overlayFetchError
-					m.setStatus(fmt.Sprintf("refresh failed: %s", friendly), true)
-				} else {
-					m.setStatus(fmt.Sprintf("refresh failed: %s", friendly), true)
-					return m, m.clearStatusCmd()
-				}
-			} else {
-				m.setStatus(fmt.Sprintf("refresh failed: %v", msg.Err), true)
+			if msg.Manual {
+				m.setStatus(fmt.Sprintf("sync failed: %v", msg.Err), true)
 				return m, m.clearStatusCmd()
 			}
 			return m, nil
 		}
-		cmds := []tea.Cmd{}
-		// Successful refreshes update storage first; the visible pane reloads from DB afterward to keep filters consistent. -allie
-		for _, a := range msg.Articles {
-			if err := m.db.UpsertArticle(a); err != nil {
-				continue
-			}
+		cmds := []tea.Cmd{m.loadAccountsCmd()}
+		if m.selectedUnifiedInbox() {
+			cmds = append(cmds, m.loadUnifiedInboxCmd())
+		} else if selected := m.selectedMailbox(); selected != nil && msg.MailboxID == selected.ID {
+			cmds = append(cmds, m.loadUnreadMessagesCmd(msg.MailboxID))
 		}
-		now := time.Now()
-		currentFeed, err := m.db.GetFeed(msg.FeedID)
-		if err == nil {
-			title := strings.TrimSpace(msg.Title)
-			if title == "" {
-				title = currentFeed.Title
-			}
-			description := strings.TrimSpace(msg.Description)
-			if description == "" {
-				description = currentFeed.Description
-			}
-			faviconURL := strings.TrimSpace(msg.FaviconURL)
-			if faviconURL == "" {
-				faviconURL = currentFeed.FaviconURL
-			}
-			if err := m.db.UpdateFeedMeta(msg.FeedID, title, description, faviconURL, now); err != nil {
-				fmt.Fprintf(os.Stderr, "feed meta update failed (feed %d): %v\n", msg.FeedID, err)
-			}
-		} else {
-			if err := m.db.TouchFeedFetched(msg.FeedID, now); err != nil {
-				fmt.Fprintf(os.Stderr, "feed touch failed (feed %d): %v\n", msg.FeedID, err)
-			}
+		if msg.Manual && msg.NewCount > 0 {
+			m.setStatus(fmt.Sprintf("synced: %d new", msg.NewCount), false)
+			cmds = append(cmds, m.clearStatusCmd())
+		} else if msg.Manual {
+			m.setStatus("up to date", false)
+			cmds = append(cmds, m.clearStatusCmd())
 		}
-		if r := msg.Result; r != nil && r.SuggestURLUpdate {
-			if err := m.db.UpdateFeedURL(msg.FeedID, r.SuggestedURL); err != nil {
-				m.setStatus(fmt.Sprintf("URL update failed: %v", err), true)
-			} else {
-				m.setStatus(fmt.Sprintf("feed URL updated to %s", r.SuggestedURL), false)
-			}
-		}
-		if selected := m.selectedFeed(); selected != nil && msg.FeedID == selected.ID {
-			cmds = append(cmds, m.loadUnreadArticlesCmd(msg.FeedID))
-		}
-		cmds = append(cmds, m.loadFeedsCmd())
-		cmds = append(cmds, m.clearStatusCmd())
 		return m, tea.Batch(cmds...)
 
-	case FeedSavedMsg:
-		m.feedManager.busy = false
-		m.feedManager.busyMsg = ""
+	case AccountSavedMsg:
+		m.accountManager.busy = false
+		m.accountManager.statusMsg = ""
 		if msg.Err != nil {
-			m.feedManager.statusMsg = fmt.Sprintf("SAVE FAILED: %v", msg.Err)
+			m.accountManager.statusMsg = fmt.Sprintf("SAVE FAILED: %v", msg.Err)
 			m.setStatus(fmt.Sprintf("save failed: %v", msg.Err), true)
 			return m, m.clearStatusCmd()
 		}
-		m.feedManager = m.newFeedManager()
-		m.feedManager.mode = fmList
-		m.feedManager.selectFeed(msg.Feed.ID)
-		m.feedManager.statusMsg = fmt.Sprintf("SAVED: %s", strings.ToUpper(msg.Feed.Title))
-		m.setStatus(fmt.Sprintf("saved: %s", msg.Feed.Title), false)
-		m.pendingSelectFeedID = msg.Feed.ID
-		return m, tea.Batch(m.loadFeedsCmd(), m.clearStatusCmd())
+		// Update config with new account
+		found := false
+		for i, a := range m.cfg.Accounts {
+			if a.Name == msg.AccountCfg.Name {
+				m.cfg.Accounts[i] = msg.AccountCfg
+				found = true
+				break
+			}
+		}
+		if !found {
+			m.cfg.Accounts = append(m.cfg.Accounts, msg.AccountCfg)
+		}
+		config.Save(m.cfg) //nolint:errcheck
+		m.accountManager = m.newAccountManager()
+		m.accountManager.mode = amList
+		m.accountManager.statusMsg = fmt.Sprintf("SAVED: %s", strings.ToUpper(msg.Account.Name))
+		m.setStatus(fmt.Sprintf("saved: %s", msg.Account.Name), false)
+		if len(msg.Mailboxes) > 0 {
+			m.pendingSelectMailboxID = msg.Mailboxes[0].ID
+		}
+		return m, tea.Batch(m.loadAccountsCmd(), m.clearStatusCmd())
 
-	case RemoteFeedAddedMsg:
-		m.feedManager.busy = false
-		m.feedManager.busyMsg = ""
+	case AccountDeletedMsg:
+		m.accountManager.busy = false
+		m.accountManager.statusMsg = ""
 		if msg.Err != nil {
-			m.feedManager.statusMsg = fmt.Sprintf("SAVE FAILED: %v", msg.Err)
-			m.setStatus(fmt.Sprintf("save failed: %v", msg.Err), true)
-			return m, m.clearStatusCmd()
-		}
-		m.cfg.Source.GReaderURL = msg.Source.GReaderURL
-		m.cfg.Source.GReaderLogin = msg.Source.GReaderLogin
-		m.cfg.Source.GReaderPassword = msg.Source.GReaderPassword
-		saveErr := config.Save(m.cfg)
-		m.resetSourceClient()
-		m.feedManager = m.newFeedManager()
-		m.feedManager.mode = fmList
-		if saveErr != nil {
-			m.feedManager.statusMsg = fmt.Sprintf("GREADER CONFIG SAVE FAILED: %v", saveErr)
-			m.setStatus(fmt.Sprintf("greader config save failed: %v", saveErr), true)
-			return m, tea.Batch(m.loadFeedsCmd(), m.clearStatusCmd())
-		}
-		if msg.SettingsOnly {
-			m.feedManager.statusMsg = "SAVED GREADER SETTINGS"
-			m.setStatus("saved greader settings", false)
-			return m, tea.Batch(m.loadFeedsCmd(), m.clearStatusCmd())
-		}
-		if msg.StreamID == "" {
-			m.feedManager.statusMsg = fmt.Sprintf("CONNECTED GREADER%s%d FEEDS", m.styles.InlineMidDot(), msg.FeedCount)
-			m.setStatus(fmt.Sprintf("connected greader: %d feeds", msg.FeedCount), false)
-			return m, tea.Batch(m.loadFeedsCmd(), m.clearStatusCmd())
-		}
-		title := strings.TrimSpace(msg.Title)
-		if title == "" {
-			title = "Google Reader feed"
-		}
-		m.feedManager.statusMsg = fmt.Sprintf("ADDED: %s", strings.ToUpper(title))
-		m.setStatus(fmt.Sprintf("added: %s", title), false)
-		if msg.StreamID != "" {
-			m.pendingSelectFeedID = remoteStableID("feed", msg.StreamID)
-		}
-		return m, tea.Batch(m.loadFeedsCmd(), m.clearStatusCmd())
-
-	case FeedDeletedMsg:
-		m.feedManager.busy = false
-		m.feedManager.busyMsg = ""
-		if msg.Err != nil {
-			m.feedManager.statusMsg = fmt.Sprintf("DELETE FAILED: %v", msg.Err)
+			m.accountManager.statusMsg = fmt.Sprintf("DELETE FAILED: %v", msg.Err)
 			m.setStatus(fmt.Sprintf("delete failed: %v", msg.Err), true)
 			return m, m.clearStatusCmd()
 		}
 		m.sidebarCursor = 0
-		m.articleCursor = 0
-		m.clearArticles()
-		m.feedManager = m.newFeedManager()
-		m.feedManager.mode = fmList
-		m.feedManager.statusMsg = "DELETED FEED"
-		return m, m.loadFeedsCmd()
+		m.messageCursor = 0
+		m.clearMessages()
+		m.accountManager = m.newAccountManager()
+		m.accountManager.mode = amList
+		m.accountManager.statusMsg = "DELETED ACCOUNT"
+		return m, m.loadAccountsCmd()
 
-	case FolderSavedMsg:
-		m.feedManager.busy = false
-		m.feedManager.busyMsg = ""
-		if msg.Err != nil {
-			m.feedManager.statusMsg = fmt.Sprintf("SAVE FAILED: %v", msg.Err)
-			m.setStatus(fmt.Sprintf("save failed: %v", msg.Err), true)
-			return m, m.clearStatusCmd()
-		}
-		m.setStatus(fmt.Sprintf("saved folder: %s", msg.Folder.Name), false)
-		m.feedManager = m.newFeedManager()
-		m.feedManager.mode = fmList
-		m.feedManager.selectFolder(msg.Folder.ID)
-		m.feedManager.statusMsg = fmt.Sprintf("SAVED FOLDER: %s", strings.ToUpper(msg.Folder.Name))
-		return m, tea.Batch(m.loadFeedsCmd(), m.clearStatusCmd())
-
-	case FolderDeletedMsg:
-		m.feedManager.busy = false
-		m.feedManager.busyMsg = ""
-		if msg.Err != nil {
-			m.feedManager.statusMsg = fmt.Sprintf("DELETE FAILED: %v", msg.Err)
-			m.setStatus(fmt.Sprintf("delete failed: %v", msg.Err), true)
-			return m, m.clearStatusCmd()
-		}
-		m.feedManager = m.newFeedManager()
-		m.feedManager.mode = fmList
-		m.feedManager.statusMsg = "DELETED FOLDER"
-		return m, tea.Batch(m.loadFeedsCmd(), m.clearStatusCmd())
-
-	case OPMLImportedMsg:
-		m.feedManager.busy = false
-		m.feedManager.busyMsg = ""
-		if msg.Err != nil {
-			m.feedManager.statusMsg = fmt.Sprintf("IMPORT FAILED: %v", msg.Err)
-			m.setStatus(fmt.Sprintf("import failed: %v", msg.Err), true)
-		}
-		m.feedManager = m.newFeedManager()
-		m.feedManager.mode = fmList
-		if msg.Err == nil {
-			m.setStatus(fmt.Sprintf("imported %d feeds", msg.Count), false)
-			m.feedManager.statusMsg = fmt.Sprintf("IMPORTED %d FEEDS", msg.Count)
-		}
-		return m, tea.Batch(m.loadFeedsCmd(), m.clearStatusCmd())
-
-	case OPMLExportedMsg:
-		if msg.Err != nil {
-			m.setStatus(fmt.Sprintf("export failed: %v", msg.Err), true)
-		} else {
-			m.setStatus(fmt.Sprintf("exported to %s", msg.Path), false)
-		}
-		return m, m.clearStatusCmd()
-
-	case ArticleReadUpdatedMsg:
+	case MessageReadUpdatedMsg:
 		if msg.Err != nil {
 			m.setStatus(fmt.Sprintf("mark read failed: %v", msg.Err), true)
 			return m, m.clearStatusCmd()
 		}
-
-		for i := range m.articles {
-			if m.articles[i].ID == msg.ArticleID {
-				m.articles[i].Read = msg.Read
+		for i := range m.messages {
+			if m.messages[i].ID == msg.MessageID {
+				m.messages[i].Read = msg.Read
 				break
 			}
 		}
-		if msg.FeedID != 0 && msg.WasRead != msg.Read {
+		if msg.MailboxID != 0 && msg.WasRead != msg.Read {
 			delta := int64(1)
 			if msg.Read {
 				delta = -1
 			}
-			m.adjustFeedUnreadCount(msg.FeedID, delta)
+			m.adjustMailboxUnreadCount(msg.MailboxID, delta)
 		}
 		m.applyFilter()
-
-		if len(m.filteredArticles) == 0 {
-			m.articleCursor = 0
+		if len(m.filteredMessages) == 0 {
+			m.messageCursor = 0
 			m.listOffset = 0
-			m.clearViewportArticle()
+			m.clearViewportMessage()
 			return m, nil
 		}
-
-		if idx := m.indexOfFilteredArticle(msg.ArticleID); msg.Advance && idx >= 0 && idx == m.articleCursor && idx < len(m.filteredArticles)-1 {
-			m.articleCursor = idx + 1
+		if idx := m.indexOfFilteredMessage(msg.MessageID); msg.Advance && idx >= 0 && idx == m.messageCursor && idx < len(m.filteredMessages)-1 {
+			m.messageCursor = idx + 1
 			visible := max(1, m.articleRowsVisible())
-			if m.articleCursor >= m.listOffset+visible {
-				m.listOffset = m.articleCursor - visible + 1
+			if m.messageCursor >= m.listOffset+visible {
+				m.listOffset = m.messageCursor - visible + 1
 			}
 		} else {
-			m.articleCursor = clamp(m.articleCursor, 0, max(0, len(m.filteredArticles)-1))
-			maxOffset := max(0, len(m.filteredArticles)-1)
-			m.listOffset = clamp(m.listOffset, 0, maxOffset)
+			m.messageCursor = clamp(m.messageCursor, 0, max(0, len(m.filteredMessages)-1))
+			m.listOffset = clamp(m.listOffset, 0, max(0, len(m.filteredMessages)-1))
 		}
-
-		current := m.filteredArticles[m.articleCursor]
-		m.setViewportArticle(current)
-
-		if current.ID != msg.ArticleID || !msg.Read {
-			return m, m.maybeFetchArticleContentCmd(current)
-		}
+		current := m.filteredMessages[m.messageCursor]
+		m.setViewportMessage(current)
 		return m, nil
 
-	case FeedsReadUpdatedMsg:
-		if len(msg.FeedIDs) > 0 {
-			m.markFeedsReadInMemory(msg.FeedIDs)
+	case MessageMovedMsg:
+		if msg.Err != nil {
+			m.setStatus(fmt.Sprintf("%s failed: %v", msg.Action, msg.Err), true)
+			return m, m.clearStatusCmd()
+		}
+		if m.removeMessageFromMemory(msg.MessageID) {
+			m.adjustMailboxUnreadCount(msg.FromMailboxID, -1)
+		}
+		if msg.Action == "" {
+			msg.Action = "move"
+		}
+		m.setStatus(msg.Action+"d", false)
+		return m, m.clearStatusCmd()
+
+	case MessageDeletedMsg:
+		if msg.Err != nil {
+			m.setStatus(fmt.Sprintf("delete failed: %v", msg.Err), true)
+			return m, m.clearStatusCmd()
+		}
+		if m.removeMessageFromMemory(msg.MessageID) {
+			m.adjustMailboxUnreadCount(msg.MailboxID, -1)
+		}
+		m.setStatus("deleted", false)
+		return m, m.clearStatusCmd()
+
+	case MailboxReadUpdatedMsg:
+		if len(msg.MailboxIDs) > 0 {
+			m.markMailboxesReadInMemory(msg.MailboxIDs)
 		}
 		if msg.Err != nil {
 			m.setStatus(fmt.Sprintf("mark read failed: %v", msg.Err), true)
@@ -743,27 +589,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case ArticleContentFetchedMsg:
+	case MessageSentMsg:
+		m.compose = ComposeModel{}
+		m.overlay = overlayNone
 		if msg.Err != nil {
-			return m, nil
+			m.setStatus(fmt.Sprintf("send failed: %v", msg.Err), true)
+		} else {
+			m.setStatus("message sent", false)
 		}
-		if !m.articleIsRemote(msg.ArticleID) {
-			if err := m.db.UpdateArticleContent(msg.ArticleID, msg.Content); err != nil {
-				return m, nil
-			}
-		}
-		for i := range m.articles {
-			if m.articles[i].ID == msg.ArticleID {
-				m.articles[i].Content = msg.Content
-			}
-		}
-		m.applyFilter()
-		for i := range m.filteredArticles {
-			if m.filteredArticles[i].ID == msg.ArticleID && i == m.articleCursor {
-				m.setViewportArticle(m.filteredArticles[i])
-			}
-		}
-		return m, nil
+		return m, m.clearStatusCmd()
 
 	case AISummaryFetchedMsg:
 		m.summaryGenerating = false
@@ -771,28 +605,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.summaryErr = msg.Err.Error()
 			return m, nil
 		}
-		if !m.articleIsRemote(msg.ArticleID) {
-			if err := m.db.SaveSummary(msg.ArticleID, msg.Summary); err != nil {
-				fmt.Fprintf(os.Stderr, "save summary failed (article %d): %v\n", msg.ArticleID, err)
-				m.setStatus(fmt.Sprintf("summary not saved: %v", err), true)
-			}
+		if err := m.db.SaveSummary(msg.MessageID, msg.Summary); err != nil {
+			fmt.Fprintf(os.Stderr, "save summary failed (message %d): %v\n", msg.MessageID, err)
+			m.setStatus(fmt.Sprintf("summary not saved: %v", err), true)
 		}
-		var markReadArticle *db.Article
-		for i := range m.articles {
-			if m.articles[i].ID == msg.ArticleID {
-				m.articles[i].Summary = msg.Summary
-				if m.cfg.AI.MarkReadOnSummarize && !m.articles[i].Read {
-					a := m.articles[i]
-					markReadArticle = &a
+		var markReadMsg *db.Message
+		for i := range m.messages {
+			if m.messages[i].ID == msg.MessageID {
+				m.messages[i].Summary = msg.Summary
+				if m.cfg.AI.MarkReadOnSummarize && !m.messages[i].Read {
+					cp := m.messages[i]
+					markReadMsg = &cp
 				}
 			}
 		}
 		m.applyFilter()
-		if m.summaryArticle.ID == msg.ArticleID {
-			m.summaryArticle.Summary = msg.Summary
+		if m.summaryMessage.ID == msg.MessageID {
+			m.summaryMessage.Summary = msg.Summary
 		}
-		if markReadArticle != nil {
-			return m, m.setArticleReadCmd(*markReadArticle, true, false)
+		if markReadMsg != nil {
+			return m, m.setMessageReadCmd(*markReadMsg, true, false)
 		}
 		return m, nil
 
@@ -820,11 +652,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKey(msg)
 
 	default:
-		if m.overlay == overlayFeedManager {
-			return m.handleFeedManager(msg)
+		if m.overlay == overlayAccountManager {
+			return m.handleAccountManager(msg)
 		}
 		if m.overlay == overlaySettings {
 			return m.handleSettings(msg)
+		}
+		if m.overlay == overlayCompose {
+			return m.handleCompose(msg)
 		}
 	}
 
@@ -854,13 +689,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.resetHelpVP()
 		return m, nil
 
-	case keyMatches(msg, m.keys.FeedManager):
-		m.overlay = overlayFeedManager
-		m.feedManager = m.newFeedManager()
+	case keyMatches(msg, m.keys.AccountManager):
+		m.overlay = overlayAccountManager
+		m.accountManager = m.newAccountManager()
 		return m, nil
-
-	case keyMatches(msg, m.keys.Add):
-		return m.openFeedAddDialog(), nil
 
 	case keyMatches(msg, m.keys.ThemePicker):
 		m.overlay = overlayThemePicker
@@ -873,31 +705,37 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.searchInput.Focus()
 		return m, nil
 
+	case keyMatches(msg, m.keys.Command):
+		m.overlay = overlayCommandPalette
+		m.commandInput.Reset()
+		m.commandInput.Focus()
+		m.commandCursor = 0
+		return m, nil
+
 	case keyMatches(msg, m.keys.UnreadOnly):
-		if m.focused == paneFeeds {
+		if m.focused == paneAccounts {
 			return m, nil
 		}
-		// Preserve the current article when the filter toggles, falling back only if that article disappears. -allie
 		m.showUnreadOnly = !m.showUnreadOnly
 		var currentID int64
-		if len(m.filteredArticles) > 0 {
-			currentID = m.filteredArticles[m.articleCursor].ID
+		if len(m.filteredMessages) > 0 {
+			currentID = m.filteredMessages[m.messageCursor].ID
 		}
 		m.applyFilter()
-		if idx := m.indexOfFilteredArticle(currentID); idx >= 0 {
-			m.articleCursor = idx
+		if idx := m.indexOfFilteredMessage(currentID); idx >= 0 {
+			m.messageCursor = idx
 		} else {
-			m.articleCursor = clamp(m.articleCursor, 0, max(0, len(m.filteredArticles)-1))
+			m.messageCursor = clamp(m.messageCursor, 0, max(0, len(m.filteredMessages)-1))
 		}
 		if m.showUnreadOnly {
 			m.setStatus("showing unread only", false)
 		} else {
-			m.setStatus("showing all articles", false)
+			m.setStatus("showing all messages", false)
 		}
-		if len(m.filteredArticles) > 0 {
-			m.setViewportArticle(m.filteredArticles[m.articleCursor])
+		if len(m.filteredMessages) > 0 {
+			m.setViewportMessage(m.filteredMessages[m.messageCursor])
 		} else {
-			m.clearViewportArticle()
+			m.clearViewportMessage()
 		}
 		return m, m.clearStatusCmd()
 
@@ -908,7 +746,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.focusPane(pane((int(m.focused) + 2) % 3))
 
 	case keyMatches(msg, m.keys.Left):
-		if m.focused > paneFeeds {
+		if m.focused > paneAccounts {
 			return m.focusPane(m.focused - 1)
 		}
 		return m, nil
@@ -926,80 +764,103 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleDown()
 
 	case keyMatches(msg, m.keys.Enter):
-		if m.focused == paneFeeds && m.toggleSelectedFolder() {
+		if m.focused == paneAccounts && m.toggleSelectedAccount() {
 			return m, nil
 		}
-		if m.focused == paneArticles && len(m.filteredArticles) > 0 {
+		if m.focused == paneMessages && len(m.filteredMessages) > 0 {
 			m.focused = paneContent
-			current := m.filteredArticles[m.articleCursor]
+			current := m.filteredMessages[m.messageCursor]
 			if m.cfg.Display.MarkReadOnOpen && !current.Read {
-				return m, m.setArticleReadCmd(current, true, false)
+				return m, m.setMessageReadCmd(current, true, false)
 			}
 		}
 		return m, nil
 
 	case keyMatches(msg, m.keys.Back):
 		if m.focused == paneContent {
-			m.focused = paneArticles
+			m.focused = paneMessages
 		}
 		return m, nil
 
-	case keyMatches(msg, m.keys.Refresh):
-		if selected := m.selectedFeed(); selected != nil {
-			if m.isRemoteFeed(selected.ID) {
-				return m, tea.Batch(m.loadFeedsCmd(), m.loadUnreadArticlesCmd(selected.ID))
-			}
-			return m, m.refreshFeedCmd(selected.ID, selected.URL, true)
+	case keyMatches(msg, m.keys.Sync):
+		if selected := m.selectedMailbox(); selected != nil {
+			return m, m.syncMailboxCmd(selected.ID, true)
 		}
 		return m, nil
 
-	case keyMatches(msg, m.keys.RefreshAll):
+	case keyMatches(msg, m.keys.SyncAll):
 		var cmds []tea.Cmd
-		for _, f := range m.feeds {
-			if m.isRemoteFeed(f.ID) {
-				continue
-			}
-			cmds = append(cmds, m.refreshFeedCmd(f.ID, f.URL, false))
-		}
-		if m.greaderClient != nil {
-			cmds = append(cmds, m.loadFeedsCmd())
+		for _, mb := range m.mailboxes {
+			cmds = append(cmds, m.syncMailboxCmd(mb.ID, false))
 		}
 		return m, tea.Batch(cmds...)
 
 	case keyMatches(msg, m.keys.MarkRead):
-		if len(m.filteredArticles) > 0 {
-			a := m.filteredArticles[m.articleCursor]
-			read := !a.Read
-			advance := !a.Read
-			return m, m.setArticleReadCmd(a, read, advance)
+		if m.focused == paneMessages && len(m.filteredMessages) > 0 {
+			msg2 := m.filteredMessages[m.messageCursor]
+			read := !msg2.Read
+			advance := !msg2.Read
+			return m, m.setMessageReadCmd(msg2, read, advance)
 		}
 		return m, nil
 
-	case keyMatches(msg, m.keys.MarkAllRead):
-		if feed := m.selectedFeed(); feed != nil {
-			return m, m.markAllReadCmd(feed.ID)
+	case keyMatches(msg, m.keys.Archive):
+		if m.focused != paneAccounts && len(m.filteredMessages) > 0 {
+			msg2 := m.filteredMessages[m.messageCursor]
+			return m, m.archiveMessageCmd(msg2)
 		}
-		if folderID, ok := m.selectedFolderID(); ok {
-			return m, m.markFolderReadCmd(folderID)
+		return m, nil
+
+	case keyMatches(msg, m.keys.Delete):
+		if m.focused != paneAccounts && len(m.filteredMessages) > 0 {
+			msg2 := m.filteredMessages[m.messageCursor]
+			return m, m.deleteMessageCmd(msg2)
+		}
+		return m, nil
+
+	case keyMatches(msg, m.keys.Reply):
+		if m.focused == paneContent && m.contentMessageID != 0 {
+			if cur := m.currentContentMessage(); cur != nil {
+				acfg := m.accountCfgForMailbox(cur.MailboxID)
+				m.compose = NewReply(*cur, acfg)
+				m.overlay = overlayCompose
+			}
+		}
+		return m, nil
+
+	case keyMatches(msg, m.keys.Compose):
+		var acfg config.AccountConfig
+		if len(m.cfg.Accounts) > 0 {
+			acfg = m.cfg.Accounts[0]
+		}
+		m.compose = NewCompose(acfg)
+		m.overlay = overlayCompose
+		return m, nil
+
+	case keyMatches(msg, m.keys.MarkAllRead):
+		if mailbox := m.selectedMailbox(); mailbox != nil {
+			return m, m.markMailboxReadCmd(mailbox.ID)
+		}
+		if accountID, ok := m.selectedAccountID(); ok {
+			return m, m.markAccountReadCmd(accountID)
 		}
 		return m, nil
 
 	case keyMatches(msg, m.keys.OpenBrowser):
-		if len(m.filteredArticles) > 0 {
+		if len(m.filteredMessages) > 0 {
 			if m.focused == paneContent {
 				if link, ok := m.currentContentLink(); ok {
 					return m, m.openBrowserCmd(link)
 				}
 			}
-			return m, m.openBrowserCmd(m.filteredArticles[m.articleCursor].Link)
 		}
 		return m, nil
 
 	case keyMatches(msg, m.keys.NextLink):
 		if m.focused == paneContent && m.actionableLinksEnabled() {
 			m.stepContentLink(1)
-			if len(m.filteredArticles) > 0 {
-				m.setViewportArticle(m.filteredArticles[m.articleCursor])
+			if len(m.filteredMessages) > 0 {
+				m.setViewportMessage(m.filteredMessages[m.messageCursor])
 				m.viewport.GotoBottom()
 			}
 		}
@@ -1008,21 +869,21 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.PrevLink):
 		if m.focused == paneContent && m.actionableLinksEnabled() {
 			m.stepContentLink(-1)
-			if len(m.filteredArticles) > 0 {
-				m.setViewportArticle(m.filteredArticles[m.articleCursor])
+			if len(m.filteredMessages) > 0 {
+				m.setViewportMessage(m.filteredMessages[m.messageCursor])
 				m.viewport.GotoBottom()
 			}
 		}
 		return m, nil
 
 	case keyMatches(msg, m.keys.Summary):
-		if m.focused != paneFeeds && len(m.filteredArticles) > 0 {
+		if m.focused != paneAccounts && len(m.filteredMessages) > 0 {
 			return m.openSummary()
 		}
 		return m, nil
 
 	case keyMatches(msg, m.keys.ContentSearch):
-		if m.focused == paneContent && m.contentArticleID != 0 {
+		if m.focused == paneContent && m.contentMessageID != 0 {
 			m.overlay = overlayContentSearch
 			m.contentSearchInput.Reset()
 			m.contentSearchInput.Focus()
@@ -1048,13 +909,12 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.Space):
-		if m.focused == paneFeeds && m.toggleSelectedFolder() {
+		if m.focused == paneAccounts && m.toggleSelectedAccount() {
 			return m, nil
 		}
 		return m, nil
 	}
 
-	// Forward scroll keys to viewport when content is focused
 	if m.focused == paneContent {
 		var cmd tea.Cmd
 		m.viewport, cmd = m.viewport.Update(msg)
@@ -1065,34 +925,37 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) focusPane(next pane) (tea.Model, tea.Cmd) {
-	wasArticles := m.focused == paneArticles
+	wasMessages := m.focused == paneMessages
 	m.focused = next
-	if !wasArticles && next == paneArticles && len(m.filteredArticles) > 0 {
-		return m, m.focusedArticleChangedCmd(m.filteredArticles[m.articleCursor])
+	if !wasMessages && next == paneMessages && len(m.filteredMessages) > 0 {
+		return m, m.focusedMessageChangedCmd(m.filteredMessages[m.messageCursor])
 	}
 	return m, nil
 }
 
 func (m Model) handleUp() (tea.Model, tea.Cmd) {
 	switch m.focused {
-	case paneFeeds:
+	case paneAccounts:
 		if m.sidebarCursor > 0 {
 			m.sidebarCursor--
-			if selected := m.selectedFeed(); selected != nil {
-				return m, m.loadUnreadArticlesCmd(selected.ID)
+			if m.selectedUnifiedInbox() {
+				return m, m.loadUnifiedInboxCmd()
 			}
-			m.clearArticles()
+			if selected := m.selectedMailbox(); selected != nil {
+				return m, m.loadUnreadMessagesCmd(selected.ID)
+			}
+			m.clearMessages()
 		}
-	case paneArticles:
-		if m.articleCursor > 0 {
-			m.articleCursor--
-			if m.articleCursor < m.listOffset {
-				m.listOffset = m.articleCursor
+	case paneMessages:
+		if m.messageCursor > 0 {
+			m.messageCursor--
+			if m.messageCursor < m.listOffset {
+				m.listOffset = m.messageCursor
 			}
-			if len(m.filteredArticles) > 0 {
-				article := m.filteredArticles[m.articleCursor]
-				m.setViewportArticle(article)
-				return m, m.focusedArticleChangedCmd(article)
+			if len(m.filteredMessages) > 0 {
+				msg2 := m.filteredMessages[m.messageCursor]
+				m.setViewportMessage(msg2)
+				return m, m.focusedMessageChangedCmd(msg2)
 			}
 		}
 	case paneContent:
@@ -1107,25 +970,28 @@ func (m Model) handleUp() (tea.Model, tea.Cmd) {
 
 func (m Model) handleDown() (tea.Model, tea.Cmd) {
 	switch m.focused {
-	case paneFeeds:
+	case paneAccounts:
 		if m.sidebarCursor < len(m.sidebarRows)-1 {
 			m.sidebarCursor++
-			if selected := m.selectedFeed(); selected != nil {
-				return m, m.loadUnreadArticlesCmd(selected.ID)
+			if m.selectedUnifiedInbox() {
+				return m, m.loadUnifiedInboxCmd()
 			}
-			m.clearArticles()
+			if selected := m.selectedMailbox(); selected != nil {
+				return m, m.loadUnreadMessagesCmd(selected.ID)
+			}
+			m.clearMessages()
 		}
-	case paneArticles:
-		if m.articleCursor < len(m.filteredArticles)-1 {
-			m.articleCursor++
+	case paneMessages:
+		if m.messageCursor < len(m.filteredMessages)-1 {
+			m.messageCursor++
 			visible := m.articleRowsVisible()
-			if m.articleCursor >= m.listOffset+visible {
-				m.listOffset = m.articleCursor - visible + 1
+			if m.messageCursor >= m.listOffset+visible {
+				m.listOffset = m.messageCursor - visible + 1
 			}
-			if len(m.filteredArticles) > 0 {
-				article := m.filteredArticles[m.articleCursor]
-				m.setViewportArticle(article)
-				return m, m.focusedArticleChangedCmd(article)
+			if len(m.filteredMessages) > 0 {
+				msg2 := m.filteredMessages[m.messageCursor]
+				m.setViewportMessage(msg2)
+				return m, m.focusedMessageChangedCmd(msg2)
 			}
 		}
 	case paneContent:
@@ -1155,7 +1021,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.overlay = overlayNone
 			m.searchQuery = ""
 			m.applyFilter()
-			m.articleCursor = 0
+			m.messageCursor = 0
 			m.listOffset = 0
 		case keyMatches(msg, m.keys.Confirm):
 			m.overlay = overlayNone
@@ -1164,7 +1030,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.searchInput, cmd = m.searchInput.Update(msg)
 			m.searchQuery = m.searchInput.Value()
 			m.applyFilter()
-			m.articleCursor = 0
+			m.messageCursor = 0
 			m.listOffset = 0
 			return m, cmd
 		}
@@ -1178,8 +1044,8 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.themeCursor--
 				m.activeTheme = m.themeCursor
 				m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density)
-				if len(m.filteredArticles) > 0 {
-					m.setViewportArticle(m.filteredArticles[m.articleCursor])
+				if len(m.filteredMessages) > 0 {
+					m.setViewportMessage(m.filteredMessages[m.messageCursor])
 				}
 			}
 		case keyMatches(msg, m.keys.Down):
@@ -1187,8 +1053,8 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.themeCursor++
 				m.activeTheme = m.themeCursor
 				m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density)
-				if len(m.filteredArticles) > 0 {
-					m.setViewportArticle(m.filteredArticles[m.articleCursor])
+				if len(m.filteredMessages) > 0 {
+					m.setViewportMessage(m.filteredMessages[m.messageCursor])
 				}
 			}
 		case keyMatches(msg, m.keys.Confirm):
@@ -1196,15 +1062,15 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.overlay = overlayNone
 			m.cfg.Theme = BuiltinThemes[m.confirmedTheme].Name
 			config.Save(m.cfg)
-			if len(m.filteredArticles) > 0 {
-				m.setViewportArticle(m.filteredArticles[m.articleCursor])
+			if len(m.filteredMessages) > 0 {
+				m.setViewportMessage(m.filteredMessages[m.messageCursor])
 			}
 		case keyMatches(msg, m.keys.Cancel):
 			m.activeTheme = m.confirmedTheme
 			m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density)
 			m.overlay = overlayNone
-			if len(m.filteredArticles) > 0 {
-				m.setViewportArticle(m.filteredArticles[m.articleCursor])
+			if len(m.filteredMessages) > 0 {
+				m.setViewportMessage(m.filteredMessages[m.messageCursor])
 			}
 		}
 		if m.activeTheme != prevTheme {
@@ -1212,8 +1078,11 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case overlayFeedManager:
-		return m.handleFeedManager(msg)
+	case overlayAccountManager:
+		return m.handleAccountManager(msg)
+
+	case overlayCompose:
+		return m.handleCompose(msg)
 
 	case overlayHelp:
 		if keyMatches(msg, m.keys.Back, m.keys.Help, m.keys.Quit) {
@@ -1223,15 +1092,6 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.helpVP, cmd = m.helpVP.Update(msg)
 		return m, cmd
-
-	case overlayFetchError:
-		switch {
-		case keyMatches(msg, m.keys.Cancel), keyMatches(msg, m.keys.Quit), keyMatches(msg, m.keys.Confirm):
-			m.overlay = overlayNone
-			m.lastFetchError = nil
-			return m, m.clearStatusCmd()
-		}
-		return m, nil
 
 	case overlaySettings:
 		return m.handleSettings(msg)
@@ -1278,6 +1138,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.applyContentSearch()
 			return m, cmd
 		}
+
+	case overlayCommandPalette:
+		return m.handleCommandPaletteKey(msg)
 	}
 
 	return m, nil
@@ -1293,8 +1156,8 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	previewingTheme := m.settings.themeIdx != cfgThemeIdx
 	if tickChanged && !done {
 		m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.settings.themeIdx), m.cfg.Display.Density)
-		if len(m.filteredArticles) > 0 {
-			m.setViewportArticle(m.filteredArticles[m.articleCursor])
+		if len(m.filteredMessages) > 0 {
+			m.setViewportMessage(m.filteredMessages[m.messageCursor])
 		}
 		cmd = tea.Batch(cmd, setTermBgCmd(m.styles.Theme.Bg))
 	}
@@ -1350,28 +1213,26 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.spinner.Spinner = spinner.Dot
 			}
-			feed.SetMaxFeedBodyBytes(m.cfg.Feed.MaxBodyMiB << 20)
 			config.Save(m.cfg)
 			summarizer, _ := ai.New(m.cfg.AI)
 			m.summarizer = summarizer
-			m.resetSourceClient()
-			if len(m.filteredArticles) > 0 {
-				m.setViewportArticle(m.filteredArticles[m.articleCursor])
+			if len(m.filteredMessages) > 0 {
+				m.setViewportMessage(m.filteredMessages[m.messageCursor])
 			} else {
-				m.clearViewportArticle()
+				m.clearViewportMessage()
 			}
 			m.overlay = overlayNone
 			m.sidebarCursor = 0
-			m.articleCursor = 0
-			m.clearArticles()
-			return m, m.loadFeedsCmd()
+			m.messageCursor = 0
+			m.clearMessages()
+			return m, m.loadAccountsCmd()
 		}
 		m.overlay = overlayNone
 		if previewingTheme {
 			merged, _ := MergedThemeFromConfig(m.cfg)
 			m.styles = BuildStyles(merged, m.cfg.Display.Density)
-			if len(m.filteredArticles) > 0 {
-				m.setViewportArticle(m.filteredArticles[m.articleCursor])
+			if len(m.filteredMessages) > 0 {
+				m.setViewportMessage(m.filteredMessages[m.messageCursor])
 			}
 			return m, setTermBgCmd(m.styles.Theme.Bg)
 		}
@@ -1390,37 +1251,174 @@ func (m Model) handleSummaryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.overlay = overlayNone
 		return m, nil
 	case keyMatches(msg, m.keys.CopyText):
-		if !m.summaryGenerating && m.summaryErr == "" && m.summaryArticle.Summary != "" {
-			return m, copyToClipboardCmd(m.summaryArticle.Summary)
+		if !m.summaryGenerating && m.summaryErr == "" && m.summaryMessage.Summary != "" {
+			return m, copyToClipboardCmd(m.summaryMessage.Summary)
 		}
 	case keyMatches(msg, m.keys.SaveMD):
-		if !m.summaryGenerating && m.summaryErr == "" && m.summaryArticle.Summary != "" {
-			return m, saveSummaryMDCmd(m.summaryArticle, m.summaryArticle.Summary, m.cfg.AI.SavePath)
+		if !m.summaryGenerating && m.summaryErr == "" && m.summaryMessage.Summary != "" {
+			return m, saveSummaryMDCmd(m.summaryMessage, m.summaryMessage.Summary, m.cfg.AI.SavePath)
 		}
 	}
 	return m, nil
 }
 
-func (m Model) handleFeedManager(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// The manager owns edit-mode details; the root model only syncs source data and final selection on exit. -allie
-	fm := m.feedManager
-	fm.syncTextInputWidthsForRightPane(feedManagerRightPaneWidth(m.width))
-	newFM, cmd, exit := fm.Update(msg, m.keys)
-	m.feedManager = newFM
+func (m Model) handleAccountManager(msg tea.Msg) (tea.Model, tea.Cmd) {
+	am := m.accountManager
+	newAM, cmd, exit := am.Update(msg, m.keys)
+	m.accountManager = newAM
 	if exit {
-		browseFeedID := m.feedManager.browseFeedID
-		editable := m.feedManager.editable()
 		m.overlay = overlayNone
-		if browseFeedID != 0 && m.selectSidebarFeed(browseFeedID) {
-			m.clearArticles()
-			return m, m.loadUnreadArticlesCmd(browseFeedID)
-		}
-		if editable {
-			return m, m.loadFeedsCmd()
-		}
-		return m, nil
+		return m, m.loadAccountsCmd()
 	}
 	return m, cmd
+}
+
+func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
+	newC, cmd, exit := m.compose.Update(msg, m.keys)
+	m.compose = newC
+	if exit {
+		m.overlay = overlayNone
+		m.compose = ComposeModel{}
+	}
+	return m, cmd
+}
+
+type commandItem struct {
+	id      string
+	label   string
+	enabled bool
+}
+
+func (m Model) handleCommandPaletteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	items := m.filteredCommandItems()
+	switch {
+	case keyMatches(msg, m.keys.Cancel):
+		m.overlay = overlayNone
+		m.commandInput.Blur()
+		return m, nil
+	case keyMatches(msg, m.keys.Up):
+		if len(items) > 0 {
+			m.commandCursor = (m.commandCursor - 1 + len(items)) % len(items)
+		}
+		return m, nil
+	case keyMatches(msg, m.keys.Down), keyMatches(msg, m.keys.Tab):
+		if len(items) > 0 {
+			m.commandCursor = (m.commandCursor + 1) % len(items)
+		}
+		return m, nil
+	case keyMatches(msg, m.keys.Confirm):
+		if len(items) == 0 {
+			return m, nil
+		}
+		item := items[clamp(m.commandCursor, 0, len(items)-1)]
+		if !item.enabled {
+			return m, nil
+		}
+		m.overlay = overlayNone
+		m.commandInput.Blur()
+		return m.executeCommand(item.id)
+	default:
+		var cmd tea.Cmd
+		m.commandInput, cmd = m.commandInput.Update(msg)
+		items = m.filteredCommandItems()
+		m.commandCursor = clamp(m.commandCursor, 0, max(0, len(items)-1))
+		return m, cmd
+	}
+}
+
+func (m Model) commandItems() []commandItem {
+	hasMessage := len(m.filteredMessages) > 0 && m.focused != paneAccounts
+	hasMailbox := m.selectedMailbox() != nil
+	return []commandItem{
+		{id: "compose", label: "Compose new message", enabled: len(m.cfg.Accounts) > 0},
+		{id: "reply", label: "Reply to current message", enabled: m.contentMessageID != 0 || hasMessage},
+		{id: "archive", label: "Archive current message", enabled: hasMessage},
+		{id: "delete", label: "Delete current message", enabled: hasMessage},
+		{id: "toggle-read", label: "Toggle read/unread", enabled: hasMessage},
+		{id: "sync", label: "Sync current mailbox", enabled: hasMailbox},
+		{id: "sync-all", label: "Sync all mailboxes", enabled: len(m.mailboxes) > 0},
+		{id: "accounts", label: "Manage accounts", enabled: true},
+		{id: "settings", label: "Open settings", enabled: true},
+	}
+}
+
+func (m Model) filteredCommandItems() []commandItem {
+	q := strings.ToLower(strings.TrimSpace(m.commandInput.Value()))
+	items := m.commandItems()
+	if q == "" {
+		return items
+	}
+	filtered := make([]commandItem, 0, len(items))
+	for _, item := range items {
+		if strings.Contains(strings.ToLower(item.label), q) || strings.Contains(strings.ToLower(item.id), q) {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
+func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
+	switch id {
+	case "compose":
+		var acfg config.AccountConfig
+		if len(m.cfg.Accounts) > 0 {
+			acfg = m.cfg.Accounts[0]
+		}
+		m.compose = NewCompose(acfg)
+		m.overlay = overlayCompose
+		return m, nil
+	case "reply":
+		msg := m.commandMessage()
+		if msg == nil {
+			return m, nil
+		}
+		acfg := m.accountCfgForMailbox(msg.MailboxID)
+		m.compose = NewReply(*msg, acfg)
+		m.overlay = overlayCompose
+		return m, nil
+	case "archive":
+		if msg := m.commandMessage(); msg != nil {
+			return m, m.archiveMessageCmd(*msg)
+		}
+	case "delete":
+		if msg := m.commandMessage(); msg != nil {
+			return m, m.deleteMessageCmd(*msg)
+		}
+	case "toggle-read":
+		if msg := m.commandMessage(); msg != nil {
+			return m, m.setMessageReadCmd(*msg, !msg.Read, !msg.Read)
+		}
+	case "sync":
+		if selected := m.selectedMailbox(); selected != nil {
+			return m, m.syncMailboxCmd(selected.ID, true)
+		}
+	case "sync-all":
+		var cmds []tea.Cmd
+		for _, mb := range m.mailboxes {
+			cmds = append(cmds, m.syncMailboxCmd(mb.ID, false))
+		}
+		return m, tea.Batch(cmds...)
+	case "accounts":
+		m.overlay = overlayAccountManager
+		m.accountManager = m.newAccountManager()
+		return m, nil
+	case "settings":
+		m.settings = newSettings(m.cfg, m.settingsUpdateState())
+		m.overlay = overlaySettings
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m Model) commandMessage() *db.Message {
+	if msg := m.currentContentMessage(); msg != nil {
+		return msg
+	}
+	if len(m.filteredMessages) == 0 {
+		return nil
+	}
+	idx := clamp(m.messageCursor, 0, len(m.filteredMessages)-1)
+	return &m.filteredMessages[idx]
 }
 
 // ── View ─────────────────────────────────────────────────────────────────────
@@ -1431,11 +1429,11 @@ func (m Model) View() string {
 	}
 
 	right := lipgloss.JoinVertical(lipgloss.Left,
-		m.renderArticlesPane(),
+		m.renderMessagesPane(),
 		m.renderContentPane(),
 	)
 	main := lipgloss.JoinHorizontal(lipgloss.Top,
-		m.renderFeedsPane(),
+		m.renderAccountsPane(),
 		right,
 	)
 	view := lipgloss.JoinVertical(lipgloss.Left, main, m.renderStatusBar())
@@ -1453,21 +1451,23 @@ func (m Model) View() string {
 
 // ── Pane renderers ────────────────────────────────────────────────────────────
 
-func (m Model) renderFeedsPane() string {
+func (m Model) renderAccountsPane() string {
 	w := m.feedsPaneWidth()
-	innerW := w - 1 // account for right border
-	focused := m.focused == paneFeeds
-	title := m.renderPaneHeader(paneFeeds, "Feeds", focused, innerW)
+	innerW := w - 1
+	focused := m.focused == paneAccounts
+	title := m.renderPaneHeader(paneAccounts, "Accounts", focused, innerW)
 	rows := []string{title}
 
 	for i, row := range m.sidebarRows {
 		selected := i == m.sidebarCursor
 		switch row.kind {
-		case rowKindFolder:
-			rows = append(rows, m.renderFolderHeader(row.folderID, selected, innerW))
-		case rowKindFeed:
-			if feed := m.feedByID(row.feedID); feed != nil {
-				rows = append(rows, m.renderSidebarFeedRow(*feed, selected, innerW))
+		case rowKindAccount:
+			rows = append(rows, m.renderAccountHeader(row.accountID, selected, innerW))
+		case rowKindUnified:
+			rows = append(rows, m.renderUnifiedInboxRow(selected, innerW))
+		case rowKindMailbox:
+			if mb := m.mailboxByID(row.mailboxID); mb != nil {
+				rows = append(rows, m.renderSidebarMailboxRow(*mb, selected, innerW))
 			}
 		}
 	}
@@ -1475,12 +1475,9 @@ func (m Model) renderFeedsPane() string {
 	if len(m.sidebarRows) == 0 {
 		rows = append(rows, m.styles.FeedItem.Foreground(
 			lipgloss.Color(m.styles.Theme.Dimmed),
-		).Render(m.emptyFeedsHint()))
+		).Render(m.emptyAccountsHint()))
 	}
-	footer := fmt.Sprintf("  %d feeds", len(m.feeds))
-	if len(m.folders) > 0 {
-		footer = fmt.Sprintf("  %d folders%s%d feeds", len(m.folders), m.styles.InlineMidDot(), len(m.feeds))
-	}
+	footer := fmt.Sprintf("  %d accounts", len(m.accounts))
 	footer = m.styles.ArticleRead.Width(innerW).Render(footer)
 	bodyHeight := max(0, m.mainHeight()-1)
 	for viewLineCount(rows) < bodyHeight {
@@ -1497,54 +1494,55 @@ func (m Model) renderFeedsPane() string {
 	return border.Width(innerW).Height(m.mainHeight()).Render(content)
 }
 
-func (m Model) renderArticlesPane() string {
+func (m Model) renderMessagesPane() string {
 	w := m.articlesPaneWidth()
 	h := m.articlesPaneContentHeight()
-	articleUnread, articleRead, articleSelected, headerActive, borderColor, borderFocus := m.articleRowStyles()
+	msgUnread, msgRead, msgSelected, headerActive, borderColor, borderFocus := m.messageRowStyles()
 
 	rows := []string{}
-	visible := m.filteredArticles
+	visible := m.filteredMessages
 	end := min(m.listOffset+m.articleRowsVisible(), len(visible))
 	for i := m.listOffset; i < end; i++ {
-		a := visible[i]
-		age := m.formatTime(a.PublishedAt)
-
-		dot := m.articleRowPrefix(a.Read)
-		style := articleRead
-		if !a.Read {
-			style = articleUnread
+		msg2 := visible[i]
+		age := m.formatTime(msg2.Date)
+		dot := m.messageRowPrefix(msg2.Read)
+		style := msgRead
+		if !msg2.Read {
+			style = msgUnread
 		}
-		if i == m.articleCursor {
-			style = articleSelected
+		if i == m.messageCursor {
+			style = msgSelected
 		}
-
-		rows = append(rows, style.Width(w-2).Render(renderArticleRow(dot, unescapeDisplayText(a.Title), age, w-2)))
+		rows = append(rows, style.Width(w-2).Render(renderArticleRow(dot, unescapeDisplayText(msg2.Subject), age, w-2)))
 	}
 
-	if len(m.filteredArticles) == 0 {
+	if len(m.filteredMessages) == 0 {
 		if m.searchQuery != "" {
-			rows = append(rows, articleRead.Render("  no results"))
+			rows = append(rows, msgRead.Render("  no results"))
 		} else {
-			rows = append(rows, articleRead.Render("  no articles"))
+			rows = append(rows, msgRead.Render("  no messages"))
 		}
 	}
 
-	focused := m.focused == paneArticles
+	focused := m.focused == paneMessages
 	border := m.styles.ArticlesPane
 	if focused {
 		border = border.BorderForeground(borderFocus)
 	}
-	title := "Articles"
+	title := "Messages"
+	if m.selectedUnifiedInbox() {
+		title = "Unified Inbox"
+	}
 	if m.searchQuery != "" {
-		title = fmt.Sprintf("Articles [/%s]", m.searchQuery)
+		title = fmt.Sprintf("%s [/%s]", title, m.searchQuery)
 	}
 	if m.showUnreadOnly {
 		title += " (unread)"
 	}
 
-	contentRows := append([]string{m.renderPaneHeaderWithAccent(paneArticles, title, focused, w, headerActive)}, rows...)
+	contentRows := append([]string{m.renderPaneHeaderWithAccent(paneMessages, title, focused, w, headerActive)}, rows...)
 	for viewLineCount(contentRows) < h {
-		contentRows = append(contentRows, articleRead.Width(w-2).Render(""))
+		contentRows = append(contentRows, msgRead.Width(w-2).Render(""))
 	}
 
 	bg := m.styles.Theme.Bg
@@ -1627,12 +1625,13 @@ func (m Model) renderPaneHeaderWithAccent(p pane, label string, focused bool, wi
 func (m Model) renderPaneHint(p pane) string {
 	var hint string
 	switch p {
-	case paneFeeds:
+	case paneAccounts:
 		hint = m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " move  " +
-			m.keyHint(m.keys.Enter) + " toggle  " + m.keyHint(m.keys.Refresh) + " refresh"
-	case paneArticles:
+			m.keyHint(m.keys.Enter) + " toggle  " + m.keyHint(m.keys.Sync) + " sync"
+	case paneMessages:
 		hint = m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " move  " +
-			m.keyHint(m.keys.MarkRead) + " read  " + m.keyHint(m.keys.Search) + " search"
+			m.keyHint(m.keys.Archive) + " archive  " + m.keyHint(m.keys.Delete) + " delete  " +
+			m.keyHint(m.keys.Command) + " command"
 	case paneContent:
 		progress := ""
 		if m.contentLineCount > 0 {
@@ -1640,7 +1639,7 @@ func (m Model) renderPaneHint(p pane) string {
 			progress = fmt.Sprintf("%d%%  ", pct)
 		}
 		hint = progress + m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " line  " +
-			m.keyHint(m.keys.OpenBrowser) + " open  " + m.keyHint(m.keys.ContentSearch) + " find  " +
+			m.keyHint(m.keys.Reply) + " reply  " + m.keyHint(m.keys.ContentSearch) + " find  " +
 			m.keyHint(m.keys.Back) + " back"
 		if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
 			hint += "  " + m.keyHint(m.keys.PrevLink) + "/" + m.keyHint(m.keys.NextLink) + " links"
@@ -1685,7 +1684,6 @@ func (m Model) statusBarInlineText(style lipgloss.Style, s string) string {
 	return style.Copy().UnsetPadding().Render(s)
 }
 
-// statusBarKeyHintStrip is always shown on the status bar: main shortcuts ending with ? help.
 func (m Model) statusBarKeyHintStrip() string {
 	k := m.keys
 	seg := func(b key.Binding) string {
@@ -1698,24 +1696,29 @@ func (m Model) statusBarKeyHintStrip() string {
 		return m.styles.StatusHint.Render(keyStr + " " + desc)
 	}
 	return m.statusBarJoin(
-		seg(k.FeedManager),
+		seg(k.Command),
+		seg(k.AccountManager),
 		seg(k.Settings),
 		seg(k.Search),
 		seg(k.Help),
 	)
 }
 
-func (m Model) renderArticleContent(a db.Article) string {
+func (m Model) renderMessageContent(msg db.Message) string {
 	contentWidth := m.contentBodyWidth()
 	bodyWidth := m.contentBodyWidth()
 	titleWidth := max(1, contentWidth-m.styles.ContentTitle.GetHorizontalFrameSize())
 	metaWidth := max(1, contentWidth-m.styles.ContentMeta.GetHorizontalFrameSize())
-	title := m.styles.ContentTitle.Width(contentWidth + 2).Render(truncate(unescapeDisplayText(a.Title), titleWidth+2))
-	meta := " " + m.styles.ContentMeta.Width(contentWidth).Render(truncate(a.PublishedAt.Format("Mon, 02 Jan 2006 15:04")+"  "+a.Link, metaWidth))
+	title := m.styles.ContentTitle.Width(contentWidth + 2).Render(truncate(unescapeDisplayText(msg.Subject), titleWidth+2))
+	metaStr := msg.Date.Format("Mon, 02 Jan 2006 15:04")
+	if msg.From != "" {
+		metaStr += "  From: " + msg.From
+	}
+	meta := " " + m.styles.ContentMeta.Width(contentWidth).Render(truncate(metaStr, metaWidth))
 
-	content := a.Content
+	content := msg.BodyText
 	if content == "" {
-		content = "No content available. Press o to open in browser."
+		content = "No message body."
 	}
 	if m.cfg.Display.FilterLinks {
 		content = filterLinksFromContent(content)
@@ -1754,28 +1757,28 @@ func (m Model) actionableLinksEnabled() bool {
 	return m.cfg.Display.ActionableLinks
 }
 
-func (m *Model) setViewportArticle(a db.Article) {
-	sameArticle := m.contentArticleID == a.ID && m.contentLineCount > 0
-	m.syncContentLinks(a)
-	content := m.renderArticleContent(a)
+func (m *Model) setViewportMessage(msg db.Message) {
+	sameMsg := m.contentMessageID == msg.ID && m.contentLineCount > 0
+	m.syncContentLinks(msg)
+	content := m.renderMessageContent(msg)
 	m.contentSearchMatches = collectSearchMatches(content, m.contentSearchQuery)
 	m.viewport.SetContent(content)
-	m.contentArticleID = a.ID
+	m.contentMessageID = msg.ID
 	m.contentLineCount = strings.Count(content, "\n") + 1
-	m.contentFocusable = articleFocusableLines(content)
+	m.contentFocusable = messageFocusableLines(content)
 	m.contentFocusLine = clamp(m.contentFocusLine, 0, max(0, m.contentLineCount-1))
-	if !sameArticle {
+	if !sameMsg {
 		m.contentFocusLine = firstFocusableLine(m.contentFocusable)
 		m.viewport.GotoTop()
 	}
 	m.ensureContentFocusVisible()
 }
 
-func (m *Model) clearViewportArticle() {
+func (m *Model) clearViewportMessage() {
 	m.viewport.SetContent("")
 	m.contentLinks = nil
 	m.contentLinkIdx = -1
-	m.contentArticleID = 0
+	m.contentMessageID = 0
 	m.contentFocusLine = 0
 	m.contentLineCount = 0
 	m.contentFocusable = nil
@@ -1789,15 +1792,15 @@ func (m *Model) clearContentSearch() {
 	m.contentSearchMatches = nil
 	m.contentSearchIdx = -1
 	m.contentSearchInput.Blur()
-	if a := m.currentContentArticle(); a != nil {
-		m.setViewportArticle(*a)
+	if msg := m.currentContentMessage(); msg != nil {
+		m.setViewportMessage(*msg)
 	}
 }
 
-func (m *Model) currentContentArticle() *db.Article {
-	for i := range m.filteredArticles {
-		if m.filteredArticles[i].ID == m.contentArticleID {
-			return &m.filteredArticles[i]
+func (m *Model) currentContentMessage() *db.Message {
+	for i := range m.filteredMessages {
+		if m.filteredMessages[i].ID == m.contentMessageID {
+			return &m.filteredMessages[i]
 		}
 	}
 	return nil
@@ -1806,8 +1809,8 @@ func (m *Model) currentContentArticle() *db.Article {
 func (m *Model) applyContentSearch() {
 	q := strings.ToLower(strings.TrimSpace(m.contentSearchInput.Value()))
 	m.contentSearchQuery = q
-	if a := m.currentContentArticle(); a != nil {
-		m.setViewportArticle(*a)
+	if msg := m.currentContentMessage(); msg != nil {
+		m.setViewportMessage(*msg)
 	}
 	if len(m.contentSearchMatches) > 0 {
 		m.contentSearchIdx = 0
@@ -1912,7 +1915,7 @@ func collectSearchMatches(content, query string) []int {
 	return matches
 }
 
-func articleFocusableLines(content string) []bool {
+func messageFocusableLines(content string) []bool {
 	lines := strings.Split(ansi.Strip(content), "\n")
 	focusable := make([]bool, len(lines))
 	nonEmpty := 0
@@ -1954,14 +1957,14 @@ func nextContentFocusLine(current, delta int, focusable []bool, lineCount int) i
 	return current
 }
 
-func (m *Model) syncContentLinks(a db.Article) {
+func (m *Model) syncContentLinks(msg db.Message) {
 	if !m.actionableLinksEnabled() {
 		m.contentLinks = nil
 		m.contentLinkIdx = -1
 		return
 	}
 
-	links := extractActionableLinks(a.Content, a.Link)
+	links := extractActionableLinks(msg.BodyText, "")
 	if len(links) == 0 {
 		m.contentLinks = nil
 		m.contentLinkIdx = -1
@@ -2037,27 +2040,31 @@ func (m Model) renderStatusBar() string {
 		parts = append(parts, linkPart)
 	}
 
-	if len(m.feeds) > 0 {
-		f := m.selectedFeed()
-		if f != nil {
-			parts = append(parts, m.statusBarInlineText(sb, unescapeDisplayText(f.Title)))
-			if f.UnreadCount > 0 {
-				parts = append(parts, m.statusBarInlineText(sb, fmt.Sprintf("%d unread", f.UnreadCount)))
+	if len(m.mailboxes) > 0 {
+		if m.selectedUnifiedInbox() {
+			parts = append(parts, m.statusBarInlineText(sb, "Unified Inbox"))
+			if unread := m.unifiedUnreadCount(); unread > 0 {
+				parts = append(parts, m.statusBarInlineText(sb, fmt.Sprintf("%d unread", unread)))
 			}
-			if !f.LastFetched.IsZero() && f.LastFetched.Unix() > 0 {
-				parts = append(parts, m.statusBarInlineText(sb, "fetched "+m.formatTime(f.LastFetched)))
+		} else if mb := m.selectedMailbox(); mb != nil {
+			parts = append(parts, m.statusBarInlineText(sb, mb.DisplayName))
+			if mb.UnreadCount > 0 {
+				parts = append(parts, m.statusBarInlineText(sb, fmt.Sprintf("%d unread", mb.UnreadCount)))
 			}
-		} else if folderID, ok := m.selectedFolderID(); ok {
-			parts = append(parts, m.statusBarInlineText(sb, m.folderName(folderID)))
-			if unread := m.folderUnreadCount(folderID); unread > 0 {
+			if !mb.LastSynced.IsZero() && mb.LastSynced.Unix() > 0 {
+				parts = append(parts, m.statusBarInlineText(sb, "synced "+m.formatTime(mb.LastSynced)))
+			}
+		} else if accountID, ok := m.selectedAccountID(); ok {
+			parts = append(parts, m.statusBarInlineText(sb, m.accountName(accountID)))
+			if unread := m.accountUnreadCount(accountID); unread > 0 {
 				parts = append(parts, m.statusBarInlineText(sb, fmt.Sprintf("%d unread", unread)))
 			}
 		}
 	}
 
-	if len(m.refreshing) > 0 {
+	if len(m.syncing) > 0 {
 		parts = append(parts, m.styles.StatusSpinner.Render(
-			m.spinner.View()+" refreshing..."),
+			m.spinner.View()+" syncing..."),
 		)
 	}
 
@@ -2146,12 +2153,19 @@ func (m Model) renderOverlay(base string) string {
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
 
-	case overlayFeedManager:
+	case overlayAccountManager:
 		winW := min(m.width-4, 74)
 		winH := min(m.height-4, 40)
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
-		m.feedManager.collapsedFolders = m.collapsedFolders
-		inner := m.feedManager.View(winW, winH, m.styles, m.iconsEnabled())
+		inner := m.accountManager.View(winW, winH, m.styles)
+		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
+		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+
+	case overlayCompose:
+		winW := min(m.width-4, 74)
+		winH := min(m.height-4, 36)
+		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
+		inner := m.compose.View(winW, winH, m.styles)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
 
@@ -2177,16 +2191,6 @@ func (m Model) renderOverlay(base string) string {
 			Width(winW).Height(winH).
 			Render(m.helpVP.View() + "\n" + footer)
 
-	case overlayFetchError:
-		if m.lastFetchError != nil {
-			winW := min(m.width-4, 70)
-			et := m.styles.Theme
-			chrome := newManagerChrome(winW, et, m.styles.PlainUI)
-			inner := m.renderFetchErrorOverlay(winW, chrome)
-			inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-			box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
-		}
-
 	case overlaySettings:
 		winW := min(m.width-4, 62)
 		winH := min(m.height-4, 36)
@@ -2209,6 +2213,13 @@ func (m Model) renderOverlay(base string) string {
 		inner := m.renderSummaryOverlay(winW, winH, chrome)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+
+	case overlayCommandPalette:
+		winW := min(m.width-6, 72)
+		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
+		inner := m.renderCommandPalette(winW, chrome)
+		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
+		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
 	}
 
 	return overlayOnBase(base, box, m.width, m.height, m.styles.Theme.Bg)
@@ -2225,7 +2236,7 @@ func renderChromeOverlayBox(inner string, width int, chrome managerChrome, borde
 }
 
 func (m Model) renderSearchOverlay(width int, chrome managerChrome) string {
-	header := renderManagerHeader("SEARCH ARTICLES", width, chrome)
+	header := renderManagerHeader("SEARCH MESSAGES", width, chrome)
 	input := m.searchInput
 	inputW := max(1, width-4)
 	input.Width = inputW
@@ -2245,6 +2256,51 @@ func (m Model) renderSearchOverlay(width int, chrome managerChrome) string {
 	return lipgloss.JoinVertical(lipgloss.Left, header, body, actions)
 }
 
+func (m Model) renderCommandPalette(width int, chrome managerChrome) string {
+	header := renderManagerHeader("COMMAND", width, chrome)
+	input := m.commandInput
+	inputW := max(1, width-4)
+	input.Width = inputW
+	input.PromptStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.accent).Bold(true)
+	input.TextStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text)
+	input.PlaceholderStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted)
+	input.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
+	input.Cursor.TextStyle = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
+
+	items := m.filteredCommandItems()
+	rows := []string{input.View(), ""}
+	if len(items) == 0 {
+		rows = append(rows, lipgloss.NewStyle().Foreground(chrome.muted).Render("No commands"))
+	} else {
+		limit := min(8, len(items))
+		start := 0
+		if m.commandCursor >= limit {
+			start = m.commandCursor - limit + 1
+		}
+		for i := start; i < min(start+limit, len(items)); i++ {
+			item := items[i]
+			prefix := "  "
+			style := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text)
+			if !item.enabled {
+				style = style.Foreground(chrome.muted)
+			}
+			if i == m.commandCursor {
+				prefix = "> "
+				style = style.Background(chrome.accent).Foreground(contrastFg(chrome.accent)).Bold(true)
+			}
+			rows = append(rows, style.Width(max(1, width-4)).Render(truncate(prefix+item.label, max(1, width-4))))
+		}
+	}
+	body := lipgloss.NewStyle().
+		Background(chrome.baseBg).
+		Foreground(chrome.text).
+		Width(width).
+		Padding(1, 2).
+		Render(strings.Join(rows, "\n"))
+	actions := renderManagerActions(width, chrome, "enter", "run", "esc", "close")
+	return lipgloss.JoinVertical(lipgloss.Left, header, body, actions)
+}
+
 func (m Model) renderSummaryOverlay(width, height int, chrome managerChrome) string {
 	header := renderManagerHeader("AI SUMMARY", width, chrome)
 
@@ -2255,7 +2311,7 @@ func (m Model) renderSummaryOverlay(width, height int, chrome managerChrome) str
 	case m.summaryErr != "":
 		bodyText = "Error: " + m.summaryErr
 	default:
-		bodyText = formatSummaryBody(m.summaryArticle.Summary, width-4, m.styles.PlainUI)
+		bodyText = formatSummaryBody(m.summaryMessage.Summary, width-4, m.styles.PlainUI)
 	}
 
 	body := lipgloss.NewStyle().
@@ -2266,7 +2322,7 @@ func (m Model) renderSummaryOverlay(width, height int, chrome managerChrome) str
 		Render(bodyText)
 
 	var hints string
-	if !m.summaryGenerating && m.summaryErr == "" {
+	if !m.summaryGenerating && m.summaryErr == "" && m.summaryMessage.Summary != "" {
 		provider := ""
 		if m.summarizer != nil {
 			prefix := "  ·  "
@@ -2400,57 +2456,82 @@ func (m Model) renderThemePicker(width int, chrome managerChrome) string {
 
 // ── Commands ─────────────────────────────────────────────────────────────────
 
-func (m *Model) loadFeedsCmd() tea.Cmd {
-	db := m.db
-	client := m.greaderClient
+func (m *Model) loadAccountsCmd() tea.Cmd {
+	database := m.db
 	return func() tea.Msg {
-		feeds, err := db.ListFeeds()
+		accounts, err := database.ListAccounts()
 		if err != nil {
-			return FeedsLoadedMsg{Err: err}
+			return AccountsLoadedMsg{Err: err}
 		}
-		folders, err := db.ListFolders()
-		if err != nil {
-			return FeedsLoadedMsg{Err: err}
-		}
-		streams := map[int64]string{}
-		if client != nil {
-			remoteFeeds, remoteStreams, remoteErr := m.loadGReaderFeeds(context.Background())
-			feeds = append(feeds, remoteFeeds...)
-			if remoteStreams != nil {
-				streams = remoteStreams
+		var mailboxes []db.Mailbox
+		for _, a := range accounts {
+			mbs, err2 := database.ListMailboxes(a.ID)
+			if err2 != nil {
+				return AccountsLoadedMsg{Err: err2}
 			}
-			return FeedsLoadedMsg{Feeds: feeds, Folders: folders, RemoteStreams: streams, Err: remoteErr}
+			mailboxes = append(mailboxes, mbs...)
 		}
-		return FeedsLoadedMsg{Feeds: feeds, Folders: folders, RemoteStreams: streams}
+		return AccountsLoadedMsg{Accounts: accounts, Mailboxes: mailboxes}
 	}
 }
 
-func (m *Model) loadArticlesCmd(feedID int64) tea.Cmd {
-	if m.isRemoteFeed(feedID) {
-		return func() tea.Msg {
-			articles, err := m.loadGReaderArticles(context.Background(), feedID)
-			return ArticlesLoadedMsg{FeedID: feedID, Articles: articles, Err: err}
-		}
-	}
+func (m *Model) loadUnreadMessagesCmd(mailboxID int64) tea.Cmd {
+	database := m.db
 	return func() tea.Msg {
-		articles, err := m.db.ListArticles(feedID)
+		msgs, err := database.ListUnreadMessages(mailboxID)
 		if err != nil {
-			return ArticlesLoadedMsg{FeedID: feedID, Err: err}
+			return MessagesLoadedMsg{MailboxID: mailboxID, Err: err}
 		}
-		return ArticlesLoadedMsg{FeedID: feedID, Articles: articles}
+		return MessagesLoadedMsg{MailboxID: mailboxID, Messages: msgs}
 	}
 }
 
-func (m *Model) loadUnreadArticlesCmd(feedID int64) tea.Cmd {
-	if m.isRemoteFeed(feedID) {
-		return m.loadArticlesCmd(feedID)
+func (m *Model) loadUnifiedInboxCmd() tea.Cmd {
+	database := m.db
+	unreadOnly := m.showUnreadOnly
+	return func() tea.Msg {
+		msgs, err := database.ListUnifiedInbox(unreadOnly)
+		if err != nil {
+			return MessagesLoadedMsg{Err: err}
+		}
+		return MessagesLoadedMsg{MailboxID: 0, Messages: msgs}
+	}
+}
+
+func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
+	m.syncing[mailboxID] = true
+	database := m.db
+	mailbox, _ := database.GetMailbox(mailboxID)
+	acc, _ := database.GetAccount(mailbox.AccountID)
+	var acfg config.AccountConfig
+	for _, a := range m.cfg.Accounts {
+		if a.Name == acc.Name {
+			acfg = a
+			break
+		}
 	}
 	return func() tea.Msg {
-		articles, err := m.db.ListUnreadArticles(feedID)
-		if err != nil {
-			return ArticlesLoadedMsg{FeedID: feedID, Err: err}
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		client := imapClient.New(acfg)
+		if err := client.Connect(ctx); err != nil {
+			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual}
 		}
-		return ArticlesLoadedMsg{FeedID: feedID, Articles: articles}
+		defer client.Close()
+		msgs, err := client.FetchSince(ctx, mailbox.Name, mailbox.LastSynced)
+		if err != nil {
+			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual}
+		}
+		newCount := 0
+		for _, msg := range msgs {
+			if dbErr := database.UpsertMessage(msg); dbErr == nil && !msg.Read {
+				newCount++
+			}
+		}
+		unread, _ := database.CountUnread(mailboxID)
+		database.SetMailboxLastSynced(mailboxID, time.Now()) //nolint:errcheck
+		database.SetMailboxUnreadCount(mailboxID, unread)    //nolint:errcheck
+		return MailboxSyncedMsg{MailboxID: mailboxID, NewCount: newCount, Manual: manual}
 	}
 }
 
@@ -2494,160 +2575,135 @@ func (m *Model) installUpdateCmd(asset update.DownloadedAsset) tea.Cmd {
 	}
 }
 
-func (m *Model) refreshFeedCmd(feedID int64, feedURL string, manual bool) tea.Cmd {
-	m.refreshing[feedID] = true
-	conv := m.mdConverter
-	return func() tea.Msg {
-		result := feed.FetchFeed(feedURL)
-		if !result.IsSuccess() {
-			return FeedRefreshedMsg{FeedID: feedID, Err: result.Err, Result: result, Manual: manual}
-		}
-
-		parsed := result.Feed
-		articles := make([]db.Article, 0, len(parsed.Items))
-		for _, item := range parsed.Items {
-			content, _ := conv.ConvertString(item.Content)
-			articles = append(articles, db.Article{
-				FeedID:      feedID,
-				GUID:        item.GUID,
-				Title:       item.Title,
-				Link:        item.Link,
-				Content:     content,
-				PublishedAt: item.PublishedAt,
-			})
-		}
-		return FeedRefreshedMsg{
-			FeedID:      feedID,
-			Title:       parsed.Title,
-			Description: parsed.Description,
-			FaviconURL:  parsed.FaviconURL,
-			Articles:    articles,
-			Result:      result,
-			Manual:      manual,
-		}
-	}
-}
-
-func (m *Model) setArticleReadCmd(article db.Article, read, advance bool) tea.Cmd {
+func (m *Model) setMessageReadCmd(msg db.Message, read, advance bool) tea.Cmd {
 	database := m.db
-	client := m.greaderClient
-	isRemote := m.isRemoteFeed(article.FeedID)
+	mailbox := m.mailboxByID(msg.MailboxID)
+	acfg := m.accountCfgForMailbox(msg.MailboxID)
 	return func() tea.Msg {
-		if isRemote {
-			if client == nil {
-				return ArticleReadUpdatedMsg{
-					ArticleID: article.ID,
-					FeedID:    article.FeedID,
-					WasRead:   article.Read,
-					Read:      read,
-					Advance:   advance,
-					Err:       fmt.Errorf("google reader source not configured"),
-				}
+		if mailbox != nil && acfg.IMAPHost != "" && msg.UID != 0 {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			client := imapClient.New(acfg)
+			if err := client.Connect(ctx); err != nil {
+				return MessageReadUpdatedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, WasRead: msg.Read, Read: read, Advance: advance, Err: err}
 			}
-			if err := client.MarkEntryRead(context.Background(), article.GUID, read); err != nil {
-				return ArticleReadUpdatedMsg{
-					ArticleID: article.ID,
-					FeedID:    article.FeedID,
-					WasRead:   article.Read,
-					Read:      read,
-					Advance:   advance,
-					Err:       err,
-				}
+			defer client.Close()
+			if err := client.MarkSeen(ctx, mailbox.Name, msg.UID, read); err != nil {
+				return MessageReadUpdatedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, WasRead: msg.Read, Read: read, Advance: advance, Err: err}
 			}
-		} else if err := database.MarkRead(article.ID, read); err != nil {
-			return ArticleReadUpdatedMsg{
-				ArticleID: article.ID,
-				FeedID:    article.FeedID,
-				WasRead:   article.Read,
+		}
+		if err := database.MarkRead(msg.ID, read); err != nil {
+			return MessageReadUpdatedMsg{
+				MessageID: msg.ID,
+				MailboxID: msg.MailboxID,
+				WasRead:   msg.Read,
 				Read:      read,
 				Advance:   advance,
 				Err:       err,
 			}
 		}
-		return ArticleReadUpdatedMsg{
-			ArticleID: article.ID,
-			FeedID:    article.FeedID,
-			WasRead:   article.Read,
+		return MessageReadUpdatedMsg{
+			MessageID: msg.ID,
+			MailboxID: msg.MailboxID,
+			WasRead:   msg.Read,
 			Read:      read,
 			Advance:   advance,
 		}
 	}
 }
 
-func (m *Model) focusedArticleChangedCmd(article db.Article) tea.Cmd {
-	fetchCmd := m.maybeFetchArticleContentCmd(article)
-	if !m.cfg.Display.MarkReadOnFocus || article.Read {
-		return fetchCmd
+func (m *Model) archiveMessageCmd(msg db.Message) tea.Cmd {
+	database := m.db
+	mailbox := m.mailboxByID(msg.MailboxID)
+	acfg := m.accountCfgForMailbox(msg.MailboxID)
+	return func() tea.Msg {
+		if mailbox == nil {
+			return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, Action: "archive", Err: fmt.Errorf("mailbox not found")}
+		}
+		archive, err := database.FindArchiveMailbox(mailbox.AccountID)
+		if err != nil {
+			return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, Action: "archive", Err: err}
+		}
+		if acfg.IMAPHost != "" && msg.UID != 0 {
+			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+			defer cancel()
+			client := imapClient.New(acfg)
+			if err := client.Connect(ctx); err != nil {
+				return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, ToMailboxID: archive.ID, Action: "archive", Err: err}
+			}
+			defer client.Close()
+			if err := client.MoveMessage(ctx, mailbox.Name, msg.UID, archive.Name); err != nil {
+				return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, ToMailboxID: archive.ID, Action: "archive", Err: err}
+			}
+		}
+		if err := database.MoveMessage(msg.ID, archive.ID); err != nil {
+			return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, ToMailboxID: archive.ID, Action: "archive", Err: err}
+		}
+		return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, ToMailboxID: archive.ID, Action: "archive"}
 	}
-	readCmd := m.setArticleReadCmd(article, true, false)
-	if fetchCmd == nil {
-		return readCmd
-	}
-	return tea.Batch(fetchCmd, readCmd)
 }
 
-func (m *Model) maybeFetchArticleContentCmd(a db.Article) tea.Cmd {
-	if !shouldFetchArticleContent(a) {
+func (m *Model) deleteMessageCmd(msg db.Message) tea.Cmd {
+	database := m.db
+	mailbox := m.mailboxByID(msg.MailboxID)
+	acfg := m.accountCfgForMailbox(msg.MailboxID)
+	return func() tea.Msg {
+		if mailbox == nil {
+			return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: fmt.Errorf("mailbox not found")}
+		}
+		if acfg.IMAPHost != "" && msg.UID != 0 {
+			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+			defer cancel()
+			client := imapClient.New(acfg)
+			if err := client.Connect(ctx); err != nil {
+				return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: err}
+			}
+			defer client.Close()
+			if err := client.DeleteMessage(ctx, mailbox.Name, msg.UID); err != nil {
+				return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: err}
+			}
+		}
+		if err := database.DeleteMessage(msg.ID); err != nil {
+			return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: err}
+		}
+		return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID}
+	}
+}
+
+func (m *Model) focusedMessageChangedCmd(msg db.Message) tea.Cmd {
+	if !m.cfg.Display.MarkReadOnFocus || msg.Read {
 		return nil
 	}
+	return m.setMessageReadCmd(msg, true, false)
+}
+
+func (m *Model) markMailboxReadCmd(mailboxID int64) tea.Cmd {
+	database := m.db
 	return func() tea.Msg {
-		content, err := feed.FetchArticleText(a.Link)
-		if err != nil {
-			return ArticleContentFetchedMsg{ArticleID: a.ID, Err: err}
+		if err := database.MarkAllRead(mailboxID); err != nil {
+			return MailboxReadUpdatedMsg{Err: err}
 		}
-		return ArticleContentFetchedMsg{ArticleID: a.ID, Content: content}
+		return MailboxReadUpdatedMsg{MailboxIDs: []int64{mailboxID}}
 	}
 }
 
-func (m *Model) markAllReadCmd(feedID int64) tea.Cmd {
-	database := m.db
-	client := m.greaderClient
-	streamID := strings.TrimSpace(m.greaderStreams[feedID])
-	isRemote := m.isRemoteFeed(feedID)
-	return func() tea.Msg {
-		if isRemote {
-			if client == nil {
-				return FeedsReadUpdatedMsg{Err: fmt.Errorf("google reader source not configured")}
-			}
-			if err := client.MarkAllRead(context.Background(), streamID); err != nil {
-				return FeedsReadUpdatedMsg{Err: err}
-			}
-		} else if err := database.MarkAllRead(feedID); err != nil {
-			return FeedsReadUpdatedMsg{Err: err}
-		}
-		return FeedsReadUpdatedMsg{FeedIDs: []int64{feedID}}
-	}
-}
-
-func (m *Model) markFolderReadCmd(folderID int64) tea.Cmd {
-	feedIDs := make([]int64, 0)
-	streamIDs := make(map[int64]string)
-	for _, feed := range m.feeds {
-		if feed.FolderID == folderID {
-			feedIDs = append(feedIDs, feed.ID)
-			if streamID, ok := m.greaderStreams[feed.ID]; ok {
-				streamIDs[feed.ID] = streamID
-			}
+func (m *Model) markAccountReadCmd(accountID int64) tea.Cmd {
+	mailboxIDs := make([]int64, 0)
+	for _, mb := range m.mailboxes {
+		if mb.AccountID == accountID {
+			mailboxIDs = append(mailboxIDs, mb.ID)
 		}
 	}
 	database := m.db
-	client := m.greaderClient
 	return func() tea.Msg {
-		applied := make([]int64, 0, len(feedIDs))
-		for _, feedID := range feedIDs {
-			if streamID, ok := streamIDs[feedID]; ok {
-				if client == nil {
-					return FeedsReadUpdatedMsg{FeedIDs: applied, Err: fmt.Errorf("google reader source not configured")}
-				}
-				if err := client.MarkAllRead(context.Background(), streamID); err != nil {
-					return FeedsReadUpdatedMsg{FeedIDs: applied, Err: err}
-				}
-			} else if err := database.MarkAllRead(feedID); err != nil {
-				return FeedsReadUpdatedMsg{FeedIDs: applied, Err: err}
+		applied := make([]int64, 0, len(mailboxIDs))
+		for _, mbID := range mailboxIDs {
+			if err := database.MarkAllRead(mbID); err != nil {
+				return MailboxReadUpdatedMsg{MailboxIDs: applied, Err: err}
 			}
-			applied = append(applied, feedID)
+			applied = append(applied, mbID)
 		}
-		return FeedsReadUpdatedMsg{FeedIDs: applied}
+		return MailboxReadUpdatedMsg{MailboxIDs: applied}
 	}
 }
 
@@ -2690,40 +2746,38 @@ func (m Model) openBrowserCmd(url string) tea.Cmd {
 }
 
 func (m Model) openSummary() (tea.Model, tea.Cmd) {
-	if len(m.filteredArticles) == 0 {
+	if len(m.filteredMessages) == 0 {
 		return m, nil
 	}
-	a := m.filteredArticles[m.articleCursor]
+	msg := m.filteredMessages[m.messageCursor]
 
-	// If we already have a cached summary, show it immediately.
-	if a.Summary != "" {
-		m.summaryArticle = a
+	if msg.Summary != "" {
+		m.summaryMessage = msg
 		m.summaryGenerating = false
 		m.summaryErr = ""
 		m.overlay = overlaySummary
 		return m, nil
 	}
 
-	// No AI provider configured — prompt the user to set one up.
 	if m.summarizer == nil {
 		m.setStatus("AI not configured — press S to open settings", false)
 		return m, m.clearStatusCmd()
 	}
 
-	m.summaryArticle = a
+	m.summaryMessage = msg
 	m.summaryGenerating = true
 	m.summaryErr = ""
 	m.overlay = overlaySummary
-	return m, m.aiSummarizeCmd(a)
+	return m, m.aiSummarizeCmd(msg)
 }
 
-func (m *Model) aiSummarizeCmd(a db.Article) tea.Cmd {
+func (m *Model) aiSummarizeCmd(msg db.Message) tea.Cmd {
 	summarizer := m.summarizer
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		summary, err := summarizer.Summarize(ctx, a.Title, a.Content)
-		return AISummaryFetchedMsg{ArticleID: a.ID, Summary: summary, Err: err}
+		summary, err := summarizer.Summarize(ctx, msg.Subject, msg.BodyText)
+		return AISummaryFetchedMsg{MessageID: msg.ID, Summary: summary, Err: err}
 	}
 }
 
@@ -2750,7 +2804,7 @@ func copyToClipboardCmd(text string) tea.Cmd {
 	}
 }
 
-func saveSummaryMDCmd(a db.Article, summary, savePath string) tea.Cmd {
+func saveSummaryMDCmd(msg db.Message, summary, savePath string) tea.Cmd {
 	return func() tea.Msg {
 		if savePath == "" {
 			savePath = "~/"
@@ -2763,13 +2817,13 @@ func saveSummaryMDCmd(a db.Article, summary, savePath string) tea.Cmd {
 			return SummarySavedMsg{Err: err}
 		}
 
-		filename := summaryFilename(a.Title)
+		filename := summaryFilename(msg.Subject)
 		fullPath := filepath.Join(savePath, filename)
 
-		content := fmt.Sprintf("# %s\n\n**Source:** %s\n**Published:** %s\n\n---\n\n%s\n",
-			a.Title,
-			a.Link,
-			a.PublishedAt.Format("Mon, 02 Jan 2006"),
+		content := fmt.Sprintf("# %s\n\n**From:** %s\n**Date:** %s\n\n---\n\n%s\n",
+			msg.Subject,
+			msg.From,
+			msg.Date.Format("Mon, 02 Jan 2006"),
 			summary,
 		)
 		if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
@@ -2807,68 +2861,40 @@ func summaryFilename(title string) string {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 func (m *Model) rebuildSidebar() {
-	m.sidebarRows = buildSidebarRows(m.feeds, m.folders, m.collapsedFolders, true)
+	m.sidebarRows = buildSidebarRows(m.accounts, m.mailboxes, m.collapsedAccounts)
 	m.sidebarCursor = clamp(m.sidebarCursor, 0, max(0, len(m.sidebarRows)-1))
 }
 
-func buildSidebarRows(feeds []db.Feed, folders []db.Folder, collapsedFolders map[int64]bool, showUncategorized bool) []sidebarRow {
-	if len(folders) == 0 {
-		rows := make([]sidebarRow, 0, len(feeds))
-		for _, feed := range feeds {
-			rows = append(rows, sidebarRow{kind: rowKindFeed, feedID: feed.ID})
-		}
-		return rows
+func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed map[int64]bool) []sidebarRow {
+	byAccount := make(map[int64][]int64)
+	for _, mb := range mailboxes {
+		byAccount[mb.AccountID] = append(byAccount[mb.AccountID], mb.ID)
 	}
-
-	byFolder := make(map[int64][]int64)
-	for _, feed := range feeds {
-		byFolder[feed.FolderID] = append(byFolder[feed.FolderID], feed.ID)
+	rows := make([]sidebarRow, 0, len(accounts)+len(mailboxes)+1)
+	if len(accounts) > 0 {
+		rows = append(rows, sidebarRow{kind: rowKindUnified})
 	}
-
-	rows := make([]sidebarRow, 0, len(feeds)+len(folders)+1)
-	for _, folder := range folders {
-		rows = append(rows, sidebarRow{kind: rowKindFolder, folderID: folder.ID})
-		if collapsedFolders[folder.ID] {
+	for _, acc := range accounts {
+		rows = append(rows, sidebarRow{kind: rowKindAccount, accountID: acc.ID})
+		if collapsed[acc.ID] {
 			continue
 		}
-		for _, feedID := range byFolder[folder.ID] {
-			rows = append(rows, sidebarRow{kind: rowKindFeed, feedID: feedID})
-		}
-	}
-	if uncategorized := byFolder[0]; len(uncategorized) > 0 {
-		if showUncategorized {
-			rows = append(rows, sidebarRow{kind: rowKindFolder, folderID: 0})
-			if collapsedFolders[0] {
-				return rows
-			}
-		}
-		for _, feedID := range uncategorized {
-			rows = append(rows, sidebarRow{kind: rowKindFeed, feedID: feedID})
+		for _, mbID := range byAccount[acc.ID] {
+			rows = append(rows, sidebarRow{kind: rowKindMailbox, mailboxID: mbID})
 		}
 	}
 	return rows
 }
 
-func (m Model) newFeedManager() FeedManager {
-	fm := NewFeedManagerWithSource(m.db, m.cfg.Source)
-	fm.setData(m.feeds, m.folders)
-	if feed := m.selectedFeed(); feed != nil {
-		fm.selectFeed(feed.ID)
-	} else if folderID, ok := m.selectedFolderID(); ok {
-		if folderID >= 0 {
-			fm.selectFolder(folderID)
-		}
-	}
-	fm.mode = fmList
-	fm.paneFocus = fmPaneList
-	fm.remoteSettingsEdit = false
-	fm.blurEditInputs()
-	return fm
+func (m Model) newAccountManager() AccountManager {
+	am := NewAccountManager(m.db)
+	am.mode = amList
+	return am
 }
 
-func (m *Model) selectSidebarFeed(feedID int64) bool {
+func (m *Model) selectSidebarMailbox(mailboxID int64) bool {
 	for i, row := range m.sidebarRows {
-		if row.kind == rowKindFeed && row.feedID == feedID {
+		if row.kind == rowKindMailbox && row.mailboxID == mailboxID {
 			m.sidebarCursor = i
 			return true
 		}
@@ -2876,25 +2902,12 @@ func (m *Model) selectSidebarFeed(feedID int64) bool {
 	return false
 }
 
-func (m Model) selectedFolderHasRemoteFeeds() bool {
-	folderID, ok := m.selectedFolderID()
-	if !ok {
-		return false
-	}
-	for _, feed := range m.feeds {
-		if feed.FolderID == folderID && m.isRemoteFeed(feed.ID) {
-			return true
-		}
-	}
-	return false
-}
-
-func (m *Model) clearArticles() {
-	m.articles = nil
-	m.filteredArticles = nil
-	m.articleCursor = 0
+func (m *Model) clearMessages() {
+	m.messages = nil
+	m.filteredMessages = nil
+	m.messageCursor = 0
 	m.listOffset = 0
-	m.clearViewportArticle()
+	m.clearViewportMessage()
 }
 
 // effectiveManualCommand is the command shown in Settings (real install result, or suggested script when an update is available but the install path is not writable).
@@ -3002,141 +3015,220 @@ func (m *Model) clearCachedAvailableUpdate() {
 
 func (m Model) currentSidebarSelection() (sidebarRowKind, int64) {
 	if m.sidebarCursor < 0 || m.sidebarCursor >= len(m.sidebarRows) {
-		return rowKindFeed, 0
+		return rowKindMailbox, 0
 	}
 	row := m.sidebarRows[m.sidebarCursor]
-	if row.kind == rowKindFolder {
-		return rowKindFolder, row.folderID
+	if row.kind == rowKindUnified {
+		return rowKindUnified, 0
 	}
-	return rowKindFeed, row.feedID
+	if row.kind == rowKindAccount {
+		return rowKindAccount, row.accountID
+	}
+	return rowKindMailbox, row.mailboxID
 }
 
-func (m Model) selectedFeed() *db.Feed {
+func (m Model) selectedUnifiedInbox() bool {
+	if m.sidebarCursor < 0 || m.sidebarCursor >= len(m.sidebarRows) {
+		return false
+	}
+	return m.sidebarRows[m.sidebarCursor].kind == rowKindUnified
+}
+
+func (m Model) selectedMailbox() *db.Mailbox {
 	if m.sidebarCursor < 0 || m.sidebarCursor >= len(m.sidebarRows) {
 		return nil
 	}
 	row := m.sidebarRows[m.sidebarCursor]
-	if row.kind != rowKindFeed {
+	if row.kind != rowKindMailbox {
 		return nil
 	}
-	return m.feedByID(row.feedID)
+	return m.mailboxByID(row.mailboxID)
 }
 
-func (m Model) selectedFolderID() (int64, bool) {
+func (m Model) selectedAccountID() (int64, bool) {
 	if m.sidebarCursor < 0 || m.sidebarCursor >= len(m.sidebarRows) {
 		return 0, false
 	}
 	row := m.sidebarRows[m.sidebarCursor]
-	if row.kind != rowKindFolder {
+	if row.kind != rowKindAccount {
 		return 0, false
 	}
-	return row.folderID, true
+	return row.accountID, true
 }
 
-func (m Model) feedByID(feedID int64) *db.Feed {
-	for i := range m.feeds {
-		if m.feeds[i].ID == feedID {
-			return &m.feeds[i]
+func (m Model) mailboxByID(mailboxID int64) *db.Mailbox {
+	for i := range m.mailboxes {
+		if m.mailboxes[i].ID == mailboxID {
+			return &m.mailboxes[i]
 		}
 	}
 	return nil
 }
 
-func (m *Model) adjustFeedUnreadCount(feedID int64, delta int64) {
-	for i := range m.feeds {
-		if m.feeds[i].ID == feedID {
-			m.feeds[i].UnreadCount = max(0, m.feeds[i].UnreadCount+delta)
+func (m Model) accountByID(accountID int64) *db.Account {
+	for i := range m.accounts {
+		if m.accounts[i].ID == accountID {
+			return &m.accounts[i]
+		}
+	}
+	return nil
+}
+
+func (m *Model) adjustMailboxUnreadCount(mailboxID int64, delta int64) {
+	for i := range m.mailboxes {
+		if m.mailboxes[i].ID == mailboxID {
+			m.mailboxes[i].UnreadCount = max(0, m.mailboxes[i].UnreadCount+delta)
 			return
 		}
 	}
 }
 
-func (m *Model) markFeedsReadInMemory(feedIDs []int64) {
-	if len(feedIDs) == 0 {
+func (m *Model) markMailboxesReadInMemory(mailboxIDs []int64) {
+	if len(mailboxIDs) == 0 {
 		return
 	}
-
-	feedSet := make(map[int64]struct{}, len(feedIDs))
-	for _, feedID := range feedIDs {
-		feedSet[feedID] = struct{}{}
-		for i := range m.feeds {
-			if m.feeds[i].ID == feedID {
-				m.feeds[i].UnreadCount = 0
+	mbSet := make(map[int64]struct{}, len(mailboxIDs))
+	for _, mbID := range mailboxIDs {
+		mbSet[mbID] = struct{}{}
+		for i := range m.mailboxes {
+			if m.mailboxes[i].ID == mbID {
+				m.mailboxes[i].UnreadCount = 0
 				break
 			}
 		}
 	}
-
-	changedArticles := false
-	for i := range m.articles {
-		if _, ok := feedSet[m.articles[i].FeedID]; ok && !m.articles[i].Read {
-			m.articles[i].Read = true
-			changedArticles = true
+	changed := false
+	for i := range m.messages {
+		if _, ok := mbSet[m.messages[i].MailboxID]; ok && !m.messages[i].Read {
+			m.messages[i].Read = true
+			changed = true
 		}
 	}
-	if !changedArticles {
+	if !changed {
 		return
 	}
-
 	m.applyFilter()
-	if len(m.filteredArticles) == 0 {
-		m.articleCursor = 0
+	if len(m.filteredMessages) == 0 {
+		m.messageCursor = 0
 		m.listOffset = 0
-		m.clearViewportArticle()
+		m.clearViewportMessage()
 		return
 	}
-	m.articleCursor = clamp(m.articleCursor, 0, max(0, len(m.filteredArticles)-1))
-	maxOffset := max(0, len(m.filteredArticles)-1)
-	m.listOffset = clamp(m.listOffset, 0, maxOffset)
-	m.setViewportArticle(m.filteredArticles[m.articleCursor])
+	m.messageCursor = clamp(m.messageCursor, 0, max(0, len(m.filteredMessages)-1))
+	m.listOffset = clamp(m.listOffset, 0, max(0, len(m.filteredMessages)-1))
+	m.setViewportMessage(m.filteredMessages[m.messageCursor])
 }
 
-func (m Model) folderName(folderID int64) string {
-	if folderID == 0 {
-		return "Uncategorized"
-	}
-	for _, folder := range m.folders {
-		if folder.ID == folderID {
-			return unescapeDisplayText(folder.Name)
+func (m *Model) removeMessageFromMemory(messageID int64) bool {
+	wasUnread := false
+	for i := range m.messages {
+		if m.messages[i].ID == messageID {
+			wasUnread = !m.messages[i].Read
+			m.messages = append(m.messages[:i], m.messages[i+1:]...)
+			break
 		}
 	}
-	return "Folder"
+	m.applyFilter()
+	if len(m.filteredMessages) == 0 {
+		m.messageCursor = 0
+		m.listOffset = 0
+		m.clearViewportMessage()
+		return wasUnread
+	}
+	m.messageCursor = clamp(m.messageCursor, 0, max(0, len(m.filteredMessages)-1))
+	m.listOffset = clamp(m.listOffset, 0, max(0, len(m.filteredMessages)-1))
+	m.setViewportMessage(m.filteredMessages[m.messageCursor])
+	return wasUnread
 }
 
-func (m Model) folderColor(folderID int64) lipgloss.Color {
-	if folderID == 0 {
+func (m Model) accountName(accountID int64) string {
+	for _, acc := range m.accounts {
+		if acc.ID == accountID {
+			return acc.Name
+		}
+	}
+	return "Account"
+}
+
+func (m Model) accountCfgForMailbox(mailboxID int64) config.AccountConfig {
+	mb := m.mailboxByID(mailboxID)
+	if mb == nil {
+		if len(m.cfg.Accounts) > 0 {
+			return m.cfg.Accounts[0]
+		}
+		return config.AccountConfig{}
+	}
+	acc := m.accountByID(mb.AccountID)
+	if acc != nil {
+		for _, acfg := range m.cfg.Accounts {
+			if acfg.Name == acc.Name {
+				return acfg
+			}
+		}
+	}
+	if len(m.cfg.Accounts) > 0 {
+		return m.cfg.Accounts[0]
+	}
+	return config.AccountConfig{}
+}
+
+func (m Model) accountColor(accountID int64) lipgloss.Color {
+	if accountID == 0 {
 		return ""
 	}
 	if config.IsRetroTerminalTheme(string(m.styles.Theme.Name)) {
 		return ""
 	}
-	for _, folder := range m.folders {
-		if folder.ID == folderID && folder.Color != "" {
-			return lipgloss.Color(folder.Color)
-		}
+	if acc := m.accountByID(accountID); acc != nil && acc.Color != "" {
+		return lipgloss.Color(acc.Color)
 	}
 	return ""
 }
 
-func (m Model) selectedFeedFolderColor() lipgloss.Color {
-	if feed := m.selectedFeed(); feed != nil {
-		return m.folderColor(feed.FolderID)
+func (m Model) selectedMailboxAccountColor() lipgloss.Color {
+	if m.selectedUnifiedInbox() {
+		return ""
+	}
+	if mb := m.selectedMailbox(); mb != nil {
+		return m.accountColor(mb.AccountID)
 	}
 	return ""
 }
 
-func (m Model) folderUnreadCount(folderID int64) int64 {
+func (m Model) accountUnreadCount(accountID int64) int64 {
 	var total int64
-	for _, feed := range m.feeds {
-		if feed.FolderID == folderID {
-			total += feed.UnreadCount
+	for _, mb := range m.mailboxes {
+		if mb.AccountID == accountID {
+			total += mb.UnreadCount
 		}
 	}
 	return total
 }
 
-func (m Model) folderHeaderStyle(folderID int64, selected bool) lipgloss.Style {
-	accent := m.folderColor(folderID)
+func (m Model) unifiedUnreadCount() int64 {
+	var total int64
+	for _, mb := range m.mailboxes {
+		if isInboxMailbox(mb) {
+			total += mb.UnreadCount
+		}
+	}
+	return total
+}
+
+func isInboxMailbox(mb db.Mailbox) bool {
+	if strings.EqualFold(strings.TrimSpace(mb.Name), "inbox") || strings.EqualFold(strings.TrimSpace(mb.DisplayName), "inbox") {
+		return true
+	}
+	for _, flag := range mb.Flags {
+		if strings.EqualFold(flag, `\Inbox`) {
+			return true
+		}
+	}
+	return false
+}
+
+func (m Model) accountHeaderStyle(accountID int64, selected bool) lipgloss.Style {
+	accent := m.accountColor(accountID)
 	style := m.styles.FeedItem.Copy().Foreground(lipgloss.Color(m.styles.Theme.Dimmed)).Bold(true)
 	if accent != "" {
 		style = style.Foreground(accentReadableOn(accent, m.styles.Theme.Bg, 3))
@@ -3147,8 +3239,8 @@ func (m Model) folderHeaderStyle(folderID int64, selected bool) lipgloss.Style {
 	return style
 }
 
-func (m Model) folderBadgeStyle(folderID int64, selected bool) lipgloss.Style {
-	accent := m.folderColor(folderID)
+func (m Model) accountBadgeStyle(accountID int64, selected bool) lipgloss.Style {
+	accent := m.accountColor(accountID)
 	if selected {
 		return m.sidebarSelectedBadgeStyle(accent)
 	}
@@ -3158,9 +3250,9 @@ func (m Model) folderBadgeStyle(folderID int64, selected bool) lipgloss.Style {
 	return m.styles.UnreadBadge.Copy().Foreground(accentReadableOn(accent, m.styles.Theme.Bg, 3))
 }
 
-func (m Model) feedAccentStyle(feed db.Feed, selected bool) lipgloss.Style {
+func (m Model) mailboxAccentStyle(mb db.Mailbox, selected bool) lipgloss.Style {
 	style := m.styles.FeedItem
-	accent := m.folderColor(feed.FolderID)
+	accent := m.accountColor(mb.AccountID)
 	if accent != "" {
 		style = style.Copy().Foreground(accentReadableOn(accent, m.styles.Theme.Bg, 3))
 	}
@@ -3170,8 +3262,8 @@ func (m Model) feedAccentStyle(feed db.Feed, selected bool) lipgloss.Style {
 	return style
 }
 
-func (m Model) feedBadgeStyle(feed db.Feed, selected bool) lipgloss.Style {
-	accent := m.folderColor(feed.FolderID)
+func (m Model) mailboxBadgeStyle(mb db.Mailbox, selected bool) lipgloss.Style {
+	accent := m.accountColor(mb.AccountID)
 	if selected {
 		return m.sidebarSelectedBadgeStyle(accent)
 	}
@@ -3182,7 +3274,7 @@ func (m Model) feedBadgeStyle(feed db.Feed, selected bool) lipgloss.Style {
 }
 
 func (m Model) sidebarSelectedStyle(accent lipgloss.Color) lipgloss.Style {
-	if m.focused == paneFeeds {
+	if m.focused == paneAccounts {
 		if accent != "" {
 			return m.styles.FeedItemSelectedFocused.Copy().
 				Background(accent).
@@ -3211,8 +3303,8 @@ func terminalColorAsColor(c lipgloss.TerminalColor) lipgloss.Color {
 	return lipgloss.Color(fmt.Sprint(c))
 }
 
-func (m Model) articleRowStyles() (lipgloss.Style, lipgloss.Style, lipgloss.Style, lipgloss.Style, lipgloss.Color, lipgloss.Color) {
-	accent := m.selectedFeedFolderColor()
+func (m Model) messageRowStyles() (lipgloss.Style, lipgloss.Style, lipgloss.Style, lipgloss.Style, lipgloss.Color, lipgloss.Color) {
+	accent := m.selectedMailboxAccountColor()
 	unread := m.styles.ArticleUnread
 	read := m.styles.ArticleRead
 	selected := m.styles.ArticleSelected
@@ -3231,45 +3323,45 @@ func (m Model) articleRowStyles() (lipgloss.Style, lipgloss.Style, lipgloss.Styl
 	return unread, read, selected, headerActive, border, borderFocus
 }
 
-func (m *Model) toggleSelectedFolder() bool {
-	folderID, ok := m.selectedFolderID()
+func (m *Model) toggleSelectedAccount() bool {
+	accountID, ok := m.selectedAccountID()
 	if !ok {
 		return false
 	}
-	m.collapsedFolders[folderID] = !m.collapsedFolders[folderID]
+	m.collapsedAccounts[accountID] = !m.collapsedAccounts[accountID]
 	m.rebuildSidebar()
 	for i, row := range m.sidebarRows {
-		if row.kind == rowKindFolder && row.folderID == folderID {
+		if row.kind == rowKindAccount && row.accountID == accountID {
 			m.sidebarCursor = i
 			break
 		}
 	}
-	m.clearArticles()
+	m.clearMessages()
 	return true
 }
 
 func (m *Model) applyFilter() {
 	q := strings.ToLower(m.searchQuery)
 	if q == "" && !m.showUnreadOnly {
-		m.filteredArticles = m.articles
+		m.filteredMessages = m.messages
 		return
 	}
-	filtered := make([]db.Article, 0, len(m.articles))
-	for _, a := range m.articles {
-		if m.showUnreadOnly && a.Read {
+	filtered := make([]db.Message, 0, len(m.messages))
+	for _, msg := range m.messages {
+		if m.showUnreadOnly && msg.Read {
 			continue
 		}
-		if q != "" && !strings.Contains(strings.ToLower(a.Title), q) {
+		if q != "" && !strings.Contains(strings.ToLower(msg.Subject), q) {
 			continue
 		}
-		filtered = append(filtered, a)
+		filtered = append(filtered, msg)
 	}
-	m.filteredArticles = filtered
+	m.filteredMessages = filtered
 }
 
-func (m Model) indexOfFilteredArticle(articleID int64) int {
-	for i := range m.filteredArticles {
-		if m.filteredArticles[i].ID == articleID {
+func (m Model) indexOfFilteredMessage(messageID int64) int {
+	for i := range m.filteredMessages {
+		if m.filteredMessages[i].ID == messageID {
 			return i
 		}
 	}
@@ -3279,115 +3371,6 @@ func (m Model) indexOfFilteredArticle(articleID int64) int {
 func (m *Model) setStatus(msg string, isErr bool) {
 	m.statusMsg = msg
 	m.statusErr = isErr
-}
-
-func (m Model) renderFetchErrorOverlay(w int, chrome managerChrome) string {
-	r := m.lastFetchError
-	if r == nil {
-		return ""
-	}
-
-	textW := max(1, w-4)
-	bg := chrome.baseBg
-	surf := chrome.surfaceBg
-	accent := chrome.accent
-	muted := chrome.muted
-	text := chrome.text
-
-	label := func(s string) string {
-		return lipgloss.NewStyle().Background(bg).Foreground(muted).Width(14).Render(s)
-	}
-	val := func(s string) string {
-		return lipgloss.NewStyle().Background(bg).Foreground(text).Render(s)
-	}
-	accentLine := func(s string) string {
-		return lipgloss.NewStyle().Background(bg).Foreground(accent).Bold(true).Render(s)
-	}
-	row := func(k, v string) string {
-		return lipgloss.NewStyle().Background(bg).Width(textW).
-			Render(label(k) + val(v))
-	}
-
-	header := renderManagerHeader("FETCH ERROR", w, chrome)
-
-	// Title line
-	title := accentLine(r.FriendlyMessage())
-
-	// Detail rows
-	rows := []string{""}
-	if r.StatusCode != 0 {
-		rows = append(rows, row("Status:", fmt.Sprintf("%d", r.StatusCode)))
-	}
-	if r.ContentType != "" {
-		ct := r.ContentType
-		if len(ct) > textW-16 {
-			ct = ct[:textW-16]
-		}
-		rows = append(rows, row("Content-Type:", ct))
-	}
-	origURL := r.OriginalURL
-	if len(origURL) > textW-16 {
-		origURL = "…" + origURL[len(origURL)-(textW-17):]
-	}
-	rows = append(rows, row("Original URL:", origURL))
-	if r.FinalURL != r.OriginalURL {
-		finalURL := r.FinalURL
-		if len(finalURL) > textW-16 {
-			finalURL = "…" + finalURL[len(finalURL)-(textW-17):]
-		}
-		rows = append(rows, row("Final URL:", finalURL))
-	}
-
-	// Redirect chain
-	if len(r.RedirectChain) > 1 {
-		rows = append(rows, "")
-		rows = append(rows, lipgloss.NewStyle().Background(bg).Foreground(muted).
-			Render(fmt.Sprintf("Redirects (%d):", len(r.RedirectChain)-1)))
-		for _, u := range r.RedirectChain {
-			display := u
-			if len(display) > textW-4 {
-				display = "…" + display[len(display)-(textW-5):]
-			}
-			rows = append(rows, lipgloss.NewStyle().Background(bg).Foreground(text).
-				Render("  → "+display))
-		}
-	}
-
-	// Snippet
-	if r.Snippet != "" {
-		rows = append(rows, "")
-		rows = append(rows, lipgloss.NewStyle().Background(bg).Foreground(muted).Render("Preview:"))
-		snip := strings.ReplaceAll(r.Snippet, "\n", " ")
-		snip = strings.Join(strings.Fields(snip), " ")
-		if len(snip) > textW-2 {
-			snip = snip[:textW-2] + "…"
-		}
-		rows = append(rows, lipgloss.NewStyle().Background(surf).Foreground(text).
-			Width(textW).Padding(0, 1).Render(snip))
-	}
-
-	if r.SuggestURLUpdate {
-		rows = append(rows, "")
-		rows = append(rows, lipgloss.NewStyle().Background(bg).Foreground(accent).
-			Render("↳ Feed permanently moved to new URL"))
-	}
-	actions := renderManagerActions(w, chrome, "esc", "dismiss")
-
-	body := lipgloss.NewStyle().Background(bg).Width(w).Padding(0, 2).
-		Render(lipgloss.JoinVertical(lipgloss.Left, title, strings.Join(rows, "\n")))
-
-	return lipgloss.JoinVertical(lipgloss.Left, header, body, actions)
-}
-
-func shouldFetchArticleContent(a db.Article) bool {
-	content := strings.TrimSpace(a.Content)
-	if a.Link == "" {
-		return false
-	}
-	if len(content) >= 500 && strings.Count(content, "\n") >= 3 {
-		return false
-	}
-	return true
 }
 
 func keyMatches(msg tea.KeyMsg, bindings ...key.Binding) bool {
@@ -3532,64 +3515,62 @@ func renderPaneHeaderRow(prefix, title, hint string, width int) string {
 	return base + strings.Repeat(" ", spaceW) + hint
 }
 
-func folderDisplayLabel(name string, collapsed, icons bool) string {
-	if !icons {
-		return name
-	}
-	if collapsed {
-		return "󰉖 " + name
-	}
-	return "󰉋 " + name
-}
-
-func feedDisplayLabel(name string, icons bool) string {
-	if !icons {
-		return name
-	}
-	return "\U000f046b " + name
-}
-
-func (m Model) renderFolderHeader(folderID int64, selected bool, width int) string {
+func (m Model) renderAccountHeader(accountID int64, selected bool, width int) string {
 	icon := "v "
-	label := m.folderName(folderID)
+	label := m.accountName(accountID)
 	if m.iconsEnabled() {
 		icon = "▾ "
-		label = folderDisplayLabel(label, false, true)
 	}
-	if m.collapsedFolders[folderID] {
+	if m.collapsedAccounts[accountID] {
 		icon = "> "
 		if m.iconsEnabled() {
 			icon = "▸ "
-			label = folderDisplayLabel(m.folderName(folderID), true, true)
 		}
 	}
 	badge := ""
-	if unread := m.folderUnreadCount(folderID); unread > 0 {
-		badge = m.folderBadgeStyle(folderID, selected).Render(fmt.Sprintf("(%d)", unread))
+	if unread := m.accountUnreadCount(accountID); unread > 0 {
+		badge = m.accountBadgeStyle(accountID, selected).Render(fmt.Sprintf("(%d)", unread))
 	}
 	row := renderFeedRow(icon, label, badge, width)
-	style := m.folderHeaderStyle(folderID, selected)
+	style := m.accountHeaderStyle(accountID, selected)
 	return style.Width(width).Render(row)
 }
 
-func (m Model) renderSidebarFeedRow(feed db.Feed, selected bool, width int) string {
+func (m Model) renderUnifiedInboxRow(selected bool, width int) string {
 	badge := ""
-	if feed.UnreadCount > 0 {
-		badge = m.feedBadgeStyle(feed, selected).Render(fmt.Sprintf("(%d)", feed.UnreadCount))
+	if unread := m.unifiedUnreadCount(); unread > 0 {
+		badge = m.accountBadgeStyle(0, selected).Render(fmt.Sprintf("(%d)", unread))
 	}
+	prefix := "◎ "
+	if !m.iconsEnabled() {
+		prefix = "* "
+	}
+	row := renderFeedRow(prefix, "Unified Inbox", badge, width)
+	style := m.styles.FeedItem
+	if selected {
+		style = m.sidebarSelectedStyle("")
+	}
+	return style.Width(width).Render(row)
+}
 
-	prefix := "    "
-	title := unescapeDisplayText(feed.Title)
-	if m.iconsEnabled() {
-		title = feedDisplayLabel(title, true)
-	} else {
-		prefix = "    " + m.feedRowPrefix(selected)
+func (m Model) renderSidebarMailboxRow(mb db.Mailbox, selected bool, width int) string {
+	badge := ""
+	if mb.UnreadCount > 0 {
+		badge = m.mailboxBadgeStyle(mb, selected).Render(fmt.Sprintf("(%d)", mb.UnreadCount))
 	}
-	if m.refreshing[feed.ID] {
+	title := mb.DisplayName
+	if title == "" {
+		title = mb.Name
+	}
+	prefix := "    "
+	if !m.iconsEnabled() {
+		prefix = "    " + m.mailboxRowPrefix(selected)
+	}
+	if m.syncing[mb.ID] {
 		prefix = "    " + m.spinner.View() + " "
 	}
 	row := renderFeedRow(prefix, title, badge, width)
-	style := m.feedAccentStyle(feed, selected)
+	style := m.mailboxAccentStyle(mb, selected)
 	return style.Width(width).Render(row)
 }
 
@@ -3614,18 +3595,18 @@ func (m Model) headerLabel(label string) string {
 		return label
 	}
 	switch label {
-	case "Feeds":
-		return "◉ Feeds"
+	case "Accounts":
+		return "◉ Accounts"
 	case "Content":
 		return "▣ Content"
 	}
-	if strings.HasPrefix(label, "Articles") {
-		return strings.Replace(label, "Articles", "≣ Articles", 1)
+	if strings.HasPrefix(label, "Messages") {
+		return strings.Replace(label, "Messages", "≣ Messages", 1)
 	}
 	return label
 }
 
-func (m Model) feedRowPrefix(selected bool) string {
+func (m Model) mailboxRowPrefix(selected bool) string {
 	if m.styles.PlainUI {
 		if selected {
 			return "> "
@@ -3644,7 +3625,7 @@ func (m Model) feedRowPrefix(selected bool) string {
 	return "◦ "
 }
 
-func (m Model) articleRowPrefix(read bool) string {
+func (m Model) messageRowPrefix(read bool) string {
 	if m.styles.PlainUI {
 		if read {
 			return "- "
@@ -3663,24 +3644,14 @@ func (m Model) articleRowPrefix(read bool) string {
 	return "● "
 }
 
-func (m Model) emptyFeedsHint() string {
+func (m Model) emptyAccountsHint() string {
 	if m.styles.PlainUI {
-		if m.iconsEnabled() {
-			return "  + press a or m to add feeds"
-		}
-		return "  press a or m to add feeds"
+		return "  press m to add accounts"
 	}
 	if m.iconsEnabled() {
-		return "  ＋ press a or m to add feeds"
+		return "  ＋ press m to add accounts"
 	}
-	return "  press a or m to add feeds"
-}
-
-func (m Model) openFeedAddDialog() Model {
-	m.overlay = overlayFeedManager
-	m.feedManager = m.newFeedManager()
-	m.feedManager.focusAdd()
-	return m
+	return "  press m to add accounts"
 }
 
 func padRight(s string, width int) string {
