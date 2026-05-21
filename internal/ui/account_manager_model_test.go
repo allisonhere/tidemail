@@ -63,6 +63,51 @@ func TestAccountManagerFormShowsTestAction(t *testing.T) {
 	}
 }
 
+func TestAccountManagerFormStaysCompactInShortView(t *testing.T) {
+	am := NewAccountManager(nil)
+	am.mode = amAdd
+	am.nameInput.SetValue("Personal")
+	am.imapHostInput.SetValue("imap.example.com")
+	am.smtpHostInput.SetValue("smtp.example.com")
+
+	view := am.View(74, 16, BuildStyles(CatppuccinMocha, "compact"))
+
+	for _, want := range []string{"Name", "IMAP Host", "SMTP Host", "Username", "From", "TEST", "CANCEL"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("expected compact account form to keep %q visible, got %q", want, view)
+		}
+	}
+	if strings.Count(view, "\n") > 15 {
+		t.Fatalf("expected compact account form to fit 16 lines, got %d lines", strings.Count(view, "\n")+1)
+	}
+}
+
+func TestAccountManagerListShowsCompactAccountCards(t *testing.T) {
+	am := NewAccountManager(nil)
+	am.setData(
+		[]db.Account{{ID: 7, Name: "Personal"}},
+		[]db.Mailbox{{ID: 1, AccountID: 7, Name: "INBOX"}, {ID: 2, AccountID: 7, Name: "Archive"}},
+		[]config.AccountConfig{{
+			Name:     "Personal",
+			IMAPHost: "imap.example.com",
+			IMAPPort: 993,
+			IMAPTLS:  true,
+			SMTPHost: "smtp.example.com",
+			SMTPPort: 587,
+			SMTPTLS:  true,
+			User:     "alice@example.com",
+		}},
+	)
+
+	view := am.View(80, 24, BuildStyles(CatppuccinMocha, "compact"))
+
+	for _, want := range []string{"Personal", "alice@example.com", "imap.example.com:993", "smtp.example.com:587", "2 mailboxes"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("expected account card to include %q, got %q", want, view)
+		}
+	}
+}
+
 func TestAccountManagerTestKeyStartsConnectionTestWithoutSaving(t *testing.T) {
 	am := NewAccountManager(nil)
 	am.mode = amAdd

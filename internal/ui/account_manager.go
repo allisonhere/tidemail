@@ -693,30 +693,7 @@ func (am AccountManager) viewList(width, height int, chrome managerChrome, style
 	rows := []string{}
 	for i, acc := range am.accounts {
 		selected := i == am.cursor
-		label := acc.Name
-		if label == "" {
-			label = fmt.Sprintf("Account %d", acc.ID)
-		}
-		// Count mailboxes for this account
-		count := 0
-		for _, mb := range am.mailboxes {
-			if mb.AccountID == acc.ID {
-				count++
-			}
-		}
-		if count > 0 {
-			label += fmt.Sprintf("  (%d mailboxes)", count)
-		}
-		if selected {
-			rows = append(rows, renderManagerSelectedRow(width, label, chrome, styles))
-		} else {
-			rows = append(rows, lipgloss.NewStyle().
-				Background(chrome.baseBg).
-				Foreground(chrome.text).
-				Width(width).
-				Padding(0, 1).
-				Render(label))
-		}
+		rows = append(rows, am.renderAccountCard(width, acc, selected, chrome, styles))
 	}
 
 	if len(am.accounts) == 0 {
@@ -765,15 +742,79 @@ func (am AccountManager) viewList(width, height int, chrome managerChrome, style
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
+func (am AccountManager) renderAccountCard(width int, acc db.Account, selected bool, chrome managerChrome, styles Styles) string {
+	name := acc.Name
+	if name == "" {
+		name = fmt.Sprintf("Account %d", acc.ID)
+	}
+	acfg, _ := am.configForAccount(acc)
+	email := acfg.User
+	if email == "" {
+		email = "not configured"
+	}
+	imapServer := compactServer(acfg.IMAPHost, acfg.IMAPPort, acfg.IMAPTLS, "TLS")
+	smtpServer := compactServer(acfg.SMTPHost, acfg.SMTPPort, acfg.SMTPTLS, "STARTTLS")
+	mailboxCount := am.mailboxCount(acc.ID)
+	status := fmt.Sprintf("%d mailboxes", mailboxCount)
+	if mailboxCount == 1 {
+		status = "1 mailbox"
+	}
+
+	bg := chrome.baseBg
+	fg := chrome.text
+	if selected {
+		bg = terminalColorAsColor(managerSelectedListStyle(styles).GetBackground())
+		fg = terminalColorAsColor(managerSelectedListStyle(styles).GetForeground())
+		if fg == "" {
+			fg = chrome.text
+		}
+	}
+	row := func(label, value string) string {
+		labelW := clamp(width/5, 8, 12)
+		valueW := max(8, width-labelW)
+		left := lipgloss.NewStyle().Background(bg).Foreground(chrome.muted).Width(labelW).Padding(0, 1).Render(label)
+		right := lipgloss.NewStyle().Background(bg).Foreground(fg).Width(valueW).Padding(0, 1).Render(truncate(value, max(1, valueW-2)))
+		return lipgloss.JoinHorizontal(lipgloss.Left, left, right)
+	}
+
+	rows := []string{
+		row("Name", name),
+		row("Email", email),
+		row("IMAP", imapServer),
+		row("SMTP", smtpServer),
+		lipgloss.NewStyle().Background(bg).Foreground(chrome.successFg).Width(width).Padding(0, 1).Render(status),
+	}
+	return clampView(strings.Join(rows, "\n"), width, len(rows), bg)
+}
+
+func compactServer(host string, port int, tls bool, tlsLabel string) string {
+	if host == "" {
+		return "not configured"
+	}
+	if port > 0 {
+		host = fmt.Sprintf("%s:%d", host, port)
+	}
+	if tls {
+		host += "  " + tlsLabel + " on"
+	}
+	return host
+}
+
+func (am AccountManager) mailboxCount(accountID int64) int {
+	count := 0
+	for _, mb := range am.mailboxes {
+		if mb.AccountID == accountID {
+			count++
+		}
+	}
+	return count
+}
+
 func (am AccountManager) viewForm(width, height int, chrome managerChrome, title string) string {
 	header := renderManagerHeader(title, width, chrome)
 
-	fieldW := max(10, width-4)
-	label := func(s string) string {
-		return lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).
-			Width(fieldW).Padding(0, 2).Render(s)
-	}
-	field := func(ti textinput.Model, focused bool) string {
+	fieldW := max(12, width-18)
+	row := func(label string, ti textinput.Model, focused bool) string {
 		bg := chrome.baseBg
 		if focused {
 			bg = chrome.fieldBg
@@ -782,39 +823,38 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 		ti.TextStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.text)
 		ti.PlaceholderStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.muted)
 		ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
-		return lipgloss.NewStyle().Background(bg).Width(fieldW).Padding(0, 2).Render(ti.View())
+		ti.Width = max(8, fieldW-2)
+		labelW := max(10, width-fieldW)
+		left := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(labelW).Padding(0, 1).Render(label)
+		right := lipgloss.NewStyle().Background(bg).Width(fieldW).Padding(0, 1).Render(ti.View())
+		return lipgloss.JoinHorizontal(lipgloss.Left, left, right)
 	}
-	tlsLabel := func(on bool, focused bool) string {
+	tlsRow := func(label string, on bool, focused bool) string {
 		val := "off"
 		if on {
 			val = "on"
 		}
-		style := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(fieldW).Padding(0, 2)
+		bg := chrome.baseBg
 		if focused {
-			style = style.Background(chrome.fieldBg).Foreground(chrome.text)
+			bg = chrome.fieldBg
 		}
-		return style.Render(fmt.Sprintf("[space] TLS: %s", val))
+		labelW := max(10, width-fieldW)
+		left := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(labelW).Padding(0, 1).Render(label)
+		right := lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Width(fieldW).Padding(0, 1).Render("[space] " + val)
+		return lipgloss.JoinHorizontal(lipgloss.Left, left, right)
 	}
 
 	rows := []string{
-		label("Name"),
-		field(am.nameInput, am.focusedField == amFieldName),
-		label("IMAP Host"),
-		field(am.imapHostInput, am.focusedField == amFieldIMAPHost),
-		label("IMAP Port"),
-		field(am.imapPortInput, am.focusedField == amFieldIMAPPort),
-		tlsLabel(am.imapTLS, am.focusedField == amFieldIMAPTLS),
-		label("SMTP Host"),
-		field(am.smtpHostInput, am.focusedField == amFieldSMTPHost),
-		label("SMTP Port"),
-		field(am.smtpPortInput, am.focusedField == amFieldSMTPPort),
-		tlsLabel(am.smtpTLS, am.focusedField == amFieldSMTPTLS),
-		label("Username"),
-		field(am.userInput, am.focusedField == amFieldUser),
-		label("Password"),
-		field(am.passInput, am.focusedField == amFieldPass),
-		label("From (optional)"),
-		field(am.fromInput, am.focusedField == amFieldFrom),
+		row("Name", am.nameInput, am.focusedField == amFieldName),
+		row("IMAP Host", am.imapHostInput, am.focusedField == amFieldIMAPHost),
+		row("IMAP Port", am.imapPortInput, am.focusedField == amFieldIMAPPort),
+		tlsRow("IMAP TLS", am.imapTLS, am.focusedField == amFieldIMAPTLS),
+		row("SMTP Host", am.smtpHostInput, am.focusedField == amFieldSMTPHost),
+		row("SMTP Port", am.smtpPortInput, am.focusedField == amFieldSMTPPort),
+		tlsRow("SMTP TLS", am.smtpTLS, am.focusedField == amFieldSMTPTLS),
+		row("Username", am.userInput, am.focusedField == amFieldUser),
+		row("Password", am.passInput, am.focusedField == amFieldPass),
+		row("From", am.fromInput, am.focusedField == amFieldFrom),
 	}
 
 	statusLine := ""
