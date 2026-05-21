@@ -108,14 +108,57 @@ func TestAccountManagerListShowsCompactAccountCards(t *testing.T) {
 	}
 }
 
-func TestAccountManagerTestKeyStartsConnectionTestWithoutSaving(t *testing.T) {
+func TestAccountManagerBareTTypesIntoFocusedField(t *testing.T) {
+	cases := []struct {
+		name  string
+		field amField
+		value func(AccountManager) string
+	}{
+		{"name", amFieldName, func(am AccountManager) string { return am.nameInput.Value() }},
+		{"imap host", amFieldIMAPHost, func(am AccountManager) string { return am.imapHostInput.Value() }},
+		{"imap port", amFieldIMAPPort, func(am AccountManager) string { return am.imapPortInput.Value() }},
+		{"smtp host", amFieldSMTPHost, func(am AccountManager) string { return am.smtpHostInput.Value() }},
+		{"smtp port", amFieldSMTPPort, func(am AccountManager) string { return am.smtpPortInput.Value() }},
+		{"username", amFieldUser, func(am AccountManager) string { return am.userInput.Value() }},
+		{"password", amFieldPass, func(am AccountManager) string { return am.passInput.Value() }},
+		{"from", amFieldFrom, func(am AccountManager) string { return am.fromInput.Value() }},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			am := NewAccountManager(nil)
+			am.mode = amAdd
+			am.focusField(tt.field)
+			if tt.field == amFieldIMAPPort {
+				am.imapPortInput.SetValue("")
+			}
+			if tt.field == amFieldSMTPPort {
+				am.smtpPortInput.SetValue("")
+			}
+
+			next, _, exit := am.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}}, DefaultKeys)
+
+			if exit {
+				t.Fatal("expected bare t to keep account manager open")
+			}
+			if tt.value(next) != "t" {
+				t.Fatalf("expected bare t to enter text, got %q", tt.value(next))
+			}
+			if next.busy {
+				t.Fatal("expected bare t not to start account test")
+			}
+		})
+	}
+}
+
+func TestAccountManagerCtrlTStartsConnectionTestWithoutSaving(t *testing.T) {
 	am := NewAccountManager(nil)
 	am.mode = amAdd
 	am.nameInput.SetValue("Personal")
 	am.imapHostInput.SetValue("imap.example.com")
 	am.userInput.SetValue("alice@example.com")
 
-	next, cmd, exit := am.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}}, DefaultKeys)
+	next, cmd, exit := am.Update(tea.KeyMsg{Type: tea.KeyCtrlT}, DefaultKeys)
 
 	if exit {
 		t.Fatal("expected test action to keep account manager open")
@@ -131,6 +174,38 @@ func TestAccountManagerTestKeyStartsConnectionTestWithoutSaving(t *testing.T) {
 	}
 	if next.statusMsg != "" {
 		t.Fatalf("expected testing to clear prior status, got %q", next.statusMsg)
+	}
+}
+
+func TestAccountManagerCtrlSSavesFromForm(t *testing.T) {
+	testAccountManagerSaveKey(t, tea.KeyMsg{Type: tea.KeyCtrlS})
+}
+
+func TestAccountManagerF2SavesFromForm(t *testing.T) {
+	testAccountManagerSaveKey(t, tea.KeyMsg{Type: tea.KeyF2})
+}
+
+func testAccountManagerSaveKey(t *testing.T, msg tea.KeyMsg) {
+	t.Helper()
+	am := NewAccountManager(nil)
+	am.mode = amAdd
+	am.nameInput.SetValue("Personal")
+	am.imapHostInput.SetValue("imap.example.com")
+	am.userInput.SetValue("alice@example.com")
+
+	next, cmd, exit := am.Update(tea.KeyMsg{Type: tea.KeyCtrlS}, DefaultKeys)
+
+	if exit {
+		t.Fatal("expected ctrl+s to keep account manager open while saving")
+	}
+	if cmd == nil {
+		t.Fatal("expected ctrl+s to return save command")
+	}
+	if !next.busy {
+		t.Fatal("expected ctrl+s to mark account manager busy")
+	}
+	if next.busyMsg != "CONNECTING TO IMAP..." {
+		t.Fatalf("expected saving busy message, got %q", next.busyMsg)
 	}
 }
 

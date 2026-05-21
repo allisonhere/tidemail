@@ -533,6 +533,8 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 		am.statusMsg = ""
 	case keyMatches(km, keys.TestAccount):
 		return am.testForm()
+	case keyMatches(km, keys.SaveAccount):
+		return am.submitForm()
 	case keyMatches(km, keys.Tab):
 		am.advanceField(1)
 	case keyMatches(km, keys.Backspace):
@@ -887,7 +889,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 	if am.busy {
 		actionPairs = []string{}
 	} else {
-		actionPairs = []string{"enter", "next / save", "t", "test", "esc", "cancel"}
+		actionPairs = []string{"ctrl+s", "save", "ctrl+t", "test", "esc", "cancel"}
 	}
 	actions := renderManagerActions(width, chrome, actionPairs...)
 

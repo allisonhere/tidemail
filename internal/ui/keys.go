@@ -43,6 +43,7 @@ type KeyMap struct {
 	Add         key.Binding
 	Edit        key.Binding
 	Delete      key.Binding
+	SaveAccount key.Binding
 	TestAccount key.Binding
 
 	// Overlay / input
@@ -95,7 +96,8 @@ var DefaultKeys = KeyMap{
 	Add:         key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
 	Edit:        key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
 	Delete:      key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
-	TestAccount: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "test")),
+	SaveAccount: key.NewBinding(key.WithKeys("ctrl+s", "f2"), key.WithHelp("ctrl+s", "save")),
+	TestAccount: key.NewBinding(key.WithKeys("ctrl+t", "f5"), key.WithHelp("ctrl+t", "test")),
 
 	Confirm:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
 	Cancel:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
