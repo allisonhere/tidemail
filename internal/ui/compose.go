@@ -233,7 +233,19 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 			Width(width).Padding(0, 2).Render(s)
 	}
 
-	bodyH := max(4, height-lipgloss.Height(header)-10)
+	actions := renderManagerActionGroups(width, chrome,
+		[]string{"ctrl+s", "send"},
+		[]string{"tab", "next field", "esc", "cancel"},
+	)
+	if c.busy {
+		actions = renderManagerActions(width, chrome)
+	}
+
+	fixedH := lipgloss.Height(header) + 7 + lipgloss.Height(actions)
+	if c.statusMsg != "" {
+		fixedH++
+	}
+	bodyH := max(1, height-fixedH)
 	c.bodyInput.SetWidth(inputW)
 	c.bodyInput.SetHeight(bodyH)
 	c.bodyInput.FocusedStyle.Base = lipgloss.NewStyle().Background(chrome.fieldBg)
@@ -274,11 +286,6 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 		rows = append(rows, statusLine)
 	}
 
-	actionPairs := []string{"ctrl+s", "send", "tab", "next field", "esc", "cancel"}
-	if c.busy {
-		actionPairs = nil
-	}
-	actions := renderManagerActions(width, chrome, actionPairs...)
 	rows = append(rows, actions)
 
 	content := lipgloss.JoinVertical(lipgloss.Left, rows...)

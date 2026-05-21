@@ -32,6 +32,11 @@ type AccountSavedMsg struct {
 	Err        error
 }
 
+type AccountTestedMsg struct {
+	MailboxCount int
+	Err          error
+}
+
 type AccountDeletedMsg struct {
 	AccountID int64
 	Err       error

@@ -16,24 +16,33 @@ import (
 
 var version = "dev"
 
+type startupOptions struct {
+	previewManualUpdate bool
+	prototypeForms      bool
+}
+
+func parseStartupOptions(args []string) startupOptions {
+	var opts startupOptions
+	for _, a := range args {
+		switch strings.TrimSpace(a) {
+		case "--preview-manual-update":
+			opts.previewManualUpdate = true
+		case "--prototype-forms":
+			opts.prototypeForms = true
+		}
+	}
+	return opts
+}
+
 func main() {
-	previewManualUpdate := false
+	opts := parseStartupOptions(os.Args[1:])
 	for _, a := range os.Args[1:] {
 		switch strings.TrimSpace(a) {
 		case "--version", "-version", "-v":
 			fmt.Printf("tide %s\n", resolvedVersion())
 			return
-		case "--preview-manual-update":
-			previewManualUpdate = true
 		}
 	}
-
-	database, err := db.Open()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "error opening database:", err)
-		os.Exit(1)
-	}
-	defer database.Close()
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -45,8 +54,22 @@ func main() {
 		fmt.Print(setBG)
 		defer fmt.Print(resetBG)
 	}
-	// --preview-manual-update: open Settings on Updates with a demo manual-install command (dev UI).
-	model := ui.NewModel(database, cfg, resolvedVersion(), previewManualUpdate)
+
+	var model tea.Model
+	if opts.prototypeForms {
+		model = ui.NewPrototypeFormsModel(cfg)
+	} else {
+		database, err := db.Open()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error opening database:", err)
+			os.Exit(1)
+		}
+		defer database.Close()
+
+		// --preview-manual-update: open Settings on Updates with a demo manual-install command (dev UI).
+		model = ui.NewModel(database, cfg, resolvedVersion(), opts.previewManualUpdate)
+	}
+
 	p := tea.NewProgram(model,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),

@@ -414,7 +414,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.selectedUnifiedInbox() {
 			cmds = append(cmds, m.loadUnifiedInboxCmd())
 		} else if selected := m.selectedMailbox(); selected != nil {
-			cmds = append(cmds, m.loadUnreadMessagesCmd(selected.ID))
+			cmds = append(cmds, m.loadMailboxMessagesCmd(selected.ID))
 		} else {
 			m.clearMessages()
 		}
@@ -458,7 +458,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.selectedUnifiedInbox() {
 			cmds = append(cmds, m.loadUnifiedInboxCmd())
 		} else if selected := m.selectedMailbox(); selected != nil && msg.MailboxID == selected.ID {
-			cmds = append(cmds, m.loadUnreadMessagesCmd(msg.MailboxID))
+			cmds = append(cmds, m.loadMailboxMessagesCmd(msg.MailboxID))
 		}
 		if msg.Manual && msg.NewCount > 0 {
 			m.setStatus(fmt.Sprintf("synced: %d new", msg.NewCount), false)
@@ -471,6 +471,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AccountSavedMsg:
 		m.accountManager.busy = false
+		m.accountManager.busyMsg = ""
 		m.accountManager.statusMsg = ""
 		if msg.Err != nil {
 			m.accountManager.statusMsg = fmt.Sprintf("SAVE FAILED: %v", msg.Err)
@@ -499,8 +500,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(m.loadAccountsCmd(), m.clearStatusCmd())
 
+	case AccountTestedMsg:
+		m.accountManager.busy = false
+		m.accountManager.busyMsg = ""
+		if msg.Err != nil {
+			m.accountManager.statusMsg = fmt.Sprintf("TEST FAILED: %v", msg.Err)
+			return m, nil
+		}
+		m.accountManager.statusMsg = fmt.Sprintf("CONNECTED: %d MAILBOXES", msg.MailboxCount)
+		return m, nil
+
 	case AccountDeletedMsg:
 		m.accountManager.busy = false
+		m.accountManager.busyMsg = ""
 		m.accountManager.statusMsg = ""
 		if msg.Err != nil {
 			m.accountManager.statusMsg = fmt.Sprintf("DELETE FAILED: %v", msg.Err)
@@ -942,7 +954,7 @@ func (m Model) handleUp() (tea.Model, tea.Cmd) {
 				return m, m.loadUnifiedInboxCmd()
 			}
 			if selected := m.selectedMailbox(); selected != nil {
-				return m, m.loadUnreadMessagesCmd(selected.ID)
+				return m, m.loadMailboxMessagesCmd(selected.ID)
 			}
 			m.clearMessages()
 		}
@@ -977,7 +989,7 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 				return m, m.loadUnifiedInboxCmd()
 			}
 			if selected := m.selectedMailbox(); selected != nil {
-				return m, m.loadUnreadMessagesCmd(selected.ID)
+				return m, m.loadMailboxMessagesCmd(selected.ID)
 			}
 			m.clearMessages()
 		}
@@ -2475,10 +2487,10 @@ func (m *Model) loadAccountsCmd() tea.Cmd {
 	}
 }
 
-func (m *Model) loadUnreadMessagesCmd(mailboxID int64) tea.Cmd {
+func (m *Model) loadMailboxMessagesCmd(mailboxID int64) tea.Cmd {
 	database := m.db
 	return func() tea.Msg {
-		msgs, err := database.ListUnreadMessages(mailboxID)
+		msgs, err := database.ListMessages(mailboxID)
 		if err != nil {
 			return MessagesLoadedMsg{MailboxID: mailboxID, Err: err}
 		}
@@ -2518,21 +2530,37 @@ func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
 			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual}
 		}
 		defer client.Close()
-		msgs, err := client.FetchSince(ctx, mailbox.Name, mailbox.LastSynced)
+		since := mailbox.LastSynced
+		if existing, countErr := database.CountMessages(mailboxID); countErr == nil && existing == 0 {
+			since = time.Time{}
+		}
+		msgs, err := client.FetchSince(ctx, mailbox.Name, since)
 		if err != nil {
 			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual}
 		}
-		newCount := 0
-		for _, msg := range msgs {
-			if dbErr := database.UpsertMessage(msg); dbErr == nil && !msg.Read {
-				newCount++
-			}
+		newCount, err := storeFetchedMessages(database, mailboxID, msgs)
+		if err != nil {
+			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual}
 		}
 		unread, _ := database.CountUnread(mailboxID)
 		database.SetMailboxLastSynced(mailboxID, time.Now()) //nolint:errcheck
 		database.SetMailboxUnreadCount(mailboxID, unread)    //nolint:errcheck
 		return MailboxSyncedMsg{MailboxID: mailboxID, NewCount: newCount, Manual: manual}
 	}
+}
+
+func storeFetchedMessages(database *db.DB, mailboxID int64, msgs []db.Message) (int, error) {
+	newCount := 0
+	for _, msg := range msgs {
+		msg.MailboxID = mailboxID
+		if err := database.UpsertMessage(msg); err != nil {
+			return newCount, err
+		}
+		if !msg.Read {
+			newCount++
+		}
+	}
+	return newCount, nil
 }
 
 func (m *Model) maybeCheckForUpdatesCmd(manual bool) tea.Cmd {
@@ -2889,6 +2917,7 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 func (m Model) newAccountManager() AccountManager {
 	am := NewAccountManager(m.db)
 	am.mode = amList
+	am.setData(m.accounts, m.mailboxes, m.cfg.Accounts)
 	return am
 }
 

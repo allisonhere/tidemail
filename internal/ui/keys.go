@@ -40,9 +40,10 @@ type KeyMap struct {
 	ContentSearch key.Binding
 
 	// Account manager specific
-	Add    key.Binding
-	Edit   key.Binding
-	Delete key.Binding
+	Add         key.Binding
+	Edit        key.Binding
+	Delete      key.Binding
+	TestAccount key.Binding
 
 	// Overlay / input
 	Confirm   key.Binding
@@ -91,9 +92,10 @@ var DefaultKeys = KeyMap{
 	SaveMD:        key.NewBinding(key.WithKeys("M"), key.WithHelp("M", "save .md")),
 	ContentSearch: key.NewBinding(key.WithKeys("ctrl+f"), key.WithHelp("ctrl+f", "find")),
 
-	Add:    key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
-	Edit:   key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
-	Delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
+	Add:         key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
+	Edit:        key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
+	Delete:      key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
+	TestAccount: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "test")),
 
 	Confirm:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
 	Cancel:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),

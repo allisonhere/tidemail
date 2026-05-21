@@ -37,6 +37,12 @@ func (db *DB) ListMessages(mailboxID int64) ([]Message, error) {
 	return scanMessages(rows)
 }
 
+func (db *DB) CountMessages(mailboxID int64) (int64, error) {
+	var n int64
+	err := db.QueryRow(`SELECT COUNT(*) FROM messages WHERE mailbox_id = ?`, mailboxID).Scan(&n)
+	return n, err
+}
+
 func (db *DB) ListUnreadMessages(mailboxID int64) ([]Message, error) {
 	rows, err := db.Query(`
 		SELECT id, mailbox_id, uid, message_id, subject, from_addr, to_addr, cc_addr,

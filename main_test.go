@@ -38,3 +38,11 @@ func TestResolvedVersionFromBuildInfoFallsBackToRevision(t *testing.T) {
 		t.Fatalf("expected short dirty revision fallback, got %q", got)
 	}
 }
+
+func TestParseStartupOptionsPrototypeForms(t *testing.T) {
+	opts := parseStartupOptions([]string{"--prototype-forms"})
+
+	if !opts.prototypeForms {
+		t.Fatal("expected --prototype-forms to enable prototype form mode")
+	}
+}

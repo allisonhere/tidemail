@@ -289,6 +289,7 @@ type AccountManager struct {
 
 	accounts  []db.Account
 	mailboxes []db.Mailbox
+	configs   []config.AccountConfig
 	cursor    int
 
 	mode amMode
@@ -335,9 +336,10 @@ func newAMInput(placeholder string, password bool) textinput.Model {
 	return ti
 }
 
-func (am *AccountManager) setData(accounts []db.Account, mailboxes []db.Mailbox) {
+func (am *AccountManager) setData(accounts []db.Account, mailboxes []db.Mailbox, configs []config.AccountConfig) {
 	am.accounts = accounts
 	am.mailboxes = mailboxes
+	am.configs = configs
 	am.cursor = clamp(am.cursor, 0, max(0, len(accounts)-1))
 }
 
@@ -425,6 +427,25 @@ func (am AccountManager) selectedAccount() *db.Account {
 	return &am.accounts[am.cursor]
 }
 
+func (am AccountManager) configForAccount(acc db.Account) (config.AccountConfig, bool) {
+	for _, acfg := range am.configs {
+		if acfg.Name == acc.Name {
+			return acfg, true
+		}
+	}
+	return config.AccountConfig{}, false
+}
+
+func (am AccountManager) statusForeground(chrome managerChrome) lipgloss.Color {
+	msg := strings.ToUpper(strings.TrimSpace(am.statusMsg))
+	switch {
+	case strings.HasPrefix(msg, "CONNECTED:"), strings.HasPrefix(msg, "SAVED:"), strings.HasPrefix(msg, "DELETED"):
+		return chrome.successFg
+	default:
+		return chrome.errorFg
+	}
+}
+
 func (am AccountManager) Update(msg tea.Msg, keys KeyMap) (AccountManager, tea.Cmd, bool) {
 	switch am.mode {
 	case amList:
@@ -464,7 +485,11 @@ func (am AccountManager) updateList(msg tea.Msg, keys KeyMap) (AccountManager, t
 			am.editAccountID = acc.ID
 			am.resetForm()
 			am.focusField(amFieldName)
-			am.nameInput.SetValue(acc.Name)
+			if acfg, ok := am.configForAccount(*acc); ok {
+				am.populateFormFrom(acfg)
+			} else {
+				am.nameInput.SetValue(acc.Name)
+			}
 		}
 	case keyMatches(km, keys.Delete):
 		if am.selectedAccount() != nil {
@@ -506,6 +531,8 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 	case keyMatches(km, keys.Cancel):
 		am.mode = amList
 		am.statusMsg = ""
+	case keyMatches(km, keys.TestAccount):
+		return am.testForm()
 	case keyMatches(km, keys.Tab):
 		am.advanceField(1)
 	case keyMatches(km, keys.Backspace):
@@ -558,22 +585,39 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 
 func (am AccountManager) submitForm() (AccountManager, tea.Cmd, bool) {
 	acfg := am.buildCfg()
-	if acfg.Name == "" {
-		am.statusMsg = "NAME IS REQUIRED"
-		return am, nil, false
-	}
-	if acfg.IMAPHost == "" {
-		am.statusMsg = "IMAP HOST IS REQUIRED"
-		return am, nil, false
-	}
-	if acfg.User == "" {
-		am.statusMsg = "USERNAME IS REQUIRED"
+	if status := validateAccountForConnect(acfg); status != "" {
+		am.statusMsg = status
 		return am, nil, false
 	}
 	am.busy = true
 	am.busyMsg = "CONNECTING TO IMAP..."
 	am.statusMsg = ""
 	return am, saveAccountCmd(am.db, acfg, am.editAccountID), false
+}
+
+func (am AccountManager) testForm() (AccountManager, tea.Cmd, bool) {
+	acfg := am.buildCfg()
+	if status := validateAccountForConnect(acfg); status != "" {
+		am.statusMsg = status
+		return am, nil, false
+	}
+	am.busy = true
+	am.busyMsg = "TESTING ACCOUNT..."
+	am.statusMsg = ""
+	return am, testAccountCmd(acfg), false
+}
+
+func validateAccountForConnect(acfg config.AccountConfig) string {
+	if acfg.Name == "" {
+		return "NAME IS REQUIRED"
+	}
+	if acfg.IMAPHost == "" {
+		return "IMAP HOST IS REQUIRED"
+	}
+	if acfg.User == "" {
+		return "USERNAME IS REQUIRED"
+	}
+	return ""
 }
 
 func (am AccountManager) updateConfirmDelete(msg tea.Msg, keys KeyMap) (AccountManager, tea.Cmd, bool) {
@@ -696,7 +740,7 @@ func (am AccountManager) viewList(width, height int, chrome managerChrome, style
 	if am.statusMsg != "" {
 		statusLine = lipgloss.NewStyle().
 			Background(chrome.baseBg).
-			Foreground(chrome.errorFg).
+			Foreground(am.statusForeground(chrome)).
 			Width(width).
 			Padding(0, 1).
 			Render(am.statusMsg)
@@ -777,7 +821,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 	if am.statusMsg != "" {
 		statusLine = lipgloss.NewStyle().
 			Background(chrome.baseBg).
-			Foreground(chrome.errorFg).
+			Foreground(am.statusForeground(chrome)).
 			Width(width).
 			Padding(0, 1).
 			Render(am.statusMsg)
@@ -803,7 +847,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 	if am.busy {
 		actionPairs = []string{}
 	} else {
-		actionPairs = []string{"enter", "next / save", "esc", "cancel"}
+		actionPairs = []string{"enter", "next / save", "t", "test", "esc", "cancel"}
 	}
 	actions := renderManagerActions(width, chrome, actionPairs...)
 
@@ -887,6 +931,25 @@ func saveAccountCmd(database *db.DB, acfg config.AccountConfig, editID int64) te
 		}
 
 		return AccountSavedMsg{Account: account, Mailboxes: mailboxes, AccountCfg: acfg}
+	}
+}
+
+func testAccountCmd(acfg config.AccountConfig) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+
+		client := imap.New(acfg)
+		if err := client.Connect(ctx); err != nil {
+			return AccountTestedMsg{Err: fmt.Errorf("IMAP connect failed: %w", err)}
+		}
+		defer client.Close()
+
+		infos, err := client.ListMailboxes(ctx)
+		if err != nil {
+			return AccountTestedMsg{Err: fmt.Errorf("list mailboxes: %w", err)}
+		}
+		return AccountTestedMsg{MailboxCount: len(infos)}
 	}
 }
 
