@@ -451,6 +451,20 @@ func (am AccountManager) statusForeground(chrome managerChrome) lipgloss.Color {
 	}
 }
 
+func (am AccountManager) redactSensitive(s string) string {
+	return am.redactSensitiveWithAccounts(s, nil)
+}
+
+func (am AccountManager) redactSensitiveWithAccounts(s string, extraAccounts []config.AccountConfig) string {
+	cfg := config.DefaultConfig()
+	cfg.Accounts = append(cfg.Accounts, am.configs...)
+	cfg.Accounts = append(cfg.Accounts, extraAccounts...)
+	if pass := am.passInput.Value(); strings.TrimSpace(pass) != "" {
+		cfg.Accounts = append(cfg.Accounts, config.AccountConfig{Password: pass})
+	}
+	return config.RedactSecrets(s, cfg)
+}
+
 func (am AccountManager) Update(msg tea.Msg, keys KeyMap) (AccountManager, tea.Cmd, bool) {
 	switch am.mode {
 	case amList:
@@ -919,7 +933,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 			Foreground(am.statusForeground(chrome)).
 			Width(width).
 			Padding(0, 1).
-			Render(am.statusMsg)
+			Render(am.redactSensitive(am.statusMsg))
 	}
 	if am.busyMsg != "" {
 		statusLine = lipgloss.NewStyle().
@@ -927,7 +941,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 			Foreground(chrome.pendingFg).
 			Width(width).
 			Padding(0, 1).
-			Render(am.busyMsg)
+			Render(am.redactSensitive(am.busyMsg))
 	}
 
 	bodyH := max(1, height-lipgloss.Height(header)-4)

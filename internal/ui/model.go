@@ -477,8 +477,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.accountManager.busyMsg = ""
 		m.accountManager.statusMsg = ""
 		if msg.Err != nil {
-			m.accountManager.statusMsg = fmt.Sprintf("SAVE FAILED: %v", msg.Err)
-			m.setStatus(fmt.Sprintf("save failed: %v", msg.Err), true)
+			detail := m.accountManager.redactSensitiveWithAccounts(msg.Err.Error(), []config.AccountConfig{msg.AccountCfg})
+			m.accountManager.statusMsg = fmt.Sprintf("SAVE FAILED: %s", detail)
+			m.setStatus(fmt.Sprintf("save failed: %s", detail), true)
 			return m, m.clearStatusCmd()
 		}
 		// Update config with new account
@@ -507,7 +508,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.accountManager.busy = false
 		m.accountManager.busyMsg = ""
 		if msg.Err != nil {
-			m.accountManager.statusMsg = fmt.Sprintf("TEST FAILED: %v", msg.Err)
+			detail := m.accountManager.redactSensitive(msg.Err.Error())
+			m.accountManager.statusMsg = fmt.Sprintf("TEST FAILED: %s", detail)
 			return m, nil
 		}
 		m.accountManager.statusMsg = fmt.Sprintf("CONNECTED: %d MAILBOXES", msg.MailboxCount)

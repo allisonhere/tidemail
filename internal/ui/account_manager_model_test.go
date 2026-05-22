@@ -271,6 +271,47 @@ func TestAccountTestResultUpdatesManagerStatus(t *testing.T) {
 	}
 }
 
+func TestAccountManagerRedactsPasswordFromFailureStatus(t *testing.T) {
+	am := NewAccountManager(nil)
+	am.passInput.SetValue("mail-secret")
+	m := Model{
+		keys:           DefaultKeys,
+		accountManager: am,
+	}
+
+	next, _ := m.Update(AccountTestedMsg{Err: errors.New("login failed for mail-secret")})
+	m = next.(Model)
+	if strings.Contains(m.accountManager.statusMsg, "mail-secret") {
+		t.Fatalf("expected password to be redacted from test status, got %q", m.accountManager.statusMsg)
+	}
+	if !strings.Contains(m.accountManager.statusMsg, "[redacted]") {
+		t.Fatalf("expected redaction marker in test status, got %q", m.accountManager.statusMsg)
+	}
+
+	next, _ = m.Update(AccountSavedMsg{AccountCfg: config.AccountConfig{Password: "save-secret"}, Err: errors.New("login failed for save-secret")})
+	m = next.(Model)
+	if strings.Contains(m.accountManager.statusMsg, "save-secret") {
+		t.Fatalf("expected password to be redacted from save status, got %q", m.accountManager.statusMsg)
+	}
+}
+
+func TestAccountManagerViewDoesNotRenderPassword(t *testing.T) {
+	am := NewAccountManager(nil)
+	am.mode = amEdit
+	am.focusField(amFieldPass)
+	am.passInput.SetValue("mail-secret")
+	am.statusMsg = "TEST FAILED: mail-secret rejected"
+	chrome := newManagerChrome(80, CatppuccinMocha, false)
+
+	view := am.viewForm(80, 30, chrome, "EDIT ACCOUNT")
+	if strings.Contains(view, "mail-secret") {
+		t.Fatalf("expected rendered account form to hide password, got %q", view)
+	}
+	if !strings.Contains(view, "[redacted]") {
+		t.Fatalf("expected rendered account form status to show redaction marker, got %q", view)
+	}
+}
+
 func TestAccountManagerConnectedStatusUsesSuccessColor(t *testing.T) {
 	chrome := newManagerChrome(80, CatppuccinMocha, false)
 
