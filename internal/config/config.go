@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -158,17 +159,71 @@ func Save(cfg Config) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 
-	f, err := os.Create(path)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
+	if err := f.Chmod(0o600); err != nil {
+		return err
+	}
 
 	return toml.NewEncoder(f).Encode(cfg)
+}
+
+func SecurityWarnings() ([]string, error) {
+	path, err := configPath()
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		return []string{fmt.Sprintf("config file %s may contain passwords/API keys and is readable by other users; run: chmod 600 %s", path, path)}, nil
+	}
+	return nil, nil
+}
+
+func RedactSecrets(s string, cfg Config) string {
+	for _, secret := range secretValues(cfg) {
+		s = strings.ReplaceAll(s, secret, "[redacted]")
+	}
+	return s
+}
+
+func secretValues(cfg Config) []string {
+	seen := map[string]struct{}{}
+	var secrets []string
+	add := func(secret string) {
+		secret = strings.TrimSpace(secret)
+		if secret == "" {
+			return
+		}
+		if _, ok := seen[secret]; ok {
+			return
+		}
+		seen[secret] = struct{}{}
+		secrets = append(secrets, secret)
+	}
+	add(cfg.AI.OpenAIKey)
+	add(cfg.AI.ClaudeKey)
+	add(cfg.AI.GeminiKey)
+	for _, account := range cfg.Accounts {
+		add(account.Password)
+	}
+	return secrets
 }
 
 func configPath() (string, error) {

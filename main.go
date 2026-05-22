@@ -46,8 +46,15 @@ func main() {
 
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "warning: could not load config:", err)
+		fmt.Fprintln(os.Stderr, "warning: could not load config:", config.RedactSecrets(err.Error(), cfg))
 		cfg = config.DefaultConfig()
+	}
+	if warnings, err := config.SecurityWarnings(); err != nil {
+		fmt.Fprintln(os.Stderr, "warning: could not check config permissions:", config.RedactSecrets(err.Error(), cfg))
+	} else {
+		for _, warning := range warnings {
+			fmt.Fprintln(os.Stderr, "warning:", config.RedactSecrets(warning, cfg))
+		}
 	}
 
 	if setBG, resetBG := ui.TerminalBackgroundSequences(cfg.Theme); setBG != "" {
@@ -61,7 +68,7 @@ func main() {
 	} else {
 		database, err := db.Open()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "error opening database:", err)
+			fmt.Fprintln(os.Stderr, "error opening database:", config.RedactSecrets(err.Error(), cfg))
 			os.Exit(1)
 		}
 		defer database.Close()
@@ -78,13 +85,12 @@ func main() {
 	defer func() {
 		if r := recover(); r != nil {
 			p.Kill()
-			fmt.Fprintln(os.Stderr, "panic:", r)
+			fmt.Fprintln(os.Stderr, "panic:", config.RedactSecrets(fmt.Sprint(r), cfg))
 			os.Exit(1)
 		}
 	}()
-
 	if _, err := p.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+		fmt.Fprintln(os.Stderr, "error:", config.RedactSecrets(err.Error(), cfg))
 		os.Exit(1)
 	}
 }

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -44,6 +45,71 @@ func TestDefaultConfigIncludesUpdateDefaults(t *testing.T) {
 	}
 	if len(cfg.Accounts) != 0 {
 		t.Fatalf("expected default accounts to be empty, got %#v", cfg.Accounts)
+	}
+}
+
+func TestSaveWritesPrivateConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	cfg := DefaultConfig()
+	cfg.Accounts = []AccountConfig{{Name: "Personal", User: "alice@example.com", Password: "secret"}}
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save returned error: %v", err)
+	}
+
+	cfgPath := filepath.Join(dir, "tidemail", "config.toml")
+	info, err := os.Stat(cfgPath)
+	if err != nil {
+		t.Fatalf("stat config: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("expected config file mode 0600, got %04o", got)
+	}
+
+	dirInfo, err := os.Stat(filepath.Dir(cfgPath))
+	if err != nil {
+		t.Fatalf("stat config dir: %v", err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o700 {
+		t.Fatalf("expected config dir mode 0700, got %04o", got)
+	}
+}
+
+func TestSecurityWarningsDetectsReadableConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cfgPath := filepath.Join(dir, "tidemail", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	if err := os.WriteFile(cfgPath, []byte("theme = \"dracula\"\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	warnings, err := SecurityWarnings()
+	if err != nil {
+		t.Fatalf("SecurityWarnings returned error: %v", err)
+	}
+	if len(warnings) != 1 {
+		t.Fatalf("expected one warning, got %d: %#v", len(warnings), warnings)
+	}
+	if !strings.Contains(warnings[0], "chmod 600") {
+		t.Fatalf("expected chmod guidance in warning, got %q", warnings[0])
+	}
+}
+
+func TestRedactSecretsRemovesConfiguredSecrets(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.AI.OpenAIKey = "openai-token"
+	cfg.Accounts = []AccountConfig{{Name: "Personal", Password: "mail-secret"}}
+
+	got := RedactSecrets("openai=openai-token password=mail-secret harmless=visible", cfg)
+	if strings.Contains(got, "openai-token") || strings.Contains(got, "mail-secret") {
+		t.Fatalf("expected secrets to be redacted, got %q", got)
+	}
+	if !strings.Contains(got, "harmless=visible") {
+		t.Fatalf("expected harmless text to remain, got %q", got)
 	}
 }
 
