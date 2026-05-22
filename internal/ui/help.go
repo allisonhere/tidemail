@@ -59,6 +59,16 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{keys.Add.Help().Key, "add account"},
 				{keys.Edit.Help().Key, "edit account"},
 				{keys.Delete.Help().Key, "delete account"},
+				{"Gmail/Yahoo/iCloud", "use app passwords, not primary account passwords"},
+			},
+		},
+		{
+			name: "Security",
+			entries: []entry{
+				{"config", "stored at ~/.config/tidemail/config.toml"},
+				{"permissions", "config dir 0700; config file 0600"},
+				{"startup", "warns when config is readable by other users"},
+				{"secrets", "passwords and API keys are redacted from errors/status"},
 			},
 		},
 		{

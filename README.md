@@ -27,7 +27,28 @@ go build -o tidemail .
 
 Config is stored in `~/.config/tidemail/config.toml`. The local SQLite cache is stored in `~/.local/share/tidemail/mail.db` unless `XDG_DATA_HOME` changes that path.
 
-Open account management with `m`, add an IMAP/SMTP account, then sync with `f` or `F`. Passwords are currently stored in the config file, so treat it like a secret and keep file permissions restrictive.
+Open account management with `m`, add an IMAP/SMTP account, then sync the selected mailbox with `f` or all mailboxes with `F`. Accounts present in `config.toml` are imported into the account manager automatically on startup.
+
+## Credential safety
+
+TideMail currently stores IMAP/SMTP passwords and AI API keys in the local config file. Treat `~/.config/tidemail/config.toml` like a secret.
+
+Recommended setup:
+
+```bash
+chmod 700 ~/.config/tidemail
+chmod 600 ~/.config/tidemail/config.toml
+```
+
+TideMail now writes the config directory as `0700` and the config file as `0600` when it saves settings. On startup it warns if an existing config file is readable by other users. Passwords and AI API keys are redacted from startup errors, runtime status messages, and account-manager test/save failures.
+
+For hosted providers, use provider-specific app passwords rather than your primary account password:
+
+- Gmail: Google Account → Security → App passwords
+- Yahoo: Account Security → Generate app password
+- iCloud: Apple ID → Sign-In and Security → App-Specific Passwords
+
+If you paste or accidentally expose an app password, revoke it and create a new one.
 
 Example account config:
 
