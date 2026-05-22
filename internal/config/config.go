@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,15 +10,14 @@ import (
 )
 
 type Config struct {
-	Theme   string        `toml:"theme"`
-	Display DisplayConfig `toml:"display"`
-	Feed    FeedConfig    `toml:"feed"`
-	Updates UpdatesConfig `toml:"updates"`
-	AI      AIConfig      `toml:"ai"`
-	Source  SourceConfig  `toml:"source"`
+	Theme    string          `toml:"theme"`
+	Display  DisplayConfig   `toml:"display"`
+	Feed     FeedConfig      `toml:"feed"`
+	Updates  UpdatesConfig   `toml:"updates"`
+	AI       AIConfig        `toml:"ai"`
+	Accounts []AccountConfig `toml:"account"`
 }
 
-// RetroTerminalTweak holds optional #rrggbb overrides for vt52 / vt100 built-in themes (empty = default palette).
 type RetroTerminalTweak struct {
 	Bg     string `toml:"bg"`
 	Fg     string `toml:"fg"`
@@ -26,23 +26,19 @@ type RetroTerminalTweak struct {
 
 type DisplayConfig struct {
 	Icons             bool               `toml:"icons"`
-	DateFormat        string             `toml:"date_format"` // "relative" | "absolute"
+	DateFormat        string             `toml:"date_format"`
 	MarkReadOnOpen    bool               `toml:"mark_read_on_open"`
 	MarkReadOnFocus   bool               `toml:"mark_read_on_focus"`
 	FocusLine         bool               `toml:"focus_line"`
 	DefaultUnreadOnly bool               `toml:"default_unread_only"`
 	ActionableLinks   bool               `toml:"actionable_links"`
 	FilterLinks       bool               `toml:"filter_links"`
-	ReadingWidth      int                `toml:"reading_width"` // 0 = no limit
+	ReadingWidth      int                `toml:"reading_width"`
 	ConfirmQuit       bool               `toml:"confirm_quit"`
 	Browser           string             `toml:"browser"`
-	Density           string             `toml:"density"` // "comfortable" | "compact"
+	Density           string             `toml:"density"`
 	VT52              RetroTerminalTweak `toml:"vt52"`
 	VT100             RetroTerminalTweak `toml:"vt100"`
-}
-
-type FeedConfig struct {
-	MaxBodyMiB int `toml:"max_body_mib"`
 }
 
 type UpdatesConfig struct {
@@ -55,8 +51,12 @@ type UpdatesConfig struct {
 	AvailablePublished int64  `toml:"available_published_unix"`
 }
 
+type FeedConfig struct {
+	MaxBodyMiB int `toml:"max_body_mib"`
+}
+
 type AIConfig struct {
-	Provider            string `toml:"provider"` // "openai" | "claude" | "gemini" | "ollama" | ""
+	Provider            string `toml:"provider"`
 	OpenAIKey           string `toml:"openai_key"`
 	ClaudeKey           string `toml:"claude_key"`
 	GeminiKey           string `toml:"gemini_key"`
@@ -66,10 +66,27 @@ type AIConfig struct {
 	MarkReadOnSummarize bool   `toml:"mark_read_on_summarize"`
 }
 
-type SourceConfig struct {
-	GReaderURL      string `toml:"greader_url"`
-	GReaderLogin    string `toml:"greader_login"`
-	GReaderPassword string `toml:"greader_password"`
+type AccountConfig struct {
+	Name     string `toml:"name"`
+	Provider string `toml:"provider"`
+	IMAPHost string `toml:"imap_host"`
+	IMAPPort int    `toml:"imap_port"`
+	IMAPTLS  bool   `toml:"imap_tls"`
+	SMTPHost string `toml:"smtp_host"`
+	SMTPPort int    `toml:"smtp_port"`
+	SMTPTLS  bool   `toml:"smtp_tls"`
+	User     string `toml:"user"`
+	Password string `toml:"password"`
+	From     string `toml:"from"`
+}
+
+func DefaultAccountConfig() AccountConfig {
+	return AccountConfig{
+		IMAPPort: 993,
+		IMAPTLS:  true,
+		SMTPPort: 587,
+		SMTPTLS:  true,
+	}
 }
 
 func DefaultConfig() Config {
@@ -83,19 +100,18 @@ func DefaultConfig() Config {
 			Density:        "compact",
 			ConfirmQuit:    true,
 		},
-		Feed: FeedConfig{
-			MaxBodyMiB: 10,
-		},
 		Updates: UpdatesConfig{
 			CheckOnStartup:     true,
 			CheckIntervalHours: 24,
+		},
+		Feed: FeedConfig{
+			MaxBodyMiB: 10,
 		},
 		AI: AIConfig{
 			OllamaURL:   "http://localhost:11434",
 			OllamaModel: "llama3.2",
 			SavePath:    "~/",
 		},
-		Source: SourceConfig{},
 	}
 }
 
@@ -113,27 +129,15 @@ func Load() (Config, error) {
 		return DefaultConfig(), err
 	}
 
-	// Start from defaults so missing keys keep their default values.
 	cfg := DefaultConfig()
 	if _, err := toml.Decode(string(data), &cfg); err != nil {
 		return DefaultConfig(), err
-	}
-	if cfg.Feed.MaxBodyMiB <= 0 {
-		cfg.Feed.MaxBodyMiB = DefaultConfig().Feed.MaxBodyMiB
 	}
 	if cfg.Updates.CheckIntervalHours <= 0 {
 		cfg.Updates.CheckIntervalHours = DefaultConfig().Updates.CheckIntervalHours
 	}
 	cfg.Display.Density = NormalizeDisplayDensity(cfg.Display.Density)
 	return cfg, nil
-}
-
-// NormalizeDisplayDensity returns "comfortable" or "compact".
-// Empty or unrecognized values default to "compact".
-// IsRetroTerminalTheme is true for vt52 / vt100 (optional palette overrides in display config).
-func IsRetroTerminalTheme(name string) bool {
-	n := strings.ToLower(strings.TrimSpace(name))
-	return n == "vt52" || n == "vt100"
 }
 
 func NormalizeDisplayDensity(s string) string {
@@ -145,22 +149,81 @@ func NormalizeDisplayDensity(s string) string {
 	}
 }
 
+func IsRetroTerminalTheme(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	return n == "vt52" || n == "vt100"
+}
+
 func Save(cfg Config) error {
 	path, err := configPath()
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 
-	f, err := os.Create(path)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
+	if err := f.Chmod(0o600); err != nil {
+		return err
+	}
 
 	return toml.NewEncoder(f).Encode(cfg)
+}
+
+func SecurityWarnings() ([]string, error) {
+	path, err := configPath()
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		return []string{fmt.Sprintf("config file %s may contain passwords/API keys and is readable by other users; run: chmod 600 %s", path, path)}, nil
+	}
+	return nil, nil
+}
+
+func RedactSecrets(s string, cfg Config) string {
+	for _, secret := range secretValues(cfg) {
+		s = strings.ReplaceAll(s, secret, "[redacted]")
+	}
+	return s
+}
+
+func secretValues(cfg Config) []string {
+	seen := map[string]struct{}{}
+	var secrets []string
+	add := func(secret string) {
+		secret = strings.TrimSpace(secret)
+		if secret == "" {
+			return
+		}
+		if _, ok := seen[secret]; ok {
+			return
+		}
+		seen[secret] = struct{}{}
+		secrets = append(secrets, secret)
+	}
+	add(cfg.AI.OpenAIKey)
+	add(cfg.AI.ClaudeKey)
+	add(cfg.AI.GeminiKey)
+	for _, account := range cfg.Accounts {
+		add(account.Password)
+	}
+	return secrets
 }
 
 func configPath() (string, error) {
@@ -172,5 +235,5 @@ func configPath() (string, error) {
 	if xdg == "" {
 		xdg = filepath.Join(home, ".config")
 	}
-	return filepath.Join(xdg, "rss", "config.toml"), nil
+	return filepath.Join(xdg, "tidemail", "config.toml"), nil
 }

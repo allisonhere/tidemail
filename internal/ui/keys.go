@@ -12,8 +12,8 @@ type KeyMap struct {
 	Enter    key.Binding
 	Back     key.Binding
 
-	Refresh     key.Binding
-	RefreshAll  key.Binding
+	Sync        key.Binding
+	SyncAll     key.Binding
 	MarkRead    key.Binding
 	MarkAllRead key.Binding
 	OpenBrowser key.Binding
@@ -21,28 +21,30 @@ type KeyMap struct {
 	PrevLink    key.Binding
 	Search      key.Binding
 	UnreadOnly  key.Binding
+	Compose     key.Binding
+	Reply       key.Binding
+	Archive     key.Binding
+	Command     key.Binding
 
-	FeedManager   key.Binding
-	ThemePicker   key.Binding
-	Settings      key.Binding
-	UpdateInstall key.Binding
-	UpdateIgnore  key.Binding
-	Help          key.Binding
-	Quit          key.Binding
+	AccountManager key.Binding
+	ThemePicker    key.Binding
+	Settings       key.Binding
+	UpdateInstall  key.Binding
+	UpdateIgnore   key.Binding
+	Help           key.Binding
+	Quit           key.Binding
 
-	Summary       key.Binding // fetch/show AI summary (articles or content pane)
-	CopyText      key.Binding // copy summary to clipboard
-	SaveMD        key.Binding // save summary as .md file
-	ContentSearch key.Binding // find text in the current article
+	Summary       key.Binding
+	CopyText      key.Binding
+	SaveMD        key.Binding
+	ContentSearch key.Binding
 
-	// Feed manager specific
-	Add       key.Binding
-	AddFolder key.Binding
-	Edit      key.Binding
-	Delete    key.Binding
-	Import    key.Binding
-	Export    key.Binding
-	Move      key.Binding
+	// Account manager specific
+	Add         key.Binding
+	Edit        key.Binding
+	Delete      key.Binding
+	SaveAccount key.Binding
+	TestAccount key.Binding
 
 	// Overlay / input
 	Confirm   key.Binding
@@ -64,8 +66,8 @@ var DefaultKeys = KeyMap{
 	Enter:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open")),
 	Back:     key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 
-	Refresh:     key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "refresh feed")),
-	RefreshAll:  key.NewBinding(key.WithKeys("F", "I"), key.WithHelp("F/I", "refresh all")),
+	Sync:        key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "sync mailbox")),
+	SyncAll:     key.NewBinding(key.WithKeys("F"), key.WithHelp("F", "sync all")),
 	MarkRead:    key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "mark read")),
 	MarkAllRead: key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "mark all read")),
 	OpenBrowser: key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser")),
@@ -73,27 +75,29 @@ var DefaultKeys = KeyMap{
 	PrevLink:    key.NewBinding(key.WithKeys("ctrl+p", "alt+p"), key.WithHelp("ctrl+p", "prev link")),
 	Search:      key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
 	UnreadOnly:  key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "toggle unread only")),
+	Compose:     key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "compose")),
+	Reply:       key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reply")),
+	Archive:     key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),
+	Command:     key.NewBinding(key.WithKeys("p", ":"), key.WithHelp("p", "command")),
 
-	FeedManager:   key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "feed manager")),
-	ThemePicker:   key.NewBinding(key.WithKeys("T"), key.WithHelp("T", "theme picker")),
-	Settings:      key.NewBinding(key.WithKeys("S"), key.WithHelp("S", "settings")),
-	UpdateInstall: key.NewBinding(key.WithKeys("U"), key.WithHelp("U", "install update")),
-	UpdateIgnore:  key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "ignore update")),
-	Help:          key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
-	Quit:          key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
+	AccountManager: key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "accounts")),
+	ThemePicker:    key.NewBinding(key.WithKeys("T"), key.WithHelp("T", "theme picker")),
+	Settings:       key.NewBinding(key.WithKeys("S"), key.WithHelp("S", "settings")),
+	UpdateInstall:  key.NewBinding(key.WithKeys("U"), key.WithHelp("U", "install update")),
+	UpdateIgnore:   key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "ignore update")),
+	Help:           key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
+	Quit:           key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 
 	Summary:       key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "AI summary")),
-	CopyText:      key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "copy")),
+	CopyText:      key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "copy")),
 	SaveMD:        key.NewBinding(key.WithKeys("M"), key.WithHelp("M", "save .md")),
 	ContentSearch: key.NewBinding(key.WithKeys("ctrl+f"), key.WithHelp("ctrl+f", "find")),
 
-	Add:       key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
-	AddFolder: key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "add folder")),
-	Edit:      key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
-	Delete:    key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
-	Import:    key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "import OPML")),
-	Export:    key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "export OPML")),
-	Move:      key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "move to folder")),
+	Add:         key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
+	Edit:        key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
+	Delete:      key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
+	SaveAccount: key.NewBinding(key.WithKeys("ctrl+s", "f2"), key.WithHelp("ctrl+s", "save")),
+	TestAccount: key.NewBinding(key.WithKeys("ctrl+t", "f5"), key.WithHelp("ctrl+t", "test")),
 
 	Confirm:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
 	Cancel:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),

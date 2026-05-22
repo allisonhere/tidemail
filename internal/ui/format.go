@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -251,6 +252,15 @@ func splitSentences(s string) []string {
 		return []string{s}
 	}
 	return sentences
+}
+
+func renderHTMLBody(html string, width int, plainUI bool) string {
+	converter := md.NewConverter("", true, nil)
+	markdown, err := converter.ConvertString(html)
+	if err != nil || strings.TrimSpace(markdown) == "" {
+		return ""
+	}
+	return renderMarkdown(markdown, width, plainUI)
 }
 
 func isNumberedListItem(s string) bool {

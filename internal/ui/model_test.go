@@ -1,3 +1,5 @@
+//go:build rsslegacy
+
 package ui
 
 import (

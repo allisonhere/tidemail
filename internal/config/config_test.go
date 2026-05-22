@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -42,8 +43,73 @@ func TestDefaultConfigIncludesUpdateDefaults(t *testing.T) {
 	if cfg.Updates.CheckIntervalHours != 24 {
 		t.Fatalf("expected 24 hour update interval, got %d", cfg.Updates.CheckIntervalHours)
 	}
-	if cfg.Source != (SourceConfig{}) {
-		t.Fatalf("expected default source config to be empty, got %#v", cfg.Source)
+	if len(cfg.Accounts) != 0 {
+		t.Fatalf("expected default accounts to be empty, got %#v", cfg.Accounts)
+	}
+}
+
+func TestSaveWritesPrivateConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	cfg := DefaultConfig()
+	cfg.Accounts = []AccountConfig{{Name: "Personal", User: "alice@example.com", Password: "secret"}}
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save returned error: %v", err)
+	}
+
+	cfgPath := filepath.Join(dir, "tidemail", "config.toml")
+	info, err := os.Stat(cfgPath)
+	if err != nil {
+		t.Fatalf("stat config: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("expected config file mode 0600, got %04o", got)
+	}
+
+	dirInfo, err := os.Stat(filepath.Dir(cfgPath))
+	if err != nil {
+		t.Fatalf("stat config dir: %v", err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o700 {
+		t.Fatalf("expected config dir mode 0700, got %04o", got)
+	}
+}
+
+func TestSecurityWarningsDetectsReadableConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cfgPath := filepath.Join(dir, "tidemail", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	if err := os.WriteFile(cfgPath, []byte("theme = \"dracula\"\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	warnings, err := SecurityWarnings()
+	if err != nil {
+		t.Fatalf("SecurityWarnings returned error: %v", err)
+	}
+	if len(warnings) != 1 {
+		t.Fatalf("expected one warning, got %d: %#v", len(warnings), warnings)
+	}
+	if !strings.Contains(warnings[0], "chmod 600") {
+		t.Fatalf("expected chmod guidance in warning, got %q", warnings[0])
+	}
+}
+
+func TestRedactSecretsRemovesConfiguredSecrets(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.AI.OpenAIKey = "openai-token"
+	cfg.Accounts = []AccountConfig{{Name: "Personal", Password: "mail-secret"}}
+
+	got := RedactSecrets("openai=openai-token password=mail-secret harmless=visible", cfg)
+	if strings.Contains(got, "openai-token") || strings.Contains(got, "mail-secret") {
+		t.Fatalf("expected secrets to be redacted, got %q", got)
+	}
+	if !strings.Contains(got, "harmless=visible") {
+		t.Fatalf("expected harmless text to remain, got %q", got)
 	}
 }
 
@@ -51,7 +117,7 @@ func TestLoadPreservesUpdateConfig(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
-	cfgPath := filepath.Join(dir, "rss", "config.toml")
+	cfgPath := filepath.Join(dir, "tidemail", "config.toml")
 	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
 		t.Fatalf("mkdir config dir: %v", err)
 	}
@@ -67,9 +133,6 @@ focus_line = false
 browser = ""
 density = "compact"
 
-[feed]
-max_body_mib = 10
-
 [updates]
 check_on_startup = false
 check_interval_hours = 12
@@ -79,10 +142,17 @@ available_version = "v1.3.0"
 available_summary = "New version available."
 available_published_unix = 1710001234
 
-[source]
-greader_url = "https://rss.example.com/api/greader.php"
-greader_login = "alice"
-greader_password = "secret"
+[[account]]
+name = "Personal"
+imap_host = "imap.example.com"
+imap_port = 993
+imap_tls = true
+smtp_host = "smtp.example.com"
+smtp_port = 587
+smtp_tls = true
+user = "alice"
+password = "secret"
+from = "alice@example.com"
 `
 	if err := os.WriteFile(cfgPath, []byte(data), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -113,14 +183,20 @@ greader_password = "secret"
 	if cfg.Updates.AvailablePublished != 1710001234 {
 		t.Fatalf("unexpected available_published_unix: %d", cfg.Updates.AvailablePublished)
 	}
-	if cfg.Source.GReaderURL != "https://rss.example.com/api/greader.php" {
-		t.Fatalf("unexpected greader_url: %q", cfg.Source.GReaderURL)
+	if len(cfg.Accounts) != 1 {
+		t.Fatalf("expected one account, got %d", len(cfg.Accounts))
 	}
-	if cfg.Source.GReaderLogin != "alice" {
-		t.Fatalf("unexpected greader_login: %q", cfg.Source.GReaderLogin)
+	if cfg.Accounts[0].Name != "Personal" {
+		t.Fatalf("unexpected account name: %q", cfg.Accounts[0].Name)
 	}
-	if cfg.Source.GReaderPassword != "secret" {
-		t.Fatalf("unexpected greader_password: %q", cfg.Source.GReaderPassword)
+	if cfg.Accounts[0].IMAPHost != "imap.example.com" {
+		t.Fatalf("unexpected imap host: %q", cfg.Accounts[0].IMAPHost)
+	}
+	if cfg.Accounts[0].User != "alice" {
+		t.Fatalf("unexpected account user: %q", cfg.Accounts[0].User)
+	}
+	if cfg.Accounts[0].Password != "secret" {
+		t.Fatalf("unexpected account password: %q", cfg.Accounts[0].Password)
 	}
 	if cfg.Display.Density != "compact" {
 		t.Fatalf("expected display density compact, got %q", cfg.Display.Density)

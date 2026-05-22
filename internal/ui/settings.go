@@ -1040,7 +1040,7 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 
 	case sfUpdateManualCommand:
 		switch {
-		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) || keyMatches(key, keys.CopyText):
+		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) || keyMatches(key, keys.CopyText) || key.String() == "c":
 			s.action = settingsActionCopyManualInstall
 		case keyMatches(key, keys.Down):
 			s.setFocusedField(s.nextField())

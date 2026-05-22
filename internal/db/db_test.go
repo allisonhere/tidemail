@@ -2,7 +2,6 @@ package db
 
 import (
 	"database/sql"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -10,445 +9,339 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func TestOpenMigratesLegacyConfigDB(t *testing.T) {
+func TestDBAccountsMailboxesAndMessages(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmp, ".config"))
-	t.Setenv("XDG_DATA_HOME", filepath.Join(tmp, ".local", "share"))
-
-	legacyDir := filepath.Join(tmp, ".config", "rss")
-	if err := os.MkdirAll(legacyDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	legacy, err := openSQLite(filepath.Join(legacyDir, "rss.db"))
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := legacy.init(); err != nil {
+	defer database.Close()
+
+	if err := database.init(); err != nil {
 		t.Fatal(err)
 	}
 
-	feedID, err := legacy.AddFeed("https://example.com/feed.xml", "Example Feed", "desc")
+	accountID, err := database.AddAccount("Personal", "#7aa2f7")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := legacy.UpsertArticle(Article{
-		FeedID:      feedID,
-		GUID:        "article-1",
-		Title:       "Hello",
-		Link:        "https://example.com/hello",
-		Content:     "content",
-		PublishedAt: unixTime(1710000000),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	legacy.Close()
-
-	db, err := Open()
+	mailboxID, err := database.UpsertMailbox(Mailbox{
+		AccountID:   accountID,
+		Name:        "INBOX",
+		DisplayName: "Inbox",
+		Delimiter:   "/",
+		Flags:       []string{"\\HasNoChildren"},
+		UnreadCount: 2,
+		LastSynced:  time.Unix(1710000000, 0),
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	defer db.Close()
-
-	feeds, err := db.ListFeeds()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(feeds) != 1 {
-		t.Fatalf("expected 1 migrated feed, got %d", len(feeds))
-	}
-	if feeds[0].Title != "Example Feed" {
-		t.Fatalf("expected migrated title %q, got %q", "Example Feed", feeds[0].Title)
 	}
 
-	articles, err := db.ListArticles(feeds[0].ID)
+	msg := Message{
+		MailboxID:     mailboxID,
+		UID:           42,
+		MessageID:     "<hello@example.com>",
+		Subject:       "Hello",
+		From:          "Alice <alice@example.com>",
+		To:            "Bob <bob@example.com>",
+		Date:          time.Unix(1710000100, 0),
+		BodyText:      "Body",
+		Flags:         []string{"\\Seen"},
+		Read:          true,
+		HasAttachment: true,
+	}
+	if err := database.UpsertMessage(msg); err != nil {
+		t.Fatal(err)
+	}
+
+	accounts, err := database.ListAccounts()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(articles) != 1 {
-		t.Fatalf("expected 1 migrated article, got %d", len(articles))
+	if len(accounts) != 1 || accounts[0].Name != "Personal" {
+		t.Fatalf("unexpected accounts: %+v", accounts)
+	}
+
+	mailboxes, err := database.ListMailboxes(accountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mailboxes) != 1 || mailboxes[0].Name != "INBOX" {
+		t.Fatalf("unexpected mailboxes: %+v", mailboxes)
+	}
+	if got := mailboxes[0].Flags; len(got) != 1 || got[0] != "\\HasNoChildren" {
+		t.Fatalf("unexpected mailbox flags: %+v", got)
+	}
+
+	messages, err := database.ListMessages(mailboxID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("expected one message, got %d", len(messages))
+	}
+	if messages[0].Subject != "Hello" || !messages[0].Read || !messages[0].HasAttachment {
+		t.Fatalf("unexpected message: %+v", messages[0])
 	}
 }
 
-func TestDBFoldersCRUDAndFeedAssignment(t *testing.T) {
+func TestDBUnreadAndSummaryUpdates(t *testing.T) {
 	tmp := t.TempDir()
-	db, err := openSQLite(filepath.Join(tmp, "rss.db"))
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer database.Close()
 
-	if err := db.init(); err != nil {
+	if err := database.init(); err != nil {
 		t.Fatal(err)
 	}
 
-	folderID, err := db.AddFolder("Tech", "#7aa2f7")
+	accountID, err := database.AddAccount("Work", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	duplicateID, err := db.AddFolder(" tech ", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if duplicateID != folderID {
-		t.Fatalf("expected duplicate folder create to reuse %d, got %d", folderID, duplicateID)
-	}
-
-	feedID, err := db.AddFeed("https://example.com/feed.xml", "Example Feed", "desc")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.SetFeedFolder(feedID, folderID); err != nil {
-		t.Fatal(err)
-	}
-
-	feed, err := db.GetFeed(feedID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if feed.FolderID != folderID {
-		t.Fatalf("expected feed folder %d, got %d", folderID, feed.FolderID)
-	}
-	folders, err := db.ListFolders()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(folders) != 1 || folders[0].Color != "#7aa2f7" {
-		t.Fatalf("expected stored folder color, got %+v", folders)
-	}
-
-	if err := db.SetFolderColor(folderID, "#f7768e"); err != nil {
-		t.Fatal(err)
-	}
-	folders, err = db.ListFolders()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if folders[0].Color != "#f7768e" {
-		t.Fatalf("expected updated folder color, got %q", folders[0].Color)
-	}
-
-	if err := db.DeleteFolder(folderID); err != nil {
-		t.Fatal(err)
-	}
-	feed, err = db.GetFeed(feedID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if feed.FolderID != 0 {
-		t.Fatalf("expected deleted folder to clear feed assignment, got %d", feed.FolderID)
-	}
-}
-
-func TestListArticlesReturnsUnreadOnly(t *testing.T) {
-	tmp := t.TempDir()
-	db, err := openSQLite(filepath.Join(tmp, "rss.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
-	if err := db.init(); err != nil {
-		t.Fatal(err)
-	}
-
-	feedID, err := db.AddFeed("https://example.com/feed.xml", "Example Feed", "desc")
+	mailboxID, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	seed := []Article{
-		{
-			FeedID:      feedID,
-			GUID:        "old-unread",
-			Title:       "Old Unread",
-			Link:        "https://example.com/old-unread",
-			Content:     "old",
-			PublishedAt: unixTime(1710000000),
-		},
-		{
-			FeedID:      feedID,
-			GUID:        "new-read",
-			Title:       "New Read",
-			Link:        "https://example.com/new-read",
-			Content:     "read",
-			PublishedAt: unixTime(1710000200),
-		},
-		{
-			FeedID:      feedID,
-			GUID:        "new-unread",
-			Title:       "New Unread",
-			Link:        "https://example.com/new-unread",
-			Content:     "new",
-			PublishedAt: unixTime(1710000100),
-		},
-	}
-	for _, article := range seed {
-		if err := db.UpsertArticle(article); err != nil {
+	for _, msg := range []Message{
+		{MailboxID: mailboxID, UID: 1, Subject: "Old unread", Date: time.Unix(1710000000, 0)},
+		{MailboxID: mailboxID, UID: 2, Subject: "Read", Date: time.Unix(1710000100, 0), Read: true},
+		{MailboxID: mailboxID, UID: 3, Subject: "New unread", Date: time.Unix(1710000200, 0)},
+	} {
+		if err := database.UpsertMessage(msg); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	if _, err := db.Exec(`UPDATE articles SET read = 1 WHERE feed_id = ? AND guid = ?`, feedID, "new-read"); err != nil {
-		t.Fatal(err)
-	}
-
-	articles, err := db.ListArticles(feedID)
+	unread, err := database.ListUnreadMessages(mailboxID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(articles) != 3 {
-		t.Fatalf("expected 3 articles, got %d", len(articles))
+	if len(unread) != 2 {
+		t.Fatalf("expected two unread messages, got %d", len(unread))
 	}
-	if articles[0].GUID != "new-read" {
-		t.Fatalf("expected newest article first, got %q", articles[0].GUID)
+	if unread[0].Subject != "New unread" || unread[1].Subject != "Old unread" {
+		t.Fatalf("unexpected unread order: %+v", unread)
 	}
-	if !articles[0].Read {
-		t.Fatal("expected newest article to remain marked read")
+
+	if err := database.MarkRead(unread[0].ID, true); err != nil {
+		t.Fatal(err)
 	}
-	if articles[1].GUID != "new-unread" {
-		t.Fatalf("expected second-newest article second, got %q", articles[1].GUID)
+	count, err := database.CountUnread(mailboxID)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if articles[2].GUID != "old-unread" {
-		t.Fatalf("expected oldest article last, got %q", articles[2].GUID)
+	if count != 1 {
+		t.Fatalf("expected one unread message, got %d", count)
+	}
+
+	if err := database.SaveSummary(unread[1].ID, "summary"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := database.GetMessage(unread[1].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Summary != "summary" {
+		t.Fatalf("expected saved summary, got %q", got.Summary)
 	}
 }
 
-func TestOpenMigratesFolderSchemaToVersion5(t *testing.T) {
+func TestDBListUnifiedInboxUsesInboxMailboxesAcrossAccounts(t *testing.T) {
 	tmp := t.TempDir()
-	db, err := openSQLite(filepath.Join(tmp, "rss.db"))
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer database.Close()
 
-	if _, err := db.Exec(`
-		CREATE TABLE feeds (
-			id           INTEGER PRIMARY KEY AUTOINCREMENT,
-			url          TEXT    NOT NULL UNIQUE,
-			title        TEXT    NOT NULL DEFAULT '',
-			description  TEXT    NOT NULL DEFAULT '',
-			favicon_url  TEXT    NOT NULL DEFAULT '',
-			last_fetched INTEGER NOT NULL DEFAULT 0
-		);
-		CREATE TABLE articles (
-			id           INTEGER PRIMARY KEY AUTOINCREMENT,
-			feed_id      INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
-			guid         TEXT    NOT NULL,
-			title        TEXT    NOT NULL DEFAULT '',
-			link         TEXT    NOT NULL DEFAULT '',
-			content      TEXT    NOT NULL DEFAULT '',
-			published_at INTEGER NOT NULL DEFAULT 0,
-			read         INTEGER NOT NULL DEFAULT 0,
-			UNIQUE(feed_id, guid)
-		);
-		PRAGMA user_version = 1;
-	`); err != nil {
+	if err := database.init(); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := db.migrateSchema(); err != nil {
-		t.Fatal(err)
-	}
-
-	var version int
-	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
-		t.Fatal(err)
-	}
-	if version != 6 {
-		t.Fatalf("expected schema version 6, got %d", version)
-	}
-
-	rows, err := db.Query(`PRAGMA table_info(feeds)`)
+	personalID, err := database.AddAccount("Personal", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	workID, err := database.AddAccount("Work", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	personalInboxID, err := database.UpsertMailbox(Mailbox{AccountID: personalID, Name: "INBOX", Flags: []string{"\\HasNoChildren"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workInboxID, err := database.UpsertMailbox(Mailbox{AccountID: workID, Name: "Inbox", Flags: []string{"\\Inbox"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archiveID, err := database.UpsertMailbox(Mailbox{AccountID: personalID, Name: "Archive", Flags: []string{"\\Archive"}})
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	foundFolderID := false
-	foundCustomTitle := false
-	for rows.Next() {
-		var cid int
-		var name, typ string
-		var notNull, pk int
-		var dflt sql.NullString
-		if err := rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk); err != nil {
+	for _, msg := range []Message{
+		{MailboxID: personalInboxID, UID: 1, Subject: "Personal older", Date: time.Unix(1710000000, 0)},
+		{MailboxID: workInboxID, UID: 2, Subject: "Work newest", Date: time.Unix(1710000200, 0)},
+		{MailboxID: personalInboxID, UID: 3, Subject: "Personal read", Date: time.Unix(1710000300, 0), Read: true},
+		{MailboxID: archiveID, UID: 4, Subject: "Archived", Date: time.Unix(1710000400, 0)},
+	} {
+		if err := database.UpsertMessage(msg); err != nil {
 			t.Fatal(err)
 		}
-		if name == "folder_id" {
-			foundFolderID = true
-		}
-		if name == "custom_title" {
-			foundCustomTitle = true
-		}
 	}
-	if !foundFolderID {
-		t.Fatal("expected feeds.folder_id column after migration")
-	}
-	if !foundCustomTitle {
-		t.Fatal("expected feeds.custom_title column after migration")
-	}
-	rows.Close()
 
-	rows, err = db.Query(`PRAGMA table_info(folders)`)
+	all, err := database.ListUnifiedInbox(false)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	foundColor := false
-	for rows.Next() {
-		var cid int
-		var name, typ string
-		var notNull, pk int
-		var dflt sql.NullString
-		if err := rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk); err != nil {
-			t.Fatal(err)
-		}
-		if name == "color" {
-			foundColor = true
-			break
-		}
+	if len(all) != 3 {
+		t.Fatalf("expected three inbox messages, got %d: %+v", len(all), all)
 	}
-	if !foundColor {
-		t.Fatal("expected folders.color column after migration")
+	if all[0].Subject != "Personal read" || all[1].Subject != "Work newest" || all[2].Subject != "Personal older" {
+		t.Fatalf("unexpected unified inbox order: %+v", all)
 	}
-	rows.Close()
 
-	rows, err = db.Query(`PRAGMA table_info(remote_feed_prefs)`)
+	unread, err := database.ListUnifiedInbox(true)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	foundRemoteFeedID := false
-	foundRemoteFolderID := false
-	foundRemoteTitle := false
-	for rows.Next() {
-		var cid int
-		var name, typ string
-		var notNull, pk int
-		var dflt sql.NullString
-		if err := rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk); err != nil {
-			t.Fatal(err)
-		}
-		if name == "remote_feed_id" {
-			foundRemoteFeedID = true
-		}
-		if name == "folder_id" {
-			foundRemoteFolderID = true
-		}
-		if name == "title" {
-			foundRemoteTitle = true
-		}
+	if len(unread) != 2 {
+		t.Fatalf("expected two unread inbox messages, got %d: %+v", len(unread), unread)
 	}
-	if !foundRemoteFeedID || !foundRemoteFolderID || !foundRemoteTitle {
-		t.Fatalf("expected remote_feed_prefs columns after migration, found remote_feed_id=%v folder_id=%v title=%v", foundRemoteFeedID, foundRemoteFolderID, foundRemoteTitle)
-	}
-	rows.Close()
-}
-
-func TestDBRemoteFeedFolderAssignment(t *testing.T) {
-	tmp := t.TempDir()
-	db, err := openSQLite(filepath.Join(tmp, "rss.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
-	if err := db.init(); err != nil {
-		t.Fatal(err)
-	}
-
-	folderID, err := db.AddFolder("Remote", "#7aa2f7")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := db.SetRemoteFeedFolder(-42, folderID); err != nil {
-		t.Fatal(err)
-	}
-
-	assignments, err := db.ListRemoteFeedFolders()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if assignments[-42] != folderID {
-		t.Fatalf("expected remote feed -42 to map to folder %d, got %d", folderID, assignments[-42])
-	}
-
-	if err := db.DeleteFolder(folderID); err != nil {
-		t.Fatal(err)
-	}
-
-	assignments, err = db.ListRemoteFeedFolders()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := assignments[-42]; ok {
-		t.Fatalf("expected deleted folder to clear remote feed assignment, got %+v", assignments)
+	if unread[0].Subject != "Work newest" || unread[1].Subject != "Personal older" {
+		t.Fatalf("unexpected unread unified inbox order: %+v", unread)
 	}
 }
 
-func TestDBRemoteFeedTitleOverridePersistsWithoutFolder(t *testing.T) {
+func TestDBMoveAndDeleteMessageUpdateLocalState(t *testing.T) {
 	tmp := t.TempDir()
-	db, err := openSQLite(filepath.Join(tmp, "rss.db"))
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer database.Close()
 
-	if err := db.init(); err != nil {
+	if err := database.init(); err != nil {
 		t.Fatal(err)
 	}
 
-	folderID, err := db.AddFolder("Remote", "#7aa2f7")
+	accountID, err := database.AddAccount("Personal", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inboxID, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archiveID, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "Archive", Flags: []string{"\\Archive"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertMessage(Message{MailboxID: inboxID, UID: 44, Subject: "Move me", Date: time.Unix(1710000000, 0)}); err != nil {
+		t.Fatal(err)
+	}
+	messages, err := database.ListMessages(inboxID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("expected seeded message, got %+v", messages)
+	}
+
+	if err := database.MoveMessage(messages[0].ID, archiveID); err != nil {
+		t.Fatal(err)
+	}
+	moved, err := database.GetMessage(messages[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moved.MailboxID != archiveID {
+		t.Fatalf("expected message mailbox %d, got %d", archiveID, moved.MailboxID)
+	}
+
+	if err := database.DeleteMessage(moved.ID); err != nil {
+		t.Fatal(err)
+	}
+	remaining, err := database.ListMessages(archiveID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 0 {
+		t.Fatalf("expected deleted message to be gone, got %+v", remaining)
+	}
+}
+
+func TestDBFindArchiveMailboxPrefersSpecialUseThenCommonNames(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+
+	accountID, err := database.AddAccount("Personal", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	allMailID, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "[Gmail]/All Mail"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archiveID, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "Old Mail", Flags: []string{"\\Archive"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := db.SetRemoteFeedTitle(-42, "Custom Remote"); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.SetRemoteFeedFolder(-42, folderID); err != nil {
-		t.Fatal(err)
-	}
-
-	prefs, err := db.ListRemoteFeedPrefs()
+	got, err := database.FindArchiveMailbox(accountID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := prefs[-42].Title; got != "Custom Remote" {
-		t.Fatalf("expected remote title override to be stored, got %q", got)
-	}
-	if got := prefs[-42].FolderID; got != folderID {
-		t.Fatalf("expected remote folder %d, got %d", folderID, got)
+	if got.ID != archiveID {
+		t.Fatalf("expected special-use archive %d, got %+v", archiveID, got)
 	}
 
-	if err := db.SetRemoteFeedFolder(-42, 0); err != nil {
+	if err := database.DeleteMailbox(archiveID); err != nil {
 		t.Fatal(err)
 	}
-
-	prefs, err = db.ListRemoteFeedPrefs()
+	got, err = database.FindArchiveMailbox(accountID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := prefs[-42].Title; got != "Custom Remote" {
-		t.Fatalf("expected title override to survive clearing folder, got %q", got)
+	if got.ID != allMailID {
+		t.Fatalf("expected common all-mail archive %d, got %+v", allMailID, got)
 	}
-	if got := prefs[-42].FolderID; got != 0 {
-		t.Fatalf("expected cleared folder id 0, got %d", got)
-	}
+}
 
-	if err := db.SetRemoteFeedTitle(-42, ""); err != nil {
-		t.Fatal(err)
-	}
-
-	prefs, err = db.ListRemoteFeedPrefs()
+func TestDBFindArchiveMailboxErrorsWhenUnavailable(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := prefs[-42]; ok {
-		t.Fatalf("expected empty remote pref row to be pruned, got %+v", prefs[-42])
+	defer database.Close()
+
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+	accountID, err := database.AddAccount("Personal", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := database.FindArchiveMailbox(accountID); err == nil {
+		t.Fatal("expected missing archive mailbox error")
 	}
 }
 
@@ -459,8 +352,4 @@ func openSQLite(path string) (*DB, error) {
 	}
 	conn.SetMaxOpenConns(1)
 	return &DB{conn}, nil
-}
-
-func unixTime(ts int64) time.Time {
-	return time.Unix(ts, 0)
 }

@@ -11,45 +11,72 @@ import (
 
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
-	"github.com/allisonhere/tide/internal/feed"
 	"github.com/allisonhere/tide/internal/ui"
 )
 
 var version = "dev"
 
+type startupOptions struct {
+	previewManualUpdate bool
+	prototypeForms      bool
+}
+
+func parseStartupOptions(args []string) startupOptions {
+	var opts startupOptions
+	for _, a := range args {
+		switch strings.TrimSpace(a) {
+		case "--preview-manual-update":
+			opts.previewManualUpdate = true
+		case "--prototype-forms":
+			opts.prototypeForms = true
+		}
+	}
+	return opts
+}
+
 func main() {
-	previewManualUpdate := false
+	opts := parseStartupOptions(os.Args[1:])
 	for _, a := range os.Args[1:] {
 		switch strings.TrimSpace(a) {
 		case "--version", "-version", "-v":
 			fmt.Printf("tide %s\n", resolvedVersion())
 			return
-		case "--preview-manual-update":
-			previewManualUpdate = true
 		}
 	}
 
-	database, err := db.Open()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "error opening database:", err)
-		os.Exit(1)
-	}
-	defer database.Close()
-
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "warning: could not load config:", err)
+		fmt.Fprintln(os.Stderr, "warning: could not load config:", config.RedactSecrets(err.Error(), cfg))
 		cfg = config.DefaultConfig()
+	}
+	if warnings, err := config.SecurityWarnings(); err != nil {
+		fmt.Fprintln(os.Stderr, "warning: could not check config permissions:", config.RedactSecrets(err.Error(), cfg))
+	} else {
+		for _, warning := range warnings {
+			fmt.Fprintln(os.Stderr, "warning:", config.RedactSecrets(warning, cfg))
+		}
 	}
 
 	if setBG, resetBG := ui.TerminalBackgroundSequences(cfg.Theme); setBG != "" {
 		fmt.Print(setBG)
 		defer fmt.Print(resetBG)
 	}
-	feed.SetMaxFeedBodyBytes(cfg.Feed.MaxBodyMiB << 20)
 
-	// --preview-manual-update: open Settings on Updates with a demo manual-install command (dev UI).
-	model := ui.NewModel(database, cfg, resolvedVersion(), previewManualUpdate)
+	var model tea.Model
+	if opts.prototypeForms {
+		model = ui.NewPrototypeFormsModel(cfg)
+	} else {
+		database, err := db.Open()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error opening database:", config.RedactSecrets(err.Error(), cfg))
+			os.Exit(1)
+		}
+		defer database.Close()
+
+		// --preview-manual-update: open Settings on Updates with a demo manual-install command (dev UI).
+		model = ui.NewModel(database, cfg, resolvedVersion(), opts.previewManualUpdate)
+	}
+
 	p := tea.NewProgram(model,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
@@ -58,13 +85,12 @@ func main() {
 	defer func() {
 		if r := recover(); r != nil {
 			p.Kill()
-			fmt.Fprintln(os.Stderr, "panic:", r)
+			fmt.Fprintln(os.Stderr, "panic:", config.RedactSecrets(fmt.Sprint(r), cfg))
 			os.Exit(1)
 		}
 	}()
-
 	if _, err := p.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+		fmt.Fprintln(os.Stderr, "error:", config.RedactSecrets(err.Error(), cfg))
 		os.Exit(1)
 	}
 }
