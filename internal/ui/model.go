@@ -374,6 +374,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			statusCmd = m.clearStatusCmd()
 		}
 		m.rebuildSidebar()
+		m.accountManager.setData(m.accounts, m.mailboxes, m.cfg.Accounts)
 		m.firstLoad = false
 		if prevID == 0 && prevKind == rowKindMailbox {
 			m.sidebarCursor = 0
@@ -2487,10 +2488,17 @@ func (m Model) renderThemePicker(width int, chrome managerChrome) string {
 
 func (m *Model) loadAccountsCmd() tea.Cmd {
 	database := m.db
+	configuredAccounts := append([]config.AccountConfig(nil), m.cfg.Accounts...)
 	return func() tea.Msg {
 		accounts, err := database.ListAccounts()
 		if err != nil {
 			return AccountsLoadedMsg{Err: err}
+		}
+		if len(configuredAccounts) > 0 {
+			accounts, err = ensureConfiguredAccounts(database, accounts, configuredAccounts)
+			if err != nil {
+				return AccountsLoadedMsg{Err: err}
+			}
 		}
 		var mailboxes []db.Mailbox
 		for _, a := range accounts {
@@ -2502,6 +2510,44 @@ func (m *Model) loadAccountsCmd() tea.Cmd {
 		}
 		return AccountsLoadedMsg{Accounts: accounts, Mailboxes: mailboxes}
 	}
+}
+
+func ensureConfiguredAccounts(database *db.DB, accounts []db.Account, configs []config.AccountConfig) ([]db.Account, error) {
+	existing := make(map[string]db.Account, len(accounts))
+	for _, account := range accounts {
+		existing[strings.TrimSpace(account.Name)] = account
+	}
+	changed := false
+	for _, accountCfg := range configs {
+		name := strings.TrimSpace(accountCfg.Name)
+		if name == "" {
+			continue
+		}
+		account, ok := existing[name]
+		if !ok {
+			accountID, err := database.AddAccount(name, "")
+			if err != nil {
+				return accounts, fmt.Errorf("import configured account %s: %w", name, err)
+			}
+			account = db.Account{ID: accountID, Name: name}
+			existing[name] = account
+			changed = true
+		}
+		mailboxes, err := database.ListMailboxes(account.ID)
+		if err != nil {
+			return accounts, fmt.Errorf("list imported account mailboxes %s: %w", name, err)
+		}
+		if len(mailboxes) == 0 {
+			if _, err := database.UpsertMailbox(db.Mailbox{AccountID: account.ID, Name: "INBOX", DisplayName: "INBOX", Delimiter: "/"}); err != nil {
+				return accounts, fmt.Errorf("create starter inbox for %s: %w", name, err)
+			}
+			changed = true
+		}
+	}
+	if !changed {
+		return accounts, nil
+	}
+	return database.ListAccounts()
 }
 
 func (m *Model) loadMailboxMessagesCmd(mailboxID int64) tea.Cmd {

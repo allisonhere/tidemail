@@ -52,6 +52,60 @@ func TestAccountManagerOpensWithLoadedAccounts(t *testing.T) {
 	}
 }
 
+func TestLoadAccountsCmdImportsConfiguredAccounts(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	database, err := db.Open()
+	if err != nil {
+		t.Fatalf("Open DB: %v", err)
+	}
+	defer database.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Accounts = []config.AccountConfig{
+		{Name: "Personal", User: "person@example.com", IMAPHost: "imap.example.com", IMAPPort: 993, IMAPTLS: true},
+		{Name: "Work", User: "work@example.com", IMAPHost: "imap.work.example.com", IMAPPort: 993, IMAPTLS: true},
+	}
+	m := NewModel(database, cfg, "dev", false)
+
+	msg := m.loadAccountsCmd()().(AccountsLoadedMsg)
+	if msg.Err != nil {
+		t.Fatalf("loadAccountsCmd: %v", msg.Err)
+	}
+	if len(msg.Accounts) != 2 {
+		t.Fatalf("expected config accounts imported into db, got %d: %#v", len(msg.Accounts), msg.Accounts)
+	}
+	if msg.Accounts[0].Name != "Personal" || msg.Accounts[1].Name != "Work" {
+		t.Fatalf("unexpected imported accounts: %#v", msg.Accounts)
+	}
+	if len(msg.Mailboxes) != 2 {
+		t.Fatalf("expected config accounts to get starter inbox mailboxes, got %d: %#v", len(msg.Mailboxes), msg.Mailboxes)
+	}
+
+	next, _ := m.Update(msg)
+	m = next.(Model)
+	if len(m.accounts) != 2 || len(m.mailboxes) != 2 {
+		t.Fatalf("expected loaded accounts/mailboxes reflected in model, got %d/%d", len(m.accounts), len(m.mailboxes))
+	}
+	if len(m.sidebarRows) == 0 {
+		t.Fatalf("expected loaded accounts to be reflected in sidebar rows")
+	}
+	m.accountManager = m.newAccountManager()
+	if len(m.accountManager.accounts) != 2 || len(m.accountManager.mailboxes) != 2 {
+		t.Fatalf("expected loaded accounts/mailboxes reflected in account manager, got %d/%d", len(m.accountManager.accounts), len(m.accountManager.mailboxes))
+	}
+
+	// Import is idempotent: a second load should not duplicate the config accounts or starter mailboxes.
+	msg = m.loadAccountsCmd()().(AccountsLoadedMsg)
+	if msg.Err != nil {
+		t.Fatalf("second loadAccountsCmd: %v", msg.Err)
+	}
+	if len(msg.Accounts) != 2 || len(msg.Mailboxes) != 2 {
+		t.Fatalf("expected idempotent import, got %d accounts and %d mailboxes", len(msg.Accounts), len(msg.Mailboxes))
+	}
+}
+
 func TestAccountManagerFormShowsTestAction(t *testing.T) {
 	am := NewAccountManager(nil)
 	am.mode = amAdd
