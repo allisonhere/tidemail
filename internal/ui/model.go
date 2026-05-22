@@ -1737,14 +1737,20 @@ func (m Model) renderMessageContent(msg db.Message) string {
 	}
 	meta := " " + m.styles.ContentMeta.Width(contentWidth).Render(truncate(metaStr, metaWidth))
 
-	content := msg.BodyText
-	if content == "" {
-		content = "No message body."
+	var body string
+	if msg.BodyHTML != "" {
+		body = renderHTMLBody(msg.BodyHTML, bodyWidth, m.styles.PlainUI)
 	}
-	if m.cfg.Display.FilterLinks {
-		content = filterLinksFromContent(content)
+	if body == "" {
+		content := msg.BodyText
+		if content == "" {
+			content = "No message body."
+		}
+		if m.cfg.Display.FilterLinks {
+			content = filterLinksFromContent(content)
+		}
+		body = indentBlock(m.styles.ContentBody.Width(bodyWidth).Render(formatArticleBody(content, bodyWidth, m.styles.PlainUI)), 1)
 	}
-	body := indentBlock(m.styles.ContentBody.Width(bodyWidth).Render(formatArticleBody(content, bodyWidth, m.styles.PlainUI)), 1)
 
 	if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
 		body += "\n\n" + m.renderContentLinks(bodyWidth)
