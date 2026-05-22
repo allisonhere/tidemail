@@ -68,7 +68,7 @@ func mdBlock(node ast.Node, source []byte, width int, plainUI bool) string {
 		cb := node.(*ast.CodeBlock)
 		return mdCodeLines(cb.Lines(), source)
 
-	case ast.KindFencedCode:
+	case ast.KindFencedCodeBlock:
 		cb := node.(*ast.FencedCodeBlock)
 		return mdCodeLines(cb.Lines(), source)
 
@@ -123,7 +123,7 @@ func mdInlineText(node ast.Node, source []byte) string {
 			t := child.(*ast.Text)
 			val := strings.TrimRight(string(t.Segment.Value(source)), "\r\n")
 			sb.WriteString(val)
-			if t.SoftLineBreak {
+			if t.SoftLineBreak() {
 				sb.WriteByte(' ')
 			}
 		case ast.KindString:
