@@ -4,6 +4,9 @@ A keyboard-first terminal mail client built with [Bubble Tea](https://github.com
 
 TideMail is being refactored from Tide into a dedicated IMAP/SMTP client. The current milestone is focused on multi-account mail workflows: unified inbox, reliable server-backed actions, compose/reply, and a fast command palette.
 
+The reusable UI primitives behind this interface are published as
+[`tideui`](https://github.com/allisonhere/tideui).
+
 ## Features
 
 - Three-pane mail layout: accounts, messages, content
