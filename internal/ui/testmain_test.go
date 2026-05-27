@@ -7,7 +7,7 @@ import (
 
 // TestMain redirects XDG_CONFIG_HOME / XDG_DATA_HOME / HOME to throwaway dirs
 // so tests that call config.Save or touch user dirs can never clobber the
-// running user's real ~/.config/rss/config.toml. -allie
+// running user's real ~/.config/tidemail/config.toml. -allie
 func TestMain(m *testing.M) {
 	cfgDir, err := os.MkdirTemp("", "tide-ui-xdg-config-*")
 	if err != nil {

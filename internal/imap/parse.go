@@ -184,13 +184,37 @@ func addressList(addrs []imap.Address) string {
 func stripHTML(s string) string {
 	var b strings.Builder
 	inTag := false
+	skipContent := false
+	tagBuf := strings.Builder{}
 	for _, r := range s {
 		switch {
 		case r == '<':
 			inTag = true
+			tagBuf.Reset()
 		case r == '>':
 			inTag = false
-		case !inTag:
+			tagName := strings.ToLower(strings.TrimSpace(tagBuf.String()))
+			// Strip leading /
+			tagName = strings.TrimPrefix(tagName, "/")
+			// Get just the tag name (first word)
+			if idx := strings.IndexAny(tagName, " \t\n"); idx >= 0 {
+				tagName = tagName[:idx]
+			}
+			switch tagName {
+			case "script", "style":
+				// Opening tag: skip content until closing tag
+				// Closing tag: resume output
+				if strings.HasPrefix(strings.ToLower(strings.TrimSpace(tagBuf.String())), "/") {
+					skipContent = false
+				} else {
+					skipContent = true
+				}
+			case "br", "p", "div", "tr", "li", "h1", "h2", "h3", "h4", "h5", "h6":
+				b.WriteByte('\n')
+			}
+		case inTag:
+			tagBuf.WriteRune(r)
+		case !skipContent && !inTag:
 			b.WriteRune(r)
 		}
 	}
