@@ -38,6 +38,7 @@ type KeyMap struct {
 	CopyText      key.Binding
 	SaveMD        key.Binding
 	ContentSearch key.Binding
+	SaveAttach    key.Binding
 
 	// Account manager specific
 	Add         key.Binding
@@ -45,6 +46,8 @@ type KeyMap struct {
 	Delete      key.Binding
 	SaveAccount key.Binding
 	TestAccount key.Binding
+
+	AttachFile key.Binding
 
 	// Overlay / input
 	Confirm   key.Binding
@@ -98,6 +101,10 @@ var DefaultKeys = KeyMap{
 	Delete:      key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
 	SaveAccount: key.NewBinding(key.WithKeys("ctrl+s", "f2"), key.WithHelp("ctrl+s", "save")),
 	TestAccount: key.NewBinding(key.WithKeys("ctrl+t", "f5"), key.WithHelp("ctrl+t", "test")),
+
+	AttachFile: key.NewBinding(key.WithKeys("ctrl+a"), key.WithHelp("ctrl+a", "attach file")),
+
+	SaveAttach: key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "save attachments")),
 
 	Confirm:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
 	Cancel:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),

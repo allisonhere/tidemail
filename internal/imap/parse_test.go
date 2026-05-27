@@ -62,15 +62,15 @@ func TestAddressList(t *testing.T) {
 
 func TestParseBody_PlainText(t *testing.T) {
 	raw := []byte("Content-Type: text/plain\r\n\r\nHello, World!")
-	text, html, hasAttach := parseBody(raw)
+	text, html, atts := parseBody(raw)
 	if text != "Hello, World!" {
 		t.Errorf("text = %q, want %q", text, "Hello, World!")
 	}
 	if html != "" {
 		t.Errorf("html = %q, want empty", html)
 	}
-	if hasAttach {
-		t.Error("hasAttach = true, want false")
+	if len(atts) != 0 {
+		t.Error("expected no attachments")
 	}
 }
 
@@ -83,15 +83,15 @@ func TestParseBody_PlainTextMultipart(t *testing.T) {
 		"Content-Type: text/html\r\n\r\n" +
 		"<p>html body</p>\r\n" +
 		"--xyz--")
-	text, html, hasAttach := parseBody(raw)
+	text, html, atts := parseBody(raw)
 	if text != "plain body" {
 		t.Errorf("text = %q, want %q", text, "plain body")
 	}
 	if html != "<p>html body</p>" {
 		t.Errorf("html = %q, want %q", html, "<p>html body</p>")
 	}
-	if hasAttach {
-		t.Error("hasAttach = true, want false")
+	if len(atts) != 0 {
+		t.Error("expected no attachments")
 	}
 }
 
@@ -104,24 +104,30 @@ func TestParseBody_WithAttachment(t *testing.T) {
 		"Content-Type: application/pdf\r\n\r\n" +
 		"%PDF-1.4...\r\n" +
 		"--xyz--")
-	_, _, hasAttach := parseBody(raw)
-	if !hasAttach {
-		t.Error("hasAttach = false, want true")
+	_, _, atts := parseBody(raw)
+	if len(atts) != 1 {
+		t.Fatalf("expected 1 attachment, got %d", len(atts))
+	}
+	if atts[0].ContentType != "application/pdf" {
+		t.Errorf("content type = %q, want %q", atts[0].ContentType, "application/pdf")
+	}
+	if string(atts[0].Data) != "%PDF-1.4..." {
+		t.Errorf("data = %q, want %q", string(atts[0].Data), "%PDF-1.4...")
 	}
 }
 
 func TestParseBody_InvalidMIME(t *testing.T) {
 	// Non-MIME data: should fall back to raw string as plain text
 	raw := []byte("just raw text")
-	text, html, hasAttach := parseBody(raw)
+	text, html, atts := parseBody(raw)
 	if text != "just raw text" {
 		t.Errorf("text = %q, want %q", text, "just raw text")
 	}
 	if html != "" {
 		t.Errorf("html = %q, want empty", html)
 	}
-	if hasAttach {
-		t.Error("hasAttach = true, want false")
+	if len(atts) != 0 {
+		t.Error("expected no attachments")
 	}
 }
 
@@ -131,7 +137,7 @@ func TestParseBody_HTMLOnlyMultipart(t *testing.T) {
 		"Content-Type: text/html\r\n\r\n" +
 		"<p>hello</p>\r\n" +
 		"--xyz--")
-	text, html, hasAttach := parseBody(raw)
+	text, html, atts := parseBody(raw)
 	if text != "hello" {
 		// text should be stripHTML of the HTML part
 		t.Errorf("text = %q, want %q", text, "hello")
@@ -139,8 +145,8 @@ func TestParseBody_HTMLOnlyMultipart(t *testing.T) {
 	if html != "<p>hello</p>" {
 		t.Errorf("html = %q, want %q", html, "<p>hello</p>")
 	}
-	if hasAttach {
-		t.Error("hasAttach = true, want false")
+	if len(atts) != 0 {
+		t.Error("expected no attachments")
 	}
 }
 

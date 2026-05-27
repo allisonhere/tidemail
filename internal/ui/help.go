@@ -48,6 +48,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{keys.Delete.Help().Key, "delete selected message"},
 				bind(keys.Compose),
 				bind(keys.Reply),
+				{keys.SaveAttach.Help().Key, "save all attachments to folder"},
 			},
 		},
 		{

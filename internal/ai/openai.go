@@ -8,6 +8,8 @@ import (
 	"net/http"
 )
 
+var openAIChatURL = "https://api.openai.com/v1/chat/completions"
+
 type openAI struct{ key string }
 
 func (o *openAI) ProviderName() string { return "OpenAI" }
@@ -23,7 +25,7 @@ func (o *openAI) Summarize(ctx context.Context, title, content string) (string, 
 	})
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		"https://api.openai.com/v1/chat/completions", bytes.NewReader(body))
+			openAIChatURL, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}

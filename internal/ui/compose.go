@@ -3,6 +3,9 @@ package ui
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -26,6 +29,26 @@ const (
 	composeFieldCount
 )
 
+type attachmentFile struct {
+	Name string
+	Path string
+	Data []byte
+}
+
+// filePicker is a yazi-inspired directory browser for picking attachment files.
+type filePicker struct {
+	entries    []fileEntry
+	cursor     int
+	currentDir string
+	active     bool
+}
+
+type fileEntry struct {
+	name  string
+	isDir bool
+	size  int64
+}
+
 type ComposeModel struct {
 	toInput      textinput.Model
 	ccInput      textinput.Model
@@ -36,6 +59,9 @@ type ComposeModel struct {
 	inReplyTo    string
 	references   string
 	accountCfg   config.AccountConfig
+
+	attachments []attachmentFile
+	picker      filePicker
 
 	busy      bool
 	statusMsg string
@@ -80,6 +106,129 @@ func newComposeInput(placeholder string) textinput.Model {
 	return ti
 }
 
+// openPicker reads the given directory and populates the file picker.
+func (c *ComposeModel) openPicker(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		c.statusMsg = fmt.Sprintf("pick: %v", err)
+		c.isErr = true
+		c.picker.active = false
+		return
+	}
+
+	var fe []fileEntry
+	// Add parent-dir entry unless we're at filesystem root
+	if dir != "/" {
+		fe = append(fe, fileEntry{name: "..", isDir: true})
+	}
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		// Skip hidden files
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		fe = append(fe, fileEntry{
+			name:  e.Name(),
+			isDir: e.IsDir(),
+			size:  info.Size(),
+		})
+	}
+
+	// Sort: dirs first, then files; alphabetically within each group
+	sort.Slice(fe, func(i, j int) bool {
+		if fe[i].isDir != fe[j].isDir {
+			return fe[i].isDir
+		}
+		return strings.ToLower(fe[i].name) < strings.ToLower(fe[j].name)
+	})
+
+	c.picker.currentDir = dir
+	c.picker.entries = fe
+	c.picker.cursor = 0
+	c.picker.active = true
+}
+
+// pickerSelected attaches the currently selected file.
+func (c *ComposeModel) pickerAttachSelected() {
+	if c.picker.cursor < 0 || c.picker.cursor >= len(c.picker.entries) {
+		return
+	}
+	entry := c.picker.entries[c.picker.cursor]
+	if entry.isDir {
+		return
+	}
+	path := filepath.Join(c.picker.currentDir, entry.name)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		c.statusMsg = fmt.Sprintf("read: %v", err)
+		c.isErr = true
+		return
+	}
+	c.attachments = append(c.attachments, attachmentFile{
+		Name: entry.name,
+		Path: path,
+		Data: data,
+	})
+	c.statusMsg = fmt.Sprintf("attached: %s (%s)", entry.name, humanSize(len(data)))
+	c.isErr = false
+	c.picker.active = false
+}
+
+func humanSize(b int) string {
+	switch {
+	case b < 1024:
+		return fmt.Sprintf("%d B", b)
+	case b < 1024*1024:
+		return fmt.Sprintf("%.1f KB", float64(b)/1024)
+	default:
+		return fmt.Sprintf("%.1f MB", float64(b)/(1024*1024))
+	}
+}
+
+// pickerUp moves cursor up.
+func (c *ComposeModel) pickerUp() {
+	if c.picker.cursor > 0 {
+		c.picker.cursor--
+	}
+}
+
+// pickerDown moves cursor down.
+func (c *ComposeModel) pickerDown() {
+	if c.picker.cursor < len(c.picker.entries)-1 {
+		c.picker.cursor++
+	}
+}
+
+// pickerEnter enters a directory or selects a file.
+func (c *ComposeModel) pickerEnter() {
+	entry := c.picker.entries[c.picker.cursor]
+	if entry.isDir && entry.name == ".." {
+		parent := filepath.Dir(c.picker.currentDir)
+		c.openPicker(parent)
+		return
+	}
+	if entry.isDir {
+		sub := filepath.Join(c.picker.currentDir, entry.name)
+		c.openPicker(sub)
+		return
+	}
+	c.pickerAttachSelected()
+}
+
+// pickerUpDir goes to the parent directory.
+func (c *ComposeModel) pickerUpDir() {
+	parent := filepath.Dir(c.picker.currentDir)
+	if parent == c.picker.currentDir {
+		// Can't go higher (filesystem root) — close picker
+		c.picker.active = false
+		return
+	}
+	c.openPicker(parent)
+}
+
 func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, bool) {
 	if c.busy {
 		return c, nil, false
@@ -100,15 +249,31 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 		return c, cmd, false
 	}
 
+	// File picker mode
+	if c.picker.active {
+		return c.updatePicker(km, keys)
+	}
+
+	// Normal compose mode
 	switch {
 	case keyMatches(km, keys.Cancel):
 		return c, nil, true
 
-	case km.String() == "ctrl+s":
+	case km.String() == "ctrl+s" || km.String() == "ctrl+d":
 		return c.send()
 
 	case keyMatches(km, keys.Tab):
 		c.advanceField(1)
+		return c, nil, false
+
+	case keyMatches(km, keys.AttachFile):
+		// Start picker in user's home directory
+		home, err := os.UserHomeDir()
+		startDir := home
+		if err != nil {
+			startDir = "/"
+		}
+		c.openPicker(startDir)
 		return c, nil, false
 
 	default:
@@ -139,6 +304,44 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 	}
 }
 
+// updatePicker handles key events in the file picker overlay.
+func (c ComposeModel) updatePicker(km tea.KeyMsg, keys KeyMap) (ComposeModel, tea.Cmd, bool) {
+	switch {
+	case keyMatches(km, keys.Cancel):
+		c.picker.active = false
+		return c, nil, false
+
+	case keyMatches(km, keys.Up):
+		c.pickerUp()
+		return c, nil, false
+
+	case keyMatches(km, keys.Down):
+		c.pickerDown()
+		return c, nil, false
+
+	case keyMatches(km, keys.Confirm):
+		c.pickerEnter()
+		return c, nil, false
+
+	case keyMatches(km, keys.Left), keyMatches(km, keys.Back):
+		c.pickerUpDir()
+		return c, nil, false
+
+	default:
+		// Single-key quick-jump: press a letter to jump to first entry starting with it
+		if len(km.String()) == 1 && km.String() >= "a" && km.String() <= "z" || km.String() >= "A" && km.String() <= "Z" {
+			lower := strings.ToLower(km.String())
+			for i, e := range c.picker.entries {
+				if strings.HasPrefix(strings.ToLower(e.name), lower) {
+					c.picker.cursor = i
+					return c, nil, false
+				}
+			}
+		}
+		return c, nil, false
+	}
+}
+
 func (c *ComposeModel) advanceField(delta int) {
 	next := (int(c.focusedField) + delta + int(composeFieldCount)) % int(composeFieldCount)
 	c.focusedField = composeField(next)
@@ -166,13 +369,24 @@ func (c ComposeModel) send() (ComposeModel, tea.Cmd, bool) {
 		return c, nil, false
 	}
 	acfg := c.accountCfg
+
+	// Build attachment list from stored file data
+	var atts []smtp.Attachment
+	for _, af := range c.attachments {
+		atts = append(atts, smtp.Attachment{
+			Name: af.Name,
+			Data: af.Data,
+		})
+	}
+
 	msg := smtp.OutgoingMessage{
-		To:         parseAddressList(to),
-		CC:         parseAddressList(c.ccInput.Value()),
-		Subject:    c.subjectInput.Value(),
-		Body:       c.bodyInput.Value(),
-		InReplyTo:  c.inReplyTo,
-		References: c.references,
+		To:          parseAddressList(to),
+		CC:          parseAddressList(c.ccInput.Value()),
+		Subject:     c.subjectInput.Value(),
+		Body:        c.bodyInput.Value(),
+		InReplyTo:   c.inReplyTo,
+		References:  c.references,
+		Attachments: atts,
 	}
 	c.busy = true
 	c.statusMsg = "Sending..."
@@ -206,6 +420,12 @@ func parseAddressList(s string) []string {
 
 func (c ComposeModel) View(width, height int, styles Styles) string {
 	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
+
+	// File picker view
+	if c.picker.active {
+		return c.pickerView(width, height, chrome)
+	}
+
 	title := "COMPOSE"
 	if c.inReplyTo != "" {
 		title = "REPLY"
@@ -231,18 +451,27 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	}
 
 	actions := renderManagerActionGroups(width, chrome,
-		[]string{"ctrl+s", "send"},
+		[]string{"ctrl+s", "send", "ctrl+a", "attach"},
 		[]string{"tab", "next field", "esc", "cancel"},
 	)
 	if c.busy {
 		actions = renderManagerActions(width, chrome)
 	}
 
+	// Count lines in the attachment list if any
+	attachLines := 0
+	if len(c.attachments) > 0 {
+		attachLines = 1 + len(c.attachments) // label + one line per file
+	}
+
 	fixedH := lipgloss.Height(header) + 7 + lipgloss.Height(actions)
 	if c.statusMsg != "" {
 		fixedH++
 	}
-	bodyH := max(1, height-fixedH)
+	bodyH := max(1, height-fixedH-attachLines)
+	if bodyH < 1 {
+		bodyH = 1
+	}
 	c.bodyInput.SetWidth(inputW)
 	c.bodyInput.SetHeight(bodyH)
 	c.bodyInput.FocusedStyle.Base = lipgloss.NewStyle().Background(chrome.fieldBg)
@@ -276,9 +505,27 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 		styledInput(c.ccInput, c.focusedField == composeFieldCC),
 		label("Subject"),
 		styledInput(c.subjectInput, c.focusedField == composeFieldSubject),
+	}
+
+	// Attached files list
+	if len(c.attachments) > 0 {
+		var lines []string
+		for _, af := range c.attachments {
+			lines = append(lines, fmt.Sprintf("  %s  (%s)", af.Name, humanSize(len(af.Data))))
+		}
+		attView := lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Foreground(chrome.accent).
+			Width(width).
+			Padding(0, 2).
+			Render(strings.Join(lines, "\n"))
+		rows = append(rows, label("Attachments"), attView)
+	}
+
+	rows = append(rows,
 		label("Body (ctrl+s to send)"),
 		bodyView,
-	}
+	)
 	if statusLine != "" {
 		rows = append(rows, statusLine)
 	}
@@ -286,6 +533,113 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	rows = append(rows, actions)
 
 	content := lipgloss.JoinVertical(lipgloss.Left, rows...)
+	return clampView(content, width, height, chrome.baseBg)
+}
+
+// pickerView renders the yazi-style file browser.
+func (c ComposeModel) pickerView(width, height int, chrome managerChrome) string {
+	header := renderManagerHeader("ATTACH FILE", width, chrome)
+
+	// Path line
+	pathLine := lipgloss.NewStyle().
+		Background(chrome.baseBg).
+		Foreground(chrome.accent).
+		Width(width).
+		Padding(0, 2).
+		Render(c.picker.currentDir)
+
+	// File listing — fit within available height
+	availH := height - lipgloss.Height(header) - lipgloss.Height(pathLine) - 2 // 2 for action bar
+	if availH < 1 {
+		availH = 1
+	}
+
+	// Scroll offset
+	start := 0
+	if c.picker.cursor >= availH {
+		start = c.picker.cursor - availH + 1
+	}
+	shown := c.picker.entries
+	if start > len(shown) {
+		start = len(shown) - availH
+	}
+	if start < 0 {
+		start = 0
+	}
+	end := start + availH
+	if end > len(shown) {
+		end = len(shown)
+	}
+	visible := shown[start:end]
+
+	var lines []string
+	for i, entry := range visible {
+		idx := start + i
+		focused := idx == c.picker.cursor
+		var line string
+		if entry.isDir {
+			if entry.name == ".." {
+				line = fmt.Sprintf("  ../")
+			} else {
+				line = fmt.Sprintf("  %s/", entry.name)
+			}
+		} else {
+			sz := humanSize(int(entry.size))
+			// Pad name to align sizes to the right
+			line = fmt.Sprintf("  %-*s  %s", max(1, width-14), entry.name, sz)
+		}
+		if len(line) > width {
+			line = line[:width]
+		}
+
+		if focused {
+			highlightStyle := lipgloss.NewStyle().
+				Background(chrome.accent).
+				Foreground(contrastFg(chrome.accent))
+			if idx < width && len(line) < width {
+				line = line + strings.Repeat(" ", width-len(line))
+			}
+			lines = append(lines, highlightStyle.Width(width).Render(line))
+		} else {
+			bg := chrome.baseBg
+			if entry.isDir {
+				fg := chrome.accent
+				if entry.name == ".." {
+					fg = chrome.muted
+				}
+				lines = append(lines, lipgloss.NewStyle().
+					Background(bg).Foreground(fg).
+					Width(width).Render(line))
+			} else {
+				lines = append(lines, lipgloss.NewStyle().
+					Background(bg).Foreground(chrome.text).
+					Width(width).Render(line))
+			}
+		}
+	}
+
+	// Fill remaining space
+	for len(lines) < availH {
+		lines = append(lines, lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Width(width).
+			Render(strings.Repeat(" ", width)))
+	}
+
+	fileList := lipgloss.JoinVertical(lipgloss.Left, lines...)
+
+	// Actions
+	actions := renderManagerActionGroups(width, chrome,
+		[]string{"↑/↓", "navigate", "enter", "open/attach"},
+		[]string{"esc/h", "up dir"},
+	)
+
+	content := lipgloss.JoinVertical(lipgloss.Left,
+		header,
+		pathLine,
+		fileList,
+		actions,
+	)
 	return clampView(content, width, height, chrome.baseBg)
 }
 

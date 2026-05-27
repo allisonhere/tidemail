@@ -114,6 +114,12 @@ type ClipboardCopiedMsg struct {
 	Err error
 }
 
+type AttachmentsSavedMsg struct {
+	Path string
+	Count int
+	Err  error
+}
+
 type StatusClearMsg struct{}
 
 type ErrMsg struct{ Err error }

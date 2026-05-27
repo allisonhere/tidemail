@@ -63,7 +63,9 @@ func (c *Client) Close() error {
 		return nil
 	}
 	c.conn.Logout() //nolint:errcheck
-	return c.conn.Close()
+	err := c.conn.Close()
+	c.conn = nil
+	return err
 }
 
 func (c *Client) ListMailboxes(ctx context.Context) ([]MailboxInfo, error) {

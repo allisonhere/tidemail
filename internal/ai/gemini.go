@@ -8,6 +8,8 @@ import (
 	"net/http"
 )
 
+var geminiChatURLPrefix = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key="
+
 type gemini struct{ key string }
 
 func (g *gemini) ProviderName() string { return "Gemini" }
@@ -21,7 +23,7 @@ func (g *gemini) Summarize(ctx context.Context, title, content string) (string, 
 		"generationConfig": map[string]int{"maxOutputTokens": 300},
 	})
 
-	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + g.key
+	url := geminiChatURLPrefix + g.key
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return "", err

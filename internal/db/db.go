@@ -94,6 +94,16 @@ func (db *DB) migrate() error {
 
 		CREATE INDEX IF NOT EXISTS idx_messages_mailbox_id ON messages(mailbox_id);
 		CREATE INDEX IF NOT EXISTS idx_messages_read       ON messages(read);
+
+		CREATE TABLE IF NOT EXISTS attachments (
+			id           INTEGER PRIMARY KEY AUTOINCREMENT,
+			message_id   INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+			filename     TEXT    NOT NULL,
+			content_type TEXT    NOT NULL DEFAULT '',
+			data         BLOB   NOT NULL,
+			size         INTEGER NOT NULL DEFAULT 0
+		);
+		CREATE INDEX IF NOT EXISTS idx_attachments_message_id ON attachments(message_id);
 	`)
 	return err
 }

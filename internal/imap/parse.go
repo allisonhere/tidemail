@@ -15,6 +15,12 @@ import (
 	"github.com/emersion/go-message/mail"
 )
 
+type bodyAttachment struct {
+	Filename    string
+	ContentType string
+	Data        []byte
+}
+
 func (c *Client) fetchMessages(ctx context.Context, mailboxName string, limit int, since time.Time) ([]db.Message, error) {
 	if c.conn == nil {
 		return nil, fmt.Errorf("not connected")
@@ -115,24 +121,35 @@ func parseIMAPMessage(msg *imapclient.FetchMessageBuffer) (db.Message, error) {
 		if len(raw) == 0 {
 			continue
 		}
-		text, html, hasAttach := parseBody(raw)
+		text, html, atts := parseBody(raw)
 		if text != "" {
 			m.BodyText = text
 		}
 		if html != "" {
 			m.BodyHTML = html
 		}
-		m.HasAttachment = hasAttach
+		if len(atts) > 0 {
+			m.HasAttachment = true
+			m.AttachmentData = make([]db.Attachment, len(atts))
+			for i, a := range atts {
+				m.AttachmentData[i] = db.Attachment{
+					Filename:    a.Filename,
+					ContentType: a.ContentType,
+					Data:        a.Data,
+					Size:        int64(len(a.Data)),
+				}
+			}
+		}
 		break
 	}
 
 	return m, nil
 }
 
-func parseBody(raw []byte) (text, html string, hasAttach bool) {
+func parseBody(raw []byte) (text, html string, attachments []bodyAttachment) {
 	r, err := mail.CreateReader(bytes.NewReader(raw))
 	if err != nil {
-		return strings.TrimSpace(string(raw)), "", false
+		return strings.TrimSpace(string(raw)), "", nil
 	}
 
 	for {
@@ -140,7 +157,7 @@ func parseBody(raw []byte) (text, html string, hasAttach bool) {
 		if err != nil {
 			break
 		}
-		ct, _, _ := mime.ParseMediaType(part.Header.Get("Content-Type"))
+		ct, params, _ := mime.ParseMediaType(part.Header.Get("Content-Type"))
 		if ct == "" {
 			ct = "text/plain"
 		}
@@ -162,11 +179,49 @@ func parseBody(raw []byte) (text, html string, hasAttach bool) {
 			}
 		default:
 			if ct != "" && !strings.HasPrefix(ct, "multipart/") {
-				hasAttach = true
+				attachments = append(attachments, bodyAttachment{
+					Filename:    filenameFromPart(part, params, ct),
+					ContentType: ct,
+					Data:        data,
+				})
 			}
 		}
 	}
-	return text, html, hasAttach
+	return text, html, attachments
+}
+
+// filenameFromPart extracts a filename from a MIME part's Content-Disposition
+// or Content-Type params, falling back to "attachment.ext" based on content type.
+func filenameFromPart(part *mail.Part, ctParams map[string]string, ct string) string {
+	if fn := part.Header.Get("Content-Disposition"); fn != "" {
+		if _, dispParams, err := mime.ParseMediaType(fn); err == nil {
+			if name := dispParams["filename"]; name != "" {
+				return name
+			}
+		}
+	}
+	if name := ctParams["name"]; name != "" {
+		return name
+	}
+	// Fallback based on Content-Type
+	ext := ".bin"
+	switch {
+	case strings.HasPrefix(ct, "application/pdf"):
+		ext = ".pdf"
+	case strings.HasPrefix(ct, "application/zip"):
+		ext = ".zip"
+	case strings.HasPrefix(ct, "image/"):
+		parts := strings.Split(ct, "/")
+		if len(parts) == 2 {
+			ext = "." + parts[1]
+		}
+	case strings.HasPrefix(ct, "text/"):
+		parts := strings.Split(ct, "/")
+		if len(parts) == 2 {
+			ext = "." + parts[1]
+		}
+	}
+	return "attachment" + ext
 }
 
 func addressList(addrs []imap.Address) string {

@@ -1,5 +1,7 @@
 # TideMail
 
+![TideMail screenshot](screen.png)
+
 A keyboard-first terminal mail client built with [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lipgloss](https://github.com/charmbracelet/lipgloss).
 
 TideMail is being refactored from Tide into a dedicated IMAP/SMTP client. The current milestone is focused on multi-account mail workflows: unified inbox, reliable server-backed actions, compose/reply, and a fast command palette.
@@ -92,6 +94,7 @@ from = "Alice <alice@example.com>"
 | `s` | AI summary |
 | `S` | Settings |
 | `T` | Theme picker |
+| `Ctrl+D` | Save attachments to folder |
 | `?` | Help |
 | `q` | Quit |
 

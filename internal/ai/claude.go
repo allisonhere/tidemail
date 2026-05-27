@@ -8,6 +8,8 @@ import (
 	"net/http"
 )
 
+var anthropicChatURL = "https://api.anthropic.com/v1/messages"
+
 type claude struct{ key string }
 
 func (c *claude) ProviderName() string { return "Claude" }
@@ -23,7 +25,7 @@ func (c *claude) Summarize(ctx context.Context, title, content string) (string, 
 	})
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		"https://api.anthropic.com/v1/messages", bytes.NewReader(body))
+			anthropicChatURL, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}

@@ -21,7 +21,8 @@ type Message struct {
 	Summary       string
 	Flags         []string
 	Read          bool
-	HasAttachment bool
+	HasAttachment  bool
+	AttachmentData []Attachment // transient, not stored in messages table
 }
 
 func (db *DB) ListMessages(mailboxID int64) ([]Message, error) {
@@ -154,7 +155,32 @@ func (db *DB) UpsertMessage(m Message) error {
 	`, m.MailboxID, m.UID, m.MessageID, m.Subject, m.From, m.To, m.CC,
 		m.ReplyTo, dateUnix, m.BodyText, m.BodyHTML, m.Summary,
 		string(flagsJSON), read, att)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Save attachments if any
+	if len(m.AttachmentData) > 0 {
+		// Get the message ID (works with INSERT or ON CONFLICT UPDATE)
+		msgID := m.ID
+		if msgID == 0 {
+			// Look up the ID by mailbox_id + uid
+			_ = db.QueryRow(`SELECT id FROM messages WHERE mailbox_id = ? AND uid = ?`, m.MailboxID, m.UID).Scan(&msgID)
+		}
+		if msgID != 0 {
+			// Delete old attachments and re-insert
+			if delErr := db.DeleteAttachmentsForMessage(msgID); delErr != nil {
+				return delErr
+			}
+			for _, a := range m.AttachmentData {
+				if _, err := db.SaveAttachment(msgID, a); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func (db *DB) MarkRead(id int64, read bool) error {
@@ -177,6 +203,7 @@ func (db *DB) SaveSummary(id int64, summary string) error {
 }
 
 func (db *DB) DeleteMessage(id int64) error {
+	_ = db.DeleteAttachmentsForMessage(id)
 	_, err := db.Exec(`DELETE FROM messages WHERE id = ?`, id)
 	return err
 }
