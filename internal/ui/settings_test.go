@@ -2,7 +2,6 @@ package ui
 
 import (
 	"errors"
-	"math"
 	"strings"
 	"testing"
 
@@ -752,23 +751,6 @@ func TestAboutHeroSpacerRowsAreBlank(t *testing.T) {
 		if strings.TrimSpace(line) != "" {
 			t.Fatalf("expected blank spacer row %d, got %q", row, line)
 		}
-	}
-}
-
-func TestAboutHeroRevealMaskRevealsSceneUnderShimmer(t *testing.T) {
-	frame := 18
-	width := 48
-	headCol := int(math.Round(math.Mod(float64(frame)*0.78, math.Max(6, float64(width-1))+16) - 8))
-	revealNear, shimmerNear := aboutHeroRevealMask(frame, 2, headCol, width)
-	revealFar, shimmerFar := aboutHeroRevealMask(frame, 2, 0, width)
-	if revealNear <= revealFar {
-		t.Fatalf("expected reveal %.2f to exceed far reveal %.2f", revealNear, revealFar)
-	}
-	sceneBg := aboutHeroBackground(frame, 2, headCol, width)
-	nearBg := aboutHeroMaskedBackground(sceneBg, revealNear, shimmerNear)
-	farBg := aboutHeroMaskedBackground(sceneBg, revealFar, shimmerFar)
-	if nearBg == farBg {
-		t.Fatalf("expected shimmer reveal background %q to differ from masked background %q", nearBg, farBg)
 	}
 }
 
