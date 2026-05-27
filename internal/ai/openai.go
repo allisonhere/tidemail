@@ -10,14 +10,26 @@ import (
 
 var openAIChatURL = "https://api.openai.com/v1/chat/completions"
 
-type openAI struct{ key string }
+type openAI struct {
+	key   string
+	model string
+}
 
-func (o *openAI) ProviderName() string { return "OpenAI" }
+func (o *openAI) ProviderName() string {
+	if o.model != "" {
+		return "OpenAI (" + o.model + ")"
+	}
+	return "OpenAI"
+}
 
 func (o *openAI) Summarize(ctx context.Context, title, content string) (string, error) {
+	model := o.model
+	if model == "" {
+		model = "gpt-4o-mini"
+	}
 	prompt := fmt.Sprintf(summaryPrompt, title, truncateContent(content, 4000))
 	body, _ := json.Marshal(map[string]any{
-		"model": "gpt-4o-mini",
+		"model": model,
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},

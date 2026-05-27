@@ -8,13 +8,26 @@ import (
 	"net/http"
 )
 
-var geminiChatURLPrefix = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key="
+var geminiModelDefault = "gemini-1.5-flash"
 
-type gemini struct{ key string }
+type gemini struct {
+	key     string
+	model   string
+	apiURL  string // overridable for testing
+}
 
-func (g *gemini) ProviderName() string { return "Gemini" }
+func (g *gemini) ProviderName() string {
+	if g.model != "" {
+		return "Gemini (" + g.model + ")"
+	}
+	return "Gemini"
+}
 
 func (g *gemini) Summarize(ctx context.Context, title, content string) (string, error) {
+	model := g.model
+	if model == "" {
+		model = geminiModelDefault
+	}
 	prompt := fmt.Sprintf(summaryPrompt, title, truncateContent(content, 4000))
 	body, _ := json.Marshal(map[string]any{
 		"contents": []map[string]any{
@@ -23,7 +36,12 @@ func (g *gemini) Summarize(ctx context.Context, title, content string) (string, 
 		"generationConfig": map[string]int{"maxOutputTokens": 300},
 	})
 
-	url := geminiChatURLPrefix + g.key
+	url := g.apiURL
+	if url == "" {
+		url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + g.key
+	} else {
+		url = url + g.key
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return "", err

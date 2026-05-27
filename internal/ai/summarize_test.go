@@ -180,11 +180,7 @@ func TestGeminiSummarize_OK(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	old := geminiChatURLPrefix
-	geminiChatURLPrefix = srv.URL + "?key="
-	defer func() { geminiChatURLPrefix = old }()
-
-	g := &gemini{key: "AIzatest"}
+	g := &gemini{key: "AIzatest", apiURL: srv.URL + "?key="}
 	got, err := g.Summarize(context.Background(), "Test Title", "Test content")
 	if err != nil {
 		t.Fatal(err)
@@ -203,11 +199,7 @@ func TestGeminiSummarize_APIError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	old := geminiChatURLPrefix
-	geminiChatURLPrefix = srv.URL + "?key="
-	defer func() { geminiChatURLPrefix = old }()
-
-	g := &gemini{key: "AIzabad"}
+	g := &gemini{key: "AIzabad", apiURL: srv.URL + "?key="}
 	_, err := g.Summarize(context.Background(), "T", "C")
 	if err == nil || !strings.Contains(err.Error(), "API key not valid") {
 		t.Fatalf("expected API error, got %v", err)
@@ -223,11 +215,7 @@ func TestGeminiSummarize_EmptyResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	old := geminiChatURLPrefix
-	geminiChatURLPrefix = srv.URL + "?key="
-	defer func() { geminiChatURLPrefix = old }()
-
-	g := &gemini{key: "AIzatest"}
+	g := &gemini{key: "AIzatest", apiURL: srv.URL + "?key="}
 	_, err := g.Summarize(context.Background(), "T", "C")
 	if err == nil || !strings.Contains(err.Error(), "empty response") {
 		t.Fatalf("expected empty response error, got %v", err)

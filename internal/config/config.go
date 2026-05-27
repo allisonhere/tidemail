@@ -58,8 +58,11 @@ type FeedConfig struct {
 type AIConfig struct {
 	Provider            string `toml:"provider"`
 	OpenAIKey           string `toml:"openai_key"`
+	OpenAIModel         string `toml:"openai_model"`
 	ClaudeKey           string `toml:"claude_key"`
+	ClaudeModel         string `toml:"claude_model"`
 	GeminiKey           string `toml:"gemini_key"`
+	GeminiModel         string `toml:"gemini_model"`
 	OllamaURL           string `toml:"ollama_url"`
 	OllamaModel         string `toml:"ollama_model"`
 	SavePath            string `toml:"save_path"`

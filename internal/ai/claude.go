@@ -10,14 +10,26 @@ import (
 
 var anthropicChatURL = "https://api.anthropic.com/v1/messages"
 
-type claude struct{ key string }
+type claude struct {
+	key   string
+	model string
+}
 
-func (c *claude) ProviderName() string { return "Claude" }
+func (c *claude) ProviderName() string {
+	if c.model != "" {
+		return "Claude (" + c.model + ")"
+	}
+	return "Claude"
+}
 
 func (c *claude) Summarize(ctx context.Context, title, content string) (string, error) {
+	model := c.model
+	if model == "" {
+		model = "claude-haiku-4-5-20251001"
+	}
 	prompt := fmt.Sprintf(summaryPrompt, title, truncateContent(content, 4000))
 	body, _ := json.Marshal(map[string]any{
-		"model":      "claude-haiku-4-5-20251001",
+		"model":      model,
 		"max_tokens": 300,
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},

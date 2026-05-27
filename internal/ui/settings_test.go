@@ -667,7 +667,7 @@ func TestSettingsAboutViewShowsLinksAndTagline(t *testing.T) {
 		"ABOUT",
 		"github.com/allisonhere",
 		"Thanks for taking a look -allie",
-		"Your feeds, no algorithm, no bullshit",
+		"your mail, your rules",
 	} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expected about view to contain %q, got %q", want, view)
@@ -777,7 +777,7 @@ func TestSettingsAboutTaglineStaysOnOneLine(t *testing.T) {
 	s.setActiveSection(ssAbout)
 	s.aboutGradientFrame = 18
 	view := s.renderAboutHero(56, newManagerChrome(84, CatppuccinMocha, false))
-	if strings.Count(ansi.Strip(view), "Your feeds, no algorithm, no bullshit") != 1 {
+	if strings.Count(ansi.Strip(view), "your mail, your rules") != 1 {
 		t.Fatalf("expected tagline to render once on a single line, got %q", ansi.Strip(view))
 	}
 }
@@ -870,7 +870,7 @@ func TestSettingsSectionsUseSharedRightPaneGroupHeaders(t *testing.T) {
 		want    string
 	}{
 		{section: ssDisplay, want: "━ DISPLAY"},
-		{section: ssFeeds, want: "━ FEEDS"},
+		{section: ssFeeds, want: "━ STORAGE"},
 		{section: ssUpdates, want: "━ UPDATES"},
 		{section: ssAI, want: "━ PROVIDER CREDENTIALS"},
 	}
@@ -1186,7 +1186,7 @@ func TestSettingsFeedsSectionShowsFeedMaxSizeFieldOnly(t *testing.T) {
 
 	view := ansi.Strip(s.View(96, 24, newManagerChrome(96, CatppuccinMocha, false)))
 
-	if !strings.Contains(view, "Feed max size (MiB)") {
+	if !strings.Contains(view, "Max body size (MiB)") {
 		t.Fatalf("expected feeds settings view to contain feed max size, got %q", view)
 	}
 	for _, unwanted := range []string{"GReader API URL", "Login", "Password", "Source"} {

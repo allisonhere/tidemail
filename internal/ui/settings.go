@@ -53,6 +53,9 @@ const (
 	sfOllamaURL // visible when provider is ollama
 	sfOllamaModel
 	sfTestAIConnection
+	sfOpenAIModel
+	sfClaudeModel
+	sfGeminiModel
 	sfSavePath
 	sfMarkReadOnSummarize
 	sfUpdateManualCommand
@@ -135,7 +138,7 @@ var (
 	aiProviderIDs         = []string{"", "openai", "claude", "gemini", "ollama"}
 	settingsSectionLabels = [settingsSectionCount]string{
 		"DISPLAY",
-		"FEEDS",
+		"ACCOUNTS",
 		"UPDATES",
 		"AI",
 		"ABOUT",
@@ -184,8 +187,11 @@ type Settings struct {
 	// AI
 	providerIdx         int
 	openaiInput         textinput.Model
+	openaiModelInput    textinput.Model
 	claudeInput         textinput.Model
+	claudeModelInput    textinput.Model
 	geminiInput         textinput.Model
+	geminiModelInput    textinput.Model
 	ollamaURLInput      textinput.Model
 	ollamaModelInput    textinput.Model
 	savePathInput       textinput.Model
@@ -260,8 +266,11 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		update:               updateState,
 		providerIdx:          providerIndex(cfg.AI.Provider),
 		openaiInput:          mkInput(cfg.AI.OpenAIKey, "sk-...", true),
+		openaiModelInput:     mkInput(cfg.AI.OpenAIModel, "gpt-4o-mini", false),
 		claudeInput:          mkInput(cfg.AI.ClaudeKey, "sk-ant-...", true),
+		claudeModelInput:     mkInput(cfg.AI.ClaudeModel, "claude-sonnet-4", false),
 		geminiInput:          mkInput(cfg.AI.GeminiKey, "AIza...", true),
+		geminiModelInput:     mkInput(cfg.AI.GeminiModel, "gemini-1.5-flash", false),
 		ollamaURLInput:       mkInput(cfg.AI.OllamaURL, "http://localhost:11434", false),
 		ollamaModelInput:     mkInput(cfg.AI.OllamaModel, "llama3.2", false),
 		savePathInput:        mkInput(cfg.AI.SavePath, "~/", false),
@@ -333,12 +342,15 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	if value := strings.TrimSpace(s.openaiInput.Value()); value != "" {
 		cfg.AI.OpenAIKey = value
 	}
+	cfg.AI.OpenAIModel = strings.TrimSpace(s.openaiModelInput.Value())
 	if value := strings.TrimSpace(s.claudeInput.Value()); value != "" {
 		cfg.AI.ClaudeKey = value
 	}
+	cfg.AI.ClaudeModel = strings.TrimSpace(s.claudeModelInput.Value())
 	if value := strings.TrimSpace(s.geminiInput.Value()); value != "" {
 		cfg.AI.GeminiKey = value
 	}
+	cfg.AI.GeminiModel = strings.TrimSpace(s.geminiModelInput.Value())
 	cfg.AI.OllamaURL = strings.TrimSpace(s.ollamaURLInput.Value())
 	cfg.AI.OllamaModel = strings.TrimSpace(s.ollamaModelInput.Value())
 	cfg.AI.SavePath = strings.TrimSpace(s.savePathInput.Value())
@@ -374,8 +386,11 @@ func (s Settings) draftAIConfig() config.AIConfig {
 	return config.AIConfig{
 		Provider:            aiProviderIDs[s.providerIdx],
 		OpenAIKey:           strings.TrimSpace(s.openaiInput.Value()),
+		OpenAIModel:         strings.TrimSpace(s.openaiModelInput.Value()),
 		ClaudeKey:           strings.TrimSpace(s.claudeInput.Value()),
+		ClaudeModel:         strings.TrimSpace(s.claudeModelInput.Value()),
 		GeminiKey:           strings.TrimSpace(s.geminiInput.Value()),
+		GeminiModel:         strings.TrimSpace(s.geminiModelInput.Value()),
 		OllamaURL:           strings.TrimSpace(s.ollamaURLInput.Value()),
 		OllamaModel:         strings.TrimSpace(s.ollamaModelInput.Value()),
 		SavePath:            strings.TrimSpace(s.savePathInput.Value()),
@@ -449,8 +464,11 @@ func (s *Settings) applyFocus() {
 	s.readingWidthInput.Blur()
 	s.feedMaxBodyInput.Blur()
 	s.openaiInput.Blur()
+	s.openaiModelInput.Blur()
 	s.claudeInput.Blur()
+	s.claudeModelInput.Blur()
 	s.geminiInput.Blur()
+	s.geminiModelInput.Blur()
 	s.ollamaURLInput.Blur()
 	s.ollamaModelInput.Blur()
 	s.savePathInput.Blur()
@@ -475,6 +493,12 @@ func (s *Settings) applyFocus() {
 		case 3:
 			s.geminiInput.Focus()
 		}
+	case sfOpenAIModel:
+		s.openaiModelInput.Focus()
+	case sfClaudeModel:
+		s.claudeModelInput.Focus()
+	case sfGeminiModel:
+		s.geminiModelInput.Focus()
 	case sfOllamaURL:
 		s.ollamaURLInput.Focus()
 	case sfOllamaModel:
@@ -536,10 +560,14 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 	case ssAI:
 		fields := []settingsField{sfBackToSections, sfProvider}
 		switch s.providerIdx {
+		case 1:
+			fields = append(fields, sfAPIKey, sfOpenAIModel)
+		case 2:
+			fields = append(fields, sfAPIKey, sfClaudeModel)
+		case 3:
+			fields = append(fields, sfAPIKey, sfGeminiModel)
 		case 4:
 			fields = append(fields, sfOllamaURL, sfOllamaModel)
-		case 1, 2, 3:
-			fields = append(fields, sfAPIKey)
 		}
 		fields = append(fields, sfTestAIConnection, sfSavePath, sfMarkReadOnSummarize)
 		return fields
@@ -611,7 +639,7 @@ func (s Settings) isTextInput() bool {
 		return false
 	}
 	switch s.focusedField {
-	case sfBrowser, sfFeedMaxBody, sfReadingWidth, sfAPIKey, sfOllamaURL, sfOllamaModel, sfSavePath,
+	case sfBrowser, sfFeedMaxBody, sfReadingWidth, sfAPIKey, sfOpenAIModel, sfClaudeModel, sfGeminiModel, sfOllamaURL, sfOllamaModel, sfSavePath,
 		sfRetroBg, sfRetroFg, sfRetroAccent:
 		return true
 	}
@@ -637,6 +665,12 @@ func (s Settings) updateFocusedTextInput(msg tea.Msg) (Settings, tea.Cmd, bool) 
 		case 3:
 			s.geminiInput, cmd = s.geminiInput.Update(msg)
 		}
+	case sfOpenAIModel:
+		s.openaiModelInput, cmd = s.openaiModelInput.Update(msg)
+	case sfClaudeModel:
+		s.claudeModelInput, cmd = s.claudeModelInput.Update(msg)
+	case sfGeminiModel:
+		s.geminiModelInput, cmd = s.geminiModelInput.Update(msg)
 	case sfOllamaURL:
 		s.ollamaURLInput, cmd = s.ollamaURLInput.Update(msg)
 	case sfOllamaModel:
@@ -1269,8 +1303,8 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addToggle("Confirm before quitting", s.confirmQuit, sfConfirmQuit)
 
 	case ssFeeds:
-		b.addGroup("Feeds")
-		b.addInput("Feed max size (MiB)", s.feedMaxBodyInput, sfFeedMaxBody)
+		b.addGroup("Storage")
+		b.addInput("Max body size (MiB)", s.feedMaxBodyInput, sfFeedMaxBody)
 
 	case ssUpdates:
 		b.addGroup("Updates")
@@ -1315,7 +1349,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 			b.addBlank()
 		}
 		if s.update.restartable {
-			b.addAction("Restart now", "launch updated Tide", sfUpdateRestartNow)
+			b.addAction("Restart now",	"launch updated Tidemail", sfUpdateRestartNow)
 		}
 
 	case ssAI:
@@ -1471,10 +1505,13 @@ func (b *settingsFormBuilder) addAISection() {
 	switch b.s.providerIdx {
 	case 1:
 		b.addBareInput(b.s.openaiInput, sfAPIKey)
+		b.addInput("Model", b.s.openaiModelInput, sfOpenAIModel)
 	case 2:
 		b.addBareInput(b.s.claudeInput, sfAPIKey)
+		b.addInput("Model", b.s.claudeModelInput, sfClaudeModel)
 	case 3:
 		b.addBareInput(b.s.geminiInput, sfAPIKey)
+		b.addInput("Model", b.s.geminiModelInput, sfGeminiModel)
 	case 4:
 		b.addInput("Ollama URL", b.s.ollamaURLInput, sfOllamaURL)
 		b.addInput("Model", b.s.ollamaModelInput, sfOllamaModel)
@@ -1907,21 +1944,21 @@ func (s Settings) renderToggle(label string, on bool, focused bool, width int, c
 func (u settingsUpdateState) statusLabel() string {
 	switch u.state {
 	case updateStateChecking:
-		return "checking for Tide updates..."
+		return "checking for Tidemail updates..."
 	case updateStateAvailable:
 		if u.dismissed {
-			return "Tide update dismissed"
+			return "Tidemail update dismissed"
 		}
-		return "Tide update available"
+		return "Tidemail update available"
 	case updateStateDownloading:
-		return "downloading Tide update..."
+		return "downloading Tidemail update..."
 	case updateStateInstalling:
-		return "installing Tide update..."
+		return "installing Tidemail update..."
 	case updateStateInstalled:
 		if u.installedVersion != "" {
-			return "Tide updated to " + u.installedVersion
+			return "Tidemail updated to " + u.installedVersion
 		}
-		return "Tide update installed"
+		return "Tidemail update installed"
 	case updateStateNeedsElevation:
 		return "admin permission required"
 	case updateStateError:
@@ -2073,7 +2110,7 @@ func (s Settings) fieldHint(field settingsField) string {
 	case sfBrowser:
 		return "leave blank to use the system default browser"
 	case sfFeedMaxBody:
-		return "larger feeds need more memory; default is 10 MiB"
+		return "larger bodies need more memory; default is 10 MiB"
 	case sfReadingWidth:
 		return "max columns for article text; 0 = no limit (e.g. 80, 100)"
 	case sfTestAIConnection:
@@ -2152,11 +2189,23 @@ func (s Settings) renderAboutSection(width int, chrome managerChrome) settingsSe
 func (s Settings) renderAboutHero(width int, chrome managerChrome) string {
 	panelW := max(1, width-4)
 	contentW := max(1, panelW-2)
-	tagline := aboutCenterText(truncate("Your feeds, no algorithm, no bullshit", contentW), contentW)
+	f := float64(s.aboutGradientFrame)
+
+	titleTxt := "TIDEMAIL"
+	tagline := "your mail, your rules"
+
+	// Centered title on row 0
+	titleCentered := aboutCenterText(titleTxt, contentW)
+	// Centered tagline on row 1
+	taglineCentered := aboutCenterText(tagline, contentW)
+
+	// Signal bar on row 2 — smooth oscillation
+	signalPos := (math.Sin(f*0.025)*0.5 + 0.5) * float64(contentW-1)
+
 	lines := []string{
-		s.renderAboutHeroTextLine(aboutCenterText("TIDE", contentW), contentW, 0, true),
-		s.renderAboutHeroTextLine("", contentW, 1, false),
-		s.renderAboutHeroTextLine(tagline, contentW, 2, false),
+		s.renderAboutHeroTextLine(titleCentered, contentW, 0, true),
+		s.renderAboutHeroTextLine(taglineCentered, contentW, 1, false),
+		s.renderAboutHeroTextLine(s.renderSignalBar(contentW, int(signalPos), f), contentW, 2, false),
 		s.renderAboutHeroTextLine("", contentW, 3, false),
 	}
 
@@ -2165,12 +2214,51 @@ func (s Settings) renderAboutHero(width int, chrome managerChrome) string {
 		Width(panelW).
 		Background(panelBg).
 		Border(lipPaneBorder(chrome.plainUI)).
-		BorderForeground(lipgloss.Color("#193847")).
+		BorderForeground(aboutBorderColor(f)).
 		BorderBackground(panelBg).
 		Padding(0, 1).
 		Render(strings.Join(lines, "\n"))
 
 	return lipgloss.NewStyle().Width(width).Background(chrome.baseBg).Render(panel)
+}
+
+// renderSignalBar renders a smooth horizontal sweep bar of the given width.
+// head is the current position (0..w-1). Returns the full-width string.
+func (s Settings) renderSignalBar(w, head int, frame float64) string {
+	// Smooth trailing intensity — gaussian falloff behind the head
+	// and a subtle breathing/pulsing on the bar's brightness
+	pulse := math.Sin(frame*0.06)*0.15 + 0.85
+	var b strings.Builder
+	for i := 0; i < w; i++ {
+		dist := float64(head - i)
+		// Gaussian trail: brighter near head, fades behind
+		intensity := math.Exp(-(dist * dist) / (float64(w) * 0.045))
+		intensity *= pulse
+		// Sharp bright block at the head
+		if i == head {
+			b.WriteString("\u2588") // full block █
+		} else if i > head {
+			b.WriteString("\u2591") // light shade ░ (ahead)
+		} else if intensity > 0.35 {
+			b.WriteString("\u2593") // dark shade ▓
+		} else if intensity > 0.12 {
+			b.WriteString("\u2592") // medium shade ▒
+		} else if intensity > 0.03 {
+			b.WriteString("\u2591") // light shade ░
+		} else {
+			b.WriteString("\u2591") // very faint ░
+		}
+	}
+	return b.String()
+}
+
+func aboutBorderColor(frame float64) lipgloss.Color {
+	// Subtle pulse: border dims and brightens slowly
+	b := 0.22 + 0.08*math.Sin(frame*0.015)
+	r := int(math.Round(20 * b))
+	g := int(math.Round(58 * b))
+	bl := int(math.Round(74 * b))
+	return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", r, g, bl))
 }
 
 func (s Settings) renderAboutLinks(width int, chrome managerChrome) string {
@@ -2309,47 +2397,33 @@ func renderAboutHeroCell(ch rune, bg, fg lipgloss.Color, bold bool) string {
 }
 
 func aboutHeroBackground(frame, row, col, width int) lipgloss.Color {
-	skyTop := lipgloss.Color("#071524")
-	skyMid := lipgloss.Color("#0d2d45")
-	horizon := lipgloss.Color("#15556f")
-	waterTop := lipgloss.Color("#0c3b56")
-	waterMid := lipgloss.Color("#0a3149")
-	waterDeep := lipgloss.Color("#072235")
-	foamGlow := lipgloss.Color("#5ca6bf")
+	// CRT terminal: near-black with subtle scanline alternating
+	// and a very faint vertical scan variation.
+	base := lipgloss.Color("#0a0e14")
+	scanAlt := lipgloss.Color("#0b0f16")
 
-	x := float64(col) / math.Max(1, float64(width-1))
-
-	switch row {
-	case 0:
-		glow := clamp01(0.22 + 0.18*math.Sin(x*math.Pi))
-		bg := blendLipglossColor(skyTop, skyMid, glow)
-		bg = blendLipglossColor(bg, horizon, clamp01(0.12+0.10*math.Sin(x*6.4)))
-		return bg
-	case 1:
-		horizonGlow := clamp01(0.42 + 0.24*math.Sin((x-0.5)*math.Pi))
-		bg := blendLipglossColor(skyMid, horizon, horizonGlow)
-		return blendLipglossColor(bg, foamGlow, clamp01(0.05+0.08*math.Sin(x*9.0)))
-	case 2:
-		swell := clamp01(0.26 + 0.18*math.Sin(x*8.8) + 0.12*math.Sin(x*15.0))
-		bg := blendLipglossColor(waterTop, waterMid, swell)
-		return blendLipglossColor(bg, horizon, clamp01(0.10+0.08*math.Sin(x*6.5)))
-	default:
-		trough := clamp01(0.22 + 0.16*math.Sin(x*10.5) + 0.08*math.Sin(x*21.0))
-		bg := blendLipglossColor(waterMid, waterDeep, trough)
-		return blendLipglossColor(bg, foamGlow, clamp01(0.06+0.05*math.Sin(x*12.0)))
+	// Horizontal scanline: alternate slightly every row
+	if row%2 == 0 {
+		return base
 	}
+	return scanAlt
 }
 
 func aboutHeroTextForeground(bg lipgloss.Color, row int, ch rune) lipgloss.Color {
-	if ch == ' ' {
-		return readableText(lipgloss.Color("#dceef6"), bg, 4.5)
+	// Title row (row 0): bright accent for "TIDEMAIL"
+	if row == 0 && ch != ' ' {
+		return lipgloss.Color("#84c5d4")
 	}
-	switch row {
-	case 0:
-		return readableText(lipgloss.Color("#f4fbff"), bg, 5)
-	default:
-		return readableText(lipgloss.Color("#c2dde9"), bg, 4.5)
+	// Tagline row (row 1): dimmed text
+	if row == 1 && ch != ' ' {
+		return readableText(lipgloss.Color("#84c5d4"), bg, 3.5)
 	}
+	// Signal bar (row 2): green
+	if row == 2 {
+		return readableText(lipgloss.Color("#98d379"), bg, 4.5)
+	}
+	// Default: dim text for spaces etc.
+	return readableText(lipgloss.Color("#b3b1ad"), bg, 4.5)
 }
 
 func aboutHeroWavePattern(frame, row, width int) string {
