@@ -49,6 +49,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				bind(keys.Compose),
 				bind(keys.Reply),
 				{keys.SaveAttach.Help().Key, "save all attachments to folder"},
+				{keys.ToggleQuote.Help().Key, "toggle quoted text collapse"},
 			},
 		},
 		{

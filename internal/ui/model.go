@@ -121,7 +121,8 @@ type Model struct {
 	contentSearchMatches []int
 	contentSearchIdx     int
 
-	contentAttachments []db.Attachment
+	contentAttachments    []db.Attachment
+	contentQuotesCollapsed bool
 
 	saveAttachPicker filePicker
 
@@ -1309,6 +1310,10 @@ func (m Model) handleSummaryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !m.summaryGenerating && m.summaryErr == "" && m.summaryMessage.Summary != "" {
 			return m, saveSummaryMDCmd(m.summaryMessage, m.summaryMessage.Summary, m.cfg.AI.SavePath)
 		}
+	case keyMatches(msg, m.keys.ToggleQuote):
+		if m.focused == paneContent && m.contentMessageID != 0 {
+			m.contentQuotesCollapsed = !m.contentQuotesCollapsed
+		}
 	}
 	return m, nil
 }
@@ -1916,7 +1921,7 @@ func (m Model) renderMessageContent(msg db.Message) string {
 
 	var body string
 	if msg.BodyHTML != "" {
-		body = renderHTMLBody(msg.BodyHTML, bodyWidth, m.styles.PlainUI)
+		body = renderHTMLBody(msg.BodyHTML, bodyWidth, m.styles.Theme, m.styles.PlainUI)
 	}
 	if body == "" {
 		content := msg.BodyText
@@ -1926,8 +1931,10 @@ func (m Model) renderMessageContent(msg db.Message) string {
 		if m.cfg.Display.FilterLinks {
 			content = filterLinksFromContent(content)
 		}
-		body = indentBlock(m.styles.ContentBody.Width(bodyWidth).Render(formatArticleBody(content, bodyWidth, m.styles.PlainUI)), 1)
+		body = indentBlock(m.styles.ContentBody.Width(bodyWidth).Render(formatArticleBody(content, bodyWidth, m.styles.Theme, m.styles.PlainUI)), 1)
 	}
+
+	body = collapseQuoteBlocks(body, m.contentQuotesCollapsed)
 
 	if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
 		body += "\n\n" + m.renderContentLinks(bodyWidth)
@@ -1944,15 +1951,38 @@ func (m Model) renderAttachmentList(width int) string {
 	if len(m.contentAttachments) == 0 {
 		return ""
 	}
-	lines := []string{strings.ToUpper("Attachments")}
+	th := m.styles.Theme
+	accent := lipgloss.NewStyle().Foreground(th.BorderFocus)
+	dimmed := lipgloss.NewStyle().Foreground(th.Dimmed)
+	body := m.styles.ContentBody.Width(width)
+
+	lines := []string{
+		accent.Render("── " + strings.ToUpper("Attachments") + " ──") + dimmed.Render(strings.Repeat("─", width-ansi.StringWidth(accent.Render("── " + strings.ToUpper("Attachments") + " ──")))),
+	}
+	maxSizeLen := 0
 	for _, a := range m.contentAttachments {
+		if l := len(formatFileSize(a.Size)); l > maxSizeLen {
+			maxSizeLen = l
+		}
+	}
+	for _, a := range m.contentAttachments {
+		icon := fileTypeIcon(a.Filename, a.ContentType)
 		sizeStr := formatFileSize(a.Size)
-		line := fmt.Sprintf("  %s  (%s)", a.Filename, sizeStr)
+		iconStyled := accent.Render(" " + icon + " ")
+		line := iconStyled + a.Filename
+		paddedSize := fmt.Sprintf("%*s", maxSizeLen, sizeStr)
+		// Right-align size by padding to column end
+		used := ansi.StringWidth(line)
+		pad := width - used - maxSizeLen - 2
+		if pad < 1 {
+			pad = 1
+		}
+		line += strings.Repeat(" ", pad) + dimmed.Render(paddedSize)
 		lines = append(lines, line)
 	}
 	lines = append(lines, "")
-	lines = append(lines, "  ctrl+d  save all to folder")
-	return indentBlock(m.styles.ContentBody.Width(width).Render(strings.Join(lines, "\n")), 1)
+	lines = append(lines, dimmed.Render("  ctrl+d  save all to folder"))
+	return indentBlock(body.Render(strings.Join(lines, "\n")), 1)
 }
 
 func formatFileSize(size int64) string {
@@ -1963,6 +1993,58 @@ func formatFileSize(size int64) string {
 		return fmt.Sprintf("%.1f KB", float64(size)/1024)
 	default:
 		return fmt.Sprintf("%.1f MB", float64(size)/(1024*1024))
+	}
+}
+
+func fileTypeIcon(filename, contentType string) string {
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".pdf":
+		return "▤"
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg":
+		return "▣"
+	case ".zip", ".tar", ".gz", ".bz2", ".xz", ".7z", ".rar", ".tgz":
+		return "⊞"
+	case ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt", ".ods", ".odp":
+		return "◇"
+	case ".go", ".py", ".js", ".ts", ".rs", ".c", ".cpp", ".h", ".hpp",
+		".java", ".rb", ".sh", ".bash", ".zsh", ".fish", ".swift", ".kt",
+		".css", ".scss", ".less", ".html", ".htm", ".xml", ".yaml", ".yml",
+		".json", ".toml", ".ini", ".cfg", ".conf", ".sql", ".r", ".m",
+		".ex", ".exs", ".php", ".pl", ".lua", ".vue", ".svelte", ".tsx", ".jsx":
+		return "⌘"
+	case ".txt", ".md", ".rst", ".adoc", ".org", ".log":
+		return "≡"
+	case ".mp3", ".wav", ".flac", ".ogg", ".aac", ".m4a", ".opus", ".wma":
+		return "♫"
+	case ".mp4", ".avi", ".mkv", ".mov", ".webm", ".m4v", ".flv", ".wmv":
+		return "▶"
+	case ".csv", ".tsv":
+		return "≡"
+	default:
+		if strings.HasPrefix(contentType, "image/") {
+			return "▣"
+		}
+		if strings.HasPrefix(contentType, "text/") {
+			return "≡"
+		}
+		if strings.HasPrefix(contentType, "audio/") {
+			return "♫"
+		}
+		if strings.HasPrefix(contentType, "video/") {
+			return "▶"
+		}
+		if strings.Contains(contentType, "pdf") ||
+			strings.Contains(contentType, "postscript") {
+			return "▤"
+		}
+		if strings.Contains(contentType, "zip") ||
+			strings.Contains(contentType, "compress") ||
+			strings.Contains(contentType, "tar") ||
+			strings.Contains(contentType, "gzip") {
+			return "⊞"
+		}
+		return "○"
 	}
 }
 
@@ -1995,6 +2077,7 @@ func (m *Model) setViewportMessage(msg db.Message) {
 	sameMsg := m.contentMessageID == msg.ID && m.contentLineCount > 0
 	m.syncContentLinks(msg)
 	m.contentAttachments = nil
+	m.contentQuotesCollapsed = false
 	if msg.HasAttachment {
 		if atts, err := m.db.GetAttachments(msg.ID); err == nil {
 			m.contentAttachments = atts
@@ -4260,6 +4343,35 @@ func fillViewWidth(view string, width int, bg lipgloss.Color) string {
 		return view
 	}
 	return clampView(view, width, strings.Count(view, "\n")+1, bg)
+}
+
+func collapseQuoteBlocks(body string, collapsed bool) string {
+	if !collapsed {
+		return body
+	}
+	// Blockquote lines are rendered with ANSI dimmed styling, so │
+	// is preceded by escape codes, not at position 0. Use Contains.
+	quoteRune := "│"
+	if !strings.Contains(body, quoteRune) {
+		return body
+	}
+	lines := strings.Split(body, "\n")
+	var result []string
+	i := 0
+	for i < len(lines) {
+		if strings.Contains(lines[i], quoteRune) {
+			start := i
+			for i < len(lines) && strings.Contains(lines[i], quoteRune) {
+				i++
+			}
+			count := i - start
+			result = append(result, fmt.Sprintf("│  [+%d quoted lines — press z to expand]", count))
+		} else {
+			result = append(result, lines[i])
+			i++
+		}
+	}
+	return strings.Join(result, "\n")
 }
 
 func indentBlock(view string, pad int) string {

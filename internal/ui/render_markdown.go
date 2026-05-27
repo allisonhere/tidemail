@@ -4,32 +4,35 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
 )
 
-func renderMarkdown(src string, width int, plainUI bool) string {
+func renderMarkdown(src string, width int, th Theme, plainUI bool) string {
 	source := []byte(src)
 	reader := text.NewReader(source)
 	doc := goldmark.New().Parser().Parse(reader)
 
 	var out []string
 	for child := doc.FirstChild(); child != nil; child = child.NextSibling() {
-		if b := mdBlock(child, source, width, plainUI); strings.TrimSpace(b) != "" {
+		if b := mdBlock(child, source, width, th, plainUI); strings.TrimSpace(b) != "" {
 			out = append(out, b)
 		}
 	}
 	return strings.TrimSpace(strings.Join(out, "\n\n"))
 }
 
-func mdBlock(node ast.Node, source []byte, width int, plainUI bool) string {
+func mdBlock(node ast.Node, source []byte, width int, th Theme, plainUI bool) string {
 	switch node.Kind() {
 	case ast.KindParagraph, ast.KindTextBlock:
-		return wrapWords(mdInlineText(node, source), width)
+		return wrapWords(mdInlineText(node, source, th), width)
 
 	case ast.KindHeading:
-		return wrapWords(mdInlineText(node, source), width)
+		text := mdInlineText(node, source, th)
+		style := lipgloss.NewStyle().Bold(true).Foreground(th.BorderFocus)
+		return style.Render(wrapWords(text, width))
 
 	case ast.KindBlockquote:
 		prefix := "│ "
@@ -38,7 +41,7 @@ func mdBlock(node ast.Node, source []byte, width int, plainUI bool) string {
 		}
 		var blocks []string
 		for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-			if b := mdBlock(child, source, max(1, width-2), plainUI); strings.TrimSpace(b) != "" {
+			if b := mdBlock(child, source, max(1, width-2), th, plainUI); strings.TrimSpace(b) != "" {
 				blocks = append(blocks, b)
 			}
 		}
@@ -47,14 +50,15 @@ func mdBlock(node ast.Node, source []byte, width int, plainUI bool) string {
 		for _, line := range strings.Split(joined, "\n") {
 			lines = append(lines, prefix+line)
 		}
-		return strings.Join(lines, "\n")
+		style := lipgloss.NewStyle().Foreground(th.Dimmed)
+		return style.Render(strings.Join(lines, "\n"))
 
 	case ast.KindList:
 		list := node.(*ast.List)
 		var items []string
 		counter := list.Start
 		for item := node.FirstChild(); item != nil; item = item.NextSibling() {
-			t := mdListItemText(item, source)
+			t := mdListItemText(item, source, th)
 			if list.IsOrdered() {
 				items = append(items, wrapNumberedBullet(fmt.Sprintf("%d", counter), t, width))
 				counter++
@@ -66,11 +70,15 @@ func mdBlock(node ast.Node, source []byte, width int, plainUI bool) string {
 
 	case ast.KindCodeBlock:
 		cb := node.(*ast.CodeBlock)
-		return mdCodeLines(cb.Lines(), source)
+		code := mdCodeLines(cb.Lines(), source)
+		style := lipgloss.NewStyle().Foreground(th.Dimmed)
+		return style.Render(code)
 
 	case ast.KindFencedCodeBlock:
 		cb := node.(*ast.FencedCodeBlock)
-		return mdCodeLines(cb.Lines(), source)
+		code := mdCodeLines(cb.Lines(), source)
+		style := lipgloss.NewStyle().Foreground(th.Dimmed)
+		return style.Render(code)
 
 	case ast.KindHTMLBlock:
 		return ""
@@ -84,7 +92,7 @@ func mdBlock(node ast.Node, source []byte, width int, plainUI bool) string {
 	default:
 		var blocks []string
 		for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-			if b := mdBlock(child, source, width, plainUI); strings.TrimSpace(b) != "" {
+			if b := mdBlock(child, source, width, th, plainUI); strings.TrimSpace(b) != "" {
 				blocks = append(blocks, b)
 			}
 		}
@@ -104,18 +112,19 @@ func mdCodeLines(segs *text.Segments, source []byte) string {
 
 // mdListItemText collects plain text from a list item node.
 // Tight list items contain TextBlock; loose items contain Paragraph.
-func mdListItemText(node ast.Node, source []byte) string {
+func mdListItemText(node ast.Node, source []byte, th Theme) string {
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		k := child.Kind()
 		if k == ast.KindParagraph || k == ast.KindTextBlock {
-			return mdInlineText(child, source)
+			return mdInlineText(child, source, th)
 		}
 	}
-	return mdInlineText(node, source)
+	return mdInlineText(node, source, th)
 }
 
-// mdInlineText recursively collects plain text from inline nodes. No ANSI codes.
-func mdInlineText(node ast.Node, source []byte) string {
+// mdInlineText recursively collects text from inline nodes, applying ANSI styles
+// for bold, emphasis, and code spans.
+func mdInlineText(node ast.Node, source []byte, th Theme) string {
 	var sb strings.Builder
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		switch child.Kind() {
@@ -130,12 +139,12 @@ func mdInlineText(node ast.Node, source []byte) string {
 			s := child.(*ast.String)
 			sb.Write(s.Value)
 		case ast.KindCodeSpan:
-			sb.WriteByte('`')
-			sb.WriteString(mdInlineText(child, source))
-			sb.WriteByte('`')
+			inner := mdInlineText(child, source, th)
+			style := lipgloss.NewStyle().Background(th.Dimmed)
+			sb.WriteString(style.Render(inner))
 		case ast.KindLink:
 			link := child.(*ast.Link)
-			linkText := mdInlineText(child, source)
+			linkText := mdInlineText(child, source, th)
 			dest := strings.TrimSpace(string(link.Destination))
 			if dest != "" && dest != linkText {
 				sb.WriteString(linkText)
@@ -150,9 +159,21 @@ func mdInlineText(node ast.Node, source []byte) string {
 			sb.WriteString(string(al.URL(source)))
 		case ast.KindRawHTML:
 			// skip
+		case ast.KindEmphasis:
+			em := child.(*ast.Emphasis)
+			inner := mdInlineText(child, source, th)
+			if em.Level >= 2 {
+				// Strong / bold
+				style := lipgloss.NewStyle().Bold(true)
+				sb.WriteString(style.Render(inner))
+			} else {
+				// Emphasis / italic
+				style := lipgloss.NewStyle().Italic(true).Foreground(th.Dimmed)
+				sb.WriteString(style.Render(inner))
+			}
 		default:
-			// Emphasis, Strong, and other inline containers: just recurse
-			sb.WriteString(mdInlineText(child, source))
+			// Other inline containers: just recurse
+			sb.WriteString(mdInlineText(child, source, th))
 		}
 	}
 	return strings.TrimRight(sb.String(), " \t")

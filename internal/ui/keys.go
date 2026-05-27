@@ -38,6 +38,7 @@ type KeyMap struct {
 	CopyText      key.Binding
 	SaveMD        key.Binding
 	ContentSearch key.Binding
+	ToggleQuote   key.Binding
 	SaveAttach    key.Binding
 
 	// Account manager specific
@@ -71,7 +72,7 @@ var DefaultKeys = KeyMap{
 
 	Sync:        key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "sync mailbox")),
 	SyncAll:     key.NewBinding(key.WithKeys("F"), key.WithHelp("F", "sync all")),
-	MarkRead:    key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "mark read")),
+	MarkRead:    key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "mark read")),
 	MarkAllRead: key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "mark all read")),
 	OpenBrowser: key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser")),
 	NextLink:    key.NewBinding(key.WithKeys("ctrl+n", "alt+n"), key.WithHelp("ctrl+n", "next link")),
@@ -95,6 +96,7 @@ var DefaultKeys = KeyMap{
 	CopyText:      key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "copy")),
 	SaveMD:        key.NewBinding(key.WithKeys("M"), key.WithHelp("M", "save .md")),
 	ContentSearch: key.NewBinding(key.WithKeys("ctrl+f"), key.WithHelp("ctrl+f", "find")),
+	ToggleQuote:   key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "toggle quoted text")),
 
 	Add:         key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
 	Edit:        key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),

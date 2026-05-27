@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func formatArticleBody(content string, width int, plainUI bool) string {
+func formatArticleBody(content string, width int, th Theme, plainUI bool) string {
 	content = strings.ReplaceAll(content, "\r\n", "\n")
 	paras := splitArticleParagraphs(content)
 	out := make([]string, 0, len(paras))
@@ -16,7 +16,7 @@ func formatArticleBody(content string, width int, plainUI bool) string {
 		if p == "" {
 			continue
 		}
-		out = append(out, formatArticleParagraph(p, width, plainUI))
+		out = append(out, formatArticleParagraph(p, width, th, plainUI))
 	}
 	if len(out) == 0 {
 		return ""
@@ -56,7 +56,7 @@ func splitArticleParagraphs(content string) []string {
 	return out
 }
 
-func formatArticleParagraph(p string, width int, plainUI bool) string {
+func formatArticleParagraph(p string, width int, th Theme, plainUI bool) string {
 	lines := strings.Split(strings.TrimSpace(p), "\n")
 	if len(lines) == 0 {
 		return ""
@@ -69,10 +69,13 @@ func formatArticleParagraph(p string, width int, plainUI bool) string {
 	trimmed := strings.TrimSpace(lines[0])
 	switch {
 	case strings.HasPrefix(trimmed, "#"):
-		return wrapWords(strings.TrimSpace(strings.TrimLeft(trimmed, "#")), width)
+		text := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
+		style := lipgloss.NewStyle().Bold(true).Foreground(th.BorderFocus)
+		return style.Render(wrapWords(text, width))
 	case strings.HasPrefix(trimmed, ">"):
 		quote := normalizeInlineSpacing(strings.TrimSpace(strings.TrimLeft(trimmed, ">")))
-		return wrapWords(quoteBar+quote, width)
+		style := lipgloss.NewStyle().Foreground(th.Dimmed)
+		return style.Render(wrapWords(quoteBar+quote, width))
 	case strings.HasPrefix(trimmed, "- "), strings.HasPrefix(trimmed, "* "):
 		items := make([]string, 0, len(lines))
 		for _, line := range lines {
@@ -254,13 +257,13 @@ func splitSentences(s string) []string {
 	return sentences
 }
 
-func renderHTMLBody(html string, width int, plainUI bool) string {
+func renderHTMLBody(html string, width int, th Theme, plainUI bool) string {
 	converter := md.NewConverter("", true, nil)
 	markdown, err := converter.ConvertString(html)
 	if err != nil || strings.TrimSpace(markdown) == "" {
 		return ""
 	}
-	return renderMarkdown(markdown, width, plainUI)
+	return renderMarkdown(markdown, width, th, plainUI)
 }
 
 func isNumberedListItem(s string) bool {
