@@ -2,10 +2,17 @@ package ui
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/PuerkitoBio/goquery"
+)
+
+var (
+	urlRe   = regexp.MustCompile(`https?://[^\s<>"']+`)
+	emailRe = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
 )
 
 func formatArticleBody(content string, width int, th Theme, plainUI bool) string {
@@ -87,7 +94,9 @@ func formatArticleParagraph(p string, width int, th Theme, plainUI bool) string 
 		}
 		return strings.Join(items, "\n")
 	default:
-		return wrapWords(normalizeInlineSpacing(strings.Join(lines, " ")), width)
+		text := normalizeInlineSpacing(strings.Join(lines, " "))
+		text = highlightInlineLinks(text, th, plainUI)
+		return wrapWords(text, width)
 	}
 }
 
@@ -259,11 +268,77 @@ func splitSentences(s string) []string {
 
 func renderHTMLBody(html string, width int, th Theme, plainUI bool) string {
 	converter := md.NewConverter("", true, nil)
+	converter.AddRules(spanStyleRule())
 	markdown, err := converter.ConvertString(html)
 	if err != nil || strings.TrimSpace(markdown) == "" {
 		return ""
 	}
 	return renderMarkdown(markdown, width, th, plainUI)
+}
+
+// spanStyleRule returns a Rule that converts <span style="..."> CSS properties
+// into markdown formatting. Handles font-weight (bold), font-style (italic),
+// and their combination. Always returns content (styled or plain) since span
+// has no default fallback rule in the library.
+func spanStyleRule() md.Rule {
+	return md.Rule{
+		Filter: []string{"span"},
+		Replacement: func(content string, selec *goquery.Selection, _ *md.Options) *string {
+			style, ok := selec.Attr("style")
+			if !ok || style == "" {
+				return &content
+			}
+			style = strings.ToLower(style)
+
+			isBold := strings.Contains(style, "font-weight:bold") ||
+				strings.Contains(style, "font-weight: 700") ||
+				strings.Contains(style, "font-weight:700") ||
+				strings.Contains(style, "font-weight:bold ") ||
+				func() bool {
+					// Check for font-weight: 600, 800, 900 etc.
+					for _, w := range []string{"600", "700", "800", "900"} {
+						if strings.Contains(style, "font-weight:"+w) ||
+							strings.Contains(style, "font-weight: "+w) {
+							return true
+						}
+					}
+					return false
+				}()
+
+			isItalic := strings.Contains(style, "font-style:italic") ||
+				strings.Contains(style, "font-style:italic ") ||
+				strings.Contains(style, "font-style:oblique") ||
+				strings.Contains(style, "font-style:oblique ") ||
+				strings.Contains(style, "font-style: italic") ||
+				strings.Contains(style, "font-style: oblique")
+
+			if isBold && isItalic {
+				return md.String("**_" + content + "_**")
+			}
+			if isBold {
+				return md.String("**" + content + "**")
+			}
+			if isItalic {
+				return md.String("_" + content + "_")
+			}
+			return &content
+		},
+	}
+}
+
+// highlightInlineLinks finds URLs and email addresses in text and wraps them
+// in accent-color + underline styling. Only applies when not in plainUI mode.
+func highlightInlineLinks(text string, th Theme, plainUI bool) string {
+	if plainUI {
+		return text
+	}
+	linkStyle := lipgloss.NewStyle().Foreground(th.BorderFocus).Underline(true)
+	replace := func(match string) string {
+		return linkStyle.Render(match)
+	}
+	text = urlRe.ReplaceAllStringFunc(text, replace)
+	text = emailRe.ReplaceAllStringFunc(text, replace)
+	return text
 }
 
 func isNumberedListItem(s string) bool {

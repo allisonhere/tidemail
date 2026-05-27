@@ -27,10 +27,10 @@ func renderMarkdown(src string, width int, th Theme, plainUI bool) string {
 func mdBlock(node ast.Node, source []byte, width int, th Theme, plainUI bool) string {
 	switch node.Kind() {
 	case ast.KindParagraph, ast.KindTextBlock:
-		return wrapWords(mdInlineText(node, source, th), width)
+		return wrapWords(mdInlineText(node, source, th, plainUI), width)
 
 	case ast.KindHeading:
-		text := mdInlineText(node, source, th)
+		text := mdInlineText(node, source, th, plainUI)
 		style := lipgloss.NewStyle().Bold(true).Foreground(th.BorderFocus)
 		return style.Render(wrapWords(text, width))
 
@@ -58,7 +58,7 @@ func mdBlock(node ast.Node, source []byte, width int, th Theme, plainUI bool) st
 		var items []string
 		counter := list.Start
 		for item := node.FirstChild(); item != nil; item = item.NextSibling() {
-			t := mdListItemText(item, source, th)
+			t := mdListItemText(item, source, th, plainUI)
 			if list.IsOrdered() {
 				items = append(items, wrapNumberedBullet(fmt.Sprintf("%d", counter), t, width))
 				counter++
@@ -112,20 +112,21 @@ func mdCodeLines(segs *text.Segments, source []byte) string {
 
 // mdListItemText collects plain text from a list item node.
 // Tight list items contain TextBlock; loose items contain Paragraph.
-func mdListItemText(node ast.Node, source []byte, th Theme) string {
+func mdListItemText(node ast.Node, source []byte, th Theme, plainUI bool) string {
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		k := child.Kind()
 		if k == ast.KindParagraph || k == ast.KindTextBlock {
-			return mdInlineText(child, source, th)
+			return mdInlineText(child, source, th, plainUI)
 		}
 	}
-	return mdInlineText(node, source, th)
+	return mdInlineText(node, source, th, plainUI)
 }
 
 // mdInlineText recursively collects text from inline nodes, applying ANSI styles
 // for bold, emphasis, and code spans.
-func mdInlineText(node ast.Node, source []byte, th Theme) string {
+func mdInlineText(node ast.Node, source []byte, th Theme, plainUI bool) string {
 	var sb strings.Builder
+	linkStyle := lipgloss.NewStyle().Foreground(th.BorderFocus).Underline(true)
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		switch child.Kind() {
 		case ast.KindText:
@@ -139,29 +140,42 @@ func mdInlineText(node ast.Node, source []byte, th Theme) string {
 			s := child.(*ast.String)
 			sb.Write(s.Value)
 		case ast.KindCodeSpan:
-			inner := mdInlineText(child, source, th)
+			inner := mdInlineText(child, source, th, plainUI)
 			style := lipgloss.NewStyle().Background(th.Dimmed)
 			sb.WriteString(style.Render(inner))
 		case ast.KindLink:
 			link := child.(*ast.Link)
-			linkText := mdInlineText(child, source, th)
+			linkText := mdInlineText(child, source, th, plainUI)
 			dest := strings.TrimSpace(string(link.Destination))
 			if dest != "" && dest != linkText {
 				sb.WriteString(linkText)
 				sb.WriteString(" (")
-				sb.WriteString(dest)
+				if !plainUI {
+					sb.WriteString(linkStyle.Render(dest))
+				} else {
+					sb.WriteString(dest)
+				}
 				sb.WriteByte(')')
 			} else {
-				sb.WriteString(linkText)
+				if !plainUI {
+					sb.WriteString(linkStyle.Render(linkText))
+				} else {
+					sb.WriteString(linkText)
+				}
 			}
 		case ast.KindAutoLink:
 			al := child.(*ast.AutoLink)
-			sb.WriteString(string(al.URL(source)))
+			url := string(al.URL(source))
+			if !plainUI {
+				sb.WriteString(linkStyle.Render(url))
+			} else {
+				sb.WriteString(url)
+			}
 		case ast.KindRawHTML:
 			// skip
 		case ast.KindEmphasis:
 			em := child.(*ast.Emphasis)
-			inner := mdInlineText(child, source, th)
+			inner := mdInlineText(child, source, th, plainUI)
 			if em.Level >= 2 {
 				// Strong / bold
 				style := lipgloss.NewStyle().Bold(true)
@@ -173,7 +187,7 @@ func mdInlineText(node ast.Node, source []byte, th Theme) string {
 			}
 		default:
 			// Other inline containers: just recurse
-			sb.WriteString(mdInlineText(child, source, th))
+			sb.WriteString(mdInlineText(child, source, th, plainUI))
 		}
 	}
 	return strings.TrimRight(sb.String(), " \t")
