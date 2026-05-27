@@ -30,14 +30,34 @@ func (c *Client) fetchMessages(ctx context.Context, mailboxName string, limit in
 		return nil, nil
 	}
 
-	start := uint32(1)
-	if limit > 0 && total > uint32(limit) {
-		start = total - uint32(limit) + 1
-	}
+	var numSet imap.NumSet
 
-	seqset := imap.SeqSetNum()
-	for i := start; i <= total; i++ {
-		seqset.AddNum(i)
+	if !since.IsZero() {
+		// Incremental sync: use UID SEARCH SINCE to ask the server for
+		// only messages received since the last sync. This avoids fetching
+		// and discarding the full body of every previously-seen message.
+		searchData, err := c.conn.UIDSearch(&imap.SearchCriteria{
+			Since: since,
+		}, nil).Wait()
+		if err != nil {
+			return nil, fmt.Errorf("uid search: %w", err)
+		}
+		uids := searchData.AllUIDs()
+		if len(uids) == 0 {
+			return nil, nil
+		}
+		numSet = imap.UIDSetNum(uids...)
+	} else {
+		// Initial sync: fetch last N messages by sequence number.
+		start := uint32(1)
+		if limit > 0 && total > uint32(limit) {
+			start = total - uint32(limit) + 1
+		}
+		seqSet := imap.SeqSetNum()
+		for i := start; i <= total; i++ {
+			seqSet.AddNum(i)
+		}
+		numSet = seqSet
 	}
 
 	bodySection := &imap.FetchItemBodySection{}
@@ -49,7 +69,7 @@ func (c *Client) fetchMessages(ctx context.Context, mailboxName string, limit in
 		BodySection:   []*imap.FetchItemBodySection{bodySection},
 	}
 
-	cmd := c.conn.Fetch(seqset, fetchOptions)
+	cmd := c.conn.Fetch(numSet, fetchOptions)
 	msgs, err := cmd.Collect()
 	if err != nil {
 		return nil, fmt.Errorf("fetch: %w", err)
@@ -59,9 +79,6 @@ func (c *Client) fetchMessages(ctx context.Context, mailboxName string, limit in
 	for _, msg := range msgs {
 		parsed, err := parseIMAPMessage(msg)
 		if err != nil {
-			continue
-		}
-		if !since.IsZero() && parsed.Date.Before(since) {
 			continue
 		}
 		results = append(results, parsed)

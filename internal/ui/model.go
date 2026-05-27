@@ -2077,7 +2077,7 @@ func (m Model) renderStatusBar() string {
 				parts = append(parts, m.statusBarInlineText(sb, fmt.Sprintf("%d unread", unread)))
 			}
 		} else if mb := m.selectedMailbox(); mb != nil {
-			parts = append(parts, m.statusBarInlineText(sb, mb.DisplayName))
+			parts = append(parts, m.statusBarInlineText(sb, cleanDisplayName(mb.DisplayName)))
 			if mb.UnreadCount > 0 {
 				parts = append(parts, m.statusBarInlineText(sb, fmt.Sprintf("%d unread", mb.UnreadCount)))
 			}
@@ -2538,7 +2538,7 @@ func ensureConfiguredAccounts(database *db.DB, accounts []db.Account, configs []
 			return accounts, fmt.Errorf("list imported account mailboxes %s: %w", name, err)
 		}
 		if len(mailboxes) == 0 {
-			if _, err := database.UpsertMailbox(db.Mailbox{AccountID: account.ID, Name: "INBOX", DisplayName: "INBOX", Delimiter: "/"}); err != nil {
+			if _, err := database.UpsertMailbox(db.Mailbox{AccountID: account.ID, Name: "INBOX", DisplayName: cleanDisplayName("INBOX"), Delimiter: "/"}); err != nil {
 				return accounts, fmt.Errorf("create starter inbox for %s: %w", name, err)
 			}
 			changed = true
@@ -3022,6 +3022,33 @@ func mailboxRank(name string) int {
 		return 5
 	}
 	return 6
+}
+
+// cleanDisplayName strips common IMAP namespace prefixes and tidies
+// casing for display in the sidebar. The raw Name is preserved for IMAP
+// SELECT commands; this is purely cosmetic.
+func cleanDisplayName(name string) string {
+	// Capitalize INBOX -> Inbox (Gmail returns it uppercase)
+	if strings.EqualFold(name, "INBOX") {
+		return "Inbox"
+	}
+
+	// Strip Gmail's [Gmail]/ prefix (also covers [Google]/ etc.)
+	cleaned := name
+	if idx := strings.Index(name, "]/"); idx >= 0 {
+		cleaned = strings.TrimSpace(name[idx+2:])
+	}
+
+	// Strip "INBOX." or "INBOX/" prefix for custom accounts
+	// (e.g. Courier/Dovecot: INBOX.Sent -> Sent, INBOX/Drafts -> Drafts)
+	upper := strings.ToUpper(cleaned)
+	if strings.HasPrefix(upper, "INBOX.") {
+		cleaned = strings.TrimSpace(cleaned[6:])
+	} else if strings.HasPrefix(upper, "INBOX/") {
+		cleaned = strings.TrimSpace(cleaned[6:])
+	}
+
+	return cleaned
 }
 
 func (m Model) newAccountManager() AccountManager {
@@ -3697,10 +3724,11 @@ func (m Model) renderSidebarMailboxRow(mb db.Mailbox, selected bool, width int) 
 	if mb.UnreadCount > 0 {
 		badge = m.mailboxBadgeStyle(mb, selected).Render(fmt.Sprintf("(%d)", mb.UnreadCount))
 	}
-	title := mb.DisplayName
-	if title == "" {
-		title = mb.Name
+	raw := mb.DisplayName
+	if raw == "" {
+		raw = mb.Name
 	}
+	title := cleanDisplayName(raw)
 	prefix := "    "
 	if !m.iconsEnabled() {
 		prefix = "    " + m.mailboxRowPrefix(selected)

@@ -262,6 +262,7 @@ type amField int
 const (
 	amFieldProvider amField = iota
 	amFieldName
+	amFieldColor
 	amFieldIMAPHost
 	amFieldIMAPPort
 	amFieldIMAPTLS
@@ -273,6 +274,32 @@ const (
 	amFieldFrom
 	amFieldCount
 )
+
+var accountColorList = []struct {
+	Name string
+	Hex  string
+}{
+	{"None", ""},
+	{"Blue", "#89b4fa"},
+	{"Green", "#a6e3a1"},
+	{"Red", "#f38ba8"},
+	{"Purple", "#cba6f7"},
+	{"Orange", "#fab387"},
+	{"Teal", "#94e2d5"},
+	{"Pink", "#f5c2e7"},
+	{"Yellow", "#f9e2af"},
+	{"Cyan", "#89dceb"},
+	{"Lavender", "#b4befe"},
+	{"Coral", "#eba0ac"},
+	{"Mint", "#a6e3a1"},
+	{"Rosewater", "#f5e0dc"},
+	{"Flamingo", "#f2cdcd"},
+	{"Peach", "#fab387"},
+	{"Maroon", "#eba0ac"},
+	{"Mauve", "#cba6f7"},
+	{"Sapphire", "#74c7ec"},
+	{"Sky", "#89dceb"},
+}
 
 type AccountManager struct {
 	db *db.DB
@@ -298,6 +325,7 @@ type AccountManager struct {
 	provider      string
 	focusedField  amField
 	editAccountID int64
+	colorIdx      int
 
 	busy      bool
 	busyMsg   string
@@ -358,6 +386,8 @@ func (am *AccountManager) focusField(f amField) {
 	switch f {
 	case amFieldName:
 		am.nameInput.Focus()
+	case amFieldColor:
+		// no input to focus; handled in updateForm
 	case amFieldIMAPHost:
 		am.imapHostInput.Focus()
 	case amFieldIMAPPort:
@@ -430,6 +460,26 @@ func (am AccountManager) selectedAccount() *db.Account {
 		return nil
 	}
 	return &am.accounts[am.cursor]
+}
+
+func colorIndexForHex(hex string) int {
+	for i, c := range accountColorList {
+		if c.Hex == hex {
+			return i
+		}
+	}
+	return 0
+}
+
+func colorSuffix(hex string, bg lipgloss.Color) string {
+	if hex == "" {
+		return ""
+	}
+	return " " + lipgloss.NewStyle().
+		Background(lipgloss.Color(hex)).
+		Foreground(contrastFg(lipgloss.Color(hex))).
+		Padding(0, 1).
+		Render("  ")
 }
 
 func (am AccountManager) configForAccount(acc db.Account) (config.AccountConfig, bool) {
@@ -509,6 +559,7 @@ func (am AccountManager) updateList(msg tea.Msg, keys KeyMap) (AccountManager, t
 			} else {
 				am.nameInput.SetValue(acc.Name)
 			}
+			am.colorIdx = colorIndexForHex(acc.Color)
 		}
 	case keyMatches(km, keys.Delete):
 		if am.selectedAccount() != nil {
@@ -574,6 +625,12 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 				break
 			}
 		}
+	case am.focusedField == amFieldColor && (keyMatches(km, keys.Left) || keyMatches(km, keys.Right)):
+		if keyMatches(km, keys.Right) {
+			am.colorIdx = (am.colorIdx + 1) % len(accountColorList)
+		} else {
+			am.colorIdx = (am.colorIdx - 1 + len(accountColorList)) % len(accountColorList)
+		}
 	case keyMatches(km, keys.Backspace):
 		// let input handle it
 		fallthrough
@@ -604,6 +661,7 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 
 func (am AccountManager) submitForm() (AccountManager, tea.Cmd, bool) {
 	acfg := am.buildCfg()
+	color := accountColorList[am.colorIdx].Hex
 	if status := validateAccountForConnect(acfg); status != "" {
 		am.statusMsg = status
 		return am, nil, false
@@ -611,7 +669,7 @@ func (am AccountManager) submitForm() (AccountManager, tea.Cmd, bool) {
 	am.busy = true
 	am.busyMsg = "CONNECTING TO IMAP..."
 	am.statusMsg = ""
-	return am, saveAccountCmd(am.db, acfg, am.editAccountID), false
+	return am, saveAccountCmd(am.db, acfg, am.editAccountID, color), false
 }
 
 func (am AccountManager) testForm() (AccountManager, tea.Cmd, bool) {
@@ -676,6 +734,7 @@ func (am *AccountManager) advanceField(delta int) {
 
 func (am *AccountManager) resetForm() {
 	am.provider = "Custom"
+	am.colorIdx = 0
 	am.nameInput.Reset()
 	am.imapHostInput.Reset()
 	am.imapPortInput.SetValue("993")
@@ -803,7 +862,7 @@ func (am AccountManager) renderAccountCard(width int, acc db.Account, selected b
 	}
 
 	rows := []string{
-		row("Name", name),
+		row("Name", name+colorSuffix(acc.Color, bg)),
 		row("Email", email),
 		row("IMAP", imapServer),
 		row("SMTP", smtpServer),
@@ -894,10 +953,31 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 		return lipgloss.JoinHorizontal(lipgloss.Left, left, right)
 	}
 
+	colorRow := func(focused bool) string {
+		fg := chrome.text
+		if focused {
+			fg = chrome.accent
+		}
+		c := accountColorList[am.colorIdx]
+		swatch := ""
+		if c.Hex != "" {
+			swatch = lipgloss.NewStyle().
+				Background(lipgloss.Color(c.Hex)).
+				Foreground(contrastFg(lipgloss.Color(c.Hex))).
+				Padding(0, 1).
+				Render("  ")
+		}
+		val := "◀ " + c.Name + " ▶ " + swatch
+		left := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, labelW-2)).Padding(0, 1).Render("Color")
+		right := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(fg).Width(max(1, fieldW-2)).Padding(0, 1).Render(val)
+		return lipgloss.JoinHorizontal(lipgloss.Left, left, right)
+	}
+
 	blank := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
 	rows := []string{
 		providerRow(am.focusedField == amFieldProvider), blank,
 		row("Name", am.nameInput, am.focusedField == amFieldName), blank,
+		colorRow(am.focusedField == amFieldColor), blank,
 	}
 	if am.provider == "Custom" {
 		rows = append(rows,
@@ -987,7 +1067,7 @@ func (am AccountManager) viewConfirmDelete(width int, chrome managerChrome) stri
 
 // ── Async commands ────────────────────────────────────────────────────────────
 
-func saveAccountCmd(database *db.DB, acfg config.AccountConfig, editID int64) tea.Cmd {
+func saveAccountCmd(database *db.DB, acfg config.AccountConfig, editID int64, color string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
@@ -1001,12 +1081,12 @@ func saveAccountCmd(database *db.DB, acfg config.AccountConfig, editID int64) te
 		var accountID int64
 		var err error
 		if editID != 0 {
-			if err = database.UpdateAccount(editID, acfg.Name, ""); err != nil {
+			if err = database.UpdateAccount(editID, acfg.Name, color); err != nil {
 				return AccountSavedMsg{AccountCfg: acfg, Err: fmt.Errorf("update account: %w", err)}
 			}
 			accountID = editID
 		} else {
-			accountID, err = database.AddAccount(acfg.Name, "")
+			accountID, err = database.AddAccount(acfg.Name, color)
 			if err != nil {
 				return AccountSavedMsg{AccountCfg: acfg, Err: fmt.Errorf("add account: %w", err)}
 			}
@@ -1026,10 +1106,11 @@ func saveAccountCmd(database *db.DB, acfg config.AccountConfig, editID int64) te
 		var mailboxes []db.Mailbox
 		for _, info := range infos {
 			mb := db.Mailbox{
-				AccountID: accountID,
-				Name:      info.Name,
-				Delimiter: info.Delimiter,
-				Flags:     info.Flags,
+				AccountID:   accountID,
+				Name:        info.Name,
+				DisplayName: cleanDisplayName(info.Name),
+				Delimiter:   info.Delimiter,
+				Flags:       info.Flags,
 			}
 			id, upsertErr := database.UpsertMailbox(mb)
 			if upsertErr != nil {
