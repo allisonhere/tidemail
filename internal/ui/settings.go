@@ -101,7 +101,7 @@ const (
 )
 
 const (
-	tideRepoURL              = "https://github.com/allisonhere/tide"
+	tideRepoURL              = "https://github.com/allisonhere/tidemail"
 	tideIssuesURL            = tideRepoURL + "/issues"
 	settingsAboutPulsePeriod = 120 * time.Millisecond
 	settingsAboutTwoColMinW  = 56
@@ -1534,7 +1534,7 @@ func (b *settingsFormBuilder) addAITestConnection() {
 	badge := b.s.renderAITestBadge(focused, b.chrome)
 	status := b.s.renderAIConnectionStatus(max(1, b.contentW-b.labelW-lipgloss.Width(badge)-1), focused, b.chrome)
 	gap := lipgloss.NewStyle().Background(b.chrome.baseBg).Render(" ")
-	b.addLine(renderFormControlRow(badge+gap+status, b.contentW, b.chrome))
+	b.addLine(renderFormControlRow(badge+gap+status, b.contentW, b.chrome, focused))
 	b.addBlank()
 }
 
@@ -2198,13 +2198,15 @@ func (s Settings) renderAboutHero(width int, chrome managerChrome) string {
 	// Centered tagline on row 1
 	taglineCentered := aboutCenterText(tagline, contentW)
 
-	// Signal bar on row 2 — Cylon eye static at center
-	signalPos := float64(contentW-1) / 2
+	// Signal bar on row 1 — smooth ping-pong, decelerates at edges
+	angle := float64(s.aboutGradientFrame) * 0.065
+	norm := math.Asin(math.Sin(angle)) / (math.Pi / 2) // -1..1
+	signalPos := int(math.Round((norm + 1) / 2 * float64(contentW-1)))
 
 	lines := []string{
 		s.renderAboutHeroTextLine(titleCentered, contentW, 0, true),
+		renderSignalBar(contentW, int(signalPos), float64(s.aboutGradientFrame)),
 		s.renderAboutHeroTextLine(taglineCentered, contentW, 1, false),
-		s.renderAboutHeroTextLine(renderSignalBar(contentW, int(signalPos)), contentW, 2, false),
 		s.renderAboutHeroTextLine("", contentW, 3, false),
 	}
 
@@ -2221,26 +2223,57 @@ func (s Settings) renderAboutHero(width int, chrome managerChrome) string {
 	return lipgloss.NewStyle().Width(width).Background(chrome.baseBg).Render(panel)
 }
 
-// renderSignalBar renders a Cylon eye — a bright white center
-// with a red glow that fades symmetrically in both directions,
-// like the eye on a Cylon centurion.
-func renderSignalBar(w, head int) string {
+// renderSignalBar renders a thin horizontal line across the full row width.
+// The line is rainbow-colored with a bright white point at the eye position,
+// fading smoothly in both directions through the spectrum.
+func renderSignalBar(w, head int, frame float64) string {
+	spread := math.Max(3, float64(w)*0.60)
+	bg := lipgloss.Color("#000000")
+	flicker := 0.90 + 0.10*math.Sin(frame*0.11)
+
 	var b strings.Builder
 	for i := 0; i < w; i++ {
 		dist := math.Abs(float64(i - head))
-		intensity := math.Exp(-(dist * dist) / (float64(w) * 0.025))
-		if i == head {
-			// The "eye" itself — full block
-			b.WriteString("\u2588")
-		} else if intensity > 0.35 {
-			b.WriteString("\u2593") // ▓  bright glow
-		} else if intensity > 0.12 {
-			b.WriteString("\u2592") // ▒  mid glow
-		} else {
-			b.WriteString("\u2591") // ░  faint glow
-		}
+		intensity := math.Exp(-(dist*dist)/(spread*spread)) * flicker
+		intensity = clamp01(intensity)
+		fg := cylonGlowColor(intensity)
+		cell := lipgloss.NewStyle().Background(bg).Foreground(fg).Render("─")
+		b.WriteString(cell)
 	}
 	return b.String()
+}
+
+// cylonGlowColor maps an intensity (0..1) to a color along a rainbow spectrum:
+// purple → blue → cyan → green → yellow → orange → red → white.
+func cylonGlowColor(t float64) lipgloss.Color {
+	t = clamp01(t)
+	type stop struct{ pos, r, g, b float64 }
+	ramp := []stop{
+		{0.00, 0x40, 0x00, 0x60}, // deep purple
+		{0.10, 0x20, 0x20, 0xcc}, // blue
+		{0.24, 0x00, 0x80, 0xcc}, // cyan
+		{0.38, 0x00, 0xaa, 0x44}, // green
+		{0.52, 0x88, 0xcc, 0x00}, // yellow-green
+		{0.66, 0xee, 0xaa, 0x00}, // yellow
+		{0.80, 0xff, 0x55, 0x00}, // orange
+		{0.92, 0xff, 0x22, 0x22}, // red
+		{1.00, 0xff, 0xff, 0xff}, // white
+	}
+	for i := 1; i < len(ramp); i++ {
+		if t <= ramp[i].pos {
+			prev := ramp[i-1]
+			next := ramp[i]
+			frac := (t - prev.pos) / (next.pos - prev.pos)
+			r := prev.r + (next.r-prev.r)*frac
+			g := prev.g + (next.g-prev.g)*frac
+			b := prev.b + (next.b-prev.b)*frac
+			return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x",
+				uint8(math.Round(r)),
+				uint8(math.Round(g)),
+				uint8(math.Round(b))))
+		}
+	}
+	return "#ffffff"
 }
 
 func (s Settings) renderAboutLinks(width int, chrome managerChrome) string {

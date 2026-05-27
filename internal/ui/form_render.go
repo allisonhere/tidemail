@@ -73,11 +73,21 @@ func padStyled(s string, width int, bg lipgloss.Color) string {
 	return s
 }
 
-func renderFormControlRow(control string, width int, chrome managerChrome) string {
-	markerCell := lipgloss.NewStyle().
-		Background(chrome.baseBg).
-		Width(2).
-		Render(" ")
+func renderFormControlRow(control string, width int, chrome managerChrome, focused bool) string {
+	var markerCell string
+	if focused {
+		markerCell = lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Foreground(chrome.accent).
+			Bold(true).
+			Width(2).
+			Render(" >")
+	} else {
+		markerCell = lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Width(2).
+			Render(" ")
+	}
 	controlW := max(1, width-lipgloss.Width(markerCell))
 	control = truncateStyled(control, controlW, chrome.baseBg)
 	controlCell := lipgloss.NewStyle().
