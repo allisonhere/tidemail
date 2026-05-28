@@ -43,6 +43,8 @@ type sidebarRowKind int
 const (
 	rowKindUnified sidebarRowKind = iota
 	rowKindAccount
+	rowKindSysFolderHeader
+	rowKindPersonalFolderHeader
 	rowKindMailbox
 )
 
@@ -50,6 +52,8 @@ type sidebarRow struct {
 	kind      sidebarRowKind
 	accountID int64
 	mailboxID int64
+	label     string // section header label (e.g. "System", "Labels")
+	count     int    // item count for section headers
 }
 
 type overlayMode int
@@ -101,6 +105,7 @@ type Model struct {
 	sidebarCursor     int
 	sidebarOffset     int
 	collapsedAccounts map[int64]bool
+	collapsedSections map[string]bool // key: "system:<id>" or "personal:<id>"
 
 	messages         []db.Message
 	filteredMessages []db.Message
@@ -210,6 +215,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		spinner:               sp,
 		syncing:               make(map[int64]bool),
 		collapsedAccounts:     map[int64]bool{},
+		collapsedSections:     map[string]bool{},
 		firstLoad:             true,
 		keys:                  DefaultKeys,
 		summarizer:            summarizer,
@@ -406,6 +412,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						break
 					}
 					if row.kind == rowKindAccount && row.accountID == prevID {
+						m.sidebarCursor = i
+						break
+					}
+					if row.kind == rowKindSysFolderHeader && row.accountID == prevID {
+						m.sidebarCursor = i
+						break
+					}
+					if row.kind == rowKindPersonalFolderHeader && row.accountID == prevID {
 						m.sidebarCursor = i
 						break
 					}
@@ -798,8 +812,13 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleDown()
 
 	case keyMatches(msg, m.keys.Enter):
-		if m.focused == paneAccounts && m.toggleSelectedAccount() {
-			return m, nil
+		if m.focused == paneAccounts {
+			if m.toggleSelectedAccount() {
+				return m, nil
+			}
+			if m.toggleSelectedSection() {
+				return m, nil
+			}
 		}
 		if m.focused == paneMessages && len(m.filteredMessages) > 0 {
 			m.focused = paneContent
@@ -955,8 +974,13 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.Space):
-		if m.focused == paneAccounts && m.toggleSelectedAccount() {
-			return m, nil
+		if m.focused == paneAccounts {
+			if m.toggleSelectedAccount() {
+				return m, nil
+			}
+			if m.toggleSelectedSection() {
+				return m, nil
+			}
 		}
 		return m, nil
 	}
@@ -1672,6 +1696,10 @@ func (m Model) renderAccountsPane() string {
 			if mb := m.mailboxByID(row.mailboxID); mb != nil {
 				rows = append(rows, m.renderSidebarMailboxRow(*mb, selected, innerW))
 			}
+		case rowKindSysFolderHeader:
+			rows = append(rows, m.renderSectionHeader("System", row.count, rowKindSysFolderHeader, row.accountID, selected, innerW))
+		case rowKindPersonalFolderHeader:
+			rows = append(rows, m.renderSectionHeader(row.label, row.count, rowKindPersonalFolderHeader, row.accountID, selected, innerW))
 		}
 	}
 
@@ -3420,7 +3448,7 @@ func summaryFilename(title string) string {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 func (m *Model) rebuildSidebar() {
-	m.sidebarRows = buildSidebarRows(m.accounts, m.mailboxes, m.collapsedAccounts, m.cfg.Display.HideGmailSystem)
+	m.sidebarRows = buildSidebarRows(m.accounts, m.mailboxes, m.collapsedAccounts, m.collapsedSections)
 	m.sidebarCursor = clamp(m.sidebarCursor, 0, max(0, len(m.sidebarRows)-1))
 	m.clampSidebarOffset()
 }
@@ -3440,12 +3468,9 @@ func (m *Model) clampSidebarOffset() {
 	m.sidebarOffset = clamp(m.sidebarOffset, 0, max(0, len(m.sidebarRows)-visible))
 }
 
-func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed map[int64]bool, hideGmailSystem bool) []sidebarRow {
+func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed map[int64]bool, collapsedSections map[string]bool) []sidebarRow {
 	byAccount := make(map[int64][]db.Mailbox)
 	for _, mb := range mailboxes {
-		if hideGmailSystem && isGmailSystemFolder(mb.Name) {
-			continue
-		}
 		byAccount[mb.AccountID] = append(byAccount[mb.AccountID], mb)
 	}
 	for id := range byAccount {
@@ -3466,11 +3491,67 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 		if collapsed[acc.ID] {
 			continue
 		}
-		for _, mb := range byAccount[acc.ID] {
-			rows = append(rows, sidebarRow{kind: rowKindMailbox, mailboxID: mb.ID})
+		mbs := byAccount[acc.ID]
+
+		// Split INBOX out — it's always first, never inside a section.
+		var inbox *db.Mailbox
+		sysMbs := make([]db.Mailbox, 0, len(mbs))
+		personalMbs := make([]db.Mailbox, 0, len(mbs))
+		for _, mb := range mbs {
+			lower := strings.ToLower(mb.Name)
+			if lower == "inbox" || strings.HasSuffix(lower, "/inbox") {
+				mb := mb
+				inbox = &mb
+				continue
+			}
+			if isGmailSystemFolder(mb.Name) {
+				sysMbs = append(sysMbs, mb)
+			} else {
+				personalMbs = append(personalMbs, mb)
+			}
+		}
+
+		// INBOX first, always visible.
+		if inbox != nil {
+			rows = append(rows, sidebarRow{kind: rowKindMailbox, mailboxID: inbox.ID})
+		}
+
+		// System folders section (Gmail system labels).
+		if len(sysMbs) > 0 {
+			sysKey := fmt.Sprintf("system:%d", acc.ID)
+			sysCollapsed := collapsedSections[sysKey]
+			rows = append(rows, sidebarRow{kind: rowKindSysFolderHeader, accountID: acc.ID, label: "System", count: len(sysMbs)})
+			if !sysCollapsed {
+				for _, mb := range sysMbs {
+					rows = append(rows, sidebarRow{kind: rowKindMailbox, mailboxID: mb.ID})
+				}
+			}
+		}
+
+		// Personal folders / user labels section.
+		if len(personalMbs) > 0 {
+			personalKey := fmt.Sprintf("personal:%d", acc.ID)
+			personalCollapsed := collapsedSections[personalKey]
+			label := "Labels"
+			if len(personalMbs) == 1 {
+				label = "Label"
+			}
+			rows = append(rows, sidebarRow{kind: rowKindPersonalFolderHeader, accountID: acc.ID, label: label, count: len(personalMbs)})
+			if !personalCollapsed {
+				for _, mb := range personalMbs {
+					rows = append(rows, sidebarRow{kind: rowKindMailbox, mailboxID: mb.ID})
+				}
+			}
 		}
 	}
 	return rows
+}
+
+func sectionKey(accountID int64, isSystem bool) string {
+	if isSystem {
+		return fmt.Sprintf("system:%d", accountID)
+	}
+	return fmt.Sprintf("personal:%d", accountID)
 }
 
 func mailboxRank(name string) int {
@@ -3688,6 +3769,9 @@ func (m Model) currentSidebarSelection() (sidebarRowKind, int64) {
 	}
 	if row.kind == rowKindAccount {
 		return rowKindAccount, row.accountID
+	}
+	if row.kind == rowKindSysFolderHeader || row.kind == rowKindPersonalFolderHeader {
+		return row.kind, row.accountID
 	}
 	return rowKindMailbox, row.mailboxID
 }
@@ -4005,6 +4089,33 @@ func (m *Model) toggleSelectedAccount() bool {
 	return true
 }
 
+// toggleSelectedSection toggles a System or Labels section header.
+func (m *Model) toggleSelectedSection() bool {
+	if m.sidebarCursor < 0 || m.sidebarCursor >= len(m.sidebarRows) {
+		return false
+	}
+	row := m.sidebarRows[m.sidebarCursor]
+	var secKey string
+	switch row.kind {
+	case rowKindSysFolderHeader:
+		secKey = sectionKey(row.accountID, true)
+	case rowKindPersonalFolderHeader:
+		secKey = sectionKey(row.accountID, false)
+	default:
+		return false
+	}
+	m.collapsedSections[secKey] = !m.collapsedSections[secKey]
+	m.rebuildSidebar()
+	// Keep cursor on the section header after rebuild.
+	for i, r := range m.sidebarRows {
+		if r.kind == row.kind && r.accountID == row.accountID {
+			m.sidebarCursor = i
+			break
+		}
+	}
+	return true
+}
+
 func (m *Model) applyFilter() {
 	q := strings.ToLower(m.searchQuery)
 	if q == "" && !m.showUnreadOnly {
@@ -4198,6 +4309,32 @@ func (m Model) renderAccountHeader(accountID int64, selected bool, width int) st
 	}
 	row := renderFeedRow(icon, label, badge, width)
 	style := m.accountHeaderStyle(accountID, selected)
+	return style.Width(width).Render(row)
+}
+
+// renderSectionHeader renders a collapsible section header (System / Labels).
+func (m Model) renderSectionHeader(label string, count int, kind sidebarRowKind, accountID int64, selected bool, width int) string {
+	isSystem := kind == rowKindSysFolderHeader
+	secKey := sectionKey(accountID, isSystem)
+	collapsed := m.collapsedSections[secKey]
+
+	icon := "v "
+	if m.iconsEnabled() {
+		icon = "▾ "
+	}
+	if collapsed {
+		icon = "> "
+		if m.iconsEnabled() {
+			icon = "▸ "
+		}
+	}
+
+	badge := fmt.Sprintf("(%d)", count)
+	row := renderFeedRow("  "+icon, label, badge, width)
+	style := m.styles.FeedItem
+	if selected {
+		style = m.sidebarSelectedStyle("")
+	}
 	return style.Width(width).Render(row)
 }
 

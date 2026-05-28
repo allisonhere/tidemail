@@ -33,7 +33,6 @@ type DisplayConfig struct {
 	DefaultUnreadOnly bool               `toml:"default_unread_only"`
 	ActionableLinks   bool               `toml:"actionable_links"`
 	FilterLinks       bool               `toml:"filter_links"`
-	HideGmailSystem   bool               `toml:"hide_gmail_system"`
 	ReadingWidth      int                `toml:"reading_width"`
 	ConfirmQuit       bool               `toml:"confirm_quit"`
 	Browser           string             `toml:"browser"`
@@ -102,7 +101,6 @@ func DefaultConfig() Config {
 			MarkReadOnOpen:   true,
 			FocusLine:        true,
 			Density:          "compact",
-			HideGmailSystem:  true,
 			ConfirmQuit:      true,
 		},
 		Updates: UpdatesConfig{
