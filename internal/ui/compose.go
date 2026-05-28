@@ -495,6 +495,50 @@ func renderComposeRow(label string, focused bool, control string, width, labelW 
 	return marker + labelCell + ctrlCell
 }
 
+// renderComposePanel wraps content rows in a surfaceBg section with an
+// accent title bar. No border — the surfaceBg background change provides
+// visual separation.
+func renderComposePanel(title string, rows []string, width int, chrome managerChrome) string {
+	titleBar := lipgloss.NewStyle().
+		Background(chrome.surfaceBg).
+		Foreground(chrome.accent).
+		Bold(true).
+		Width(width).
+		Padding(0, 2).
+		Render(title)
+	body := lipgloss.JoinVertical(lipgloss.Left, rows...)
+	inner := lipgloss.JoinVertical(lipgloss.Left, titleBar, body)
+	return lipgloss.NewStyle().
+		Background(chrome.surfaceBg).
+		Width(width).
+		Render(inner)
+}
+
+// renderComposePanelRow renders a single compose form row for use inside a panel.
+// Uses chrome.surfaceBg (panel surface) as base, shifts to chrome.fieldBg on focus.
+func renderComposePanelRow(ti textinput.Model, label string, focused bool, width, labelW, ctrlW int, chrome managerChrome) string {
+	bg := chrome.surfaceBg
+	labelFg := chrome.muted
+	if focused {
+		bg = chrome.fieldBg
+		labelFg = chrome.text
+	}
+	marker := lipgloss.NewStyle().Background(bg).Width(2).Render(" ")
+	if focused {
+		marker = lipgloss.NewStyle().Background(bg).Foreground(chrome.accent).Bold(true).Width(2).Render(" >")
+	}
+	labelCell := lipgloss.NewStyle().Background(bg).Foreground(labelFg).Width(labelW).Render(truncate(label, max(1, labelW-1)))
+	ti.Width = ctrlW
+	ti.Prompt = ""
+	ti.PromptStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.accent)
+	ti.TextStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.text)
+	ti.PlaceholderStyle = lipgloss.NewStyle().Foreground(chrome.muted)
+	ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
+	view := truncateStyled(ti.View(), ctrlW, bg)
+	ctrlCell := lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Width(ctrlW).Render(view)
+	return marker + labelCell + ctrlCell
+}
+
 func (c ComposeModel) View(width, height int, styles Styles) string {
 	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
 
@@ -517,24 +561,12 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	}
 	header := renderManagerHeader(title, width, chrome)
 
-	labelW := min(10, formLabelWidth(width)) // tight for short compose labels
-	ctrlW := max(1, width-labelW-2) // available width inside the form row
+	// Panel content area (full width, no border inset needed)
+	panelLabelW := min(10, formLabelWidth(width))
+	panelCtrlW := max(1, width-panelLabelW-2)
 
-	// Reusable text input for compose fields
-	composeField := func(ti textinput.Model, field composeField) string {
-		focused := c.focusedField == field
-		bg := chrome.baseBg
-		if focused {
-			bg = chrome.fieldBg
-		}
-		ti.Width = ctrlW
-		ti.Prompt = ""
-		ti.PromptStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.accent)
-		ti.TextStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.text)
-		ti.PlaceholderStyle = lipgloss.NewStyle().Foreground(chrome.muted)
-		ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
-		view := truncateStyled(ti.View(), ctrlW, bg)
-		return lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Width(ctrlW).Render(view)
+	blankRow := func(bg lipgloss.Color) string {
+		return lipgloss.NewStyle().Background(bg).Width(width).Render("")
 	}
 
 	// Action bar
@@ -548,38 +580,43 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 		actions = renderManagerActions(width, chrome)
 	}
 
-	// Count lines needed for attachments + quote
+	// Height budget: panel overhead (title bar) + gaps + reply
+	overheadPerPanel := 1 // title bar only (no border)
+	panelCount := 2       // recipients + message
+	if len(c.attachments) > 0 {
+		panelCount++
+	}
+	panelOH := panelCount * overheadPerPanel
+	gapRows := panelCount - 1 // gaps between panels
+	if c.inReplyTo != "" {
+		gapRows++ // quote toggle line
+	}
 	attachLines := 0
 	if len(c.attachments) > 0 {
-		attachLines = 1 + len(c.attachments)
-	}
-	quoteLines := 0
-	if c.inReplyTo != "" && !c.quoteCollapsed {
-		quoteLines = 2 // toggle line + 1 line of preview
-	} else if c.inReplyTo != "" {
-		quoteLines = 1 // toggle line only
+		attachLines = len(c.attachments)
 	}
 
-	fixedH := lipgloss.Height(header) + 4 + lipgloss.Height(actions)
+	fixedH := lipgloss.Height(header) + panelOH + gapRows + lipgloss.Height(actions)
 	if c.statusMsg != "" {
 		fixedH++
 	}
-	bodyH := max(1, height-fixedH-attachLines-quoteLines)
+	bodyH := max(1, height-fixedH-attachLines-2) // -2 for subject + spacer inside message panel
 	if bodyH < 1 {
 		bodyH = 1
 	}
-	c.bodyInput.SetWidth(max(1, width-4))
+
+	// Body textarea inside Message panel — content area minus internal padding
+	bodyInputW := max(1, width-4)
+	c.bodyInput.SetWidth(bodyInputW)
 	c.bodyInput.SetHeight(bodyH)
 	c.bodyInput.FocusedStyle.Base = lipgloss.NewStyle().Background(chrome.fieldBg)
-	c.bodyInput.BlurredStyle.Base = lipgloss.NewStyle().Background(chrome.baseBg)
+	c.bodyInput.BlurredStyle.Base = lipgloss.NewStyle().Background(chrome.surfaceBg)
 
-	// Body with background fill and left accent border
-	bodyBg := chrome.baseBg
+	bodyBg := chrome.surfaceBg
 	if c.focusedField == composeFieldBody {
 		bodyBg = chrome.fieldBg
 	}
-	bodyInputView := c.bodyInput.View()
-	bodyView := lipgloss.NewStyle().Background(bodyBg).Width(width).Padding(0, 2).Render(bodyInputView)
+	bodyRow := lipgloss.NewStyle().Background(bodyBg).Width(width).Padding(0, 2).Render(c.bodyInput.View())
 
 	// Status line
 	statusLine := ""
@@ -596,23 +633,27 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 			Render(c.statusMsg)
 	}
 
-	// Build rows
+	// ── Build rows ──
 	var rows []string
 	rows = append(rows, header)
 
-	// ── Recipients ──
-	rows = append(rows, renderFormGroupTitle("Recipients", width, chrome))
-	rows = append(rows, renderComposeRow("To", c.focusedField == composeFieldTo, composeField(c.toInput, composeFieldTo), width, labelW, chrome))
-	rows = append(rows, renderComposeRow("CC", c.focusedField == composeFieldCC, composeField(c.ccInput, composeFieldCC), width, labelW, chrome))
+	// ═══════════════════ RECIPIENTS ═══════════════════
+	recipRows := []string{
+		renderComposePanelRow(c.toInput, "To", c.focusedField == composeFieldTo, width, panelLabelW, panelCtrlW, chrome),
+		renderComposePanelRow(c.ccInput, "CC", c.focusedField == composeFieldCC, width, panelLabelW, panelCtrlW, chrome),
+	}
+	rows = append(rows, renderComposePanel("RECIPIENTS", recipRows, width, chrome))
 
-	// ── Message ──
-	rows = append(rows, renderFormGroupTitle("Message", width, chrome))
-	rows = append(rows, renderComposeRow("Subject", c.focusedField == composeFieldSubject, composeField(c.subjectInput, composeFieldSubject), width, labelW, chrome))
-	blank := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
-	rows = append(rows, blank)
-	rows = append(rows, bodyView)
+	// ═══════════════════ MESSAGE ═══════════════════
+	msgRows := []string{
+		renderComposePanelRow(c.subjectInput, "Subject", c.focusedField == composeFieldSubject, width, panelLabelW, panelCtrlW, chrome),
+		lipgloss.NewStyle().Background(chrome.surfaceBg).Width(width).Render(""),
+		bodyRow,
+	}
+	rows = append(rows, blankRow(chrome.baseBg)) // gap between panels
+	rows = append(rows, renderComposePanel("MESSAGE", msgRows, width, chrome))
 
-	// ── Reply quote ──
+	// ── Reply quote (outside panels) ──
 	if c.inReplyTo != "" {
 		qIcon := "▸"
 		if !c.quoteCollapsed {
@@ -625,31 +666,23 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 			Padding(0, 2).
 			Render(fmt.Sprintf("  %s  Show quoted original (enter to toggle)", qIcon))
 		rows = append(rows, qLine)
-		if !c.quoteCollapsed {
-			previewBg := chrome.baseBg
-			preview := lipgloss.NewStyle().
-				Background(previewBg).
-				Foreground(chrome.muted).
-				Width(width).
-				Padding(0, 2).
-				Render("  >  Original message quoted in body")
-			rows = append(rows, preview)
-		}
 	}
 
-	// ── Attachments ──
+	// ═══════════════════ ATTACHMENTS ═══════════════════
 	if len(c.attachments) > 0 {
-		rows = append(rows, renderFormGroupTitle("Attachments", width, chrome))
+		var attachRows []string
 		for _, af := range c.attachments {
 			icon := fileIcon(af.Name)
 			line := fmt.Sprintf("  %s%s  %s    [ctrl+r remove]", icon, af.Name, humanSize(len(af.Data)))
-			rows = append(rows, lipgloss.NewStyle().
-				Background(chrome.baseBg).
+			attachRows = append(attachRows, lipgloss.NewStyle().
+				Background(chrome.surfaceBg).
 				Foreground(chrome.accent).
 				Width(width).
 				Padding(0, 2).
 				Render(line))
 		}
+		rows = append(rows, blankRow(chrome.baseBg))
+		rows = append(rows, renderComposePanel("ATTACHMENTS", attachRows, width, chrome))
 	}
 
 	if statusLine != "" {
