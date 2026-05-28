@@ -517,7 +517,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	}
 	header := renderManagerHeader(title, width, chrome)
 
-	labelW := formLabelWidth(width)
+	labelW := min(10, formLabelWidth(width)) // tight for short compose labels
 	ctrlW := max(1, width-labelW-2) // available width inside the form row
 
 	// Reusable text input for compose fields
