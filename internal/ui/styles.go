@@ -214,6 +214,7 @@ func BuildStyles(t Theme, density string) Styles {
 		ArticleUnread: listPad(lipgloss.NewStyle().
 			Background(t.Bg).
 			Foreground(t.Fg).
+			Bold(true).
 			AlignHorizontal(lipgloss.Left)),
 		ArticleRead: listPad(lipgloss.NewStyle().
 			Background(t.Bg).
