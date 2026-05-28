@@ -61,8 +61,9 @@ type ComposeModel struct {
 	references   string
 	accountCfg   config.AccountConfig
 
-	attachments []attachmentFile
-	picker      filePicker
+	attachments    []attachmentFile
+	picker         filePicker
+	quoteCollapsed bool
 
 	busy      bool
 	statusMsg string
@@ -85,6 +86,7 @@ func NewCompose(acfg config.AccountConfig) ComposeModel {
 
 func NewReply(original db.Message, acfg config.AccountConfig) ComposeModel {
 	c := NewCompose(acfg)
+	c.quoteCollapsed = true
 	replyTo := original.ReplyTo
 	if replyTo == "" {
 		replyTo = original.From
@@ -473,6 +475,26 @@ func fileIcon(name string) string {
 	}
 }
 
+// renderComposeRow renders a form row with seamless background across
+// marker, label, and control cells — all share the same rowBg.
+func renderComposeRow(label string, focused bool, control string, width, labelW int, chrome managerChrome) string {
+	rowBg := chrome.baseBg
+	labelFg := chrome.muted
+	if focused {
+		rowBg = chrome.fieldBg
+		labelFg = chrome.text
+	}
+	marker := lipgloss.NewStyle().Background(rowBg).Width(2).Render(" ")
+	if focused {
+		marker = lipgloss.NewStyle().Background(rowBg).Foreground(chrome.accent).Bold(true).Width(2).Render(" >")
+	}
+	labelCell := lipgloss.NewStyle().Background(rowBg).Foreground(labelFg).Width(labelW).Render(truncate(label, max(1, labelW-1)))
+	ctrlW := max(1, width-lipgloss.Width(marker)-labelW)
+	control = truncateStyled(control, ctrlW, rowBg)
+	ctrlCell := lipgloss.NewStyle().Background(rowBg).Width(ctrlW).Render(control)
+	return marker + labelCell + ctrlCell
+}
+
 func (c ComposeModel) View(width, height int, styles Styles) string {
 	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
 
@@ -495,28 +517,23 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	}
 	header := renderManagerHeader(title, width, chrome)
 
-	inputW := max(10, width-8)
 	labelW := formLabelWidth(width)
-	controlW := max(1, width-labelW-2) // space for marker + label
+	ctrlW := max(1, width-labelW-2) // available width inside the form row
 
-	// Reusable text input with compose-style field highlighting
-	composeInput := func(ti textinput.Model, field composeField) string {
+	// Reusable text input for compose fields
+	composeField := func(ti textinput.Model, field composeField) string {
 		focused := c.focusedField == field
 		bg := chrome.baseBg
 		if focused {
 			bg = chrome.fieldBg
 		}
-		ti.Width = controlW
+		ti.Width = ctrlW
 		ti.PromptStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.accent)
 		ti.TextStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.text)
 		ti.PlaceholderStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.muted)
 		ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
-		view := truncateStyled(ti.View(), controlW, bg)
-		return lipgloss.NewStyle().
-			Background(bg).
-			Foreground(chrome.text).
-			Width(controlW).
-			Render(view)
+		view := truncateStyled(ti.View(), ctrlW, bg)
+		return lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Width(ctrlW).Render(view)
 	}
 
 	// Action bar
@@ -530,30 +547,41 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 		actions = renderManagerActions(width, chrome)
 	}
 
-	// Count attachment lines
+	// Count lines needed for attachments + quote
 	attachLines := 0
 	if len(c.attachments) > 0 {
-		attachLines = 1 + len(c.attachments) // label + one per file
+		attachLines = 1 + len(c.attachments)
+	}
+	quoteLines := 0
+	if c.inReplyTo != "" && !c.quoteCollapsed {
+		quoteLines = 2 // toggle line + 1 line of preview
+	} else if c.inReplyTo != "" {
+		quoteLines = 1 // toggle line only
 	}
 
 	fixedH := lipgloss.Height(header) + 4 + lipgloss.Height(actions)
 	if c.statusMsg != "" {
 		fixedH++
 	}
-	bodyH := max(1, height-fixedH-attachLines)
+	bodyH := max(1, height-fixedH-attachLines-quoteLines)
 	if bodyH < 1 {
 		bodyH = 1
 	}
-	c.bodyInput.SetWidth(inputW)
+	c.bodyInput.SetWidth(max(1, width-4))
 	c.bodyInput.SetHeight(bodyH)
 	c.bodyInput.FocusedStyle.Base = lipgloss.NewStyle().Background(chrome.fieldBg)
 	c.bodyInput.BlurredStyle.Base = lipgloss.NewStyle().Background(chrome.baseBg)
+
+	// Body with background fill and left accent border
 	bodyBg := chrome.baseBg
 	if c.focusedField == composeFieldBody {
 		bodyBg = chrome.fieldBg
 	}
-	bodyView := lipgloss.NewStyle().Background(bodyBg).Width(width).Padding(0, 2).Render(c.bodyInput.View())
+	bodyBorder := lipgloss.NewStyle().Background(bodyBg).Foreground(chrome.highlight).Render("▎")
+	bodyContent := lipgloss.NewStyle().Background(bodyBg).Width(max(1, width-2)).Render(c.bodyInput.View())
+	bodyView := bodyBorder + bodyContent
 
+	// Status line
 	statusLine := ""
 	if c.statusMsg != "" {
 		fg := chrome.pendingFg
@@ -574,20 +602,45 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 
 	// ── Recipients ──
 	rows = append(rows, renderFormGroupTitle("Recipients", width, chrome))
-	rows = append(rows, renderFormRow("To", c.focusedField == composeFieldTo, composeInput(c.toInput, composeFieldTo), width, labelW, chrome))
-	rows = append(rows, renderFormRow("CC", c.focusedField == composeFieldCC, composeInput(c.ccInput, composeFieldCC), width, labelW, chrome))
+	rows = append(rows, renderComposeRow("To", c.focusedField == composeFieldTo, composeField(c.toInput, composeFieldTo), width, labelW, chrome))
+	rows = append(rows, renderComposeRow("CC", c.focusedField == composeFieldCC, composeField(c.ccInput, composeFieldCC), width, labelW, chrome))
 
 	// ── Message ──
 	rows = append(rows, renderFormGroupTitle("Message", width, chrome))
-	rows = append(rows, renderFormRow("Subject", c.focusedField == composeFieldSubject, composeInput(c.subjectInput, composeFieldSubject), width, labelW, chrome))
+	rows = append(rows, renderComposeRow("Subject", c.focusedField == composeFieldSubject, composeField(c.subjectInput, composeFieldSubject), width, labelW, chrome))
 	rows = append(rows, bodyView)
+
+	// ── Reply quote ──
+	if c.inReplyTo != "" {
+		qIcon := "▸"
+		if !c.quoteCollapsed {
+			qIcon = "▾"
+		}
+		qLine := lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Foreground(chrome.muted).
+			Width(width).
+			Padding(0, 2).
+			Render(fmt.Sprintf("  %s  Show quoted original (enter to toggle)", qIcon))
+		rows = append(rows, qLine)
+		if !c.quoteCollapsed {
+			previewBg := chrome.baseBg
+			preview := lipgloss.NewStyle().
+				Background(previewBg).
+				Foreground(chrome.muted).
+				Width(width).
+				Padding(0, 2).
+				Render("  >  Original message quoted in body")
+			rows = append(rows, preview)
+		}
+	}
 
 	// ── Attachments ──
 	if len(c.attachments) > 0 {
 		rows = append(rows, renderFormGroupTitle("Attachments", width, chrome))
 		for _, af := range c.attachments {
 			icon := fileIcon(af.Name)
-			line := fmt.Sprintf("  %s%s  %s", icon, af.Name, humanSize(len(af.Data)))
+			line := fmt.Sprintf("  %s%s  %s    [ctrl+r remove]", icon, af.Name, humanSize(len(af.Data)))
 			rows = append(rows, lipgloss.NewStyle().
 				Background(chrome.baseBg).
 				Foreground(chrome.accent).
