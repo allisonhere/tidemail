@@ -140,10 +140,6 @@ func Load() (Config, error) {
 		cfg.Updates.CheckIntervalHours = DefaultConfig().Updates.CheckIntervalHours
 	}
 	cfg.Display.Density = NormalizeDisplayDensity(cfg.Display.Density)
-
-	// Backfill secrets from system keychain for fields that are empty in TOML.
-	fillSecrets(&cfg)
-
 	return cfg, nil
 }
 
@@ -162,9 +158,6 @@ func IsRetroTerminalTheme(name string) bool {
 }
 
 func Save(cfg Config) error {
-	// Strip secrets into the system keychain before writing to disk.
-	stripSecrets(&cfg)
-
 	path, err := configPath()
 	if err != nil {
 		return err
