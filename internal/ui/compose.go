@@ -609,34 +609,45 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	bodyInputW := max(1, width-4)
 	c.bodyInput.SetWidth(bodyInputW)
 	c.bodyInput.SetHeight(bodyH)
-	// Set all textarea style layers so backgrounds apply consistently
-	baseBase := lipgloss.NewStyle().Background(chrome.baseBg)
-	fieldBase := lipgloss.NewStyle().Background(chrome.fieldBg)
 
-	c.bodyInput.FocusedStyle.Base = fieldBase
-	c.bodyInput.FocusedStyle.Text = fieldBase
-	c.bodyInput.FocusedStyle.CursorLine = fieldBase
-	c.bodyInput.FocusedStyle.CursorLineNumber = fieldBase
-	c.bodyInput.FocusedStyle.LineNumber = fieldBase
-	c.bodyInput.FocusedStyle.Placeholder = fieldBase
-	c.bodyInput.FocusedStyle.Prompt = fieldBase
-	c.bodyInput.FocusedStyle.EndOfBuffer = fieldBase
+	// Clear all textarea backgrounds — their Inline(true) strips them anyway.
+	// We force the background by wrapping every line of the output manually.
+	noBg := lipgloss.NewStyle()
+	c.bodyInput.FocusedStyle.Base = noBg
+	c.bodyInput.FocusedStyle.Text = noBg
+	c.bodyInput.FocusedStyle.CursorLine = noBg
+	c.bodyInput.FocusedStyle.CursorLineNumber = noBg
+	c.bodyInput.FocusedStyle.LineNumber = noBg
+	c.bodyInput.FocusedStyle.Placeholder = noBg
+	c.bodyInput.FocusedStyle.Prompt = noBg
+	c.bodyInput.FocusedStyle.EndOfBuffer = noBg
+	c.bodyInput.BlurredStyle.Base = noBg
+	c.bodyInput.BlurredStyle.Text = noBg
+	c.bodyInput.BlurredStyle.CursorLine = noBg
+	c.bodyInput.BlurredStyle.CursorLineNumber = noBg
+	c.bodyInput.BlurredStyle.LineNumber = noBg
+	c.bodyInput.BlurredStyle.Placeholder = noBg
+	c.bodyInput.BlurredStyle.Prompt = noBg
+	c.bodyInput.BlurredStyle.EndOfBuffer = noBg
 
-	c.bodyInput.BlurredStyle.Base = baseBase
-	c.bodyInput.BlurredStyle.Text = baseBase
-	c.bodyInput.BlurredStyle.CursorLine = baseBase
-	c.bodyInput.BlurredStyle.CursorLineNumber = baseBase
-	c.bodyInput.BlurredStyle.LineNumber = baseBase
-	c.bodyInput.BlurredStyle.Placeholder = baseBase
-	c.bodyInput.BlurredStyle.Prompt = baseBase
-	c.bodyInput.BlurredStyle.EndOfBuffer = baseBase
-
-	// Background must match the textarea's Base so padding blends seamlessly
-	wrapperBg := chrome.baseBg
+	// Force uniform background by wrapping every line individually.
+	// The textarea output has cursor/formatting ANSI but no background
+	// (since we cleared all backgrounds above), so our wrapper applies cleanly.
+	bodyBg := chrome.baseBg
 	if c.focusedField == composeFieldBody {
-		wrapperBg = chrome.fieldBg
+		bodyBg = chrome.fieldBg
 	}
-	bodyRow := lipgloss.NewStyle().Background(wrapperBg).Width(width).Padding(0, 2).Render(c.bodyInput.View())
+	raw := c.bodyInput.View()
+	lines := strings.Split(raw, "\n")
+	bgStyle := lipgloss.NewStyle().Background(bodyBg).Width(width - 4)
+	for i, line := range lines {
+		lines[i] = bgStyle.Render(line)
+	}
+	bodyRow := lipgloss.NewStyle().
+		Background(bodyBg).
+		Width(width).
+		Padding(0, 2).
+		Render(strings.Join(lines, "\n"))
 
 	// Status line
 	statusLine := ""
