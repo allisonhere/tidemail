@@ -96,7 +96,7 @@ func DefaultConfig() Config {
 	return Config{
 		Theme: "catppuccin-mocha",
 		Display: DisplayConfig{
-			Icons:            false,
+			Icons:            true,
 			DateFormat:       "relative",
 			MarkReadOnOpen:   true,
 			FocusLine:        true,
