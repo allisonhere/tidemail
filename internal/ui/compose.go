@@ -580,7 +580,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	}
 	bodyInputView := c.bodyInput.View()
 	bodyBorder := lipgloss.NewStyle().Background(bodyBg).Foreground(chrome.highlight).Render("▎ ")
-	bodyContent := lipgloss.NewStyle().Background(bodyBg).Width(max(1, width-2)).Render(bodyInputView)
+	bodyContent := lipgloss.NewStyle().Background(bodyBg).PaddingLeft(2).Width(max(1, width-2)).Render(bodyInputView)
 	bodyView := bodyBorder + bodyContent
 
 	// Status line
