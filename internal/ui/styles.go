@@ -165,9 +165,9 @@ func BuildStyles(t Theme, density string) Styles {
 
 	unreadBg := func() lipgloss.Color {
 		if isDark(t.Bg) {
-			return adjustLightness(t.Bg, 0.05)
+			return adjustLightness(t.Bg, 0.10)
 		}
-		return adjustLightness(t.Bg, -0.05)
+		return adjustLightness(t.Bg, -0.10)
 	}()
 
 	return Styles{
