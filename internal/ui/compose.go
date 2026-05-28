@@ -610,9 +610,9 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	c.bodyInput.SetWidth(bodyInputW)
 	c.bodyInput.SetHeight(bodyH)
 	c.bodyInput.FocusedStyle.Base = lipgloss.NewStyle().Background(chrome.fieldBg)
-	c.bodyInput.BlurredStyle.Base = lipgloss.NewStyle().Background(chrome.surfaceBg)
+	c.bodyInput.BlurredStyle.Base = lipgloss.NewStyle().Background(chrome.baseBg)
 
-	bodyBg := chrome.surfaceBg
+	bodyBg := chrome.baseBg
 	if c.focusedField == composeFieldBody {
 		bodyBg = chrome.fieldBg
 	}
