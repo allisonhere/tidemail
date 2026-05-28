@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compose — Terminal Clean</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: #0d1117;
+  color: #e6edf3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 20px;
+  line-height: 1.5;
+}
+.compose {
+  width: 680px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: #0d1117;
+  border-bottom: 1px solid #21262d;
+}
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.header-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #8b949e;
+}
+.header-sender {
+  font-size: 12px;
+  color: #58a6ff;
+}
+.header-sender::before { content: "◉ "; }
+
+/* Section */
+.section { padding: 0 20px; }
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #484f58;
+  text-transform: uppercase;
+}
+.section-title::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #21262d;
+}
+
+/* Form row */
+.form-row {
+  display: flex;
+  align-items: stretch;
+  min-height: 36px;
+}
+.form-marker {
+  width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: transparent;
+  transition: color 0.1s;
+}
+.form-row.focused .form-marker {
+  color: #58a6ff;
+}
+.form-label {
+  width: 80px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: #8b949e;
+  padding-right: 8px;
+  flex-shrink: 0;
+  transition: color 0.1s;
+}
+.form-row.focused .form-label {
+  color: #e6edf3;
+}
+.form-input {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 13px;
+  color: #e6edf3;
+  border-radius: 0 4px 4px 0;
+  min-height: 36px;
+  transition: background 0.1s;
+}
+.form-row.focused .form-input {
+  background: #1c2128;
+}
+.form-input .placeholder {
+  color: #484f58;
+}
+.form-input input {
+  background: none;
+  border: none;
+  outline: none;
+  color: #e6edf3;
+  font-size: 13px;
+  font-family: inherit;
+  width: 100%;
+}
+.form-input input::placeholder { color: #484f58; }
+
+/* Body textarea */
+.body-area {
+  padding: 0 20px 8px;
+}
+.body-area .body-input {
+  width: 100%;
+  min-height: 140px;
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 6px;
+  padding: 12px 14px;
+  color: #e6edf3;
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+.body-area .body-input:focus {
+  background: #1c2128;
+  border-color: #58a6ff;
+}
+
+/* Attachments */
+.attachments {
+  padding: 0 20px 0;
+}
+.attachment-row {
+  display: flex;
+  align-items: center;
+  padding: 6px 0 6px 20px;
+  gap: 10px;
+  font-size: 13px;
+}
+.attachment-icon { font-size: 16px; width: 24px; text-align: center; }
+.attachment-name { color: #e6edf3; flex: 1; }
+.attachment-size { color: #8b949e; font-size: 11px; }
+.attachment-remove {
+  color: #8b949e;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+.attachment-remove:hover {
+  background: #f851491a;
+  color: #f85149;
+}
+
+/* Footer */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px;
+  border-top: 1px solid #21262d;
+  background: #0d1117;
+  margin-top: 8px;
+}
+.action-group {
+  display: flex;
+  gap: 12px;
+}
+.action-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+.action-key {
+  background: #21262d;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #8b949e;
+}
+.action-label {
+  color: #484f58;
+}
+
+/* Status */
+.status-bar {
+  padding: 0 20px 8px;
+  font-size: 12px;
+}
+.status-ok { color: #3fb950; }
+.status-err { color: #f85149; }
+
+/* Interactive demo */
+.form-row { cursor: pointer; }
+.form-row:hover .form-input { background: #161b22; }
+.form-row.focused:hover .form-input { background: #1c2128; }
+.form-row.clicked .form-input { background: #1c2128; }
+.form-row.clicked .form-label { color: #e6edf3; }
+.form-row.clicked .form-marker { color: #58a6ff; }
+
+/* Reply quote styling */
+.quote-preview {
+  margin: 8px 20px 0;
+  padding: 8px 12px;
+  border-left: 3px solid #30363d;
+  background: #0d1117;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #8b949e;
+  max-height: 60px;
+  overflow: hidden;
+  cursor: pointer;
+}
+.quote-preview:hover { border-color: #58a6ff; }
+.quote-preview .quote-from { font-weight: 600; color: #8b949e; margin-bottom: 4px; }
+.quote-preview .quote-line { font-size: 11px; line-height: 1.4; }
+.quote-preview .quote-line::before { content: "> "; color: #484f58; }
+.quote-more { color: #484f58; font-size: 10px; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="compose">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <span class="header-badge">COMPOSE</span>
+      <span class="header-sender">allie@alliehere.com</span>
+    </div>
+  </div>
+
+  <!-- Recipients -->
+  <div class="section">
+    <div class="section-title">Recipients</div>
+    <div class="form-row focused" onclick="focusRow(this)">
+      <div class="form-marker">&gt;</div>
+      <div class="form-label">To</div>
+      <div class="form-input"><input type="text" value="drbayless@gmail.com" placeholder="to@example.com"></div>
+    </div>
+    <div class="form-row" onclick="focusRow(this)">
+      <div class="form-marker"></div>
+      <div class="form-label">CC</div>
+      <div class="form-input"><input type="text" placeholder="cc (optional)"></div>
+    </div>
+  </div>
+
+  <!-- Message -->
+  <div class="section">
+    <div class="section-title">Message</div>
+    <div class="form-row" onclick="focusRow(this)">
+      <div class="form-marker"></div>
+      <div class="form-label">Subject</div>
+      <div class="form-input"><input type="text" value="Re: Project update" placeholder="Subject"></div>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div class="body-area">
+    <textarea class="body-input" placeholder="Write your message here...">Thanks for the update! A few thoughts:
+
+1. The timeline looks good, let's proceed with Phase 2 next week
+2. Can you share the latest mockups?
+3. I'll review the budget and get back to you</textarea>
+  </div>
+
+  <!-- Reply quote preview -->
+  <div class="quote-preview">
+    <div class="quote-from">On Alice &lt;alice@example.com&gt; wrote:</div>
+    <div class="quote-line">Hey team, here's the project update for this sprint. We've made good progress on the core features and the timeline is looking solid.</div>
+    <div class="quote-line">Let me know if you have any questions about the milestones or deliverables.</div>
+    <div class="quote-more">… (2 more lines)</div>
+  </div>
+
+  <!-- Attachments -->
+  <div class="section">
+    <div class="section-title">Attachments</div>
+    <div class="attachment-row">
+      <span class="attachment-icon">📄</span>
+      <span class="attachment-name">Q4-report.pdf</span>
+      <span class="attachment-size">245 KB</span>
+      <span class="attachment-remove" onclick="event.stopPropagation(); this.parentElement.style.display='none'">✕ remove</span>
+    </div>
+    <div class="attachment-row">
+      <span class="attachment-icon">🖼</span>
+      <span class="attachment-name">dashboard-mockup.png</span>
+      <span class="attachment-size">1.2 MB</span>
+      <span class="attachment-remove" onclick="event.stopPropagation(); this.parentElement.style.display='none'">✕ remove</span>
+    </div>
+  </div>
+
+  <!-- Status -->
+  <div class="status-bar">
+    <span class="status-ok">attached: dashboard-mockup.png (1.2 MB)</span>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="action-group">
+      <span class="action-item"><span class="action-key">ctrl+s</span><span class="action-label">send</span></span>
+      <span class="action-item"><span class="action-key">ctrl+a</span><span class="action-label">attach</span></span>
+      <span class="action-item"><span class="action-key">ctrl+r</span><span class="action-label">remove</span></span>
+    </div>
+    <div class="action-group">
+      <span class="action-item"><span class="action-key">tab</span><span class="action-label">next</span></span>
+      <span class="action-item"><span class="action-key">esc</span><span class="action-label">cancel</span></span>
+    </div>
+  </div>
+</div>
+
+<script>
+let lastRow = document.querySelector('.form-row.focused');
+document.querySelectorAll('.form-row').forEach(row => {
+  row.addEventListener('click', function(e) {
+    if (e.target.tagName === 'INPUT') return;
+    focusRow(this);
+  });
+  row.querySelector('input')?.addEventListener('focus', function() { focusRow(row); });
+});
+function focusRow(row) {
+  if (lastRow) { lastRow.classList.remove('focused'); }
+  row.classList.add('focused');
+  lastRow = row;
+  row.querySelector('input')?.focus();
+  row.querySelector('input')?.setSelectionRange(
+    row.querySelector('input').value.length,
+    row.querySelector('input').value.length
+  );
+}
+</script>
+</body>
+</html>

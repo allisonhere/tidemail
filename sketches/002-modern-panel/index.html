@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compose — Modern Panel</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: #0d1117;
+  color: #e6edf3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 20px;
+  line-height: 1.5;
+}
+.compose {
+  width: 720px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 32px rgba(0,0,0,0.5);
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  background: #0d1117;
+  border-bottom: 1px solid #21262d;
+}
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.header-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #8b949e;
+}
+.header-account-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #1c2128;
+  border: 1px solid #30363d;
+  border-radius: 20px;
+  padding: 3px 12px 3px 8px;
+  font-size: 11px;
+  color: #58a6ff;
+}
+.header-account-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3fb950;
+  display: inline-block;
+}
+
+/* Two-column layout */
+.compose-body {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 320px;
+}
+
+/* Sidebar — recipients + attachments */
+.sidebar {
+  background: #0d1117;
+  border-right: 1px solid #21262d;
+  padding: 12px 16px;
+}
+.sidebar-section { margin-bottom: 20px; }
+.sidebar-section-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #484f58;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.sidebar-field {
+  margin-bottom: 4px;
+}
+.sidebar-field label {
+  display: block;
+  font-size: 11px;
+  color: #8b949e;
+  margin-bottom: 2px;
+  padding-left: 2px;
+}
+.sidebar-field input {
+  width: 100%;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: #e6edf3;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.sidebar-field input:focus {
+  border-color: #58a6ff;
+  background: #1c2128;
+}
+.sidebar-field input::placeholder { color: #484f58; }
+
+/* Attachment list in sidebar */
+.att-list { display: flex; flex-direction: column; gap: 4px; }
+.att-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #161b22;
+  border: 1px solid #21262d;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: default;
+  transition: border-color 0.15s;
+}
+.att-item:hover { border-color: #30363d; }
+.att-icon { font-size: 14px; }
+.att-info { flex: 1; min-width: 0; }
+.att-name { color: #e6edf3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.att-size { color: #484f58; font-size: 10px; }
+.att-remove {
+  color: #484f58;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  transition: color 0.15s;
+}
+.att-remove:hover { color: #f85149; }
+.att-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px;
+  border: 1px dashed #30363d;
+  border-radius: 6px;
+  color: #484f58;
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  margin-top: 6px;
+}
+.att-add:hover {
+  border-color: #58a6ff;
+  color: #58a6ff;
+}
+
+/* Main — subject + body */
+.main {
+  padding: 12px 20px;
+  display: flex;
+  flex-direction: column;
+}
+.main-field { margin-bottom: 8px; }
+.main-field label {
+  display: block;
+  font-size: 11px;
+  color: #8b949e;
+  margin-bottom: 3px;
+}
+.main-field input {
+  width: 100%;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: #e6edf3;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.main-field input:focus {
+  border-color: #58a6ff;
+  background: #1c2128;
+}
+.main-field input::placeholder { color: #484f58; }
+.main-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-top: 4px;
+}
+.main-body label {
+  font-size: 11px;
+  color: #8b949e;
+  margin-bottom: 3px;
+}
+.main-body textarea {
+  flex: 1;
+  min-height: 180px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 12px;
+  color: #e6edf3;
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.main-body textarea:focus {
+  border-color: #58a6ff;
+  background: #1c2128;
+}
+.main-body textarea::placeholder { color: #484f58; }
+
+/* Reply quote collapsible */
+.quote-toggle {
+  font-size: 11px;
+  color: #484f58;
+  padding: 4px 0;
+  cursor: pointer;
+  user-select: none;
+}
+.quote-toggle:hover { color: #8b949e; }
+.quote-toggle::before { content: "▸ "; }
+.quote-toggle.open::before { content: "▾ "; }
+.quote-content {
+  display: none;
+  background: #0d1117;
+  border-left: 2px solid #30363d;
+  padding: 8px 12px;
+  margin: 4px 0;
+  border-radius: 0 4px 4px 0;
+  font-size: 12px;
+  color: #8b949e;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.quote-content.open { display: block; }
+.quote-content .ql { line-height: 1.5; }
+.quote-content .ql::before { content: "> "; color: #484f58; }
+.quote-from-line { color: #8b949e; font-weight: 600; margin-bottom: 4px; font-size: 11px; }
+
+/* Reply indicator */
+.reply-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #d29922;
+  margin-bottom: 6px;
+}
+
+/* Footer */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 24px;
+  border-top: 1px solid #21262d;
+  background: #0d1117;
+}
+.action-group {
+  display: flex;
+  gap: 16px;
+}
+.action-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+}
+.action-key {
+  background: #21262d;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #8b949e;
+  font-family: "SF Mono", "Cascadia Code", monospace;
+}
+.action-label {
+  color: #484f58;
+}
+
+/* Status toast */
+.status-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1c2128;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: #e6edf3;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  display: none;
+  align-items: center;
+  gap: 8px;
+}
+.status-toast.show { display: flex; }
+.status-toast.ok { border-color: #3fb950; }
+.status-toast.err { border-color: #f85149; }
+.status-toast .status-icon { font-size: 14px; }
+
+/* Send button */
+.send-btn {
+  background: #238636;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.send-btn:hover { background: #2ea043; }
+.send-btn:active { background: #238636; }
+</style>
+</head>
+<body>
+<div class="compose">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <span class="header-badge">REPLY</span>
+      <span class="header-account-badge">allie@alliehere.com</span>
+    </div>
+    <button class="send-btn" onclick="showToast('ok', '✓  Message sent')">Send</button>
+  </div>
+
+  <!-- Two-column body -->
+  <div class="compose-body">
+    <!-- Sidebar: recipients + attachments -->
+    <div class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Recipients</div>
+        <div class="sidebar-field">
+          <label>To</label>
+          <input type="text" value="drbayless@gmail.com">
+        </div>
+        <div class="sidebar-field">
+          <label>CC</label>
+          <input type="text" placeholder="cc (optional)">
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Attachments</div>
+        <div class="att-list">
+          <div class="att-item">
+            <span class="att-icon">📄</span>
+            <div class="att-info">
+              <div class="att-name">Q4-report.pdf</div>
+              <div class="att-size">245 KB</div>
+            </div>
+            <span class="att-remove" onclick="this.closest('.att-item').remove()">✕</span>
+          </div>
+          <div class="att-item">
+            <span class="att-icon">🖼</span>
+            <div class="att-info">
+              <div class="att-name">dashboard-mockup.png</div>
+              <div class="att-size">1.2 MB</div>
+            </div>
+            <span class="att-remove" onclick="this.closest('.att-item').remove()">✕</span>
+          </div>
+        </div>
+        <div class="att-add" onclick="showToast('ok', '📂  File picker opened')">
+          + Attach file
+        </div>
+      </div>
+    </div>
+
+    <!-- Main: subject + body -->
+    <div class="main">
+      <div class="main-field">
+        <label>Subject</label>
+        <input type="text" value="Re: Project update">
+      </div>
+
+      <div class="reply-indicator">↩ In reply to Alice &lt;alice@example.com&gt;</div>
+
+      <div class="main-body">
+        <label>Message</label>
+        <textarea placeholder="Write your message here...">Thanks for the update! A few thoughts:
+
+1. The timeline looks good, let's proceed with Phase 2 next week
+2. Can you share the latest mockups?
+3. I'll review the budget and get back to you</textarea>
+      </div>
+
+      <!-- Collapsible quoted original -->
+      <div class="quote-toggle" onclick="this.classList.toggle('open'); this.nextElementSibling.classList.toggle('open')">
+        Show quoted original
+      </div>
+      <div class="quote-content">
+        <div class="quote-from-line">On Alice &lt;alice@example.com&gt; wrote:</div>
+        <div class="ql">Hey team, here's the project update for this sprint. We've made good progress on the core features and the timeline is looking solid.</div>
+        <div class="ql">Let me know if you have any questions about the milestones or deliverables.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="action-group">
+      <span class="action-item"><span class="action-key">ctrl+s</span><span class="action-label">send</span></span>
+      <span class="action-item"><span class="action-key">ctrl+a</span><span class="action-label">attach</span></span>
+      <span class="action-item"><span class="action-key">ctrl+r</span><span class="action-label">remove</span></span>
+    </div>
+    <div class="action-group">
+      <span class="action-item"><span class="action-key">tab</span><span class="action-label">next field</span></span>
+      <span class="action-item"><span class="action-key">esc</span><span class="action-label">cancel</span></span>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="status-toast">
+  <span class="status-icon">✓</span>
+  <span id="toast-msg">Message sent</span>
+</div>
+
+<script>
+function showToast(type, msg) {
+  const t = document.getElementById('toast');
+  t.className = 'status-toast show ' + type;
+  document.getElementById('toast-msg').textContent = msg;
+  const icon = t.querySelector('.status-icon');
+  icon.textContent = type === 'ok' ? '✓' : '✗';
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+</script>
+</body>
+</html>
