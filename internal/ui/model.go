@@ -4329,8 +4329,7 @@ func (m Model) renderSectionHeader(label string, count int, kind sidebarRowKind,
 		}
 	}
 
-	badge := fmt.Sprintf("(%d)", count)
-	row := renderFeedRow("  "+icon, label, badge, width)
+	row := renderFeedRow("  "+icon, label, "", width)
 	style := m.styles.FeedItem
 	if selected {
 		style = m.sidebarSelectedStyle("")
