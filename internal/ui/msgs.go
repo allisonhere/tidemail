@@ -122,4 +122,8 @@ type AttachmentsSavedMsg struct {
 
 type StatusClearMsg struct{}
 
+type AutoSyncMsg struct {
+	AccountID int64
+}
+
 type ErrMsg struct{ Err error }

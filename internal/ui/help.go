@@ -56,12 +56,14 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 			name: "Accounts",
 			entries: []entry{
 				bind(keys.Sync),
+				{keys.Sync.Help().Key + " (on Unified)", "sync all inboxes"},
 				bind(keys.SyncAll),
 				bind(keys.AccountManager),
 				{keys.Add.Help().Key, "add account"},
 				{keys.Edit.Help().Key, "edit account"},
 				{keys.Delete.Help().Key, "delete account"},
 				{"Gmail/Yahoo/iCloud", "use app passwords, not primary account passwords"},
+				{"Settings → Accounts", "set sync interval per account for auto-refresh"},
 			},
 		},
 		{

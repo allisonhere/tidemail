@@ -80,7 +80,8 @@ type AccountConfig struct {
 	SMTPTLS  bool   `toml:"smtp_tls"`
 	User     string `toml:"user"`
 	Password string `toml:"password"`
-	From     string `toml:"from"`
+	From        string `toml:"from"`
+	SyncMinutes int    `toml:"sync_minutes"` // 0 = no auto-sync
 }
 
 func DefaultAccountConfig() AccountConfig {

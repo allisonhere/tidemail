@@ -272,6 +272,7 @@ const (
 	amFieldUser
 	amFieldPass
 	amFieldFrom
+	amFieldSyncInterval
 	amFieldCount
 )
 
@@ -321,6 +322,7 @@ type AccountManager struct {
 	userInput     textinput.Model
 	passInput     textinput.Model
 	fromInput     textinput.Model
+	syncInput     textinput.Model
 
 	provider      string
 	focusedField  amField
@@ -342,6 +344,7 @@ func NewAccountManager(database *db.DB) AccountManager {
 	am.userInput = newAMInput("you@example.com", false)
 	am.passInput = newAMInput("password", true)
 	am.fromInput = newAMInput("Your Name <you@example.com>", false)
+	am.syncInput = newAMInput("0 (disabled)", false)
 	return am
 }
 
@@ -367,7 +370,7 @@ func (am *AccountManager) syncInputWidths(width int) {
 	for _, ti := range []*textinput.Model{
 		&am.nameInput, &am.imapHostInput, &am.imapPortInput,
 		&am.smtpHostInput, &am.smtpPortInput,
-		&am.userInput, &am.passInput, &am.fromInput,
+		&am.userInput, &am.passInput, &am.fromInput, &am.syncInput,
 	} {
 		ti.Width = inputW
 	}
@@ -383,6 +386,7 @@ func (am *AccountManager) focusField(f amField) {
 	am.userInput.Blur()
 	am.passInput.Blur()
 	am.fromInput.Blur()
+	am.syncInput.Blur()
 	switch f {
 	case amFieldName:
 		am.nameInput.Focus()
@@ -402,6 +406,8 @@ func (am *AccountManager) focusField(f amField) {
 		am.passInput.Focus()
 	case amFieldFrom:
 		am.fromInput.Focus()
+	case amFieldSyncInterval:
+		am.syncInput.Focus()
 	}
 }
 
@@ -420,6 +426,7 @@ func (am *AccountManager) populateFormFrom(acfg config.AccountConfig) {
 	am.userInput.SetValue(acfg.User)
 	am.passInput.SetValue(acfg.Password)
 	am.fromInput.SetValue(acfg.From)
+	am.syncInput.SetValue(strconv.Itoa(acfg.SyncMinutes))
 }
 
 func (am AccountManager) buildCfg() config.AccountConfig {
@@ -442,7 +449,8 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 		SMTPTLS:  am.smtpTLS,
 		User:     strings.TrimSpace(am.userInput.Value()),
 		Password: am.passInput.Value(),
-		From:     strings.TrimSpace(am.fromInput.Value()),
+		From:        strings.TrimSpace(am.fromInput.Value()),
+		SyncMinutes: func() int { n, _ := strconv.Atoi(am.syncInput.Value()); return n }(),
 	}
 	if preset, ok := providerPresets[am.provider]; ok {
 		cfg.IMAPHost = preset.IMAPHost
@@ -588,6 +596,8 @@ func (am *AccountManager) updateFocusedInput(msg tea.Msg) tea.Cmd {
 		am.passInput, cmd = am.passInput.Update(msg)
 	case amFieldFrom:
 		am.fromInput, cmd = am.fromInput.Update(msg)
+	case amFieldSyncInterval:
+		am.syncInput, cmd = am.syncInput.Update(msg)
 	}
 	return cmd
 }
@@ -1005,6 +1015,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Left, hintLeft, hintRight), blank)
 	}
 	rows = append(rows, row("From", am.fromInput, am.focusedField == amFieldFrom))
+	rows = append(rows, row("Sync (min)", am.syncInput, am.focusedField == amFieldSyncInterval))
 
 	statusLine := ""
 	if am.statusMsg != "" {

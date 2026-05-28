@@ -32,7 +32,7 @@ go build -o tidemail .
 
 Config is stored in `~/.config/tidemail/config.toml`. The local SQLite cache is stored in `~/.local/share/tidemail/mail.db` unless `XDG_DATA_HOME` changes that path.
 
-Open account management with `m`, add an IMAP/SMTP account, then sync the selected mailbox with `f` or all mailboxes with `F`. Accounts present in `config.toml` are imported into the account manager automatically on startup.
+Open account management with `m`, add an IMAP/SMTP account, then sync the selected mailbox with `f`. Press `f` on the Unified Inbox to sync every account's inbox at once. Use `F` to sync all mailboxes. Configure a per-account `sync_minutes` interval for automatic background refresh.
 
 ## Credential safety
 
@@ -71,6 +71,7 @@ smtp_tls = true
 user = "alice@example.com"
 password = "app-password"
 from = "Alice <alice@example.com>"
+sync_minutes = 5  # auto-sync every 5 min (0 = off)
 ```
 
 ## Keyboard Shortcuts
@@ -79,7 +80,7 @@ from = "Alice <alice@example.com>"
 |-----|--------|
 | `p` or `:` | Command palette |
 | `m` | Account manager |
-| `f` | Sync current mailbox |
+| `f` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
 | `F` | Sync all mailboxes |
 | `c` | Compose |
 | `r` | Toggle read/unread in message list, reply from content |
@@ -103,6 +104,7 @@ from = "Alice <alice@example.com>"
 Settings are opened with `S`.
 
 - Display: icons, date format, mark-read behavior, focus line, actionable links, reading width, browser command, density, and quit confirmation
+- Accounts: edit account details and set a per-account `sync_minutes` interval for automatic background refresh
 - Updates: check, install, restart, or copy a manual install command
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings
 - About: repository and issue links

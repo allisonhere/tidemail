@@ -388,6 +388,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.rebuildSidebar()
 		m.accountManager.setData(m.accounts, m.mailboxes, m.cfg.Accounts)
+		if m.firstLoad {
+			statusCmd = tea.Batch(statusCmd, m.startSyncTimersCmd())
+		}
 		m.firstLoad = false
 		if prevID == 0 && prevKind == rowKindMailbox {
 			m.sidebarCursor = 0
@@ -524,7 +527,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(msg.Mailboxes) > 0 {
 			m.pendingSelectMailboxID = msg.Mailboxes[0].ID
 		}
-		return m, tea.Batch(m.loadAccountsCmd(), m.clearStatusCmd())
+		return m, tea.Batch(m.loadAccountsCmd(), m.clearStatusCmd(), m.startSyncTimersCmd())
+
+	case AutoSyncMsg:
+		var cmds []tea.Cmd
+		for _, mb := range m.mailboxes {
+			if mb.AccountID == msg.AccountID && isInboxMailbox(mb) {
+				cmds = append(cmds, m.syncMailboxCmd(mb.ID, false))
+			}
+		}
+		if len(cmds) > 0 {
+			return m, tea.Batch(cmds...)
+		}
+		return m, nil
 
 	case AccountTestedMsg:
 		m.accountManager.busy = false
@@ -836,6 +851,18 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.Sync):
+		if m.selectedUnifiedInbox() {
+			// Sync all inboxes when 'f' is pressed on Unified Inbox
+			var cmds []tea.Cmd
+			for _, mb := range m.mailboxes {
+				if isInboxMailbox(mb) {
+					cmds = append(cmds, m.syncMailboxCmd(mb.ID, true))
+				}
+			}
+			if len(cmds) > 0 {
+				return m, tea.Batch(cmds...)
+			}
+		}
 		if selected := m.selectedMailbox(); selected != nil {
 			return m, m.syncMailboxCmd(selected.ID, true)
 		}
@@ -3020,6 +3047,34 @@ func (m *Model) loadUnifiedInboxCmd() tea.Cmd {
 		}
 		return MessagesLoadedMsg{MailboxID: 0, Messages: msgs}
 	}
+}
+
+func (m *Model) startSyncTimersCmd() tea.Cmd {
+	var cmds []tea.Cmd
+	for _, acfg := range m.cfg.Accounts {
+		if acfg.SyncMinutes <= 0 {
+			continue
+		}
+		minutes := acfg.SyncMinutes
+		var acctID int64
+		for _, acc := range m.accounts {
+			if acc.Name == acfg.Name {
+				acctID = acc.ID
+				break
+			}
+		}
+		if acctID == 0 {
+			continue
+		}
+		cmd := tea.Every(time.Duration(minutes)*time.Minute, func(t time.Time) tea.Msg {
+			return AutoSyncMsg{AccountID: acctID}
+		})
+		cmds = append(cmds, cmd)
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
