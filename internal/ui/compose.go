@@ -497,6 +497,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 
 	inputW := max(10, width-8)
 	labelW := formLabelWidth(width)
+	controlW := max(1, width-labelW-2) // space for marker + label
 
 	// Reusable text input with compose-style field highlighting
 	composeInput := func(ti textinput.Model, field composeField) string {
@@ -505,12 +506,17 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 		if focused {
 			bg = chrome.fieldBg
 		}
-		ti.Width = inputW
+		ti.Width = controlW
 		ti.PromptStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.accent)
 		ti.TextStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.text)
 		ti.PlaceholderStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.muted)
 		ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
-		return renderTextInput(ti, inputW, focused, false, chrome)
+		view := truncateStyled(ti.View(), controlW, bg)
+		return lipgloss.NewStyle().
+			Background(bg).
+			Foreground(chrome.text).
+			Width(controlW).
+			Render(view)
 	}
 
 	// Action bar
@@ -542,7 +548,11 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	c.bodyInput.SetHeight(bodyH)
 	c.bodyInput.FocusedStyle.Base = lipgloss.NewStyle().Background(chrome.fieldBg)
 	c.bodyInput.BlurredStyle.Base = lipgloss.NewStyle().Background(chrome.baseBg)
-	bodyView := renderInsetControl(c.bodyInput.View(), width, 2, chrome)
+	bodyBg := chrome.baseBg
+	if c.focusedField == composeFieldBody {
+		bodyBg = chrome.fieldBg
+	}
+	bodyView := lipgloss.NewStyle().Background(bodyBg).Width(width).Padding(0, 2).Render(c.bodyInput.View())
 
 	statusLine := ""
 	if c.statusMsg != "" {
