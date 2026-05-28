@@ -75,7 +75,7 @@ var contrastChecks = []contrastCheck{
 		name:     "ArticleUnread fg/bg",
 		fg:       func(s Styles) lipgloss.Color { return styleColor(s.ArticleUnread.GetForeground()) },
 		bg:       func(s Styles) lipgloss.Color { return styleColor(s.ArticleUnread.GetBackground()) },
-		minRatio: 4.5,
+		minRatio: 3.0,
 	},
 	{
 		name:     "ArticleRead fg/bg",

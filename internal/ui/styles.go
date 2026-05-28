@@ -163,6 +163,13 @@ func BuildStyles(t Theme, density string) Styles {
 	}()
 	contentFocusBg := focusLineBg(t)
 
+	unreadBg := func() lipgloss.Color {
+		if isDark(t.Bg) {
+			return adjustLightness(t.Bg, 0.05)
+		}
+		return adjustLightness(t.Bg, -0.05)
+	}()
+
 	return Styles{
 		Theme:   t,
 		PlainUI: plainUI,
@@ -212,7 +219,7 @@ func BuildStyles(t Theme, density string) Styles {
 			Bold(true),
 
 		ArticleUnread: listPad(lipgloss.NewStyle().
-			Background(t.Bg).
+			Background(unreadBg).
 			Foreground(t.Fg).
 			Bold(true).
 			AlignHorizontal(lipgloss.Left)),
@@ -239,7 +246,7 @@ func BuildStyles(t Theme, density string) Styles {
 			Background(t.Bg).
 			Foreground(t.Dimmed),
 		UnreadDot: lipgloss.NewStyle().
-			Background(t.Bg).
+			Background(unreadBg).
 			Foreground(t.Unread),
 
 		ContentTitle: lipgloss.NewStyle().

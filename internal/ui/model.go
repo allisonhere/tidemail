@@ -4061,7 +4061,11 @@ func (m Model) messageRowStyles() (lipgloss.Style, lipgloss.Style, lipgloss.Styl
 	border := m.styles.Theme.Border
 	borderFocus := m.styles.Theme.BorderFocus
 	if accent != "" {
-		leg := accentReadableOn(accent, m.styles.Theme.Bg, 3)
+		unreadBg := terminalColorAsColor(unread.GetBackground())
+		if unreadBg == "" {
+			unreadBg = m.styles.Theme.Bg
+		}
+		leg := accentReadableOn(accent, unreadBg, 3)
 		unread = unread.Copy().Foreground(leg)
 		selected = selected.Copy().Foreground(leg)
 		headerActive = headerActive.Copy().
