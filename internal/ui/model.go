@@ -3498,6 +3498,23 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 		sysMbs := make([]db.Mailbox, 0, len(mbs))
 		personalMbs := make([]db.Mailbox, 0, len(mbs))
 		for _, mb := range mbs {
+			if hasFlag(mb.Flags, "\\Noselect") {
+				continue // cannot be opened, no messages — skip
+			}
+			// Also skip children of Noselect parents (e.g. dovecot.sieve under INBOX.dovecot)
+			if idx := strings.LastIndex(mb.Name, "."); idx >= 0 {
+				parent := mb.Name[:idx]
+				skip := false
+				for _, pmb := range mbs {
+					if strings.EqualFold(pmb.Name, parent) && hasFlag(pmb.Flags, "\\Noselect") {
+						skip = true
+						break
+					}
+				}
+				if skip {
+					continue
+				}
+			}
 			lower := strings.ToLower(mb.Name)
 			if lower == "inbox" || strings.HasSuffix(lower, "/inbox") {
 				mb := mb
@@ -3606,6 +3623,15 @@ func cleanDisplayName(name string) string {
 // isGmailSystemFolder reports whether name is a Gmail system label that is
 // typically uninteresting in an IMAP client. These are hidden when the
 // HideGmailSystem config toggle is enabled.
+func hasFlag(flags []string, flag string) bool {
+	for _, f := range flags {
+		if strings.EqualFold(f, flag) {
+			return true
+		}
+	}
+	return false
+}
+
 func isGmailSystemFolder(name string) bool {
 	// Gmail system labels live under the [Gmail]/ namespace on English
 	// accounts. The prefix varies by locale (e.g. [Google], [Gmail]),

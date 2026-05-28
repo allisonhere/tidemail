@@ -26,7 +26,7 @@ func (c *Client) fetchMessages(ctx context.Context, mailboxName string, limit in
 		return nil, fmt.Errorf("not connected")
 	}
 
-	selectData, err := c.conn.Select(mailboxName, nil).Wait()
+	selectData, err := c.conn.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait()
 	if err != nil {
 		return nil, fmt.Errorf("select %s: %w", mailboxName, err)
 	}
@@ -71,6 +71,7 @@ func (c *Client) fetchMessages(ctx context.Context, mailboxName string, limit in
 		UID:           true,
 		Flags:         true,
 		Envelope:      true,
+		InternalDate:  true,
 		BodyStructure: &imap.FetchItemBodyStructure{},
 		BodySection:   []*imap.FetchItemBodySection{bodySection},
 	}
@@ -114,6 +115,11 @@ func parseIMAPMessage(msg *imapclient.FetchMessageBuffer) (db.Message, error) {
 		m.To = addressList(env.To)
 		m.CC = addressList(env.Cc)
 		m.ReplyTo = addressList(env.ReplyTo)
+	}
+	// Fallback: some servers (Dovecot) may omit envelope date for system messages.
+	// INTERNALDATE is always present and never zero.
+	if m.Date.IsZero() && !msg.InternalDate.IsZero() {
+		m.Date = msg.InternalDate
 	}
 
 	for _, section := range msg.BodySection {

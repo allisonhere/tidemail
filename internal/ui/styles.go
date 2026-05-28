@@ -225,7 +225,7 @@ func BuildStyles(t Theme, density string) Styles {
 			AlignHorizontal(lipgloss.Left)),
 		ArticleRead: listPad(lipgloss.NewStyle().
 			Background(t.Bg).
-			Foreground(readableText(t.Dimmed, t.Bg, 3.0)).
+			Foreground(mutedText(t.Fg, t.Bg)).
 			AlignHorizontal(lipgloss.Left)),
 		ArticleSelected: listPad(lipgloss.NewStyle().
 			Background(func() lipgloss.Color {
