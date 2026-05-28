@@ -79,6 +79,7 @@ func NewCompose(acfg config.AccountConfig) ComposeModel {
 	c.bodyInput = textarea.New()
 	c.bodyInput.Placeholder = "Write your message here..."
 	c.bodyInput.ShowLineNumbers = false
+	c.bodyInput.Prompt = ""
 	c.focusedField = composeFieldTo
 	c.toInput.Focus()
 	return c
