@@ -610,6 +610,8 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	// ── Message ──
 	rows = append(rows, renderFormGroupTitle("Message", width, chrome))
 	rows = append(rows, renderComposeRow("Subject", c.focusedField == composeFieldSubject, composeField(c.subjectInput, composeFieldSubject), width, labelW, chrome))
+	blank := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
+	rows = append(rows, blank)
 	rows = append(rows, bodyView)
 
 	// ── Reply quote ──
