@@ -37,6 +37,7 @@ const (
 	sfDefaultUnreadOnly
 	sfActionableLinks
 	sfFilterLinks
+	sfHideGmailSystem
 	sfReadingWidth
 	sfDisplayDensity
 	sfBrowser
@@ -175,6 +176,7 @@ type Settings struct {
 	defaultUnreadOnly    bool
 	actionableLinks      bool
 	filterLinks          bool
+	hideGmailSystem      bool
 	confirmQuit          bool
 	layoutDensityIdx     int // 0 = comfortable, 1 = compact
 	readingWidthInput    textinput.Model
@@ -257,6 +259,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		defaultUnreadOnly:    cfg.Display.DefaultUnreadOnly,
 		actionableLinks:      cfg.Display.ActionableLinks,
 		filterLinks:          cfg.Display.FilterLinks,
+		hideGmailSystem:      cfg.Display.HideGmailSystem,
 		confirmQuit:          cfg.Display.ConfirmQuit,
 		layoutDensityIdx:     layoutIdx,
 		readingWidthInput:    mkInput(strconv.Itoa(cfg.Display.ReadingWidth), "0 (no limit)", false),
@@ -314,6 +317,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.DefaultUnreadOnly = s.defaultUnreadOnly
 	cfg.Display.ActionableLinks = s.actionableLinks
 	cfg.Display.FilterLinks = s.filterLinks
+	cfg.Display.HideGmailSystem = s.hideGmailSystem
 	cfg.Display.ConfirmQuit = s.confirmQuit
 	if w, err := strconv.Atoi(strings.TrimSpace(s.readingWidthInput.Value())); err == nil {
 		cfg.Display.ReadingWidth = max(0, w)
@@ -539,7 +543,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		if config.IsRetroTerminalTheme(s.themeName) {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
-		return append(fields, sfActionableLinks, sfFilterLinks, sfBrowser, sfConfirmQuit)
+		return append(fields, sfActionableLinks, sfFilterLinks, sfHideGmailSystem, sfBrowser, sfConfirmQuit)
 	case ssFeeds:
 		return []settingsField{sfBackToSections, sfFeedMaxBody}
 	case ssUpdates:
@@ -765,6 +769,12 @@ func (s Settings) focusedTextInputCursorPosition() int {
 		case 3:
 			return s.geminiInput.Position()
 		}
+	case sfOpenAIModel:
+		return s.openaiModelInput.Position()
+	case sfClaudeModel:
+		return s.claudeModelInput.Position()
+	case sfGeminiModel:
+		return s.geminiModelInput.Position()
 	case sfOllamaURL:
 		return s.ollamaURLInput.Position()
 	case sfOllamaModel:
@@ -825,8 +835,11 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 	}
 
 	key := msg.(tea.KeyMsg)
-	if s.isTextInput() && key.Type == tea.KeyRunes {
-		return s.updateFocusedTextInput(msg)
+	if s.isTextInput() {
+		switch key.Type {
+		case tea.KeyRunes, tea.KeySpace, tea.KeyBackspace, tea.KeyDelete, tea.KeyEnter:
+			return s.updateFocusedTextInput(msg)
+		}
 	}
 
 	// Global: ctrl+s saves immediately. Esc from detail keeps edits in the
@@ -1015,6 +1028,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfHideGmailSystem:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.hideGmailSystem = !s.hideGmailSystem
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfConfirmQuit:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.confirmQuit = !s.confirmQuit
@@ -1158,7 +1180,7 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
-	case sfBrowser, sfFeedMaxBody, sfReadingWidth, sfAPIKey, sfOllamaURL, sfOllamaModel, sfSavePath,
+	case sfBrowser, sfFeedMaxBody, sfReadingWidth, sfAPIKey, sfOpenAIModel, sfClaudeModel, sfGeminiModel, sfOllamaURL, sfOllamaModel, sfSavePath,
 		sfRetroBg, sfRetroFg, sfRetroAccent:
 		// Enter advances to next field; everything else goes to the text input.
 		if keyMatches(key, keys.Enter) {
@@ -1299,6 +1321,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		}
 		b.addToggle("Actionable article links", s.actionableLinks, sfActionableLinks)
 		b.addToggle("Filter links from articles", s.filterLinks, sfFilterLinks)
+		b.addToggle("Hide Gmail system folders", s.hideGmailSystem, sfHideGmailSystem)
 		b.addInput("Browser command", s.browserInput, sfBrowser)
 		b.addToggle("Confirm before quitting", s.confirmQuit, sfConfirmQuit)
 
@@ -2145,6 +2168,8 @@ func (s Settings) fieldHint(field settingsField) string {
 		return "enable ctrl+n / ctrl+p to select links in article content; o opens selected link"
 	case sfFilterLinks:
 		return "strip bare URLs from the article body text"
+	case sfHideGmailSystem:
+		return "hide [Gmail] system labels (All Mail, Starred, Important, Categories)"
 	case sfFocusLine:
 		return "highlight the current readable line in the content pane"
 	case sfUpdateManualCommand:

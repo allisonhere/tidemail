@@ -3420,7 +3420,7 @@ func summaryFilename(title string) string {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 func (m *Model) rebuildSidebar() {
-	m.sidebarRows = buildSidebarRows(m.accounts, m.mailboxes, m.collapsedAccounts)
+	m.sidebarRows = buildSidebarRows(m.accounts, m.mailboxes, m.collapsedAccounts, m.cfg.Display.HideGmailSystem)
 	m.sidebarCursor = clamp(m.sidebarCursor, 0, max(0, len(m.sidebarRows)-1))
 	m.clampSidebarOffset()
 }
@@ -3440,9 +3440,12 @@ func (m *Model) clampSidebarOffset() {
 	m.sidebarOffset = clamp(m.sidebarOffset, 0, max(0, len(m.sidebarRows)-visible))
 }
 
-func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed map[int64]bool) []sidebarRow {
+func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed map[int64]bool, hideGmailSystem bool) []sidebarRow {
 	byAccount := make(map[int64][]db.Mailbox)
 	for _, mb := range mailboxes {
+		if hideGmailSystem && isGmailSystemFolder(mb.Name) {
+			continue
+		}
 		byAccount[mb.AccountID] = append(byAccount[mb.AccountID], mb)
 	}
 	for id := range byAccount {
@@ -3517,6 +3520,34 @@ func cleanDisplayName(name string) string {
 	}
 
 	return cleaned
+}
+
+// isGmailSystemFolder reports whether name is a Gmail system label that is
+// typically uninteresting in an IMAP client. These are hidden when the
+// HideGmailSystem config toggle is enabled.
+func isGmailSystemFolder(name string) bool {
+	// Gmail system labels live under the [Gmail]/ namespace on English
+	// accounts. The prefix varies by locale (e.g. [Google], [Gmail]),
+	// so we match the segment after "]".
+	idx := strings.Index(name, "]/")
+	if idx < 0 {
+		return false
+	}
+	rest := strings.TrimSpace(name[idx+2:])
+
+	// Hide: All Mail (duplicates everything), Starred/Important
+	// (no star/importance UI), Spam/Trash (handled by actions),
+	// and all Categories/* (Gmail auto-categorization noise).
+	// Keep: Drafts, Sent Mail — these are useful.
+	lower := strings.ToLower(rest)
+	switch lower {
+	case "all mail", "starred", "important", "spam", "trash":
+		return true
+	}
+	if strings.HasPrefix(lower, "categories/") {
+		return true
+	}
+	return false
 }
 
 func (m Model) newAccountManager() AccountManager {

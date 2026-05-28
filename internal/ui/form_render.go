@@ -53,6 +53,14 @@ func renderFormRow(label string, focused bool, control string, width, labelW int
 		Background(rowBg).
 		Width(2).
 		Render(" ")
+	if focused {
+		markerCell = lipgloss.NewStyle().
+			Background(rowBg).
+			Foreground(chrome.accent).
+			Bold(true).
+			Width(2).
+			Render(" >")
+	}
 	labelW = min(labelW, max(1, width-lipgloss.Width(markerCell)-1))
 	controlW := max(1, width-lipgloss.Width(markerCell)-labelW)
 	labelCell := lipgloss.NewStyle().
