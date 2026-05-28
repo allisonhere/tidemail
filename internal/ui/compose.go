@@ -579,15 +579,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 		bodyBg = chrome.fieldBg
 	}
 	bodyInputView := c.bodyInput.View()
-	// Indent continuation lines by 2 so they align after "▎ " prefix
-	bodyLines := strings.Split(bodyInputView, "\n")
-	for i := 1; i < len(bodyLines); i++ {
-		bodyLines[i] = "  " + bodyLines[i]
-	}
-	bodyIndented := strings.Join(bodyLines, "\n")
-	bodyBorder := lipgloss.NewStyle().Background(bodyBg).Foreground(chrome.highlight).Render("▎ ")
-	bodyContent := lipgloss.NewStyle().Background(bodyBg).Width(max(1, width-2)).Render(bodyIndented)
-	bodyView := bodyBorder + bodyContent
+	bodyView := lipgloss.NewStyle().Background(bodyBg).Width(width).Padding(0, 2).Render(bodyInputView)
 
 	// Status line
 	statusLine := ""
