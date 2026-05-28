@@ -4443,7 +4443,7 @@ func (m Model) messageRowPrefix(read bool) string {
 	if read {
 		return "· "
 	}
-	return "● "
+	return "⬤ "
 }
 
 func (m Model) emptyAccountsHint() string {
