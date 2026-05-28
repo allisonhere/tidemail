@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
@@ -96,7 +97,28 @@ func NewReply(original db.Message, acfg config.AccountConfig) ComposeModel {
 	c.subjectInput.SetValue(subject)
 	c.inReplyTo = original.MessageID
 	c.references = original.MessageID
+
+	// Quote the original body text
+	if original.BodyText != "" {
+		plain := ansi.Strip(original.BodyText)
+		quoted := quoteReply(plain, original.From)
+		c.bodyInput.SetValue(quoted)
+	}
+
 	return c
+}
+
+// quoteReply formats a quoted reply block from the original message.
+func quoteReply(body, from string) string {
+	var buf strings.Builder
+	buf.WriteString("\n\n")
+	buf.WriteString("On " + from + " wrote:\n")
+	for _, line := range strings.Split(strings.TrimRight(body, "\n"), "\n") {
+		buf.WriteString("> ")
+		buf.WriteString(line)
+		buf.WriteString("\n")
+	}
+	return buf.String()
 }
 
 func newComposeInput(placeholder string) textinput.Model {
@@ -276,6 +298,15 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 		c.openPicker(startDir)
 		return c, nil, false
 
+	case keyMatches(km, keys.RemoveAttach):
+		if len(c.attachments) > 0 {
+			removed := c.attachments[len(c.attachments)-1].Name
+			c.attachments = c.attachments[:len(c.attachments)-1]
+			c.statusMsg = fmt.Sprintf("removed: %s", removed)
+			c.isErr = false
+		}
+		return c, nil, false
+
 	default:
 		var cmd tea.Cmd
 		switch c.focusedField {
@@ -418,6 +449,30 @@ func parseAddressList(s string) []string {
 	return out
 }
 
+func fileIcon(name string) string {
+	ext := strings.ToLower(filepath.Ext(name))
+	switch ext {
+	case ".pdf":
+		return "📄 "
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg":
+		return "🖼 "
+	case ".zip", ".tar", ".gz", ".7z", ".rar", ".bz2", ".xz":
+		return "📦 "
+	case ".doc", ".docx":
+		return "📝 "
+	case ".xls", ".xlsx", ".csv":
+		return "📊 "
+	case ".mp3", ".wav", ".flac", ".ogg", ".m4a":
+		return "🎵 "
+	case ".mp4", ".mov", ".avi", ".mkv", ".webm":
+		return "🎬 "
+	case ".go", ".py", ".js", ".ts", ".rs", ".java", ".c", ".cpp", ".h", ".sh":
+		return "💻 "
+	default:
+		return "📎 "
+	}
+}
+
 func (c ComposeModel) View(width, height int, styles Styles) string {
 	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
 
@@ -430,10 +485,22 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	if c.inReplyTo != "" {
 		title = "REPLY"
 	}
+	// Add sender badge
+	sender := c.accountCfg.From
+	if sender == "" {
+		sender = c.accountCfg.User
+	}
+	if sender != "" {
+		title += "  ◉ " + sender
+	}
 	header := renderManagerHeader(title, width, chrome)
 
-	inputW := max(10, width-4)
-	styledInput := func(ti textinput.Model, focused bool) string {
+	inputW := max(10, width-8)
+	labelW := formLabelWidth(width)
+
+	// Reusable text input with compose-style field highlighting
+	composeInput := func(ti textinput.Model, field composeField) string {
+		focused := c.focusedField == field
 		bg := chrome.baseBg
 		if focused {
 			bg = chrome.fieldBg
@@ -443,28 +510,27 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 		ti.TextStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.text)
 		ti.PlaceholderStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.muted)
 		ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
-		return lipgloss.NewStyle().Background(bg).Width(width).Padding(0, 2).Render(ti.View())
-	}
-	label := func(s string) string {
-		return lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).
-			Width(width).Padding(0, 2).Render(s)
+		return renderTextInput(ti, inputW, focused, false, chrome)
 	}
 
-	actions := renderManagerActionGroups(width, chrome,
-		[]string{"ctrl+s", "send", "ctrl+a", "attach"},
-		[]string{"tab", "next field", "esc", "cancel"},
-	)
+	// Action bar
+	actionKeys := []string{"ctrl+s", "send", "ctrl+a", "attach"}
+	navKeys := []string{"tab", "next field", "esc", "cancel"}
+	if len(c.attachments) > 0 {
+		navKeys = []string{"tab", "next", "ctrl+r", "remove", "esc", "cancel"}
+	}
+	actions := renderManagerActionGroups(width, chrome, actionKeys, navKeys)
 	if c.busy {
 		actions = renderManagerActions(width, chrome)
 	}
 
-	// Count lines in the attachment list if any
+	// Count attachment lines
 	attachLines := 0
 	if len(c.attachments) > 0 {
-		attachLines = 1 + len(c.attachments) // label + one line per file
+		attachLines = 1 + len(c.attachments) // label + one per file
 	}
 
-	fixedH := lipgloss.Height(header) + 7 + lipgloss.Height(actions)
+	fixedH := lipgloss.Height(header) + 4 + lipgloss.Height(actions)
 	if c.statusMsg != "" {
 		fixedH++
 	}
@@ -476,12 +542,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	c.bodyInput.SetHeight(bodyH)
 	c.bodyInput.FocusedStyle.Base = lipgloss.NewStyle().Background(chrome.fieldBg)
 	c.bodyInput.BlurredStyle.Base = lipgloss.NewStyle().Background(chrome.baseBg)
-	bodyFocused := c.focusedField == composeFieldBody
-	bodyStyle := lipgloss.NewStyle().Background(chrome.baseBg)
-	if bodyFocused {
-		bodyStyle = lipgloss.NewStyle().Background(chrome.fieldBg)
-	}
-	bodyView := bodyStyle.Width(width).Padding(0, 2).Render(c.bodyInput.View())
+	bodyView := renderInsetControl(c.bodyInput.View(), width, 2, chrome)
 
 	statusLine := ""
 	if c.statusMsg != "" {
@@ -497,39 +558,38 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 			Render(c.statusMsg)
 	}
 
-	rows := []string{
-		header,
-		label("To"),
-		styledInput(c.toInput, c.focusedField == composeFieldTo),
-		label("CC"),
-		styledInput(c.ccInput, c.focusedField == composeFieldCC),
-		label("Subject"),
-		styledInput(c.subjectInput, c.focusedField == composeFieldSubject),
-	}
+	// Build rows
+	var rows []string
+	rows = append(rows, header)
 
-	// Attached files list
+	// ── Recipients ──
+	rows = append(rows, renderFormGroupTitle("Recipients", width, chrome))
+	rows = append(rows, renderFormRow("To", c.focusedField == composeFieldTo, composeInput(c.toInput, composeFieldTo), width, labelW, chrome))
+	rows = append(rows, renderFormRow("CC", c.focusedField == composeFieldCC, composeInput(c.ccInput, composeFieldCC), width, labelW, chrome))
+
+	// ── Message ──
+	rows = append(rows, renderFormGroupTitle("Message", width, chrome))
+	rows = append(rows, renderFormRow("Subject", c.focusedField == composeFieldSubject, composeInput(c.subjectInput, composeFieldSubject), width, labelW, chrome))
+	rows = append(rows, bodyView)
+
+	// ── Attachments ──
 	if len(c.attachments) > 0 {
-		var lines []string
+		rows = append(rows, renderFormGroupTitle("Attachments", width, chrome))
 		for _, af := range c.attachments {
-			lines = append(lines, fmt.Sprintf("  %s  (%s)", af.Name, humanSize(len(af.Data))))
+			icon := fileIcon(af.Name)
+			line := fmt.Sprintf("  %s%s  %s", icon, af.Name, humanSize(len(af.Data)))
+			rows = append(rows, lipgloss.NewStyle().
+				Background(chrome.baseBg).
+				Foreground(chrome.accent).
+				Width(width).
+				Padding(0, 2).
+				Render(line))
 		}
-		attView := lipgloss.NewStyle().
-			Background(chrome.baseBg).
-			Foreground(chrome.accent).
-			Width(width).
-			Padding(0, 2).
-			Render(strings.Join(lines, "\n"))
-		rows = append(rows, label("Attachments"), attView)
 	}
 
-	rows = append(rows,
-		label("Body (ctrl+s to send)"),
-		bodyView,
-	)
 	if statusLine != "" {
 		rows = append(rows, statusLine)
 	}
-
 	rows = append(rows, actions)
 
 	content := lipgloss.JoinVertical(lipgloss.Left, rows...)

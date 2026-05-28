@@ -48,7 +48,8 @@ type KeyMap struct {
 	SaveAccount key.Binding
 	TestAccount key.Binding
 
-	AttachFile key.Binding
+	AttachFile   key.Binding
+	RemoveAttach key.Binding
 
 	// Overlay / input
 	Confirm   key.Binding
@@ -105,6 +106,8 @@ var DefaultKeys = KeyMap{
 	TestAccount: key.NewBinding(key.WithKeys("ctrl+t", "f5"), key.WithHelp("ctrl+t", "test")),
 
 	AttachFile: key.NewBinding(key.WithKeys("ctrl+a"), key.WithHelp("ctrl+a", "attach file")),
+
+	RemoveAttach: key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "remove attachment")),
 
 	SaveAttach: key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "save attachments")),
 
