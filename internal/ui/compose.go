@@ -528,6 +528,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 			bg = chrome.fieldBg
 		}
 		ti.Width = ctrlW
+		ti.Prompt = ""
 		ti.PromptStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.accent)
 		ti.TextStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.text)
 		ti.PlaceholderStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.muted)
