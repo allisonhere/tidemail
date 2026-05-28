@@ -1888,6 +1888,7 @@ func (m Model) renderPaneHint(p pane) string {
 			m.keyHint(m.keys.Enter) + " toggle  " + m.keyHint(m.keys.Sync) + " sync"
 	case paneMessages:
 		hint = m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " move  " +
+			m.keyHint(m.keys.MarkRead) + " read  " +
 			m.keyHint(m.keys.Archive) + " archive  " + m.keyHint(m.keys.Delete) + " delete  " +
 			m.keyHint(m.keys.Command) + " command"
 	case paneContent:
