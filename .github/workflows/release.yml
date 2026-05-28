@@ -32,10 +32,10 @@ jobs:
         run: |
           mkdir -p dist
           targets=(
-            "linux   amd64 tide-linux-x86_64"
-            "linux   arm64 tide-linux-aarch64"
-            "darwin  amd64 tide-darwin-x86_64"
-            "darwin  arm64 tide-darwin-aarch64"
+            "linux   amd64 tidemail-linux-x86_64"
+            "linux   arm64 tidemail-linux-aarch64"
+            "darwin  amd64 tidemail-darwin-x86_64"
+            "darwin  arm64 tidemail-darwin-aarch64"
           )
           for entry in "${targets[@]}"; do
             read -r goos goarch name <<< "$entry"
@@ -51,18 +51,23 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "Tide ${{ steps.version.outputs.tag }}"
+          name: "TideMail ${{ steps.version.outputs.tag }}"
           body: |
-            ## Tide ${{ steps.version.outputs.tag }}
+            ## TideMail ${{ steps.version.outputs.tag }}
 
-            ### Install
+            ### Quick install
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/allisonhere/tidemail/main/install.sh | sh
+            ```
+
+            ### Manual install
 
             Download a binary below for your platform and add it to your PATH.
 
             Or build from source:
             ```bash
-            git clone https://github.com/allisonhere/tide
-            cd tide
-            go build -o tide .
+            git clone https://github.com/allisonhere/tidemail
+            cd tidemail
+            go build -o tidemail .
             ```
           files: dist/*.tar.gz

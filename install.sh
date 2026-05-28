@@ -1,8 +1,8 @@
 #!/bin/sh
 set -e
 
-REPO="allisonhere/tide"
-BINARY="tide"
+REPO="allisonhere/tidemail"
+BINARY="tidemail"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
 # Colors
@@ -33,8 +33,8 @@ esac
 
 ASSET="${BINARY}-${OS}-${ARCH}"
 
-printf "\n  ${BOLD}Tide Installer${NC}\n"
-printf "  ${DIM}──────────────────────────${NC}\n"
+printf "\n  ${BOLD}TideMail Installer${NC}\n"
+printf "  ${DIM}──────────────────────────────${NC}\n"
 info "Platform: ${OS}/${ARCH}"
 
 # Get latest release version
@@ -68,4 +68,4 @@ else
 fi
 
 success "Installed ${BINARY} ${LATEST} to ${INSTALL_DIR}/${BINARY}"
-printf "\n  Run ${BOLD}tide${NC} to get started.\n\n"
+printf "\n  Run ${BOLD}tidemail${NC} to get started.\n\n"

@@ -4,10 +4,24 @@
 
 A keyboard-first terminal mail client built with [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lipgloss](https://github.com/charmbracelet/lipgloss).
 
-TideMail is being refactored from Tide into a dedicated IMAP/SMTP client. The current milestone is focused on multi-account mail workflows: unified inbox, reliable server-backed actions, compose/reply, and a fast command palette.
+## Install
 
-The reusable UI primitives behind this interface are published as
-[`tideui`](https://github.com/allisonhere/tideui).
+**Quick install** (Linux/macOS, amd64/arm64):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/allisonhere/tidemail/main/install.sh | sh
+```
+
+Or download a binary from the [latest release](https://github.com/allisonhere/tidemail/releases/latest).
+
+**From source:**
+
+```bash
+git clone https://github.com/allisonhere/tidemail
+cd tidemail
+go build -o tidemail .
+./tidemail
+```
 
 ## Features
 
