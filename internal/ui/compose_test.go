@@ -12,7 +12,7 @@ import (
 )
 
 func TestComposeActionsStayVisibleInShortView(t *testing.T) {
-	c := NewCompose(config.AccountConfig{})
+	c := NewCompose(config.AccountConfig{}, nil)
 	c.focusedField = composeFieldBody
 	c.bodyInput.Focus()
 	c.bodyInput.SetValue(strings.Repeat("this is a long compose line that wraps inside the body editor ", 20))
@@ -38,7 +38,7 @@ func TestComposeActionsStayVisibleInOverlay(t *testing.T) {
 	next, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 18})
 	m = next.(Model)
 	m.overlay = overlayCompose
-	m.compose = NewCompose(config.AccountConfig{})
+	m.compose = NewCompose(config.AccountConfig{}, nil)
 	m.compose.focusedField = composeFieldBody
 	m.compose.bodyInput.Focus()
 	m.compose.bodyInput.SetValue(strings.Repeat("this is a long compose line that wraps inside the body editor ", 40))
@@ -52,7 +52,7 @@ func TestComposeActionsStayVisibleInOverlay(t *testing.T) {
 }
 
 func TestComposeActionsWrapInNarrowView(t *testing.T) {
-	c := NewCompose(config.AccountConfig{})
+	c := NewCompose(config.AccountConfig{}, nil)
 	view := c.View(32, 16, BuildStyles(CatppuccinMocha, "compact"))
 	stripped := ansi.Strip(view)
 

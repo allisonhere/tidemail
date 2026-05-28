@@ -70,7 +70,7 @@ type ComposeModel struct {
 	isErr     bool
 }
 
-func NewCompose(acfg config.AccountConfig) ComposeModel {
+func NewCompose(acfg config.AccountConfig, addressBook []string) ComposeModel {
 	c := ComposeModel{accountCfg: acfg}
 	c.toInput = newComposeInput("to@example.com")
 	c.ccInput = newComposeInput("")
@@ -82,11 +82,23 @@ func NewCompose(acfg config.AccountConfig) ComposeModel {
 	c.bodyInput.Prompt = ""
 	c.focusedField = composeFieldTo
 	c.toInput.Focus()
+	c.SetAddressBook(addressBook)
 	return c
 }
 
+// SetAddressBook populates autocomplete suggestions for To and CC fields.
+func (c *ComposeModel) SetAddressBook(addrs []string) {
+	if len(addrs) == 0 {
+		return
+	}
+	c.toInput.ShowSuggestions = true
+	c.toInput.SetSuggestions(addrs)
+	c.ccInput.ShowSuggestions = true
+	c.ccInput.SetSuggestions(addrs)
+}
+
 func NewReply(original db.Message, acfg config.AccountConfig) ComposeModel {
-	c := NewCompose(acfg)
+	c := NewCompose(acfg, nil)
 	c.quoteCollapsed = true
 	replyTo := original.ReplyTo
 	if replyTo == "" {
@@ -288,6 +300,16 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 		return c.send()
 
 	case keyMatches(km, keys.Tab):
+		// If the focused input has matched suggestions, let it accept one.
+		// Otherwise Tab advances to the next field.
+		if c.focusedField == composeFieldTo && len(c.toInput.MatchedSuggestions()) > 0 {
+			c.toInput, _ = c.toInput.Update(msg)
+			return c, nil, false
+		}
+		if c.focusedField == composeFieldCC && len(c.ccInput.MatchedSuggestions()) > 0 {
+			c.ccInput, _ = c.ccInput.Update(msg)
+			return c, nil, false
+		}
 		c.advanceField(1)
 		return c, nil, false
 

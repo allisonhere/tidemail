@@ -165,9 +165,9 @@ func BuildStyles(t Theme, density string) Styles {
 
 	unreadBg := func() lipgloss.Color {
 		if isDark(t.Bg) {
-			return adjustLightness(t.Bg, 0.10)
+			return adjustLightness(t.Bg, 0.06)
 		}
-		return adjustLightness(t.Bg, -0.10)
+		return adjustLightness(t.Bg, -0.06)
 	}()
 
 	return Styles{
@@ -230,15 +230,15 @@ func BuildStyles(t Theme, density string) Styles {
 		ArticleSelected: listPad(lipgloss.NewStyle().
 			Background(func() lipgloss.Color {
 				if isDark(t.Bg) {
-					return adjustLightness(t.Bg, 0.08)
+					return adjustLightness(t.Bg, 0.12)
 				}
-				return adjustLightness(t.Bg, -0.08)
+				return adjustLightness(t.Bg, -0.12)
 			}()).
 			Foreground(readableText(t.BorderFocus, func() lipgloss.Color {
 				if isDark(t.Bg) {
-					return adjustLightness(t.Bg, 0.08)
+					return adjustLightness(t.Bg, 0.12)
 				}
-				return adjustLightness(t.Bg, -0.08)
+				return adjustLightness(t.Bg, -0.12)
 			}(), 4.5)).
 			Bold(true).
 			AlignHorizontal(lipgloss.Left)),

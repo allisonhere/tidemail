@@ -144,6 +144,7 @@ type Model struct {
 
 	accountManager AccountManager
 	compose        ComposeModel
+	addressBook    []string
 
 	statusMsg string
 	statusErr bool
@@ -389,7 +390,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rebuildSidebar()
 		m.accountManager.setData(m.accounts, m.mailboxes, m.cfg.Accounts)
 		if m.firstLoad {
-			statusCmd = tea.Batch(statusCmd, m.startSyncTimersCmd())
+			statusCmd = tea.Batch(statusCmd, m.startSyncTimersCmd(), m.loadAddressBookCmd())
 		}
 		m.firstLoad = false
 		if prevID == 0 && prevKind == rowKindMailbox {
@@ -495,6 +496,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setStatus("up to date", false)
 			cmds = append(cmds, m.clearStatusCmd())
 		}
+		cmds = append(cmds, m.loadAddressBookCmd())
 		return m, tea.Batch(cmds...)
 
 	case AccountSavedMsg:
@@ -538,6 +540,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if len(cmds) > 0 {
 			return m, tea.Batch(cmds...)
+		}
+		return m, nil
+
+	case AddressBookLoadedMsg:
+		if msg.Err == nil {
+			m.addressBook = msg.Addresses
 		}
 		return m, nil
 
@@ -913,7 +921,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(m.cfg.Accounts) > 0 {
 			acfg = m.cfg.Accounts[0]
 		}
-		m.compose = NewCompose(acfg)
+		m.compose = NewCompose(acfg, m.addressBook)
 		m.overlay = overlayCompose
 		return m, nil
 
@@ -1616,7 +1624,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		if len(m.cfg.Accounts) > 0 {
 			acfg = m.cfg.Accounts[0]
 		}
-		m.compose = NewCompose(acfg)
+		m.compose = NewCompose(acfg, m.addressBook)
 		m.overlay = overlayCompose
 		return m, nil
 	case "reply":
@@ -3047,6 +3055,14 @@ func (m *Model) loadUnifiedInboxCmd() tea.Cmd {
 			return MessagesLoadedMsg{Err: err}
 		}
 		return MessagesLoadedMsg{MailboxID: 0, Messages: msgs}
+	}
+}
+
+func (m *Model) loadAddressBookCmd() tea.Cmd {
+	database := m.db
+	return func() tea.Msg {
+		addrs, err := database.ListAddresses()
+		return AddressBookLoadedMsg{Addresses: addrs, Err: err}
 	}
 }
 

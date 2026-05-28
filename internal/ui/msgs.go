@@ -126,4 +126,9 @@ type AutoSyncMsg struct {
 	AccountID int64
 }
 
+type AddressBookLoadedMsg struct {
+	Addresses []string
+	Err       error
+}
+
 type ErrMsg struct{ Err error }

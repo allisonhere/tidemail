@@ -2,6 +2,7 @@ package db
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -245,4 +246,36 @@ func scanMessages(rows interface {
 		msgs = append(msgs, m)
 	}
 	return msgs, rows.Err()
+}
+
+// ListAddresses returns all unique email addresses seen in From, To, and CC
+// fields across all messages, suitable for compose autocomplete.
+func (db *DB) ListAddresses() ([]string, error) {
+	rows, err := db.Query(`
+		SELECT DISTINCT addr FROM (
+			SELECT from_addr AS addr FROM messages WHERE from_addr != ''
+			UNION
+			SELECT to_addr AS addr FROM messages WHERE to_addr != ''
+			UNION
+			SELECT cc_addr AS addr FROM messages WHERE cc_addr != ''
+		) ORDER BY addr`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var addrs []string
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			return addrs, err
+		}
+		// Split comma-separated addresses
+		for _, part := range strings.Split(a, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				addrs = append(addrs, part)
+			}
+		}
+	}
+	return addrs, rows.Err()
 }
