@@ -50,6 +50,7 @@ type KeyMap struct {
 
 	AttachFile   key.Binding
 	RemoveAttach key.Binding
+	CycleSender  key.Binding
 
 	// Overlay / input
 	Confirm   key.Binding
@@ -108,6 +109,8 @@ var DefaultKeys = KeyMap{
 	AttachFile: key.NewBinding(key.WithKeys("ctrl+a"), key.WithHelp("ctrl+a", "attach file")),
 
 	RemoveAttach: key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "remove attachment")),
+
+	CycleSender: key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "change sender")),
 
 	SaveAttach: key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "save attachments")),
 

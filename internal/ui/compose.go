@@ -61,6 +61,9 @@ type ComposeModel struct {
 	references   string
 	accountCfg   config.AccountConfig
 
+	accounts     []config.AccountConfig
+	accountIndex int
+
 	attachments    []attachmentFile
 	picker         filePicker
 	quoteCollapsed bool
@@ -70,8 +73,17 @@ type ComposeModel struct {
 	isErr     bool
 }
 
-func NewCompose(acfg config.AccountConfig, addressBook []string) ComposeModel {
-	c := ComposeModel{accountCfg: acfg}
+func NewCompose(acfg config.AccountConfig, accounts []config.AccountConfig, addressBook []string) ComposeModel {
+	c := ComposeModel{accountCfg: acfg, accounts: accounts}
+	if len(accounts) > 1 {
+		// Find the given acfg in the list; default to 0 if not found
+		for i, a := range accounts {
+			if a.IMAPHost == acfg.IMAPHost && a.User == acfg.User {
+				c.accountIndex = i
+				break
+			}
+		}
+	}
 	c.toInput = newComposeInput("to@example.com")
 	c.ccInput = newComposeInput("")
 	c.ccInput.Placeholder = "cc (optional)"
@@ -80,6 +92,11 @@ func NewCompose(acfg config.AccountConfig, addressBook []string) ComposeModel {
 	c.bodyInput.Placeholder = "Write your message here..."
 	c.bodyInput.ShowLineNumbers = false
 	c.bodyInput.Prompt = ""
+	// Remove the default black CursorLine background from the original's
+	// FocusedStyle — Focus() stores a pointer to it, and View() copies inherit
+	// that pointer. If left as default (black on dark mode), the cursor line
+	// renders with black background regardless of per-line wrapping.
+	c.bodyInput.FocusedStyle.CursorLine = lipgloss.NewStyle()
 	c.focusedField = composeFieldTo
 	c.toInput.Focus()
 	c.SetAddressBook(addressBook)
@@ -97,8 +114,8 @@ func (c *ComposeModel) SetAddressBook(addrs []string) {
 	c.ccInput.SetSuggestions(addrs)
 }
 
-func NewReply(original db.Message, acfg config.AccountConfig) ComposeModel {
-	c := NewCompose(acfg, nil)
+func NewReply(original db.Message, acfg config.AccountConfig, accounts []config.AccountConfig) ComposeModel {
+	c := NewCompose(acfg, accounts, nil)
 	c.quoteCollapsed = true
 	replyTo := original.ReplyTo
 	if replyTo == "" {
@@ -332,6 +349,14 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 		}
 		return c, nil, false
 
+	case keyMatches(km, keys.CycleSender):
+		if len(c.accounts) > 1 {
+			c.accountIndex = (c.accountIndex + 1) % len(c.accounts)
+			c.statusMsg = fmt.Sprintf("sender: %s", c.selectedAccountLabel())
+			c.isErr = false
+		}
+		return c, nil, false
+
 	default:
 		var cmd tea.Cmd
 		switch c.focusedField {
@@ -417,6 +442,13 @@ func (c *ComposeModel) advanceField(delta int) {
 	}
 }
 
+func (c ComposeModel) selectedAccount() config.AccountConfig {
+	if c.accountIndex >= 0 && c.accountIndex < len(c.accounts) {
+		return c.accounts[c.accountIndex]
+	}
+	return c.accountCfg
+}
+
 func (c ComposeModel) send() (ComposeModel, tea.Cmd, bool) {
 	to := strings.TrimSpace(c.toInput.Value())
 	if to == "" {
@@ -424,7 +456,7 @@ func (c ComposeModel) send() (ComposeModel, tea.Cmd, bool) {
 		c.isErr = true
 		return c, nil, false
 	}
-	acfg := c.accountCfg
+	acfg := c.selectedAccount()
 
 	// Build attachment list from stored file data
 	var atts []smtp.Attachment
@@ -537,8 +569,6 @@ func renderComposePanel(title string, rows []string, width int, chrome managerCh
 		Render(inner)
 }
 
-// renderComposePanelRow renders a single compose form row for use inside a panel.
-// Uses chrome.surfaceBg (panel surface) as base, shifts to chrome.fieldBg on focus.
 func renderComposePanelRow(ti textinput.Model, label string, focused bool, width, labelW, ctrlW int, chrome managerChrome) string {
 	bg := chrome.surfaceBg
 	labelFg := chrome.muted
@@ -562,6 +592,27 @@ func renderComposePanelRow(ti textinput.Model, label string, focused bool, width
 	return marker + labelCell + ctrlCell
 }
 
+func (c ComposeModel) selectedAccountLabel() string {
+	acfg := c.selectedAccount()
+	s := acfg.From
+	if s == "" {
+		s = acfg.User
+	}
+	if s == "" {
+		s = acfg.Name
+	}
+	return s
+}
+
+// renderComposeFromRow renders a non-focusable "From" row showing the current sender account.
+func renderComposeFromRow(label, value string, width, labelW, ctrlW int, chrome managerChrome) string {
+	bg := chrome.surfaceBg
+	marker := lipgloss.NewStyle().Background(bg).Width(2).Render(" ")
+	labelCell := lipgloss.NewStyle().Background(bg).Foreground(chrome.muted).Width(labelW).Render(truncate(label, max(1, labelW-1)))
+	valueCell := lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Width(ctrlW).Render(truncate(value, ctrlW))
+	return marker + labelCell + valueCell
+}
+
 func (c ComposeModel) View(width, height int, styles Styles) string {
 	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
 
@@ -574,10 +625,11 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	if c.inReplyTo != "" {
 		title = "REPLY"
 	}
-	// Add sender badge
-	sender := c.accountCfg.From
+	// Add sender badge from selected account
+	acfg := c.selectedAccount()
+	sender := acfg.From
 	if sender == "" {
-		sender = c.accountCfg.User
+		sender = acfg.User
 	}
 	if sender != "" {
 		title += "  ◉ " + sender
@@ -593,8 +645,8 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	}
 
 	// Action bar
-	actionKeys := []string{"ctrl+s", "send", "ctrl+a", "attach"}
-	navKeys := []string{"tab", "next field", "esc", "cancel"}
+	actionKeys := []string{"ctrl+s", "send", "ctrl+u", "sender", "ctrl+a", "attach"}
+	navKeys := []string{"tab", "next", "esc", "cancel"}
 	if len(c.attachments) > 0 {
 		navKeys = []string{"tab", "next", "ctrl+r", "remove", "esc", "cancel"}
 	}
@@ -623,7 +675,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	if c.statusMsg != "" {
 		fixedH++
 	}
-	bodyH := max(1, height-fixedH-attachLines-2) // -2 for subject + spacer inside message panel
+	bodyH := max(1, height-fixedH-attachLines-3) // -3 for From + subject + spacer inside panels
 	if bodyH < 1 {
 		bodyH = 1
 	}
@@ -633,44 +685,66 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	c.bodyInput.SetWidth(bodyInputW)
 	c.bodyInput.SetHeight(bodyH)
 
-	// Clear all textarea backgrounds — their Inline(true) strips them anyway.
-	// We force the background by wrapping every line of the output manually.
-	noBg := lipgloss.NewStyle()
-	c.bodyInput.FocusedStyle.Base = noBg
-	c.bodyInput.FocusedStyle.Text = noBg
-	c.bodyInput.FocusedStyle.CursorLine = noBg
-	c.bodyInput.FocusedStyle.CursorLineNumber = noBg
-	c.bodyInput.FocusedStyle.LineNumber = noBg
-	c.bodyInput.FocusedStyle.Placeholder = noBg
-	c.bodyInput.FocusedStyle.Prompt = noBg
-	c.bodyInput.FocusedStyle.EndOfBuffer = noBg
-	c.bodyInput.BlurredStyle.Base = noBg
-	c.bodyInput.BlurredStyle.Text = noBg
-	c.bodyInput.BlurredStyle.CursorLine = noBg
-	c.bodyInput.BlurredStyle.CursorLineNumber = noBg
-	c.bodyInput.BlurredStyle.LineNumber = noBg
-	c.bodyInput.BlurredStyle.Placeholder = noBg
-	c.bodyInput.BlurredStyle.Prompt = noBg
-	c.bodyInput.BlurredStyle.EndOfBuffer = noBg
-
-	// Force uniform background by wrapping every line individually.
-	// The textarea output has cursor/formatting ANSI but no background
-	// (since we cleared all backgrounds above), so our wrapper applies cleanly.
+	// Clear all textarea style backgrounds — Inline(true) in computed styles
+	// strips margins/padding but keeps background. We force a uniform bg by
+	// setting each style layer and also wrapping every line post-render.
 	bodyBg := chrome.baseBg
 	if c.focusedField == composeFieldBody {
 		bodyBg = chrome.fieldBg
 	}
+
+	// Don't set background on textarea style layers — the Focus() method on the
+	// original stores a pointer to its own FocusedStyle, and View() copies keep
+	// pointing to the original's FocusedStyle (with default black cursor line).
+	// Instead, clear everything to a plain style and let the per-line wrapping
+	// below apply the uniform background.
+	plain := lipgloss.NewStyle()
+	c.bodyInput.FocusedStyle.Base = plain
+	c.bodyInput.FocusedStyle.Text = plain
+	c.bodyInput.FocusedStyle.Prompt = plain
+	c.bodyInput.FocusedStyle.Placeholder = plain
+	c.bodyInput.FocusedStyle.CursorLine = plain
+	c.bodyInput.FocusedStyle.CursorLineNumber = plain
+	c.bodyInput.FocusedStyle.LineNumber = plain
+	c.bodyInput.FocusedStyle.EndOfBuffer = plain
+	c.bodyInput.BlurredStyle.Base = plain
+	c.bodyInput.BlurredStyle.Text = plain
+	c.bodyInput.BlurredStyle.Prompt = plain
+	c.bodyInput.BlurredStyle.Placeholder = plain
+	c.bodyInput.BlurredStyle.CursorLine = plain
+	c.bodyInput.BlurredStyle.CursorLineNumber = plain
+	c.bodyInput.BlurredStyle.LineNumber = plain
+	c.bodyInput.BlurredStyle.EndOfBuffer = plain
+	// Cursor character: after Reverse(true) gives accent-bg with bodyBg-text.
+	c.bodyInput.Cursor.Style = plain.Background(bodyBg).Foreground(chrome.accent)
+
+	// Re-focus the textarea on the copy so its internal style pointer
+	// (&FocusedStyle) points to the copy's FocusedStyle (with our changes),
+	// not the original's (which has the default black CursorLine).
+	c.bodyInput.Focus()
+
 	raw := c.bodyInput.View()
+	// Wrap each line individually with bodyBg so the background covers
+	// every line. The cursor character's ANSI reset (\033[0m) clears the
+	// background for the rest of the line — split on resets and wrap each
+	// segment individually so bodyBg is re-applied after each one.
+	bgWrap := lipgloss.NewStyle().Background(bodyBg)
 	lines := strings.Split(raw, "\n")
-	bgStyle := lipgloss.NewStyle().Background(bodyBg).Width(width - 4)
 	for i, line := range lines {
-		lines[i] = bgStyle.Render(line)
+		if strings.Contains(line, "\033[0m") {
+			segs := strings.Split(line, "\033[0m")
+			for j, seg := range segs {
+				segs[j] = bgWrap.Render(seg)
+				if j < len(segs)-1 {
+					segs[j] += "\033[0m"
+				}
+			}
+			lines[i] = strings.Join(segs, "")
+		} else {
+			lines[i] = bgWrap.Render(line)
+		}
 	}
-	bodyRow := lipgloss.NewStyle().
-		Background(bodyBg).
-		Width(width).
-		Padding(0, 2).
-		Render(strings.Join(lines, "\n"))
+	bodyRow := lipgloss.NewStyle().Background(bodyBg).Width(width).Padding(0, 2).Render(strings.Join(lines, "\n"))
 
 	// Status line
 	statusLine := ""
@@ -693,6 +767,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 
 	// ═══════════════════ RECIPIENTS ═══════════════════
 	recipRows := []string{
+		renderComposeFromRow("From", c.selectedAccountLabel(), width, panelLabelW, panelCtrlW, chrome),
 		renderComposePanelRow(c.toInput, "To", c.focusedField == composeFieldTo, width, panelLabelW, panelCtrlW, chrome),
 		renderComposePanelRow(c.ccInput, "CC", c.focusedField == composeFieldCC, width, panelLabelW, panelCtrlW, chrome),
 	}

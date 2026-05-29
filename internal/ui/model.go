@@ -910,7 +910,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.focused == paneContent && m.contentMessageID != 0 {
 			if cur := m.currentContentMessage(); cur != nil {
 				acfg := m.accountCfgForMailbox(cur.MailboxID)
-				m.compose = NewReply(*cur, acfg)
+				m.compose = NewReply(*cur, acfg, m.cfg.Accounts)
 				m.overlay = overlayCompose
 			}
 		}
@@ -921,7 +921,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(m.cfg.Accounts) > 0 {
 			acfg = m.cfg.Accounts[0]
 		}
-		m.compose = NewCompose(acfg, m.addressBook)
+		m.compose = NewCompose(acfg, m.cfg.Accounts, m.addressBook)
 		m.overlay = overlayCompose
 		return m, nil
 
@@ -1624,7 +1624,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		if len(m.cfg.Accounts) > 0 {
 			acfg = m.cfg.Accounts[0]
 		}
-		m.compose = NewCompose(acfg, m.addressBook)
+		m.compose = NewCompose(acfg, m.cfg.Accounts, m.addressBook)
 		m.overlay = overlayCompose
 		return m, nil
 	case "reply":
@@ -1633,7 +1633,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		acfg := m.accountCfgForMailbox(msg.MailboxID)
-		m.compose = NewReply(*msg, acfg)
+		m.compose = NewReply(*msg, acfg, m.cfg.Accounts)
 		m.overlay = overlayCompose
 		return m, nil
 	case "archive":

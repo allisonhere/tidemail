@@ -15,10 +15,10 @@ import (
 	"time"
 )
 
-const defaultReleasesURL = "https://api.github.com/repos/allisonhere/tide/releases/latest"
+const defaultReleasesURL = "https://api.github.com/repos/allisonhere/tidemail/releases/latest"
 
 // SuggestedManualInstallScript is shown when an update is available but the running binary's install directory is not writable (before any download/install attempt).
-const SuggestedManualInstallScript = "curl -fsSL https://raw.githubusercontent.com/allisonhere/tide/main/install.sh | sh"
+const SuggestedManualInstallScript = "curl -fsSL https://raw.githubusercontent.com/allisonhere/tidemail/main/install.sh | sh"
 
 // Updater checks GitHub releases and installs the asset matching the current platform. -allie
 type Updater struct {
