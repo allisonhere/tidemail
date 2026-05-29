@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"net/mail"
 	"os"
 	"path/filepath"
 	"sort"
@@ -456,6 +457,20 @@ func (c ComposeModel) send() (ComposeModel, tea.Cmd, bool) {
 		c.isErr = true
 		return c, nil, false
 	}
+	// Validate email addresses
+	if err := validateAddressList(to); err != "" {
+		c.statusMsg = err
+		c.isErr = true
+		return c, nil, false
+	}
+	cc := strings.TrimSpace(c.ccInput.Value())
+	if cc != "" {
+		if err := validateAddressList(cc); err != "" {
+			c.statusMsg = err
+			c.isErr = true
+			return c, nil, false
+		}
+	}
 	acfg := c.selectedAccount()
 
 	// Build attachment list from stored file data
@@ -499,11 +514,28 @@ func parseAddressList(s string) []string {
 	var out []string
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
-		if p != "" {
+		if p == "" {
+			continue
+		}
+		// Extract just the email address from formats like "Name <email>" or "email"
+		if addr, err := mail.ParseAddress(p); err == nil && addr.Address != "" {
+			out = append(out, addr.Address)
+		} else {
 			out = append(out, p)
 		}
 	}
 	return out
+}
+
+func validateAddressList(s string) string {
+	parts := parseAddressList(s)
+	for _, p := range parts {
+		addr, err := mail.ParseAddress(p)
+		if err != nil || addr.Address == "" {
+			return fmt.Sprintf("invalid email: %s", p)
+		}
+	}
+	return ""
 }
 
 func fileIcon(name string) string {

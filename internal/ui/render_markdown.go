@@ -31,7 +31,7 @@ func mdBlock(node ast.Node, source []byte, width int, th Theme, plainUI bool) st
 
 	case ast.KindHeading:
 		text := mdInlineText(node, source, th, plainUI)
-		style := lipgloss.NewStyle().Bold(true).Foreground(th.BorderFocus)
+		style := lipgloss.NewStyle().Background(th.Bg).Bold(true).Foreground(th.BorderFocus)
 		return style.Render(wrapWords(text, width))
 
 	case ast.KindBlockquote:
@@ -50,7 +50,7 @@ func mdBlock(node ast.Node, source []byte, width int, th Theme, plainUI bool) st
 		for _, line := range strings.Split(joined, "\n") {
 			lines = append(lines, prefix+line)
 		}
-		style := lipgloss.NewStyle().Foreground(th.Dimmed)
+		style := lipgloss.NewStyle().Background(th.Bg).Foreground(th.Dimmed)
 		return style.Render(strings.Join(lines, "\n"))
 
 	case ast.KindList:
@@ -71,13 +71,13 @@ func mdBlock(node ast.Node, source []byte, width int, th Theme, plainUI bool) st
 	case ast.KindCodeBlock:
 		cb := node.(*ast.CodeBlock)
 		code := mdCodeLines(cb.Lines(), source)
-		style := lipgloss.NewStyle().Foreground(th.Dimmed)
+		style := lipgloss.NewStyle().Background(th.Bg).Foreground(th.Dimmed)
 		return style.Render(code)
 
 	case ast.KindFencedCodeBlock:
 		cb := node.(*ast.FencedCodeBlock)
 		code := mdCodeLines(cb.Lines(), source)
-		style := lipgloss.NewStyle().Foreground(th.Dimmed)
+		style := lipgloss.NewStyle().Background(th.Bg).Foreground(th.Dimmed)
 		return style.Render(code)
 
 	case ast.KindHTMLBlock:
@@ -126,7 +126,7 @@ func mdListItemText(node ast.Node, source []byte, th Theme, plainUI bool) string
 // for bold, emphasis, and code spans.
 func mdInlineText(node ast.Node, source []byte, th Theme, plainUI bool) string {
 	var sb strings.Builder
-	linkStyle := lipgloss.NewStyle().Foreground(th.BorderFocus).Underline(true)
+	linkStyle := lipgloss.NewStyle().Background(th.Bg).Foreground(th.BorderFocus).Underline(true)
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		switch child.Kind() {
 		case ast.KindText:
@@ -178,11 +178,11 @@ func mdInlineText(node ast.Node, source []byte, th Theme, plainUI bool) string {
 			inner := mdInlineText(child, source, th, plainUI)
 			if em.Level >= 2 {
 				// Strong / bold
-				style := lipgloss.NewStyle().Bold(true)
+				style := lipgloss.NewStyle().Background(th.Bg).Bold(true)
 				sb.WriteString(style.Render(inner))
 			} else {
 				// Emphasis / italic
-				style := lipgloss.NewStyle().Italic(true).Foreground(th.Dimmed)
+				style := lipgloss.NewStyle().Background(th.Bg).Italic(true).Foreground(th.Dimmed)
 				sb.WriteString(style.Render(inner))
 			}
 		default:

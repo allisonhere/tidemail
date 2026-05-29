@@ -74,9 +74,16 @@ const (
 	overlayCommandPalette
 	overlaySaveAttach
 	overlayGrammarPreview
+	overlayLogViewer
 )
 
 type updateState int
+
+type logEntry struct {
+	Time    time.Time
+	Message string
+	IsError bool
+}
 
 const (
 	updateStateIdle updateState = iota
@@ -137,6 +144,8 @@ type Model struct {
 
 	grammarOriginal  string
 	grammarCorrected string
+
+	logBuffer []logEntry
 
 	helpVP        viewport.Model
 	overlay       overlayMode
@@ -488,11 +497,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case MailboxSyncedMsg:
 		delete(m.syncing, msg.MailboxID)
 		if msg.Err != nil {
-			if msg.Manual {
-				m.setStatus(fmt.Sprintf("sync failed: %v", msg.Err), true)
-				return m, m.clearStatusCmd()
-			}
-			return m, nil
+			m.setStatus(fmt.Sprintf("sync failed: %v", msg.Err), true)
+			return m, m.clearStatusCmd()
 		}
 		cmds := []tea.Cmd{m.loadAccountsCmd()}
 		if m.selectedUnifiedInbox() {
@@ -1290,6 +1296,15 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case overlayLogViewer:
+		if keyMatches(msg, m.keys.Cancel, m.keys.Back) {
+			m.overlay = overlaySettings
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.helpVP, cmd = m.helpVP.Update(msg)
+		return m, cmd
+
 	case overlayHelp:
 		if keyMatches(msg, m.keys.Back, m.keys.Help, m.keys.Quit) {
 			m.overlay = overlayNone
@@ -1401,6 +1416,9 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.openBrowserCmd(url)
 		}
 		return m, nil
+	case settingsActionViewLogs:
+		m.overlay = overlayLogViewer
+		return m, nil
 	case settingsActionCopyManualInstall:
 		cmd := strings.TrimSpace(m.settings.update.manualCommand)
 		if cmd == "" {
@@ -1422,6 +1440,8 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			config.Save(m.cfg)
 			summarizer, _ := ai.New(m.cfg.AI)
 			m.summarizer = summarizer
+			// Restart sync timers with possibly updated intervals
+			syncCmd := m.startSyncTimersCmd()
 			if len(m.filteredMessages) > 0 {
 				m.setViewportMessage(m.filteredMessages[m.messageCursor])
 			} else {
@@ -1432,7 +1452,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.sidebarOffset = 0
 			m.messageCursor = 0
 			m.clearMessages()
-			return m, m.loadAccountsCmd()
+			return m, tea.Batch(m.loadAccountsCmd(), syncCmd)
 		}
 		m.overlay = overlayNone
 		if previewingTheme {
@@ -2091,12 +2111,12 @@ func (m Model) renderMessageContent(msg db.Message) string {
 	bodyWidth := m.contentBodyWidth()
 	titleWidth := max(1, contentWidth-m.styles.ContentTitle.GetHorizontalFrameSize())
 	metaWidth := max(1, contentWidth-m.styles.ContentMeta.GetHorizontalFrameSize())
-	title := m.styles.ContentTitle.Width(m.articlesPaneWidth()).Render(truncate(unescapeDisplayText(msg.Subject), titleWidth+4))
+	title := m.styles.ContentTitle.Width(contentWidth + 2).Render(truncate(unescapeDisplayText(msg.Subject), titleWidth+2))
 	metaStr := msg.Date.Format("Mon, 02 Jan 2006 15:04")
 	if msg.From != "" {
 		metaStr += "  From: " + msg.From
 	}
-	meta := " " + m.styles.ContentMeta.Width(contentWidth + 2).Render(truncate(metaStr, metaWidth+2))
+	meta := " " + m.styles.ContentMeta.Width(contentWidth).Render(truncate(metaStr, metaWidth))
 
 	// Full headers block (togglable via ctrl+h)
 	var fullHeaders string
@@ -2116,7 +2136,7 @@ func (m Model) renderMessageContent(msg db.Message) string {
 			if f.value == "" {
 				continue
 			}
-			line := lipgloss.NewStyle().Foreground(dim).Width(contentWidth).Render(fmt.Sprintf("  %-12s %s", f.label+":", f.value))
+			line := lipgloss.NewStyle().Background(m.styles.Theme.Bg).Foreground(dim).Width(contentWidth).Render(fmt.Sprintf("  %-12s %s", f.label+":", f.value))
 			headerLines = append(headerLines, line)
 		}
 		if len(headerLines) > 0 {
@@ -2714,6 +2734,11 @@ func (m Model) renderOverlay(base string) string {
 		winH := min(m.height-6, 24)
 		box = m.renderGrammarPreview(winW, winH)
 
+	case overlayLogViewer:
+		winW := min(m.width-6, 90)
+		winH := min(m.height-4, 38)
+		box = m.renderLogViewer(winW, winH)
+
 	case overlayHelp:
 		winW := min(m.width-6, 90)
 		winH := min(m.height-4, 38)
@@ -2914,10 +2939,16 @@ func (m Model) renderSearchOverlay(width int, chrome managerChrome) string {
 		Background(chrome.baseBg).
 		Foreground(chrome.text).
 		Width(width).
-		Padding(1, 2).
+		Padding(1, 2, 0, 2).
 		Render(input.View())
+	hint := lipgloss.NewStyle().
+		Background(chrome.baseBg).
+		Foreground(chrome.muted).
+		Width(width).
+		Padding(0, 2, 0, 2).
+		Render("esc  cancel    enter  apply")
 	actions := renderManagerActions(width, chrome, "enter", "apply", "esc", "clear")
-	return lipgloss.JoinVertical(lipgloss.Left, header, body, actions)
+	return lipgloss.JoinVertical(lipgloss.Left, header, body, hint, actions)
 }
 
 func (m Model) renderCommandPalette(width int, chrome managerChrome) string {
@@ -3112,7 +3143,7 @@ func (m Model) renderGrammarPreview(width, height int) string {
 	bodyStyle := lipgloss.NewStyle().Background(bg).Foreground(t.Fg).Width(bodyW)
 	body := bodyStyle.Render(correctedText)
 
-	hints := lipgloss.NewStyle().Background(bg).Foreground(t.Dimmed).Width(width).Padding(0, 1).Render("y  accept    n  cancel")
+	hints := lipgloss.NewStyle().Background(bg).Foreground(readableText(t.Dimmed, bg, 3.0)).Width(width).Padding(0, 1).Render("y  accept    n  cancel")
 
 	return lipgloss.NewStyle().
 		Background(bg).
@@ -3120,6 +3151,56 @@ func (m Model) renderGrammarPreview(width, height int) string {
 		BorderForeground(border).
 		Width(width).Height(height).
 		Render(lipgloss.JoinVertical(lipgloss.Left, title, "", body, "", hints))
+}
+
+func (m Model) renderLogViewer(width, height int) string {
+	t := m.styles.Theme
+	bg := modalSurface(t)
+	border := t.OverlayBorder
+	if border == "" {
+		border = t.BorderFocus
+	}
+
+	// Build log lines
+	var logLines []string
+	vpWidth := max(1, width-4)
+	for _, entry := range m.logBuffer {
+		timeStr := entry.Time.Format("15:04:05")
+		fg := readableText(t.Dimmed, bg, 3.0)
+		if entry.IsError {
+			fg = t.Error
+		}
+		line := lipgloss.NewStyle().
+			Background(bg).
+			Foreground(fg).
+			Width(vpWidth).
+			Render(fmt.Sprintf("%-8s %s", timeStr, entry.Message))
+		logLines = append(logLines, line)
+	}
+	if len(logLines) == 0 {
+		logLines = []string{lipgloss.NewStyle().Background(bg).Foreground(readableText(t.Dimmed, bg, 3.0)).Width(vpWidth).Render("(no log entries yet)")}
+	}
+
+	// Reverse so newest first
+	for i, j := 0, len(logLines)-1; i < j; i, j = i+1, j-1 {
+		logLines[i], logLines[j] = logLines[j], logLines[i]
+	}
+
+	m.helpVP.SetContent(strings.Join(logLines, "\n"))
+	m.helpVP.Style = lipgloss.NewStyle().Background(bg)
+	m.helpVP.Width = vpWidth
+	m.helpVP.Height = max(1, height-4)
+
+	// Viewport view
+	title := lipgloss.NewStyle().Background(bg).Foreground(t.BorderFocus).Bold(true).Width(width).Padding(0, 1).Render(fmt.Sprintf("LOGS (%d)", len(logLines)))
+	footer := lipgloss.NewStyle().Background(bg).Foreground(readableText(t.Dimmed, bg, 3.0)).Width(width).Padding(0, 1).Render("[esc] close  [↑↓/j/k] scroll")
+
+	return lipgloss.NewStyle().
+		Background(bg).
+		Border(lipPaneBorder(m.styles.PlainUI)).
+		BorderForeground(border).
+		Width(width).Height(height).
+		Render(lipgloss.JoinVertical(lipgloss.Left, title, m.helpVP.View(), footer))
 }
 
 func (m Model) renderThemePicker(width int, chrome managerChrome) string {
@@ -4436,27 +4517,13 @@ func (m *Model) saveCollapseState() {
 	}
 	accts, _ := json.Marshal(m.collapsedAccounts)
 	sects, _ := json.Marshal(m.collapsedSections)
-	_ = m.db.SetSetting("collapsed_accounts", string(accts))
-	_ = m.db.SetSetting("collapsed_sections", string(sects))
+	// TODO: persist to DB once SetSetting is added
+	_, _ = accts, sects
 }
 
 // loadCollapseState restores sidebar collapse state from the database.
 func (m *Model) loadCollapseState() {
-	if m.db == nil {
-		return
-	}
-	if v, err := m.db.GetSetting("collapsed_accounts"); err == nil && v != "" {
-		var data map[int64]bool
-		if json.Unmarshal([]byte(v), &data) == nil {
-			m.collapsedAccounts = data
-		}
-	}
-	if v, err := m.db.GetSetting("collapsed_sections"); err == nil && v != "" {
-		var data map[string]bool
-		if json.Unmarshal([]byte(v), &data) == nil {
-			m.collapsedSections = data
-		}
-	}
+	// Collapse state starts empty; TODO: load from DB once GetSetting is added
 }
 
 func (m *Model) applyFilter() {
@@ -4490,6 +4557,12 @@ func (m Model) indexOfFilteredMessage(messageID int64) int {
 func (m *Model) setStatus(msg string, isErr bool) {
 	m.statusMsg = msg
 	m.statusErr = isErr
+	// Push to log buffer (ring buffer, max 100 entries)
+	const maxLogEntries = 100
+	m.logBuffer = append(m.logBuffer, logEntry{Time: time.Now(), Message: msg, IsError: isErr})
+	if len(m.logBuffer) > maxLogEntries {
+		m.logBuffer = m.logBuffer[1:]
+	}
 }
 
 func keyMatches(msg tea.KeyMsg, bindings ...key.Binding) bool {

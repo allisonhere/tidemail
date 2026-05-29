@@ -77,11 +77,11 @@ func formatArticleParagraph(p string, width int, th Theme, plainUI bool) string 
 	switch {
 	case strings.HasPrefix(trimmed, "#"):
 		text := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
-		style := lipgloss.NewStyle().Bold(true).Foreground(th.BorderFocus)
+		style := lipgloss.NewStyle().Background(th.Bg).Bold(true).Foreground(th.BorderFocus)
 		return style.Render(wrapWords(text, width))
 	case strings.HasPrefix(trimmed, ">"):
 		quote := normalizeInlineSpacing(strings.TrimSpace(strings.TrimLeft(trimmed, ">")))
-		style := lipgloss.NewStyle().Foreground(th.Dimmed)
+		style := lipgloss.NewStyle().Background(th.Bg).Foreground(th.Dimmed)
 		return style.Render(wrapWords(quoteBar+quote, width))
 	case strings.HasPrefix(trimmed, "- "), strings.HasPrefix(trimmed, "* "):
 		items := make([]string, 0, len(lines))
@@ -332,7 +332,7 @@ func highlightInlineLinks(text string, th Theme, plainUI bool) string {
 	if plainUI {
 		return text
 	}
-	linkStyle := lipgloss.NewStyle().Foreground(th.BorderFocus).Underline(true)
+	linkStyle := lipgloss.NewStyle().Background(th.Bg).Foreground(th.BorderFocus).Underline(true)
 	replace := func(match string) string {
 		return linkStyle.Render(match)
 	}

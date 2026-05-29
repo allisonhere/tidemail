@@ -48,6 +48,7 @@ const (
 	sfUpdateRestartNow
 	sfAboutRepo
 	sfAboutIssues
+	sfViewLogs
 	sfProvider
 	sfAPIKey    // visible when provider is openai/claude/gemini
 	sfOllamaURL // visible when provider is ollama
@@ -77,6 +78,7 @@ const (
 	ssFeeds
 	ssUpdates
 	ssAI
+	ssAdvanced
 	ssAbout
 	settingsSectionCount
 )
@@ -98,6 +100,7 @@ const (
 	settingsActionRestartAfterUpdate
 	settingsActionOpenRepo
 	settingsActionOpenIssues
+	settingsActionViewLogs
 	settingsActionCopyManualInstall
 )
 
@@ -142,6 +145,7 @@ var (
 		"ACCOUNTS",
 		"UPDATES",
 		"AI",
+		"ADVANCED",
 		"ABOUT",
 	}
 )
@@ -285,8 +289,9 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 			ssDisplay: sfBackToSections,
 			ssFeeds:   sfBackToSections,
 			ssUpdates: sfBackToSections,
-			ssAI:      sfBackToSections,
-			ssAbout:   sfBackToSections,
+			ssAI:       sfBackToSections,
+			ssAdvanced: sfBackToSections,
+			ssAbout:    sfBackToSections,
 		},
 		focusedField: sfBackToSections,
 	}
@@ -576,6 +581,9 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		}
 		fields = append(fields, sfTestAIConnection, sfSavePath, sfMarkReadOnSummarize)
 		return fields
+	case ssAdvanced:
+		return []settingsField{sfBackToSections, sfViewLogs}
+
 	case ssAbout:
 		return []settingsField{sfBackToSections, sfAboutRepo, sfAboutIssues}
 	default:
@@ -1125,6 +1133,16 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfViewLogs:
+		switch {
+		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter):
+			s.action = settingsActionViewLogs
+		case keyMatches(key, keys.Down):
+			s.setFocusedField(s.nextField())
+		case keyMatches(key, keys.Up):
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfAboutIssues:
 		switch {
 		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter):
@@ -1384,6 +1402,9 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 	case ssAI:
 		b.addAISection()
 
+	case ssAdvanced:
+		b.addAdvancedSection()
+
 	}
 
 	if len(b.body.lines) == 0 {
@@ -1565,6 +1586,11 @@ func (b *settingsFormBuilder) addAITestConnection() {
 	gap := lipgloss.NewStyle().Background(b.chrome.baseBg).Render(" ")
 	b.addLine(renderFormControlRow(badge+gap+status, b.contentW, b.chrome, focused))
 	b.addBlank()
+}
+
+func (b *settingsFormBuilder) addAdvancedSection() {
+	b.addGroup("Logs")
+	b.addAction("View Logs", "review errors and status messages", sfViewLogs)
 }
 
 func (s Settings) aiKeyStateLabel() string {
