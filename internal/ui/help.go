@@ -37,6 +37,8 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 			name: "Messages / Content",
 			entries: []entry{
 				{keys.Up.Help().Key + "/" + keys.Down.Help().Key, "move content focus line; scroll only when needed"},
+				{keys.Space.Help().Key, "select message (multi-select); d/a/x for bulk delete/archive/mark-read"},
+				{keys.SelectAll.Help().Key, "select all messages in current view"},
 				{keys.MarkRead.Help().Key, "mark read; next message in list"},
 				{keys.MarkAllRead.Help().Key, "mark current mailbox as read"},
 				{keys.OpenBrowser.Help().Key, "open selected link"},
@@ -48,6 +50,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{keys.Delete.Help().Key, "delete selected message"},
 				bind(keys.Compose),
 				bind(keys.Reply),
+				{keys.ToggleHeaders.Help().Key, "toggle full email headers"},
 				{keys.SaveAttach.Help().Key, "save all attachments to folder"},
 				{keys.ToggleQuote.Help().Key, "toggle quoted text collapse"},
 			},
@@ -69,9 +72,8 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 		{
 			name: "Security",
 			entries: []entry{
-				{"config", "stored at ~/.config/tidemail/config.toml"},
-				{"permissions", "config dir 0700; config file 0600"},
-				{"startup", "warns when config is readable by other users"},
+				{"keychain", "passwords/AI keys stored in system keychain (secret-tool)"},
+				{"config", "~/.config/tidemail/config.toml (no plain-text secrets after save)"},
 				{"secrets", "passwords and API keys are redacted from errors/status"},
 			},
 		},
@@ -81,6 +83,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{"S → Display", "layout density: comfortable or compact (default compact)"},
 				{"S → Display", "focus line: highlight current readable content line"},
 				{"S → Display", "actionable links: show links block and enable link navigation"},
+				{"S → Display", "show email headers: show headers when opening a message"},
 			},
 		},
 		{

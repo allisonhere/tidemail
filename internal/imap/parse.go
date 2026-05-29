@@ -1,11 +1,13 @@
 package imap
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"mime"
+	"net/textproto"
 	"strings"
 	"time"
 
@@ -67,13 +69,14 @@ func (c *Client) fetchMessages(ctx context.Context, mailboxName string, limit in
 	}
 
 	bodySection := &imap.FetchItemBodySection{}
+	headerSection := &imap.FetchItemBodySection{Specifier: imap.PartSpecifierHeader}
 	fetchOptions := &imap.FetchOptions{
 		UID:           true,
 		Flags:         true,
 		Envelope:      true,
 		InternalDate:  true,
 		BodyStructure: &imap.FetchItemBodyStructure{},
-		BodySection:   []*imap.FetchItemBodySection{bodySection},
+		BodySection:   []*imap.FetchItemBodySection{bodySection, headerSection},
 	}
 
 	cmd := c.conn.Fetch(numSet, fetchOptions)
@@ -127,6 +130,11 @@ func parseIMAPMessage(msg *imapclient.FetchMessageBuffer) (db.Message, error) {
 		if len(raw) == 0 {
 			continue
 		}
+		// Distinguish header section from body section
+		if section.Section != nil && section.Section.Specifier == imap.PartSpecifierHeader {
+			m.Headers = parseAuthHeaders(raw)
+			continue
+		}
 		text, html, atts := parseBody(raw)
 		if text != "" {
 			m.BodyText = text
@@ -150,6 +158,74 @@ func parseIMAPMessage(msg *imapclient.FetchMessageBuffer) (db.Message, error) {
 	}
 
 	return m, nil
+}
+
+// parseAuthHeaders extracts SPF, DKIM, DMARC, Return-Path, and Received
+// headers from raw MIME header text. Returns a compact display string.
+func parseAuthHeaders(raw []byte) string {
+	// Parse headers using net/textproto
+	tr := textproto.NewReader(bufio.NewReader(bytes.NewReader(raw)))
+	hdr, err := tr.ReadMIMEHeader()
+	if err != nil {
+		return ""
+	}
+
+	type authLine struct{ label, value string }
+	var lines []authLine
+
+	// Authentication-Results: compound auth info
+	if v := hdr.Get("Authentication-Results"); v != "" {
+		lines = append(lines, authLine{"Authentication-Results", v})
+	}
+	// Received-SPF: SPF check result
+	if v := hdr.Get("Received-SPF"); v != "" {
+		lines = append(lines, authLine{"Received-SPF", v})
+	}
+	// DKIM-Signature (truncated — just show presence and domain)
+	if v := hdr.Get("DKIM-Signature"); v != "" {
+		// Extract d= tag if present
+		domain := ""
+		for _, part := range strings.Split(v, ";") {
+			kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+			if len(kv) == 2 && strings.TrimSpace(kv[0]) == "d" {
+				domain = strings.TrimSpace(kv[1])
+			}
+		}
+		if domain != "" {
+			lines = append(lines, authLine{"DKIM-Signature", "present (d=" + domain + ")"})
+		} else {
+			lines = append(lines, authLine{"DKIM-Signature", "present"})
+		}
+	}
+	// Return-Path
+	if v := hdr.Get("Return-Path"); v != "" {
+		lines = append(lines, authLine{"Return-Path", v})
+	}
+	// Received: most recent hop only
+	if v := hdr.Get("Received"); v != "" {
+		// Show only first Received header (most recent hop)
+		lines = append(lines, authLine{"Received", v})
+	}
+	// X-Spam headers
+	if v := hdr.Get("X-Spam-Status"); v != "" {
+		lines = append(lines, authLine{"X-Spam-Status", v})
+	}
+	if v := hdr.Get("X-Spam-Score"); v != "" {
+		lines = append(lines, authLine{"X-Spam-Score", v})
+	}
+
+	if len(lines) == 0 {
+		return ""
+	}
+
+	var out strings.Builder
+	for _, l := range lines {
+		out.WriteString(l.label)
+		out.WriteByte('\n')
+		out.WriteString(l.value)
+		out.WriteByte('\n')
+	}
+	return out.String()
 }
 
 func parseBody(raw []byte) (text, html string, attachments []bodyAttachment) {

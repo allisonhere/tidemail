@@ -64,6 +64,7 @@ const (
 	sfRetroAccent
 	sfTheme
 	sfConfirmQuit
+	sfShowHeaders
 	// sfBackToSections is the first focusable target in the detail pane.
 	// Activating it restores focus to the sidebar so users never auto-land on a text input.
 	sfBackToSections
@@ -176,6 +177,7 @@ type Settings struct {
 	actionableLinks      bool
 	filterLinks          bool
 	confirmQuit          bool
+	showHeaders          bool
 	layoutDensityIdx     int // 0 = comfortable, 1 = compact
 	readingWidthInput    textinput.Model
 	browserInput         textinput.Model
@@ -258,6 +260,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		actionableLinks:      cfg.Display.ActionableLinks,
 		filterLinks:          cfg.Display.FilterLinks,
 		confirmQuit:          cfg.Display.ConfirmQuit,
+		showHeaders:          cfg.Display.ShowHeaders,
 		layoutDensityIdx:     layoutIdx,
 		readingWidthInput:    mkInput(strconv.Itoa(cfg.Display.ReadingWidth), "0 (no limit)", false),
 		browserInput:         mkInput(cfg.Display.Browser, "xdg-open", false),
@@ -315,6 +318,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.ActionableLinks = s.actionableLinks
 	cfg.Display.FilterLinks = s.filterLinks
 	cfg.Display.ConfirmQuit = s.confirmQuit
+	cfg.Display.ShowHeaders = s.showHeaders
 	if w, err := strconv.Atoi(strings.TrimSpace(s.readingWidthInput.Value())); err == nil {
 		cfg.Display.ReadingWidth = max(0, w)
 	}
@@ -539,7 +543,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		if config.IsRetroTerminalTheme(s.themeName) {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
-		return append(fields, sfActionableLinks, sfFilterLinks, sfBrowser, sfConfirmQuit)
+		return append(fields, sfActionableLinks, sfFilterLinks, sfBrowser, sfConfirmQuit, sfShowHeaders)
 	case ssFeeds:
 		return []settingsField{sfBackToSections, sfFeedMaxBody}
 	case ssUpdates:
@@ -1033,6 +1037,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfShowHeaders:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.showHeaders = !s.showHeaders
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfMarkReadOnSummarize:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.markReadOnSummarize = !s.markReadOnSummarize
@@ -1310,6 +1323,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addToggle("Filter links from articles", s.filterLinks, sfFilterLinks)
 		b.addInput("Browser command", s.browserInput, sfBrowser)
 		b.addToggle("Confirm before quitting", s.confirmQuit, sfConfirmQuit)
+		b.addToggle("Show email headers", s.showHeaders, sfShowHeaders)
 
 	case ssFeeds:
 		b.addGroup("Storage")

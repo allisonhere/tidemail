@@ -130,6 +130,7 @@ type Model struct {
 
 	contentAttachments    []db.Attachment
 	contentQuotesCollapsed bool
+	contentShowHeaders    bool
 
 	saveAttachPicker filePicker
 
@@ -224,6 +225,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		summarizer:            summarizer,
 		showUnreadOnly:        cfg.Display.DefaultUnreadOnly,
 		contentLinkIdx:        -1,
+		contentShowHeaders:    cfg.Display.ShowHeaders,
 		contentSearchInput:    csi,
 		contentSearchIdx:      -1,
 		selectedMessages:      make(map[int64]bool),
@@ -1053,6 +1055,15 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case keyMatches(msg, m.keys.ToggleHeaders):
+		if m.contentMessageID != 0 {
+			m.contentShowHeaders = !m.contentShowHeaders
+			if cur := m.currentContentMessage(); cur != nil {
+				m.setViewportMessage(*cur)
+			}
+		}
+		return m, nil
+
 	case keyMatches(msg, m.keys.Settings):
 		m.settings = newSettings(m.cfg, m.settingsUpdateState())
 		m.overlay = overlaySettings
@@ -1086,10 +1097,22 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Auto-advance cursor for rapid multi-select
 			if m.messageCursor < len(m.filteredMessages)-1 {
 				m.messageCursor++
+				visible := max(1, m.articleRowsVisible())
+				if m.messageCursor >= m.listOffset+visible {
+					m.listOffset = m.messageCursor - visible + 1
+				}
 			}
 			return m, nil
 		}
 		return m, nil
+
+	case keyMatches(msg, m.keys.SelectAll):
+		if m.focused == paneMessages && len(m.filteredMessages) > 0 {
+			for _, m2 := range m.filteredMessages {
+				m.selectedMessages[m2.ID] = true
+			}
+			return m, nil
+		}
 	}
 
 	if m.focused == paneContent {
@@ -1388,6 +1411,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.settings.shouldSave {
 			m.cfg = m.settings.ApplyTo(m.cfg)
 			m.showUnreadOnly = m.cfg.Display.DefaultUnreadOnly
+			m.contentShowHeaders = m.cfg.Display.ShowHeaders
 			merged, _ := MergedThemeFromConfig(m.cfg)
 			m.styles = BuildStyles(merged, m.cfg.Display.Density)
 			if ThemeUsesASCII(merged.Name) {
@@ -2064,6 +2088,57 @@ func (m Model) renderMessageContent(msg db.Message) string {
 	}
 	meta := " " + m.styles.ContentMeta.Width(contentWidth).Render(truncate(metaStr, metaWidth))
 
+	// Full headers block (togglable via ctrl+e)
+	var fullHeaders string
+	if m.contentShowHeaders {
+		dim := m.styles.Theme.Dimmed
+		type headerField struct{ label, value string }
+		fields := []headerField{
+			{"From", msg.From},
+			{"To", msg.To},
+			{"CC", msg.CC},
+			{"Reply-To", msg.ReplyTo},
+			{"Date", msg.Date.Format("Mon, 02 Jan 2006 15:04:05 -0700")},
+			{"Subject", msg.Subject},
+		}
+		var headerLines []string
+		for _, f := range fields {
+			if f.value != "" {
+				label := lipgloss.NewStyle().Foreground(dim).Width(10).Align(lipgloss.Right).Render(f.label)
+				line := label + "  " + f.value
+				headerLines = append(headerLines, line)
+			}
+		}
+		if len(headerLines) > 0 {
+			fullHeaders = strings.Join(headerLines, "\n") + "\n"
+		}
+
+		// Auth headers (SPF, DKIM, DMARC, etc.) appended to fullHeaders
+		if msg.Headers != "" {
+			authLines := strings.Split(strings.TrimSpace(msg.Headers), "\n")
+			for i := 0; i+1 < len(authLines); i += 2 {
+				label := authLines[i]
+				value := authLines[i+1]
+				valueLower := strings.ToLower(value)
+				labelStyle := lipgloss.NewStyle().Foreground(dim).Width(10).Align(lipgloss.Right)
+				var valueStyle lipgloss.Style
+				switch {
+				case strings.Contains(valueLower, "fail") || strings.Contains(valueLower, "hardfail"):
+					valueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#f38ba8"))
+				case strings.Contains(valueLower, "softfail") || strings.Contains(valueLower, "neutral"):
+					valueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#f9e2af"))
+				case strings.Contains(valueLower, "pass"):
+					valueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a6e3a1"))
+				default:
+					valueStyle = lipgloss.NewStyle().Foreground(dim)
+				}
+				line := labelStyle.Render(label) + "  " + valueStyle.Render(value)
+				headerLines = append(headerLines, line)
+			}
+			fullHeaders = strings.Join(headerLines, "\n") + "\n"
+		}
+	}
+
 	var body string
 	if msg.BodyHTML != "" {
 		body = renderHTMLBody(msg.BodyHTML, bodyWidth, m.styles.Theme, m.styles.PlainUI)
@@ -2081,6 +2156,11 @@ func (m Model) renderMessageContent(msg db.Message) string {
 
 	body = collapseQuoteBlocks(body, m.contentQuotesCollapsed)
 
+	hint := ""
+	if !m.contentShowHeaders {
+		hint = "\n" + lipgloss.NewStyle().Foreground(m.styles.Theme.Dimmed).Render(m.keyHint(m.keys.ToggleHeaders)+" headers")
+	}
+
 	if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
 		body += "\n\n" + m.renderContentLinks(bodyWidth)
 	}
@@ -2089,7 +2169,7 @@ func (m Model) renderMessageContent(msg db.Message) string {
 		body += "\n\n" + m.renderAttachmentList(bodyWidth)
 	}
 
-	return fillViewWidth(title+"\n"+meta+"\n\n"+body, m.articlesPaneWidth(), m.styles.Theme.Bg)
+	return fillViewWidth(title+"\n"+meta+"\n"+fullHeaders+body+hint, m.articlesPaneWidth(), m.styles.Theme.Bg)
 }
 
 func (m Model) renderAttachmentList(width int) string {
@@ -2223,6 +2303,9 @@ func (m *Model) setViewportMessage(msg db.Message) {
 	m.syncContentLinks(msg)
 	m.contentAttachments = nil
 	m.contentQuotesCollapsed = false
+	if !sameMsg {
+		m.contentShowHeaders = true
+	}
 	if msg.HasAttachment {
 		if atts, err := m.db.GetAttachments(msg.ID); err == nil {
 			m.contentAttachments = atts

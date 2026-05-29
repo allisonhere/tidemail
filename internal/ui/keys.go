@@ -39,6 +39,7 @@ type KeyMap struct {
 	SaveMD        key.Binding
 	ContentSearch key.Binding
 	ToggleQuote   key.Binding
+	ToggleHeaders key.Binding
 	SaveAttach    key.Binding
 
 	// Account manager specific
@@ -56,6 +57,7 @@ type KeyMap struct {
 	Confirm   key.Binding
 	Cancel    key.Binding
 	Space     key.Binding
+	SelectAll key.Binding
 	Yes       key.Binding
 	No        key.Binding
 	Tab       key.Binding
@@ -99,6 +101,7 @@ var DefaultKeys = KeyMap{
 	SaveMD:        key.NewBinding(key.WithKeys("M"), key.WithHelp("M", "save .md")),
 	ContentSearch: key.NewBinding(key.WithKeys("ctrl+f"), key.WithHelp("ctrl+f", "find")),
 	ToggleQuote:   key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "toggle quoted text")),
+	ToggleHeaders: key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "headers")),
 
 	Add:         key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
 	Edit:        key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
@@ -117,6 +120,7 @@ var DefaultKeys = KeyMap{
 	Confirm:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
 	Cancel:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
 	Space:     key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "toggle")),
+	SelectAll: key.NewBinding(key.WithKeys("A"), key.WithHelp("A", "select all")),
 	Yes:       key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "yes")),
 	No:        key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "no")),
 	Tab:       key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "next field")),

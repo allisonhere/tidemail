@@ -23,13 +23,14 @@ type Message struct {
 	Flags         []string
 	Read          bool
 	HasAttachment  bool
+	Headers        string // auth-related headers parsed from MIME
 	AttachmentData []Attachment // transient, not stored in messages table
 }
 
 func (db *DB) ListMessages(mailboxID int64) ([]Message, error) {
 	rows, err := db.Query(`
 		SELECT id, mailbox_id, uid, message_id, subject, from_addr, to_addr, cc_addr,
-		       reply_to, date, body_text, body_html, summary, flags, read, has_attachment
+		       reply_to, date, body_text, body_html, summary,		flags, read, has_attachment, headers
 		FROM messages WHERE mailbox_id = ?
 		ORDER BY date DESC, id DESC`, mailboxID)
 	if err != nil {
@@ -48,7 +49,7 @@ func (db *DB) CountMessages(mailboxID int64) (int64, error) {
 func (db *DB) ListUnreadMessages(mailboxID int64) ([]Message, error) {
 	rows, err := db.Query(`
 		SELECT id, mailbox_id, uid, message_id, subject, from_addr, to_addr, cc_addr,
-		       reply_to, date, body_text, body_html, summary, flags, read, has_attachment
+		       reply_to, date, body_text, body_html, summary,		flags, read, has_attachment, headers
 		FROM messages WHERE mailbox_id = ? AND read = 0
 		ORDER BY date DESC, id DESC`, mailboxID)
 	if err != nil {
@@ -67,7 +68,7 @@ func (db *DB) ListUnifiedInbox(unreadOnly bool) ([]Message, error) {
 		SELECT messages.id, messages.mailbox_id, messages.uid, messages.message_id,
 		       messages.subject, messages.from_addr, messages.to_addr, messages.cc_addr,
 		       messages.reply_to, messages.date, messages.body_text, messages.body_html,
-		       messages.summary, messages.flags, messages.read, messages.has_attachment
+		       messages.summary, messages.flags, messages.read, messages.has_attachment, messages.headers
 		FROM messages
 		JOIN mailboxes ON mailboxes.id = messages.mailbox_id
 		WHERE (
@@ -87,7 +88,7 @@ func (db *DB) SearchMessages(mailboxID int64, query string) ([]Message, error) {
 	q := "%" + query + "%"
 	rows, err := db.Query(`
 		SELECT id, mailbox_id, uid, message_id, subject, from_addr, to_addr, cc_addr,
-		       reply_to, date, body_text, body_html, summary, flags, read, has_attachment
+		       reply_to, date, body_text, body_html, summary,		flags, read, has_attachment, headers
 		FROM messages WHERE mailbox_id = ? AND (subject LIKE ? OR from_addr LIKE ? OR body_text LIKE ?)
 		ORDER BY date DESC, id DESC`, mailboxID, q, q, q)
 	if err != nil {
@@ -104,11 +105,12 @@ func (db *DB) GetMessage(id int64) (Message, error) {
 	var read, att int
 	err := db.QueryRow(`
 		SELECT id, mailbox_id, uid, message_id, subject, from_addr, to_addr, cc_addr,
-		       reply_to, date, body_text, body_html, summary, flags, read, has_attachment
+		       reply_to, date, body_text, body_html, summary,		flags, read, has_attachment, headers
 		FROM messages WHERE id = ?`, id).
 		Scan(&m.ID, &m.MailboxID, &m.UID, &m.MessageID, &m.Subject,
 			&m.From, &m.To, &m.CC, &m.ReplyTo, &dateUnix,
-			&m.BodyText, &m.BodyHTML, &m.Summary, &flagsJSON, &read, &att)
+			&m.BodyText, &m.BodyHTML, &m.Summary, &flagsJSON, &read, &att,
+			&m.Headers)
 	if err != nil {
 		return Message{}, err
 	}
@@ -138,8 +140,8 @@ func (db *DB) UpsertMessage(m Message) error {
 	_, err := db.Exec(`
 		INSERT INTO messages
 			(mailbox_id, uid, message_id, subject, from_addr, to_addr, cc_addr,
-			 reply_to, date, body_text, body_html, summary, flags, read, has_attachment)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 reply_to, date, body_text, body_html, summary, flags, read, has_attachment, headers)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(mailbox_id, uid) DO UPDATE SET
 			message_id     = excluded.message_id,
 			subject        = excluded.subject,
@@ -151,10 +153,11 @@ func (db *DB) UpsertMessage(m Message) error {
 			body_text      = CASE WHEN excluded.body_text != '' THEN excluded.body_text ELSE body_text END,
 			body_html      = CASE WHEN excluded.body_html != '' THEN excluded.body_html ELSE body_html END,
 			flags          = excluded.flags,
-			has_attachment = excluded.has_attachment
+			has_attachment = excluded.has_attachment,
+			headers        = CASE WHEN excluded.headers != '' THEN excluded.headers ELSE headers END
 	`, m.MailboxID, m.UID, m.MessageID, m.Subject, m.From, m.To, m.CC,
 		m.ReplyTo, dateUnix, m.BodyText, m.BodyHTML, m.Summary,
-		string(flagsJSON), read, att)
+		string(flagsJSON), read, att, m.Headers)
 	if err != nil {
 		return err
 	}
@@ -234,6 +237,7 @@ func scanMessages(rows interface {
 			&m.ID, &m.MailboxID, &m.UID, &m.MessageID, &m.Subject,
 			&m.From, &m.To, &m.CC, &m.ReplyTo, &dateUnix,
 			&m.BodyText, &m.BodyHTML, &m.Summary, &flagsJSON, &read, &att,
+			&m.Headers,
 		); err != nil {
 			return nil, err
 		}

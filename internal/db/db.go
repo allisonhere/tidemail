@@ -89,6 +89,7 @@ func (db *DB) migrate() error {
 			flags          TEXT    NOT NULL DEFAULT '[]',
 			read           INTEGER NOT NULL DEFAULT 0,
 			has_attachment INTEGER NOT NULL DEFAULT 0,
+			headers        TEXT    NOT NULL DEFAULT '',
 			UNIQUE(mailbox_id, uid)
 		);
 
@@ -105,7 +106,13 @@ func (db *DB) migrate() error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_attachments_message_id ON attachments(message_id);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+	// Migrations: add columns that may not exist on older databases.
+	// SQLite error on duplicate column is silently ignored.
+	db.Exec(`ALTER TABLE messages ADD COLUMN headers TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
+	return nil
 }
 
 func dataDir() (string, error) {

@@ -27,15 +27,21 @@ go build -o tidemail .
 
 - Three-pane mail layout: accounts, messages, content
 - Unified Inbox across all configured accounts
-- IMAP/SMTP accounts using passwords or app passwords
+- Multi-select messages with space bar — bulk delete, archive, mark read
+- Select all with `A` — selects every message in current view
+- Full email headers display — toggle with `ctrl+e`, configurable default in Settings
+- Spam/auth headers — SPF, DKIM, DMARC results color-coded in header view
+- IMAP/SMTP accounts using passwords or app passwords (stored in system keychain)
 - Account manager for adding, editing, deleting, and discovering mailboxes
 - Server-backed sync, read/unread, archive, delete, compose, and reply
-- Archive auto-detection via `\Archive`, `Archive`, `Archives`, or `All Mail`
+- Optimistic delete — messages vanish instantly, sync in background
+- Archive auto-detection via `\\Archive`, `Archive`, `Archives`, or `All Mail`
 - Command palette for common mail actions
 - Search and unread-only filtering
 - Optional actionable links in the message content pane
 - AI summaries with copy and save-to-Markdown actions
 - Theme-aware dialogs, overlays, and terminal background sync
+- Collapsible account folders (System, Labels) in sidebar
 
 ## Usage
 
@@ -50,18 +56,9 @@ Open account management with `m`, add an IMAP/SMTP account, then sync the select
 
 ## Credential safety
 
-TideMail currently stores IMAP/SMTP passwords and AI API keys in the local config file. Treat `~/.config/tidemail/config.toml` like a secret.
+TideMail stores IMAP/SMTP passwords and AI API keys in the system keychain via `secret-tool` (libsecret on Linux, Keychain on macOS). Empty `password` and `openai_key`/`claude_key`/`gemini_key` fields in the config file are looked up from the keychain at startup. When you save settings, any in-memory secrets are moved to the keychain and removed from the config file automatically.
 
-Recommended setup:
-
-```bash
-chmod 700 ~/.config/tidemail
-chmod 600 ~/.config/tidemail/config.toml
-```
-
-TideMail now writes the config directory as `0700` and the config file as `0600` when it saves settings. On startup it warns if an existing config file is readable by other users. Passwords and AI API keys are redacted from startup errors, runtime status messages, and account-manager test/save failures.
-
-For hosted providers, use provider-specific app passwords rather than your primary account password:
+If `secret-tool` is not installed, passwords and API keys fall back to being stored directly in `~/.config/tidemail/config.toml`. Treat the config file like a secret in that case.
 
 - Gmail: Google Account → Security → App passwords
 - Yahoo: Account Security → Generate app password
@@ -100,12 +97,16 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 | `r` | Toggle read/unread in message list, reply from content |
 | `a` | Archive selected message |
 | `d` | Delete selected message |
+| `Space` | Multi-select messages (then `d`/`a`/`x` for bulk actions) |
+| `A` | Select all messages in current view |
 | `R` | Mark selected mailbox/account read |
 | `/` | Search messages |
 | `u` | Toggle unread-only view |
 | `o` | Open selected content link |
 | `Ctrl+N` / `Alt+N` | Next content link |
 | `Ctrl+P` / `Alt+P` | Previous content link |
+| `Ctrl+E` | Toggle email headers on/off |
+| `Ctrl+F` | Find in message |
 | `s` | AI summary |
 | `S` | Settings |
 | `T` | Theme picker |
@@ -117,7 +118,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 
 Settings are opened with `S`.
 
-- Display: icons, date format, mark-read behavior, focus line, actionable links, reading width, browser command, density, and quit confirmation
+- Display: icons, date format, mark-read behavior, focus line, actionable links, reading width, browser command, density, show email headers, and quit confirmation
 - Accounts: edit account details and set a per-account `sync_minutes` interval for automatic background refresh
 - Updates: check, install, restart, or copy a manual install command
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings
