@@ -664,9 +664,10 @@ func TestSettingsAboutViewShowsLinksAndTagline(t *testing.T) {
 
 	for _, want := range []string{
 		"ABOUT",
-		"github.com/allisonhere",
+		"Repository",
 		"Thanks for taking a look -allie",
 		"your mail, your rules",
+		"terminal information delivery engine",
 	} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expected about view to contain %q, got %q", want, view)
@@ -794,16 +795,14 @@ func TestSettingsAboutGradientDoesNotShiftHeroLayout(t *testing.T) {
 	}
 }
 
-func TestSettingsAboutLinksUseTwoColumnsWhenWide(t *testing.T) {
+func TestSettingsAboutLinksCompactLayout(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	s.setActiveSection(ssAbout)
 	chrome := newManagerChrome(96, CatppuccinMocha, false)
 
-	wide := s.renderAboutLinks(60, chrome)
-	narrow := s.renderAboutLinks(40, chrome)
-
-	if lipgloss.Height(wide) >= lipgloss.Height(narrow) {
-		t.Fatalf("expected wide about links to be shorter than stacked narrow layout: wide=%d narrow=%d", lipgloss.Height(wide), lipgloss.Height(narrow))
+	view := s.renderAboutLinks(60, chrome)
+	if !strings.Contains(view, "Repository") || !strings.Contains(view, "Issues") {
+		t.Fatalf("expected compact about links to contain Repository and Issues, got %q", view)
 	}
 }
 
