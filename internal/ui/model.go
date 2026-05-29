@@ -73,6 +73,7 @@ const (
 	overlayCompose
 	overlayCommandPalette
 	overlaySaveAttach
+	overlayGrammarPreview
 )
 
 type updateState int
@@ -133,6 +134,9 @@ type Model struct {
 	contentShowHeaders    bool
 
 	saveAttachPicker filePicker
+
+	grammarOriginal  string
+	grammarCorrected string
 
 	helpVP        viewport.Model
 	overlay       overlayMode
@@ -648,6 +652,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.setStatus("deleted", false)
 		return m, m.clearStatusCmd()
+
+	case GrammarCheckedMsg:
+		m.compose.busy = false
+		if msg.Err != nil {
+			m.compose.statusMsg = "grammar check failed"
+			m.compose.isErr = true
+		} else {
+			m.grammarOriginal = m.compose.bodyInput.Value()
+			m.grammarCorrected = msg.Corrected
+			m.overlay = overlayGrammarPreview
+		}
+		return m, nil
 
 	case MailboxReadUpdatedMsg:
 		if len(msg.MailboxIDs) > 0 {
@@ -1261,6 +1277,19 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlaySaveAttach:
 		return m.handleSaveAttachPicker(msg)
 
+	case overlayGrammarPreview:
+		switch {
+		case keyMatches(msg, m.keys.Yes):
+			m.compose.bodyInput.SetValue(m.grammarCorrected)
+			m.compose.statusMsg = "grammar checked"
+			m.compose.isErr = false
+			m.overlay = overlayCompose
+		case keyMatches(msg, m.keys.No), keyMatches(msg, m.keys.Cancel):
+			m.compose.statusMsg = ""
+			m.overlay = overlayCompose
+		}
+		return m, nil
+
 	case overlayHelp:
 		if keyMatches(msg, m.keys.Back, m.keys.Help, m.keys.Quit) {
 			m.overlay = overlayNone
@@ -1456,6 +1485,15 @@ func (m Model) handleAccountManager(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Intercept grammar check key before compose gets it
+	if km, ok := msg.(tea.KeyMsg); ok && keyMatches(km, m.keys.GrammarCheck) {
+		body := m.compose.bodyInput.Value()
+		if body != "" && m.summarizer != nil {
+			m.compose.busy = true
+			m.compose.statusMsg = "checking grammar..."
+			return m, m.grammarCheckCmd(body)
+		}
+	}
 	newC, cmd, exit := m.compose.Update(msg, m.keys)
 	m.compose = newC
 	if exit {
@@ -2053,17 +2091,17 @@ func (m Model) renderMessageContent(msg db.Message) string {
 	bodyWidth := m.contentBodyWidth()
 	titleWidth := max(1, contentWidth-m.styles.ContentTitle.GetHorizontalFrameSize())
 	metaWidth := max(1, contentWidth-m.styles.ContentMeta.GetHorizontalFrameSize())
-	title := m.styles.ContentTitle.Width(contentWidth + 2).Render(truncate(unescapeDisplayText(msg.Subject), titleWidth+2))
+	title := m.styles.ContentTitle.Width(m.articlesPaneWidth()).Render(truncate(unescapeDisplayText(msg.Subject), titleWidth+4))
 	metaStr := msg.Date.Format("Mon, 02 Jan 2006 15:04")
 	if msg.From != "" {
 		metaStr += "  From: " + msg.From
 	}
-	meta := " " + m.styles.ContentMeta.Width(contentWidth).Render(truncate(metaStr, metaWidth))
+	meta := " " + m.styles.ContentMeta.Width(contentWidth + 2).Render(truncate(metaStr, metaWidth+2))
 
 	// Full headers block (togglable via ctrl+h)
 	var fullHeaders string
 	if m.contentShowHeaders {
-		dim := m.styles.Theme.Dimmed
+		dim := readableText(m.styles.Theme.Dimmed, m.styles.Theme.Bg, 3.0)
 		type headerField struct{ label, value string }
 		fields := []headerField{
 			{"Date", msg.Date.Format("Mon, 02 Jan 2006 15:04:05 -0700")},
@@ -2078,7 +2116,7 @@ func (m Model) renderMessageContent(msg db.Message) string {
 			if f.value == "" {
 				continue
 			}
-			line := lipgloss.NewStyle().Foreground(dim).Render(fmt.Sprintf("  %-12s %s", f.label+":", f.value))
+			line := lipgloss.NewStyle().Foreground(dim).Width(contentWidth).Render(fmt.Sprintf("  %-12s %s", f.label+":", f.value))
 			headerLines = append(headerLines, line)
 		}
 		if len(headerLines) > 0 {
@@ -2671,6 +2709,11 @@ func (m Model) renderOverlay(base string) string {
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
 
+	case overlayGrammarPreview:
+		winW := min(m.width-10, 70)
+		winH := min(m.height-6, 24)
+		box = m.renderGrammarPreview(winW, winH)
+
 	case overlayHelp:
 		winW := min(m.width-6, 90)
 		winH := min(m.height-4, 38)
@@ -3051,6 +3094,34 @@ func overlayOnBase(base, box string, width, height int, bg lipgloss.Color) strin
 	return strings.Join(result, "\n")
 }
 
+func (m Model) renderGrammarPreview(width, height int) string {
+	t := m.styles.Theme
+	bg := modalSurface(t)
+	border := t.OverlayBorder
+	if border == "" {
+		border = t.BorderFocus
+	}
+
+	title := lipgloss.NewStyle().Background(bg).Foreground(t.BorderFocus).Bold(true).Width(width).Padding(0, 1).Render("Grammar Preview")
+	correctedText := m.grammarCorrected
+	if correctedText == "" {
+		correctedText = "(no changes)"
+	}
+
+	bodyW := max(1, width-4)
+	bodyStyle := lipgloss.NewStyle().Background(bg).Foreground(t.Fg).Width(bodyW)
+	body := bodyStyle.Render(correctedText)
+
+	hints := lipgloss.NewStyle().Background(bg).Foreground(t.Dimmed).Width(width).Padding(0, 1).Render("y  accept    n  cancel")
+
+	return lipgloss.NewStyle().
+		Background(bg).
+		Border(lipPaneBorder(m.styles.PlainUI)).
+		BorderForeground(border).
+		Width(width).Height(height).
+		Render(lipgloss.JoinVertical(lipgloss.Left, title, "", body, "", hints))
+}
+
 func (m Model) renderThemePicker(width int, chrome managerChrome) string {
 	header := renderManagerHeader("THEME", width, chrome)
 	rows := make([]string, 0, len(BuiltinThemes))
@@ -3429,6 +3500,16 @@ func (m *Model) clearStatusCmd() tea.Cmd {
 	return tea.Tick(4*time.Second, func(time.Time) tea.Msg {
 		return StatusClearMsg{}
 	})
+}
+
+func (m *Model) grammarCheckCmd(body string) tea.Cmd {
+	summarizer := m.summarizer
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		corrected, err := summarizer.CheckGrammar(ctx, body)
+		return GrammarCheckedMsg{Corrected: corrected, Err: err}
+	}
 }
 
 func restartProcessCmd(executablePath string) tea.Cmd {

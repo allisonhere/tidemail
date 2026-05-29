@@ -132,3 +132,8 @@ type AddressBookLoadedMsg struct {
 }
 
 type ErrMsg struct{ Err error }
+
+type GrammarCheckedMsg struct {
+	Corrected string
+	Err       error
+}

@@ -10,6 +10,7 @@ import (
 // Summarizer generates a short summary of an article.
 type Summarizer interface {
 	Summarize(ctx context.Context, title, content string) (string, error)
+	CheckGrammar(ctx context.Context, text string) (string, error)
 	ProviderName() string
 }
 
@@ -47,6 +48,8 @@ func New(cfg config.AIConfig) (Summarizer, error) {
 }
 
 const summaryPrompt = "Summarize this article in 3-5 sentences. Be concise and factual. Return only the summary, no preamble.\n\nTitle: %s\n\n%s"
+
+const grammarPrompt = "Fix grammar, spelling, and punctuation in the following text. Return only the corrected version. Preserve line breaks and formatting. Do not add, remove, or change the meaning of any content.\n\n%s"
 
 func truncateContent(s string, n int) string {
 	if len(s) <= n {

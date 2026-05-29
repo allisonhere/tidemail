@@ -645,7 +645,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	}
 
 	// Action bar
-	actionKeys := []string{"ctrl+s", "send", "ctrl+u", "sender", "ctrl+a", "attach"}
+	actionKeys := []string{"ctrl+s", "send", "ctrl+g", "grammar", "ctrl+u", "sender", "ctrl+a", "attach"}
 	navKeys := []string{"tab", "next", "esc", "cancel"}
 	if len(c.attachments) > 0 {
 		navKeys = []string{"tab", "next", "ctrl+r", "remove", "esc", "cancel"}

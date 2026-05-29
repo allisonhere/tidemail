@@ -56,7 +56,7 @@ func TestComposeActionsWrapInNarrowView(t *testing.T) {
 	view := c.View(32, 16, BuildStyles(CatppuccinMocha, "compact"))
 	stripped := ansi.Strip(view)
 
-	for _, want := range []string{"SEND", "SENDER"} {
+	for _, want := range []string{"SEND", "GRAMMAR"} {
 		if !strings.Contains(stripped, want) {
 			t.Fatalf("expected compose action %q to stay visible in narrow view, got %q", want, stripped)
 		}
