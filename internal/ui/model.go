@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -113,8 +114,7 @@ type Model struct {
 	listOffset       int
 	searchQuery      string
 	showUnreadOnly   bool
-	selectedMessages      map[int64]bool
-	pendingDeletes        map[int64]db.Message
+	selectedMessages map[int64]bool
 
 	viewport             viewport.Model
 	contentLinks         []string
@@ -225,11 +225,10 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		summarizer:            summarizer,
 		showUnreadOnly:        cfg.Display.DefaultUnreadOnly,
 		contentLinkIdx:        -1,
-		contentShowHeaders:    cfg.Display.ShowHeaders,
+		contentShowHeaders:    true,
 		contentSearchInput:    csi,
 		contentSearchIdx:      -1,
 		selectedMessages:      make(map[int64]bool),
-		pendingDeletes:        make(map[int64]db.Message),
 	}
 	m.restoreCachedUpdateState()
 	if previewManualUpdate {
@@ -396,6 +395,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rebuildSidebar()
 		m.accountManager.setData(m.accounts, m.mailboxes, m.cfg.Accounts)
 		if m.firstLoad {
+			m.loadCollapseState()
+			m.rebuildSidebar()
 			statusCmd = tea.Batch(statusCmd, m.startSyncTimersCmd(), m.loadAddressBookCmd())
 		}
 		m.firstLoad = false
@@ -638,19 +639,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.clearStatusCmd()
 
 	case MessageDeletedMsg:
-		orig, hasPending := m.pendingDeletes[msg.MessageID]
-		delete(m.pendingDeletes, msg.MessageID)
 		if msg.Err != nil {
-			if hasPending {
-				// Rollback: re-insert to DB and memory
-				if dbErr := m.db.UpsertMessage(orig); dbErr == nil {
-					m.insertMessageToMemory(orig)
-				}
-			}
 			m.setStatus(fmt.Sprintf("delete failed: %v", msg.Err), true)
 			return m, m.clearStatusCmd()
 		}
-		// Success: message was already removed from memory in the key handler
+		if m.removeMessageFromMemory(msg.MessageID) {
+			m.adjustMailboxUnreadCount(msg.MailboxID, -1)
+		}
 		m.setStatus("deleted", false)
 		return m, m.clearStatusCmd()
 
@@ -783,6 +778,12 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.Search):
+		if m.focused == paneContent && m.contentMessageID != 0 {
+			m.overlay = overlayContentSearch
+			m.contentSearchInput.Reset()
+			m.contentSearchInput.Focus()
+			return m, nil
+		}
 		m.overlay = overlaySearch
 		m.searchInput.Reset()
 		m.searchInput.Focus()
@@ -940,34 +941,17 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.Delete):
 		if m.focused != paneAccounts && len(m.filteredMessages) > 0 {
 			if m.hasSelection() {
-				// Collect selected messages first (before we mutate filteredMessages)
-				var toDelete []db.Message
-				for _, m2 := range m.filteredMessages {
-					if m.selectedMessages[m2.ID] {
-						toDelete = append(toDelete, m2)
+				var cmds []tea.Cmd
+				for _, msg2 := range m.filteredMessages {
+					if m.selectedMessages[msg2.ID] {
+						cmds = append(cmds, m.deleteMessageCmd(msg2))
 					}
 				}
 				m.clearSelection()
-				var cmds []tea.Cmd
-				for _, m2 := range toDelete {
-					wasUnread := m.removeMessageFromMemory(m2.ID)
-					if wasUnread {
-						m.adjustMailboxUnreadCount(m2.MailboxID, -1)
-					}
-					m.pendingDeletes[m2.ID] = m2
-					cmds = append(cmds, m.backgroundDeleteCmd(m2))
-				}
-				m.setStatus("deleted", false)
-				return m, tea.Batch(append(cmds, m.clearStatusCmd())...)
+				return m, tea.Batch(cmds...)
 			}
-			m2 := m.filteredMessages[m.messageCursor]
-			wasUnread := m.removeMessageFromMemory(m2.ID)
-			if wasUnread {
-				m.adjustMailboxUnreadCount(m2.MailboxID, -1)
-			}
-			m.pendingDeletes[m2.ID] = m2
-			m.setStatus("deleted", false)
-			return m, tea.Batch(m.backgroundDeleteCmd(m2), m.clearStatusCmd())
+			msg2 := m.filteredMessages[m.messageCursor]
+			return m, m.deleteMessageCmd(msg2)
 		}
 		return m, nil
 
@@ -1056,7 +1040,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.ToggleHeaders):
-		if m.contentMessageID != 0 {
+		if m.focused == paneContent && m.contentMessageID != 0 {
 			m.contentShowHeaders = !m.contentShowHeaders
 			if cur := m.currentContentMessage(); cur != nil {
 				m.setViewportMessage(*cur)
@@ -1097,22 +1081,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Auto-advance cursor for rapid multi-select
 			if m.messageCursor < len(m.filteredMessages)-1 {
 				m.messageCursor++
-				visible := max(1, m.articleRowsVisible())
-				if m.messageCursor >= m.listOffset+visible {
-					m.listOffset = m.messageCursor - visible + 1
-				}
 			}
 			return m, nil
 		}
 		return m, nil
-
-	case keyMatches(msg, m.keys.SelectAll):
-		if m.focused == paneMessages && len(m.filteredMessages) > 0 {
-			for _, m2 := range m.filteredMessages {
-				m.selectedMessages[m2.ID] = true
-			}
-			return m, nil
-		}
 	}
 
 	if m.focused == paneContent {
@@ -1411,7 +1383,6 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.settings.shouldSave {
 			m.cfg = m.settings.ApplyTo(m.cfg)
 			m.showUnreadOnly = m.cfg.Display.DefaultUnreadOnly
-			m.contentShowHeaders = m.cfg.Display.ShowHeaders
 			merged, _ := MergedThemeFromConfig(m.cfg)
 			m.styles = BuildStyles(merged, m.cfg.Display.Density)
 			if ThemeUsesASCII(merged.Name) {
@@ -1738,7 +1709,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		}
 	case "delete":
 		if msg := m.commandMessage(); msg != nil {
-			return m, m.backgroundDeleteCmd(*msg)
+			return m, m.deleteMessageCmd(*msg)
 		}
 	case "toggle-read":
 		if msg := m.commandMessage(); msg != nil {
@@ -2011,7 +1982,8 @@ func (m Model) renderPaneHint(p pane) string {
 			progress = fmt.Sprintf("%d%%  ", pct)
 		}
 		hint = progress + m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " line  " +
-			m.keyHint(m.keys.Reply) + " reply  " + m.keyHint(m.keys.ContentSearch) + " find  " +
+			m.keyHint(m.keys.Reply) + " reply  " + m.keyHint(m.keys.Search) + " find  " +
+			m.keyHint(m.keys.ToggleHeaders) + " headers  " +
 			m.keyHint(m.keys.Back) + " back"
 		if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
 			hint += "  " + m.keyHint(m.keys.PrevLink) + "/" + m.keyHint(m.keys.NextLink) + " links"
@@ -2088,53 +2060,28 @@ func (m Model) renderMessageContent(msg db.Message) string {
 	}
 	meta := " " + m.styles.ContentMeta.Width(contentWidth).Render(truncate(metaStr, metaWidth))
 
-	// Full headers block (togglable via ctrl+e)
+	// Full headers block (togglable via ctrl+h)
 	var fullHeaders string
 	if m.contentShowHeaders {
 		dim := m.styles.Theme.Dimmed
 		type headerField struct{ label, value string }
 		fields := []headerField{
+			{"Date", msg.Date.Format("Mon, 02 Jan 2006 15:04:05 -0700")},
 			{"From", msg.From},
 			{"To", msg.To},
 			{"CC", msg.CC},
 			{"Reply-To", msg.ReplyTo},
-			{"Date", msg.Date.Format("Mon, 02 Jan 2006 15:04:05 -0700")},
-			{"Subject", msg.Subject},
+			{"Message-ID", msg.MessageID},
 		}
 		var headerLines []string
 		for _, f := range fields {
-			if f.value != "" {
-				label := lipgloss.NewStyle().Foreground(dim).Width(10).Align(lipgloss.Right).Render(f.label)
-				line := label + "  " + f.value
-				headerLines = append(headerLines, line)
+			if f.value == "" {
+				continue
 			}
+			line := lipgloss.NewStyle().Foreground(dim).Render(fmt.Sprintf("  %-12s %s", f.label+":", f.value))
+			headerLines = append(headerLines, line)
 		}
 		if len(headerLines) > 0 {
-			fullHeaders = strings.Join(headerLines, "\n") + "\n"
-		}
-
-		// Auth headers (SPF, DKIM, DMARC, etc.) appended to fullHeaders
-		if msg.Headers != "" {
-			authLines := strings.Split(strings.TrimSpace(msg.Headers), "\n")
-			for i := 0; i+1 < len(authLines); i += 2 {
-				label := authLines[i]
-				value := authLines[i+1]
-				valueLower := strings.ToLower(value)
-				labelStyle := lipgloss.NewStyle().Foreground(dim).Width(10).Align(lipgloss.Right)
-				var valueStyle lipgloss.Style
-				switch {
-				case strings.Contains(valueLower, "fail") || strings.Contains(valueLower, "hardfail"):
-					valueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#f38ba8"))
-				case strings.Contains(valueLower, "softfail") || strings.Contains(valueLower, "neutral"):
-					valueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#f9e2af"))
-				case strings.Contains(valueLower, "pass"):
-					valueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a6e3a1"))
-				default:
-					valueStyle = lipgloss.NewStyle().Foreground(dim)
-				}
-				line := labelStyle.Render(label) + "  " + valueStyle.Render(value)
-				headerLines = append(headerLines, line)
-			}
 			fullHeaders = strings.Join(headerLines, "\n") + "\n"
 		}
 	}
@@ -2156,11 +2103,6 @@ func (m Model) renderMessageContent(msg db.Message) string {
 
 	body = collapseQuoteBlocks(body, m.contentQuotesCollapsed)
 
-	hint := ""
-	if !m.contentShowHeaders {
-		hint = "\n" + lipgloss.NewStyle().Foreground(m.styles.Theme.Dimmed).Render(m.keyHint(m.keys.ToggleHeaders)+" headers")
-	}
-
 	if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
 		body += "\n\n" + m.renderContentLinks(bodyWidth)
 	}
@@ -2169,7 +2111,7 @@ func (m Model) renderMessageContent(msg db.Message) string {
 		body += "\n\n" + m.renderAttachmentList(bodyWidth)
 	}
 
-	return fillViewWidth(title+"\n"+meta+"\n"+fullHeaders+body+hint, m.articlesPaneWidth(), m.styles.Theme.Bg)
+	return fillViewWidth(title+"\n"+meta+"\n\n"+fullHeaders+body, m.articlesPaneWidth(), m.styles.Theme.Bg)
 }
 
 func (m Model) renderAttachmentList(width int) string {
@@ -3419,17 +3361,15 @@ func (m *Model) archiveMessageCmd(msg db.Message) tea.Cmd {
 	}
 }
 
-func (m *Model) backgroundDeleteCmd(msg db.Message) tea.Cmd {
+func (m *Model) deleteMessageCmd(msg db.Message) tea.Cmd {
 	database := m.db
 	mailbox := m.mailboxByID(msg.MailboxID)
 	acfg := m.accountCfgForMailbox(msg.MailboxID)
 	return func() tea.Msg {
-		// DB delete (fast, ~5ms)
-		if err := database.DeleteMessage(msg.ID); err != nil {
-			return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: err}
+		if mailbox == nil {
+			return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: fmt.Errorf("mailbox not found")}
 		}
-		// IMAP delete (slow, ~1-3s) — best-effort non-blocking
-		if mailbox != nil && acfg.IMAPHost != "" && msg.UID != 0 {
+		if acfg.IMAPHost != "" && msg.UID != 0 {
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
 			client := imapClient.New(acfg)
@@ -3440,6 +3380,9 @@ func (m *Model) backgroundDeleteCmd(msg db.Message) tea.Cmd {
 			if err := client.DeleteMessage(ctx, mailbox.Name, msg.UID); err != nil {
 				return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: err}
 			}
+		}
+		if err := database.DeleteMessage(msg.ID); err != nil {
+			return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: err}
 		}
 		return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID}
 	}
@@ -3795,6 +3738,7 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 				}
 			}
 		}
+
 	}
 	return rows
 }
@@ -4152,23 +4096,6 @@ func (m *Model) removeMessageFromMemory(messageID int64) bool {
 	return wasUnread
 }
 
-// insertMessageToMemory inserts a message back into m.messages in sorted
-// order (date DESC, id DESC), then re-applies the filter.
-func (m *Model) insertMessageToMemory(msg db.Message) {
-	inserted := false
-	for i := range m.messages {
-		if msg.Date.After(m.messages[i].Date) || (msg.Date.Equal(m.messages[i].Date) && msg.ID > m.messages[i].ID) {
-			m.messages = append(m.messages[:i], append([]db.Message{msg}, m.messages[i:]...)...)
-			inserted = true
-			break
-		}
-	}
-	if !inserted {
-		m.messages = append(m.messages, msg)
-	}
-	m.applyFilter()
-}
-
 func (m Model) accountName(accountID int64) string {
 	for _, acc := range m.accounts {
 		if acc.ID == accountID {
@@ -4381,6 +4308,7 @@ func (m *Model) toggleSelectedAccount() bool {
 		return false
 	}
 	m.collapsedAccounts[accountID] = !m.collapsedAccounts[accountID]
+	m.saveCollapseState()
 	m.rebuildSidebar()
 	for i, row := range m.sidebarRows {
 		if row.kind == rowKindAccount && row.accountID == accountID {
@@ -4408,6 +4336,7 @@ func (m *Model) toggleSelectedSection() bool {
 		return false
 	}
 	m.collapsedSections[secKey] = !m.collapsedSections[secKey]
+	m.saveCollapseState()
 	m.rebuildSidebar()
 	// Keep cursor on the section header after rebuild.
 	for i, r := range m.sidebarRows {
@@ -4417,6 +4346,36 @@ func (m *Model) toggleSelectedSection() bool {
 		}
 	}
 	return true
+}
+
+// saveCollapseState persists sidebar collapse state to the database.
+func (m *Model) saveCollapseState() {
+	if m.db == nil {
+		return
+	}
+	accts, _ := json.Marshal(m.collapsedAccounts)
+	sects, _ := json.Marshal(m.collapsedSections)
+	_ = m.db.SetSetting("collapsed_accounts", string(accts))
+	_ = m.db.SetSetting("collapsed_sections", string(sects))
+}
+
+// loadCollapseState restores sidebar collapse state from the database.
+func (m *Model) loadCollapseState() {
+	if m.db == nil {
+		return
+	}
+	if v, err := m.db.GetSetting("collapsed_accounts"); err == nil && v != "" {
+		var data map[int64]bool
+		if json.Unmarshal([]byte(v), &data) == nil {
+			m.collapsedAccounts = data
+		}
+	}
+	if v, err := m.db.GetSetting("collapsed_sections"); err == nil && v != "" {
+		var data map[string]bool
+		if json.Unmarshal([]byte(v), &data) == nil {
+			m.collapsedSections = data
+		}
+	}
 }
 
 func (m *Model) applyFilter() {

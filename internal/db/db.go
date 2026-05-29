@@ -105,6 +105,11 @@ func (db *DB) migrate() error {
 			size         INTEGER NOT NULL DEFAULT 0
 		);
 		CREATE INDEX IF NOT EXISTS idx_attachments_message_id ON attachments(message_id);
+
+		CREATE TABLE IF NOT EXISTS settings (
+			key   TEXT PRIMARY KEY,
+			value TEXT NOT NULL DEFAULT ''
+		);
 	`)
 	if err != nil {
 		return err
@@ -113,6 +118,22 @@ func (db *DB) migrate() error {
 	// SQLite error on duplicate column is silently ignored.
 	db.Exec(`ALTER TABLE messages ADD COLUMN headers TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
 	return nil
+}
+
+// GetSetting retrieves a UI setting value by key.
+func (db *DB) GetSetting(key string) (string, error) {
+	var val string
+	err := db.QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&val)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return val, err
+}
+
+// SetSetting stores a UI setting value by key.
+func (db *DB) SetSetting(key, value string) error {
+	_, err := db.Exec("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?", key, value, value)
+	return err
 }
 
 func dataDir() (string, error) {
