@@ -113,6 +113,7 @@ type Model struct {
 	listOffset       int
 	searchQuery      string
 	showUnreadOnly   bool
+	selectedMessages map[int64]bool
 
 	viewport             viewport.Model
 	contentLinks         []string
@@ -224,6 +225,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		contentLinkIdx:        -1,
 		contentSearchInput:    csi,
 		contentSearchIdx:      -1,
+		selectedMessages:      make(map[int64]bool),
 	}
 	m.restoreCachedUpdateState()
 	if previewManualUpdate {
@@ -855,6 +857,11 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.Back):
 		if m.focused == paneContent {
 			m.focused = paneMessages
+			return m, nil
+		}
+		if m.focused == paneMessages && m.hasSelection() {
+			m.clearSelection()
+			return m, nil
 		}
 		return m, nil
 
@@ -885,6 +892,17 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keyMatches(msg, m.keys.MarkRead):
 		if m.focused == paneMessages && len(m.filteredMessages) > 0 {
+			if m.hasSelection() {
+				var cmds []tea.Cmd
+				for _, msg2 := range m.filteredMessages {
+					if m.selectedMessages[msg2.ID] {
+						read := !msg2.Read
+						cmds = append(cmds, m.setMessageReadCmd(msg2, read, false))
+					}
+				}
+				m.clearSelection()
+				return m, tea.Batch(cmds...)
+			}
 			msg2 := m.filteredMessages[m.messageCursor]
 			read := !msg2.Read
 			advance := !msg2.Read
@@ -894,6 +912,16 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keyMatches(msg, m.keys.Archive):
 		if m.focused != paneAccounts && len(m.filteredMessages) > 0 {
+			if m.hasSelection() {
+				var cmds []tea.Cmd
+				for _, msg2 := range m.filteredMessages {
+					if m.selectedMessages[msg2.ID] {
+						cmds = append(cmds, m.archiveMessageCmd(msg2))
+					}
+				}
+				m.clearSelection()
+				return m, tea.Batch(cmds...)
+			}
 			msg2 := m.filteredMessages[m.messageCursor]
 			return m, m.archiveMessageCmd(msg2)
 		}
@@ -901,6 +929,16 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keyMatches(msg, m.keys.Delete):
 		if m.focused != paneAccounts && len(m.filteredMessages) > 0 {
+			if m.hasSelection() {
+				var cmds []tea.Cmd
+				for _, msg2 := range m.filteredMessages {
+					if m.selectedMessages[msg2.ID] {
+						cmds = append(cmds, m.deleteMessageCmd(msg2))
+					}
+				}
+				m.clearSelection()
+				return m, tea.Batch(cmds...)
+			}
 			msg2 := m.filteredMessages[m.messageCursor]
 			return m, m.deleteMessageCmd(msg2)
 		}
@@ -1016,6 +1054,15 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.toggleSelectedSection() {
 				return m, nil
 			}
+		}
+		if m.focused == paneMessages && len(m.filteredMessages) > 0 {
+			cur := m.filteredMessages[m.messageCursor]
+			m.toggleMessageSelection(cur.ID)
+			// Auto-advance cursor for rapid multi-select
+			if m.messageCursor < len(m.filteredMessages)-1 {
+				m.messageCursor++
+			}
+			return m, nil
 		}
 		return m, nil
 	}
@@ -1771,10 +1818,18 @@ func (m Model) renderMessagesPane() string {
 	for i := m.listOffset; i < end; i++ {
 		msg2 := visible[i]
 		age := m.formatTime(msg2.Date)
-		dot := m.messageRowPrefix(msg2.Read)
 		style := msgRead
 		if !msg2.Read {
 			style = msgUnread
+		}
+		dot := m.messageRowPrefix(msg2.Read)
+		if m.selectedMessages[msg2.ID] {
+			dot = "✓ "
+			// When selected but not the cursor, use green checkmark + text
+			if i != m.messageCursor {
+				selFg := lipgloss.Color("#a6e3a1")
+				style = style.Copy().Foreground(selFg)
+			}
 		}
 		if i == m.messageCursor {
 			style = msgSelected
@@ -1896,6 +1951,7 @@ func (m Model) renderPaneHint(p pane) string {
 			m.keyHint(m.keys.Enter) + " toggle  " + m.keyHint(m.keys.Sync) + " sync"
 	case paneMessages:
 		hint = m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " move  " +
+			m.keyHint(m.keys.Space) + " select  " +
 			m.keyHint(m.keys.MarkRead) + " read  " +
 			m.keyHint(m.keys.Archive) + " archive  " + m.keyHint(m.keys.Delete) + " delete  " +
 			m.keyHint(m.keys.Command) + " command"
@@ -3752,6 +3808,7 @@ func (m *Model) clearMessages() {
 	m.messageCursor = 0
 	m.listOffset = 0
 	m.clearViewportMessage()
+	m.clearSelection()
 }
 
 // effectiveManualCommand is the command shown in Settings (real install result, or suggested script when an update is available but the install path is not writable).
@@ -4172,6 +4229,26 @@ func (m Model) messageRowStyles() (lipgloss.Style, lipgloss.Style, lipgloss.Styl
 		borderFocus = accent
 	}
 	return unread, read, selected, headerActive, border, borderFocus
+}
+
+func (m *Model) clearSelection() {
+	m.selectedMessages = make(map[int64]bool)
+}
+
+func (m *Model) toggleMessageSelection(id int64) {
+	if m.selectedMessages[id] {
+		delete(m.selectedMessages, id)
+	} else {
+		m.selectedMessages[id] = true
+	}
+}
+
+func (m Model) hasSelection() bool {
+	return len(m.selectedMessages) > 0
+}
+
+func (m Model) selectedMessageCount() int {
+	return len(m.selectedMessages)
 }
 
 func (m *Model) toggleSelectedAccount() bool {
