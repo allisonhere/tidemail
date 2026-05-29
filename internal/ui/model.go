@@ -113,7 +113,8 @@ type Model struct {
 	listOffset       int
 	searchQuery      string
 	showUnreadOnly   bool
-	selectedMessages map[int64]bool
+	selectedMessages      map[int64]bool
+	pendingDeletes        map[int64]db.Message
 
 	viewport             viewport.Model
 	contentLinks         []string
@@ -226,6 +227,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		contentSearchInput:    csi,
 		contentSearchIdx:      -1,
 		selectedMessages:      make(map[int64]bool),
+		pendingDeletes:        make(map[int64]db.Message),
 	}
 	m.restoreCachedUpdateState()
 	if previewManualUpdate {
@@ -634,13 +636,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.clearStatusCmd()
 
 	case MessageDeletedMsg:
+		orig, hasPending := m.pendingDeletes[msg.MessageID]
+		delete(m.pendingDeletes, msg.MessageID)
 		if msg.Err != nil {
+			if hasPending {
+				// Rollback: re-insert to DB and memory
+				if dbErr := m.db.UpsertMessage(orig); dbErr == nil {
+					m.insertMessageToMemory(orig)
+				}
+			}
 			m.setStatus(fmt.Sprintf("delete failed: %v", msg.Err), true)
 			return m, m.clearStatusCmd()
 		}
-		if m.removeMessageFromMemory(msg.MessageID) {
-			m.adjustMailboxUnreadCount(msg.MailboxID, -1)
-		}
+		// Success: message was already removed from memory in the key handler
 		m.setStatus("deleted", false)
 		return m, m.clearStatusCmd()
 
@@ -930,17 +938,34 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.Delete):
 		if m.focused != paneAccounts && len(m.filteredMessages) > 0 {
 			if m.hasSelection() {
-				var cmds []tea.Cmd
-				for _, msg2 := range m.filteredMessages {
-					if m.selectedMessages[msg2.ID] {
-						cmds = append(cmds, m.deleteMessageCmd(msg2))
+				// Collect selected messages first (before we mutate filteredMessages)
+				var toDelete []db.Message
+				for _, m2 := range m.filteredMessages {
+					if m.selectedMessages[m2.ID] {
+						toDelete = append(toDelete, m2)
 					}
 				}
 				m.clearSelection()
-				return m, tea.Batch(cmds...)
+				var cmds []tea.Cmd
+				for _, m2 := range toDelete {
+					wasUnread := m.removeMessageFromMemory(m2.ID)
+					if wasUnread {
+						m.adjustMailboxUnreadCount(m2.MailboxID, -1)
+					}
+					m.pendingDeletes[m2.ID] = m2
+					cmds = append(cmds, m.backgroundDeleteCmd(m2))
+				}
+				m.setStatus("deleted", false)
+				return m, tea.Batch(append(cmds, m.clearStatusCmd())...)
 			}
-			msg2 := m.filteredMessages[m.messageCursor]
-			return m, m.deleteMessageCmd(msg2)
+			m2 := m.filteredMessages[m.messageCursor]
+			wasUnread := m.removeMessageFromMemory(m2.ID)
+			if wasUnread {
+				m.adjustMailboxUnreadCount(m2.MailboxID, -1)
+			}
+			m.pendingDeletes[m2.ID] = m2
+			m.setStatus("deleted", false)
+			return m, tea.Batch(m.backgroundDeleteCmd(m2), m.clearStatusCmd())
 		}
 		return m, nil
 
@@ -1689,7 +1714,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		}
 	case "delete":
 		if msg := m.commandMessage(); msg != nil {
-			return m, m.deleteMessageCmd(*msg)
+			return m, m.backgroundDeleteCmd(*msg)
 		}
 	case "toggle-read":
 		if msg := m.commandMessage(); msg != nil {
@@ -3311,15 +3336,17 @@ func (m *Model) archiveMessageCmd(msg db.Message) tea.Cmd {
 	}
 }
 
-func (m *Model) deleteMessageCmd(msg db.Message) tea.Cmd {
+func (m *Model) backgroundDeleteCmd(msg db.Message) tea.Cmd {
 	database := m.db
 	mailbox := m.mailboxByID(msg.MailboxID)
 	acfg := m.accountCfgForMailbox(msg.MailboxID)
 	return func() tea.Msg {
-		if mailbox == nil {
-			return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: fmt.Errorf("mailbox not found")}
+		// DB delete (fast, ~5ms)
+		if err := database.DeleteMessage(msg.ID); err != nil {
+			return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: err}
 		}
-		if acfg.IMAPHost != "" && msg.UID != 0 {
+		// IMAP delete (slow, ~1-3s) — best-effort non-blocking
+		if mailbox != nil && acfg.IMAPHost != "" && msg.UID != 0 {
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
 			client := imapClient.New(acfg)
@@ -3330,9 +3357,6 @@ func (m *Model) deleteMessageCmd(msg db.Message) tea.Cmd {
 			if err := client.DeleteMessage(ctx, mailbox.Name, msg.UID); err != nil {
 				return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: err}
 			}
-		}
-		if err := database.DeleteMessage(msg.ID); err != nil {
-			return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: err}
 		}
 		return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID}
 	}
@@ -4043,6 +4067,23 @@ func (m *Model) removeMessageFromMemory(messageID int64) bool {
 	m.listOffset = clamp(m.listOffset, 0, max(0, len(m.filteredMessages)-1))
 	m.setViewportMessage(m.filteredMessages[m.messageCursor])
 	return wasUnread
+}
+
+// insertMessageToMemory inserts a message back into m.messages in sorted
+// order (date DESC, id DESC), then re-applies the filter.
+func (m *Model) insertMessageToMemory(msg db.Message) {
+	inserted := false
+	for i := range m.messages {
+		if msg.Date.After(m.messages[i].Date) || (msg.Date.Equal(m.messages[i].Date) && msg.ID > m.messages[i].ID) {
+			m.messages = append(m.messages[:i], append([]db.Message{msg}, m.messages[i:]...)...)
+			inserted = true
+			break
+		}
+	}
+	if !inserted {
+		m.messages = append(m.messages, msg)
+	}
+	m.applyFilter()
 }
 
 func (m Model) accountName(accountID int64) string {

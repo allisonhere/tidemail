@@ -141,6 +141,7 @@ func Load() (Config, error) {
 		cfg.Updates.CheckIntervalHours = DefaultConfig().Updates.CheckIntervalHours
 	}
 	cfg.Display.Density = NormalizeDisplayDensity(cfg.Display.Density)
+	fillSecrets(&cfg)
 	return cfg, nil
 }
 
@@ -159,6 +160,12 @@ func IsRetroTerminalTheme(name string) bool {
 }
 
 func Save(cfg Config) error {
+	// Deep-copy accounts to avoid mutating the caller's slice (stripSecrets
+	// clears Password fields on the shared backing array).
+	accts := make([]AccountConfig, len(cfg.Accounts))
+	copy(accts, cfg.Accounts)
+	cfg.Accounts = accts
+	stripSecrets(&cfg)
 	path, err := configPath()
 	if err != nil {
 		return err
