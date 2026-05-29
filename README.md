@@ -40,6 +40,7 @@ go build -o tidemail .
 - Search and unread-only filtering
 - Optional actionable links in the message content pane
 - AI summaries with copy and save-to-Markdown actions
+- AI grammar & spell check in compose with preview overlay
 - Theme-aware dialogs, overlays, and terminal background sync
 - Collapsible account folders (System, Labels) in sidebar
 
@@ -111,6 +112,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 | `S` | Settings |
 | `T` | Theme picker |
 | `Ctrl+D` | Save attachments to folder |
+| `Ctrl+G` | AI grammar & spell check (compose) |
 | `?` | Help |
 | `q` | Quit |
 
