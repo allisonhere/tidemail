@@ -31,11 +31,11 @@ go build -o tidemail .
 - Select all with `A` — selects every message in current view
 - Full email headers display — toggle with `ctrl+e`, configurable default in Settings
 - Spam/auth headers — SPF, DKIM, DMARC results color-coded in header view
-- IMAP/SMTP accounts using passwords or app passwords (stored in system keychain)
+- IMAP/SMTP accounts using passwords, app passwords, or **Gmail OAuth2** (stored in system keychain)
 - Account manager for adding, editing, deleting, and discovering mailboxes
 - Server-backed sync, read/unread, archive, delete, compose, and reply
 - Optimistic delete — messages vanish instantly, sync in background
-- Archive auto-detection via `\\Archive`, `Archive`, `Archives`, or `All Mail`
+- Archive auto-detection via `\Archive`, `Archive`, `Archives`, or `All Mail`
 - Command palette for common mail actions
 - Search and unread-only filtering
 - Optional actionable links in the message content pane
@@ -43,6 +43,8 @@ go build -o tidemail .
 - AI grammar & spell check in compose with preview overlay
 - Theme-aware dialogs, overlays, and terminal background sync
 - Collapsible account folders (System, Labels) in sidebar
+- **Desktop notifications** on new mail via auto-sync (notify-send)
+- **Gmail OAuth2** — sign-in via browser, no app passwords needed
 
 ## Usage
 
@@ -59,13 +61,29 @@ Open account management with `m`, add an IMAP/SMTP account, then sync the select
 
 TideMail stores IMAP/SMTP passwords and AI API keys in the system keychain via `secret-tool` (libsecret on Linux, Keychain on macOS). Empty `password` and `openai_key`/`claude_key`/`gemini_key` fields in the config file are looked up from the keychain at startup. When you save settings, any in-memory secrets are moved to the keychain and removed from the config file automatically.
 
-If `secret-tool` is not installed, passwords and API keys fall back to being stored directly in `~/.config/tidemail/config.toml`. Treat the config file like a secret in that case.
+OAuth2 refresh tokens are also stored in the keychain. Client ID and secret live in the `[oauth]` section of the config file — the defaults are baked into the binary so you never need to set them up.
 
-- Gmail: Google Account → Security → App passwords
+If `secret-tool` is not installed, passwords, API keys, and refresh tokens fall back to being stored directly in `~/.config/tidemail/config.toml`. Treat the config file like a secret in that case.
+
+- Gmail (password method): Google Account → Security → App passwords
+- Gmail (OAuth2 method): sign-in with Google in the account manager — no app passwords needed
 - Yahoo: Account Security → Generate app password
 - iCloud: Apple ID → Sign-In and Security → App-Specific Passwords
 
-If you paste or accidentally expose an app password, revoke it and create a new one.
+If you paste or accidentally expose an app password or refresh token, revoke it and create a new one.
+
+## Gmail OAuth2
+
+Gmail accounts can use OAuth2 instead of app passwords:
+1. Press `m` to open account manager
+2. Select your Gmail account and press `Enter` to edit
+3. Tab to the **Auth** field and toggle to **OAuth2** (Space or Enter)
+4. Tab to **[Sign in with Google]** and press Enter
+5. Your browser opens — sign in and grant access
+6. Focus jumps to the From field — finish editing and save (Ctrl+S)
+7. TideMail authenticates with your refresh token — no password storage needed
+
+On future launches, the refresh token is restored from the keychain automatically.
 
 Example account config:
 

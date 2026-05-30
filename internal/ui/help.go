@@ -66,16 +66,17 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{keys.Add.Help().Key, "add account"},
 				{keys.Edit.Help().Key, "edit account"},
 				{keys.Delete.Help().Key, "delete account"},
-				{"Gmail/Yahoo/iCloud", "use app passwords, not primary account passwords"},
+				{"Gmail: Auth toggle", "switch between Password / OAuth2 in account form"},
+				{"Gmail: Sign in", "press Enter on [Sign in with Google] to launch OAuth2"},
 				{"Settings → Accounts", "set sync interval per account for auto-refresh"},
 			},
 		},
 		{
 			name: "Security",
 			entries: []entry{
-				{"keychain", "passwords/AI keys stored in system keychain (secret-tool)"},
+				{"keychain", "passwords / API keys / OAuth2 tokens stored in system keychain"},
 				{"config", "~/.config/tidemail/config.toml (no plain-text secrets after save)"},
-				{"secrets", "passwords and API keys are redacted from errors/status"},
+				{"secrets", "passwords, API keys, and OAuth2 tokens are redacted from errors/status"},
 			},
 		},
 		{

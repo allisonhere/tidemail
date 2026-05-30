@@ -120,6 +120,63 @@ func DeleteAIKey(providerField string) {
 	_ = clearSecret(aiKeyKey(providerField))
 }
 
+// ── OAuth2 tokens ──────────────────────────────────────────────────────────────
+
+func oauth2SecretKey(accountName string) string {
+	return "oauth2:" + accountName
+}
+
+func oauth2RefreshKey(accountName string) string {
+	return "oauth2_refresh:" + accountName
+}
+
+// StoreOAuth2Secret saves an OAuth2 client secret to the keychain.
+func StoreOAuth2Secret(accountName, secret string) bool {
+	if !keyringAvailable() || secret == "" {
+		return false
+	}
+	if err := storeSecret(oauth2SecretKey(accountName), secret); err != nil {
+		return false
+	}
+	return true
+}
+
+// GetOAuth2Secret retrieves an OAuth2 client secret from the keychain.
+func GetOAuth2Secret(accountName string) string {
+	if !keyringAvailable() {
+		return ""
+	}
+	return lookupSecret(oauth2SecretKey(accountName))
+}
+
+// StoreOAuth2RefreshToken saves an OAuth2 refresh token to the keychain.
+func StoreOAuth2RefreshToken(accountName, token string) bool {
+	if !keyringAvailable() || token == "" {
+		return false
+	}
+	if err := storeSecret(oauth2RefreshKey(accountName), token); err != nil {
+		return false
+	}
+	return true
+}
+
+// GetOAuth2RefreshToken retrieves an OAuth2 refresh token from the keychain.
+func GetOAuth2RefreshToken(accountName string) string {
+	if !keyringAvailable() {
+		return ""
+	}
+	return lookupSecret(oauth2RefreshKey(accountName))
+}
+
+// DeleteOAuth2Secrets removes OAuth2 secrets for an account from the keychain.
+func DeleteOAuth2Secrets(accountName string) {
+	if !keyringAvailable() {
+		return
+	}
+	_ = clearSecret(oauth2SecretKey(accountName))
+	_ = clearSecret(oauth2RefreshKey(accountName))
+}
+
 // ── Bulk operations ────────────────────────────────────────────────────────────
 
 // stripSecrets moves all secrets from cfg into the keychain and clears the
@@ -133,6 +190,13 @@ func stripSecrets(cfg *Config) int {
 		if cfg.Accounts[i].Password != "" {
 			if StoreAccountPassword(cfg.Accounts[i].Name, cfg.Accounts[i].Password) {
 				cfg.Accounts[i].Password = ""
+				stored++
+			}
+		}
+		// OAuth2 refresh_token — per-user secret, store in keychain
+		if cfg.Accounts[i].RefreshToken != "" {
+			if StoreOAuth2RefreshToken(cfg.Accounts[i].Name, cfg.Accounts[i].RefreshToken) {
+				cfg.Accounts[i].RefreshToken = ""
 				stored++
 			}
 		}
@@ -160,6 +224,22 @@ func fillSecrets(cfg *Config) {
 		if cfg.Accounts[i].Password == "" {
 			if pw := GetAccountPassword(cfg.Accounts[i].Name); pw != "" {
 				cfg.Accounts[i].Password = pw
+			}
+		}
+		// Restore refresh token from keychain FIRST, then fill credentials.
+		if cfg.Accounts[i].RefreshToken == "" {
+			if t := GetOAuth2RefreshToken(cfg.Accounts[i].Name); t != "" {
+				cfg.Accounts[i].RefreshToken = t
+			}
+		}
+		// Fill OAuth2 client credentials from app-level config (must be after
+		// refresh token restoration so the condition detects the account uses OAuth2).
+		if cfg.Accounts[i].RefreshToken != "" || cfg.Accounts[i].ClientID != "" {
+			if cfg.Accounts[i].ClientID == "" {
+				cfg.Accounts[i].ClientID = cfg.OAuth.GoogleClientID
+			}
+			if cfg.Accounts[i].ClientSecret == "" {
+				cfg.Accounts[i].ClientSecret = cfg.OAuth.GoogleClientSecret
 			}
 		}
 	}

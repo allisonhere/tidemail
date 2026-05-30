@@ -7,10 +7,12 @@ import (
 	"net"
 	"time"
 
+	"github.com/allisonhere/tide/internal/auth"
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
 	"github.com/emersion/go-imap/v2"
 	imapclient "github.com/emersion/go-imap/v2/imapclient"
+	"github.com/emersion/go-sasl"
 )
 
 type MailboxInfo struct {
@@ -50,9 +52,34 @@ func (c *Client) Connect(ctx context.Context) error {
 		return fmt.Errorf("connect %s: %w", addr, err)
 	}
 
-	if err := client.Login(c.cfg.User, c.cfg.Password).Wait(); err != nil {
-		client.Close()
-		return fmt.Errorf("login: %w", err)
+	if c.cfg.UsesOAuth2() {
+		// Refresh the access token, then authenticate with XOAUTH2.
+		accessToken := c.cfg.Password // May have been set with initial access token
+		if c.cfg.RefreshToken != "" {
+			tok, err := auth.RefreshAccessToken(c.cfg.ClientID, c.cfg.ClientSecret, c.cfg.RefreshToken)
+			if err != nil {
+				client.Close()
+				return fmt.Errorf("oauth2 refresh: %w", err)
+			}
+			accessToken = tok.AccessToken
+		}
+		if accessToken == "" {
+			client.Close()
+			return fmt.Errorf("oauth2: no access token or refresh token available")
+		}
+		saslClient := sasl.NewOAuthBearerClient(&sasl.OAuthBearerOptions{
+			Username: c.cfg.User,
+			Token:    accessToken,
+		})
+		if err := client.Authenticate(saslClient); err != nil {
+			client.Close()
+			return fmt.Errorf("oauth2 auth: %w", err)
+		}
+	} else {
+		if err := client.Login(c.cfg.User, c.cfg.Password).Wait(); err != nil {
+			client.Close()
+			return fmt.Errorf("login: %w", err)
+		}
 	}
 	c.conn = client
 	return nil

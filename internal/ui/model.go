@@ -407,7 +407,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			statusCmd = m.clearStatusCmd()
 		}
 		m.rebuildSidebar()
-		m.accountManager.setData(m.accounts, m.mailboxes, m.cfg.Accounts)
+		m.accountManager.setData(m.accounts, m.mailboxes, m.cfg.Accounts, m.cfg.OAuth)
 		if m.firstLoad {
 			m.loadCollapseState()
 			m.rebuildSidebar()
@@ -516,6 +516,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			// Auto-sync: log to buffer silently (no status bar spam).
 			m.addToLog(fmt.Sprintf("auto-synced %d new (%v)", msg.NewCount, msg.Total.Round(time.Millisecond)), false)
+		}
+		if msg.NewCount > 0 && !msg.Manual {
+			cmds = append(cmds, m.notifyCmd(msg.MailboxID, msg.NewCount))
 		}
 		cmds = append(cmds, m.loadAddressBookCmd())
 		return m, tea.Batch(cmds...)
@@ -3348,6 +3351,26 @@ func (m *Model) loadAddressBookCmd() tea.Cmd {
 	}
 }
 
+// notifyCmd fires a desktop notification for new mail from an auto-sync.
+func (m *Model) notifyCmd(mailboxID int64, newCount int) tea.Cmd {
+	database := m.db
+	return func() tea.Msg {
+		mailbox, err := database.GetMailbox(mailboxID)
+		if err != nil {
+			return nil
+		}
+		acc, err := database.GetAccount(mailbox.AccountID)
+		if err != nil {
+			return nil
+		}
+		// notify-send is fire-and-forget; exec the non-interactive version.
+		title := acc.Name
+		body := fmt.Sprintf("%s — %d new", mailbox.DisplayName, newCount)
+		_ = exec.Command("notify-send", "-a", "tidemail", "-i", "mail-unread", title, body).Run()
+		return nil
+	}
+}
+
 func (m *Model) scheduleNextSync(accountID int64) tea.Cmd {
 	for _, acc := range m.accounts {
 		if acc.ID != accountID {
@@ -4062,7 +4085,7 @@ func isGmailSystemFolder(name string) bool {
 func (m Model) newAccountManager() AccountManager {
 	am := NewAccountManager(m.db)
 	am.mode = amList
-	am.setData(m.accounts, m.mailboxes, m.cfg.Accounts)
+	am.setData(m.accounts, m.mailboxes, m.cfg.Accounts, m.cfg.OAuth)
 	return am
 }
 
@@ -4578,13 +4601,21 @@ func (m *Model) saveCollapseState() {
 	}
 	accts, _ := json.Marshal(m.collapsedAccounts)
 	sects, _ := json.Marshal(m.collapsedSections)
-	// TODO: persist to DB once SetSetting is added
-	_, _ = accts, sects
+	_ = m.db.SetSetting("collapsed_accounts", string(accts))
+	_ = m.db.SetSetting("collapsed_sections", string(sects))
 }
 
 // loadCollapseState restores sidebar collapse state from the database.
 func (m *Model) loadCollapseState() {
-	// Collapse state starts empty; TODO: load from DB once GetSetting is added
+	if m.db == nil {
+		return
+	}
+	if s, err := m.db.GetSetting("collapsed_accounts"); err == nil && s != "" {
+		_ = json.Unmarshal([]byte(s), &m.collapsedAccounts)
+	}
+	if s, err := m.db.GetSetting("collapsed_sections"); err == nil && s != "" {
+		_ = json.Unmarshal([]byte(s), &m.collapsedSections)
+	}
 }
 
 func (m *Model) applyFilter() {

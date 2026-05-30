@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/allisonhere/tide/internal/auth"
 	"github.com/allisonhere/tide/internal/config"
 )
 
@@ -26,6 +27,25 @@ var (
 		}).DialContext(ctx, network, addr)
 	}
 )
+
+// xoauth2Auth implements the smtp.Auth interface for XOAUTH2.
+type xoauth2Auth struct {
+	user, token string
+}
+
+func (a *xoauth2Auth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	resp := "\x00user=" + a.user + "\x01auth=Bearer " + a.token + "\x01\x01"
+	encoded := make([]byte, base64.StdEncoding.EncodedLen(len(resp)))
+	base64.StdEncoding.Encode(encoded, []byte(resp))
+	return "XOAUTH2", encoded, nil
+}
+
+func (a *xoauth2Auth) Next(fromServer []byte, more bool) ([]byte, error) {
+	if more {
+		return nil, fmt.Errorf("unexpected XOAUTH2 challenge")
+	}
+	return nil, nil
+}
 
 type Attachment struct {
 	Name string
@@ -66,6 +86,25 @@ func Send(ctx context.Context, cfg config.AccountConfig, msg OutgoingMessage) er
 	return sendSTARTTLS(ctx, addr, cfg, from, allTo, raw)
 }
 
+// smtpAuth returns the appropriate smtp.Auth for the given config.
+func smtpAuth(cfg config.AccountConfig, host string) (smtp.Auth, error) {
+	if cfg.UsesOAuth2() {
+		accessToken := cfg.Password
+		if cfg.RefreshToken != "" {
+			tok, err := auth.RefreshAccessToken(cfg.ClientID, cfg.ClientSecret, cfg.RefreshToken)
+			if err != nil {
+				return nil, fmt.Errorf("oauth2 refresh: %w", err)
+			}
+			accessToken = tok.AccessToken
+		}
+		if accessToken == "" {
+			return nil, fmt.Errorf("oauth2: no access token or refresh token available")
+		}
+		return &xoauth2Auth{user: cfg.User, token: accessToken}, nil
+	}
+	return smtp.PlainAuth("", cfg.User, cfg.Password, host), nil
+}
+
 func sendSTARTTLS(ctx context.Context, addr string, cfg config.AccountConfig, from string, to []string, raw []byte) error {
 	conn, err := smtpDial(ctx, "tcp", addr)
 	if err != nil {
@@ -87,7 +126,11 @@ func sendSTARTTLS(ctx context.Context, addr string, cfg config.AccountConfig, fr
 		}
 	}
 
-	if err := client.Auth(smtp.PlainAuth("", cfg.User, cfg.Password, host)); err != nil {
+	auth, err := smtpAuth(cfg, host)
+	if err != nil {
+		return fmt.Errorf("smtp auth: %w", err)
+	}
+	if err := client.Auth(auth); err != nil {
 		return fmt.Errorf("auth: %w", err)
 	}
 
@@ -110,7 +153,11 @@ func sendTLS(ctx context.Context, addr string, cfg config.AccountConfig, from st
 	}
 	defer client.Close()
 
-	if err := client.Auth(smtp.PlainAuth("", cfg.User, cfg.Password, host)); err != nil {
+	auth, err := smtpAuth(cfg, host)
+	if err != nil {
+		return fmt.Errorf("smtp auth: %w", err)
+	}
+	if err := client.Auth(auth); err != nil {
 		return fmt.Errorf("auth: %w", err)
 	}
 

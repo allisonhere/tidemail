@@ -151,6 +151,7 @@ func TestAccountManagerListShowsCompactAccountCards(t *testing.T) {
 			SMTPTLS:  true,
 			User:     "alice@example.com",
 		}},
+		config.OAuthConfig{},
 	)
 
 	view := am.View(80, 24, BuildStyles(CatppuccinMocha, "compact"))
@@ -280,6 +281,7 @@ func TestAccountManagerEditPreloadsConfigForSelectedAccount(t *testing.T) {
 			Password: "secret",
 			From:     "Alice <alice@example.com>",
 		}},
+		config.OAuthConfig{},
 	)
 
 	next, _, _ := am.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}}, DefaultKeys)

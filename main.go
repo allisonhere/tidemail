@@ -39,7 +39,7 @@ func main() {
 	for _, a := range os.Args[1:] {
 		switch strings.TrimSpace(a) {
 		case "--version", "-version", "-v":
-			fmt.Printf("tide %s\n", resolvedVersion())
+			fmt.Printf("tidemail %s\n", resolvedVersion())
 			return
 		}
 	}
@@ -144,7 +144,7 @@ func resolvedVersionFromBuildInfo(info *debug.BuildInfo) string {
 }
 
 func gitDescribeVersion() string {
-	out, err := exec.Command("git", "describe", "--tags", "--dirty", "--always").Output()
+	out, err := exec.Command("git", "describe", "--tags", "--long", "--dirty", "--always").Output()
 	if err != nil {
 		return ""
 	}

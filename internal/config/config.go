@@ -15,7 +15,13 @@ type Config struct {
 	Feed     FeedConfig      `toml:"feed"`
 	Updates  UpdatesConfig   `toml:"updates"`
 	AI       AIConfig        `toml:"ai"`
+	OAuth    OAuthConfig     `toml:"oauth"`
 	Accounts []AccountConfig `toml:"account"`
+}
+
+type OAuthConfig struct {
+	GoogleClientID     string `toml:"google_client_id"`
+	GoogleClientSecret string `toml:"google_client_secret"`
 }
 
 type RetroTerminalTweak struct {
@@ -83,6 +89,19 @@ type AccountConfig struct {
 	Password string `toml:"password"`
 	From        string `toml:"from"`
 	SyncMinutes int    `toml:"sync_minutes"` // 0 = no auto-sync
+
+	// OAuth2 — if RefreshToken is set, OAuth2 is used instead of password.
+	// ClientID and ClientSecret are auto-filled from the app-level [oauth] config at load time.
+	RefreshToken string `toml:"refresh_token"`
+
+	// Filled at load time from OAuthConfig — never written to TOML.
+	ClientID     string
+	ClientSecret string
+}
+
+// UsesOAuth2 returns true if this account is configured for OAuth2 auth.
+func (a AccountConfig) UsesOAuth2() bool {
+	return a.RefreshToken != ""
 }
 
 func DefaultAccountConfig() AccountConfig {
@@ -117,6 +136,12 @@ func DefaultConfig() Config {
 			OllamaURL:   "http://localhost:11434",
 			OllamaModel: "llama3.2",
 			SavePath:    "~/",
+		},
+		OAuth: OAuthConfig{
+			// Default Google OAuth2 credentials — users can override in config.
+			// These identify the app, not individual users.
+			GoogleClientID:     "",
+			GoogleClientSecret: "",
 		},
 	}
 }
