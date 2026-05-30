@@ -95,8 +95,8 @@ type AccountConfig struct {
 	RefreshToken string `toml:"refresh_token"`
 
 	// Filled at load time from OAuthConfig — never written to TOML.
-	ClientID     string
-	ClientSecret string
+	ClientID     string `toml:"-"`
+	ClientSecret string `toml:"-"`
 }
 
 // UsesOAuth2 returns true if this account is configured for OAuth2 auth.
@@ -138,10 +138,10 @@ func DefaultConfig() Config {
 			SavePath:    "~/",
 		},
 		OAuth: OAuthConfig{
-			// Default Google OAuth2 credentials — users can override in config.
-			// These identify the app, not individual users.
-			GoogleClientID:     "",
-			GoogleClientSecret: "",
+			// Default Google OAuth2 credentials — sourced from env vars first,
+			// then config file. These identify the app, not individual users.
+			GoogleClientID:     firstNonEmpty(os.Getenv("TIDEMAIL_GOOGLE_CLIENT_ID"), ""),
+			GoogleClientSecret: firstNonEmpty(os.Getenv("TIDEMAIL_GOOGLE_CLIENT_SECRET"), ""),
 		},
 	}
 }
@@ -184,6 +184,13 @@ func NormalizeDisplayDensity(s string) string {
 func IsRetroTerminalTheme(name string) bool {
 	n := strings.ToLower(strings.TrimSpace(name))
 	return n == "vt52" || n == "vt100"
+}
+
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }
 
 func Save(cfg Config) error {
