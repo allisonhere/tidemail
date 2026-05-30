@@ -319,11 +319,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			config.Save(m.cfg) //nolint:errcheck
 			if m.pendingUpdateInstall {
 				m.pendingUpdateInstall = false
-				if !m.updateDismissed {
-					m.updateState = updateStateDownloading
-					m.syncSettingsUpdateState()
-					return m, m.downloadUpdateCmd(m.updateInfo)
-				}
+				// A manual check from Settings overrides any previous dismiss.
+				m.updateState = updateStateDownloading
+				m.syncSettingsUpdateState()
+				return m, m.downloadUpdateCmd(m.updateInfo)
 			}
 			if !m.updateDismissed && (msg.Manual || update.IsStableVersion(m.currentVersion)) {
 				return m, nil
