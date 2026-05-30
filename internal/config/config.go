@@ -250,3 +250,12 @@ func configPath() (string, error) {
 	}
 	return filepath.Join(xdg, "tidemail", "config.toml"), nil
 }
+
+// LogPath returns the path to the fetch log file (alongside config.toml).
+func LogPath() (string, error) {
+	cfgPath, err := configPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(cfgPath), "fetch.log"), nil
+}

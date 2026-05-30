@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -410,7 +411,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.firstLoad {
 			m.loadCollapseState()
 			m.rebuildSidebar()
-			statusCmd = tea.Batch(statusCmd, m.startSyncTimersCmd(), m.loadAddressBookCmd())
+			statusCmd = tea.Batch(statusCmd, m.startSyncTimers(), m.loadAddressBookCmd())
 		}
 		m.firstLoad = false
 		if prevID == 0 && prevKind == rowKindMailbox {
@@ -497,7 +498,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case MailboxSyncedMsg:
 		delete(m.syncing, msg.MailboxID)
 		if msg.Err != nil {
-			m.setStatus(fmt.Sprintf("sync failed: %v", msg.Err), true)
+			m.setStatus(fmt.Sprintf("sync failed: %v (%v)", msg.Err, msg.Total.Round(time.Millisecond)), true)
 			return m, m.clearStatusCmd()
 		}
 		cmds := []tea.Cmd{m.loadAccountsCmd()}
@@ -512,6 +513,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if msg.Manual {
 			m.setStatus("up to date", false)
 			cmds = append(cmds, m.clearStatusCmd())
+		} else {
+			// Auto-sync: log to buffer silently (no status bar spam).
+			m.addToLog(fmt.Sprintf("auto-synced %d new (%v)", msg.NewCount, msg.Total.Round(time.Millisecond)), false)
 		}
 		cmds = append(cmds, m.loadAddressBookCmd())
 		return m, tea.Batch(cmds...)
@@ -538,6 +542,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !found {
 			m.cfg.Accounts = append(m.cfg.Accounts, msg.AccountCfg)
 		}
+		// Also update in-memory accounts so scheduleNextSync can find it.
+		foundAcct := false
+		for i, a := range m.accounts {
+			if a.ID == msg.Account.ID {
+				m.accounts[i] = msg.Account
+				foundAcct = true
+				break
+			}
+		}
+		if !foundAcct {
+			m.accounts = append(m.accounts, msg.Account)
+		}
 		config.Save(m.cfg) //nolint:errcheck
 		m.accountManager = m.newAccountManager()
 		m.accountManager.mode = amList
@@ -546,7 +562,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(msg.Mailboxes) > 0 {
 			m.pendingSelectMailboxID = msg.Mailboxes[0].ID
 		}
-		return m, tea.Batch(m.loadAccountsCmd(), m.clearStatusCmd(), m.startSyncTimersCmd())
+		return m, tea.Batch(m.loadAccountsCmd(), m.clearStatusCmd(), m.scheduleNextSync(msg.Account.ID))
 
 	case AutoSyncMsg:
 		var cmds []tea.Cmd
@@ -554,6 +570,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if mb.AccountID == msg.AccountID && isInboxMailbox(mb) {
 				cmds = append(cmds, m.syncMailboxCmd(mb.ID, false))
 			}
+		}
+		// Reschedule next auto-sync for this account — only one pending
+		// timer per account, avoiding the accumulation that causes
+		// "Too many simultaneous connections" errors.
+		if cmd := m.scheduleNextSync(msg.AccountID); cmd != nil {
+			cmds = append(cmds, cmd)
 		}
 		if len(cmds) > 0 {
 			return m, tea.Batch(cmds...)
@@ -1440,8 +1462,6 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			config.Save(m.cfg)
 			summarizer, _ := ai.New(m.cfg.AI)
 			m.summarizer = summarizer
-			// Restart sync timers with possibly updated intervals
-			syncCmd := m.startSyncTimersCmd()
 			if len(m.filteredMessages) > 0 {
 				m.setViewportMessage(m.filteredMessages[m.messageCursor])
 			} else {
@@ -1452,7 +1472,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.sidebarOffset = 0
 			m.messageCursor = 0
 			m.clearMessages()
-			return m, tea.Batch(m.loadAccountsCmd(), syncCmd)
+			return m, tea.Batch(m.loadAccountsCmd())
 		}
 		m.overlay = overlayNone
 		if previewingTheme {
@@ -1508,7 +1528,11 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Intercept grammar check key before compose gets it
 	if km, ok := msg.(tea.KeyMsg); ok && keyMatches(km, m.keys.GrammarCheck) {
 		body := m.compose.bodyInput.Value()
-		if body != "" && m.summarizer != nil {
+		if body == "" {
+			m.compose.statusMsg = "nothing to check"
+		} else if m.summarizer == nil {
+			m.compose.statusMsg = "AI not configured — press S to open settings"
+		} else {
 			m.compose.busy = true
 			m.compose.statusMsg = "checking grammar..."
 			return m, m.grammarCheckCmd(body)
@@ -3324,27 +3348,33 @@ func (m *Model) loadAddressBookCmd() tea.Cmd {
 	}
 }
 
-func (m *Model) startSyncTimersCmd() tea.Cmd {
-	var cmds []tea.Cmd
-	for _, acfg := range m.cfg.Accounts {
-		if acfg.SyncMinutes <= 0 {
+func (m *Model) scheduleNextSync(accountID int64) tea.Cmd {
+	for _, acc := range m.accounts {
+		if acc.ID != accountID {
 			continue
 		}
-		minutes := acfg.SyncMinutes
-		var acctID int64
-		for _, acc := range m.accounts {
-			if acc.Name == acfg.Name {
-				acctID = acc.ID
-				break
+		for _, acfg := range m.cfg.Accounts {
+			if acfg.Name != acc.Name {
+				continue
 			}
+			if acfg.SyncMinutes <= 0 {
+				return nil
+			}
+			return tea.Every(time.Duration(acfg.SyncMinutes)*time.Minute, func(t time.Time) tea.Msg {
+				return AutoSyncMsg{AccountID: accountID}
+			})
 		}
-		if acctID == 0 {
-			continue
+	}
+	return nil
+}
+
+// startSyncTimers kicks off initial auto-sync timers for all accounts.
+func (m *Model) startSyncTimers() tea.Cmd {
+	var cmds []tea.Cmd
+	for _, acc := range m.accounts {
+		if cmd := m.scheduleNextSync(acc.ID); cmd != nil {
+			cmds = append(cmds, cmd)
 		}
-		cmd := tea.Every(time.Duration(minutes)*time.Minute, func(t time.Time) tea.Msg {
-			return AutoSyncMsg{AccountID: acctID}
-		})
-		cmds = append(cmds, cmd)
 	}
 	if len(cmds) == 0 {
 		return nil
@@ -3365,29 +3395,38 @@ func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
 		}
 	}
 	return func() tea.Msg {
+		t0 := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		client := imapClient.New(acfg)
+		connectStart := time.Now()
 		if err := client.Connect(ctx); err != nil {
-			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual}
+			logFetch(acc.Name, mailbox.Name, 0, time.Since(connectStart), 0, time.Since(t0), err)
+			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual, Total: time.Since(t0)}
 		}
 		defer client.Close()
+		connectDur := time.Since(connectStart)
 		since := mailbox.LastSynced
 		if existing, countErr := database.CountMessages(mailboxID); countErr == nil && existing == 0 {
 			since = time.Time{}
 		}
+		fetchStart := time.Now()
 		msgs, err := client.FetchSince(ctx, mailbox.Name, since)
+		fetchDur := time.Since(fetchStart)
 		if err != nil {
-			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual}
+			logFetch(acc.Name, mailbox.Name, 0, connectDur, fetchDur, time.Since(t0), err)
+			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual, Total: time.Since(t0)}
 		}
 		newCount, err := storeFetchedMessages(database, mailboxID, msgs)
 		if err != nil {
-			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual}
+			logFetch(acc.Name, mailbox.Name, len(msgs), connectDur, fetchDur, time.Since(t0), err)
+			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual, Total: time.Since(t0)}
 		}
 		unread, _ := database.CountUnread(mailboxID)
 		database.SetMailboxLastSynced(mailboxID, time.Now()) //nolint:errcheck
 		database.SetMailboxUnreadCount(mailboxID, unread)    //nolint:errcheck
-		return MailboxSyncedMsg{MailboxID: mailboxID, NewCount: newCount, Manual: manual}
+		logFetch(acc.Name, mailbox.Name, len(msgs), connectDur, fetchDur, time.Since(t0), nil)
+		return MailboxSyncedMsg{MailboxID: mailboxID, NewCount: newCount, Manual: manual, Total: time.Since(t0)}
 	}
 }
 
@@ -3403,6 +3442,28 @@ func storeFetchedMessages(database *db.DB, mailboxID int64, msgs []db.Message) (
 		}
 	}
 	return newCount, nil
+}
+
+// logFetch writes a one-line fetch summary to the log file. Errors are
+// silently ignored — logging is best-effort and must never fail a sync.
+func logFetch(account, mailbox string, msgCount int, connectDur, fetchDur, totalDur time.Duration, err error) {
+	logPath, pathErr := config.LogPath()
+	if pathErr != nil {
+		return
+	}
+	f, openErr := os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	if openErr != nil {
+		return
+	}
+	defer f.Close()
+	logger := log.New(f, "", log.LstdFlags)
+	if err != nil {
+		logger.Printf("fetch\taccount=%s mailbox=%s connect=%v fetch=%v total=%v error=%q",
+			account, mailbox, connectDur.Round(time.Millisecond), fetchDur.Round(time.Millisecond), totalDur.Round(time.Millisecond), err)
+	} else {
+		logger.Printf("fetch\taccount=%s mailbox=%s msgs=%d connect=%v fetch=%v total=%v",
+			account, mailbox, msgCount, connectDur.Round(time.Millisecond), fetchDur.Round(time.Millisecond), totalDur.Round(time.Millisecond))
+	}
 }
 
 func (m *Model) maybeCheckForUpdatesCmd(manual bool) tea.Cmd {
@@ -4558,6 +4619,15 @@ func (m *Model) setStatus(msg string, isErr bool) {
 	m.statusMsg = msg
 	m.statusErr = isErr
 	// Push to log buffer (ring buffer, max 100 entries)
+	const maxLogEntries = 100
+	m.logBuffer = append(m.logBuffer, logEntry{Time: time.Now(), Message: msg, IsError: isErr})
+	if len(m.logBuffer) > maxLogEntries {
+		m.logBuffer = m.logBuffer[1:]
+	}
+}
+
+// addToLog appends to the in-memory log buffer without updating the status bar.
+func (m *Model) addToLog(msg string, isErr bool) {
 	const maxLogEntries = 100
 	m.logBuffer = append(m.logBuffer, logEntry{Time: time.Now(), Message: msg, IsError: isErr})
 	if len(m.logBuffer) > maxLogEntries {

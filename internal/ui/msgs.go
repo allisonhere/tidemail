@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"time"
+
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
 	"github.com/allisonhere/tide/internal/update"
@@ -23,6 +25,7 @@ type MailboxSyncedMsg struct {
 	NewCount  int
 	Err       error
 	Manual    bool
+	Total     time.Duration
 }
 
 type AccountSavedMsg struct {
