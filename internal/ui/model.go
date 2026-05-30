@@ -995,11 +995,17 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.focused != paneAccounts && len(m.filteredMessages) > 0 {
 			if m.hasSelection() {
 				var cmds []tea.Cmd
+				// Collect IDs and cmds first, then remove — removeMessageFromMemory
+				// calls applyFilter which rebuilds filteredMessages.
+				var ids []int64
 				for _, msg2 := range m.filteredMessages {
 					if m.selectedMessages[msg2.ID] {
-						m.removeMessageFromMemory(msg2.ID)
+						ids = append(ids, msg2.ID)
 						cmds = append(cmds, m.deleteMessageCmd(msg2))
 					}
+				}
+				for _, id := range ids {
+					m.removeMessageFromMemory(id)
 				}
 				m.clearSelection()
 				return m, tea.Batch(cmds...)
