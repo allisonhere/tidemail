@@ -369,6 +369,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Result.RequiresManual {
 			m.updateState = updateStateNeedsElevation
 			m.syncSettingsUpdateState()
+			// Clear dismiss — the user clearly wants this update.
+			m.updateDismissed = false
+			m.cfg.Updates.DismissedVersion = ""
+			config.Save(m.cfg) //nolint:errcheck
 			m.setStatus("update downloaded; admin permission required", true)
 			return m, m.clearStatusCmd()
 		}
