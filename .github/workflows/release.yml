@@ -32,10 +32,10 @@ jobs:
         run: |
           mkdir -p dist
           targets=(
-            "linux   amd64 tide-linux-x86_64"
-            "linux   arm64 tide-linux-aarch64"
-            "darwin  amd64 tide-darwin-x86_64"
-            "darwin  arm64 tide-darwin-aarch64"
+            "linux   amd64 tidemail-linux-x86_64"
+            "linux   arm64 tidemail-linux-aarch64"
+            "darwin  amd64 tidemail-darwin-x86_64"
+            "darwin  arm64 tidemail-darwin-aarch64"
           )
           for entry in "${targets[@]}"; do
             read -r goos goarch name <<< "$entry"

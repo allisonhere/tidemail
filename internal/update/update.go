@@ -366,7 +366,7 @@ func (u *Updater) assetName() (string, error) {
 
 	switch goos {
 	case "linux", "darwin":
-		return "tide-" + goos + "-" + arch, nil
+		return "tidemail-" + goos + "-" + arch, nil
 	default:
 		return "", fmt.Errorf("unsupported OS: %s", goos)
 	}

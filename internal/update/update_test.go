@@ -23,8 +23,8 @@ func TestCheckResolvesMatchingAsset(t *testing.T) {
 			"body":"Faster updates.\n\nMore detail.",
 			"published_at":"2026-03-30T12:00:00Z",
 			"assets":[
-				{"name":"tide-linux-x86_64.tar.gz","browser_download_url":"https://example.com/download"},
-				{"name":"tide-darwin-aarch64.tar.gz","browser_download_url":"https://example.com/other"}
+				{"name":"tidemail-linux-x86_64.tar.gz","browser_download_url":"https://example.com/download"},
+				{"name":"tidemail-darwin-aarch64.tar.gz","browser_download_url":"https://example.com/other"}
 			]
 		}`), nil
 	})}
@@ -42,7 +42,7 @@ func TestCheckResolvesMatchingAsset(t *testing.T) {
 	if !result.Available {
 		t.Fatal("expected update to be available")
 	}
-	if result.Latest.AssetName != "tide-linux-x86_64" {
+	if result.Latest.AssetName != "tidemail-linux-x86_64" {
 		t.Fatalf("unexpected asset name: %q", result.Latest.AssetName)
 	}
 	if result.Latest.DownloadURL != "https://example.com/download" {
@@ -57,7 +57,7 @@ func TestCheckResolvesMatchingAsset(t *testing.T) {
 }
 
 func TestDownloadExtractsBinary(t *testing.T) {
-	archive := testArchive(t, "tide-linux-x86_64", "#!/bin/sh\necho tide\n")
+	archive := testArchive(t, "tidemail-linux-x86_64", "#!/bin/sh\necho tide\n")
 	updater := &Updater{HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.String() != "https://example.com/download" {
 			t.Fatalf("unexpected URL: %s", req.URL)
@@ -70,7 +70,7 @@ func TestDownloadExtractsBinary(t *testing.T) {
 	})}}
 	asset, err := updater.Download(ReleaseInfo{
 		Version:     "v1.2.3",
-		AssetName:   "tide-linux-x86_64",
+		AssetName:   "tidemail-linux-x86_64",
 		DownloadURL: "https://example.com/download",
 	})
 	if err != nil {
