@@ -679,11 +679,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case MessageDeletedMsg:
 		if msg.Err != nil {
 			m.setStatus(fmt.Sprintf("delete failed: %v", msg.Err), true)
+			// Optimistic remove already took it out — reload to restore.
+			if selected := m.selectedMailbox(); selected != nil {
+				return m, tea.Batch(m.clearStatusCmd(), m.loadMailboxMessagesCmd(selected.ID))
+			}
 			return m, m.clearStatusCmd()
 		}
-		if m.removeMessageFromMemory(msg.MessageID) {
-			m.adjustMailboxUnreadCount(msg.MailboxID, -1)
-		}
+		// Message was already removed optimistically; just adjust counts.
+		m.adjustMailboxUnreadCount(msg.MailboxID, -1)
 		m.setStatus("deleted", false)
 		return m, m.clearStatusCmd()
 
@@ -994,6 +997,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				var cmds []tea.Cmd
 				for _, msg2 := range m.filteredMessages {
 					if m.selectedMessages[msg2.ID] {
+						m.removeMessageFromMemory(msg2.ID)
 						cmds = append(cmds, m.deleteMessageCmd(msg2))
 					}
 				}
@@ -1001,6 +1005,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, tea.Batch(cmds...)
 			}
 			msg2 := m.filteredMessages[m.messageCursor]
+			m.removeMessageFromMemory(msg2.ID)
 			return m, m.deleteMessageCmd(msg2)
 		}
 		return m, nil
