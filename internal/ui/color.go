@@ -98,6 +98,23 @@ func accentReadableOn(accent, bg lipgloss.Color, minRatio float64) lipgloss.Colo
 	return readableText(accent, bg, minRatio)
 }
 
+// selectionLightnessDelta returns the HSL lightness delta for selection highlights.
+// Most dark themes get 0.12, but themes with extremely dark backgrounds (vt100, vt52)
+// need a bigger jump for the highlight to be visible at all.
+func selectionLightnessDelta(bg lipgloss.Color) float64 {
+	if luminance(bg) < 0.01 {
+		return 0.24
+	}
+	return 0.12
+}
+
+// selectionSoftDelta is the lighter version used for unfocused / secondary highlights.
+func selectionSoftDelta(bg lipgloss.Color) float64 {
+	if luminance(bg) < 0.01 {
+		return 0.12
+	}
+	return 0.06
+}
 func modalSurface(t Theme) lipgloss.Color {
 	if isDark(t.Bg) {
 		return adjustLightness(t.Bg, 0.06)
