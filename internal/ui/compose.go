@@ -115,6 +115,7 @@ func (c *ComposeModel) SetAddressBook(addrs []string) {
 	c.ccInput.SetSuggestions(addrs)
 }
 
+// NewReply creates a compose model pre-filled for replying to a message.
 func NewReply(original db.Message, acfg config.AccountConfig, accounts []config.AccountConfig) ComposeModel {
 	c := NewCompose(acfg, accounts, nil)
 	c.quoteCollapsed = true
@@ -141,11 +142,68 @@ func NewReply(original db.Message, acfg config.AccountConfig, accounts []config.
 	return c
 }
 
+// NewForward creates a compose model for forwarding a message.
+// To field is left empty for the user to fill in. Subject is prefixed with "Fwd:".
+// The original body is quoted with a "Forwarded message" header and original attachments are included.
+func NewForward(original db.Message, acfg config.AccountConfig, accounts []config.AccountConfig) ComposeModel {
+	c := NewCompose(acfg, accounts, nil)
+	c.quoteCollapsed = true
+
+	subject := original.Subject
+	if !strings.HasPrefix(strings.ToLower(subject), "fwd:") {
+		subject = "Fwd: " + subject
+	}
+	c.subjectInput.SetValue(subject)
+
+	// Quote the original body text with a forward header
+	if original.BodyText != "" {
+		plain := ansi.Strip(original.BodyText)
+		quoted := quoteForward(plain, original)
+		c.bodyInput.SetValue(quoted)
+	}
+
+	// Include original attachments
+	for _, att := range original.AttachmentData {
+		c.attachments = append(c.attachments, attachmentFile{
+			Name: att.Filename,
+			Path: "",
+			Data: att.Data,
+		})
+	}
+
+	return c
+}
+
 // quoteReply formats a quoted reply block from the original message.
 func quoteReply(body, from string) string {
 	var buf strings.Builder
 	buf.WriteString("\n\n")
 	buf.WriteString("On " + from + " wrote:\n")
+	for _, line := range strings.Split(strings.TrimRight(body, "\n"), "\n") {
+		buf.WriteString("> ")
+		buf.WriteString(line)
+		buf.WriteString("\n")
+	}
+	return buf.String()
+}
+
+// quoteForward formats a forwarded message block with headers.
+func quoteForward(body string, original db.Message) string {
+	var buf strings.Builder
+	buf.WriteString("\n\n")
+	buf.WriteString("---------- Forwarded message ----------\n")
+	buf.WriteString("From: " + original.From + "\n")
+	if original.Date != (time.Time{}) {
+		buf.WriteString("Date: " + original.Date.Format(time.RFC1123Z) + "\n")
+	}
+	buf.WriteString("Subject: " + original.Subject + "\n")
+	if original.To != "" {
+		buf.WriteString("To: " + original.To + "\n")
+	}
+	if original.CC != "" {
+		buf.WriteString("CC: " + original.CC + "\n")
+	}
+	buf.WriteString("\n")
 	for _, line := range strings.Split(strings.TrimRight(body, "\n"), "\n") {
 		buf.WriteString("> ")
 		buf.WriteString(line)

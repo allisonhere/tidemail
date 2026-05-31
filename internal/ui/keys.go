@@ -23,6 +23,7 @@ type KeyMap struct {
 	UnreadOnly  key.Binding
 	Compose     key.Binding
 	Reply       key.Binding
+	Forward     key.Binding
 	Archive     key.Binding
 	Command     key.Binding
 
@@ -75,10 +76,10 @@ var DefaultKeys = KeyMap{
 	Enter:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open")),
 	Back:     key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 
-	Sync:        key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "sync mailbox")),
-	SyncAll:     key.NewBinding(key.WithKeys("F"), key.WithHelp("F", "sync all")),
+	Sync:        key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sync mailbox")),
+	SyncAll:     key.NewBinding(key.WithKeys("F", "ctrl+s"), key.WithHelp("F/ctrl+s", "sync all")),
 	MarkRead:    key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "mark read")),
-	MarkAllRead: key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "mark all read")),
+	MarkAllRead: key.NewBinding(key.WithKeys("R", "ctrl+x"), key.WithHelp("R/ctrl+x", "mark all read")),
 	OpenBrowser: key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser")),
 	NextLink:    key.NewBinding(key.WithKeys("ctrl+n", "alt+n"), key.WithHelp("ctrl+n", "next link")),
 	PrevLink:    key.NewBinding(key.WithKeys("ctrl+p", "alt+p"), key.WithHelp("ctrl+p", "prev link")),
@@ -86,6 +87,7 @@ var DefaultKeys = KeyMap{
 	UnreadOnly:  key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "toggle unread only")),
 	Compose:     key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "compose")),
 	Reply:       key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reply")),
+	Forward:     key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "forward")),
 	Archive:     key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),
 	Command:     key.NewBinding(key.WithKeys("p", ":"), key.WithHelp("p", "command")),
 
@@ -97,7 +99,7 @@ var DefaultKeys = KeyMap{
 	Help:           key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 	Quit:           key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 
-	Summary:       key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "AI summary")),
+	Summary:       key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "AI summary")),
 	CopyText:      key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "copy")),
 	SaveMD:        key.NewBinding(key.WithKeys("M"), key.WithHelp("M", "save .md")),
 	ContentSearch: key.NewBinding(key.WithKeys("ctrl+f"), key.WithHelp("ctrl+f", "find")),

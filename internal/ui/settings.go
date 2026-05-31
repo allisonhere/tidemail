@@ -286,9 +286,9 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		activeSection:        ssDisplay,
 		focusedPane:          settingsPaneSidebar,
 		sectionField: [settingsSectionCount]settingsField{
-			ssDisplay: sfBackToSections,
-			ssFeeds:   sfBackToSections,
-			ssUpdates: sfBackToSections,
+			ssDisplay:  sfBackToSections,
+			ssFeeds:    sfBackToSections,
+			ssUpdates:  sfBackToSections,
 			ssAI:       sfBackToSections,
 			ssAdvanced: sfBackToSections,
 			ssAbout:    sfBackToSections,
@@ -1396,7 +1396,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 			b.addBlank()
 		}
 		if s.update.restartable {
-			b.addAction("Restart now",	"launch updated Tidemail", sfUpdateRestartNow)
+			b.addAction("Restart now", "launch updated Tidemail", sfUpdateRestartNow)
 		}
 
 	case ssAI:

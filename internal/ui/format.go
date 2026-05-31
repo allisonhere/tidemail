@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/charmbracelet/lipgloss"
 )
 
 var (
