@@ -1,7 +1,5 @@
 # golangci-lint v2 configuration.
 # The "standard" default set is errcheck, govet, ineffassign, staticcheck, unused.
-# CI runs with only-new-issues (see ci.yml), so the existing backlog is grandfathered
-# and the gate fails only on issues introduced by a change.
 version: "2"
 
 run:
@@ -11,8 +9,14 @@ linters:
   default: standard
   exclusions:
     rules:
-      # Don't require checking error returns in tests (server.Write/Close in mock
-      # SMTP pipes etc.); they're noise, not bugs.
+      # Tests: don't require checking error returns (mock-pipe Write/Close etc.).
       - path: _test\.go
         linters:
           - errcheck
+      # Unchecked Close() is idiomatic here (network/file handles closed in defers);
+      # not worth annotating every site.
+      - linters: [errcheck]
+        text: 'Error return value of `[^`]*\.Close` is not checked'
+      # cmd/kittytest is a throwaway terminal-graphics probe, not shipped code.
+      - path: ^cmd/kittytest/
+        linters: [errcheck]

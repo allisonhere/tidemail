@@ -87,7 +87,7 @@ func StartGmailOAuthFlow(clientID, clientSecret string, port int) (*oauth2.Token
 			return
 		}
 		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprint(w, `<html><body><h3>Authenticated!</h3><p>You can close this tab.</p></body></html>`)
+		_, _ = fmt.Fprint(w, `<html><body><h3>Authenticated!</h3><p>You can close this tab.</p></body></html>`)
 		tokenCh <- tok
 	})
 

@@ -80,7 +80,7 @@ func newManagerChrome(width int, t Theme, plainUI bool) managerChrome {
 	accentFg := contrastFg(accent)
 	text := readableText(t.Fg, baseBg, 4.5)
 	muted := mutedText(text, baseBg)
-	highlight := accent
+	var highlight lipgloss.Color
 	if isDark(baseBg) {
 		highlight = adjustLightness(accent, -0.16)
 	} else {
@@ -373,17 +373,6 @@ func (am *AccountManager) setData(accounts []db.Account, mailboxes []db.Mailbox,
 	am.configs = configs
 	am.oauthCfg = oauthCfg
 	am.cursor = clamp(am.cursor, 0, max(0, len(accounts)-1))
-}
-
-func (am *AccountManager) syncInputWidths(width int) {
-	inputW := max(10, width-6)
-	for _, ti := range []*textinput.Model{
-		&am.nameInput, &am.imapHostInput, &am.imapPortInput,
-		&am.smtpHostInput, &am.smtpPortInput,
-		&am.userInput, &am.passInput, &am.fromInput, &am.syncInput,
-	} {
-		ti.Width = inputW
-	}
 }
 
 func (am *AccountManager) focusField(f amField) {

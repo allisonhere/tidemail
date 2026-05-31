@@ -24,12 +24,12 @@ func New(cfg config.AIConfig) (Summarizer, error) {
 		return &openAI{key: cfg.OpenAIKey, model: cfg.OpenAIModel}, nil
 	case "claude":
 		if cfg.ClaudeKey == "" {
-			return nil, fmt.Errorf("Claude API key not set")
+			return nil, fmt.Errorf("no Claude API key set")
 		}
 		return &claude{key: cfg.ClaudeKey, model: cfg.ClaudeModel}, nil
 	case "gemini":
 		if cfg.GeminiKey == "" {
-			return nil, fmt.Errorf("Gemini API key not set")
+			return nil, fmt.Errorf("no Gemini API key set")
 		}
 		return &gemini{key: cfg.GeminiKey, model: cfg.GeminiModel}, nil
 	case "ollama":

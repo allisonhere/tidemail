@@ -620,26 +620,6 @@ func fileIcon(name string) string {
 	}
 }
 
-// renderComposeRow renders a form row with seamless background across
-// marker, label, and control cells — all share the same rowBg.
-func renderComposeRow(label string, focused bool, control string, width, labelW int, chrome managerChrome) string {
-	rowBg := chrome.baseBg
-	labelFg := chrome.muted
-	if focused {
-		rowBg = chrome.fieldBg
-		labelFg = chrome.text
-	}
-	marker := lipgloss.NewStyle().Background(rowBg).Width(2).Render(" ")
-	if focused {
-		marker = lipgloss.NewStyle().Background(rowBg).Foreground(chrome.accent).Bold(true).Width(2).Render(" >")
-	}
-	labelCell := lipgloss.NewStyle().Background(rowBg).Foreground(labelFg).Width(labelW).Render(truncate(label, max(1, labelW-1)))
-	ctrlW := max(1, width-lipgloss.Width(marker)-labelW)
-	control = truncateStyled(control, ctrlW, rowBg)
-	ctrlCell := lipgloss.NewStyle().Background(rowBg).Width(ctrlW).Render(control)
-	return marker + labelCell + ctrlCell
-}
-
 // renderComposePanel wraps content rows in a surfaceBg section with an
 // accent title bar. No border — the surfaceBg background change provides
 // visual separation.
@@ -956,7 +936,7 @@ func (c ComposeModel) pickerView(width, height int, chrome managerChrome) string
 		var line string
 		if entry.isDir {
 			if entry.name == ".." {
-				line = fmt.Sprintf("  ../")
+				line = "  ../"
 			} else {
 				line = fmt.Sprintf("  %s/", entry.name)
 			}
@@ -1023,17 +1003,3 @@ func (c ComposeModel) pickerView(width, height int, chrome managerChrome) string
 // statusMsg helpers used by model.go
 func (c ComposeModel) StatusMsg() string { return c.statusMsg }
 func (c ComposeModel) IsErr() bool       { return c.isErr }
-
-// clearStatus resets the status after model.go shows it in the status bar.
-func (c *ComposeModel) clearStatus() {
-	c.statusMsg = ""
-	c.isErr = false
-}
-
-// sentStatusLine returns a brief label for the status bar.
-func composeSentStatus(err error) string {
-	if err != nil {
-		return fmt.Sprintf("send failed: %v", err)
-	}
-	return "message sent"
-}

@@ -49,22 +49,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          # only-new-issues needs full history to diff against the base branch.
-          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
-      # Advisory: only-new-issues is imprecise for whole-package linters (unused,
-      # staticcheck) and re-flags the pre-existing backlog in any package a PR touches.
-      # Keep lint running and annotating, but don't block merges until the backlog is
-      # burned down; then drop continue-on-error to make it a hard gate.
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
-        continue-on-error: true
         with:
           version: latest
-          only-new-issues: true

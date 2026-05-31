@@ -203,9 +203,6 @@ func (m Model) renderSaveAttachPicker(width, height int, chrome managerChrome) s
 		var label string
 		switch {
 		case e.name == "✓ select this folder":
-			label = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("2")).
-				Render(e.name)
 			if cursor {
 				label = lipgloss.NewStyle().
 					Background(chrome.accent).
@@ -218,9 +215,6 @@ func (m Model) renderSaveAttachPicker(width, height int, chrome managerChrome) s
 					Render(e.name)
 			}
 		case e.isDir && e.name == "..":
-			label = lipgloss.NewStyle().
-				Foreground(chrome.accent).
-				Render("📁 " + e.name)
 			if cursor {
 				label = lipgloss.NewStyle().
 					Background(chrome.accent).

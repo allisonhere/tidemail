@@ -268,9 +268,7 @@ type parsedVersion struct {
 
 func parseVersion(v string) (parsedVersion, bool) {
 	v = strings.TrimSpace(v)
-	if strings.HasPrefix(v, "v") {
-		v = v[1:]
-	}
+	v = strings.TrimPrefix(v, "v")
 	parts := strings.Split(v, ".")
 	if len(parts) != 3 {
 		return parsedVersion{}, false

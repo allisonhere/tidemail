@@ -20,10 +20,7 @@ and incremental sync. See `CLAUDE.md` for the architecture map.
 
 - CI (`.github/workflows/ci.yml`) runs `gofmt`, `go build`, `go vet`,
   `go test ./... -race`, and `golangci-lint` on every push/PR.
-- Lint config in `.golangci.yml`. The golangci-lint job is currently **advisory**
-  (annotates but doesn't block): `only-new-issues` re-flags the existing backlog for
-  whole-package linters, so it's `continue-on-error` until the backlog is cleared —
-  then drop that to make it a hard gate.
+- Lint config in `.golangci.yml`; `golangci-lint` runs clean and is enforced in CI.
 
 ## Test coverage
 
@@ -33,5 +30,4 @@ and incremental sync. See `CLAUDE.md` for the architecture map.
   - `internal/ui` — the large `model.go` Update loop has only targeted tests.
   - `internal/auth` — the interactive browser callback flow in
     `StartGmailOAuthFlow` is not exercised (token exchange/refresh is).
-- Backlog: `golangci-lint run` reports ~80 pre-existing issues (unused funcs,
-  unchecked errors, staticcheck) that are grandfathered by CI; worth burning down.
+- Lint backlog cleared: `golangci-lint run` is clean across the repo.

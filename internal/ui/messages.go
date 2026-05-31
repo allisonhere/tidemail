@@ -33,7 +33,7 @@ func (m Model) renderMessagesPane() string {
 			// When selected but not the cursor, use green checkmark + text
 			if i != m.messageCursor {
 				selFg := lipgloss.Color("#a6e3a1")
-				style = style.Copy().Foreground(selFg)
+				style = style.Foreground(selFg)
 			}
 		}
 		if i == m.messageCursor {
@@ -51,10 +51,6 @@ func (m Model) renderMessagesPane() string {
 	}
 
 	focused := m.focused == paneMessages
-	border := m.styles.ArticlesPane
-	if focused {
-		border = border.BorderForeground(borderFocus)
-	}
 	title := "Messages"
 	if m.selectedUnifiedInbox() {
 		title = "Unified Inbox"
@@ -100,9 +96,9 @@ func (m Model) messageRowStyles() (lipgloss.Style, lipgloss.Style, lipgloss.Styl
 			unreadBg = m.styles.Theme.Bg
 		}
 		leg := accentReadableOn(accent, unreadBg, 3)
-		unread = unread.Copy().Foreground(leg)
-		selected = selected.Copy().Foreground(leg)
-		headerActive = headerActive.Copy().
+		unread = unread.Foreground(leg)
+		selected = selected.Foreground(leg)
+		headerActive = headerActive.
 			Background(accent).
 			Foreground(readableText(m.styles.Theme.Fg, accent, 4.5))
 		borderFocus = accent
@@ -124,10 +120,6 @@ func (m *Model) toggleMessageSelection(id int64) {
 
 func (m Model) hasSelection() bool {
 	return len(m.selectedMessages) > 0
-}
-
-func (m Model) selectedMessageCount() int {
-	return len(m.selectedMessages)
 }
 
 func (m *Model) applyFilter() {

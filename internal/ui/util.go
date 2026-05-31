@@ -307,10 +307,7 @@ func isGmailSystemFolder(name string) bool {
 	case "all mail", "starred", "important", "spam", "trash":
 		return true
 	}
-	if strings.HasPrefix(lower, "categories/") {
-		return true
-	}
-	return false
+	return strings.HasPrefix(lower, "categories/")
 }
 
 func isInboxMailbox(mb db.Mailbox) bool {

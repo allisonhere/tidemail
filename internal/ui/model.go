@@ -1700,7 +1700,7 @@ func (m Model) statusBarInlineText(style lipgloss.Style, s string) string {
 	if s == "" {
 		return ""
 	}
-	return style.Copy().UnsetPadding().Render(s)
+	return style.UnsetPadding().Render(s)
 }
 
 func (m Model) statusBarKeyHintStrip() string {
@@ -1922,16 +1922,6 @@ func (m Model) newAccountManager() AccountManager {
 	return am
 }
 
-func (m *Model) selectSidebarMailbox(mailboxID int64) bool {
-	for i, row := range m.sidebarRows {
-		if row.kind == rowKindMailbox && row.mailboxID == mailboxID {
-			m.sidebarCursor = i
-			return true
-		}
-	}
-	return false
-}
-
 func (m *Model) clearMessages() {
 	m.messages = nil
 	m.filteredMessages = nil
@@ -2120,9 +2110,6 @@ func (m Model) articleRowsVisible() int {
 }
 func (m Model) contentPaneOuterHeight() int {
 	return max(3, m.mainHeight()-m.articlesPaneOuterHeight())
-}
-func (m Model) contentViewportHeight() int {
-	return max(1, m.contentPaneOuterHeight())
 }
 func (m Model) contentBodyHeight() int {
 	return max(1, m.contentPaneOuterHeight()-1)

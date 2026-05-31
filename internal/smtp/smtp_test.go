@@ -100,19 +100,19 @@ func TestSendSTARTTLS_NoTLS(t *testing.T) {
 		server.Write([]byte("235 Authentication successful\r\n"))
 
 		// Read MAIL FROM (sent by sendMail)
-		n, _ = server.Read(buf)
+		server.Read(buf)
 		server.Write([]byte("250 OK\r\n"))
 
 		// Read RCPT TO
-		n, _ = server.Read(buf)
+		server.Read(buf)
 		server.Write([]byte("250 OK\r\n"))
 
 		// Read DATA
-		n, _ = server.Read(buf)
+		server.Read(buf)
 		server.Write([]byte("354 Start mail input\r\n"))
 
 		// Read content
-		n, _ = server.Read(buf)
+		server.Read(buf)
 		server.Write([]byte("250 OK\r\n"))
 
 		server.Close()

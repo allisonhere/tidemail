@@ -368,12 +368,12 @@ func (m Model) unifiedUnreadCount() int64 {
 
 func (m Model) accountHeaderStyle(accountID int64, selected bool) lipgloss.Style {
 	accent := m.accountColor(accountID)
-	style := m.styles.FeedItem.Copy().Foreground(lipgloss.Color(m.styles.Theme.Dimmed)).Bold(true)
+	style := m.styles.FeedItem.Foreground(lipgloss.Color(m.styles.Theme.Dimmed)).Bold(true)
 	if accent != "" {
 		style = style.Foreground(accentReadableOn(accent, m.styles.Theme.Bg, 3))
 	}
 	if selected {
-		style = m.sidebarSelectedStyle(accent).Copy().Bold(true)
+		style = m.sidebarSelectedStyle(accent).Bold(true)
 	}
 	return style
 }
@@ -386,14 +386,14 @@ func (m Model) accountBadgeStyle(accountID int64, selected bool) lipgloss.Style 
 	if accent == "" {
 		return m.styles.UnreadBadge
 	}
-	return m.styles.UnreadBadge.Copy().Foreground(accentReadableOn(accent, m.styles.Theme.Bg, 3))
+	return m.styles.UnreadBadge.Foreground(accentReadableOn(accent, m.styles.Theme.Bg, 3))
 }
 
 func (m Model) mailboxAccentStyle(mb db.Mailbox, selected bool) lipgloss.Style {
 	style := m.styles.FeedItem
 	accent := m.accountColor(mb.AccountID)
 	if accent != "" {
-		style = style.Copy().Foreground(accentReadableOn(accent, m.styles.Theme.Bg, 3))
+		style = style.Foreground(accentReadableOn(accent, m.styles.Theme.Bg, 3))
 	}
 	if selected {
 		style = m.sidebarSelectedStyle(accent)
@@ -409,13 +409,13 @@ func (m Model) mailboxBadgeStyle(mb db.Mailbox, selected bool) lipgloss.Style {
 	if accent == "" {
 		return m.styles.UnreadBadge
 	}
-	return m.styles.UnreadBadge.Copy().Foreground(accentReadableOn(accent, m.styles.Theme.Bg, 3))
+	return m.styles.UnreadBadge.Foreground(accentReadableOn(accent, m.styles.Theme.Bg, 3))
 }
 
 func (m Model) sidebarSelectedStyle(accent lipgloss.Color) lipgloss.Style {
 	if m.focused == paneAccounts {
 		if accent != "" {
-			return m.styles.FeedItemSelectedFocused.Copy().
+			return m.styles.FeedItemSelectedFocused.
 				Background(accent).
 				Foreground(readableText(m.styles.Theme.Fg, accent, 4.5))
 		}
@@ -425,14 +425,14 @@ func (m Model) sidebarSelectedStyle(accent lipgloss.Color) lipgloss.Style {
 	style := m.styles.FeedItemSelectedUnfocused
 	if accent != "" {
 		bg := terminalColorAsColor(style.GetBackground())
-		style = style.Copy().Foreground(accentReadableOn(accent, bg, 3))
+		style = style.Foreground(accentReadableOn(accent, bg, 3))
 	}
 	return style
 }
 
 func (m Model) sidebarSelectedBadgeStyle(accent lipgloss.Color) lipgloss.Style {
 	style := m.sidebarSelectedStyle(accent)
-	return m.styles.UnreadBadge.Copy().Foreground(terminalColorAsColor(style.GetForeground()))
+	return m.styles.UnreadBadge.Foreground(terminalColorAsColor(style.GetForeground()))
 }
 
 func renderFeedRow(prefix, title, badge string, width int) string {

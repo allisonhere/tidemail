@@ -223,7 +223,7 @@ func buildRaw(from string, msg OutgoingMessage) []byte {
 	// Body part
 	bodyHdr := textproto.MIMEHeader{"Content-Type": {"text/plain; charset=utf-8"}}
 	w, _ := mw.CreatePart(bodyHdr)
-	w.Write([]byte(msg.Body))
+	_, _ = w.Write([]byte(msg.Body))
 
 	// Attachment parts
 	for _, att := range msg.Attachments {
@@ -240,7 +240,7 @@ func buildRaw(from string, msg OutgoingMessage) []byte {
 			if end > len(encoded) {
 				end = len(encoded)
 			}
-			w.Write([]byte(encoded[i:end] + "\r\n"))
+			_, _ = w.Write([]byte(encoded[i:end] + "\r\n"))
 		}
 	}
 

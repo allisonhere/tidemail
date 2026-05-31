@@ -12,8 +12,8 @@ Thanks for helping out! A few quick notes:
   golangci-lint run
   ```
   CI (`.github/workflows/ci.yml`) runs these on every push and pull request.
-- **Lint** uses `only-new-issues`, so you don't need to fix the pre-existing backlog —
-  just keep your own changes clean. Burning down the backlog is welcome in its own PR.
+- **Lint** (`golangci-lint`) is enforced and the tree is clean — keep it that way by
+  running `golangci-lint run` before pushing.
 - **Error handling**: surface failures to the user (`setStatus`) or the fetch log rather
   than dropping them; mark deliberate ignores with `//nolint:errcheck`.
 - **Tests**: prefer table-driven tests; the UI package sandboxes config/data dirs via

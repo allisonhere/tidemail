@@ -172,34 +172,6 @@ func renderTextInput(input textinput.Model, width int, focused, masked bool, chr
 		Render(view)
 }
 
-func renderFormFieldHeader(label string, focused bool, status string, width int, chrome managerChrome) string {
-	rowBg := chrome.baseBg
-	labelFg := chrome.muted
-	markerCell := lipgloss.NewStyle().
-		Background(rowBg).
-		Width(2).
-		Render(" ")
-	labelW := max(1, width-lipgloss.Width(markerCell))
-	row := markerCell + lipgloss.NewStyle().
-		Background(rowBg).
-		Foreground(labelFg).
-		Render(truncate(label, labelW))
-	if status != "" {
-		badge := renderFormBadge(status, focused, chrome)
-		gap := max(1, width-lipgloss.Width(row)-lipgloss.Width(badge))
-		row += lipgloss.NewStyle().Background(rowBg).Render(strings.Repeat(" ", gap))
-		row += badge
-	}
-	if gap := width - lipgloss.Width(row); gap > 0 {
-		row += lipgloss.NewStyle().Background(rowBg).Render(strings.Repeat(" ", gap))
-	}
-	return row
-}
-
-func renderFormHint(text string, width int, chrome managerChrome) string {
-	return strings.Join(renderFormHintLines(text, width, chrome), "\n")
-}
-
 func renderFormHintLines(text string, width int, chrome managerChrome) []string {
 	text = strings.TrimRight(text, " \t\r\n")
 	trimmed := strings.TrimSpace(text)
