@@ -160,7 +160,7 @@ func renderTextInput(input textinput.Model, width int, focused, masked bool, chr
 	}
 	input.Width = width
 	if focused {
-		input.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
+		input.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(accentReadableOn(chrome.text, chrome.accent, 4.5))
 	}
 	if masked {
 		input.EchoMode = textinput.EchoPassword

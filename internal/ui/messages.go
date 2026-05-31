@@ -175,7 +175,7 @@ func (m Model) messageRowStyles() (lipgloss.Style, lipgloss.Style, lipgloss.Styl
 		unread = unread.Foreground(leg)
 		headerActive = headerActive.
 			Background(accent).
-			Foreground(readableText(m.styles.Theme.Fg, accent, 4.5))
+			Foreground(accentReadableOn(m.styles.Theme.Fg, accent, 4.5))
 		borderFocus = accent
 	}
 	return unread, read, selected, headerActive, border, borderFocus

@@ -76,7 +76,7 @@ func newManagerChrome(width int, t Theme, plainUI bool) managerChrome {
 	if accent == "" {
 		accent = t.Border
 	}
-	accentFg := contrastFg(accent)
+	accentFg := accentReadableOn(t.Fg, accent, 4.5)
 	text := readableText(t.Fg, baseBg, 4.5)
 	muted := mutedText(text, baseBg)
 	var highlight lipgloss.Color
@@ -85,7 +85,7 @@ func newManagerChrome(width int, t Theme, plainUI bool) managerChrome {
 	} else {
 		highlight = adjustLightness(accent, 0.12)
 	}
-	highlightFg := contrastFg(highlight)
+	highlightFg := accentReadableOn(t.Fg, highlight, 4.5)
 	border := t.OverlayBorder
 	if border == "" {
 		border = t.Border
@@ -922,7 +922,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 		ti.TextStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.text)
 		ti.PlaceholderStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.muted)
 		if focused {
-			ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
+			ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(accentReadableOn(chrome.text, chrome.accent, 4.5))
 		} else {
 			_ = ti.Cursor.SetMode(cursor.CursorHide)
 		}

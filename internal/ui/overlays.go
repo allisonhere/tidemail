@@ -198,8 +198,8 @@ func (m Model) renderCommandPalette(width int, chrome managerChrome) string {
 	input.PromptStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.accent).Bold(true)
 	input.TextStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text)
 	input.PlaceholderStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted)
-	input.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
-	input.Cursor.TextStyle = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
+	input.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(accentReadableOn(chrome.text, chrome.accent, 4.5))
+	input.Cursor.TextStyle = lipgloss.NewStyle().Background(chrome.accent).Foreground(accentReadableOn(chrome.text, chrome.accent, 4.5))
 
 	items := m.filteredCommandItems()
 	rows := []string{inputViewWithCursor(input, true), ""}
@@ -220,7 +220,7 @@ func (m Model) renderCommandPalette(width int, chrome managerChrome) string {
 			}
 			if i == m.commandCursor {
 				prefix = "> "
-				style = style.Background(chrome.accent).Foreground(contrastFg(chrome.accent)).Bold(true)
+				style = style.Background(chrome.accent).Foreground(accentReadableOn(chrome.text, chrome.accent, 4.5)).Bold(true)
 			}
 			rows = append(rows, style.Width(max(1, width-4)).Render(truncate(prefix+item.label, max(1, width-4))))
 		}

@@ -348,7 +348,7 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 		cursor := idx == m.movePicker.cursor
 		entryStyle := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Padding(0, 2)
 		if cursor {
-			entryStyle = entryStyle.Background(chrome.accent).Foreground(contrastFg(chrome.accent))
+			entryStyle = entryStyle.Background(chrome.accent).Foreground(accentReadableOn(chrome.text, chrome.accent, 4.5))
 		} else {
 			entryStyle = entryStyle.Foreground(chrome.text)
 		}

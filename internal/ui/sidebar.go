@@ -419,7 +419,7 @@ func (m Model) sidebarSelectedStyle(accent lipgloss.Color) lipgloss.Style {
 		if accent != "" {
 			return m.styles.FeedItemSelectedFocused.
 				Background(accent).
-				Foreground(readableText(m.styles.Theme.Fg, accent, 4.5))
+				Foreground(accentReadableOn(m.styles.Theme.Fg, accent, 4.5))
 		}
 		return m.styles.FeedItemSelectedFocused
 	}

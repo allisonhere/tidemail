@@ -855,21 +855,15 @@ func renderComposePanelRow(ti textinput.Model, label string, focused bool, width
 	ti.Prompt = ""
 	ti.PromptStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.accent)
 	ti.TextStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.text)
-	ti.PlaceholderStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.muted)
-	ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
+	ti.PlaceholderStyle = lipgloss.NewStyle().Foreground(chrome.muted)
+	ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(accentReadableOn(chrome.text, chrome.accent, 4.5))
 	if focused {
 		ti.Focus()
 	} else {
 		ti.Blur()
 	}
-	raw := inputViewWithCursor(ti, focused)
-	// bubbles pads the placeholder/value out to ti.Width with *unstyled* spaces
-	// (textinput.placeholderView), which leak the terminal's default background to
-	// the right of the hint. Trim that bare padding — styled cells (the block cursor,
-	// styled text) end in a reset SGR and survive TrimRight — then refill via
-	// padStyled so every gap cell carries bg.
-	raw = strings.TrimRight(raw, " ")
-	ctrlCell := lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Render(padStyled(raw, ctrlW, bg))
+	view := truncateStyled(inputViewWithCursor(ti, focused), ctrlW, bg)
+	ctrlCell := lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Width(ctrlW).Render(view)
 	return marker + labelCell + ctrlCell
 }
 
@@ -1203,7 +1197,7 @@ func (c ComposeModel) pickerView(width, height int, chrome managerChrome) string
 		if focused {
 			highlightStyle := lipgloss.NewStyle().
 				Background(chrome.accent).
-				Foreground(contrastFg(chrome.accent))
+				Foreground(accentReadableOn(chrome.text, chrome.accent, 4.5))
 			if idx < width && len(line) < width {
 				line = line + strings.Repeat(" ", width-len(line))
 			}

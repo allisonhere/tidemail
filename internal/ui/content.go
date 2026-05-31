@@ -41,7 +41,7 @@ func (m Model) renderContentPane() string {
 			matchInfo = "  [no matches]"
 		}
 		input := m.contentSearchInput
-		input.Cursor.Style = lipgloss.NewStyle().Background(m.styles.Theme.BorderFocus).Foreground(contrastFg(m.styles.Theme.BorderFocus))
+		input.Cursor.Style = lipgloss.NewStyle().Background(m.styles.Theme.BorderFocus).Foreground(accentReadableOn(m.styles.Theme.Fg, m.styles.Theme.BorderFocus, 4.5))
 		searchBar := m.styles.ContentBody.Width(w).Render(inputViewWithCursor(input, true) + matchInfo)
 		content = header + "\n" + searchBar + "\n" + body
 	}
@@ -175,7 +175,7 @@ func (m Model) renderContentLinks(width int) string {
 	lines = append(lines, strings.ToUpper("Links"))
 	activeStyle := lipgloss.NewStyle().
 		Background(m.styles.Theme.BorderFocus).
-		Foreground(contrastFg(m.styles.Theme.BorderFocus)).
+		Foreground(accentReadableOn(m.styles.Theme.Fg, m.styles.Theme.BorderFocus, 4.5)).
 		Bold(true)
 	linkStyle := lipgloss.NewStyle().Foreground(messageLinkColor(m.styles.Theme))
 	for i, link := range m.contentLinks {

@@ -179,12 +179,12 @@ func BuildStyles(t Theme, density string) Styles {
 			Background(t.Bg),
 		PaneHeaderActive: lipgloss.NewStyle().
 			Background(t.BorderFocus).
-			Foreground(readableText(t.Fg, t.BorderFocus, 4.5)).
+			Foreground(accentReadableOn(t.Fg, t.BorderFocus, 4.5)).
 			Bold(true).
 			AlignHorizontal(lipgloss.Left),
 		PaneHeaderInactive: lipgloss.NewStyle().
 			Background(t.Border).
-			Foreground(readableText(t.Fg, t.Border, 4.5)).
+			Foreground(accentReadableOn(t.Fg, t.Border, 4.5)).
 			AlignHorizontal(lipgloss.Left),
 
 		FeedItem: listPad(lipgloss.NewStyle().
@@ -193,17 +193,17 @@ func BuildStyles(t Theme, density string) Styles {
 			AlignHorizontal(lipgloss.Left)),
 		FeedItemSelected: listPad(lipgloss.NewStyle().
 			Background(selectedBg).
-			Foreground(readableText(t.BorderFocus, selectedBg, 4.5)).
+			Foreground(accentReadableOn(t.BorderFocus, selectedBg, 4.5)).
 			Bold(true).
 			AlignHorizontal(lipgloss.Left)),
 		FeedItemSelectedFocused: listPad(lipgloss.NewStyle().
 			Background(selectedBg).
-			Foreground(readableText(t.BorderFocus, selectedBg, 4.5)).
+			Foreground(accentReadableOn(t.BorderFocus, selectedBg, 4.5)).
 			Bold(true).
 			AlignHorizontal(lipgloss.Left)),
 		FeedItemSelectedUnfocused: listPad(lipgloss.NewStyle().
 			Background(selectedBgSoft).
-			Foreground(readableText(t.BorderFocus, selectedBgSoft, 4.5)).
+			Foreground(accentReadableOn(t.BorderFocus, selectedBgSoft, 4.5)).
 			Bold(true).
 			AlignHorizontal(lipgloss.Left)),
 		UnreadBadge: lipgloss.NewStyle().
@@ -221,7 +221,7 @@ func BuildStyles(t Theme, density string) Styles {
 			AlignHorizontal(lipgloss.Left)),
 		ArticleSelected: listPad(lipgloss.NewStyle().
 			Background(selectedBg).
-			Foreground(readableText(t.BorderFocus, selectedBg, 4.5)).
+			Foreground(accentReadableOn(t.BorderFocus, selectedBg, 4.5)).
 			Bold(true).
 			AlignHorizontal(lipgloss.Left)),
 		ArticleTime: lipgloss.NewStyle().
@@ -233,7 +233,7 @@ func BuildStyles(t Theme, density string) Styles {
 
 		ContentTitle: lipgloss.NewStyle().
 			Background(t.BorderFocus).
-			Foreground(readableText(t.Bg, t.BorderFocus, 4.5)).
+			Foreground(accentReadableOn(t.Fg, t.BorderFocus, 4.5)).
 			Bold(true).
 			Padding(0, 1).
 			MarginBottom(contentTitleMB),
@@ -249,7 +249,7 @@ func BuildStyles(t Theme, density string) Styles {
 			Foreground(readableText(t.Fg, contentFocusBg, 4.5)),
 		SearchMatch: lipgloss.NewStyle().
 			Background(t.BorderFocus).
-			Foreground(readableText(t.Fg, t.BorderFocus, 4.5)),
+			Foreground(accentReadableOn(t.Fg, t.BorderFocus, 4.5)),
 
 		StatusBar: lipgloss.NewStyle().
 			Background(t.StatusBar).
@@ -272,7 +272,7 @@ func BuildStyles(t Theme, density string) Styles {
 			Foreground(readableText(t.StatusFg, t.StatusBar, 4.5)),
 		StatusNotice: lipgloss.NewStyle().
 			Background(t.BorderFocus).
-			Foreground(readableText(t.Fg, t.BorderFocus, 4.5)).
+			Foreground(accentReadableOn(t.Fg, t.BorderFocus, 4.5)).
 			Bold(true).
 			Padding(0, 1),
 
