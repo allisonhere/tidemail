@@ -81,7 +81,7 @@ func openAIErrorBody(code int, body []byte) string {
 func validateClaude(ctx context.Context, key string) error {
 	key = strings.TrimSpace(key)
 	if key == "" {
-		return fmt.Errorf("Claude API key is empty")
+		return fmt.Errorf("empty Claude API key")
 	}
 	body, _ := json.Marshal(map[string]any{
 		"model":      claudeValidateModel,
@@ -127,7 +127,7 @@ func anthropicErrorBody(code int, body []byte) string {
 func validateGemini(ctx context.Context, key string) error {
 	key = strings.TrimSpace(key)
 	if key == "" {
-		return fmt.Errorf("Gemini API key is empty")
+		return fmt.Errorf("empty Gemini API key")
 	}
 	u, err := url.Parse(geminiListModelsURL)
 	if err != nil {

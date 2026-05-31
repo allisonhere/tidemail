@@ -93,14 +93,6 @@ func lipOverlayBorder(plain bool) lipgloss.Border {
 	return lipgloss.RoundedBorder()
 }
 
-// lipInputAccentBorder returns a thick left accent bar (Unicode) or ASCII pipe.
-func lipInputAccentBorder(plain bool) lipgloss.Border {
-	if plain {
-		return lipgloss.ASCIIBorder()
-	}
-	return lipgloss.ThickBorder()
-}
-
 func BuildStyles(t Theme, density string) Styles {
 	plainUI := t.Name == ThemeNameVT52
 	d := config.NormalizeDisplayDensity(density)

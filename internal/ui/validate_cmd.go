@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/allisonhere/tide/internal/ai"
 	"github.com/allisonhere/tide/internal/config"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func validateAICredentialsCmd(cfg config.AIConfig) tea.Cmd {

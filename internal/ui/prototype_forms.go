@@ -110,9 +110,10 @@ func (m PrototypeFormsModel) prototypeTopBar(width int, chrome managerChrome) st
 	title := "FORM LAB"
 	subtitle := "static terminal prototypes"
 	name := "Settings"
-	if m.screen == prototypeAccount {
+	switch m.screen {
+	case prototypeAccount:
 		name = "Manage Account"
-	} else if m.screen == prototypeCompose {
+	case prototypeCompose:
 		name = "Compose"
 	}
 	left := chrome.header.Width(max(1, width/2)).Render(title)

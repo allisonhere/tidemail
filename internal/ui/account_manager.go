@@ -80,7 +80,7 @@ func newManagerChrome(width int, t Theme, plainUI bool) managerChrome {
 	accentFg := contrastFg(accent)
 	text := readableText(t.Fg, baseBg, 4.5)
 	muted := mutedText(text, baseBg)
-	highlight := accent
+	var highlight lipgloss.Color
 	if isDark(baseBg) {
 		highlight = adjustLightness(accent, -0.16)
 	} else {
@@ -332,11 +332,11 @@ type AccountManager struct {
 	editAccountID int64
 	colorIdx      int
 
-	useOAuth2    bool
-	oauth2Signed bool
+	useOAuth2          bool
+	oauth2Signed       bool
 	oauth2RefreshToken string
-	startedOAuth2 bool
-	oauthCfg          config.OAuthConfig
+	startedOAuth2      bool
+	oauthCfg           config.OAuthConfig
 
 	busy      bool
 	busyMsg   string
@@ -373,17 +373,6 @@ func (am *AccountManager) setData(accounts []db.Account, mailboxes []db.Mailbox,
 	am.configs = configs
 	am.oauthCfg = oauthCfg
 	am.cursor = clamp(am.cursor, 0, max(0, len(accounts)-1))
-}
-
-func (am *AccountManager) syncInputWidths(width int) {
-	inputW := max(10, width-6)
-	for _, ti := range []*textinput.Model{
-		&am.nameInput, &am.imapHostInput, &am.imapPortInput,
-		&am.smtpHostInput, &am.smtpPortInput,
-		&am.userInput, &am.passInput, &am.fromInput, &am.syncInput,
-	} {
-		ti.Width = inputW
-	}
 }
 
 func (am *AccountManager) focusField(f amField) {
@@ -453,16 +442,16 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 		smtpPort = 587
 	}
 	cfg := config.AccountConfig{
-		Provider: am.provider,
-		Name:     strings.TrimSpace(am.nameInput.Value()),
-		IMAPHost: strings.TrimSpace(am.imapHostInput.Value()),
-		IMAPPort: imapPort,
-		IMAPTLS:  am.imapTLS,
-		SMTPHost: strings.TrimSpace(am.smtpHostInput.Value()),
-		SMTPPort: smtpPort,
-		SMTPTLS:  am.smtpTLS,
-		User:     strings.TrimSpace(am.userInput.Value()),
-		Password: am.passInput.Value(),
+		Provider:    am.provider,
+		Name:        strings.TrimSpace(am.nameInput.Value()),
+		IMAPHost:    strings.TrimSpace(am.imapHostInput.Value()),
+		IMAPPort:    imapPort,
+		IMAPTLS:     am.imapTLS,
+		SMTPHost:    strings.TrimSpace(am.smtpHostInput.Value()),
+		SMTPPort:    smtpPort,
+		SMTPTLS:     am.smtpTLS,
+		User:        strings.TrimSpace(am.userInput.Value()),
+		Password:    am.passInput.Value(),
 		From:        strings.TrimSpace(am.fromInput.Value()),
 		SyncMinutes: func() int { n, _ := strconv.Atoi(am.syncInput.Value()); return n }(),
 	}
@@ -774,6 +763,12 @@ func validateAccountForConnect(acfg config.AccountConfig) string {
 	if acfg.User == "" {
 		return "USERNAME IS REQUIRED"
 	}
+	if acfg.IMAPPort < 1 || acfg.IMAPPort > 65535 {
+		return "IMAP PORT MUST BE 1-65535"
+	}
+	if acfg.SMTPPort < 1 || acfg.SMTPPort > 65535 {
+		return "SMTP PORT MUST BE 1-65535"
+	}
 	return ""
 }
 
@@ -1001,7 +996,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 		left := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, labelW-2)).Padding(0, 1).Render(label)
 		var fieldView string
 		if focused {
-			fieldView = ti.View()
+			fieldView = inputViewWithCursor(ti, true)
 		} else {
 			val := ti.Value()
 			if val == "" {

@@ -100,19 +100,19 @@ func TestSendSTARTTLS_NoTLS(t *testing.T) {
 		server.Write([]byte("235 Authentication successful\r\n"))
 
 		// Read MAIL FROM (sent by sendMail)
-		n, _ = server.Read(buf)
+		server.Read(buf)
 		server.Write([]byte("250 OK\r\n"))
 
 		// Read RCPT TO
-		n, _ = server.Read(buf)
+		server.Read(buf)
 		server.Write([]byte("250 OK\r\n"))
 
 		// Read DATA
-		n, _ = server.Read(buf)
+		server.Read(buf)
 		server.Write([]byte("354 Start mail input\r\n"))
 
 		// Read content
-		n, _ = server.Read(buf)
+		server.Read(buf)
 		server.Write([]byte("250 OK\r\n"))
 
 		server.Close()
@@ -216,6 +216,98 @@ func TestSend_FromFallback(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+// TestSend_HeaderKeepsDisplayName verifies that a "Name <addr>" From is stripped to a
+// bare address for the MAIL FROM envelope (Gmail rejects display names there) while the
+// visible From: header still carries the display name.
+func TestSend_HeaderKeepsDisplayName(t *testing.T) {
+	server, clientConn := net.Pipe()
+
+	var mailFrom, data string
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		server.Write([]byte("220 localhost ESMTP\r\n"))
+		buf := make([]byte, 4096)
+
+		server.Read(buf) // EHLO
+		server.Write([]byte("250-Hello\r\n250 AUTH PLAIN\r\n"))
+
+		server.Read(buf) // AUTH PLAIN
+		server.Write([]byte("235 Authentication successful\r\n"))
+
+		n, _ := server.Read(buf) // MAIL FROM
+		mailFrom = string(buf[:n])
+		server.Write([]byte("250 OK\r\n"))
+
+		server.Read(buf) // RCPT TO
+		server.Write([]byte("250 OK\r\n"))
+
+		server.Read(buf) // DATA
+		server.Write([]byte("354 Start mail input\r\n"))
+
+		n, _ = server.Read(buf) // message content
+		data = string(buf[:n])
+		server.Write([]byte("250 OK\r\n"))
+
+		server.Close()
+	}()
+
+	oldDial := smtpDial
+	oldClient := smtpNewClient
+	defer func() {
+		smtpDial = oldDial
+		smtpNewClient = oldClient
+	}()
+	smtpDial = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		return clientConn, nil
+	}
+	smtpNewClient = func(conn net.Conn, host string) (*smtp.Client, error) {
+		return smtp.NewClient(conn, host)
+	}
+
+	err := Send(context.Background(), config.AccountConfig{
+		User:     "user",
+		Password: "pass",
+		From:     "John Doe <john@x.com>",
+		SMTPHost: "localhost",
+		SMTPPort: 587,
+	}, OutgoingMessage{
+		To:      []string{"bob@x"},
+		Subject: "Hi",
+		Body:    "Hello",
+	})
+	clientConn.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-done
+
+	if !strings.HasPrefix(mailFrom, "MAIL FROM:<john@x.com>") {
+		t.Errorf("envelope should be the bare address, got %q", mailFrom)
+	}
+	if !strings.Contains(data, "From: John Doe <john@x.com>") {
+		t.Errorf("From: header should keep the display name, got %q", data)
+	}
+}
+
+func TestCleanEmail(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"John Doe <john@x.com>", "john@x.com"}, // strip display name for the envelope
+		{"john@x.com", "john@x.com"},
+		{"alice", "alice"},        // non-email login is accepted (server validates)
+		{"<foo@bar", ""},          // unmatched '<' is rejected, not returned malformed
+		{"  Name <a@b>  ", "a@b"}, // surrounding whitespace trimmed
+		{"", ""},
+		{"two words", ""},    // whitespace and no brackets → invalid
+		{"a@b <c@d>", "c@d"}, // angle-bracket address wins
+	}
+	for _, c := range cases {
+		if got := cleanEmail(c.in); got != c.want {
+			t.Errorf("cleanEmail(%q) = %q, want %q", c.in, got, c.want)
+		}
 	}
 }
 

@@ -286,9 +286,9 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		activeSection:        ssDisplay,
 		focusedPane:          settingsPaneSidebar,
 		sectionField: [settingsSectionCount]settingsField{
-			ssDisplay: sfBackToSections,
-			ssFeeds:   sfBackToSections,
-			ssUpdates: sfBackToSections,
+			ssDisplay:  sfBackToSections,
+			ssFeeds:    sfBackToSections,
+			ssUpdates:  sfBackToSections,
 			ssAI:       sfBackToSections,
 			ssAdvanced: sfBackToSections,
 			ssAbout:    sfBackToSections,
@@ -1396,7 +1396,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 			b.addBlank()
 		}
 		if s.update.restartable {
-			b.addAction("Restart now",	"launch updated Tidemail", sfUpdateRestartNow)
+			b.addAction("Restart now", "launch updated Tidemail", sfUpdateRestartNow)
 		}
 
 	case ssAI:
@@ -1593,21 +1593,6 @@ func (b *settingsFormBuilder) addAdvancedSection() {
 	b.addAction("View Logs", "review errors and status messages", sfViewLogs)
 }
 
-func (s Settings) aiKeyStateLabel() string {
-	if s.providerIdx < 1 || s.providerIdx > 3 {
-		return ""
-	}
-
-	value := strings.TrimSpace(s.selectedAIKeyValue())
-	if value == "" {
-		return "empty"
-	}
-	if _, ok := s.selectedAIKeyValidation(); ok {
-		return "stored"
-	}
-	return "check"
-}
-
 type aiConnectionState int
 
 const (
@@ -1656,16 +1641,6 @@ func (s Settings) inputWidth(field settingsField, maxWidth int) int {
 	default:
 		return min(maxWidth, 32)
 	}
-}
-
-func (s Settings) dateLabel() string {
-	return strings.ToLower(dateFormatLabels[s.dateFormatIdx])
-}
-
-func (s Settings) renderSectionLabel(label string, width int, chrome managerChrome) string {
-	bar := lipgloss.NewStyle().Background(chrome.highlight).Width(2).Render("  ")
-	title := chrome.sectionLabel.Copy().Foreground(chrome.text).Width(width - 2).Render(" " + label)
-	return lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(bar + title)
 }
 
 // Wide enough for "Feed max size (MiB)" with sectionLabel horizontal padding inside Width().
@@ -2209,14 +2184,6 @@ func (s Settings) fieldHint(field settingsField) string {
 	}
 }
 
-func (s Settings) renderInlineHint(text string, width int, chrome managerChrome) string {
-	return lipgloss.NewStyle().
-		Background(chrome.baseBg).
-		Foreground(chrome.muted).
-		Width(max(1, width)).
-		Render(text)
-}
-
 func (s Settings) renderAboutSection(width int, chrome managerChrome) settingsSectionBody {
 	ind := lipgloss.NewStyle().Background(lipgloss.Color("#000000")).Width(width)
 	blank := lipgloss.NewStyle().Background(lipgloss.Color("#000000")).Width(width).Render("")
@@ -2376,51 +2343,6 @@ func aboutCenterText(s string, width int) string {
 	return strings.Repeat(" ", left) + s + strings.Repeat(" ", right)
 }
 
-func (s Settings) renderAboutLinkCard(width int, title, hint, url string, focused bool, chrome managerChrome) string {
-	bg := chrome.surfaceBg
-	border := chrome.border
-	titleFg := chrome.text
-	bodyFg := chrome.muted
-	urlFg := chrome.accent
-	if focused {
-		if isDark(bg) {
-			bg = adjustLightness(bg, 0.07)
-		} else {
-			bg = adjustLightness(bg, -0.07)
-		}
-		border = chrome.highlight
-		titleFg = chrome.text
-		bodyFg = readableText(chrome.text, bg, 3.5)
-		urlFg = titleFg
-	}
-
-	panelW := max(1, width-4)
-	textW := max(1, panelW-2)
-	badge := s.renderBadge("ENTER", focused, chrome)
-	titleText := lipgloss.NewStyle().Background(bg).Foreground(titleFg).Bold(true).Render(title)
-	titleGap := max(1, textW-lipgloss.Width(titleText)-lipgloss.Width(badge))
-	titleLine := titleText + lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", titleGap)) + badge
-
-	bodyStyle := lipgloss.NewStyle().Background(bg).Foreground(bodyFg)
-	urlStyle := lipgloss.NewStyle().Background(bg).Foreground(urlFg).Bold(focused)
-	content := strings.Join([]string{
-		clampView(titleLine, textW, 1, bg),
-		bodyStyle.Width(textW).Render(truncate(hint, textW)),
-		urlStyle.Width(textW).Render(truncate(url, textW)),
-	}, "\n")
-
-	card := lipgloss.NewStyle().
-		Width(panelW).
-		Background(bg).
-		Border(lipPaneBorder(chrome.plainUI)).
-		BorderForeground(border).
-		BorderBackground(bg).
-		Padding(0, 1).
-		Render(content)
-
-	return lipgloss.NewStyle().Width(width).Background(chrome.baseBg).Render(card)
-}
-
 func (s Settings) renderAboutClosingNote(width int, chrome managerChrome) string {
 	aboutBg := lipgloss.Color("#000000")
 	signoff := lipgloss.NewStyle().
@@ -2505,54 +2427,6 @@ func aboutHeroTextForeground(bg lipgloss.Color, row int, ch rune) lipgloss.Color
 	return readableText(lipgloss.Color("#b3b1ad"), bg, 4.5)
 }
 
-func aboutRepeatToLen(pattern string, n int) string {
-	if pattern == "" {
-		return strings.Repeat(" ", n)
-	}
-	var b strings.Builder
-	for b.Len() < n+len(pattern) {
-		b.WriteString(pattern)
-	}
-	return b.String()[:n]
-}
-
-func aboutScrollLeft(pattern string, width, offset int) string {
-	base := aboutRepeatToLen(pattern, width+len(pattern))
-	shift := offset % len(pattern)
-	return base[shift : shift+width]
-}
-
-func aboutScrollRight(pattern string, width, offset int) string {
-	shift := offset % len(pattern)
-	base := aboutRepeatToLen(pattern, width+len(pattern))
-	start := len(pattern) - shift
-	if start == len(pattern) {
-		start = 0
-	}
-	return base[start : start+width]
-}
-
 func clamp01(v float64) float64 {
 	return math.Max(0, math.Min(1, v))
-}
-
-func rgbLipglossColor(r, g, b int) lipgloss.Color {
-	return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", r, g, b))
-}
-
-func blendLipglossColor(a, b lipgloss.Color, t float64) lipgloss.Color {
-	ar, ag, ab, okA := hexToRGB(a)
-	br, bg, bb, okB := hexToRGB(b)
-	if !okA || !okB {
-		return a
-	}
-	t = math.Max(0, math.Min(1, t))
-	r := ar + (br-ar)*t
-	g := ag + (bg-ag)*t
-	bl := ab + (bb-ab)*t
-	return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x",
-		uint8(math.Round(r*255)),
-		uint8(math.Round(g*255)),
-		uint8(math.Round(bl*255)),
-	))
 }

@@ -30,7 +30,7 @@ func TerminalBackgroundSequences(themeName string) (set string, reset string) {
 func setTermBgCmd(bg lipgloss.Color) tea.Cmd {
 	return func() tea.Msg {
 		if tty, err := openTTY(); err == nil {
-			fmt.Fprintf(tty, "\x1b]11;%s\x07", string(bg))
+			_, _ = fmt.Fprintf(tty, "\x1b]11;%s\x07", string(bg))
 			tty.Close()
 		}
 		return nil
