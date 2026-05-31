@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/allisonhere/tide/internal/config"
@@ -270,6 +271,32 @@ func TestAccountManagerFormScrollsFocusedFieldIntoShortView(t *testing.T) {
 	}
 	if strings.Contains(view, "Provider") {
 		t.Fatalf("expected top form rows to scroll out of short view, got %q", view)
+	}
+}
+
+func TestAccountManagerLongFieldsStaySingleLine(t *testing.T) {
+	am := NewAccountManager(nil)
+	am.mode = amEdit
+	am.focusField(amFieldFrom)
+	am.nameInput.SetValue(strings.Repeat("Personal-", 20))
+	am.imapHostInput.SetValue(strings.Repeat("imap.example.com.", 12))
+	am.smtpHostInput.SetValue(strings.Repeat("smtp.example.com.", 12))
+	am.userInput.SetValue(strings.Repeat("alice@example.com.", 12))
+	am.passInput.SetValue(strings.Repeat("secret", 30))
+	am.fromInput.SetValue(strings.Repeat("Alice Example <alice@example.com> ", 12))
+
+	view := am.View(74, 30, BuildStyles(CatppuccinMocha, "compact"))
+
+	for _, line := range strings.Split(view, "\n") {
+		if got := lipgloss.Width(line); got > 74 {
+			t.Fatalf("expected account form line to stop at panel width, got width %d in %q", got, ansi.Strip(line))
+		}
+	}
+	if got := strings.Count(view, "\n") + 1; got > 30 {
+		t.Fatalf("expected account form to stop at panel height, got %d lines", got)
+	}
+	if !strings.Contains(ansi.Strip(view), "Sync (min)") {
+		t.Fatalf("expected long From row not to push Sync field out of form, got %q", ansi.Strip(view))
 	}
 }
 
