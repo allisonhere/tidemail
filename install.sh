@@ -37,35 +37,49 @@ printf "\n  ${BOLD}TideMail Installer${NC}\n"
 printf "  ${DIM}──────────────────────────────${NC}\n"
 info "Platform: ${OS}/${ARCH}"
 
-# Get latest release version
-info "Fetching latest release..."
-LATEST=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-  | grep '"tag_name"' \
-  | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
-
-[ -z "$LATEST" ] && error "Could not determine latest version"
-info "Latest version: ${LATEST}"
-
-# Download
-URL="https://github.com/${REPO}/releases/download/${LATEST}/${ASSET}.tar.gz"
+# ── Download ──────────────────────────────────────────────────────────────
+# Use GitHub's /latest/download/ redirect URL — no API call needed, so no
+# rate limiting and no fragile grep/sed parsing of the releases JSON.
+URL="https://github.com/${REPO}/releases/latest/download/${ASSET}.tar.gz"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-info "Downloading ${ASSET}.tar.gz..."
-curl -fsSL "$URL" -o "${TMP}/${ASSET}.tar.gz" \
-  || error "Download failed: ${URL}"
+info "Downloading latest release..."
+if ! curl -fsSL -o "${TMP}/${ASSET}.tar.gz" "$URL"; then
+  rm -rf "$TMP"
+  error "Download failed — no release asset at ${URL}\n         Check that a release exists: https://github.com/${REPO}/releases"
+fi
 
-tar -xzf "${TMP}/${ASSET}.tar.gz" -C "$TMP"
+# Verify we got a real gzip archive (not an HTML error page from a redirect).
+if ! gzip -t "${TMP}/${ASSET}.tar.gz" 2>/dev/null; then
+  rm -rf "$TMP"
+  error "Downloaded file is not a valid archive. The latest release may be missing ${OS}/${ARCH} assets.\n         See: https://github.com/${REPO}/releases"
+fi
 
-# Install
+# ── Extract ───────────────────────────────────────────────────────────────
+info "Extracting..."
+if ! tar -xzf "${TMP}/${ASSET}.tar.gz" -C "$TMP"; then
+  rm -rf "$TMP"
+  error "Failed to extract ${ASSET}.tar.gz — the archive may be corrupt."
+fi
+
+if [ ! -f "${TMP}/${ASSET}" ]; then
+  contents=$(ls -A "$TMP" 2>/dev/null | tr '\n' ' ')
+  rm -rf "$TMP"
+  error "Archive does not contain expected binary '${ASSET}'.\n         Found instead: ${contents}"
+fi
+
+chmod +x "${TMP}/${ASSET}"
+
+# ── Install ───────────────────────────────────────────────────────────────
 if [ -w "$INSTALL_DIR" ]; then
   mv "${TMP}/${ASSET}" "${INSTALL_DIR}/${BINARY}"
-  chmod +x "${INSTALL_DIR}/${BINARY}"
 else
   info "Need sudo to install to ${INSTALL_DIR}"
   sudo mv "${TMP}/${ASSET}" "${INSTALL_DIR}/${BINARY}"
-  sudo chmod +x "${INSTALL_DIR}/${BINARY}"
 fi
 
-success "Installed ${BINARY} ${LATEST} to ${INSTALL_DIR}/${BINARY}"
+# ── Verify ────────────────────────────────────────────────────────────────
+VERSION=$("${INSTALL_DIR}/${BINARY}" --version 2>/dev/null || echo "unknown")
+success "Installed ${VERSION} to ${INSTALL_DIR}/${BINARY}"
 printf "\n  Run ${BOLD}tidemail${NC} to get started.\n\n"
