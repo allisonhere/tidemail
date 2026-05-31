@@ -734,16 +734,19 @@ func (am AccountManager) updateConfirmDelete(msg tea.Msg, keys KeyMap) (AccountM
 
 func (am *AccountManager) advanceField(delta int) {
 	next := int(am.focusedField) + delta
-	for i := 0; i < int(amFieldCount); i++ {
-		next = ((next % int(amFieldCount)) + int(amFieldCount)) % int(amFieldCount)
-		if am.provider == "Custom" {
-			break
-		}
+	if next < 0 || next >= int(amFieldCount) {
+		return // don't wrap — stay on current field
+	}
+	// Skip hidden per-provider fields (IMAP/SMTP) when a preset is active.
+	if am.provider != "Custom" {
 		f := amField(next)
-		if f < amFieldIMAPHost || f > amFieldSMTPTLS {
-			break
+		for f >= amFieldIMAPHost && f <= amFieldSMTPTLS {
+			next += delta
+			if next < 0 || next >= int(amFieldCount) {
+				return
+			}
+			f = amField(next)
 		}
-		next += delta
 	}
 	am.focusField(amField(next))
 }
