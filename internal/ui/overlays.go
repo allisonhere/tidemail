@@ -151,7 +151,7 @@ func (m Model) renderSearchOverlay(width int, chrome managerChrome) string {
 		Foreground(chrome.text).
 		Width(width).
 		Padding(1, 2, 0, 2).
-		Render(input.View())
+		Render(inputViewWithCursor(input, true))
 	hint := lipgloss.NewStyle().
 		Background(chrome.baseBg).
 		Foreground(chrome.muted).
@@ -174,7 +174,7 @@ func (m Model) renderCommandPalette(width int, chrome managerChrome) string {
 	input.Cursor.TextStyle = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
 
 	items := m.filteredCommandItems()
-	rows := []string{input.View(), ""}
+	rows := []string{inputViewWithCursor(input, true), ""}
 	if len(items) == 0 {
 		rows = append(rows, lipgloss.NewStyle().Foreground(chrome.muted).Render("No commands"))
 	} else {

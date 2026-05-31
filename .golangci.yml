@@ -1,0 +1,18 @@
+# golangci-lint v2 configuration.
+# The "standard" default set is errcheck, govet, ineffassign, staticcheck, unused.
+# CI runs with only-new-issues (see ci.yml), so the existing backlog is grandfathered
+# and the gate fails only on issues introduced by a change.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  exclusions:
+    rules:
+      # Don't require checking error returns in tests (server.Write/Close in mock
+      # SMTP pipes etc.); they're noise, not bugs.
+      - path: _test\.go
+        linters:
+          - errcheck

@@ -37,7 +37,7 @@ func (c *claude) Summarize(ctx context.Context, title, content string) (string, 
 	})
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-			anthropicChatURL, bytes.NewReader(body))
+		anthropicChatURL, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}

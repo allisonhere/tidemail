@@ -40,7 +40,9 @@ func (m Model) renderContentPane() string {
 		} else if m.contentSearchQuery != "" {
 			matchInfo = "  [no matches]"
 		}
-		searchBar := m.styles.ContentBody.Width(w).Render(m.contentSearchInput.View() + matchInfo)
+		input := m.contentSearchInput
+		input.Cursor.Style = lipgloss.NewStyle().Background(m.styles.Theme.BorderFocus).Foreground(contrastFg(m.styles.Theme.BorderFocus))
+		searchBar := m.styles.ContentBody.Width(w).Render(inputViewWithCursor(input, true) + matchInfo)
 		content = header + "\n" + searchBar + "\n" + body
 	}
 

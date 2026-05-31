@@ -677,7 +677,7 @@ func renderComposePanelRow(ti textinput.Model, label string, focused bool, width
 	ti.TextStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.text)
 	ti.PlaceholderStyle = lipgloss.NewStyle().Foreground(chrome.muted)
 	ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
-	view := truncateStyled(ti.View(), ctrlW, bg)
+	view := truncateStyled(inputViewWithCursor(ti, focused), ctrlW, bg)
 	ctrlCell := lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Width(ctrlW).Render(view)
 	return marker + labelCell + ctrlCell
 }

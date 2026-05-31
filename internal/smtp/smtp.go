@@ -53,13 +53,13 @@ type Attachment struct {
 }
 
 type OutgoingMessage struct {
-	From       string
-	To         []string
-	CC         []string
-	Subject    string
-	Body       string
-	InReplyTo  string
-	References string
+	From        string
+	To          []string
+	CC          []string
+	Subject     string
+	Body        string
+	InReplyTo   string
+	References  string
 	Attachments []Attachment
 }
 
@@ -68,6 +68,9 @@ func Send(ctx context.Context, cfg config.AccountConfig, msg OutgoingMessage) er
 	if from == "" {
 		from = cfg.User
 	}
+	// The envelope (MAIL FROM) must be a bare address — Gmail rejects "Name <addr>" —
+	// but the From: header should keep the display name, so clean only the envelope copy.
+	envelopeFrom := cleanEmail(from)
 
 	var allTo []string
 	allTo = append(allTo, msg.To...)
@@ -75,15 +78,18 @@ func Send(ctx context.Context, cfg config.AccountConfig, msg OutgoingMessage) er
 	if len(allTo) == 0 {
 		return fmt.Errorf("no recipients")
 	}
+	if envelopeFrom == "" {
+		return fmt.Errorf("no sender address: configure 'from' or check account user")
+	}
 
 	raw := buildRaw(from, msg)
 
 	addr := fmt.Sprintf("%s:%d", cfg.SMTPHost, cfg.SMTPPort)
 
 	if cfg.SMTPPort == 465 {
-		return sendTLS(ctx, addr, cfg, from, allTo, raw)
+		return sendTLS(ctx, addr, cfg, envelopeFrom, allTo, raw)
 	}
-	return sendSTARTTLS(ctx, addr, cfg, from, allTo, raw)
+	return sendSTARTTLS(ctx, addr, cfg, envelopeFrom, allTo, raw)
 }
 
 // smtpAuth returns the appropriate smtp.Auth for the given config.
@@ -240,4 +246,22 @@ func buildRaw(from string, msg OutgoingMessage) []byte {
 
 	mw.Close()
 	return buf.Bytes()
+}
+
+// cleanEmail extracts a bare email address from formats like "user@host" or "Name <user@host>".
+func cleanEmail(s string) string {
+	s = strings.TrimSpace(s)
+	// "Name <addr>" format
+	if idx := strings.LastIndex(s, "<"); idx >= 0 {
+		if end := strings.Index(s[idx:], ">"); end >= 0 {
+			return strings.TrimSpace(s[idx+1 : idx+end])
+		}
+	}
+	// Otherwise accept a bare token: no whitespace and no stray angle brackets.
+	// No "@" requirement, so a non-email login like "alice" still works (the server
+	// validates the address); a leftover "<"/">" from malformed input is rejected.
+	if s != "" && !strings.ContainsAny(s, " \t<>") {
+		return s
+	}
+	return ""
 }

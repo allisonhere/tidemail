@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/update"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -167,7 +166,7 @@ func (m *Model) dismissAvailableUpdate() tea.Cmd {
 		return nil
 	}
 	m.cfg.Updates.DismissedVersion = m.updateInfo.Version
-	config.Save(m.cfg) //nolint:errcheck
+	m.saveConfig()
 	m.updateDismissed = true
 	m.syncSettingsUpdateState()
 	m.setStatus("Tide update "+m.updateInfo.Version+" dismissed", false)

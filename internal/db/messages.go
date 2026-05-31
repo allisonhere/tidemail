@@ -7,23 +7,23 @@ import (
 )
 
 type Message struct {
-	ID            int64
-	MailboxID     int64
-	UID           uint32
-	MessageID     string
-	Subject       string
-	From          string
-	To            string
-	CC            string
-	ReplyTo       string
-	Date          time.Time
-	BodyText      string
-	BodyHTML      string
-	Summary       string
-	Flags         []string
-	Read          bool
+	ID             int64
+	MailboxID      int64
+	UID            uint32
+	MessageID      string
+	Subject        string
+	From           string
+	To             string
+	CC             string
+	ReplyTo        string
+	Date           time.Time
+	BodyText       string
+	BodyHTML       string
+	Summary        string
+	Flags          []string
+	Read           bool
 	HasAttachment  bool
-	Headers        string // auth-related headers parsed from MIME
+	Headers        string       // auth-related headers parsed from MIME
 	AttachmentData []Attachment // transient, not stored in messages table
 }
 

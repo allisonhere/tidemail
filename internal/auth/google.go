@@ -24,6 +24,10 @@ const (
 	callbackTimeout = 120 * time.Second
 )
 
+// googleEndpoint is the OAuth2 endpoint used for token exchange/refresh. It's a package
+// var (not google.Endpoint inline) so tests can point it at a local httptest server.
+var googleEndpoint = google.Endpoint
+
 // StartGmailOAuthFlow starts a local HTTP server, opens the browser for the user to
 // authorize, waits for the callback, exchanges the code for tokens, and returns them.
 // The port parameter specifies the local port to listen on (0 for random).
@@ -32,7 +36,7 @@ func StartGmailOAuthFlow(clientID, clientSecret string, port int) (*oauth2.Token
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		Scopes:       []string{GmailScope},
-		Endpoint:     google.Endpoint,
+		Endpoint:     googleEndpoint,
 	}
 
 	// Pick a listener
@@ -117,7 +121,7 @@ func RefreshAccessToken(clientID, clientSecret, refreshToken string) (*oauth2.To
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		Scopes:       []string{GmailScope},
-		Endpoint:     google.Endpoint,
+		Endpoint:     googleEndpoint,
 	}
 	tok := &oauth2.Token{RefreshToken: refreshToken}
 	src := conf.TokenSource(context.Background(), tok)

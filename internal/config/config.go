@@ -77,16 +77,16 @@ type AIConfig struct {
 }
 
 type AccountConfig struct {
-	Name     string `toml:"name"`
-	Provider string `toml:"provider"`
-	IMAPHost string `toml:"imap_host"`
-	IMAPPort int    `toml:"imap_port"`
-	IMAPTLS  bool   `toml:"imap_tls"`
-	SMTPHost string `toml:"smtp_host"`
-	SMTPPort int    `toml:"smtp_port"`
-	SMTPTLS  bool   `toml:"smtp_tls"`
-	User     string `toml:"user"`
-	Password string `toml:"password"`
+	Name        string `toml:"name"`
+	Provider    string `toml:"provider"`
+	IMAPHost    string `toml:"imap_host"`
+	IMAPPort    int    `toml:"imap_port"`
+	IMAPTLS     bool   `toml:"imap_tls"`
+	SMTPHost    string `toml:"smtp_host"`
+	SMTPPort    int    `toml:"smtp_port"`
+	SMTPTLS     bool   `toml:"smtp_tls"`
+	User        string `toml:"user"`
+	Password    string `toml:"password"`
 	From        string `toml:"from"`
 	SyncMinutes int    `toml:"sync_minutes"` // 0 = no auto-sync
 
@@ -117,13 +117,13 @@ func DefaultConfig() Config {
 	return Config{
 		Theme: "catppuccin-mocha",
 		Display: DisplayConfig{
-			Icons:            true,
-			DateFormat:       "relative",
-			MarkReadOnOpen:   true,
-			FocusLine:        true,
-			Density:          "compact",
-			ConfirmQuit:      true,
-			ShowHeaders:      true,
+			Icons:          true,
+			DateFormat:     "relative",
+			MarkReadOnOpen: true,
+			FocusLine:      true,
+			Density:        "compact",
+			ConfirmQuit:    true,
+			ShowHeaders:    true,
 		},
 		Updates: UpdatesConfig{
 			CheckOnStartup:     true,

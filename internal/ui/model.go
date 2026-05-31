@@ -289,7 +289,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateState = updateStateError
 			m.updateErr = msg.Err.Error()
 			m.syncSettingsUpdateState()
-			config.Save(m.cfg) //nolint:errcheck
+			m.saveConfig()
 			if msg.Manual {
 				m.setStatus("update check failed: "+msg.Err.Error(), true)
 				return m, m.clearStatusCmd()
@@ -306,7 +306,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cfg.Updates.AvailableSummary = msg.Result.Latest.Summary
 			m.cfg.Updates.AvailablePublished = msg.Result.Latest.PublishedAt.Unix()
 			m.syncSettingsUpdateState()
-			config.Save(m.cfg) //nolint:errcheck
+			m.saveConfig()
 			if m.pendingUpdateInstall {
 				m.pendingUpdateInstall = false
 				// A manual check from Settings overrides any previous dismiss.
@@ -325,7 +325,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateDismissed = false
 		m.cfg.Updates.DismissedVersion = ""
 		m.clearCachedAvailableUpdate()
-		config.Save(m.cfg) //nolint:errcheck
+		m.saveConfig()
 		m.syncSettingsUpdateState()
 		if msg.Manual {
 			m.setStatus("Tide is up to date", false)
@@ -362,7 +362,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Clear dismiss — the user clearly wants this update.
 			m.updateDismissed = false
 			m.cfg.Updates.DismissedVersion = ""
-			config.Save(m.cfg) //nolint:errcheck
+			m.saveConfig()
 			m.setStatus("update downloaded; admin permission required", true)
 			return m, m.clearStatusCmd()
 		}
@@ -370,7 +370,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateDismissed = false
 		m.cfg.Updates.DismissedVersion = ""
 		m.clearCachedAvailableUpdate()
-		config.Save(m.cfg) //nolint:errcheck
+		m.saveConfig()
 		m.syncSettingsUpdateState()
 		m.setStatus("Tide updated to "+msg.Result.Version+m.styles.InlineMidDot()+"restart when ready", false)
 		return m, m.clearStatusCmd()
@@ -550,7 +550,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !foundAcct {
 			m.accounts = append(m.accounts, msg.Account)
 		}
-		config.Save(m.cfg) //nolint:errcheck
+		m.saveConfig()
 		m.accountManager = m.newAccountManager()
 		m.accountManager.mode = amList
 		m.accountManager.statusMsg = fmt.Sprintf("SAVED: %s", strings.ToUpper(msg.Account.Name))
@@ -1304,7 +1304,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.confirmedTheme = m.themeCursor
 			m.overlay = overlayNone
 			m.cfg.Theme = BuiltinThemes[m.confirmedTheme].Name
-			config.Save(m.cfg)
+			m.saveConfig()
 			if len(m.filteredMessages) > 0 {
 				m.setViewportMessage(m.filteredMessages[m.messageCursor])
 			}
@@ -1484,7 +1484,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.spinner.Spinner = spinner.Dot
 			}
-			config.Save(m.cfg)
+			m.saveConfig()
 			summarizer, _ := ai.New(m.cfg.AI)
 			m.summarizer = summarizer
 			if len(m.filteredMessages) > 0 {
@@ -2030,6 +2030,18 @@ func (m *Model) setStatus(msg string, isErr bool) {
 	m.logBuffer = append(m.logBuffer, logEntry{Time: time.Now(), Message: msg, IsError: isErr})
 	if len(m.logBuffer) > maxLogEntries {
 		m.logBuffer = m.logBuffer[1:]
+	}
+}
+
+// configSave is a seam over config.Save so tests can simulate a failed write.
+var configSave = config.Save
+
+// saveConfig persists the config and surfaces any failure on the status line, so a
+// failed write (read-only dir, full disk) no longer silently drops account/OAuth/setting
+// changes the way a fire-and-forget config.Save would.
+func (m *Model) saveConfig() {
+	if err := configSave(m.cfg); err != nil {
+		m.setStatus(fmt.Sprintf("couldn't save settings: %v", err), true)
 	}
 }
 

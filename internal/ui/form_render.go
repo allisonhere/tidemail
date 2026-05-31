@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -128,20 +129,42 @@ func renderInsetControl(control string, width, inset int, chrome managerChrome) 
 	return left + controlCell + right
 }
 
+// inputViewWithCursor renders input.View() with a reliably visible block cursor.
+//
+// bubbles v1.0.0 draws the textinput cursor with reverse-video, which renders
+// inconsistently across terminal emulators, and on an *empty* field it routes through
+// placeholderView() which forces the cursor to the dim placeholder style so it vanishes
+// entirely. We render the cursor through its TextStyle (the non-reverse "blinked-off"
+// style) set to a solid block; on an empty field we keep the placeholder hint but
+// prepend our own block so the cursor is always visible. The result is one solid,
+// non-blinking block in every terminal. Callers set input.Cursor.Style to the desired
+// block colours first.
+func inputViewWithCursor(input textinput.Model, focused bool) string {
+	if !focused {
+		input.Cursor.SetMode(cursor.CursorHide)
+		return input.View()
+	}
+	block := input.Cursor.Style
+	input.Cursor.TextStyle = block
+	input.Cursor.Blink = true // render the block via TextStyle instead of reverse-video
+	if input.Value() == "" {
+		return block.Render(" ") + input.View()
+	}
+	return input.View()
+}
+
 func renderTextInput(input textinput.Model, width int, focused, masked bool, chrome managerChrome) string {
 	if width <= 0 {
 		return ""
 	}
 	input.Width = width
 	if focused {
-		input.Focus()
-	} else {
-		input.Blur()
+		input.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
 	}
 	if masked {
 		input.EchoMode = textinput.EchoPassword
 	}
-	view := truncateStyled(input.View(), width, chrome.baseBg)
+	view := truncateStyled(inputViewWithCursor(input, focused), width, chrome.baseBg)
 	return lipgloss.NewStyle().
 		Background(chrome.baseBg).
 		Foreground(chrome.text).
@@ -242,9 +265,8 @@ func truncateStyled(s string, width int, bg lipgloss.Color) string {
 	if lipgloss.Width(s) <= width {
 		return s
 	}
-	plain := ansi.Strip(s)
-	if lipgloss.Width(plain) <= width {
-		return s
-	}
-	return lipgloss.NewStyle().Background(bg).Render(truncate(plain, width))
+	// ansi.Truncate is SGR-aware, so styled cells — notably the textinput block cursor,
+	// which bubbles renders one cell past the field width — survive the clamp. A plain
+	// strip-and-re-render here would flatten every colour and drop the cursor entirely.
+	return lipgloss.NewStyle().Background(bg).Render(ansi.Truncate(s, width, ""))
 }

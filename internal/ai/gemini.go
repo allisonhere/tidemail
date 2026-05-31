@@ -11,9 +11,9 @@ import (
 var geminiModelDefault = "gemini-1.5-flash"
 
 type gemini struct {
-	key     string
-	model   string
-	apiURL  string // overridable for testing
+	key    string
+	model  string
+	apiURL string // overridable for testing
 }
 
 func (g *gemini) ProviderName() string {

@@ -37,7 +37,7 @@ func (o *openAI) Summarize(ctx context.Context, title, content string) (string, 
 	})
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-			openAIChatURL, bytes.NewReader(body))
+		openAIChatURL, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}

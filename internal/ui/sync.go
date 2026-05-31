@@ -165,8 +165,18 @@ func (m *Model) startSyncTimers() tea.Cmd {
 func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
 	m.syncing[mailboxID] = true
 	database := m.db
-	mailbox, _ := database.GetMailbox(mailboxID)
-	acc, _ := database.GetAccount(mailbox.AccountID)
+	mailbox, err := database.GetMailbox(mailboxID)
+	if err != nil {
+		return func() tea.Msg {
+			return MailboxSyncedMsg{MailboxID: mailboxID, Err: fmt.Errorf("load mailbox: %w", err), Manual: manual}
+		}
+	}
+	acc, err := database.GetAccount(mailbox.AccountID)
+	if err != nil {
+		return func() tea.Msg {
+			return MailboxSyncedMsg{MailboxID: mailboxID, Err: fmt.Errorf("load account: %w", err), Manual: manual}
+		}
+	}
 	var acfg config.AccountConfig
 	for _, a := range m.cfg.Accounts {
 		if a.Name == acc.Name {
@@ -203,9 +213,16 @@ func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
 			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual, Total: time.Since(t0)}
 		}
 		unread, _ := database.CountUnread(mailboxID)
-		database.SetMailboxLastSynced(mailboxID, time.Now()) //nolint:errcheck
-		database.SetMailboxUnreadCount(mailboxID, unread)    //nolint:errcheck
-		logFetch(acc.Name, mailbox.Name, len(msgs), connectDur, fetchDur, time.Since(t0), nil)
+		// A failed bookkeeping write (e.g. last-synced) can cause endless re-syncs, so
+		// don't drop it silently — fold it into the fetch log.
+		var writeErr error
+		if e := database.SetMailboxLastSynced(mailboxID, time.Now()); e != nil {
+			writeErr = e
+		}
+		if e := database.SetMailboxUnreadCount(mailboxID, unread); e != nil {
+			writeErr = e
+		}
+		logFetch(acc.Name, mailbox.Name, len(msgs), connectDur, fetchDur, time.Since(t0), writeErr)
 		return MailboxSyncedMsg{MailboxID: mailboxID, NewCount: newCount, Manual: manual, Total: time.Since(t0)}
 	}
 }
