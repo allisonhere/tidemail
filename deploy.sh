@@ -348,27 +348,24 @@ $default_notes")
 
 full_release() {
   TOTAL_START=$(date +%s)
-  local total_steps=7
+  local total_steps=6
 
   print_step 1 $total_steps "Version bump"
   bump_version
 
-  print_step 2 $total_steps "Release notes"
-  collect_release_notes
-
-  print_step 3 $total_steps "Cleaning dist"
+  print_step 2 $total_steps "Cleaning dist"
   clean_dist
 
-  print_step 4 $total_steps "Building binaries"
+  print_step 3 $total_steps "Building binaries"
   build_all
 
-  print_step 5 $total_steps "Commit changes"
+  print_step 4 $total_steps "Commit changes"
   commit_changes
 
-  print_step 6 $total_steps "Push to origin"
+  print_step 5 $total_steps "Push to origin"
   push_to_origin
 
-  print_step 7 $total_steps "GitHub Release"
+  print_step 6 $total_steps "GitHub Release"
   create_release
 
   local total_time=$(($(date +%s) - TOTAL_START))
@@ -421,7 +418,7 @@ main_menu() {
     echo -e "  ${BOLD}${CYAN}Actions${NC}"
     echo -e "  ${DIM}─────────────────────────────${NC}"
     echo "   1) Bump version"
-    echo "   2) Write release notes"
+    echo "   2) Write release notes (optional — run before full release)"
     echo "   3) Commit changes"
     echo "   4) Push to main"
     echo "   5) Clean dist"
