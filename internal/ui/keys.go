@@ -25,6 +25,7 @@ type KeyMap struct {
 	Reply       key.Binding
 	Forward     key.Binding
 	Archive     key.Binding
+	Move        key.Binding
 	Command     key.Binding
 
 	AccountManager key.Binding
@@ -89,9 +90,10 @@ var DefaultKeys = KeyMap{
 	Reply:       key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reply")),
 	Forward:     key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "forward")),
 	Archive:     key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),
+	Move:        key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move")),
 	Command:     key.NewBinding(key.WithKeys("p", ":"), key.WithHelp("p", "command")),
 
-	AccountManager: key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "accounts")),
+	AccountManager: key.NewBinding(key.WithKeys("M"), key.WithHelp("M", "accounts")),
 	ThemePicker:    key.NewBinding(key.WithKeys("T"), key.WithHelp("T", "theme picker")),
 	Settings:       key.NewBinding(key.WithKeys("S"), key.WithHelp("S", "settings")),
 	UpdateInstall:  key.NewBinding(key.WithKeys("U"), key.WithHelp("U", "install update")),

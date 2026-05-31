@@ -64,6 +64,7 @@ const (
 	overlayCompose
 	overlayCommandPalette
 	overlaySaveAttach
+	overlayMoveMessage
 	overlayGrammarPreview
 	overlayLogViewer
 )
@@ -132,6 +133,7 @@ type Model struct {
 	contentShowHeaders     bool
 
 	saveAttachPicker filePicker
+	movePicker       movePicker
 
 	grammarOriginal  string
 	grammarCorrected string
@@ -669,14 +671,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case MessageDeletedMsg:
 		if msg.Err != nil {
 			m.setStatus(fmt.Sprintf("delete failed: %v", msg.Err), true)
-			// Optimistic remove already took it out — reload to restore.
-			if selected := m.selectedMailbox(); selected != nil {
-				return m, tea.Batch(m.clearStatusCmd(), m.loadMailboxMessagesCmd(selected.ID))
-			}
 			return m, m.clearStatusCmd()
 		}
-		// Message was already removed optimistically; just adjust counts.
-		m.adjustMailboxUnreadCount(msg.MailboxID, -1)
+		if m.removeMessageFromMemory(msg.MessageID) {
+			m.adjustMailboxUnreadCount(msg.MailboxID, -1)
+		}
 		m.setStatus("deleted", false)
 		return m, m.clearStatusCmd()
 
@@ -981,27 +980,25 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case keyMatches(msg, m.keys.Move):
+		if m.focused != paneAccounts && len(m.filteredMessages) > 0 {
+			m.openMovePicker(m.movePickerMessages())
+		}
+		return m, nil
+
 	case keyMatches(msg, m.keys.Delete):
 		if m.focused != paneAccounts && len(m.filteredMessages) > 0 {
 			if m.hasSelection() {
 				var cmds []tea.Cmd
-				// Collect IDs and cmds first, then remove — removeMessageFromMemory
-				// calls applyFilter which rebuilds filteredMessages.
-				var ids []int64
 				for _, msg2 := range m.filteredMessages {
 					if m.selectedMessages[msg2.ID] {
-						ids = append(ids, msg2.ID)
 						cmds = append(cmds, m.deleteMessageCmd(msg2))
 					}
-				}
-				for _, id := range ids {
-					m.removeMessageFromMemory(id)
 				}
 				m.clearSelection()
 				return m, tea.Batch(cmds...)
 			}
 			msg2 := m.filteredMessages[m.messageCursor]
-			m.removeMessageFromMemory(msg2.ID)
 			return m, m.deleteMessageCmd(msg2)
 		}
 		return m, nil
@@ -1330,6 +1327,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlaySaveAttach:
 		return m.handleSaveAttachPicker(msg)
 
+	case overlayMoveMessage:
+		return m.handleMovePicker(msg)
+
 	case overlayGrammarPreview:
 		switch {
 		case keyMatches(msg, m.keys.Yes):
@@ -1647,7 +1647,7 @@ func (m Model) renderPaneHint(p pane) string {
 		hint = m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " move  " +
 			m.keyHint(m.keys.Space) + " select  " +
 			m.keyHint(m.keys.MarkRead) + " read  " +
-			m.keyHint(m.keys.Archive) + " archive  " + m.keyHint(m.keys.Delete) + " delete  " +
+			m.keyHint(m.keys.Archive) + " archive  " + m.keyHint(m.keys.Move) + " move  " + m.keyHint(m.keys.Delete) + " delete  " +
 			m.keyHint(m.keys.Command) + " command"
 	case paneContent:
 		progress := ""

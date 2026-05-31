@@ -69,6 +69,14 @@ func (m Model) renderOverlay(base string) string {
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
 
+	case overlayMoveMessage:
+		winW := min(m.width-4, 74)
+		winH := min(m.height-4, 36)
+		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
+		inner := m.renderMovePicker(winW, winH, chrome)
+		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
+		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+
 	case overlayGrammarPreview:
 		winW := min(m.width-10, 70)
 		winH := min(m.height-6, 24)

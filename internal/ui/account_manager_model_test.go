@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
@@ -38,7 +39,7 @@ func TestAccountManagerOpensWithLoadedAccounts(t *testing.T) {
 	})
 	m = next.(Model)
 
-	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'M'}})
 	m = next.(Model)
 
 	if m.overlay != overlayAccountManager {
@@ -133,6 +134,25 @@ func TestAccountManagerFormStaysCompactInShortView(t *testing.T) {
 	}
 	if strings.Count(view, "\n") > 27 {
 		t.Fatalf("expected compact account form to fit 28 lines, got %d lines", strings.Count(view, "\n")+1)
+	}
+}
+
+func TestAccountManagerFormScrollsFocusedFieldIntoShortView(t *testing.T) {
+	am := NewAccountManager(nil)
+	am.mode = amEdit
+	am.focusField(amFieldSyncInterval)
+	am.nameInput.SetValue("Personal")
+	am.imapHostInput.SetValue("imap.example.com")
+	am.smtpHostInput.SetValue("smtp.example.com")
+	am.userInput.SetValue("alice@example.com")
+
+	view := ansi.Strip(am.View(74, 12, BuildStyles(CatppuccinMocha, "compact")))
+
+	if !strings.Contains(view, "Sync (min)") {
+		t.Fatalf("expected short account form to scroll sync field into view, got %q", view)
+	}
+	if strings.Contains(view, "Provider") {
+		t.Fatalf("expected top form rows to scroll out of short view, got %q", view)
 	}
 }
 

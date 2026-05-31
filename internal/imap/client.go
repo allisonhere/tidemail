@@ -157,7 +157,13 @@ func (c *Client) markDeletedAndExpunge(uidSet imap.UIDSet) error {
 	if err := c.conn.Store(uidSet, flags, nil).Close(); err != nil {
 		return fmt.Errorf("mark deleted: %w", err)
 	}
-	if _, err := c.conn.UIDExpunge(uidSet).Collect(); err != nil {
+	if c.conn.Caps().Has(imap.CapUIDPlus) || c.conn.Caps().Has(imap.CapIMAP4rev2) {
+		if _, err := c.conn.UIDExpunge(uidSet).Collect(); err != nil {
+			return fmt.Errorf("expunge: %w", err)
+		}
+		return nil
+	}
+	if _, err := c.conn.Expunge().Collect(); err != nil {
 		return fmt.Errorf("expunge: %w", err)
 	}
 	return nil

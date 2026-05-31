@@ -20,8 +20,9 @@ Compose,c,c,compose,main
 Reply,r,r,reply,main
 Forward,f,f,forward,main
 Archive,a,a,archive,main
+Move,m,m,move to folder/label,main
 Command,"p,:",p,command palette,global
-AccountManager,m,m,accounts,global
+AccountManager,M,M,accounts,global
 ThemePicker,T,T,theme picker,global
 Settings,S,S,settings,global
 UpdateInstall,U,U,install update,main

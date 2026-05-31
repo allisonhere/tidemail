@@ -52,6 +52,7 @@ func (m Model) commandItems() []commandItem {
 		{id: "reply", label: "Reply to current message", enabled: m.contentMessageID != 0 || hasMessage},
 		{id: "forward", label: "Forward current message", enabled: m.contentMessageID != 0 || hasMessage},
 		{id: "archive", label: "Archive current message", enabled: hasMessage},
+		{id: "move", label: "Move current message", enabled: hasMessage},
 		{id: "delete", label: "Delete current message", enabled: hasMessage},
 		{id: "toggle-read", label: "Toggle read/unread", enabled: hasMessage},
 		{id: "sync", label: "Sync current mailbox", enabled: hasMailbox},
@@ -108,6 +109,9 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		if msg := m.commandMessage(); msg != nil {
 			return m, m.archiveMessageCmd(*msg)
 		}
+	case "move":
+		m.openMovePicker(m.movePickerMessages())
+		return m, nil
 	case "delete":
 		if msg := m.commandMessage(); msg != nil {
 			return m, m.deleteMessageCmd(*msg)

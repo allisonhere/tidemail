@@ -1063,20 +1063,38 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 	}
 
 	blank := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
-	rows := []string{
-		providerRow(am.focusedField == amFieldProvider), blank,
-		row("Name", am.nameInput, am.focusedField == amFieldName), blank,
-		colorRow(am.focusedField == amFieldColor), blank,
+	rows := []string{}
+	anchors := make(map[amField]int)
+	addLine := func(line string) {
+		rows = append(rows, line)
 	}
+	addBlank := func() {
+		addLine(blank)
+	}
+	addControl := func(field amField, line string) {
+		anchors[field] = viewLineCount(rows)
+		addLine(line)
+	}
+
+	addControl(amFieldProvider, providerRow(am.focusedField == amFieldProvider))
+	addBlank()
+	addControl(amFieldName, row("Name", am.nameInput, am.focusedField == amFieldName))
+	addBlank()
+	addControl(amFieldColor, colorRow(am.focusedField == amFieldColor))
+	addBlank()
 	if am.provider == "Custom" {
-		rows = append(rows,
-			row("IMAP Host", am.imapHostInput, am.focusedField == amFieldIMAPHost), blank,
-			row("IMAP Port", am.imapPortInput, am.focusedField == amFieldIMAPPort), blank,
-			tlsRow("IMAP TLS", am.imapTLS, am.focusedField == amFieldIMAPTLS), blank,
-			row("SMTP Host", am.smtpHostInput, am.focusedField == amFieldSMTPHost), blank,
-			row("SMTP Port", am.smtpPortInput, am.focusedField == amFieldSMTPPort), blank,
-			tlsRow("SMTP TLS", am.smtpTLS, am.focusedField == amFieldSMTPTLS), blank,
-		)
+		addControl(amFieldIMAPHost, row("IMAP Host", am.imapHostInput, am.focusedField == amFieldIMAPHost))
+		addBlank()
+		addControl(amFieldIMAPPort, row("IMAP Port", am.imapPortInput, am.focusedField == amFieldIMAPPort))
+		addBlank()
+		addControl(amFieldIMAPTLS, tlsRow("IMAP TLS", am.imapTLS, am.focusedField == amFieldIMAPTLS))
+		addBlank()
+		addControl(amFieldSMTPHost, row("SMTP Host", am.smtpHostInput, am.focusedField == amFieldSMTPHost))
+		addBlank()
+		addControl(amFieldSMTPPort, row("SMTP Port", am.smtpPortInput, am.focusedField == amFieldSMTPPort))
+		addBlank()
+		addControl(amFieldSMTPTLS, tlsRow("SMTP TLS", am.smtpTLS, am.focusedField == amFieldSMTPTLS))
+		addBlank()
 	}
 	userLabel := "Username"
 	passInput := am.passInput
@@ -1084,9 +1102,8 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 		userLabel = "Email"
 		passInput.Placeholder = preset.PassHint
 	}
-	rows = append(rows,
-		row(userLabel, am.userInput, am.focusedField == amFieldUser), blank,
-	)
+	addControl(amFieldUser, row(userLabel, am.userInput, am.focusedField == amFieldUser))
+	addBlank()
 	// Auth method toggle (Gmail only)
 	if am.provider == "Gmail" {
 		authFg := chrome.text
@@ -1099,7 +1116,8 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 		}
 		authLeft := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, labelW-2)).Padding(0, 1).Render("Auth")
 		authRight := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(authFg).Width(max(1, fieldW-2)).Padding(0, 1).Render("◀ " + authVal + " ▶")
-		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Left, authLeft, authRight), blank)
+		addControl(amFieldOAuth2Toggle, lipgloss.JoinHorizontal(lipgloss.Left, authLeft, authRight))
+		addBlank()
 	}
 	if am.useOAuth2 {
 		// Sign-in button or signed-in status
@@ -1113,24 +1131,26 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 			signInVal := "✓ signed in with Google"
 			siLeft := lipgloss.NewStyle().Background(chrome.baseBg).Width(max(1, labelW-2)).Padding(0, 1).Render("")
 			siRight := lipgloss.NewStyle().Background(signInBg).Foreground(chrome.successFg).Width(max(1, fieldW-2)).Padding(0, 1).Render(signInVal)
-			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Left, siLeft, siRight), blank)
+			addControl(amFieldOAuth2SignIn, lipgloss.JoinHorizontal(lipgloss.Left, siLeft, siRight))
+			addBlank()
 		} else {
 			siLeft := lipgloss.NewStyle().Background(chrome.baseBg).Width(max(1, labelW-2)).Padding(0, 1).Render("")
 			siRight := lipgloss.NewStyle().Background(signInBg).Foreground(signInFg).Width(max(1, fieldW-2)).Padding(0, 1).Render("[Sign in with Google]")
-			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Left, siLeft, siRight), blank)
+			addControl(amFieldOAuth2SignIn, lipgloss.JoinHorizontal(lipgloss.Left, siLeft, siRight))
+			addBlank()
 		}
 	} else {
-		rows = append(rows,
-			row("Password", passInput, am.focusedField == amFieldPass), blank,
-		)
+		addControl(amFieldPass, row("Password", passInput, am.focusedField == amFieldPass))
+		addBlank()
 		if am.provider == "Gmail" {
 			hintLeft := lipgloss.NewStyle().Background(chrome.baseBg).Width(max(1, labelW-2)).Padding(0, 1).Render("")
 			hintRight := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, fieldW-2)).Padding(0, 1).Render("Google account → Security → App passwords")
-			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Left, hintLeft, hintRight), blank)
+			addLine(lipgloss.JoinHorizontal(lipgloss.Left, hintLeft, hintRight))
+			addBlank()
 		}
 	}
-	rows = append(rows, row("From", am.fromInput, am.focusedField == amFieldFrom))
-	rows = append(rows, row("Sync (min)", am.syncInput, am.focusedField == amFieldSyncInterval))
+	addControl(amFieldFrom, row("From", am.fromInput, am.focusedField == amFieldFrom))
+	addControl(amFieldSyncInterval, row("Sync (min)", am.syncInput, am.focusedField == amFieldSyncInterval))
 
 	statusLine := ""
 	if am.statusMsg != "" {
@@ -1151,9 +1171,14 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 	}
 
 	bodyH := max(1, height-lipgloss.Height(header)-4)
+	offset := 0
+	if anchor, ok := anchors[am.focusedField]; ok {
+		offset = settingsScrollOffset(viewLineCount(rows), anchor, bodyH)
+	}
+	end := min(len(rows), offset+bodyH)
 	body := clampView(
 		lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(
-			strings.Join(rows, "\n"),
+			strings.Join(rows[offset:end], "\n"),
 		),
 		width, bodyH, chrome.baseBg,
 	)

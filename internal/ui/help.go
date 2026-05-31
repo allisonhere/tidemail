@@ -47,6 +47,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{keys.Search.Help().Key, "search messages in current mailbox"},
 				{keys.UnreadOnly.Help().Key, "toggle unread-only view"},
 				bind(keys.Archive),
+				{keys.Move.Help().Key, "move selected message(s) to folder/label"},
 				{keys.Delete.Help().Key, "delete selected message"},
 				bind(keys.Compose),
 				bind(keys.Reply),
