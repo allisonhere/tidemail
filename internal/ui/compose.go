@@ -1027,7 +1027,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	// wrapped remainder escapes to the app's left edge. Instead, clip and pad
 	// each line to the content width using the terminal's own width measure, so
 	// nothing can overflow, then frame with bodyBg padding.
-	bgWrap := lipgloss.NewStyle().Background(bodyBg)
+	bgWrap := lipgloss.NewStyle().Background(bodyBg).Foreground(chrome.text)
 	pad := bgWrap.Render("  ")
 	var lines []string
 	for _, line := range strings.Split(raw, "\n") {
