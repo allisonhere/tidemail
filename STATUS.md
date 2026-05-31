@@ -20,8 +20,10 @@ and incremental sync. See `CLAUDE.md` for the architecture map.
 
 - CI (`.github/workflows/ci.yml`) runs `gofmt`, `go build`, `go vet`,
   `go test ./... -race`, and `golangci-lint` on every push/PR.
-- Lint config in `.golangci.yml`; CI uses `only-new-issues`, so the existing
-  backlog is grandfathered and only new issues fail the build.
+- Lint config in `.golangci.yml`. The golangci-lint job is currently **advisory**
+  (annotates but doesn't block): `only-new-issues` re-flags the existing backlog for
+  whole-package linters, so it's `continue-on-error` until the backlog is cleared —
+  then drop that to make it a hard gate.
 
 ## Test coverage
 

@@ -56,5 +56,6 @@ built by `.github/workflows/release.yml` on `v*` tags (see `deploy.sh`).
   swallowed. Intentional ignores are annotated `//nolint:errcheck`.
 - Tests sandbox config/data dirs via `internal/ui/testmain_test.go`; build a model with
   `NewModel(db, cfg, "dev", false)` and drive it with `tea.Msg`s.
-- Lint runs with `only-new-issues` in CI: there is a pre-existing backlog (~80 issues);
-  new code must be clean, and burning down the backlog is welcome.
+- Lint runs in CI but is currently **advisory** (the golangci-lint job uses
+  `continue-on-error`) because of a ~80-issue backlog; burning it down lets it become a
+  hard gate. Run `golangci-lint run` locally and keep your own changes clean.
