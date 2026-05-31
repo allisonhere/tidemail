@@ -256,6 +256,13 @@ func (m *Model) startSyncTimers() tea.Cmd {
 		if cmd := m.scheduleNextSync(acc.ID); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+		// Also trigger an immediate sync for every inbox on startup,
+		// so the user sees fresh mail without waiting for the first timer tick.
+		for _, mb := range m.mailboxes {
+			if mb.AccountID == acc.ID && isInboxMailbox(mb) {
+				cmds = append(cmds, m.syncMailboxCmd(mb.ID, false))
+			}
+		}
 	}
 	if len(cmds) == 0 {
 		return nil
