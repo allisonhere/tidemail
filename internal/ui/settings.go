@@ -1246,7 +1246,14 @@ func (s *Settings) viewSplit(width, height int, chrome managerChrome) string {
 	rightW := max(18, width-leftW-1)
 	left := s.viewSectionsPane(leftW, height, chrome)
 	right := s.viewSectionPane(rightW, height, chrome)
-	separator := lipgloss.NewStyle().Background(chrome.baseBg).Render(" ")
+	sepLines := make([]string, height)
+	for i := range sepLines {
+		sepLines[i] = "│"
+	}
+	separator := lipgloss.NewStyle().
+		Background(chrome.baseBg).
+		Foreground(chrome.border).
+		Render(strings.Join(sepLines, "\n"))
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, separator, right)
 }
 
@@ -2120,7 +2127,7 @@ func (s Settings) renderThemeSelector(width int, chrome managerChrome) string {
 func renderSettingsPicker(width int, value string, focused bool, chrome managerChrome) string {
 	// Chrome cells: 2 (left chevron) + 2 (right chevron) + 2 (horizontal padding) = 6.
 	maxTextW := max(1, width-6)
-	bg := chrome.surfaceBg
+	bg := chrome.fieldBg
 	fg := chrome.text
 	accentFg := chrome.muted
 	if focused {
@@ -2165,6 +2172,14 @@ func (s Settings) fieldHint(field settingsField) string {
 		return "Only the active provider key is used."
 	case sfOllamaURL:
 		return "Local Ollama endpoint."
+	case sfOpenAIModel:
+		return "type the OpenAI model name (e.g. gpt-4o-mini)"
+	case sfClaudeModel:
+		return "type the Claude model name (e.g. claude-sonnet-4)"
+	case sfGeminiModel:
+		return "type the Gemini model name (e.g. gemini-2.0-flash)"
+	case sfOllamaModel:
+		return "type the Ollama model name (e.g. llama3.2)"
 	case sfSavePath:
 		return "Directory for exported markdown summaries."
 	case sfRetroBg, sfRetroFg, sfRetroAccent:

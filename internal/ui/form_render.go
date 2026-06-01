@@ -164,9 +164,13 @@ func renderTextInput(input textinput.Model, width int, focused, masked bool, chr
 	if masked {
 		input.EchoMode = textinput.EchoPassword
 	}
-	view := truncateStyled(inputViewWithCursor(input, focused), width, chrome.baseBg)
+	bg := chrome.fieldBg
+	if focused {
+		bg = chrome.highlight
+	}
+	view := truncateStyled(inputViewWithCursor(input, focused), width, bg)
 	return lipgloss.NewStyle().
-		Background(chrome.baseBg).
+		Background(bg).
 		Foreground(chrome.text).
 		Width(width).
 		Render(view)
