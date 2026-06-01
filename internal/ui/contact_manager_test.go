@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
@@ -204,5 +205,50 @@ func TestContactManagerEscExits(t *testing.T) {
 	_, _, exit := cm.Update(tea.KeyMsg{Type: tea.KeyEsc}, DefaultKeys)
 	if !exit {
 		t.Fatal("esc should exit the contact manager")
+	}
+}
+
+func TestContactManagerComposeSelectedContact(t *testing.T) {
+	d := newContactTestDB(t)
+	_, _ = d.AddContact("mary@example.com", "Mary", "manual")
+
+	m := NewModel(d, config.DefaultConfig(), "dev", false)
+	m.overlay = overlayContactManager
+	m.contactManager = NewContactManager(d)
+
+	next, _ := m.Update(rune1('c'))
+	m = next.(Model)
+
+	if m.overlay != overlayCompose {
+		t.Fatalf("expected compose overlay, got %v", m.overlay)
+	}
+	if got := m.compose.toInput.Value(); got != "Mary <mary@example.com>" {
+		t.Fatalf("expected selected contact in To, got %q", got)
+	}
+}
+
+func TestContactManagerComposeMarkedContacts(t *testing.T) {
+	d := newContactTestDB(t)
+	_, _ = d.AddContact("alice@example.com", "Alice", "manual")
+	_, _ = d.AddContact("bob@example.com", "Bob", "manual")
+	_, _ = d.AddContact("carol@example.com", "Carol", "manual")
+
+	m := NewModel(d, config.DefaultConfig(), "dev", false)
+	m.overlay = overlayContactManager
+	m.contactManager = NewContactManager(d)
+	m.contactManager.toggleMarkAdvance()
+	m.contactManager.toggleMarkAdvance()
+
+	next, _ := m.Update(rune1('c'))
+	m = next.(Model)
+
+	if m.overlay != overlayCompose {
+		t.Fatalf("expected compose overlay, got %v", m.overlay)
+	}
+	if got := m.compose.toInput.Value(); got != "Alice <alice@example.com>, Bob <bob@example.com>" {
+		t.Fatalf("expected marked contacts in To, got %q", got)
+	}
+	if len(m.contactManager.marked) != 0 {
+		t.Fatalf("expected marks to be cleared after composing, got %v", m.contactManager.marked)
 	}
 }

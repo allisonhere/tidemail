@@ -72,6 +72,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{"Gmail: Sign in", "press Enter on [Sign in with Google] to launch OAuth2"},
 				{"Settings → Accounts", "set sync interval per account for auto-refresh"},
 				bind(keys.ContactManager),
+				{"Contacts: c", "compose to selected contact(s)"},
 				{"Contacts: n/e/d", "new, edit, or delete contacts used by compose autocomplete"},
 				{"Contacts: f", "add addresses already seen in mail"},
 				{"Contacts: i/x", "import vCard or export contacts.vcf"},

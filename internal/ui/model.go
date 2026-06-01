@@ -1565,6 +1565,19 @@ func (m Model) handleAccountManager(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) handleContactManager(msg tea.Msg) (tea.Model, tea.Cmd) {
 	newCM, cmd, exit := m.contactManager.Update(msg, m.keys)
 	m.contactManager = newCM
+	if len(m.contactManager.composeTo) > 0 {
+		var acfg config.AccountConfig
+		if len(m.cfg.Accounts) > 0 {
+			acfg = m.cfg.Accounts[0]
+		}
+		to := strings.Join(m.contactManager.composeTo, ", ")
+		m.contactManager.composeTo = nil
+		m.contactManager.clearMarks()
+		m.compose = NewCompose(acfg, m.cfg.Accounts, m.addressBook)
+		m.compose.toInput.SetValue(to)
+		m.overlay = overlayCompose
+		return m, nil
+	}
 	if exit {
 		m.overlay = overlayNone
 		// Refresh autocomplete: edits in the manager change suggestions.

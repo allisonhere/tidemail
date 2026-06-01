@@ -44,6 +44,7 @@ type ContactManager struct {
 
 	filePicker filePicker
 	importing  bool
+	composeTo  []string
 	statusMsg  string
 	isErr      bool
 }
@@ -111,6 +112,32 @@ func (cm ContactManager) targetIndexes() []int {
 	return nil
 }
 
+func (cm ContactManager) targetContacts() []db.Contact {
+	indexes := cm.targetIndexes()
+	contacts := make([]db.Contact, 0, len(indexes))
+	for _, i := range indexes {
+		if i >= 0 && i < len(cm.contacts) {
+			contacts = append(contacts, cm.contacts[i])
+		}
+	}
+	return contacts
+}
+
+func contactAddress(c db.Contact) string {
+	if c.DisplayName != "" {
+		return c.DisplayName + " <" + c.Addr + ">"
+	}
+	return c.Addr
+}
+
+func contactAddressList(contacts []db.Contact) []string {
+	addrs := make([]string, 0, len(contacts))
+	for _, c := range contacts {
+		addrs = append(addrs, contactAddress(c))
+	}
+	return addrs
+}
+
 func (cm *ContactManager) toggleMarkAdvance() {
 	if len(cm.contacts) == 0 {
 		return
@@ -163,6 +190,13 @@ func (cm ContactManager) updateList(msg tea.Msg, keys KeyMap) (ContactManager, t
 		}
 	case keyMatches(km, keys.Space):
 		cm.toggleMarkAdvance()
+	case km.String() == "c":
+		contacts := cm.targetContacts()
+		if len(contacts) == 0 {
+			cm.setStatus("no contacts to compose", true)
+			return cm, nil, false
+		}
+		cm.composeTo = contactAddressList(contacts)
 	case km.String() == "n":
 		cm.beginAdd()
 	case keyMatches(km, keys.Edit):
@@ -621,7 +655,7 @@ func (cm ContactManager) viewList(width, height int, chrome managerChrome, style
 		parts = append(parts, status)
 	}
 	parts = append(parts, renderManagerActionGroups(width, chrome,
-		[]string{"space", "select", "n", "new", "f", "from mail", "i", "import", "x", "export"},
+		[]string{"space", "select", "c", "compose", "n", "new", "f", "from mail", "i", "import", "x", "export"},
 		[]string{"e", "edit", "d", "delete", "esc", "close"},
 	))
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
