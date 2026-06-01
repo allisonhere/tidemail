@@ -640,15 +640,15 @@ func renderComposePanel(title string, rows []string, width int, chrome managerCh
 }
 
 func renderComposePanelRow(ti textinput.Model, label string, focused bool, width, labelW, ctrlW int, chrome managerChrome) string {
-	bg := chrome.surfaceBg
+	bg := chrome.fieldBg
 	labelFg := chrome.muted
 	if focused {
-		bg = chrome.fieldBg
-		labelFg = chrome.text
+		bg = chrome.highlight
+		labelFg = chrome.highlightFg
 	}
 	marker := lipgloss.NewStyle().Background(bg).Width(2).Render(" ")
 	if focused {
-		marker = lipgloss.NewStyle().Background(bg).Foreground(chrome.accent).Bold(true).Width(2).Render(" >")
+		marker = lipgloss.NewStyle().Background(bg).Foreground(chrome.highlightFg).Bold(true).Width(2).Render(" >")
 	}
 	labelCell := lipgloss.NewStyle().Background(bg).Foreground(labelFg).Width(labelW).Render(truncate(label, max(1, labelW-1)))
 	ti.Width = ctrlW
@@ -657,8 +657,11 @@ func renderComposePanelRow(ti textinput.Model, label string, focused bool, width
 	ti.TextStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.text)
 	ti.PlaceholderStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.muted)
 	ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
-	view := truncateStyled(inputViewWithCursor(ti, focused), ctrlW, bg)
-	ctrlCell := lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Width(ctrlW).Render(view)
+	raw := inputViewWithCursor(ti, focused)
+	// Force background on every cell — bubbles textinput emits ANSI resets
+	// that clear backgrounds on cursor/prompt transitions.
+	wrapped := lipgloss.NewStyle().Background(bg).MaxWidth(ctrlW).Render(raw)
+	ctrlCell := lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Width(ctrlW).Render(wrapped)
 	return marker + labelCell + ctrlCell
 }
 
