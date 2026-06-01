@@ -191,17 +191,17 @@ func renderFormHintLines(text string, width int, chrome managerChrome) []string 
 	contPrefix := strings.Repeat(" ", lipgloss.Width(firstPrefix))
 	textW := max(1, width-lipgloss.Width(firstPrefix))
 	lines := wrapShellCommand(trimmed, textW)
-	style := lipgloss.NewStyle().
+	hintStyle := lipgloss.NewStyle().
 		Background(chrome.baseBg).
-		Foreground(chrome.muted).
-		Width(width)
+		Foreground(chrome.muted)
 	out := make([]string, 0, len(lines))
 	for i, line := range lines {
 		linePrefix := firstPrefix
 		if i > 0 {
 			linePrefix = contPrefix
 		}
-		out = append(out, style.Render(linePrefix+line))
+		rendered := hintStyle.Render(linePrefix + line)
+		out = append(out, padStyled(rendered, width, chrome.baseBg))
 	}
 	return out
 }
