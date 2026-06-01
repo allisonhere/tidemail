@@ -53,6 +53,14 @@ func (m Model) renderOverlay(base string) string {
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
 
+	case overlayContactManager:
+		winW := min(m.width-4, 74)
+		winH := min(m.height-4, 40)
+		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
+		inner := m.contactManager.View(winW, winH, m.styles)
+		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
+		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+
 	case overlayCompose:
 		winW := min(m.width-4, 74)
 		winH := min(m.height-4, 36)

@@ -42,6 +42,7 @@ type DisplayConfig struct {
 	ReadingWidth      int                `toml:"reading_width"`
 	ConfirmQuit       bool               `toml:"confirm_quit"`
 	ShowHeaders       bool               `toml:"show_headers"`
+	Notifications     bool               `toml:"notifications"`
 	Browser           string             `toml:"browser"`
 	Density           string             `toml:"density"`
 	VT52              RetroTerminalTweak `toml:"vt52"`
@@ -124,6 +125,7 @@ func DefaultConfig() Config {
 			Density:        "compact",
 			ConfirmQuit:    true,
 			ShowHeaders:    true,
+			Notifications:  true,
 		},
 		Updates: UpdatesConfig{
 			CheckOnStartup:     true,

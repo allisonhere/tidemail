@@ -48,7 +48,10 @@ func (db *DB) init() error {
 			return err
 		}
 	}
-	return db.migrate()
+	if err := db.migrate(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (db *DB) migrate() error {
@@ -110,6 +113,14 @@ func (db *DB) migrate() error {
 			key   TEXT PRIMARY KEY,
 			value TEXT NOT NULL DEFAULT ''
 		);
+
+		CREATE TABLE IF NOT EXISTS contacts (
+			id           INTEGER PRIMARY KEY AUTOINCREMENT,
+			addr         TEXT    NOT NULL UNIQUE,
+			display_name TEXT    NOT NULL DEFAULT '',
+			source       TEXT    NOT NULL DEFAULT 'manual',
+			created_at   INTEGER NOT NULL DEFAULT 0
+		);
 	`)
 	if err != nil {
 		return err
@@ -117,7 +128,68 @@ func (db *DB) migrate() error {
 	// Migrations: add columns that may not exist on older databases.
 	// SQLite error on duplicate column is silently ignored.
 	db.Exec(`ALTER TABLE messages ADD COLUMN headers TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
+	if err := db.migrateContactsToCuratedSchema(); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (db *DB) migrateContactsToCuratedSchema() error {
+	rows, err := db.Query(`PRAGMA table_info(contacts)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	columns := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		columns[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if !columns["status"] && !columns["use_count"] && !columns["last_used"] {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.Exec(`
+		CREATE TABLE contacts_curated_new (
+			id           INTEGER PRIMARY KEY AUTOINCREMENT,
+			addr         TEXT    NOT NULL UNIQUE,
+			display_name TEXT    NOT NULL DEFAULT '',
+			source       TEXT    NOT NULL DEFAULT 'manual',
+			created_at   INTEGER NOT NULL DEFAULT 0
+		)`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+		INSERT OR IGNORE INTO contacts_curated_new (id, addr, display_name, source, created_at)
+		SELECT id, addr, display_name, source, created_at
+		FROM contacts
+		WHERE source IN ('manual', 'vcard', 'carddav')`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DROP TABLE contacts`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`ALTER TABLE contacts_curated_new RENAME TO contacts`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // GetSetting retrieves a UI setting value by key.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/mail"
 	"os"
 	"os/exec"
 	"strings"
@@ -105,28 +106,83 @@ func (m *Model) loadUnifiedInboxCmd() tea.Cmd {
 func (m *Model) loadAddressBookCmd() tea.Cmd {
 	database := m.db
 	return func() tea.Msg {
-		addrs, err := database.ListAddresses()
+		addrs, err := database.ContactAddresses()
 		return AddressBookLoadedMsg{Addresses: addrs, Err: err}
 	}
 }
 
-func (m *Model) notifyCmd(mailboxID int64, newCount int) tea.Cmd {
+func (m *Model) notifyCmd(mailboxID int64, newMsgs []db.Message) tea.Cmd {
 	database := m.db
 	return func() tea.Msg {
-		mailbox, err := database.GetMailbox(mailboxID)
-		if err != nil {
-			return nil
+		// Account name gives multi-account context; best-effort, not required.
+		var acctName string
+		if mailbox, err := database.GetMailbox(mailboxID); err == nil {
+			if acc, err := database.GetAccount(mailbox.AccountID); err == nil {
+				acctName = acc.Name
+			}
 		}
-		acc, err := database.GetAccount(mailbox.AccountID)
-		if err != nil {
-			return nil
-		}
+		title, body := composeNotification(acctName, newMsgs)
 		// notify-send is fire-and-forget; exec the non-interactive version.
-		title := acc.Name
-		body := fmt.Sprintf("%s — %d new", mailbox.DisplayName, newCount)
 		_ = exec.Command("notify-send", "-a", "tidemail", "-i", "mail-unread", title, body).Run()
 		return nil
 	}
+}
+
+// composeNotification builds the title/body for a new-mail desktop notification:
+// one message shows "sender" / "subject"; a batch shows "N new messages" with a
+// capped "sender — subject" list. All dynamic text is single-lined and markup-escaped.
+func composeNotification(acctName string, msgs []db.Message) (title, body string) {
+	const maxLines = 5
+	suffix := ""
+	if acctName != "" {
+		suffix = " · " + notifyEscape(acctName)
+	}
+	if len(msgs) == 1 {
+		return notifyEscape(senderDisplay(msgs[0].From)) + suffix, notifyEscape(subjectOrDefault(msgs[0].Subject))
+	}
+	title = fmt.Sprintf("%d new messages", len(msgs)) + suffix
+	lines := make([]string, 0, maxLines+1)
+	for i, msg := range msgs {
+		if i >= maxLines {
+			lines = append(lines, fmt.Sprintf("…and %d more", len(msgs)-maxLines))
+			break
+		}
+		lines = append(lines, notifyEscape(senderDisplay(msg.From)+" — "+subjectOrDefault(msg.Subject)))
+	}
+	return title, strings.Join(lines, "\n")
+}
+
+// senderDisplay prefers the From header's display name, falling back to the bare
+// address (or the raw header if it doesn't parse). Newlines are collapsed so the
+// value never spans notification rows.
+func senderDisplay(from string) string {
+	from = strings.TrimSpace(from)
+	out := from
+	if addr, err := mail.ParseAddress(from); err == nil {
+		if name := strings.TrimSpace(addr.Name); name != "" {
+			out = name
+		} else {
+			out = addr.Address
+		}
+	}
+	return strings.Join(strings.Fields(out), " ")
+}
+
+func subjectOrDefault(subject string) string {
+	if s := strings.Join(strings.Fields(subject), " "); s != "" {
+		return s
+	}
+	return "(no subject)"
+}
+
+// notifyEscape escapes the GLib/Pango markup chars that notification daemons
+// (dunst, GNOME) interpret in body text, so untrusted sender/subject content can't
+// break or inject into the notification.
+func notifyEscape(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	return s
 }
 
 func (m *Model) scheduleNextSync(accountID int64) tea.Cmd {
@@ -207,7 +263,7 @@ func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
 			logFetch(acc.Name, mailbox.Name, 0, connectDur, fetchDur, time.Since(t0), err)
 			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual, Total: time.Since(t0)}
 		}
-		newCount, err := storeFetchedMessages(database, mailboxID, msgs)
+		newMsgs, err := storeFetchedMessages(database, mailboxID, msgs)
 		if err != nil {
 			logFetch(acc.Name, mailbox.Name, len(msgs), connectDur, fetchDur, time.Since(t0), err)
 			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual, Total: time.Since(t0)}
@@ -223,22 +279,28 @@ func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
 			writeErr = e
 		}
 		logFetch(acc.Name, mailbox.Name, len(msgs), connectDur, fetchDur, time.Since(t0), writeErr)
-		return MailboxSyncedMsg{MailboxID: mailboxID, NewCount: newCount, Manual: manual, Total: time.Since(t0)}
+		return MailboxSyncedMsg{MailboxID: mailboxID, NewCount: len(newMsgs), NewMessages: newMsgs, Manual: manual, Total: time.Since(t0)}
 	}
 }
 
-func storeFetchedMessages(database *db.DB, mailboxID int64, msgs []db.Message) (int, error) {
-	newCount := 0
+// storeFetchedMessages upserts msgs and returns the genuinely-new unread ones
+// (previously-unseen UIDs), used to drive desktop notifications. Callers derive the
+// "N new" count from len(newMsgs).
+func storeFetchedMessages(database *db.DB, mailboxID int64, msgs []db.Message) ([]db.Message, error) {
+	var newMsgs []db.Message
 	for _, msg := range msgs {
 		msg.MailboxID = mailboxID
+		// Determine novelty before the upsert: SINCE re-fetches mail we already hold,
+		// and the upsert would otherwise make every poll look like new arrivals.
+		existed, exErr := database.MessageExists(mailboxID, msg.UID)
 		if err := database.UpsertMessage(msg); err != nil {
-			return newCount, err
+			return newMsgs, err
 		}
-		if !msg.Read {
-			newCount++
+		if exErr == nil && !existed && !msg.Read {
+			newMsgs = append(newMsgs, msg)
 		}
 	}
-	return newCount, nil
+	return newMsgs, nil
 }
 
 func logFetch(account, mailbox string, msgCount int, connectDur, fetchDur, totalDur time.Duration, err error) {

@@ -186,6 +186,15 @@ func (db *DB) UpsertMessage(m Message) error {
 	return nil
 }
 
+// MessageExists reports whether a message with the given mailbox/uid is already
+// stored. Used to distinguish genuinely-new mail from re-fetches: IMAP SINCE is
+// date-granular, so a poll re-downloads messages we already hold.
+func (db *DB) MessageExists(mailboxID int64, uid uint32) (bool, error) {
+	var n int
+	err := db.QueryRow(`SELECT COUNT(1) FROM messages WHERE mailbox_id = ? AND uid = ?`, mailboxID, uid).Scan(&n)
+	return n > 0, err
+}
+
 func (db *DB) MarkRead(id int64, read bool) error {
 	v := 0
 	if read {

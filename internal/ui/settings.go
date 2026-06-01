@@ -66,6 +66,7 @@ const (
 	sfTheme
 	sfConfirmQuit
 	sfShowHeaders
+	sfNotifications
 	// sfBackToSections is the first focusable target in the detail pane.
 	// Activating it restores focus to the sidebar so users never auto-land on a text input.
 	sfBackToSections
@@ -222,6 +223,7 @@ type Settings struct {
 	filterLinks          bool
 	confirmQuit          bool
 	showHeaders          bool
+	notifications        bool
 	layoutDensityIdx     int // 0 = comfortable, 1 = compact
 	readingWidthInput    textinput.Model
 	browserInput         textinput.Model
@@ -310,6 +312,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		filterLinks:          cfg.Display.FilterLinks,
 		confirmQuit:          cfg.Display.ConfirmQuit,
 		showHeaders:          cfg.Display.ShowHeaders,
+		notifications:        cfg.Display.Notifications,
 		layoutDensityIdx:     layoutIdx,
 		readingWidthInput:    mkInput(strconv.Itoa(cfg.Display.ReadingWidth), "0 (no limit)", false),
 		browserInput:         mkInput(cfg.Display.Browser, "xdg-open", false),
@@ -373,6 +376,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.FilterLinks = s.filterLinks
 	cfg.Display.ConfirmQuit = s.confirmQuit
 	cfg.Display.ShowHeaders = s.showHeaders
+	cfg.Display.Notifications = s.notifications
 	if w, err := strconv.Atoi(strings.TrimSpace(s.readingWidthInput.Value())); err == nil {
 		cfg.Display.ReadingWidth = max(0, w)
 	}
@@ -589,7 +593,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		if config.IsRetroTerminalTheme(s.themeName) {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
-		return append(fields, sfActionableLinks, sfFilterLinks, sfBrowser, sfConfirmQuit, sfShowHeaders)
+		return append(fields, sfActionableLinks, sfFilterLinks, sfBrowser, sfConfirmQuit, sfShowHeaders, sfNotifications)
 	case ssFeeds:
 		return []settingsField{sfBackToSections, sfFeedMaxBody}
 	case ssUpdates:
@@ -1080,6 +1084,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfNotifications:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.notifications = !s.notifications
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfMarkReadOnSummarize:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.markReadOnSummarize = !s.markReadOnSummarize
@@ -1432,6 +1445,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addInput("Browser command", s.browserInput, sfBrowser)
 		b.addToggle("Confirm before quitting", s.confirmQuit, sfConfirmQuit)
 		b.addToggle("Show email headers", s.showHeaders, sfShowHeaders)
+		b.addToggle("Desktop notifications", s.notifications, sfNotifications)
 
 	case ssFeeds:
 		b.addGroup("Storage")
@@ -2269,6 +2283,8 @@ func (s Settings) fieldHint(field settingsField) string {
 		return "strip bare URLs from the article body text"
 	case sfFocusLine:
 		return "highlight the current readable line in the content pane"
+	case sfNotifications:
+		return "show a desktop notification when new mail arrives during background sync"
 	case sfUpdateManualCommand:
 		return "enter or c copies the command"
 	default:

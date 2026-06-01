@@ -56,6 +56,7 @@ const (
 	overlaySearch
 	overlayThemePicker
 	overlayAccountManager
+	overlayContactManager
 	overlayHelp
 	overlaySettings
 	overlayUpdateConfirm
@@ -152,6 +153,7 @@ type Model struct {
 	themeCursor    int
 
 	accountManager AccountManager
+	contactManager ContactManager
 	compose        ComposeModel
 	addressBook    []string
 
@@ -512,8 +514,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Auto-sync: log to buffer silently (no status bar spam).
 			m.addToLog(fmt.Sprintf("auto-synced %d new (%v)", msg.NewCount, msg.Total.Round(time.Millisecond)), false)
 		}
-		if msg.NewCount > 0 && !msg.Manual {
-			cmds = append(cmds, m.notifyCmd(msg.MailboxID, msg.NewCount))
+		if len(msg.NewMessages) > 0 && !msg.Manual && m.cfg.Display.Notifications {
+			cmds = append(cmds, m.notifyCmd(msg.MailboxID, msg.NewMessages))
 		}
 		cmds = append(cmds, m.loadAddressBookCmd())
 		return m, tea.Batch(cmds...)
@@ -775,6 +777,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.overlay == overlayAccountManager {
 			return m.handleAccountManager(msg)
 		}
+		if m.overlay == overlayContactManager {
+			return m.handleContactManager(msg)
+		}
 		if m.overlay == overlaySettings {
 			return m.handleSettings(msg)
 		}
@@ -812,6 +817,11 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.AccountManager):
 		m.overlay = overlayAccountManager
 		m.accountManager = m.newAccountManager()
+		return m, nil
+
+	case keyMatches(msg, m.keys.ContactManager):
+		m.overlay = overlayContactManager
+		m.contactManager = NewContactManager(m.db)
 		return m, nil
 
 	case keyMatches(msg, m.keys.ThemePicker):
@@ -1321,6 +1331,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayAccountManager:
 		return m.handleAccountManager(msg)
 
+	case overlayContactManager:
+		return m.handleContactManager(msg)
+
 	case overlayCompose:
 		return m.handleCompose(msg)
 
@@ -1545,6 +1558,17 @@ func (m Model) handleAccountManager(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if exit {
 		m.overlay = overlayNone
 		return m, m.loadAccountsCmd()
+	}
+	return m, cmd
+}
+
+func (m Model) handleContactManager(msg tea.Msg) (tea.Model, tea.Cmd) {
+	newCM, cmd, exit := m.contactManager.Update(msg, m.keys)
+	m.contactManager = newCM
+	if exit {
+		m.overlay = overlayNone
+		// Refresh autocomplete: edits in the manager change suggestions.
+		return m, m.loadAddressBookCmd()
 	}
 	return m, cmd
 }
