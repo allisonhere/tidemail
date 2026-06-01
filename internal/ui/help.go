@@ -59,19 +59,22 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 			},
 		},
 		{
-			name: "Accounts",
+			name: "Accounts / Contacts",
 			entries: []entry{
 				bind(keys.Sync),
 				{keys.Sync.Help().Key + " (on Unified)", "sync all inboxes"},
 				bind(keys.SyncAll),
 				bind(keys.AccountManager),
-				bind(keys.ContactManager),
 				{keys.Add.Help().Key, "add account"},
 				{keys.Edit.Help().Key, "edit account"},
 				{keys.Delete.Help().Key, "delete account"},
 				{"Gmail: Auth toggle", "switch between Password / OAuth2 in account form"},
 				{"Gmail: Sign in", "press Enter on [Sign in with Google] to launch OAuth2"},
 				{"Settings → Accounts", "set sync interval per account for auto-refresh"},
+				bind(keys.ContactManager),
+				{"Contacts: n/e/d", "new, edit, or delete contacts used by compose autocomplete"},
+				{"Contacts: f", "add addresses already seen in mail"},
+				{"Contacts: i/x", "import vCard or export contacts.vcf"},
 			},
 		},
 		{
@@ -89,6 +92,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{"S → Display", "focus line: highlight current readable content line"},
 				{"S → Display", "actionable links: show links block and enable link navigation"},
 				{"S → Display", "show email headers: show headers when opening a message"},
+				{"S → Display", "desktop notifications: notify on new unread mail from auto-sync"},
 			},
 		},
 		{
