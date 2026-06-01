@@ -108,6 +108,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 			entries: []entry{
 				bind(keys.ThemePicker),
 				bind(keys.Settings),
+				bind(keys.ContactManager),
 				bind(keys.Command),
 				bind(keys.UpdateInstall),
 				bind(keys.UpdateIgnore),
