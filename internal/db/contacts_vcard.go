@@ -19,11 +19,12 @@ func (db *DB) ImportVCard(r io.Reader) (int, error) {
 			return added, err
 		}
 		name := vcardDisplayName(card)
+		meta := vcardContactMetadata(card)
 		for _, field := range card[vcard.FieldEmail] {
 			if field == nil || strings.TrimSpace(field.Value) == "" {
 				continue
 			}
-			id, err := db.AddContact(field.Value, name, "vcard")
+			id, err := db.AddContactWithMetadata(field.Value, name, "vcard", meta)
 			if err != nil {
 				return added, err
 			}
@@ -59,6 +60,30 @@ func vcardDisplayName(card vcard.Card) string {
 	return strings.Join(kept, " ")
 }
 
+func vcardContactMetadata(card vcard.Card) ContactMetadata {
+	return ContactMetadata{
+		Phone:        preferredVCardValue(card, vcard.FieldTelephone),
+		Organization: preferredVCardValue(card, vcard.FieldOrganization),
+		Title:        preferredVCardValue(card, vcard.FieldTitle),
+		Note:         preferredVCardValue(card, vcard.FieldNote),
+	}
+}
+
+func preferredVCardValue(card vcard.Card, field string) string {
+	if value := strings.TrimSpace(card.PreferredValue(field)); value != "" {
+		return value
+	}
+	for _, f := range card[field] {
+		if f == nil {
+			continue
+		}
+		if value := strings.TrimSpace(f.Value); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func (db *DB) ExportVCard(w io.Writer) error {
 	contacts, err := db.ListContacts()
 	if err != nil {
@@ -73,6 +98,18 @@ func (db *DB) ExportVCard(w io.Writer) error {
 		}
 		card.SetValue(vcard.FieldFormattedName, name)
 		card.SetValue(vcard.FieldEmail, c.Addr)
+		if c.Phone != "" {
+			card.SetValue(vcard.FieldTelephone, c.Phone)
+		}
+		if c.Organization != "" {
+			card.SetValue(vcard.FieldOrganization, c.Organization)
+		}
+		if c.Title != "" {
+			card.SetValue(vcard.FieldTitle, c.Title)
+		}
+		if c.Note != "" {
+			card.SetValue(vcard.FieldNote, c.Note)
+		}
 		vcard.ToV4(card)
 		if err := enc.Encode(card); err != nil {
 			return err

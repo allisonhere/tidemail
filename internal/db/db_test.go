@@ -274,6 +274,26 @@ func TestDBMoveAndDeleteMessageUpdateLocalState(t *testing.T) {
 	if len(remaining) != 0 {
 		t.Fatalf("expected deleted message to be gone, got %+v", remaining)
 	}
+	var tombstones int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM deleted_messages WHERE mailbox_id = ? AND uid = ?`, archiveID, uint32(44)).Scan(&tombstones); err != nil {
+		t.Fatal(err)
+	}
+	if tombstones != 1 {
+		t.Fatalf("expected deleted message tombstone, got %d", tombstones)
+	}
+}
+
+func TestDBDeleteMessageMissingReturnsError(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	if err := database.DeleteMessage(999); err == nil {
+		t.Fatal("expected missing message delete to fail")
+	}
 }
 
 func TestDBFindArchiveMailboxPrefersSpecialUseThenCommonNames(t *testing.T) {

@@ -27,13 +27,16 @@ go build -o tidemail .
 
 - Three-pane mail layout: accounts, messages, content
 - Unified Inbox across all configured accounts
-- Multi-select messages with space bar — bulk delete, archive, move, mark read
+- Multi-select messages with space bar — auto-advances for bulk delete, archive, move, mark read
 - Select all with `A` — selects every message in current view
 - Full email headers display — toggle with `ctrl+e`, configurable default in Settings
 - Spam/auth headers — SPF, DKIM, DMARC results color-coded in header view
 - IMAP/SMTP accounts using passwords, app passwords, or **Gmail OAuth2** (stored in system keychain)
 - Account manager for adding, editing, deleting, and discovering mailboxes
+- Contacts manager for curated autocomplete, manual entries, adding seen senders, composing to selected contacts, and vCard import/export
+- vCard import/export preserves email, display name, phone, organization, title, and notes
 - Server-backed sync, read/unread, archive, move, delete, compose, and reply
+- Local-first delete hides messages immediately and prevents deleted mail from reappearing on later syncs
 - Archive auto-detection via `\Archive`, `Archive`, `Archives`, or `All Mail`
 - Command palette for common mail actions
 - Search and unread-only filtering
@@ -42,7 +45,7 @@ go build -o tidemail .
 - AI grammar & spell check in compose with preview overlay
 - Theme-aware dialogs, overlays, and terminal background sync
 - Collapsible account folders (System, Labels) in sidebar
-- **Desktop notifications** on new mail via auto-sync (notify-send)
+- **Desktop notifications** on genuinely new unread mail via auto-sync (notify-send), with sender and subject details
 - **Gmail OAuth2** — sign-in via browser, no app passwords needed
 
 ## Usage
@@ -55,6 +58,8 @@ go build -o tidemail .
 Config is stored in `~/.config/tidemail/config.toml`. The local SQLite cache is stored in `~/.local/share/tidemail/mail.db` unless `XDG_DATA_HOME` changes that path.
 
 Open account management with `M`, add an IMAP/SMTP account, then sync the selected mailbox with `f`. Press `f` on the Unified Inbox to sync every account's inbox at once. Use `F` to sync all mailboxes. Configure a per-account `sync_minutes` interval for automatic background refresh.
+
+Open contacts with `C`. Contacts are the curated address book used for compose autocomplete. Add contacts manually with `n`, add addresses already seen in mail with `f`, import a vCard file with `i`, export to `contacts.vcf` with `x`, select multiple contacts with `Space`, press `c` to compose to the selected contact(s), and delete selected contacts with `d`. vCard import/export keeps email, display name, phone, organization, title, and note fields.
 
 ## Credential safety
 
@@ -110,13 +115,15 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 | `p` or `:` | Command palette |
 | `m` | Move selected message(s) to folder/label |
 | `M` | Account manager |
+| `C` | Contacts manager |
+| `c` in Contacts | Compose to selected contact(s) |
 | `f` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
 | `F` | Sync all mailboxes |
 | `c` | Compose |
 | `r` | Toggle read/unread in message list, reply from content |
 | `a` | Archive selected message |
 | `d` | Delete selected message |
-| `Space` | Multi-select messages (then `d`/`a`/`m`/`x` for bulk actions) |
+| `Space` | Multi-select messages; auto-advances and keeps the cursor visible (then `d`/`a`/`m`/`x` for bulk actions) |
 | `A` | Select all messages in current view |
 | `R` | Mark selected mailbox/account read |
 | `/` | Search messages |
@@ -138,7 +145,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 
 Settings are opened with `S`.
 
-- Display: icons, date format, mark-read behavior, focus line, actionable links, reading width, browser command, density, show email headers, and quit confirmation
+- Display: icons, date format, mark-read behavior, focus line, actionable links, reading width, browser command, density, show email headers, desktop notifications, and quit confirmation
 - Accounts: edit account details and set a per-account `sync_minutes` interval for automatic background refresh
 - Updates: check, install, restart, or copy a manual install command
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings

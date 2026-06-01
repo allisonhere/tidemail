@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
@@ -54,6 +55,42 @@ func TestContactManagerAddContact(t *testing.T) {
 	addrs, _ := d.ContactAddresses()
 	if len(addrs) != 1 || addrs[0] != "Dave <dave@example.com>" {
 		t.Fatalf("manual contact not in autocomplete: %v", addrs)
+	}
+}
+
+func TestContactManagerEditSavesMetadataFields(t *testing.T) {
+	d := newContactTestDB(t)
+	id, err := d.AddContactWithMetadata("meta@example.com", "Meta", "manual", db.ContactMetadata{
+		Phone:        "555-0100",
+		Organization: "Example Co",
+		Title:        "Engineer",
+		Note:         "Met at conf",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm := NewContactManager(d)
+
+	cm, _, _ = cm.Update(rune1('e'), DefaultKeys)
+	if cm.mode != cmEdit || cm.editID != id {
+		t.Fatalf("expected edit mode for %d, got mode=%v id=%d", id, cm.mode, cm.editID)
+	}
+	if cm.phoneInput.Value() != "555-0100" || cm.organizationInput.Value() != "Example Co" || cm.titleInput.Value() != "Engineer" || cm.noteInput.Value() != "Met at conf" {
+		t.Fatalf("metadata did not preload")
+	}
+
+	cm.phoneInput.SetValue("555-0101")
+	cm.organizationInput.SetValue("New Co")
+	cm.titleInput.SetValue("Lead")
+	cm.noteInput.SetValue("Updated note")
+	cm, _, _ = cm.Update(tea.KeyMsg{Type: tea.KeyEnter}, DefaultKeys)
+
+	got, err := d.ListContacts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Phone != "555-0101" || got[0].Organization != "New Co" || got[0].Title != "Lead" || got[0].Note != "Updated note" {
+		t.Fatalf("metadata did not save: %+v", got)
 	}
 }
 
@@ -204,5 +241,50 @@ func TestContactManagerEscExits(t *testing.T) {
 	_, _, exit := cm.Update(tea.KeyMsg{Type: tea.KeyEsc}, DefaultKeys)
 	if !exit {
 		t.Fatal("esc should exit the contact manager")
+	}
+}
+
+func TestContactManagerComposeSelectedContact(t *testing.T) {
+	d := newContactTestDB(t)
+	_, _ = d.AddContact("mary@example.com", "Mary", "manual")
+
+	m := NewModel(d, config.DefaultConfig(), "dev", false)
+	m.overlay = overlayContactManager
+	m.contactManager = NewContactManager(d)
+
+	next, _ := m.Update(rune1('c'))
+	m = next.(Model)
+
+	if m.overlay != overlayCompose {
+		t.Fatalf("expected compose overlay, got %v", m.overlay)
+	}
+	if got := m.compose.toInput.Value(); got != "Mary <mary@example.com>" {
+		t.Fatalf("expected selected contact in To, got %q", got)
+	}
+}
+
+func TestContactManagerComposeMarkedContacts(t *testing.T) {
+	d := newContactTestDB(t)
+	_, _ = d.AddContact("alice@example.com", "Alice", "manual")
+	_, _ = d.AddContact("bob@example.com", "Bob", "manual")
+	_, _ = d.AddContact("carol@example.com", "Carol", "manual")
+
+	m := NewModel(d, config.DefaultConfig(), "dev", false)
+	m.overlay = overlayContactManager
+	m.contactManager = NewContactManager(d)
+	m.contactManager.toggleMarkAdvance()
+	m.contactManager.toggleMarkAdvance()
+
+	next, _ := m.Update(rune1('c'))
+	m = next.(Model)
+
+	if m.overlay != overlayCompose {
+		t.Fatalf("expected compose overlay, got %v", m.overlay)
+	}
+	if got := m.compose.toInput.Value(); got != "Alice <alice@example.com>, Bob <bob@example.com>" {
+		t.Fatalf("expected marked contacts in To, got %q", got)
+	}
+	if len(m.contactManager.marked) != 0 {
+		t.Fatalf("expected marks to be cleared after composing, got %v", m.contactManager.marked)
 	}
 }

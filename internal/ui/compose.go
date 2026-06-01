@@ -378,12 +378,14 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 	case keyMatches(km, keys.Tab):
 		// If the focused input has matched suggestions, let it accept one.
 		// Otherwise Tab advances to the next field.
-		if c.focusedField == composeFieldTo && len(c.toInput.MatchedSuggestions()) > 0 {
+		if c.focusedField == composeFieldTo && hasPendingComposeSuggestion(c.toInput) {
 			c.toInput, _ = c.toInput.Update(msg)
+			c.advanceField(1)
 			return c, nil, false
 		}
-		if c.focusedField == composeFieldCC && len(c.ccInput.MatchedSuggestions()) > 0 {
+		if c.focusedField == composeFieldCC && hasPendingComposeSuggestion(c.ccInput) {
 			c.ccInput, _ = c.ccInput.Update(msg)
+			c.advanceField(1)
 			return c, nil, false
 		}
 		c.advanceField(1)
@@ -442,6 +444,20 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 		}
 		return c, cmd, false
 	}
+}
+
+func hasPendingComposeSuggestion(input textinput.Model) bool {
+	matches := input.MatchedSuggestions()
+	if len(matches) == 0 {
+		return false
+	}
+	value := strings.TrimSpace(input.Value())
+	for _, match := range matches {
+		if strings.EqualFold(value, strings.TrimSpace(match)) {
+			return false
+		}
+	}
+	return true
 }
 
 // updatePicker handles key events in the file picker overlay.
@@ -663,6 +679,11 @@ func renderComposePanelRow(ti textinput.Model, label string, focused bool, width
 	ti.TextStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.text)
 	ti.PlaceholderStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.muted)
 	ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
+	if focused {
+		ti.Focus()
+	} else {
+		ti.Blur()
+	}
 	raw := inputViewWithCursor(ti, focused)
 	// bubbles pads the placeholder/value out to ti.Width with *unstyled* spaces
 	// (textinput.placeholderView), which leak the terminal's default background to
@@ -800,10 +821,14 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	// Cursor character: after Reverse(true) gives accent-bg with bodyBg-text.
 	c.bodyInput.Cursor.Style = plain.Background(bodyBg).Foreground(chrome.accent)
 
-	// Re-focus the textarea on the copy so its internal style pointer
-	// (&FocusedStyle) points to the copy's FocusedStyle (with our changes),
-	// not the original's (which has the default black CursorLine).
-	c.bodyInput.Focus()
+	// Apply focus only to the render copy. Focus() points the textarea at the copy's
+	// FocusedStyle; Blur() prevents inactive compose fields from leaving cursor
+	// artifacts when focus moves back to To/CC/Subject.
+	if c.focusedField == composeFieldBody {
+		c.bodyInput.Focus()
+	} else {
+		c.bodyInput.Blur()
+	}
 
 	raw := c.bodyInput.View()
 	// Wrap each line individually with bodyBg so the background covers

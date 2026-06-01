@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -75,6 +76,58 @@ func TestDeleteKeyWaitsForDeleteResultBeforeRemovingMessage(t *testing.T) {
 
 	if len(m.messages) != 0 || len(m.filteredMessages) != 0 {
 		t.Fatalf("expected successful delete result to remove message, got %d/%d", len(m.messages), len(m.filteredMessages))
+	}
+}
+
+func TestMessageDeletedMsgRemovesLocallyDeletedMessageDespiteRemoteError(t *testing.T) {
+	msg := db.Message{ID: 1, MailboxID: 2, Subject: "Delete me"}
+	m := Model{
+		messages:         []db.Message{msg},
+		filteredMessages: []db.Message{msg},
+		messageCursor:    0,
+		selectedMessages: make(map[int64]bool),
+	}
+
+	next, _ := m.Update(MessageDeletedMsg{
+		MessageID:    msg.ID,
+		MailboxID:    msg.MailboxID,
+		LocalDeleted: true,
+		Err:          errors.New("remote unavailable"),
+	})
+	m = next.(Model)
+
+	if len(m.messages) != 0 || len(m.filteredMessages) != 0 {
+		t.Fatalf("expected local delete result to remove message, got %d/%d", len(m.messages), len(m.filteredMessages))
+	}
+}
+
+func TestSpaceSelectAdvanceKeepsCursorVisible(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = next.(Model)
+	m.focused = paneMessages
+
+	visible := m.articleRowsVisible()
+	if visible < 2 {
+		t.Fatalf("expected at least 2 visible message rows, got %d", visible)
+	}
+	msgs := make([]db.Message, visible+2)
+	for i := range msgs {
+		msgs[i] = db.Message{ID: int64(i + 1), Subject: fmt.Sprintf("Message %d", i+1)}
+	}
+	m.messages = msgs
+	m.filteredMessages = msgs
+	m.messageCursor = visible - 1
+	m.listOffset = 0
+
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = next.(Model)
+
+	if m.messageCursor != visible {
+		t.Fatalf("expected cursor to advance to %d, got %d", visible, m.messageCursor)
+	}
+	if m.listOffset != 1 {
+		t.Fatalf("expected list offset to scroll to 1, got %d", m.listOffset)
 	}
 }
 

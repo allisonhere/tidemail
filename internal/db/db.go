@@ -99,6 +99,20 @@ func (db *DB) migrate() error {
 		CREATE INDEX IF NOT EXISTS idx_messages_mailbox_id ON messages(mailbox_id);
 		CREATE INDEX IF NOT EXISTS idx_messages_read       ON messages(read);
 
+		CREATE TABLE IF NOT EXISTS deleted_messages (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+			uid        INTEGER NOT NULL DEFAULT 0,
+			message_id TEXT    NOT NULL DEFAULT '',
+			deleted_at INTEGER NOT NULL DEFAULT 0
+		);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_deleted_messages_mailbox_uid
+			ON deleted_messages(mailbox_id, uid)
+			WHERE uid != 0;
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_deleted_messages_mailbox_message_id
+			ON deleted_messages(mailbox_id, message_id)
+			WHERE message_id != '';
+
 		CREATE TABLE IF NOT EXISTS attachments (
 			id           INTEGER PRIMARY KEY AUTOINCREMENT,
 			message_id   INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
@@ -119,7 +133,11 @@ func (db *DB) migrate() error {
 			addr         TEXT    NOT NULL UNIQUE,
 			display_name TEXT    NOT NULL DEFAULT '',
 			source       TEXT    NOT NULL DEFAULT 'manual',
-			created_at   INTEGER NOT NULL DEFAULT 0
+			created_at   INTEGER NOT NULL DEFAULT 0,
+			phone        TEXT    NOT NULL DEFAULT '',
+			organization TEXT    NOT NULL DEFAULT '',
+			title        TEXT    NOT NULL DEFAULT '',
+			note         TEXT    NOT NULL DEFAULT ''
 		);
 	`)
 	if err != nil {
@@ -129,6 +147,9 @@ func (db *DB) migrate() error {
 	// SQLite error on duplicate column is silently ignored.
 	db.Exec(`ALTER TABLE messages ADD COLUMN headers TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
 	if err := db.migrateContactsToCuratedSchema(); err != nil {
+		return err
+	}
+	if err := db.migrateContactMetadataColumns(); err != nil {
 		return err
 	}
 	return nil
@@ -172,7 +193,11 @@ func (db *DB) migrateContactsToCuratedSchema() error {
 			addr         TEXT    NOT NULL UNIQUE,
 			display_name TEXT    NOT NULL DEFAULT '',
 			source       TEXT    NOT NULL DEFAULT 'manual',
-			created_at   INTEGER NOT NULL DEFAULT 0
+			created_at   INTEGER NOT NULL DEFAULT 0,
+			phone        TEXT    NOT NULL DEFAULT '',
+			organization TEXT    NOT NULL DEFAULT '',
+			title        TEXT    NOT NULL DEFAULT '',
+			note         TEXT    NOT NULL DEFAULT ''
 		)`); err != nil {
 		return err
 	}
@@ -190,6 +215,18 @@ func (db *DB) migrateContactsToCuratedSchema() error {
 		return err
 	}
 	return tx.Commit()
+}
+
+func (db *DB) migrateContactMetadataColumns() error {
+	for _, stmt := range []string{
+		`ALTER TABLE contacts ADD COLUMN phone TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE contacts ADD COLUMN organization TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE contacts ADD COLUMN title TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE contacts ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
+	} {
+		db.Exec(stmt) //nolint:errcheck
+	}
+	return nil
 }
 
 // GetSetting retrieves a UI setting value by key.

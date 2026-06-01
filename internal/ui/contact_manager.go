@@ -32,10 +32,15 @@ type ContactManager struct {
 	marked   map[int]bool
 	mode     cmMode
 
-	nameInput  textinput.Model
-	emailInput textinput.Model
-	focusEmail bool
-	editID     int64
+	nameInput         textinput.Model
+	emailInput        textinput.Model
+	phoneInput        textinput.Model
+	organizationInput textinput.Model
+	titleInput        textinput.Model
+	noteInput         textinput.Model
+	focusEmail        bool
+	formFocus         int
+	editID            int64
 
 	seen       []db.Contact
 	filter     textinput.Model
@@ -44,6 +49,7 @@ type ContactManager struct {
 
 	filePicker filePicker
 	importing  bool
+	composeTo  []string
 	statusMsg  string
 	isErr      bool
 }
@@ -56,6 +62,10 @@ func NewContactManager(database *db.DB) ContactManager {
 	}
 	cm.nameInput = newAMInput("Display name (optional)", false)
 	cm.emailInput = newAMInput("you@example.com", false)
+	cm.phoneInput = newAMInput("phone (optional)", false)
+	cm.organizationInput = newAMInput("organization (optional)", false)
+	cm.titleInput = newAMInput("title (optional)", false)
+	cm.noteInput = newAMInput("note (optional)", false)
 	cm.filter = newAMInput("filter seen mail", false)
 	cm.reload()
 	return cm
@@ -111,6 +121,32 @@ func (cm ContactManager) targetIndexes() []int {
 	return nil
 }
 
+func (cm ContactManager) targetContacts() []db.Contact {
+	indexes := cm.targetIndexes()
+	contacts := make([]db.Contact, 0, len(indexes))
+	for _, i := range indexes {
+		if i >= 0 && i < len(cm.contacts) {
+			contacts = append(contacts, cm.contacts[i])
+		}
+	}
+	return contacts
+}
+
+func contactAddress(c db.Contact) string {
+	if c.DisplayName != "" {
+		return c.DisplayName + " <" + c.Addr + ">"
+	}
+	return c.Addr
+}
+
+func contactAddressList(contacts []db.Contact) []string {
+	addrs := make([]string, 0, len(contacts))
+	for _, c := range contacts {
+		addrs = append(addrs, contactAddress(c))
+	}
+	return addrs
+}
+
 func (cm *ContactManager) toggleMarkAdvance() {
 	if len(cm.contacts) == 0 {
 		return
@@ -163,6 +199,13 @@ func (cm ContactManager) updateList(msg tea.Msg, keys KeyMap) (ContactManager, t
 		}
 	case keyMatches(km, keys.Space):
 		cm.toggleMarkAdvance()
+	case km.String() == "c":
+		contacts := cm.targetContacts()
+		if len(contacts) == 0 {
+			cm.setStatus("no contacts to compose", true)
+			return cm, nil, false
+		}
+		cm.composeTo = contactAddressList(contacts)
 	case km.String() == "n":
 		cm.beginAdd()
 	case keyMatches(km, keys.Edit):
@@ -186,9 +229,11 @@ func (cm *ContactManager) beginAdd() {
 	cm.editID = 0
 	cm.nameInput.Reset()
 	cm.emailInput.Reset()
-	cm.focusEmail = false
-	cm.nameInput.Focus()
-	cm.emailInput.Blur()
+	cm.phoneInput.Reset()
+	cm.organizationInput.Reset()
+	cm.titleInput.Reset()
+	cm.noteInput.Reset()
+	cm.setFormFocus(0)
 	cm.statusMsg = ""
 }
 
@@ -201,9 +246,11 @@ func (cm *ContactManager) beginEdit() {
 	cm.editID = c.ID
 	cm.nameInput.SetValue(c.DisplayName)
 	cm.emailInput.SetValue(c.Addr)
-	cm.focusEmail = false
-	cm.nameInput.Focus()
-	cm.emailInput.Blur()
+	cm.phoneInput.SetValue(c.Phone)
+	cm.organizationInput.SetValue(c.Organization)
+	cm.titleInput.SetValue(c.Title)
+	cm.noteInput.SetValue(c.Note)
+	cm.setFormFocus(0)
 	cm.statusMsg = ""
 }
 
@@ -215,6 +262,30 @@ func (cm *ContactManager) beginPicker() {
 	cm.pickCursor = 0
 	cm.pickMarked = map[int]bool{}
 	cm.statusMsg = ""
+}
+
+func (cm *ContactManager) contactFormInputs() []*textinput.Model {
+	return []*textinput.Model{
+		&cm.nameInput,
+		&cm.emailInput,
+		&cm.phoneInput,
+		&cm.organizationInput,
+		&cm.titleInput,
+		&cm.noteInput,
+	}
+}
+
+func (cm *ContactManager) setFormFocus(index int) {
+	inputs := cm.contactFormInputs()
+	cm.formFocus = clamp(index, 0, len(inputs)-1)
+	for i, input := range inputs {
+		if i == cm.formFocus {
+			input.Focus()
+		} else {
+			input.Blur()
+		}
+	}
+	cm.focusEmail = cm.formFocus == 1
 }
 
 func (cm *ContactManager) beginFilePicker(importing bool) {
@@ -238,10 +309,9 @@ func (cm ContactManager) updateForm(msg tea.Msg, keys KeyMap) (ContactManager, t
 	km, ok := msg.(tea.KeyMsg)
 	if !ok {
 		var cmd tea.Cmd
-		if cm.focusEmail {
-			cm.emailInput, cmd = cm.emailInput.Update(msg)
-		} else {
-			cm.nameInput, cmd = cm.nameInput.Update(msg)
+		inputs := cm.contactFormInputs()
+		if cm.formFocus >= 0 && cm.formFocus < len(inputs) {
+			*inputs[cm.formFocus], cmd = inputs[cm.formFocus].Update(msg)
 		}
 		return cm, cmd, false
 	}
@@ -251,23 +321,15 @@ func (cm ContactManager) updateForm(msg tea.Msg, keys KeyMap) (ContactManager, t
 		cm.statusMsg = ""
 		return cm, nil, false
 	case keyMatches(km, keys.Tab), keyMatches(km, keys.Up), keyMatches(km, keys.Down):
-		cm.focusEmail = !cm.focusEmail
-		if cm.focusEmail {
-			cm.nameInput.Blur()
-			cm.emailInput.Focus()
-		} else {
-			cm.emailInput.Blur()
-			cm.nameInput.Focus()
-		}
+		cm.setFormFocus((cm.formFocus + 1) % len(cm.contactFormInputs()))
 		return cm, nil, false
 	case keyMatches(km, keys.Enter):
 		return cm.submitForm(), nil, false
 	}
 	var cmd tea.Cmd
-	if cm.focusEmail {
-		cm.emailInput, cmd = cm.emailInput.Update(msg)
-	} else {
-		cm.nameInput, cmd = cm.nameInput.Update(msg)
+	inputs := cm.contactFormInputs()
+	if cm.formFocus >= 0 && cm.formFocus < len(inputs) {
+		*inputs[cm.formFocus], cmd = inputs[cm.formFocus].Update(msg)
 	}
 	return cm, cmd, false
 }
@@ -275,18 +337,24 @@ func (cm ContactManager) updateForm(msg tea.Msg, keys KeyMap) (ContactManager, t
 func (cm ContactManager) submitForm() ContactManager {
 	addr := strings.TrimSpace(cm.emailInput.Value())
 	name := strings.TrimSpace(cm.nameInput.Value())
+	meta := db.ContactMetadata{
+		Phone:        cm.phoneInput.Value(),
+		Organization: cm.organizationInput.Value(),
+		Title:        cm.titleInput.Value(),
+		Note:         cm.noteInput.Value(),
+	}
 	if addr == "" {
 		cm.setStatus("address is required", true)
 		return cm
 	}
 	if cm.mode == cmEdit && cm.editID != 0 {
-		if err := cm.db.UpdateContact(cm.editID, addr, name); err != nil {
+		if err := cm.db.UpdateContactWithMetadata(cm.editID, addr, name, meta); err != nil {
 			cm.setStatus("save failed: "+err.Error(), true)
 			return cm
 		}
 		cm.setStatus("updated "+addr, false)
 	} else {
-		if _, err := cm.db.AddContact(addr, name, "manual"); err != nil {
+		if _, err := cm.db.AddContactWithMetadata(addr, name, "manual", meta); err != nil {
 			cm.setStatus("save failed: "+err.Error(), true)
 			return cm
 		}
@@ -621,7 +689,7 @@ func (cm ContactManager) viewList(width, height int, chrome managerChrome, style
 		parts = append(parts, status)
 	}
 	parts = append(parts, renderManagerActionGroups(width, chrome,
-		[]string{"space", "select", "n", "new", "f", "from mail", "i", "import", "x", "export"},
+		[]string{"space", "select", "c", "compose", "n", "new", "f", "from mail", "i", "import", "x", "export"},
 		[]string{"e", "edit", "d", "delete", "esc", "close"},
 	))
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
@@ -672,9 +740,17 @@ func (cm ContactManager) viewForm(width, height int, chrome managerChrome, title
 		return lipgloss.JoinHorizontal(lipgloss.Left, left, right)
 	}
 	rows := []string{
-		field("Name", cm.nameInput, !cm.focusEmail),
+		field("Name", cm.nameInput, cm.formFocus == 0),
 		lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(""),
-		field("Email", cm.emailInput, cm.focusEmail),
+		field("Email", cm.emailInput, cm.formFocus == 1),
+		lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(""),
+		field("Phone", cm.phoneInput, cm.formFocus == 2),
+		lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(""),
+		field("Org", cm.organizationInput, cm.formFocus == 3),
+		lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(""),
+		field("Title", cm.titleInput, cm.formFocus == 4),
+		lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(""),
+		field("Note", cm.noteInput, cm.formFocus == 5),
 	}
 	bodyH := max(1, height-lipgloss.Height(header)-4)
 	body := clampView(lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(strings.Join(rows, "\n")), width, bodyH, chrome.baseBg)

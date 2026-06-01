@@ -69,6 +69,48 @@ func TestStoreFetchedMessagesIgnoresRead(t *testing.T) {
 	}
 }
 
+func TestStoreFetchedMessagesSkipsLocallyDeletedUID(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+
+	database, err := db.Open()
+	if err != nil {
+		t.Fatalf("Open DB: %v", err)
+	}
+	defer database.Close()
+
+	accountID, _ := database.AddAccount("Personal", "")
+	mailboxID, _ := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "INBOX"})
+	msg := db.Message{UID: 11, MessageID: "<deleted@example.com>", Subject: "Delete me"}
+	if err := database.UpsertMessage(db.Message{MailboxID: mailboxID, UID: msg.UID, MessageID: msg.MessageID, Subject: msg.Subject}); err != nil {
+		t.Fatalf("seed message: %v", err)
+	}
+	stored, err := database.ListMessages(mailboxID)
+	if err != nil {
+		t.Fatalf("list messages: %v", err)
+	}
+	if len(stored) != 1 {
+		t.Fatalf("expected seeded message, got %d", len(stored))
+	}
+	if err := database.DeleteMessage(stored[0].ID); err != nil {
+		t.Fatalf("delete message: %v", err)
+	}
+
+	newMsgs, err := storeFetchedMessages(database, mailboxID, []db.Message{msg})
+	if err != nil {
+		t.Fatalf("store refetched deleted message: %v", err)
+	}
+	if len(newMsgs) != 0 {
+		t.Fatalf("expected deleted refetch to count as 0 new, got %d", len(newMsgs))
+	}
+	remaining, err := database.ListMessages(mailboxID)
+	if err != nil {
+		t.Fatalf("list remaining: %v", err)
+	}
+	if len(remaining) != 0 {
+		t.Fatalf("expected deleted refetch to stay hidden, got %+v", remaining)
+	}
+}
+
 func TestComposeNotificationSingle(t *testing.T) {
 	title, body := composeNotification("Work", []db.Message{
 		{From: "Jane Doe <jane@example.com>", Subject: "Lunch?"},

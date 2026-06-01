@@ -64,9 +64,10 @@ type MessageMovedMsg struct {
 }
 
 type MessageDeletedMsg struct {
-	MessageID int64
-	MailboxID int64
-	Err       error
+	MessageID    int64
+	MailboxID    int64
+	LocalDeleted bool
+	Err          error
 }
 
 type MailboxReadUpdatedMsg struct {

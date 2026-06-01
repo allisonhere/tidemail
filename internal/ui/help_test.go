@@ -15,3 +15,12 @@ func TestRenderHelpDocumentsCredentialSafety(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderHelpDocumentsContactsAndNotifications(t *testing.T) {
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys))
+	for _, want := range []string{"contacts", "autocomplete", "vCard", "desktop notifications", "compose to selected contact"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("expected help to document contacts/notifications term %q, got %q", want, view)
+		}
+	}
+}
