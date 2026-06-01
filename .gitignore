@@ -3,6 +3,11 @@
 .gotmp/
 .tmp_help_render/
 .cursor/
+.claude/
+.hermes/
+CLAUDE.md
+claude.md
+pic.png
 vendor/
 *.db
 *.db.migrated
