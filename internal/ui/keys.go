@@ -95,7 +95,7 @@ var DefaultKeys = KeyMap{
 	Command:     key.NewBinding(key.WithKeys("p", ":"), key.WithHelp("p", "command")),
 
 	AccountManager: key.NewBinding(key.WithKeys("M"), key.WithHelp("M", "accounts")),
-	ContactManager: key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "contacts")),
+	ContactManager: key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "contacts")),
 	ThemePicker:    key.NewBinding(key.WithKeys("T"), key.WithHelp("T", "theme picker")),
 	Settings:       key.NewBinding(key.WithKeys("S"), key.WithHelp("S", "settings")),
 	UpdateInstall:  key.NewBinding(key.WithKeys("U"), key.WithHelp("U", "install update")),

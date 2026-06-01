@@ -57,7 +57,7 @@ Config is stored in `~/.config/tidemail/config.toml`. The local SQLite cache is 
 
 Open account management with `M`, add an IMAP/SMTP account, then sync the selected mailbox with `f`. Press `f` on the Unified Inbox to sync every account's inbox at once. Use `F` to sync all mailboxes. Configure a per-account `sync_minutes` interval for automatic background refresh.
 
-Open contacts with `b`. Contacts are the curated address book used for compose autocomplete. Add contacts manually with `n`, add addresses already seen in mail with `f`, import a vCard file with `i`, export to `contacts.vcf` with `x`, select multiple contacts with `Space`, and delete selected contacts with `d`.
+Open contacts with `C`. Contacts are the curated address book used for compose autocomplete. Add contacts manually with `n`, add addresses already seen in mail with `f`, import a vCard file with `i`, export to `contacts.vcf` with `x`, select multiple contacts with `Space`, and delete selected contacts with `d`.
 
 ## Credential safety
 
@@ -113,7 +113,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 | `p` or `:` | Command palette |
 | `m` | Move selected message(s) to folder/label |
 | `M` | Account manager |
-| `b` | Contacts manager |
+| `C` | Contacts manager |
 | `f` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
 | `F` | Sync all mailboxes |
 | `c` | Compose |
