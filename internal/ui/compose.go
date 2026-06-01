@@ -651,11 +651,15 @@ func renderComposePanelRow(ti textinput.Model, label string, focused bool, width
 		marker = lipgloss.NewStyle().Background(bg).Foreground(chrome.highlightFg).Bold(true).Width(2).Render(" >")
 	}
 	labelCell := lipgloss.NewStyle().Background(bg).Foreground(labelFg).Width(labelW).Render(truncate(label, max(1, labelW-1)))
+	ti.Width = ctrlW
 	ti.Prompt = ""
 	ti.PromptStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.accent)
 	ti.TextStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.text)
 	ti.PlaceholderStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.muted)
-	ctrlCell := renderTextInput(ti, ctrlW, focused, false, chrome)
+	ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
+	raw := inputViewWithCursor(ti, focused)
+	wrapped := lipgloss.NewStyle().Background(bg).MaxWidth(ctrlW).Render(raw)
+	ctrlCell := lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Width(ctrlW).Render(wrapped)
 	return marker + labelCell + ctrlCell
 }
 

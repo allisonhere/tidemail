@@ -157,9 +157,7 @@ func renderTextInput(input textinput.Model, width int, focused, masked bool, chr
 	if width <= 0 {
 		return ""
 	}
-	accW := 1
-	innerW := max(1, width-accW)
-	input.Width = innerW
+	input.Width = width
 	if focused {
 		input.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
 	}
@@ -170,17 +168,12 @@ func renderTextInput(input textinput.Model, width int, focused, masked bool, chr
 	if focused {
 		bg = chrome.highlight
 	}
-	accent := lipgloss.NewStyle().
-		Background(bg).
-		Foreground(chrome.accent).
-		Render("▐")
-	view := truncateStyled(inputViewWithCursor(input, focused), innerW, bg)
-	inner := lipgloss.NewStyle().
+	view := truncateStyled(inputViewWithCursor(input, focused), width, bg)
+	return lipgloss.NewStyle().
 		Background(bg).
 		Foreground(chrome.text).
-		Width(innerW).
+		Width(width).
 		Render(view)
-	return accent + inner
 }
 
 func renderFormHintLines(text string, width int, chrome managerChrome) []string {
