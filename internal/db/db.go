@@ -152,6 +152,9 @@ func (db *DB) migrate() error {
 	if err := db.migrateContactMetadataColumns(); err != nil {
 		return err
 	}
+	if err := db.PruneDeletedMessageTombstones(); err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -190,13 +190,32 @@ func (db *DB) UpsertMessage(m Message) error {
 
 func (db *DB) MessageDeletedLocally(mailboxID int64, uid uint32, messageID string) (bool, error) {
 	var n int
+	messageID = strings.TrimSpace(messageID)
+	if messageID != "" {
+		err := db.QueryRow(`
+			SELECT COUNT(1)
+			FROM deleted_messages
+			WHERE mailbox_id = ?
+			  AND message_id != ''
+			  AND message_id = ?`,
+			mailboxID, messageID).Scan(&n)
+		return n > 0, err
+	}
 	err := db.QueryRow(`
 		SELECT COUNT(1)
 		FROM deleted_messages
 		WHERE mailbox_id = ?
-		  AND ((uid != 0 AND uid = ?) OR (message_id != '' AND message_id = ?))`,
-		mailboxID, uid, messageID).Scan(&n)
+		  AND uid != 0
+		  AND uid = ?
+		  AND message_id = ''`,
+		mailboxID, uid).Scan(&n)
 	return n > 0, err
+}
+
+func (db *DB) PruneDeletedMessageTombstones() error {
+	cutoff := time.Now().Add(-90 * 24 * time.Hour).Unix()
+	_, err := db.Exec(`DELETE FROM deleted_messages WHERE deleted_at != 0 AND deleted_at < ?`, cutoff)
+	return err
 }
 
 // MessageExists reports whether a message with the given mailbox/uid is already

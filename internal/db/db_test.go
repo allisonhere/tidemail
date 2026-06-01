@@ -296,6 +296,127 @@ func TestDBDeleteMessageMissingReturnsError(t *testing.T) {
 	}
 }
 
+func TestMessageDeletedLocallyPrefersMessageIDOverUID(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+	accountID, err := database.AddAccount("Personal", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailboxID, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := database.Exec(`
+		INSERT INTO deleted_messages (mailbox_id, uid, message_id, deleted_at)
+		VALUES (?, ?, ?, ?)`, mailboxID, 44, "<old@example.com>", time.Now().Unix()); err != nil {
+		t.Fatal(err)
+	}
+
+	deleted, err := database.MessageDeletedLocally(mailboxID, 44, "<new@example.com>")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted {
+		t.Fatal("same UID with different message-id should not be treated as locally deleted")
+	}
+	deleted, err = database.MessageDeletedLocally(mailboxID, 99, "<old@example.com>")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !deleted {
+		t.Fatal("same message-id should be treated as locally deleted")
+	}
+}
+
+func TestMessageDeletedLocallyFallsBackToUIDOnlyTombstones(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+	accountID, err := database.AddAccount("Personal", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailboxID, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := database.Exec(`
+		INSERT INTO deleted_messages (mailbox_id, uid, message_id, deleted_at)
+		VALUES (?, ?, '', ?)`, mailboxID, 44, time.Now().Unix()); err != nil {
+		t.Fatal(err)
+	}
+
+	deleted, err := database.MessageDeletedLocally(mailboxID, 44, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !deleted {
+		t.Fatal("UID-only tombstone should match UID-only fetched message")
+	}
+}
+
+func TestPruneOldDeletedMessageTombstones(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+	accountID, err := database.AddAccount("Personal", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailboxID, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	old := time.Now().Add(-91 * 24 * time.Hour).Unix()
+	recent := time.Now().Add(-89 * 24 * time.Hour).Unix()
+	if _, err := database.Exec(`
+		INSERT INTO deleted_messages (mailbox_id, uid, message_id, deleted_at)
+		VALUES (?, 1, '<old@example.com>', ?), (?, 2, '<recent@example.com>', ?)`,
+		mailboxID, old, mailboxID, recent); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := database.PruneDeletedMessageTombstones(); err != nil {
+		t.Fatal(err)
+	}
+	var oldCount, recentCount int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM deleted_messages WHERE message_id = '<old@example.com>'`).Scan(&oldCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT COUNT(*) FROM deleted_messages WHERE message_id = '<recent@example.com>'`).Scan(&recentCount); err != nil {
+		t.Fatal(err)
+	}
+	if oldCount != 0 || recentCount != 1 {
+		t.Fatalf("expected old pruned and recent kept, got old=%d recent=%d", oldCount, recentCount)
+	}
+}
+
 func TestDBFindArchiveMailboxPrefersSpecialUseThenCommonNames(t *testing.T) {
 	tmp := t.TempDir()
 	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
