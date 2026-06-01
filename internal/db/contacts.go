@@ -109,7 +109,16 @@ func (db *DB) AddContactWithMetadata(rawAddr, rawName, source string, meta Conta
 }
 
 func (db *DB) UpdateContact(id int64, rawAddr, rawName string) error {
-	return db.UpdateContactWithMetadata(id, rawAddr, rawName, ContactMetadata{})
+	addr, parsedName := normalizeAddress(rawAddr)
+	if addr == "" {
+		return nil
+	}
+	name := strings.TrimSpace(rawName)
+	if name == "" {
+		name = parsedName
+	}
+	_, err := db.Exec(`UPDATE contacts SET addr = ?, display_name = ? WHERE id = ?`, addr, name, id)
+	return err
 }
 
 func (db *DB) UpdateContactWithMetadata(id int64, rawAddr, rawName string, meta ContactMetadata) error {

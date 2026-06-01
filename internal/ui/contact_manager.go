@@ -753,7 +753,10 @@ func (cm ContactManager) viewForm(width, height int, chrome managerChrome, title
 		field("Note", cm.noteInput, cm.formFocus == 5),
 	}
 	bodyH := max(1, height-lipgloss.Height(header)-4)
-	body := clampView(lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(strings.Join(rows, "\n")), width, bodyH, chrome.baseBg)
+	anchor := clamp(cm.formFocus*2, 0, max(0, len(rows)-1))
+	offset := settingsScrollOffset(len(rows), anchor, bodyH)
+	end := min(len(rows), offset+bodyH)
+	body := clampView(lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(strings.Join(rows[offset:end], "\n")), width, bodyH, chrome.baseBg)
 	parts := []string{header, body}
 	if status := cm.statusLine(width, chrome); status != "" {
 		parts = append(parts, status)

@@ -94,6 +94,21 @@ func TestContactManagerEditSavesMetadataFields(t *testing.T) {
 	}
 }
 
+func TestContactManagerFormScrollsFocusedFieldIntoView(t *testing.T) {
+	d := newContactTestDB(t)
+	cm := NewContactManager(d)
+	cm.beginAdd()
+	cm.setFormFocus(5)
+
+	view := ansi.Strip(cm.View(60, 8, BuildStyles(CatppuccinMocha, "compact")))
+	if !strings.Contains(view, "Note") {
+		t.Fatalf("focused Note field should be visible in short form:\n%s", view)
+	}
+	if strings.Contains(view, "Name") {
+		t.Fatalf("top form rows should scroll out when Note is focused:\n%s", view)
+	}
+}
+
 func TestContactManagerListScrolls(t *testing.T) {
 	d := newContactTestDB(t)
 	for i := 0; i < 40; i++ {

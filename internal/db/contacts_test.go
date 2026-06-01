@@ -129,6 +129,32 @@ func TestContactMetadataPersistsThroughAddAndUpdate(t *testing.T) {
 	}
 }
 
+func TestUpdateContactPreservesMetadata(t *testing.T) {
+	d := newTestDB(t)
+	id, err := d.AddContactWithMetadata("meta@example.com", "Meta", "manual", ContactMetadata{
+		Phone:        "555-0100",
+		Organization: "Example Co",
+		Title:        "Engineer",
+		Note:         "Met at conf",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.UpdateContact(id, "Renamed <renamed@example.com>", ""); err != nil {
+		t.Fatal(err)
+	}
+	got, err := d.ListContacts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Addr != "renamed@example.com" || got[0].DisplayName != "Renamed" {
+		t.Fatalf("basic update failed: %+v", got)
+	}
+	if got[0].Phone != "555-0100" || got[0].Organization != "Example Co" || got[0].Title != "Engineer" || got[0].Note != "Met at conf" {
+		t.Fatalf("metadata was not preserved: %+v", got[0])
+	}
+}
+
 func TestSeenAddressesDedupesAndExcludesContacts(t *testing.T) {
 	d := newTestDB(t)
 	accountID, _ := d.AddAccount("Acct", "")
