@@ -659,7 +659,10 @@ func renderComposePanelRow(ti textinput.Model, label string, focused bool, width
 	ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
 	raw := inputViewWithCursor(ti, focused)
 	wrapped := lipgloss.NewStyle().Background(bg).MaxWidth(ctrlW).Render(raw)
-	ctrlCell := lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Width(ctrlW).Render(wrapped)
+	if gap := ctrlW - lipgloss.Width(wrapped); gap > 0 {
+		wrapped += lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", gap))
+	}
+	ctrlCell := lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Render(wrapped)
 	return marker + labelCell + ctrlCell
 }
 
