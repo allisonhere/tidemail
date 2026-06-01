@@ -378,11 +378,11 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 	case keyMatches(km, keys.Tab):
 		// If the focused input has matched suggestions, let it accept one.
 		// Otherwise Tab advances to the next field.
-		if c.focusedField == composeFieldTo && len(c.toInput.MatchedSuggestions()) > 0 {
+		if c.focusedField == composeFieldTo && hasPendingComposeSuggestion(c.toInput) {
 			c.toInput, _ = c.toInput.Update(msg)
 			return c, nil, false
 		}
-		if c.focusedField == composeFieldCC && len(c.ccInput.MatchedSuggestions()) > 0 {
+		if c.focusedField == composeFieldCC && hasPendingComposeSuggestion(c.ccInput) {
 			c.ccInput, _ = c.ccInput.Update(msg)
 			return c, nil, false
 		}
@@ -442,6 +442,20 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 		}
 		return c, cmd, false
 	}
+}
+
+func hasPendingComposeSuggestion(input textinput.Model) bool {
+	matches := input.MatchedSuggestions()
+	if len(matches) == 0 {
+		return false
+	}
+	value := strings.TrimSpace(input.Value())
+	for _, match := range matches {
+		if strings.EqualFold(value, strings.TrimSpace(match)) {
+			return false
+		}
+	}
+	return true
 }
 
 // updatePicker handles key events in the file picker overlay.
