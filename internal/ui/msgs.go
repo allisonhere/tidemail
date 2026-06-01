@@ -21,11 +21,12 @@ type MessagesLoadedMsg struct {
 }
 
 type MailboxSyncedMsg struct {
-	MailboxID int64
-	NewCount  int
-	Err       error
-	Manual    bool
-	Total     time.Duration
+	MailboxID   int64
+	NewCount    int
+	NewMessages []db.Message // genuinely-new unread mail, for notification sender/subject
+	Err         error
+	Manual      bool
+	Total       time.Duration
 }
 
 type AccountSavedMsg struct {

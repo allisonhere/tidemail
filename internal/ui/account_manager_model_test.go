@@ -420,7 +420,7 @@ func TestStoreFetchedMessagesAssignsMailboxID(t *testing.T) {
 		t.Fatalf("UpsertMailbox: %v", err)
 	}
 
-	newCount, err := storeFetchedMessages(database, mailboxID, []db.Message{{
+	newMsgs, err := storeFetchedMessages(database, mailboxID, []db.Message{{
 		UID:     42,
 		Subject: "Hello",
 		Date:    time.Unix(1700000000, 0),
@@ -428,8 +428,8 @@ func TestStoreFetchedMessagesAssignsMailboxID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("storeFetchedMessages: %v", err)
 	}
-	if newCount != 1 {
-		t.Fatalf("expected one unread message, got %d", newCount)
+	if len(newMsgs) != 1 {
+		t.Fatalf("expected one unread message, got %d", len(newMsgs))
 	}
 
 	messages, err := database.ListMessages(mailboxID)

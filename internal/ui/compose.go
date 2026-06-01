@@ -560,7 +560,10 @@ func sendMessageCmd(acfg config.AccountConfig, msg smtp.OutgoingMessage) tea.Cmd
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		err := smtp.Send(ctx, acfg, msg)
-		return MessageSentMsg{Err: err}
+		if err != nil {
+			return MessageSentMsg{Err: err}
+		}
+		return MessageSentMsg{}
 	}
 }
 
@@ -646,11 +649,14 @@ func renderComposePanelRow(ti textinput.Model, label string, focused bool, width
 		bg = chrome.fieldBg
 		labelFg = chrome.text
 	}
-	marker := lipgloss.NewStyle().Background(chrome.baseBg).Width(2).Render(" ")
+	// Marker + label sit on the panel background (surfaceBg) so To/CC/Subject match
+	// the RECIPIENTS/MESSAGE panel and the From row. Only the input cell shifts to
+	// fieldBg on focus.
+	marker := lipgloss.NewStyle().Background(chrome.surfaceBg).Width(2).Render(" ")
 	if focused {
-		marker = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.accent).Bold(true).Width(2).Render(" >")
+		marker = lipgloss.NewStyle().Background(chrome.surfaceBg).Foreground(chrome.accent).Bold(true).Width(2).Render(" >")
 	}
-	labelCell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(labelFg).Width(labelW).Render(truncate(label, max(1, labelW-1)))
+	labelCell := lipgloss.NewStyle().Background(chrome.surfaceBg).Foreground(labelFg).Width(labelW).Render(truncate(label, max(1, labelW-1)))
 	ti.Width = ctrlW
 	ti.Prompt = ""
 	ti.PromptStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.accent)
@@ -658,11 +664,13 @@ func renderComposePanelRow(ti textinput.Model, label string, focused bool, width
 	ti.PlaceholderStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.muted)
 	ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
 	raw := inputViewWithCursor(ti, focused)
-	wrapped := lipgloss.NewStyle().Background(bg).MaxWidth(ctrlW).Render(raw)
-	if gap := ctrlW - lipgloss.Width(wrapped); gap > 0 {
-		wrapped += lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", gap))
-	}
-	ctrlCell := lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Render(wrapped)
+	// bubbles pads the placeholder/value out to ti.Width with *unstyled* spaces
+	// (textinput.placeholderView), which leak the terminal's default background to
+	// the right of the hint. Trim that bare padding — styled cells (the block cursor,
+	// styled text) end in a reset SGR and survive TrimRight — then refill via
+	// padStyled so every gap cell carries bg.
+	raw = strings.TrimRight(raw, " ")
+	ctrlCell := lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Render(padStyled(raw, ctrlW, bg))
 	return marker + labelCell + ctrlCell
 }
 

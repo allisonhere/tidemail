@@ -17,9 +17,9 @@ func TestSettingsFieldNavigationClampsAtEnds(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	s.setActiveSection(ssDisplay)
 	s.setFocusedPane(settingsPaneDetail)
-	s.setFocusedField(sfShowHeaders)
-	if got := s.nextField(); got != sfShowHeaders {
-		t.Fatalf("nextField at last visible field: got %v want sfShowHeaders", got)
+	s.setFocusedField(sfNotifications)
+	if got := s.nextField(); got != sfNotifications {
+		t.Fatalf("nextField at last visible field: got %v want sfNotifications", got)
 	}
 	s.setFocusedField(sfBackToSections)
 	if got := s.prevField(); got != sfBackToSections {
@@ -187,6 +187,26 @@ func TestSettingsLoadsAndAppliesMarkReadOnFocus(t *testing.T) {
 	next := s.ApplyTo(cfg)
 	if next.Display.MarkReadOnFocus {
 		t.Fatal("expected ApplyTo to save disabled mark-read-on-focus")
+	}
+}
+
+func TestSettingsLoadsAndAppliesNotifications(t *testing.T) {
+	if !config.DefaultConfig().Display.Notifications {
+		t.Fatal("expected notifications to default on")
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.Display.Notifications = false
+
+	s := newSettings(cfg, settingsUpdateState{})
+	if s.notifications {
+		t.Fatal("expected settings to load disabled notifications from config")
+	}
+
+	s.notifications = true
+	next := s.ApplyTo(cfg)
+	if !next.Display.Notifications {
+		t.Fatal("expected ApplyTo to save enabled notifications")
 	}
 }
 

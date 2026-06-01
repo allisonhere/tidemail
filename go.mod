@@ -5,20 +5,23 @@ go 1.26.1
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0
+	github.com/PuerkitoBio/goquery v1.9.2
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/ansi v0.11.6
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
+	github.com/emersion/go-vcard v0.0.0-20241024213814-c9703dde27ff
 	github.com/muesli/termenv v0.16.0
 	github.com/yuin/goldmark v1.7.1
+	golang.org/x/oauth2 v0.36.0
 	modernc.org/sqlite v1.48.0
 )
 
 require (
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
-	github.com/PuerkitoBio/goquery v1.9.2 // indirect
 	github.com/andybalholm/cascadia v1.3.2 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
@@ -29,7 +32,6 @@ require (
 	github.com/clipperhouse/stringish v0.1.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
@@ -43,7 +45,6 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/net v0.38.0 // indirect
-	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 	modernc.org/libc v1.70.0 // indirect

@@ -65,6 +65,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{keys.Sync.Help().Key + " (on Unified)", "sync all inboxes"},
 				bind(keys.SyncAll),
 				bind(keys.AccountManager),
+				bind(keys.ContactManager),
 				{keys.Add.Help().Key, "add account"},
 				{keys.Edit.Help().Key, "edit account"},
 				{keys.Delete.Help().Key, "delete account"},
