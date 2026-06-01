@@ -140,6 +140,10 @@ var (
 	dateFormatLabels      = []string{"Relative", "Absolute", "None"}
 	aiProviderLabels      = []string{"none", "OpenAI", "Claude", "Gemini", "Ollama"}
 	aiProviderIDs         = []string{"", "openai", "claude", "gemini", "ollama"}
+	openaiModelLabels     = []string{"gpt-4o-mini", "gpt-4o", "gpt-4.1", "o3-mini", "o1"}
+	claudeModelLabels     = []string{"claude-sonnet-4", "claude-haiku", "claude-opus-4"}
+	geminiModelLabels     = []string{"gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"}
+	ollamaModelLabels     = []string{"llama3.2", "llama3.1", "mistral", "gemma3", "phi4"}
 	settingsSectionLabels = [settingsSectionCount]string{
 		"DISPLAY",
 		"ACCOUNTS",
@@ -162,6 +166,42 @@ func dateFormatIndex(s string) int {
 func providerIndex(id string) int {
 	for i, p := range aiProviderIDs {
 		if p == id {
+			return i
+		}
+	}
+	return 0
+}
+
+func openaiModelIndex(s string) int {
+	for i, label := range openaiModelLabels {
+		if strings.EqualFold(label, s) {
+			return i
+		}
+	}
+	return 0
+}
+
+func claudeModelIndex(s string) int {
+	for i, label := range claudeModelLabels {
+		if strings.EqualFold(label, s) {
+			return i
+		}
+	}
+	return 0
+}
+
+func geminiModelIndex(s string) int {
+	for i, label := range geminiModelLabels {
+		if strings.EqualFold(label, s) {
+			return i
+		}
+	}
+	return 0
+}
+
+func ollamaModelIndex(s string) int {
+	for i, label := range ollamaModelLabels {
+		if strings.EqualFold(label, s) {
 			return i
 		}
 	}
@@ -192,6 +232,10 @@ type Settings struct {
 
 	// AI
 	providerIdx         int
+	openaiModelIdx      int
+	claudeModelIdx      int
+	geminiModelIdx      int
+	ollamaModelIdx      int
 	openaiInput         textinput.Model
 	openaiModelInput    textinput.Model
 	claudeInput         textinput.Model
@@ -273,6 +317,10 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		updateCheckOnStartup: cfg.Updates.CheckOnStartup,
 		update:               updateState,
 		providerIdx:          providerIndex(cfg.AI.Provider),
+		openaiModelIdx:       openaiModelIndex(cfg.AI.OpenAIModel),
+		claudeModelIdx:       claudeModelIndex(cfg.AI.ClaudeModel),
+		geminiModelIdx:       geminiModelIndex(cfg.AI.GeminiModel),
+		ollamaModelIdx:       ollamaModelIndex(cfg.AI.OllamaModel),
 		openaiInput:          mkInput(cfg.AI.OpenAIKey, "sk-...", true),
 		openaiModelInput:     mkInput(cfg.AI.OpenAIModel, "gpt-4o-mini", false),
 		claudeInput:          mkInput(cfg.AI.ClaudeKey, "sk-ant-...", true),
@@ -352,17 +400,17 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	if value := strings.TrimSpace(s.openaiInput.Value()); value != "" {
 		cfg.AI.OpenAIKey = value
 	}
-	cfg.AI.OpenAIModel = strings.TrimSpace(s.openaiModelInput.Value())
+	cfg.AI.OpenAIModel = openaiModelLabels[s.openaiModelIdx]
 	if value := strings.TrimSpace(s.claudeInput.Value()); value != "" {
 		cfg.AI.ClaudeKey = value
 	}
-	cfg.AI.ClaudeModel = strings.TrimSpace(s.claudeModelInput.Value())
+	cfg.AI.ClaudeModel = claudeModelLabels[s.claudeModelIdx]
 	if value := strings.TrimSpace(s.geminiInput.Value()); value != "" {
 		cfg.AI.GeminiKey = value
 	}
-	cfg.AI.GeminiModel = strings.TrimSpace(s.geminiModelInput.Value())
+	cfg.AI.GeminiModel = geminiModelLabels[s.geminiModelIdx]
 	cfg.AI.OllamaURL = strings.TrimSpace(s.ollamaURLInput.Value())
-	cfg.AI.OllamaModel = strings.TrimSpace(s.ollamaModelInput.Value())
+	cfg.AI.OllamaModel = ollamaModelLabels[s.ollamaModelIdx]
 	cfg.AI.SavePath = strings.TrimSpace(s.savePathInput.Value())
 	cfg.AI.MarkReadOnSummarize = s.markReadOnSummarize
 	return cfg
@@ -503,16 +551,8 @@ func (s *Settings) applyFocus() {
 		case 3:
 			s.geminiInput.Focus()
 		}
-	case sfOpenAIModel:
-		s.openaiModelInput.Focus()
-	case sfClaudeModel:
-		s.claudeModelInput.Focus()
-	case sfGeminiModel:
-		s.geminiModelInput.Focus()
 	case sfOllamaURL:
 		s.ollamaURLInput.Focus()
-	case sfOllamaModel:
-		s.ollamaModelInput.Focus()
 	case sfSavePath:
 		s.savePathInput.Focus()
 	case sfRetroBg:
@@ -652,7 +692,7 @@ func (s Settings) isTextInput() bool {
 		return false
 	}
 	switch s.focusedField {
-	case sfBrowser, sfFeedMaxBody, sfReadingWidth, sfAPIKey, sfOpenAIModel, sfClaudeModel, sfGeminiModel, sfOllamaURL, sfOllamaModel, sfSavePath,
+	case sfBrowser, sfFeedMaxBody, sfReadingWidth, sfAPIKey, sfOllamaURL, sfSavePath,
 		sfRetroBg, sfRetroFg, sfRetroAccent:
 		return true
 	}
@@ -678,16 +718,8 @@ func (s Settings) updateFocusedTextInput(msg tea.Msg) (Settings, tea.Cmd, bool) 
 		case 3:
 			s.geminiInput, cmd = s.geminiInput.Update(msg)
 		}
-	case sfOpenAIModel:
-		s.openaiModelInput, cmd = s.openaiModelInput.Update(msg)
-	case sfClaudeModel:
-		s.claudeModelInput, cmd = s.claudeModelInput.Update(msg)
-	case sfGeminiModel:
-		s.geminiModelInput, cmd = s.geminiModelInput.Update(msg)
 	case sfOllamaURL:
 		s.ollamaURLInput, cmd = s.ollamaURLInput.Update(msg)
-	case sfOllamaModel:
-		s.ollamaModelInput, cmd = s.ollamaModelInput.Update(msg)
 	case sfSavePath:
 		s.savePathInput, cmd = s.savePathInput.Update(msg)
 	case sfRetroBg:
@@ -778,16 +810,8 @@ func (s Settings) focusedTextInputCursorPosition() int {
 		case 3:
 			return s.geminiInput.Position()
 		}
-	case sfOpenAIModel:
-		return s.openaiModelInput.Position()
-	case sfClaudeModel:
-		return s.claudeModelInput.Position()
-	case sfGeminiModel:
-		return s.geminiModelInput.Position()
 	case sfOllamaURL:
 		return s.ollamaURLInput.Position()
-	case sfOllamaModel:
-		return s.ollamaModelInput.Position()
 	case sfSavePath:
 		return s.savePathInput.Position()
 	case sfRetroBg:
@@ -802,7 +826,8 @@ func (s Settings) focusedTextInputCursorPosition() int {
 
 func (s Settings) isPickerField() bool {
 	switch s.focusedField {
-	case sfProvider, sfDisplayDensity, sfTheme, sfDateFormat:
+	case sfProvider, sfDisplayDensity, sfTheme, sfDateFormat,
+		sfOpenAIModel, sfClaudeModel, sfGeminiModel, sfOllamaModel:
 		return true
 	}
 	return false
@@ -1199,7 +1224,59 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
-	case sfBrowser, sfFeedMaxBody, sfReadingWidth, sfAPIKey, sfOpenAIModel, sfClaudeModel, sfGeminiModel, sfOllamaURL, sfOllamaModel, sfSavePath,
+	case sfOpenAIModel:
+		switch {
+		case keyMatches(key, keys.Left):
+			s.openaiModelIdx = (s.openaiModelIdx + len(openaiModelLabels) - 1) % len(openaiModelLabels)
+		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) || keyMatches(key, keys.Right):
+			s.openaiModelIdx = (s.openaiModelIdx + 1) % len(openaiModelLabels)
+		case keyMatches(key, keys.Down):
+			s.setFocusedField(s.nextField())
+		case keyMatches(key, keys.Up):
+			s.setFocusedField(s.prevField())
+		}
+		return s, nil, false
+
+	case sfClaudeModel:
+		switch {
+		case keyMatches(key, keys.Left):
+			s.claudeModelIdx = (s.claudeModelIdx + len(claudeModelLabels) - 1) % len(claudeModelLabels)
+		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) || keyMatches(key, keys.Right):
+			s.claudeModelIdx = (s.claudeModelIdx + 1) % len(claudeModelLabels)
+		case keyMatches(key, keys.Down):
+			s.setFocusedField(s.nextField())
+		case keyMatches(key, keys.Up):
+			s.setFocusedField(s.prevField())
+		}
+		return s, nil, false
+
+	case sfGeminiModel:
+		switch {
+		case keyMatches(key, keys.Left):
+			s.geminiModelIdx = (s.geminiModelIdx + len(geminiModelLabels) - 1) % len(geminiModelLabels)
+		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) || keyMatches(key, keys.Right):
+			s.geminiModelIdx = (s.geminiModelIdx + 1) % len(geminiModelLabels)
+		case keyMatches(key, keys.Down):
+			s.setFocusedField(s.nextField())
+		case keyMatches(key, keys.Up):
+			s.setFocusedField(s.prevField())
+		}
+		return s, nil, false
+
+	case sfOllamaModel:
+		switch {
+		case keyMatches(key, keys.Left):
+			s.ollamaModelIdx = (s.ollamaModelIdx + len(ollamaModelLabels) - 1) % len(ollamaModelLabels)
+		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) || keyMatches(key, keys.Right):
+			s.ollamaModelIdx = (s.ollamaModelIdx + 1) % len(ollamaModelLabels)
+		case keyMatches(key, keys.Down):
+			s.setFocusedField(s.nextField())
+		case keyMatches(key, keys.Up):
+			s.setFocusedField(s.prevField())
+		}
+		return s, nil, false
+
+	case sfBrowser, sfFeedMaxBody, sfReadingWidth, sfAPIKey, sfOllamaURL, sfSavePath,
 		sfRetroBg, sfRetroFg, sfRetroAccent:
 		// Enter advances to next field; everything else goes to the text input.
 		if keyMatches(key, keys.Enter) {
@@ -1562,16 +1639,16 @@ func (b *settingsFormBuilder) addAISection() {
 	switch b.s.providerIdx {
 	case 1:
 		b.addBareInput(b.s.openaiInput, sfAPIKey)
-		b.addInput("Model", b.s.openaiModelInput, sfOpenAIModel)
+		b.addControl("Model", sfOpenAIModel, renderSettingsPicker(min(max(12, b.contentW-b.labelW), 24), openaiModelLabels[b.s.openaiModelIdx], b.s.focusedField == sfOpenAIModel, b.chrome))
 	case 2:
 		b.addBareInput(b.s.claudeInput, sfAPIKey)
-		b.addInput("Model", b.s.claudeModelInput, sfClaudeModel)
+		b.addControl("Model", sfClaudeModel, renderSettingsPicker(min(max(12, b.contentW-b.labelW), 24), claudeModelLabels[b.s.claudeModelIdx], b.s.focusedField == sfClaudeModel, b.chrome))
 	case 3:
 		b.addBareInput(b.s.geminiInput, sfAPIKey)
-		b.addInput("Model", b.s.geminiModelInput, sfGeminiModel)
+		b.addControl("Model", sfGeminiModel, renderSettingsPicker(min(max(12, b.contentW-b.labelW), 24), geminiModelLabels[b.s.geminiModelIdx], b.s.focusedField == sfGeminiModel, b.chrome))
 	case 4:
 		b.addInput("Ollama URL", b.s.ollamaURLInput, sfOllamaURL)
-		b.addInput("Model", b.s.ollamaModelInput, sfOllamaModel)
+		b.addControl("Model", sfOllamaModel, renderSettingsPicker(min(max(12, b.contentW-b.labelW), 24), ollamaModelLabels[b.s.ollamaModelIdx], b.s.focusedField == sfOllamaModel, b.chrome))
 	}
 
 	b.addAITestConnection()
@@ -1643,7 +1720,7 @@ func (s Settings) inputWidth(field settingsField, maxWidth int) int {
 		return min(maxWidth, 44)
 	case sfBrowser, sfSavePath:
 		return min(maxWidth, 36)
-	case sfOllamaURL, sfOllamaModel:
+	case sfOllamaURL:
 		return min(maxWidth, 44)
 	default:
 		return min(maxWidth, 32)
@@ -2173,13 +2250,13 @@ func (s Settings) fieldHint(field settingsField) string {
 	case sfOllamaURL:
 		return "Local Ollama endpoint."
 	case sfOpenAIModel:
-		return "type the OpenAI model name (e.g. gpt-4o-mini)"
+		return "← → or space to pick model"
 	case sfClaudeModel:
-		return "type the Claude model name (e.g. claude-sonnet-4)"
+		return "← → or space to pick model"
 	case sfGeminiModel:
-		return "type the Gemini model name (e.g. gemini-2.0-flash)"
+		return "← → or space to pick model"
 	case sfOllamaModel:
-		return "type the Ollama model name (e.g. llama3.2)"
+		return "← → or space to pick model"
 	case sfSavePath:
 		return "Directory for exported markdown summaries."
 	case sfRetroBg, sfRetroFg, sfRetroAccent:
