@@ -827,9 +827,11 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 		statusLine = lipgloss.NewStyle().
 			Background(chrome.baseBg).
 			Foreground(fg).
-			Width(width).
 			Padding(0, 2).
 			Render(c.statusMsg)
+		if gap := width - lipgloss.Width(statusLine); gap > 0 {
+			statusLine += lipgloss.NewStyle().Background(chrome.baseBg).Render(strings.Repeat(" ", gap))
+		}
 	}
 
 	// ── Build rows ──
@@ -862,9 +864,11 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 		qLine := lipgloss.NewStyle().
 			Background(chrome.baseBg).
 			Foreground(chrome.muted).
-			Width(width).
 			Padding(0, 2).
 			Render(fmt.Sprintf("  %s  Show quoted original (enter to toggle)", qIcon))
+		if gap := width - lipgloss.Width(qLine); gap > 0 {
+			qLine += lipgloss.NewStyle().Background(chrome.baseBg).Render(strings.Repeat(" ", gap))
+		}
 		rows = append(rows, qLine)
 	}
 
