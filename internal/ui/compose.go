@@ -878,12 +878,15 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 		for _, af := range c.attachments {
 			icon := fileIcon(af.Name)
 			line := fmt.Sprintf("  %s%s  %s    [ctrl+r remove]", icon, af.Name, humanSize(len(af.Data)))
-			attachRows = append(attachRows, lipgloss.NewStyle().
+			attachLine := lipgloss.NewStyle().
 				Background(chrome.surfaceBg).
 				Foreground(chrome.accent).
-				Width(width).
 				Padding(0, 2).
-				Render(line))
+				Render(line)
+			if gap := width - lipgloss.Width(attachLine); gap > 0 {
+				attachLine += lipgloss.NewStyle().Background(chrome.surfaceBg).Render(strings.Repeat(" ", gap))
+			}
+			attachRows = append(attachRows, attachLine)
 		}
 		rows = append(rows, blankRow(chrome.baseBg))
 		rows = append(rows, renderComposePanel("ATTACHMENTS", attachRows, width, chrome))

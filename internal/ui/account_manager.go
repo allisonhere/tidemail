@@ -221,6 +221,9 @@ func renderManagerActions(width int, chrome managerChrome, pairs ...string) stri
 	right := parts[len(parts)-1]
 	gap := max(1, width-lipgloss.Width(left)-lipgloss.Width(right))
 	row := clampView(left+bg.Render(strings.Repeat(" ", gap))+right, width, 1, chrome.baseBg)
+	if w := lipgloss.Width(row); w < width {
+		row += lipgloss.NewStyle().Background(chrome.baseBg).Render(strings.Repeat(" ", width-w))
+	}
 	return bar.Render(row)
 }
 
@@ -955,8 +958,12 @@ func (am AccountManager) renderAccountCard(width int, acc db.Account, selected b
 		row("Email", email),
 		row("IMAP", imapServer),
 		row("SMTP", smtpServer),
-		lipgloss.NewStyle().Background(bg).Foreground(chrome.successFg).Width(width).Padding(0, 1).Render(status),
 	}
+	statusLine := lipgloss.NewStyle().Background(bg).Foreground(chrome.successFg).Padding(0, 1).Render(status)
+	if gap := width - lipgloss.Width(statusLine); gap > 0 {
+		statusLine += lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", gap))
+	}
+	rows = append(rows, statusLine)
 	return clampView(strings.Join(rows, "\n"), width, len(rows), bg)
 }
 
