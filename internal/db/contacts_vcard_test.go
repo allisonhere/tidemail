@@ -75,6 +75,54 @@ func TestImportVCardStructuredNameFallback(t *testing.T) {
 	}
 }
 
+func TestImportVCardMetadata(t *testing.T) {
+	const card = "BEGIN:VCARD\r\n" +
+		"VERSION:4.0\r\n" +
+		"FN:Meta Person\r\n" +
+		"EMAIL:meta@example.com\r\n" +
+		"TEL;TYPE=cell:555-0100\r\n" +
+		"ORG:Example Co\r\n" +
+		"TITLE:Engineer\r\n" +
+		"NOTE:Met at conference\r\n" +
+		"END:VCARD\r\n"
+	d := newTestDB(t)
+	if _, err := d.ImportVCard(strings.NewReader(card)); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	got, _ := d.ListContacts()
+	if len(got) != 1 {
+		t.Fatalf("expected 1 contact, got %+v", got)
+	}
+	c := got[0]
+	if c.Phone != "555-0100" || c.Organization != "Example Co" || c.Title != "Engineer" || c.Note != "Met at conference" {
+		t.Fatalf("metadata not imported: %+v", c)
+	}
+}
+
+func TestExportVCardMetadata(t *testing.T) {
+	d := newTestDB(t)
+	_, err := d.AddContactWithMetadata("meta@example.com", "Meta Person", "manual", ContactMetadata{
+		Phone:        "555-0100",
+		Organization: "Example Co",
+		Title:        "Engineer",
+		Note:         "Met at conference",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	if err := d.ExportVCard(&buf); err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{"TEL", "555-0100", "ORG", "Example Co", "TITLE:Engineer", "NOTE:Met at conference"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("export missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestImportVCardMalformed(t *testing.T) {
 	d := newTestDB(t)
 	_, err := d.ImportVCard(strings.NewReader("BEGIN:VCARD\r\nFN:Broken\r\n"))

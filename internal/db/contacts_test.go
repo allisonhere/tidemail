@@ -95,6 +95,40 @@ func TestUpdateAndDeleteContact(t *testing.T) {
 	}
 }
 
+func TestContactMetadataPersistsThroughAddAndUpdate(t *testing.T) {
+	d := newTestDB(t)
+	id, err := d.AddContactWithMetadata("alex@example.com", "Alex", "manual", ContactMetadata{
+		Phone:        "555-0100",
+		Organization: "Example Co",
+		Title:        "Engineer",
+		Note:         "Met at conf",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := d.ListContacts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Phone != "555-0100" || got[0].Organization != "Example Co" || got[0].Title != "Engineer" || got[0].Note != "Met at conf" {
+		t.Fatalf("metadata not saved: %+v", got)
+	}
+
+	if err := d.UpdateContactWithMetadata(id, "Alex <alex@example.com>", "Alex Updated", ContactMetadata{
+		Phone:        "555-0101",
+		Organization: "New Co",
+		Title:        "Lead",
+		Note:         "Updated note",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = d.ListContacts()
+	if len(got) != 1 || got[0].DisplayName != "Alex Updated" || got[0].Phone != "555-0101" || got[0].Organization != "New Co" || got[0].Title != "Lead" || got[0].Note != "Updated note" {
+		t.Fatalf("metadata not updated: %+v", got)
+	}
+}
+
 func TestSeenAddressesDedupesAndExcludesContacts(t *testing.T) {
 	d := newTestDB(t)
 	accountID, _ := d.AddAccount("Acct", "")
@@ -171,6 +205,11 @@ func TestInitMigratesLegacyAutoContactsToCuratedSchema(t *testing.T) {
 	for _, legacy := range []string{"status", "use_count", "last_used"} {
 		if cols[legacy] {
 			t.Fatalf("legacy column %q still exists after migration: %v", legacy, cols)
+		}
+	}
+	for _, added := range []string{"phone", "organization", "title", "note"} {
+		if !cols[added] {
+			t.Fatalf("metadata column %q missing after migration: %v", added, cols)
 		}
 	}
 

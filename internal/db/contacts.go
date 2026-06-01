@@ -8,11 +8,22 @@ import (
 )
 
 type Contact struct {
-	ID          int64
-	Addr        string
-	DisplayName string
-	Source      string
-	CreatedAt   time.Time
+	ID           int64
+	Addr         string
+	DisplayName  string
+	Source       string
+	CreatedAt    time.Time
+	Phone        string
+	Organization string
+	Title        string
+	Note         string
+}
+
+type ContactMetadata struct {
+	Phone        string
+	Organization string
+	Title        string
+	Note         string
 }
 
 func normalizeAddress(raw string) (addr, name string) {
@@ -38,7 +49,7 @@ func scanCuratedContacts(rows interface {
 	for rows.Next() {
 		var c Contact
 		var createdAt int64
-		if err := rows.Scan(&c.ID, &c.Addr, &c.DisplayName, &c.Source, &createdAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Addr, &c.DisplayName, &c.Source, &createdAt, &c.Phone, &c.Organization, &c.Title, &c.Note); err != nil {
 			return out, err
 		}
 		if createdAt > 0 {
@@ -51,7 +62,7 @@ func scanCuratedContacts(rows interface {
 
 func (db *DB) ListContacts() ([]Contact, error) {
 	rows, err := db.Query(`
-		SELECT id, addr, display_name, source, created_at
+		SELECT id, addr, display_name, source, created_at, phone, organization, title, note
 		FROM contacts
 		ORDER BY (display_name = '') ASC, display_name COLLATE NOCASE, addr`)
 	if err != nil {
@@ -62,6 +73,10 @@ func (db *DB) ListContacts() ([]Contact, error) {
 }
 
 func (db *DB) AddContact(rawAddr, rawName, source string) (int64, error) {
+	return db.AddContactWithMetadata(rawAddr, rawName, source, ContactMetadata{})
+}
+
+func (db *DB) AddContactWithMetadata(rawAddr, rawName, source string, meta ContactMetadata) (int64, error) {
 	addr, parsedName := normalizeAddress(rawAddr)
 	if addr == "" {
 		return 0, nil
@@ -75,12 +90,16 @@ func (db *DB) AddContact(rawAddr, rawName, source string) (int64, error) {
 	}
 	now := time.Now().Unix()
 	_, err := db.Exec(`
-		INSERT INTO contacts (addr, display_name, source, created_at)
-		VALUES (?, ?, ?, ?)
+		INSERT INTO contacts (addr, display_name, source, created_at, phone, organization, title, note)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(addr) DO UPDATE SET
 			display_name = excluded.display_name,
-			source       = excluded.source`,
-		addr, name, source, now)
+			source       = excluded.source,
+			phone        = CASE WHEN excluded.phone != '' THEN excluded.phone ELSE contacts.phone END,
+			organization = CASE WHEN excluded.organization != '' THEN excluded.organization ELSE contacts.organization END,
+			title        = CASE WHEN excluded.title != '' THEN excluded.title ELSE contacts.title END,
+			note         = CASE WHEN excluded.note != '' THEN excluded.note ELSE contacts.note END`,
+		addr, name, source, now, strings.TrimSpace(meta.Phone), strings.TrimSpace(meta.Organization), strings.TrimSpace(meta.Title), strings.TrimSpace(meta.Note))
 	if err != nil {
 		return 0, err
 	}
@@ -90,6 +109,10 @@ func (db *DB) AddContact(rawAddr, rawName, source string) (int64, error) {
 }
 
 func (db *DB) UpdateContact(id int64, rawAddr, rawName string) error {
+	return db.UpdateContactWithMetadata(id, rawAddr, rawName, ContactMetadata{})
+}
+
+func (db *DB) UpdateContactWithMetadata(id int64, rawAddr, rawName string, meta ContactMetadata) error {
 	addr, parsedName := normalizeAddress(rawAddr)
 	if addr == "" {
 		return nil
@@ -98,7 +121,11 @@ func (db *DB) UpdateContact(id int64, rawAddr, rawName string) error {
 	if name == "" {
 		name = parsedName
 	}
-	_, err := db.Exec(`UPDATE contacts SET addr = ?, display_name = ? WHERE id = ?`, addr, name, id)
+	_, err := db.Exec(`
+		UPDATE contacts
+		SET addr = ?, display_name = ?, phone = ?, organization = ?, title = ?, note = ?
+		WHERE id = ?`,
+		addr, name, strings.TrimSpace(meta.Phone), strings.TrimSpace(meta.Organization), strings.TrimSpace(meta.Title), strings.TrimSpace(meta.Note), id)
 	return err
 }
 

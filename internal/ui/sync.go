@@ -290,6 +290,13 @@ func storeFetchedMessages(database *db.DB, mailboxID int64, msgs []db.Message) (
 	var newMsgs []db.Message
 	for _, msg := range msgs {
 		msg.MailboxID = mailboxID
+		deleted, delErr := database.MessageDeletedLocally(mailboxID, msg.UID, msg.MessageID)
+		if delErr != nil {
+			return newMsgs, delErr
+		}
+		if deleted {
+			continue
+		}
 		// Determine novelty before the upsert: SINCE re-fetches mail we already hold,
 		// and the upsert would otherwise make every poll look like new arrivals.
 		existed, exErr := database.MessageExists(mailboxID, msg.UID)

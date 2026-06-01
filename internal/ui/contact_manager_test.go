@@ -58,6 +58,42 @@ func TestContactManagerAddContact(t *testing.T) {
 	}
 }
 
+func TestContactManagerEditSavesMetadataFields(t *testing.T) {
+	d := newContactTestDB(t)
+	id, err := d.AddContactWithMetadata("meta@example.com", "Meta", "manual", db.ContactMetadata{
+		Phone:        "555-0100",
+		Organization: "Example Co",
+		Title:        "Engineer",
+		Note:         "Met at conf",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm := NewContactManager(d)
+
+	cm, _, _ = cm.Update(rune1('e'), DefaultKeys)
+	if cm.mode != cmEdit || cm.editID != id {
+		t.Fatalf("expected edit mode for %d, got mode=%v id=%d", id, cm.mode, cm.editID)
+	}
+	if cm.phoneInput.Value() != "555-0100" || cm.organizationInput.Value() != "Example Co" || cm.titleInput.Value() != "Engineer" || cm.noteInput.Value() != "Met at conf" {
+		t.Fatalf("metadata did not preload")
+	}
+
+	cm.phoneInput.SetValue("555-0101")
+	cm.organizationInput.SetValue("New Co")
+	cm.titleInput.SetValue("Lead")
+	cm.noteInput.SetValue("Updated note")
+	cm, _, _ = cm.Update(tea.KeyMsg{Type: tea.KeyEnter}, DefaultKeys)
+
+	got, err := d.ListContacts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Phone != "555-0101" || got[0].Organization != "New Co" || got[0].Title != "Lead" || got[0].Note != "Updated note" {
+		t.Fatalf("metadata did not save: %+v", got)
+	}
+}
+
 func TestContactManagerListScrolls(t *testing.T) {
 	d := newContactTestDB(t)
 	for i := 0; i < 40; i++ {

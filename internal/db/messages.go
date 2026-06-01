@@ -1,7 +1,9 @@
 package db
 
 import (
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -186,6 +188,17 @@ func (db *DB) UpsertMessage(m Message) error {
 	return nil
 }
 
+func (db *DB) MessageDeletedLocally(mailboxID int64, uid uint32, messageID string) (bool, error) {
+	var n int
+	err := db.QueryRow(`
+		SELECT COUNT(1)
+		FROM deleted_messages
+		WHERE mailbox_id = ?
+		  AND ((uid != 0 AND uid = ?) OR (message_id != '' AND message_id = ?))`,
+		mailboxID, uid, messageID).Scan(&n)
+	return n > 0, err
+}
+
 // MessageExists reports whether a message with the given mailbox/uid is already
 // stored. Used to distinguish genuinely-new mail from re-fetches: IMAP SINCE is
 // date-granular, so a poll re-downloads messages we already hold.
@@ -215,6 +228,24 @@ func (db *DB) SaveSummary(id int64, summary string) error {
 }
 
 func (db *DB) DeleteMessage(id int64) error {
+	var mailboxID int64
+	var uid uint32
+	var messageID string
+	if err := db.QueryRow(`SELECT mailbox_id, uid, message_id FROM messages WHERE id = ?`, id).Scan(&mailboxID, &uid, &messageID); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("delete message: message %d not found", id)
+		}
+		return fmt.Errorf("delete message lookup: %w", err)
+	}
+	if mailboxID != 0 && (uid != 0 || messageID != "") {
+		_, err := db.Exec(`
+			INSERT OR IGNORE INTO deleted_messages (mailbox_id, uid, message_id, deleted_at)
+			VALUES (?, ?, ?, ?)`,
+			mailboxID, uid, messageID, time.Now().Unix())
+		if err != nil {
+			return err
+		}
+	}
 	_ = db.DeleteAttachmentsForMessage(id)
 	_, err := db.Exec(`DELETE FROM messages WHERE id = ?`, id)
 	return err

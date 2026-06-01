@@ -217,22 +217,22 @@ func (m *Model) deleteMessageCmd(msg db.Message) tea.Cmd {
 		if mailbox == nil {
 			return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: fmt.Errorf("mailbox not found")}
 		}
+		if err := database.DeleteMessage(msg.ID); err != nil {
+			return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: err}
+		}
 		if acfg.IMAPHost != "" && msg.UID != 0 {
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
 			client := imapClient.New(acfg)
 			if err := client.Connect(ctx); err != nil {
-				return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: err}
+				return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, LocalDeleted: true, Err: err}
 			}
 			defer client.Close()
 			if err := client.DeleteMessage(ctx, mailbox.Name, msg.UID); err != nil {
-				return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: err}
+				return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, LocalDeleted: true, Err: err}
 			}
 		}
-		if err := database.DeleteMessage(msg.ID); err != nil {
-			return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: err}
-		}
-		return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID}
+		return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, LocalDeleted: true}
 	}
 }
 

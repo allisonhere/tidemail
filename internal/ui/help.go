@@ -37,7 +37,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 			name: "Messages / Content",
 			entries: []entry{
 				{keys.Up.Help().Key + "/" + keys.Down.Help().Key, "move content focus line; scroll only when needed"},
-				{keys.Space.Help().Key, "select message (multi-select); d/a/x for bulk delete/archive/mark-read"},
+				{keys.Space.Help().Key, "select message and advance; d/a/x for bulk delete/archive/mark-read"},
 				{keys.SelectAll.Help().Key, "select all messages in current view"},
 				{keys.MarkRead.Help().Key, "mark read; next message in list"},
 				{keys.MarkAllRead.Help().Key, "mark current mailbox as read"},
@@ -72,10 +72,10 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{"Gmail: Sign in", "press Enter on [Sign in with Google] to launch OAuth2"},
 				{"Settings → Accounts", "set sync interval per account for auto-refresh"},
 				bind(keys.ContactManager),
-				{"Contacts: c", "compose to selected contact(s)"},
+				{"Contacts: Space/c", "select contacts, then compose to selected contact(s)"},
 				{"Contacts: n/e/d", "new, edit, or delete contacts used by compose autocomplete"},
 				{"Contacts: f", "add addresses already seen in mail"},
-				{"Contacts: i/x", "import vCard or export contacts.vcf"},
+				{"Contacts: i/x", "import/export vCard name, email, phone, org, title, note"},
 			},
 		},
 		{

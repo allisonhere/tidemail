@@ -671,12 +671,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.clearStatusCmd()
 
 	case MessageDeletedMsg:
-		if msg.Err != nil {
+		if msg.Err != nil && !msg.LocalDeleted {
 			m.setStatus(fmt.Sprintf("delete failed: %v", msg.Err), true)
 			return m, m.clearStatusCmd()
 		}
 		if m.removeMessageFromMemory(msg.MessageID) {
 			m.adjustMailboxUnreadCount(msg.MailboxID, -1)
+		}
+		if msg.Err != nil {
+			m.setStatus(fmt.Sprintf("deleted locally; remote delete failed: %v", msg.Err), true)
+			return m, m.clearStatusCmd()
 		}
 		m.setStatus("deleted", false)
 		return m, m.clearStatusCmd()
@@ -1157,6 +1161,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Auto-advance cursor for rapid multi-select
 			if m.messageCursor < len(m.filteredMessages)-1 {
 				m.messageCursor++
+				visible := m.articleRowsVisible()
+				if m.messageCursor >= m.listOffset+visible {
+					m.listOffset = m.messageCursor - visible + 1
+				}
 			}
 			return m, nil
 		}
