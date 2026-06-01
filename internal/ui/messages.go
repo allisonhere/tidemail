@@ -39,7 +39,7 @@ func (m Model) renderMessagesPane() string {
 		if i == m.messageCursor {
 			style = msgSelected
 		}
-		rows = append(rows, style.Width(w-2).Render(renderArticleRow(dot, unescapeDisplayText(msg2.Subject), age, w-2)))
+		rows = append(rows, style.Width(w).Render(renderArticleRow(dot, unescapeDisplayText(msg2.Subject), age, w)))
 	}
 
 	if len(m.filteredMessages) == 0 {
@@ -64,7 +64,7 @@ func (m Model) renderMessagesPane() string {
 
 	contentRows := append([]string{m.renderPaneHeaderWithAccent(paneMessages, title, focused, w, headerActive)}, rows...)
 	for viewLineCount(contentRows) < h {
-		contentRows = append(contentRows, msgRead.Width(w-2).Render(""))
+		contentRows = append(contentRows, msgRead.Width(w).Render(""))
 	}
 
 	bg := m.styles.Theme.Bg
@@ -277,11 +277,13 @@ func renderArticleRow(prefix, title, age string, width int) string {
 	prefixW := lipgloss.Width(prefix)
 	ageW := lipgloss.Width(age)
 	gapW := 2
+	trailingW := 2
 	if age == "" {
 		gapW = 0
+		trailingW = 0
 	}
-	titleW := max(0, width-prefixW-ageW-gapW)
-	row := prefix + padRight(truncate(title, titleW), titleW) + strings.Repeat(" ", gapW) + age
+	titleW := max(0, width-prefixW-ageW-gapW-trailingW)
+	row := prefix + padRight(truncate(title, titleW), titleW) + strings.Repeat(" ", gapW) + age + strings.Repeat(" ", trailingW)
 	return padRight(row, width)
 }
 

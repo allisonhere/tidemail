@@ -58,11 +58,12 @@ func (m Model) renderContentPane() string {
 }
 
 func (m Model) renderMessageContent(msg db.Message) string {
+	paneWidth := m.articlesPaneWidth()
 	contentWidth := m.contentBodyWidth()
 	bodyWidth := m.contentBodyWidth()
-	titleWidth := max(1, contentWidth-m.styles.ContentTitle.GetHorizontalFrameSize())
+	titleWidth := max(1, paneWidth-m.styles.ContentTitle.GetHorizontalFrameSize())
 	metaWidth := max(1, contentWidth-m.styles.ContentMeta.GetHorizontalFrameSize())
-	title := m.styles.ContentTitle.Width(contentWidth + 2).Render(truncate(unescapeDisplayText(msg.Subject), titleWidth+2))
+	title := m.styles.ContentTitle.Width(paneWidth).Render(truncate(unescapeDisplayText(msg.Subject), titleWidth))
 	metaStr := msg.Date.Format("Mon, 02 Jan 2006 15:04")
 	if msg.From != "" {
 		metaStr += "  From: " + msg.From
@@ -89,6 +90,9 @@ func (m Model) renderMessageContent(msg db.Message) string {
 			}
 			line := lipgloss.NewStyle().Background(m.styles.Theme.Bg).Foreground(dim).Width(contentWidth).Render(fmt.Sprintf("  %-12s %s", f.label+":", f.value))
 			headerLines = append(headerLines, line)
+			if f.label == "Message-ID" {
+				headerLines = append(headerLines, lipgloss.NewStyle().Background(m.styles.Theme.Bg).Width(contentWidth).Render(""))
+			}
 		}
 		if len(headerLines) > 0 {
 			fullHeaders = strings.Join(headerLines, "\n") + "\n"
@@ -120,7 +124,7 @@ func (m Model) renderMessageContent(msg db.Message) string {
 		body += "\n\n" + m.renderAttachmentList(bodyWidth)
 	}
 
-	return fillViewWidth(title+"\n"+meta+"\n\n"+fullHeaders+body, m.articlesPaneWidth(), m.styles.Theme.Bg)
+	return fillViewWidth(title+"\n"+meta+"\n\n"+fullHeaders+body, paneWidth, m.styles.Theme.Bg)
 }
 
 func (m Model) renderAttachmentList(width int) string {

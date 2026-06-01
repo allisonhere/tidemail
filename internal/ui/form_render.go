@@ -142,6 +142,7 @@ func renderInsetControl(control string, width, inset int, chrome managerChrome) 
 func inputViewWithCursor(input textinput.Model, focused bool) string {
 	if !focused {
 		input.Cursor.SetMode(cursor.CursorHide)
+		input.Cursor.TextStyle = input.TextStyle
 		return input.View()
 	}
 	block := input.Cursor.Style

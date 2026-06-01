@@ -11,6 +11,16 @@ import (
 	"github.com/allisonhere/tide/internal/db"
 )
 
+func composeFieldLine(view, label string) string {
+	stripped := ansi.Strip(view)
+	for _, line := range strings.Split(stripped, "\n") {
+		if strings.Contains(line, label) {
+			return line
+		}
+	}
+	return ""
+}
+
 func TestComposeActionsStayVisibleInShortView(t *testing.T) {
 	c := NewCompose(config.AccountConfig{}, nil, nil)
 	c.focusedField = composeFieldBody
@@ -73,16 +83,15 @@ func TestComposeTabAdvancesAfterAcceptingRecipientSuggestion(t *testing.T) {
 	}
 
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyTab}, DefaultKeys)
-	if c.focusedField != composeFieldTo {
-		t.Fatalf("first tab should accept the To suggestion before advancing, got focus %v", c.focusedField)
-	}
 	if got := c.toInput.Value(); got != "alice <alice@example.com>" {
 		t.Fatalf("expected tab to accept To suggestion, got %q", got)
 	}
-
-	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyTab}, DefaultKeys)
 	if c.focusedField != composeFieldCC {
-		t.Fatalf("second tab should advance from To to CC, got focus %v", c.focusedField)
+		t.Fatalf("tab should accept To suggestion and advance to CC, got focus %v", c.focusedField)
+	}
+	toLine := composeFieldLine(c.View(90, 24, BuildStyles(CatppuccinMocha, "compact")), "To")
+	if strings.Contains(toLine, " >") {
+		t.Fatalf("expected To row not to show focus marker after advancing to CC, got %q", toLine)
 	}
 }
 
@@ -97,15 +106,10 @@ func TestComposeTabAdvancesAfterAcceptingCCSuggestion(t *testing.T) {
 	}
 
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyTab}, DefaultKeys)
-	if c.focusedField != composeFieldCC {
-		t.Fatalf("first tab should accept the CC suggestion before advancing, got focus %v", c.focusedField)
-	}
 	if got := c.ccInput.Value(); got != "carol <carol@example.com>" {
 		t.Fatalf("expected tab to accept CC suggestion, got %q", got)
 	}
-
-	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyTab}, DefaultKeys)
 	if c.focusedField != composeFieldSubject {
-		t.Fatalf("second tab should advance from CC to Subject, got focus %v", c.focusedField)
+		t.Fatalf("tab should accept CC suggestion and advance to Subject, got focus %v", c.focusedField)
 	}
 }
