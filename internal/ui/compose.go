@@ -640,17 +640,17 @@ func renderComposePanel(title string, rows []string, width int, chrome managerCh
 }
 
 func renderComposePanelRow(ti textinput.Model, label string, focused bool, width, labelW, ctrlW int, chrome managerChrome) string {
-	bg := chrome.fieldBg
+	bg := chrome.surfaceBg
 	labelFg := chrome.muted
 	if focused {
-		bg = chrome.highlight
-		labelFg = chrome.highlightFg
+		bg = chrome.fieldBg
+		labelFg = chrome.text
 	}
-	marker := lipgloss.NewStyle().Background(bg).Width(2).Render(" ")
+	marker := lipgloss.NewStyle().Background(chrome.baseBg).Width(2).Render(" ")
 	if focused {
-		marker = lipgloss.NewStyle().Background(bg).Foreground(chrome.highlightFg).Bold(true).Width(2).Render(" >")
+		marker = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.accent).Bold(true).Width(2).Render(" >")
 	}
-	labelCell := lipgloss.NewStyle().Background(bg).Foreground(labelFg).Width(labelW).Render(truncate(label, max(1, labelW-1)))
+	labelCell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(labelFg).Width(labelW).Render(truncate(label, max(1, labelW-1)))
 	ti.Width = ctrlW
 	ti.Prompt = ""
 	ti.PromptStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.accent)

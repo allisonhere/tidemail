@@ -2204,13 +2204,13 @@ func (s Settings) renderThemeSelector(width int, chrome managerChrome) string {
 func renderSettingsPicker(width int, value string, focused bool, chrome managerChrome) string {
 	// Chrome cells: 2 (left chevron) + 2 (right chevron) + 2 (horizontal padding) = 6.
 	maxTextW := max(1, width-6)
-	bg := chrome.fieldBg
+	bg := chrome.surfaceBg
 	fg := chrome.text
 	accentFg := chrome.muted
 	if focused {
-		bg = chrome.highlight
-		fg = chrome.highlightFg
-		accentFg = chrome.highlightFg
+		bg = chrome.fieldBg
+		fg = chrome.text
+		accentFg = chrome.accent
 	}
 	value = truncate(value, maxTextW)
 	text := lipgloss.NewStyle().Background(bg).Foreground(fg)
