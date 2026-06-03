@@ -7,7 +7,9 @@ and incremental sync. See `CLAUDE.md` for the architecture map.
 ## Working
 
 - **Multi-account IMAP**: connect, list mailboxes, fetch messages, move, delete,
-  mark read/unread. UID SEARCH SINCE for incremental sync.
+  mark read/unread. Delete moves remote mail to Trash when a Trash mailbox is
+  available, with permanent expunge as the fallback. UID SEARCH SINCE for
+  incremental sync.
 - **SMTP send**: plain, STARTTLS, and direct TLS (port 465), plus Gmail XOAUTH2.
   Reply/forward threading headers; display name preserved in `From:`.
 - **Three-pane UI**: accounts sidebar, message list, message content.

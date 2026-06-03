@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
@@ -98,6 +99,61 @@ func TestMessageDeletedMsgRemovesLocallyDeletedMessageDespiteRemoteError(t *test
 
 	if len(m.messages) != 0 || len(m.filteredMessages) != 0 {
 		t.Fatalf("expected local delete result to remove message, got %d/%d", len(m.messages), len(m.filteredMessages))
+	}
+}
+
+func TestRemoteDeletePlanMovesToTrashWhenAvailable(t *testing.T) {
+	source := db.Mailbox{ID: 1, AccountID: 10, Name: "INBOX"}
+	trash := db.Mailbox{ID: 2, AccountID: 10, Name: "[Gmail]/Trash", Flags: []string{"\\Trash"}}
+
+	action, target := remoteDeletePlan(source, &trash)
+
+	if action != remoteDeleteMoveToTrash {
+		t.Fatalf("expected move-to-trash delete plan, got %v", action)
+	}
+	if target == nil || target.ID != trash.ID {
+		t.Fatalf("expected trash target, got %+v", target)
+	}
+}
+
+func TestRemoteDeletePlanExpungesWhenAlreadyInTrash(t *testing.T) {
+	source := db.Mailbox{ID: 2, AccountID: 10, Name: "[Gmail]/Trash", Flags: []string{"\\Trash"}}
+
+	action, target := remoteDeletePlan(source, &source)
+
+	if action != remoteDeleteExpunge {
+		t.Fatalf("expected expunge delete plan, got %v", action)
+	}
+	if target != nil {
+		t.Fatalf("expected no target for expunge, got %+v", target)
+	}
+}
+
+func TestMessageRowStylesKeepReverseVideoSelectedColorWithAccountAccent(t *testing.T) {
+	styles := BuildStyles(BuiltinThemes[0], "compact")
+	m := Model{
+		styles: styles,
+		accounts: []db.Account{
+			{ID: 10, Name: "Personal", Color: "#c41e3a"},
+		},
+		mailboxes: []db.Mailbox{
+			{ID: 20, AccountID: 10, Name: "INBOX"},
+		},
+		sidebarRows: []sidebarRow{
+			{kind: rowKindMailbox, mailboxID: 20, accountID: 10},
+		},
+	}
+
+	_, _, selected, headerActive, _, borderFocus := m.messageRowStyles()
+
+	if selected.GetForeground() != styles.ArticleSelected.GetForeground() {
+		t.Fatalf("selected row foreground should stay base reverse-video color, got %q want %q", selected.GetForeground(), styles.ArticleSelected.GetForeground())
+	}
+	if headerActive.GetBackground() != lipgloss.Color("#c41e3a") {
+		t.Fatalf("header should still use account accent, got %q", headerActive.GetBackground())
+	}
+	if borderFocus != lipgloss.Color("#c41e3a") {
+		t.Fatalf("border focus should still use account accent, got %q", borderFocus)
 	}
 }
 

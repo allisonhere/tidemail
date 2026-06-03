@@ -36,8 +36,9 @@ go build -o tidemail .
 - Contacts manager for curated autocomplete, manual entries, adding seen senders, composing to selected contacts, and vCard import/export
 - vCard import/export preserves email, display name, phone, organization, title, and notes
 - Server-backed sync, read/unread, archive, move, delete, compose, and reply
-- Local-first delete hides messages immediately and prevents deleted mail from reappearing on later syncs
+- Local-first delete hides messages immediately, moves remote mail to Trash when available, and prevents deleted mail from reappearing on later syncs
 - Archive auto-detection via `\Archive`, `Archive`, `Archives`, or `All Mail`
+- Trash auto-detection via `\Trash`, `Trash`, `Deleted Items`, `Deleted Messages`, or Gmail's Trash label
 - Command palette for common mail actions
 - Search and unread-only filtering
 - Optional actionable links in the message content pane

@@ -177,7 +177,34 @@ func (db *DB) FindArchiveMailbox(accountID int64) (Mailbox, error) {
 	return Mailbox{}, fmt.Errorf("archive mailbox not found")
 }
 
+func (db *DB) FindTrashMailbox(accountID int64) (Mailbox, error) {
+	mailboxes, err := db.ListMailboxes(accountID)
+	if err != nil {
+		return Mailbox{}, err
+	}
+	var nameMatch *Mailbox
+	for i, mb := range mailboxes {
+		for _, flag := range mb.Flags {
+			if strings.EqualFold(flag, `\Trash`) {
+				return mb, nil
+			}
+		}
+		if nameMatch == nil && (isCommonTrashMailboxName(mb.Name) || isCommonTrashMailboxName(mb.DisplayName)) {
+			nameMatch = &mailboxes[i]
+		}
+	}
+	if nameMatch != nil {
+		return *nameMatch, nil
+	}
+	return Mailbox{}, fmt.Errorf("trash mailbox not found")
+}
+
 func isCommonArchiveMailboxName(name string) bool {
 	n := strings.ToLower(strings.TrimSpace(name))
 	return n == "archive" || n == "archives" || strings.HasSuffix(n, "/archive") || strings.HasSuffix(n, "/archives") || n == "all mail" || strings.HasSuffix(n, "/all mail")
+}
+
+func isCommonTrashMailboxName(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	return n == "trash" || n == "deleted items" || n == "deleted messages" || strings.HasSuffix(n, "/trash") || strings.HasSuffix(n, "/deleted items") || strings.HasSuffix(n, "/deleted messages")
 }

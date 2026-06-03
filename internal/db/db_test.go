@@ -486,6 +486,75 @@ func TestDBFindArchiveMailboxErrorsWhenUnavailable(t *testing.T) {
 	}
 }
 
+func TestDBFindTrashMailboxPrefersSpecialUseThenCommonNames(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+
+	accountID, err := database.AddAccount("Personal", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gmailTrashID, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "[Gmail]/Trash"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	trashID, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "Deleted Items", Flags: []string{"\\Trash"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := database.FindTrashMailbox(accountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != trashID {
+		t.Fatalf("expected special-use trash %d, got %+v", trashID, got)
+	}
+
+	if err := database.DeleteMailbox(trashID); err != nil {
+		t.Fatal(err)
+	}
+	got, err = database.FindTrashMailbox(accountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != gmailTrashID {
+		t.Fatalf("expected common Gmail trash %d, got %+v", gmailTrashID, got)
+	}
+}
+
+func TestDBFindTrashMailboxErrorsWhenUnavailable(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+	accountID, err := database.AddAccount("Personal", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := database.FindTrashMailbox(accountID); err == nil {
+		t.Fatal("expected missing trash mailbox error")
+	}
+}
+
 func openSQLite(path string) (*DB, error) {
 	conn, err := sql.Open("sqlite", path)
 	if err != nil {

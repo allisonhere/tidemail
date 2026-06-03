@@ -12,6 +12,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+type remoteDeleteAction int
+
+const (
+	remoteDeleteExpunge remoteDeleteAction = iota
+	remoteDeleteMoveToTrash
+)
+
 func (m Model) renderMessagesPane() string {
 	w := m.articlesPaneWidth()
 	h := m.articlesPaneContentHeight()
@@ -97,7 +104,6 @@ func (m Model) messageRowStyles() (lipgloss.Style, lipgloss.Style, lipgloss.Styl
 		}
 		leg := accentReadableOn(accent, unreadBg, 3)
 		unread = unread.Foreground(leg)
-		selected = selected.Foreground(leg)
 		headerActive = headerActive.
 			Background(accent).
 			Foreground(readableText(m.styles.Theme.Fg, accent, 4.5))
@@ -213,6 +219,12 @@ func (m *Model) deleteMessageCmd(msg db.Message) tea.Cmd {
 	database := m.db
 	mailbox := m.mailboxByID(msg.MailboxID)
 	acfg := m.accountCfgForMailbox(msg.MailboxID)
+	var trashMailbox *db.Mailbox
+	if mailbox != nil {
+		if trash, err := database.FindTrashMailbox(mailbox.AccountID); err == nil {
+			trashMailbox = &trash
+		}
+	}
 	return func() tea.Msg {
 		if mailbox == nil {
 			return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: fmt.Errorf("mailbox not found")}
@@ -228,12 +240,24 @@ func (m *Model) deleteMessageCmd(msg db.Message) tea.Cmd {
 				return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, LocalDeleted: true, Err: err}
 			}
 			defer client.Close()
-			if err := client.DeleteMessage(ctx, mailbox.Name, msg.UID); err != nil {
+			action, target := remoteDeletePlan(*mailbox, trashMailbox)
+			if action == remoteDeleteMoveToTrash {
+				if err := client.MoveMessage(ctx, mailbox.Name, msg.UID, target.Name); err != nil {
+					return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, LocalDeleted: true, Err: err}
+				}
+			} else if err := client.DeleteMessage(ctx, mailbox.Name, msg.UID); err != nil {
 				return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, LocalDeleted: true, Err: err}
 			}
 		}
 		return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, LocalDeleted: true}
 	}
+}
+
+func remoteDeletePlan(source db.Mailbox, trash *db.Mailbox) (remoteDeleteAction, *db.Mailbox) {
+	if trash == nil || source.ID == trash.ID || source.Name == trash.Name {
+		return remoteDeleteExpunge, nil
+	}
+	return remoteDeleteMoveToTrash, trash
 }
 
 func (m *Model) focusedMessageChangedCmd(msg db.Message) tea.Cmd {
