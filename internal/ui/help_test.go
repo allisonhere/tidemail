@@ -24,3 +24,13 @@ func TestRenderHelpDocumentsContactsAndNotifications(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderHelpDocumentsAccountManagerShortcutAsUppercaseM(t *testing.T) {
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys))
+	if !strings.Contains(view, "M accounts") {
+		t.Fatalf("expected help to document uppercase account shortcut, got %q", view)
+	}
+	if strings.Contains(view, "m accounts") {
+		t.Fatalf("expected help not to document lowercase account shortcut, got %q", view)
+	}
+}

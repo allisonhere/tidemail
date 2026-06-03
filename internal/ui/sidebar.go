@@ -595,12 +595,12 @@ func (m Model) mailboxRowPrefix(selected bool) string {
 
 func (m Model) emptyAccountsHint() string {
 	if m.styles.PlainUI {
-		return "  press m to add accounts"
+		return "  press M to add accounts"
 	}
 	if m.iconsEnabled() {
-		return "  ＋ press m to add accounts"
+		return "  ＋ press M to add accounts"
 	}
-	return "  press m to add accounts"
+	return "  press M to add accounts"
 }
 
 func (m *Model) resetHelpVP() {

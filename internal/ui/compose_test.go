@@ -113,3 +113,42 @@ func TestComposeTabAdvancesAfterAcceptingCCSuggestion(t *testing.T) {
 		t.Fatalf("tab should accept CC suggestion and advance to Subject, got focus %v", c.focusedField)
 	}
 }
+
+func TestReplyTypingStartsAboveQuotedMessage(t *testing.T) {
+	c := NewReply(db.Message{
+		From:      "alice@example.com",
+		Subject:   "Plans",
+		MessageID: "<plans@example.com>",
+		BodyText:  "quoted line",
+	}, config.AccountConfig{}, nil)
+	c.focusedField = composeFieldBody
+	c.bodyInput.Focus()
+
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("H")}, DefaultKeys)
+
+	got := c.bodyInput.Value()
+	if !strings.HasPrefix(got, "H\n\nOn alice@example.com wrote:\n> quoted line") {
+		t.Fatalf("expected typed reply text above quoted original, got %q", got)
+	}
+}
+
+func TestForwardTypingStartsAboveQuotedMessage(t *testing.T) {
+	c := NewForward(db.Message{
+		From:      "alice@example.com",
+		Subject:   "Plans",
+		MessageID: "<plans@example.com>",
+		BodyText:  "forwarded line",
+	}, config.AccountConfig{}, nil)
+	c.focusedField = composeFieldBody
+	c.bodyInput.Focus()
+
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("H")}, DefaultKeys)
+
+	got := c.bodyInput.Value()
+	if !strings.HasPrefix(got, "H\n\n---------- Forwarded message ----------\nFrom: alice@example.com") {
+		t.Fatalf("expected typed forward text above quoted original, got %q", got)
+	}
+	if !strings.Contains(got, "> forwarded line") {
+		t.Fatalf("expected forwarded body to remain quoted, got %q", got)
+	}
+}

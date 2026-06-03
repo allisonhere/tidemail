@@ -405,6 +405,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.rebuildSidebar()
 		m.accountManager.setData(m.accounts, m.mailboxes, m.cfg.Accounts, m.cfg.OAuth)
+		openAccountManagerOnEmptyFirstLoad := m.firstLoad && msg.Err == nil && len(m.accounts) == 0
 		if m.firstLoad {
 			m.loadCollapseState()
 			m.rebuildSidebar()
@@ -452,6 +453,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clampSidebarOffset()
 		if len(m.mailboxes) == 0 {
 			m.clearMessages()
+			if openAccountManagerOnEmptyFirstLoad {
+				m.overlay = overlayAccountManager
+				m.accountManager = m.newAccountManager()
+			}
 			if statusCmd != nil {
 				return m, statusCmd
 			}

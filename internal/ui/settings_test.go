@@ -826,6 +826,28 @@ func TestSettingsAboutLinksCompactLayout(t *testing.T) {
 	}
 }
 
+func TestSettingsAboutLinksSitOnBottomRow(t *testing.T) {
+	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	s.setActiveSection(ssAbout)
+	chrome := newManagerChrome(96, CatppuccinMocha, false)
+	bodyHeight := 22
+	s.detailHeight = bodyHeight
+
+	body := s.viewSectionBody(60, chrome)
+	view := ansi.Strip(s.scrollSectionBody(body, 60, bodyHeight, lipgloss.Color("#000000")))
+	lines := strings.Split(view, "\n")
+	if len(lines) != bodyHeight {
+		t.Fatalf("expected %d rendered lines, got %d: %q", bodyHeight, len(lines), view)
+	}
+	buttonRows := strings.Join(lines[len(lines)-3:], "\n")
+	if !strings.Contains(buttonRows, "Repository") || !strings.Contains(buttonRows, "Issues") {
+		t.Fatalf("expected about button block at bottom, got %q in view %q", buttonRows, view)
+	}
+	if strings.TrimSpace(lines[len(lines)-1]) == "" {
+		t.Fatalf("expected bottom row to be button border, got blank in view %q", view)
+	}
+}
+
 func TestSettingsActionURLMapping(t *testing.T) {
 	if got := settingsActionURL(settingsActionOpenRepo); got != tideRepoURL {
 		t.Fatalf("expected repo action URL %q, got %q", tideRepoURL, got)

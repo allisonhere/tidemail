@@ -137,6 +137,7 @@ func NewReply(original db.Message, acfg config.AccountConfig, accounts []config.
 		plain := ansi.Strip(original.BodyText)
 		quoted := quoteReply(plain, original.From)
 		c.bodyInput.SetValue(quoted)
+		c.moveBodyCursorToStart()
 	}
 
 	return c
@@ -160,6 +161,7 @@ func NewForward(original db.Message, acfg config.AccountConfig, accounts []confi
 		plain := ansi.Strip(original.BodyText)
 		quoted := quoteForward(plain, original)
 		c.bodyInput.SetValue(quoted)
+		c.moveBodyCursorToStart()
 	}
 
 	// Include original attachments
@@ -172,6 +174,12 @@ func NewForward(original db.Message, acfg config.AccountConfig, accounts []confi
 	}
 
 	return c
+}
+
+func (c *ComposeModel) moveBodyCursorToStart() {
+	c.bodyInput.Focus()
+	c.bodyInput, _ = c.bodyInput.Update(tea.KeyMsg{Type: tea.KeyCtrlHome})
+	c.bodyInput.Blur()
 }
 
 // quoteReply formats a quoted reply block from the original message.

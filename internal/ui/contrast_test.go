@@ -23,6 +23,15 @@ func styleColor(c lipgloss.TerminalColor) lipgloss.Color {
 	return ""
 }
 
+func TestArticleSelectedUsesReverseVideo(t *testing.T) {
+	for _, theme := range BuiltinThemes {
+		styles := BuildStyles(theme, "compact")
+		if !styles.ArticleSelected.GetReverse() {
+			t.Fatalf("%s ArticleSelected should use reverse video", theme.Name)
+		}
+	}
+}
+
 var contrastChecks = []contrastCheck{
 	// Pane headers
 	{

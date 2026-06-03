@@ -53,6 +53,62 @@ func TestAccountManagerOpensWithLoadedAccounts(t *testing.T) {
 	}
 }
 
+func TestFirstLoadWithNoAccountsOpensAccountManager(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	database, err := db.Open()
+	if err != nil {
+		t.Fatalf("Open DB: %v", err)
+	}
+	defer database.Close()
+
+	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	next, _ := m.Update(AccountsLoadedMsg{})
+	m = next.(Model)
+
+	if m.overlay != overlayAccountManager {
+		t.Fatalf("expected account manager overlay on first load with no accounts, got %v", m.overlay)
+	}
+	if len(m.accountManager.accounts) != 0 {
+		t.Fatalf("expected no account manager accounts, got %d", len(m.accountManager.accounts))
+	}
+	if m.accountManager.mode != amList {
+		t.Fatalf("expected account manager list mode, got %v", m.accountManager.mode)
+	}
+}
+
+func TestFirstLoadWithAccountsDoesNotOpenAccountManager(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	database, err := db.Open()
+	if err != nil {
+		t.Fatalf("Open DB: %v", err)
+	}
+	defer database.Close()
+
+	accountID, err := database.AddAccount("Personal", "")
+	if err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+	mailboxID, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "INBOX"})
+	if err != nil {
+		t.Fatalf("UpsertMailbox: %v", err)
+	}
+
+	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	next, _ := m.Update(AccountsLoadedMsg{
+		Accounts:  []db.Account{{ID: accountID, Name: "Personal"}},
+		Mailboxes: []db.Mailbox{{ID: mailboxID, AccountID: accountID, Name: "INBOX"}},
+	})
+	m = next.(Model)
+
+	if m.overlay == overlayAccountManager {
+		t.Fatalf("expected first load with accounts not to open account manager")
+	}
+}
+
 func TestLoadAccountsCmdImportsConfiguredAccounts(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())

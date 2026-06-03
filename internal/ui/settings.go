@@ -2312,13 +2312,17 @@ func (s Settings) renderAboutSection(width int, chrome managerChrome) settingsSe
 	lines = append(lines, verLine, blank)
 	addBlock(ind.Render(s.renderAboutClosingNote(bodyW, chrome)))
 	lines = append(lines, blank)
-	linksStart := addBlock(ind.Render(s.renderAboutLinks(bodyW, chrome)))
-	// Fill remaining space to pane bottom
-	if s.detailHeight > len(lines) {
-		for i := len(lines); i < s.detailHeight; i++ {
+	linksBlock := ind.Render(s.renderAboutLinks(bodyW, chrome))
+	linksLines := strings.Split(linksBlock, "\n")
+	// The About body gets a two-line back-link prefix after this section is
+	// rendered, so reserve that space and pin the link row to the pane bottom.
+	if targetHeight := s.detailHeight - 2; targetHeight > 0 {
+		for len(lines)+len(linksLines) < targetHeight {
 			lines = append(lines, blank)
 		}
 	}
+	linksStart := len(lines)
+	lines = append(lines, linksLines...)
 	return settingsSectionBody{
 		lines: lines,
 		anchors: map[settingsField]int{
@@ -2423,20 +2427,30 @@ func (s Settings) renderAboutLinks(width int, chrome managerChrome) string {
 	renderBtn := func(label string, focused bool) string {
 		bg := aboutBg
 		fg := chrome.accent
+		borderFg := chrome.accent
 		if focused {
 			bg = chrome.accent
 			fg = readableText(chrome.accent, chrome.accent, 4.5)
+			borderFg = chrome.accent
 		}
 		return lipgloss.NewStyle().
 			Background(bg).
 			Foreground(fg).
+			Border(lipgloss.RoundedBorder()).
+			BorderBackground(aboutBg).
+			BorderForeground(borderFg).
 			Bold(focused).
-			Padding(0, 2).
-			Render(" " + label + " ")
+			Width(14).
+			Align(lipgloss.Center).
+			Render(label)
 	}
 	repoBtn := renderBtn("Repository", s.focusedField == sfAboutRepo)
 	issuesBtn := renderBtn("Issues", s.focusedField == sfAboutIssues)
-	gap := lipgloss.NewStyle().Background(aboutBg).Render("  ")
+	gap := lipgloss.NewStyle().
+		Background(aboutBg).
+		Width(8).
+		Height(lipgloss.Height(repoBtn)).
+		Render("")
 	line := lipgloss.JoinHorizontal(lipgloss.Center, repoBtn, gap, issuesBtn)
 	return lipgloss.NewStyle().Background(aboutBg).Width(width).Align(lipgloss.Center).Render(line)
 }
@@ -2455,7 +2469,7 @@ func (s Settings) renderAboutClosingNote(width int, chrome managerChrome) string
 	aboutBg := lipgloss.Color("#000000")
 	signoff := lipgloss.NewStyle().
 		Background(aboutBg).
-		Foreground(chrome.muted).
+		Foreground(lipgloss.Color("#ffffff")).
 		Italic(true).
 		Width(max(1, width)).
 		Align(lipgloss.Center).
@@ -2471,11 +2485,15 @@ func (s Settings) renderAboutClosingNote(width int, chrome managerChrome) string
 	heartBlock := lipgloss.NewStyle().
 		Background(aboutBg).
 		Render(heart)
+	gap := lipgloss.NewStyle().
+		Background(aboutBg).
+		Width(max(1, width)).
+		Render("")
 
 	return lipgloss.NewStyle().
 		Background(aboutBg).
 		PaddingTop(1).
-		Render(lipgloss.JoinVertical(lipgloss.Left, signoff, heartBlock))
+		Render(lipgloss.JoinVertical(lipgloss.Left, signoff, gap, heartBlock))
 }
 
 func (s Settings) renderAboutHeroTextLine(text string, width, row int, bold bool) string {

@@ -220,18 +220,9 @@ func BuildStyles(t Theme, density string) Styles {
 			Foreground(mutedText(t.Fg, t.Bg)).
 			AlignHorizontal(lipgloss.Left)),
 		ArticleSelected: listPad(lipgloss.NewStyle().
-			Background(func() lipgloss.Color {
-				if isDark(t.Bg) {
-					return adjustLightness(t.Bg, 0.12)
-				}
-				return adjustLightness(t.Bg, -0.12)
-			}()).
-			Foreground(readableText(t.BorderFocus, func() lipgloss.Color {
-				if isDark(t.Bg) {
-					return adjustLightness(t.Bg, 0.12)
-				}
-				return adjustLightness(t.Bg, -0.12)
-			}(), 4.5)).
+			Background(t.Bg).
+			Foreground(t.Fg).
+			Reverse(true).
 			Bold(true).
 			AlignHorizontal(lipgloss.Left)),
 		ArticleTime: lipgloss.NewStyle().
