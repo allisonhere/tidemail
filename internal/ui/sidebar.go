@@ -482,11 +482,7 @@ func (m Model) renderAccountHeader(accountID int64, selected bool, width int) st
 			icon = "▸ "
 		}
 	}
-	badge := ""
-	if unread := m.accountUnreadCount(accountID); unread > 0 {
-		badge = m.accountBadgeStyle(accountID, selected).Render(fmt.Sprintf("(%d)", unread))
-	}
-	row := renderFeedRow(icon, label, badge, width)
+	row := renderFeedRow(icon, label, "", width)
 	style := m.accountHeaderStyle(accountID, selected)
 	return style.Width(width).Render(row)
 }
