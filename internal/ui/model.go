@@ -409,7 +409,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.firstLoad {
 			m.loadCollapseState()
 			m.rebuildSidebar()
-			statusCmd = tea.Batch(statusCmd, m.startSyncTimers(), m.loadAddressBookCmd())
+			statusCmd = tea.Batch(statusCmd, m.startSyncTimers(), m.syncInboxesNowCmd(), m.loadAddressBookCmd())
 		}
 		m.firstLoad = false
 		if prevID == 0 && prevKind == rowKindMailbox {
@@ -979,6 +979,14 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			read := !msg2.Read
 			advance := !msg2.Read
 			return m, m.setMessageReadCmd(msg2, read, advance)
+		}
+		return m, nil
+
+	case keyMatches(msg, m.keys.SelectAll):
+		if m.focused == paneMessages && len(m.filteredMessages) > 0 {
+			for _, msg2 := range m.filteredMessages {
+				m.selectedMessages[msg2.ID] = true
+			}
 		}
 		return m, nil
 

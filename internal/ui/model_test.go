@@ -187,6 +187,36 @@ func TestSpaceSelectAdvanceKeepsCursorVisible(t *testing.T) {
 	}
 }
 
+func TestSelectAllKeySelectsFilteredMessages(t *testing.T) {
+	msgs := []db.Message{
+		{ID: 1, Subject: "Visible 1"},
+		{ID: 2, Subject: "Visible 2"},
+		{ID: 3, Subject: "Hidden"},
+	}
+	m := Model{
+		keys:             DefaultKeys,
+		focused:          paneMessages,
+		messages:         msgs,
+		filteredMessages: msgs[:2],
+		selectedMessages: make(map[int64]bool),
+	}
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	m = next.(Model)
+
+	if len(m.selectedMessages) != 2 {
+		t.Fatalf("expected 2 selected messages, got %d: %+v", len(m.selectedMessages), m.selectedMessages)
+	}
+	for _, id := range []int64{1, 2} {
+		if !m.selectedMessages[id] {
+			t.Fatalf("expected message %d selected, got %+v", id, m.selectedMessages)
+		}
+	}
+	if m.selectedMessages[3] {
+		t.Fatalf("did not expect hidden message selected, got %+v", m.selectedMessages)
+	}
+}
+
 func TestValidateAccountForConnect(t *testing.T) {
 	base := config.AccountConfig{Name: "Acct", IMAPHost: "imap.x", User: "u", IMAPPort: 993, SMTPPort: 587}
 	if got := validateAccountForConnect(base); got != "" {

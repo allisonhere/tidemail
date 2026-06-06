@@ -53,6 +53,45 @@ func TestAccountManagerOpensWithLoadedAccounts(t *testing.T) {
 	}
 }
 
+func TestFirstLoadSyncsInboxesImmediately(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	database, err := db.Open()
+	if err != nil {
+		t.Fatalf("Open DB: %v", err)
+	}
+	defer database.Close()
+
+	accountID, err := database.AddAccount("Personal", "")
+	if err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+	mailboxID, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "INBOX"})
+	if err != nil {
+		t.Fatalf("UpsertMailbox: %v", err)
+	}
+
+	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	if !m.firstLoad {
+		t.Fatalf("expected firstLoad to be true on a fresh model")
+	}
+	next, cmd := m.Update(AccountsLoadedMsg{
+		Accounts:  []db.Account{{ID: accountID, Name: "Personal"}},
+		Mailboxes: []db.Mailbox{{ID: mailboxID, AccountID: accountID, Name: "INBOX"}},
+	})
+	m = next.(Model)
+
+	if cmd == nil {
+		t.Fatalf("expected first load to return a batched command")
+	}
+	// syncMailboxCmd marks the mailbox as syncing; an immediate inbox sync on
+	// first load is the regression we're guarding against here.
+	if !m.syncing[mailboxID] {
+		t.Fatalf("expected inbox %d to be syncing immediately after first load", mailboxID)
+	}
+}
+
 func TestFirstLoadWithNoAccountsOpensAccountManager(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())

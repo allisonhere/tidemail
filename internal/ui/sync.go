@@ -218,6 +218,23 @@ func (m *Model) startSyncTimers() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// syncInboxesNowCmd kicks off an immediate one-shot sync of every inbox mailbox.
+// Auto-sync timers (tea.Every) only fire after the first interval elapses, so
+// without this the app would show only cached mail on launch until the first
+// timer tick — call this on first load so fresh mail arrives right away.
+func (m *Model) syncInboxesNowCmd() tea.Cmd {
+	var cmds []tea.Cmd
+	for _, mb := range m.mailboxes {
+		if isInboxMailbox(mb) {
+			cmds = append(cmds, m.syncMailboxCmd(mb.ID, false))
+		}
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
+}
+
 func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
 	m.syncing[mailboxID] = true
 	database := m.db
