@@ -41,7 +41,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{keys.SelectAll.Help().Key, "select all messages in current view"},
 				{keys.MarkRead.Help().Key, "mark read; next message in list"},
 				{keys.MarkAllRead.Help().Key, "mark current mailbox as read"},
-				{keys.OpenBrowser.Help().Key, "open selected link"},
+				{keys.OpenBrowser.Help().Key, "open link on focus line (else selected link)"},
 				{keys.NextLink.Help().Key, "next actionable link in content"},
 				{keys.PrevLink.Help().Key, "previous actionable link in content"},
 				{keys.Search.Help().Key, "search messages in current mailbox"},

@@ -129,7 +129,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 | `R` | Mark selected mailbox/account read |
 | `/` | Search messages |
 | `u` | Toggle unread-only view |
-| `o` | Open selected content link |
+| `o` | Open link on the focus line (falls back to the selected content link) |
 | `Ctrl+N` / `Alt+N` | Next content link |
 | `Ctrl+P` / `Alt+P` | Previous content link |
 | `Ctrl+E` | Toggle email headers on/off |

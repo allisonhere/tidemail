@@ -124,6 +124,7 @@ type Model struct {
 	contentFocusLine     int
 	contentLineCount     int
 	contentFocusable     []bool
+	contentLines         []string
 	contentSearchInput   textinput.Model
 	contentSearchQuery   string
 	contentSearchMatches []int
@@ -1077,11 +1078,12 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.OpenBrowser):
-		if len(m.filteredMessages) > 0 {
-			if m.focused == paneContent {
-				if link, ok := m.currentContentLink(); ok {
-					return m, m.openBrowserCmd(link)
-				}
+		if len(m.filteredMessages) > 0 && m.focused == paneContent {
+			if link, ok := m.focusedLineLink(); ok {
+				return m, m.openBrowserCmd(link)
+			}
+			if link, ok := m.currentContentLink(); ok {
+				return m, m.openBrowserCmd(link)
 			}
 		}
 		return m, nil

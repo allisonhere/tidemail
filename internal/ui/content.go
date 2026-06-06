@@ -190,6 +190,23 @@ func (m Model) actionableLinksEnabled() bool {
 	return m.cfg.Display.ActionableLinks
 }
 
+// focusedLineLink returns the first URL on the currently highlighted focus line,
+// when the focus-line feature is active. This lets `o` open whatever link sits
+// under the highlight, independent of the actionable-links list.
+func (m Model) focusedLineLink() (string, bool) {
+	if !m.cfg.Display.FocusLine {
+		return "", false
+	}
+	if m.contentFocusLine < 0 || m.contentFocusLine >= len(m.contentLines) {
+		return "", false
+	}
+	links := extractActionableLinks(m.contentLines[m.contentFocusLine], "")
+	if len(links) == 0 {
+		return "", false
+	}
+	return links[0], true
+}
+
 func (m *Model) setViewportMessage(msg db.Message) {
 	sameMsg := m.contentMessageID == msg.ID && m.contentLineCount > 0
 	m.syncContentLinks(msg)
@@ -207,7 +224,8 @@ func (m *Model) setViewportMessage(msg db.Message) {
 	m.contentSearchMatches = collectSearchMatches(content, m.contentSearchQuery)
 	m.viewport.SetContent(content)
 	m.contentMessageID = msg.ID
-	m.contentLineCount = strings.Count(content, "\n") + 1
+	m.contentLines = strings.Split(ansi.Strip(content), "\n")
+	m.contentLineCount = len(m.contentLines)
 	m.contentFocusable = messageFocusableLines(content)
 	m.contentFocusLine = clamp(m.contentFocusLine, 0, max(0, m.contentLineCount-1))
 	if !sameMsg {
@@ -225,6 +243,7 @@ func (m *Model) clearViewportMessage() {
 	m.contentFocusLine = 0
 	m.contentLineCount = 0
 	m.contentFocusable = nil
+	m.contentLines = nil
 	m.contentAttachments = nil
 	m.clearContentSearch()
 	m.viewport.GotoTop()
