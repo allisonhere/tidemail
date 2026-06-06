@@ -238,7 +238,7 @@ func TestSettingsViewIncludesFocusLineToggle(t *testing.T) {
 func TestSettingsViewIncludesLayoutDensity(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	s.setFocusedPane(settingsPaneDetail)
-	v := s.View(62, 30, newManagerChrome(62, CatppuccinMocha, false))
+	v := s.View(62, 32, newManagerChrome(62, CatppuccinMocha, false))
 	if !strings.Contains(v, "Layout density") {
 		t.Fatal("expected settings view to contain layout density label")
 	}

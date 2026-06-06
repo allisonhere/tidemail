@@ -91,6 +91,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 			entries: []entry{
 				{"S → Display", "layout density: comfortable or compact (default compact)"},
 				{"S → Display", "focus line: highlight current readable content line"},
+				{"S → Display", "show sender: show sender name before subject in the message list"},
 				{"S → Display", "actionable links: show links block and enable link navigation"},
 				{"S → Display", "show email headers: show headers when opening a message"},
 				{"S → Display", "desktop notifications: notify on new unread mail from auto-sync"},

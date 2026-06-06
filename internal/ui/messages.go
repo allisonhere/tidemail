@@ -46,7 +46,12 @@ func (m Model) renderMessagesPane() string {
 		if i == m.messageCursor {
 			style = msgSelected
 		}
-		rows = append(rows, style.Width(w).Render(renderArticleRow(dot, unescapeDisplayText(msg2.Subject), age, w)))
+		if m.cfg.Display.ShowSender {
+			senderW := min(22, max(0, w/3))
+			rows = append(rows, style.Width(w).Render(renderArticleRowWithSender(dot, senderDisplay(msg2.From), unescapeDisplayText(msg2.Subject), age, w, senderW)))
+		} else {
+			rows = append(rows, style.Width(w).Render(renderArticleRow(dot, unescapeDisplayText(msg2.Subject), age, w)))
+		}
 	}
 
 	if len(m.filteredMessages) == 0 {
@@ -308,6 +313,26 @@ func renderArticleRow(prefix, title, age string, width int) string {
 	}
 	titleW := max(0, width-prefixW-ageW-gapW-trailingW)
 	row := prefix + padRight(truncate(title, titleW), titleW) + strings.Repeat(" ", gapW) + age + strings.Repeat(" ", trailingW)
+	return padRight(row, width)
+}
+
+// renderArticleRowWithSender lays out a message row with a fixed-width sender
+// column before the subject, keeping subjects vertically aligned across rows.
+func renderArticleRowWithSender(prefix, sender, title, age string, width, senderW int) string {
+	prefixW := lipgloss.Width(prefix)
+	ageW := lipgloss.Width(age)
+	gapW := 2
+	trailingW := 2
+	if age == "" {
+		gapW = 0
+		trailingW = 0
+	}
+	senderGap := 1
+	titleW := max(0, width-prefixW-senderW-senderGap-ageW-gapW-trailingW)
+	row := prefix +
+		padRight(truncate(sender, senderW), senderW) + strings.Repeat(" ", senderGap) +
+		padRight(truncate(title, titleW), titleW) + strings.Repeat(" ", gapW) +
+		age + strings.Repeat(" ", trailingW)
 	return padRight(row, width)
 }
 

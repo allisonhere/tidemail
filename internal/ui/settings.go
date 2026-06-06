@@ -34,6 +34,7 @@ const (
 	sfMarkReadOnOpen
 	sfMarkReadOnFocus
 	sfFocusLine
+	sfShowSender
 	sfDefaultUnreadOnly
 	sfActionableLinks
 	sfFilterLinks
@@ -218,6 +219,7 @@ type Settings struct {
 	markReadOnOpen       bool
 	markReadOnFocus      bool
 	focusLine            bool
+	showSender           bool
 	defaultUnreadOnly    bool
 	actionableLinks      bool
 	filterLinks          bool
@@ -307,6 +309,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		markReadOnOpen:       cfg.Display.MarkReadOnOpen,
 		markReadOnFocus:      cfg.Display.MarkReadOnFocus,
 		focusLine:            cfg.Display.FocusLine,
+		showSender:           cfg.Display.ShowSender,
 		defaultUnreadOnly:    cfg.Display.DefaultUnreadOnly,
 		actionableLinks:      cfg.Display.ActionableLinks,
 		filterLinks:          cfg.Display.FilterLinks,
@@ -371,6 +374,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.MarkReadOnOpen = s.markReadOnOpen
 	cfg.Display.MarkReadOnFocus = s.markReadOnFocus
 	cfg.Display.FocusLine = s.focusLine
+	cfg.Display.ShowSender = s.showSender
 	cfg.Display.DefaultUnreadOnly = s.defaultUnreadOnly
 	cfg.Display.ActionableLinks = s.actionableLinks
 	cfg.Display.FilterLinks = s.filterLinks
@@ -589,7 +593,7 @@ func (s Settings) updateNowActionVisible() bool {
 func (s Settings) sectionFields(section settingsSection) []settingsField {
 	switch section {
 	case ssDisplay:
-		fields := []settingsField{sfBackToSections, sfIcons, sfDateFormat, sfMarkReadOnOpen, sfMarkReadOnFocus, sfFocusLine, sfDefaultUnreadOnly, sfTheme, sfDisplayDensity, sfReadingWidth}
+		fields := []settingsField{sfBackToSections, sfIcons, sfDateFormat, sfMarkReadOnOpen, sfMarkReadOnFocus, sfFocusLine, sfShowSender, sfDefaultUnreadOnly, sfTheme, sfDisplayDensity, sfReadingWidth}
 		if config.IsRetroTerminalTheme(s.themeName) {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
@@ -1039,6 +1043,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfShowSender:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.showSender = !s.showSender
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfDefaultUnreadOnly:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.defaultUnreadOnly = !s.defaultUnreadOnly
@@ -1430,6 +1443,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addToggle("Mark read on open", s.markReadOnOpen, sfMarkReadOnOpen)
 		b.addToggle("Mark read on focus", s.markReadOnFocus, sfMarkReadOnFocus)
 		b.addToggle("Focus line", s.focusLine, sfFocusLine)
+		b.addToggle("Show sender", s.showSender, sfShowSender)
 		b.addToggle("Default to unread only", s.defaultUnreadOnly, sfDefaultUnreadOnly)
 		b.addThemeSelector()
 		b.addDensitySelector()
@@ -2283,6 +2297,8 @@ func (s Settings) fieldHint(field settingsField) string {
 		return "strip bare URLs from the article body text"
 	case sfFocusLine:
 		return "highlight the current readable line in the content pane"
+	case sfShowSender:
+		return "show the sender's name in a column before the subject in the message list"
 	case sfNotifications:
 		return "show a desktop notification when new mail arrives during background sync"
 	case sfUpdateManualCommand:

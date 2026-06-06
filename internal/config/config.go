@@ -39,6 +39,7 @@ type DisplayConfig struct {
 	DefaultUnreadOnly bool               `toml:"default_unread_only"`
 	ActionableLinks   bool               `toml:"actionable_links"`
 	FilterLinks       bool               `toml:"filter_links"`
+	ShowSender        bool               `toml:"show_sender"`
 	ReadingWidth      int                `toml:"reading_width"`
 	ConfirmQuit       bool               `toml:"confirm_quit"`
 	ShowHeaders       bool               `toml:"show_headers"`
@@ -122,6 +123,7 @@ func DefaultConfig() Config {
 			DateFormat:     "relative",
 			MarkReadOnOpen: true,
 			FocusLine:      true,
+			ShowSender:     true,
 			Density:        "compact",
 			ConfirmQuit:    true,
 			ShowHeaders:    true,

@@ -146,7 +146,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 
 Settings are opened with `S`.
 
-- Display: icons, date format, mark-read behavior, focus line, actionable links, reading width, browser command, density, show email headers, desktop notifications, and quit confirmation
+- Display: icons, date format, mark-read behavior, focus line, show sender, actionable links, reading width, browser command, density, show email headers, desktop notifications, and quit confirmation
 - Accounts: edit account details and set a per-account `sync_minutes` interval for automatic background refresh
 - Updates: check, install, restart, or copy a manual install command
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings
