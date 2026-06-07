@@ -44,7 +44,7 @@ go build -o tidemail .
 - Optional actionable links in the message content pane
 - AI summaries with copy and save-to-Markdown actions
 - AI grammar & spell check in compose with preview overlay
-- **AI mail filters** — describe a rule in plain English ("move newsletters from substack to Reading") and AI turns it into a real, deterministic filter; review it, then save (auto-applied to new mail on sync), run once on a mailbox, or run on all existing mail. Actions: move, mark read, archive, delete, spam. Open from the command palette (`p` → "filters").
+- **AI mail filters** — describe a rule in plain English ("move newsletters from substack to Reading") and AI turns it into a real, deterministic filter that runs locally with no per-message AI cost. Choose which account it applies to (or **All accounts**), review the generated rule, then save (auto-applied to new mail on sync), run once on a mailbox, or run on all existing mail. Actions: move, mark read, archive, delete, spam. Open from the command palette (`p` → "filters").
 - Theme-aware dialogs, overlays, and terminal background sync
 - Collapsible account folders (System, Labels) in sidebar
 - **Desktop notifications** on genuinely new unread mail via auto-sync (notify-send), with sender and subject details
