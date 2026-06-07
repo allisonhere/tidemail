@@ -139,6 +139,16 @@ func (db *DB) migrate() error {
 			title        TEXT    NOT NULL DEFAULT '',
 			note         TEXT    NOT NULL DEFAULT ''
 		);
+
+		CREATE TABLE IF NOT EXISTS rules (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			account_id INTEGER NOT NULL DEFAULT 0,
+			priority   INTEGER NOT NULL DEFAULT 0,
+			enabled    INTEGER NOT NULL DEFAULT 1,
+			name       TEXT    NOT NULL DEFAULT '',
+			json       TEXT    NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL DEFAULT 0
+		);
 	`)
 	if err != nil {
 		return err

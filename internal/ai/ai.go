@@ -11,8 +11,15 @@ import (
 type Summarizer interface {
 	Summarize(ctx context.Context, title, content string) (string, error)
 	CheckGrammar(ctx context.Context, text string) (string, error)
+	// Complete runs a single-shot prompt and returns the raw model text. It is a
+	// general-purpose call used for structured tasks such as turning an English
+	// filter description into JSON.
+	Complete(ctx context.Context, prompt string) (string, error)
 	ProviderName() string
 }
+
+// completeMaxTokens is the output budget for Complete calls.
+const completeMaxTokens = 1500
 
 // New returns the configured Summarizer, or an error if none is configured.
 func New(cfg config.AIConfig) (Summarizer, error) {

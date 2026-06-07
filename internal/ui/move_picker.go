@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
 	imapClient "github.com/allisonhere/tide/internal/imap"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -21,6 +23,8 @@ type movePicker struct {
 	currentPath string
 	messages    []db.Message
 	sources     map[int64]bool
+	creating    bool
+	nameInput   textinput.Model
 }
 
 type moveEntry struct {
@@ -209,6 +213,26 @@ func moveParentPath(path, delimiter string) string {
 }
 
 func (m Model) handleMovePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.movePicker.creating {
+		switch {
+		case keyMatches(msg, m.keys.Cancel):
+			m.movePicker.creating = false
+			m.movePicker.nameInput.Blur()
+			return m, nil
+		case keyMatches(msg, m.keys.Confirm):
+			name := strings.TrimSpace(m.movePicker.nameInput.Value())
+			m.movePicker.creating = false
+			m.movePicker.nameInput.Blur()
+			if name == "" {
+				return m, nil
+			}
+			return m, m.createFolderCmd(m.movePicker.accountID, m.movePicker.currentPath, name)
+		default:
+			var cmd tea.Cmd
+			m.movePicker.nameInput, cmd = m.movePicker.nameInput.Update(msg)
+			return m, cmd
+		}
+	}
 	switch {
 	case keyMatches(msg, m.keys.Cancel):
 		m.movePicker = movePicker{}
@@ -247,6 +271,13 @@ func (m Model) handleMovePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.movePicker.currentPath = moveParentPath(m.movePicker.currentPath, moveDelimiter(m.mailboxes, m.movePicker.accountID, m.movePicker.currentPath))
 		m.movePicker.cursor = 0
 		m.refreshMovePickerEntries()
+		return m, nil
+	case msg.String() == "n":
+		input := textinput.New()
+		input.Placeholder = "folder name"
+		input.Focus()
+		m.movePicker.nameInput = input
+		m.movePicker.creating = true
 		return m, nil
 	default:
 		key := msg.String()
@@ -294,6 +325,25 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 		Render(clampView(path, width-2, 1, chrome.baseBg))
 
 	listH := max(1, height-7)
+
+	if m.movePicker.creating {
+		prompt := lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Foreground(chrome.text).
+			Width(width).
+			Padding(0, 2).
+			Render(clampView("new folder: "+m.movePicker.nameInput.View(), max(1, width-4), 1, chrome.baseBg))
+		rows := []string{prompt}
+		for len(rows) < listH {
+			rows = append(rows, lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Padding(0, 2).Render(""))
+		}
+		actions := renderManagerActions(width, chrome,
+			"enter", "create",
+			"esc", "cancel",
+		)
+		return lipgloss.JoinVertical(lipgloss.Left, header, pathLine, lipgloss.JoinVertical(lipgloss.Left, rows...), actions)
+	}
+
 	start := 0
 	if m.movePicker.cursor >= listH {
 		start = m.movePicker.cursor - listH + 1
@@ -329,10 +379,43 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 
 	actions := renderManagerActions(width, chrome,
 		"enter", "open/move",
+		"n", "new folder",
 		"h", "parent",
 		"esc", "cancel",
 	)
 	return lipgloss.JoinVertical(lipgloss.Left, header, pathLine, lipgloss.JoinVertical(lipgloss.Left, rows...), actions)
+}
+
+func (m *Model) createFolderCmd(accountID int64, parentPath, name string) tea.Cmd {
+	delimiter := moveDelimiter(m.mailboxes, accountID, parentPath)
+	fullName := name
+	if parentPath != "" {
+		fullName = parentPath + delimiter + name
+	}
+	var acfg config.AccountConfig
+	if len(m.movePicker.messages) > 0 {
+		acfg = m.accountCfgForMailbox(m.movePicker.messages[0].MailboxID)
+	}
+	database := m.db
+	return func() tea.Msg {
+		if acfg.IMAPHost != "" {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			client := imapClient.New(acfg)
+			if err := client.Connect(ctx); err != nil {
+				return FolderCreatedMsg{AccountID: accountID, Name: fullName, Err: err}
+			}
+			defer client.Close()
+			if err := client.CreateMailbox(ctx, fullName); err != nil {
+				return FolderCreatedMsg{AccountID: accountID, Name: fullName, Err: err}
+			}
+		}
+		id, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: fullName, Delimiter: delimiter})
+		if err != nil {
+			return FolderCreatedMsg{AccountID: accountID, Name: fullName, Err: err}
+		}
+		return FolderCreatedMsg{AccountID: accountID, MailboxID: id, Name: fullName, Delimiter: delimiter}
+	}
 }
 
 func (m *Model) moveMessageToMailboxCmd(msg db.Message, target db.Mailbox) tea.Cmd {

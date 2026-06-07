@@ -5,6 +5,7 @@ import (
 
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
+	"github.com/allisonhere/tide/internal/filter"
 	"github.com/allisonhere/tide/internal/update"
 )
 
@@ -61,6 +62,27 @@ type MessageMovedMsg struct {
 	ToMailboxID   int64
 	Action        string
 	Err           error
+}
+
+type FolderCreatedMsg struct {
+	AccountID int64
+	MailboxID int64
+	Name      string
+	Delimiter string
+	Err       error
+}
+
+type FilterGeneratedMsg struct {
+	English string
+	Rule    filter.Rule
+	Err     error
+}
+
+type FilterRunMsg struct {
+	Matched int
+	Applied int
+	DryRun  bool
+	Err     error
 }
 
 type MessageDeletedMsg struct {

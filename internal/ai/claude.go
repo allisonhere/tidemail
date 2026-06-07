@@ -71,15 +71,22 @@ func (c *claude) Summarize(ctx context.Context, title, content string) (string, 
 	return result.Content[0].Text, nil
 }
 
+func (c *claude) Complete(ctx context.Context, prompt string) (string, error) {
+	return c.chat(ctx, prompt, completeMaxTokens)
+}
+
 func (c *claude) CheckGrammar(ctx context.Context, text string) (string, error) {
+	return c.chat(ctx, fmt.Sprintf(grammarPrompt, truncateContent(text, 4000)), 2000)
+}
+
+func (c *claude) chat(ctx context.Context, prompt string, maxTokens int) (string, error) {
 	model := c.model
 	if model == "" {
 		model = "claude-haiku-4-5-20251001"
 	}
-	prompt := fmt.Sprintf(grammarPrompt, truncateContent(text, 4000))
 	body, _ := json.Marshal(map[string]any{
 		"model":      model,
-		"max_tokens": 2000,
+		"max_tokens": maxTokens,
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},

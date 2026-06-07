@@ -183,6 +183,16 @@ func (c *Client) MoveMessage(ctx context.Context, mailboxName string, uid uint32
 	return c.markDeletedAndExpunge(uidSet)
 }
 
+func (c *Client) CreateMailbox(ctx context.Context, name string) error {
+	if c.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	if err := c.conn.Create(name, nil).Wait(); err != nil {
+		return fmt.Errorf("create %s: %w", name, err)
+	}
+	return nil
+}
+
 func (c *Client) DeleteMessage(ctx context.Context, mailboxName string, uid uint32) error {
 	if c.conn == nil {
 		return fmt.Errorf("not connected")

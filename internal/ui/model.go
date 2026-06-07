@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/allisonhere/tide/internal/ai"
+	"github.com/allisonhere/tide/internal/auth"
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
 	"github.com/allisonhere/tide/internal/update"
@@ -68,6 +69,7 @@ const (
 	overlayMoveMessage
 	overlayGrammarPreview
 	overlayLogViewer
+	overlayFilterManager
 )
 
 type updateState int
@@ -136,6 +138,7 @@ type Model struct {
 
 	saveAttachPicker filePicker
 	movePicker       movePicker
+	filterManager    filterManager
 
 	grammarOriginal  string
 	grammarCorrected string
@@ -501,6 +504,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case MailboxSyncedMsg:
 		delete(m.syncing, msg.MailboxID)
 		if msg.Err != nil {
+			if auth.IsTokenRevoked(msg.Err) {
+				name := "account"
+				if mb := m.mailboxByID(msg.MailboxID); mb != nil {
+					name = m.accountName(mb.AccountID)
+				}
+				// Sticky (no clearStatusCmd): an expired sign-in needs the user to
+				// re-authenticate, so a 2-second flash would just be missed.
+				m.setStatus(name+" sign-in expired — press M to re-authenticate", true)
+				return m, nil
+			}
 			m.setStatus(fmt.Sprintf("sync failed: %v (%v)", msg.Err, msg.Total.Round(time.Millisecond)), true)
 			return m, m.clearStatusCmd()
 		}
@@ -661,6 +674,53 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		current := m.filteredMessages[m.messageCursor]
 		m.setViewportMessage(current)
 		return m, nil
+
+	case FolderCreatedMsg:
+		if msg.Err != nil {
+			m.setStatus("create folder failed: "+msg.Err.Error(), true)
+			return m, m.clearStatusCmd()
+		}
+		if m.mailboxByID(msg.MailboxID) == nil {
+			m.mailboxes = append(m.mailboxes, db.Mailbox{ID: msg.MailboxID, AccountID: msg.AccountID, Name: msg.Name, Delimiter: msg.Delimiter})
+		}
+		m.rebuildSidebar()
+		if m.overlay == overlayMoveMessage {
+			m.movePicker.creating = false
+			m.movePicker.currentPath = msg.Name
+			m.movePicker.cursor = 0
+			m.refreshMovePickerEntries()
+		}
+		m.setStatus("folder created: "+msg.Name, false)
+		return m, m.clearStatusCmd()
+
+	case FilterGeneratedMsg:
+		if m.overlay == overlayFilterManager {
+			if msg.Err != nil {
+				m.filterManager.mode = fmInput
+				m.filterManager.input.Focus()
+				m.filterManager.status = "generate failed: " + msg.Err.Error()
+				return m, nil
+			}
+			m.filterManager.draft = msg.Rule
+			m.filterManager.mode = fmReview
+			m.filterManager.status = ""
+		}
+		return m, nil
+
+	case FilterRunMsg:
+		if msg.Err != nil {
+			m.filterManager.status = "error: " + msg.Err.Error()
+			m.setStatus("filter run error: "+msg.Err.Error(), true)
+		} else if msg.DryRun {
+			m.filterManager.status = fmt.Sprintf("test: %d message(s) would match", msg.Matched)
+		} else {
+			m.filterManager.status = fmt.Sprintf("applied to %d of %d matched", msg.Applied, msg.Matched)
+		}
+		cmds := []tea.Cmd{m.clearStatusCmd()}
+		if !msg.DryRun && msg.Applied > 0 {
+			cmds = append(cmds, m.loadAccountsCmd())
+		}
+		return m, tea.Batch(cmds...)
 
 	case MessageMovedMsg:
 		if msg.Err != nil {
@@ -1365,6 +1425,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case overlayMoveMessage:
 		return m.handleMovePicker(msg)
+
+	case overlayFilterManager:
+		return m.handleFilterManager(msg)
 
 	case overlayGrammarPreview:
 		switch {

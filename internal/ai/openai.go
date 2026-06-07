@@ -72,18 +72,25 @@ func (o *openAI) Summarize(ctx context.Context, title, content string) (string, 
 	return result.Choices[0].Message.Content, nil
 }
 
+func (o *openAI) Complete(ctx context.Context, prompt string) (string, error) {
+	return o.chat(ctx, prompt, completeMaxTokens)
+}
+
 func (o *openAI) CheckGrammar(ctx context.Context, text string) (string, error) {
+	return o.chat(ctx, fmt.Sprintf(grammarPrompt, truncateContent(text, 4000)), 2000)
+}
+
+func (o *openAI) chat(ctx context.Context, prompt string, maxTokens int) (string, error) {
 	model := o.model
 	if model == "" {
 		model = "gpt-4o-mini"
 	}
-	prompt := fmt.Sprintf(grammarPrompt, truncateContent(text, 4000))
 	body, _ := json.Marshal(map[string]any{
 		"model": model,
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
-		"max_tokens": 2000,
+		"max_tokens": maxTokens,
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openAIChatURL, bytes.NewReader(body))
 	if err != nil {

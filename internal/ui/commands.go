@@ -58,6 +58,7 @@ func (m Model) commandItems() []commandItem {
 		{id: "sync", label: "Sync current mailbox", enabled: hasMailbox},
 		{id: "sync-all", label: "Sync all mailboxes", enabled: len(m.mailboxes) > 0},
 		{id: "accounts", label: "Manage accounts", enabled: true},
+		{id: "filters", label: "Manage filters (AI rules)", enabled: true},
 		{id: "settings", label: "Open settings", enabled: true},
 	}
 }
@@ -133,6 +134,10 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 	case "accounts":
 		m.overlay = overlayAccountManager
 		m.accountManager = m.newAccountManager()
+		return m, nil
+	case "filters":
+		m.filterManager = m.newFilterManager()
+		m.overlay = overlayFilterManager
 		return m, nil
 	case "settings":
 		m.settings = newSettings(m.cfg, m.settingsUpdateState())

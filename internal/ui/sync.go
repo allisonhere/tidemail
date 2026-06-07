@@ -285,6 +285,13 @@ func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
 			logFetch(acc.Name, mailbox.Name, len(msgs), connectDur, fetchDur, time.Since(t0), err)
 			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual, Total: time.Since(t0)}
 		}
+		// Auto-apply saved filter rules to newly-arrived mail while the connection
+		// is live. Filter failures must not abort the sync, so they are not fatal.
+		// Rules that move/delete/archive/mark-read mail drop it from newMsgs so it
+		// is neither counted as new nor notified about.
+		if len(newMsgs) > 0 {
+			newMsgs, _ = applyRulesOnArrival(ctx, database, client, mailbox, newMsgs)
+		}
 		unread, _ := database.CountUnread(mailboxID)
 		// A failed bookkeeping write (e.g. last-synced) can cause endless re-syncs, so
 		// don't drop it silently — fold it into the fetch log.

@@ -48,6 +48,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{keys.UnreadOnly.Help().Key, "toggle unread-only view"},
 				bind(keys.Archive),
 				{keys.Move.Help().Key, "move selected message(s) to folder/label"},
+				{"Move: n", "create a new folder (nested under the current path)"},
 				{keys.Delete.Help().Key, "delete selected message"},
 				bind(keys.Compose),
 				bind(keys.Reply),
@@ -76,6 +77,10 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{"Contacts: n/e/d", "new, edit, or delete contacts used by compose autocomplete"},
 				{"Contacts: f", "add addresses already seen in mail"},
 				{"Contacts: i/x", "import/export vCard name, email, phone, org, title, note"},
+				{"Filters (palette)", "AI mail rules: describe in English, then save/run/run-all"},
+				{"Filters: n", "create a rule from plain English (AI generates conditions)"},
+				{"Filters: space/d", "enable/disable or delete the selected rule"},
+				{"Filters: t/r/R", "test (dry-run), run on mailbox, or run on all mail"},
 			},
 		},
 		{

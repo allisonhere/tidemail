@@ -78,17 +78,24 @@ func (g *gemini) Summarize(ctx context.Context, title, content string) (string, 
 	return result.Candidates[0].Content.Parts[0].Text, nil
 }
 
+func (g *gemini) Complete(ctx context.Context, prompt string) (string, error) {
+	return g.generate(ctx, prompt, completeMaxTokens)
+}
+
 func (g *gemini) CheckGrammar(ctx context.Context, text string) (string, error) {
+	return g.generate(ctx, fmt.Sprintf(grammarPrompt, truncateContent(text, 4000)), 2000)
+}
+
+func (g *gemini) generate(ctx context.Context, prompt string, maxOutputTokens int) (string, error) {
 	model := g.model
 	if model == "" {
 		model = geminiModelDefault
 	}
-	prompt := fmt.Sprintf(grammarPrompt, truncateContent(text, 4000))
 	body, _ := json.Marshal(map[string]any{
 		"contents": []map[string]any{
 			{"parts": []map[string]string{{"text": prompt}}},
 		},
-		"generationConfig": map[string]int{"maxOutputTokens": 2000},
+		"generationConfig": map[string]int{"maxOutputTokens": maxOutputTokens},
 	})
 	url := g.apiURL
 	if url == "" {

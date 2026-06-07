@@ -5,15 +5,33 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os/exec"
+	"strings"
 	"time"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
+
+// IsTokenRevoked reports whether err is Google's "invalid_grant" response, which
+// means the refresh token has expired or been revoked and the account must be
+// re-authenticated. (A common cause: an OAuth consent screen left in "Testing"
+// status, where Google expires refresh tokens after 7 days.)
+func IsTokenRevoked(err error) bool {
+	if err == nil {
+		return false
+	}
+	var re *oauth2.RetrieveError
+	if errors.As(err, &re) && re.ErrorCode == "invalid_grant" {
+		return true
+	}
+	m := strings.ToLower(err.Error())
+	return strings.Contains(m, "invalid_grant") || strings.Contains(m, "expired or revoked")
+}
 
 const (
 	// GmailScope is the OAuth2 scope for IMAP/SMTP access.

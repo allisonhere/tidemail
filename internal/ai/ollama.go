@@ -50,13 +50,20 @@ func (o *ollama) Summarize(ctx context.Context, title, content string) (string, 
 	return result.Response, nil
 }
 
+func (o *ollama) Complete(ctx context.Context, prompt string) (string, error) {
+	return o.generate(ctx, prompt, completeMaxTokens)
+}
+
 func (o *ollama) CheckGrammar(ctx context.Context, text string) (string, error) {
-	prompt := fmt.Sprintf(grammarPrompt, truncateContent(text, 4000))
+	return o.generate(ctx, fmt.Sprintf(grammarPrompt, truncateContent(text, 4000)), 2000)
+}
+
+func (o *ollama) generate(ctx context.Context, prompt string, numPredict int) (string, error) {
 	body, _ := json.Marshal(map[string]any{
 		"model":   o.model,
 		"prompt":  prompt,
 		"stream":  false,
-		"options": map[string]int{"num_predict": 2000},
+		"options": map[string]int{"num_predict": numPredict},
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.url+"/api/generate", bytes.NewReader(body))
 	if err != nil {
