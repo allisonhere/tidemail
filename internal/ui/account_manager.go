@@ -433,6 +433,10 @@ func (am *AccountManager) populateFormFrom(acfg config.AccountConfig) {
 	am.syncInput.SetValue(strconv.Itoa(acfg.SyncMinutes))
 	am.useOAuth2 = acfg.UsesOAuth2()
 	am.oauth2Signed = acfg.RefreshToken != ""
+	// Carry the existing refresh token so buildCfg preserves OAuth2 on save.
+	// Without this, editing a signed-in account (e.g. to change sync interval)
+	// would write back an empty token and fall back to password login.
+	am.oauth2RefreshToken = acfg.RefreshToken
 }
 
 func (am AccountManager) buildCfg() config.AccountConfig {

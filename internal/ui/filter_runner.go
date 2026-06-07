@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/allisonhere/tide/internal/ai"
@@ -62,11 +63,32 @@ func (m Model) accountFolderNames(accountID int64) []string {
 	return names
 }
 
+// allAccountFolderNames returns the de-duplicated union of folder names across
+// all accounts, used to validate "move" targets for an All-accounts rule.
+func (m Model) allAccountFolderNames() []string {
+	seen := map[string]struct{}{}
+	var names []string
+	for _, mb := range m.mailboxes {
+		key := strings.ToLower(mb.Name)
+		if _, ok := seen[key]; ok || mb.Name == "" {
+			continue
+		}
+		seen[key] = struct{}{}
+		names = append(names, mb.Name)
+	}
+	return names
+}
+
 // generateFilterCmd asks the configured AI provider to turn an English
 // description into a structured rule, validated against the account's folders.
 func (m *Model) generateFilterCmd(english string, accountID int64) tea.Cmd {
 	aicfg := m.cfg.AI
 	folders := m.accountFolderNames(accountID)
+	if accountID == 0 {
+		// All-accounts rule: offer the union of every account's folders so the AI
+		// can target one that exists somewhere.
+		folders = m.allAccountFolderNames()
+	}
 	return func() tea.Msg {
 		provider, err := ai.New(aicfg)
 		if err != nil {
@@ -141,7 +163,7 @@ func (m *Model) applyRulesCmd(mailboxIDs []int64, dryRun bool) tea.Cmd {
 					continue
 				}
 				ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-				err = applyFilterAction(ctx, database, client, t.mailbox, msg, cr.rule.Action)
+				acted, err := applyFilterAction(ctx, database, client, t.mailbox, msg, cr.rule.Action, cr.rec.AccountID != 0)
 				cancel()
 				if err != nil {
 					if firstErr == nil {
@@ -149,7 +171,9 @@ func (m *Model) applyRulesCmd(mailboxIDs []int64, dryRun bool) tea.Cmd {
 					}
 					continue
 				}
-				applied++
+				if acted {
+					applied++
+				}
 			}
 		}
 		return FilterRunMsg{Matched: matched, Applied: applied, DryRun: dryRun, Err: firstErr}
@@ -197,14 +221,15 @@ func applyRulesOnArrival(ctx context.Context, database *db.DB, client *imapClien
 			survivors = append(survivors, nm)
 			continue
 		}
-		if err := applyFilterAction(ctx, database, client, mailbox, sm, cr.rule.Action); err != nil {
-			// The action failed, so the message is still in the mailbox — keep
-			// reporting it as new.
-			if firstErr == nil {
+		acted, err := applyFilterAction(ctx, database, client, mailbox, sm, cr.rule.Action, cr.rec.AccountID != 0)
+		if err != nil || !acted {
+			// The action failed or was skipped (e.g. an All-accounts move into a
+			// folder this account lacks), so the message is still in the mailbox —
+			// keep reporting it as new.
+			if err != nil && firstErr == nil {
 				firstErr = err
 			}
 			survivors = append(survivors, nm)
-			continue
 		}
 	}
 	return survivors, firstErr

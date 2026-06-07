@@ -14,20 +14,22 @@ import (
 type filterMode int
 
 const (
-	fmList   filterMode = iota
-	fmInput             // typing an English description
-	fmReview            // reviewing an AI-generated rule before saving
+	fmList        filterMode = iota
+	fmPickAccount            // choosing which account (or All) the new rule applies to
+	fmInput                  // typing an English description
+	fmReview                 // reviewing an AI-generated rule before saving
 )
 
 type filterManager struct {
-	mode      filterMode
-	rules     []db.RuleRecord
-	cursor    int
-	input     textinput.Model
-	draft     filter.Rule // generated rule under review
-	draftEn   string      // the English that produced the draft
-	draftAcct int64       // account the draft was generated/validated against (0 = all)
-	status    string
+	mode       filterMode
+	rules      []db.RuleRecord
+	cursor     int
+	input      textinput.Model
+	draft      filter.Rule // generated rule under review
+	draftEn    string      // the English that produced the draft
+	draftAcct  int64       // account the draft was generated/validated against (0 = all)
+	acctCursor int         // cursor within the account picker (0 = All accounts)
+	status     string
 }
 
 func (m *Model) newFilterManager() filterManager {
@@ -51,6 +53,8 @@ func (m Model) handleFilterManager(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	switch m.filterManager.mode {
+	case fmPickAccount:
+		return m.handleFilterPickAccount(key)
 	case fmInput:
 		return m.handleFilterInput(key)
 	case fmReview:
@@ -76,12 +80,10 @@ func (m Model) handleFilterList(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case key.String() == "n":
-		in := textinput.New()
-		in.Placeholder = "e.g. move newsletters from substack to Reading"
-		in.Focus()
-		in.Width = 50
-		m.filterManager.input = in
-		m.filterManager.mode = fmInput
+		// First choose which account (or All) the rule applies to; the chosen
+		// account's folders validate any move target.
+		m.filterManager.mode = fmPickAccount
+		m.filterManager.acctCursor = m.defaultAcctCursor()
 		m.filterManager.status = ""
 		return m, nil
 	case keyMatches(key, m.keys.Space):
@@ -121,6 +123,58 @@ func (m Model) handleFilterList(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// acctOptionCount is the number of rows in the account picker: "All" + accounts.
+func (m Model) acctOptionCount() int { return len(m.accounts) + 1 }
+
+// defaultAcctCursor highlights the inferred account (selected mailbox's, else
+// first) when the picker opens; index 0 is "All accounts".
+func (m Model) defaultAcctCursor() int {
+	want := m.filterScopeAccountID()
+	for i, a := range m.accounts {
+		if a.ID == want {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+// acctCursorToID maps a picker cursor to an account ID (0 = all accounts).
+func (m Model) acctCursorToID(cursor int) int64 {
+	if cursor <= 0 || cursor > len(m.accounts) {
+		return 0
+	}
+	return m.accounts[cursor-1].ID
+}
+
+func (m Model) handleFilterPickAccount(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case keyMatches(key, m.keys.Cancel):
+		m.filterManager.mode = fmList
+		return m, nil
+	case keyMatches(key, m.keys.Up):
+		if m.filterManager.acctCursor > 0 {
+			m.filterManager.acctCursor--
+		}
+		return m, nil
+	case keyMatches(key, m.keys.Down):
+		if m.filterManager.acctCursor < m.acctOptionCount()-1 {
+			m.filterManager.acctCursor++
+		}
+		return m, nil
+	case keyMatches(key, m.keys.Confirm):
+		m.filterManager.draftAcct = m.acctCursorToID(m.filterManager.acctCursor)
+		in := textinput.New()
+		in.Placeholder = "e.g. move newsletters from substack to Reading"
+		in.Focus()
+		// No fixed Width: it would pad the field with unstyled spaces that show
+		// the terminal background through. lipgloss fills the row instead.
+		m.filterManager.input = in
+		m.filterManager.mode = fmInput
+		return m, nil
+	}
+	return m, nil
+}
+
 func (m Model) handleFilterInput(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case keyMatches(key, m.keys.Cancel):
@@ -133,10 +187,8 @@ func (m Model) handleFilterInput(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.filterManager.draftEn = text
-		// Capture the account whose folders validate this rule's move target so the
-		// saved rule is scoped to it — a global rule could otherwise create/move
-		// into a same-named folder on another account it was never validated for.
-		m.filterManager.draftAcct = m.filterScopeAccountID()
+		// draftAcct was chosen in the pick-account step; its folders validate the
+		// move target and scope the saved rule (0 = all accounts).
 		m.filterManager.status = "generating…"
 		m.filterManager.input.Blur()
 		return m, m.generateFilterCmd(text, m.filterManager.draftAcct)
@@ -158,12 +210,16 @@ func (m Model) handleFilterReview(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.filterManager.mode = fmInput
 		return m, nil
 	case keyMatches(key, m.keys.Confirm), key.String() == "s":
-		m.saveDraftRule()
+		if err := m.saveDraftRule(); err != nil {
+			return m, nil // stay in review; saveDraftRule set the failure status
+		}
 		m.filterManager.mode = fmList
 		m.filterManager.status = "saved"
 		return m, nil
 	case key.String() == "r":
-		m.saveDraftRule()
+		if err := m.saveDraftRule(); err != nil {
+			return m, nil
+		}
 		m.filterManager.mode = fmList
 		if mb := m.selectedMailbox(); mb != nil {
 			m.filterManager.status = "saved, running…"
@@ -172,7 +228,9 @@ func (m Model) handleFilterReview(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.filterManager.status = "saved"
 		return m, nil
 	case key.String() == "R":
-		m.saveDraftRule()
+		if err := m.saveDraftRule(); err != nil {
+			return m, nil
+		}
 		m.filterManager.mode = fmList
 		m.filterManager.status = "saved, running on all mail…"
 		return m, m.applyRulesCmd(m.allMailboxIDs(), false)
@@ -180,11 +238,14 @@ func (m Model) handleFilterReview(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) saveDraftRule() {
+// saveDraftRule persists the rule under review. On failure it sets an error
+// status and returns the error so callers do not falsely report "saved" or run a
+// rule that was never stored.
+func (m *Model) saveDraftRule() error {
 	blob, err := json.Marshal(m.filterManager.draft)
 	if err != nil {
 		m.filterManager.status = "save failed: " + err.Error()
-		return
+		return err
 	}
 	priority := len(m.filterManager.rules)
 	if _, err := m.db.UpsertRule(db.RuleRecord{
@@ -195,9 +256,10 @@ func (m *Model) saveDraftRule() {
 		JSON:      string(blob),
 	}); err != nil {
 		m.filterManager.status = "save failed: " + err.Error()
-		return
+		return err
 	}
 	m.reloadFilterRules()
+	return nil
 }
 
 func (m Model) reorderRule(delta int) Model {
@@ -250,6 +312,9 @@ func (m Model) renderFilterManager(width, height int, chrome managerChrome) stri
 	// truncated) and give the modal a stable height.
 	var actions string
 	switch m.filterManager.mode {
+	case fmPickAccount:
+		actions = renderManagerActionGroups(width, chrome,
+			[]string{"enter", "choose", "esc", "back"}, nil)
 	case fmInput:
 		actions = renderManagerActionGroups(width, chrome,
 			[]string{"enter", "generate", "esc", "back"}, nil)
@@ -269,12 +334,27 @@ func (m Model) renderFilterManager(width, height int, chrome managerChrome) stri
 	status := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(width).Padding(0, 2).
 		Render(clampView(statusText, max(1, width-4), 1, chrome.baseBg))
 
-	bodyH := max(1, height-lipgloss.Height(header)-lipgloss.Height(actions)-1)
+	// Blank spacer between the header and the body for breathing room.
+	headerGap := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
+
+	bodyH := max(1, height-lipgloss.Height(header)-lipgloss.Height(headerGap)-lipgloss.Height(actions)-1)
 
 	var bodyLines []string
 	switch m.filterManager.mode {
+	case fmPickAccount:
+		bodyLines = m.filterAccountRows(width, chrome)
 	case fmInput:
-		bodyLines = wrapBodyBlock("Describe a filter in plain English:\n\n"+m.filterManager.input.View(), width, chrome)
+		// Paint the input's prompt/text/placeholder/cursor with the modal
+		// background; otherwise the textinput emits foreground-only styling and
+		// the terminal background shows through behind the hint text.
+		in := m.filterManager.input
+		bg := lipgloss.NewStyle().Background(chrome.baseBg)
+		in.PromptStyle = bg.Foreground(chrome.text)
+		in.TextStyle = bg.Foreground(chrome.text)
+		in.PlaceholderStyle = bg.Foreground(chrome.muted)
+		in.Cursor.Style = bg
+		in.Cursor.TextStyle = bg.Foreground(chrome.text)
+		bodyLines = wrapBodyBlock("Describe a filter in plain English:\n\n"+in.View(), width, chrome)
 	case fmReview:
 		bodyLines = wrapBodyBlock("Generated rule:\n\n"+m.filterManager.draft.Summary()+"\n\nFrom: "+m.filterManager.draftEn, width, chrome)
 	default:
@@ -282,7 +362,7 @@ func (m Model) renderFilterManager(width, height int, chrome managerChrome) stri
 	}
 	body := padBlock(bodyLines, bodyH, width, chrome.baseBg)
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, body, status, actions)
+	return lipgloss.JoinVertical(lipgloss.Left, header, headerGap, body, status, actions)
 }
 
 // wrapBodyBlock renders a text block at the modal width with consistent bg and
@@ -327,7 +407,27 @@ func (m Model) filterListRows(width int, chrome managerChrome) []string {
 		if i == m.filterManager.cursor {
 			style = style.Background(chrome.accent).Foreground(contrastFg(chrome.accent))
 		}
-		rows = append(rows, style.Render(clampView(mark+scope+" "+ruleLabel(rec), max(1, width-4), 1, chrome.baseBg)))
+		// Let lipgloss fill the full width with the row's own background (accent
+		// when selected). Pre-padding with clampView would bake in the base
+		// background, leaving the highlight not spanning the row.
+		rows = append(rows, style.Render(truncate(mark+scope+" "+ruleLabel(rec), max(1, width-4))))
+	}
+	return rows
+}
+
+func (m Model) filterAccountRows(width int, chrome managerChrome) []string {
+	labels := make([]string, 0, m.acctOptionCount())
+	labels = append(labels, "All accounts")
+	for _, a := range m.accounts {
+		labels = append(labels, a.Name)
+	}
+	rows := make([]string, 0, len(labels))
+	for i, label := range labels {
+		style := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Width(width).Padding(0, 2)
+		if i == m.filterManager.acctCursor {
+			style = style.Background(chrome.accent).Foreground(contrastFg(chrome.accent))
+		}
+		rows = append(rows, style.Render(truncate("Apply to: "+label, max(1, width-4))))
 	}
 	return rows
 }

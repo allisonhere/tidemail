@@ -78,7 +78,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{"Contacts: f", "add addresses already seen in mail"},
 				{"Contacts: i/x", "import/export vCard name, email, phone, org, title, note"},
 				{"Filters (palette)", "AI mail rules: describe in English, then save/run/run-all"},
-				{"Filters: n", "create a rule from plain English (AI generates conditions)"},
+				{"Filters: n", "new rule: pick account (or All), then describe in plain English"},
 				{"Filters: space/d", "enable/disable or delete the selected rule"},
 				{"Filters: t/r/R", "test (dry-run), run on mailbox, or run on all mail"},
 			},
