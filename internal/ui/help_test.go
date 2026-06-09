@@ -34,3 +34,15 @@ func TestRenderHelpDocumentsAccountManagerShortcutAsUppercaseM(t *testing.T) {
 		t.Fatalf("expected help not to document lowercase account shortcut, got %q", view)
 	}
 }
+
+func TestRenderHelpScopesModalShortcuts(t *testing.T) {
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys))
+	for _, want := range []string{"Compose Modal", "ctrl+g", "Account Manager Modal", "Contact Manager Modal", "Filters Modal"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("expected help to include scoped shortcut term %q, got %q", want, view)
+		}
+	}
+	if strings.Contains(view, "Messages / Content") || strings.Contains(view, "Accounts / Contacts") {
+		t.Fatalf("expected mixed help sections to be replaced with scoped modal sections, got %q", view)
+	}
+}
