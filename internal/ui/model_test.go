@@ -102,6 +102,111 @@ func TestMessageDeletedMsgRemovesLocallyDeletedMessageDespiteRemoteError(t *test
 	}
 }
 
+func TestRightFromMessageListMarksUnreadMessageRead(t *testing.T) {
+	database, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	accountID, err := database.AddAccount("Acct", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailboxID, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "INBOX", UnreadCount: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertMessage(db.Message{MailboxID: mailboxID, UID: 1, Subject: "Unread", Read: false}); err != nil {
+		t.Fatal(err)
+	}
+	msgs, err := database.ListMessages(mailboxID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected one message, got %d", len(msgs))
+	}
+
+	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	m.focused = paneMessages
+	m.messages = msgs
+	m.filteredMessages = msgs
+	m.mailboxes = []db.Mailbox{{ID: mailboxID, AccountID: accountID, Name: "INBOX", UnreadCount: 1}}
+	m.selectedMessages = make(map[int64]bool)
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m = next.(Model)
+	if m.focused != paneContent {
+		t.Fatalf("expected focus to move to content, got %v", m.focused)
+	}
+	if cmd == nil {
+		t.Fatal("expected right arrow into content to mark unread message read")
+	}
+
+	readMsg, ok := cmd().(MessageReadUpdatedMsg)
+	if !ok {
+		t.Fatalf("expected MessageReadUpdatedMsg, got %T", readMsg)
+	}
+	next, _ = m.Update(readMsg)
+	m = next.(Model)
+
+	if !m.messages[0].Read || !m.filteredMessages[0].Read {
+		t.Fatalf("expected in-memory message marked read, got messages=%+v filtered=%+v", m.messages[0], m.filteredMessages[0])
+	}
+	stored, err := database.GetMessage(msgs[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stored.Read {
+		t.Fatal("expected database message marked read")
+	}
+	if m.mailboxes[0].UnreadCount != 0 {
+		t.Fatalf("expected unread count decremented to 0, got %d", m.mailboxes[0].UnreadCount)
+	}
+}
+
+func TestRightFromMessageListRespectsMarkReadOnOpenDisabled(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Display.MarkReadOnOpen = false
+	msg := db.Message{ID: 1, MailboxID: 2, Subject: "Unread", Read: false}
+	m := NewModel(nil, cfg, "dev", false)
+	m.focused = paneMessages
+	m.messages = []db.Message{msg}
+	m.filteredMessages = []db.Message{msg}
+	m.selectedMessages = make(map[int64]bool)
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m = next.(Model)
+	if m.focused != paneContent {
+		t.Fatalf("expected focus to move to content, got %v", m.focused)
+	}
+	if cmd != nil {
+		t.Fatal("did not expect mark-read command when mark_read_on_open is disabled")
+	}
+}
+
+func TestMessageRowCollapsesFoldedHeadersToOneLine(t *testing.T) {
+	row := renderArticleRowWithSender(
+		"⬤ ",
+		senderDisplay("Alice\r\n Bob <alice@example.com>"),
+		unescapeDisplayText("this &amp; that\r\n folded	 subject"),
+		"now",
+		42,
+		12,
+	)
+
+	if strings.ContainsAny(row, "\r\n	") {
+		t.Fatalf("expected row text to be single-line, got %q", row)
+	}
+	if got := lipgloss.Width(row); got != 42 {
+		t.Fatalf("expected row width 42, got %d: %q", got, row)
+	}
+	if !strings.Contains(row, "this & that folded") {
+		t.Fatalf("expected folded subject collapsed and unescaped, got %q", row)
+	}
+}
+
 func TestRemoteDeletePlanMovesToTrashWhenAvailable(t *testing.T) {
 	source := db.Mailbox{ID: 1, AccountID: 10, Name: "INBOX"}
 	trash := db.Mailbox{ID: 2, AccountID: 10, Name: "[Gmail]/Trash", Flags: []string{"\\Trash"}}

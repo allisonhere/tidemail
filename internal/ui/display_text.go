@@ -1,7 +1,10 @@
 package ui
 
-import "html"
+import (
+	"html"
+	"strings"
+)
 
 func unescapeDisplayText(s string) string {
-	return html.UnescapeString(s)
+	return strings.Join(strings.Fields(html.UnescapeString(s)), " ")
 }

@@ -979,11 +979,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if m.focused == paneMessages && len(m.filteredMessages) > 0 {
-			m.focused = paneContent
-			current := m.filteredMessages[m.messageCursor]
-			if m.cfg.Display.MarkReadOnOpen && !current.Read {
-				return m, m.setMessageReadCmd(current, true, false)
-			}
+			return m.focusPane(paneContent)
 		}
 		return m, nil
 
@@ -1258,6 +1254,9 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) focusPane(next pane) (tea.Model, tea.Cmd) {
 	wasMessages := m.focused == paneMessages
 	m.focused = next
+	if wasMessages && next == paneContent && len(m.filteredMessages) > 0 {
+		return m, m.openedMessageCmd(m.filteredMessages[m.messageCursor])
+	}
 	if !wasMessages && next == paneMessages && len(m.filteredMessages) > 0 {
 		return m, m.focusedMessageChangedCmd(m.filteredMessages[m.messageCursor])
 	}

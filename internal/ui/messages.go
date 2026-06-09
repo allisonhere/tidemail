@@ -265,6 +265,13 @@ func remoteDeletePlan(source db.Mailbox, trash *db.Mailbox) (remoteDeleteAction,
 	return remoteDeleteMoveToTrash, trash
 }
 
+func (m *Model) openedMessageCmd(msg db.Message) tea.Cmd {
+	if !m.cfg.Display.MarkReadOnOpen || msg.Read {
+		return nil
+	}
+	return m.setMessageReadCmd(msg, true, false)
+}
+
 func (m *Model) focusedMessageChangedCmd(msg db.Message) tea.Cmd {
 	if !m.cfg.Display.MarkReadOnFocus || msg.Read {
 		return nil
