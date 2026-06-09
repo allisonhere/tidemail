@@ -25,40 +25,60 @@ func (m Model) renderMessagesPane() string {
 	msgUnread, msgRead, msgSelected, headerActive, borderColor, borderFocus := m.messageRowStyles()
 
 	rows := []string{}
-	visible := m.filteredMessages
-	end := min(m.listOffset+m.articleRowsVisible(), len(visible))
-	for i := m.listOffset; i < end; i++ {
-		msg2 := visible[i]
-		age := m.formatTime(msg2.Date)
-		style := msgRead
-		if !msg2.Read {
-			style = msgUnread
+	if m.selectedDraftsMailbox() {
+		end := min(m.listOffset+m.articleRowsVisible(), len(m.drafts))
+		for i := m.listOffset; i < end; i++ {
+			draft := m.drafts[i]
+			age := m.formatTime(draft.UpdatedAt)
+			style := msgRead
+			if i == m.messageCursor {
+				style = msgSelected
+			}
+			prefix := "✎ "
+			if !m.iconsEnabled() {
+				prefix = "d "
+			}
+			rows = append(rows, style.Width(w).Render(renderArticleRow(prefix, unescapeDisplayText(draftSubject(draft)), age, w)))
 		}
-		dot := m.messageRowPrefix(msg2.Read)
-		if m.selectedMessages[msg2.ID] {
-			dot = "✓ "
-			// When selected but not the cursor, use green checkmark + text
-			if i != m.messageCursor {
-				selFg := lipgloss.Color("#a6e3a1")
-				style = style.Foreground(selFg)
+		if len(m.drafts) == 0 {
+			rows = append(rows, msgRead.Render("  no drafts"))
+		}
+	} else {
+		visible := m.filteredMessages
+		end := min(m.listOffset+m.articleRowsVisible(), len(visible))
+		for i := m.listOffset; i < end; i++ {
+			msg2 := visible[i]
+			age := m.formatTime(msg2.Date)
+			style := msgRead
+			if !msg2.Read {
+				style = msgUnread
+			}
+			dot := m.messageRowPrefix(msg2.Read)
+			if m.selectedMessages[msg2.ID] {
+				dot = "✓ "
+				// When selected but not the cursor, use green checkmark + text
+				if i != m.messageCursor {
+					selFg := lipgloss.Color("#a6e3a1")
+					style = style.Foreground(selFg)
+				}
+			}
+			if i == m.messageCursor {
+				style = msgSelected
+			}
+			if m.cfg.Display.ShowSender {
+				senderW := min(22, max(0, w/3))
+				rows = append(rows, style.Width(w).Render(renderArticleRowWithSender(dot, senderDisplay(msg2.From), unescapeDisplayText(msg2.Subject), age, w, senderW)))
+			} else {
+				rows = append(rows, style.Width(w).Render(renderArticleRow(dot, unescapeDisplayText(msg2.Subject), age, w)))
 			}
 		}
-		if i == m.messageCursor {
-			style = msgSelected
-		}
-		if m.cfg.Display.ShowSender {
-			senderW := min(22, max(0, w/3))
-			rows = append(rows, style.Width(w).Render(renderArticleRowWithSender(dot, senderDisplay(msg2.From), unescapeDisplayText(msg2.Subject), age, w, senderW)))
-		} else {
-			rows = append(rows, style.Width(w).Render(renderArticleRow(dot, unescapeDisplayText(msg2.Subject), age, w)))
-		}
-	}
 
-	if len(m.filteredMessages) == 0 {
-		if m.searchQuery != "" {
-			rows = append(rows, msgRead.Render("  no results"))
-		} else {
-			rows = append(rows, msgRead.Render("  no messages"))
+		if len(m.filteredMessages) == 0 {
+			if m.searchQuery != "" {
+				rows = append(rows, msgRead.Render("  no results"))
+			} else {
+				rows = append(rows, msgRead.Render("  no messages"))
+			}
 		}
 	}
 

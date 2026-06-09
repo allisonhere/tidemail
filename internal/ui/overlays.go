@@ -31,6 +31,25 @@ func (m Model) renderOverlay(base string) string {
 		inner = clampView(inner, quitW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderChromeOverlayBox(inner, quitW, chrome, chrome.accent)
 
+	case overlayDraftCloseConfirm:
+		winW := 48
+		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
+		header := renderManagerHeader("SAVE DRAFT?", winW, chrome)
+		body := lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Foreground(chrome.text).
+			Width(winW).
+			Padding(1, 2).
+			Render("Save this draft before closing compose?")
+		actions := renderManagerActions(winW, chrome,
+			"y/enter", "save",
+			"n", "discard",
+			"esc", "cancel",
+		)
+		inner := lipgloss.JoinVertical(lipgloss.Left, header, body, actions)
+		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
+		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+
 	case overlaySearch:
 		winW := min(m.width-4, 52)
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)

@@ -34,15 +34,18 @@ type xoauth2Auth struct {
 }
 
 func (a *xoauth2Auth) Start(server *smtp.ServerInfo) (string, []byte, error) {
-	resp := "\x00user=" + a.user + "\x01auth=Bearer " + a.token + "\x01\x01"
-	encoded := make([]byte, base64.StdEncoding.EncodedLen(len(resp)))
-	base64.StdEncoding.Encode(encoded, []byte(resp))
-	return "XOAUTH2", encoded, nil
+	// Return the RAW initial-response bytes. net/smtp's Client.Auth base64-encodes
+	// whatever Start returns before sending "AUTH XOAUTH2 <base64>"; encoding here
+	// too would double-encode and Gmail rejects it with "501 5.5.2 Cannot Decode".
+	resp := "user=" + a.user + "\x01auth=Bearer " + a.token + "\x01\x01"
+	return "XOAUTH2", []byte(resp), nil
 }
 
 func (a *xoauth2Auth) Next(fromServer []byte, more bool) ([]byte, error) {
 	if more {
-		return nil, fmt.Errorf("unexpected XOAUTH2 challenge")
+		// On auth failure the server sends a challenge whose body is a JSON
+		// error description (already base64-decoded by net/smtp) — surface it.
+		return nil, fmt.Errorf("xoauth2 rejected: %s", fromServer)
 	}
 	return nil, nil
 }

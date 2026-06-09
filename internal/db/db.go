@@ -123,6 +123,40 @@ func (db *DB) migrate() error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_attachments_message_id ON attachments(message_id);
 
+		CREATE TABLE IF NOT EXISTS drafts (
+			id                INTEGER PRIMARY KEY AUTOINCREMENT,
+			account_name      TEXT    NOT NULL DEFAULT '',
+			account_user      TEXT    NOT NULL DEFAULT '',
+			account_index     INTEGER NOT NULL DEFAULT 0,
+			mailbox_id        INTEGER NOT NULL DEFAULT 0,
+			remote_uid        INTEGER NOT NULL DEFAULT 0,
+			remote_message_id TEXT    NOT NULL DEFAULT '',
+			to_addr           TEXT    NOT NULL DEFAULT '',
+			cc_addr           TEXT    NOT NULL DEFAULT '',
+			subject           TEXT    NOT NULL DEFAULT '',
+			body_text         TEXT    NOT NULL DEFAULT '',
+			in_reply_to       TEXT    NOT NULL DEFAULT '',
+			references_text   TEXT    NOT NULL DEFAULT '',
+			created_at        INTEGER NOT NULL DEFAULT 0,
+			updated_at        INTEGER NOT NULL DEFAULT 0,
+			last_remote_sync  INTEGER NOT NULL DEFAULT 0,
+			dirty             INTEGER NOT NULL DEFAULT 1
+		);
+		CREATE INDEX IF NOT EXISTS idx_drafts_account ON drafts(account_name, account_user);
+		CREATE INDEX IF NOT EXISTS idx_drafts_updated ON drafts(updated_at);
+
+		CREATE TABLE IF NOT EXISTS draft_attachments (
+			id           INTEGER PRIMARY KEY AUTOINCREMENT,
+			draft_id     INTEGER NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
+			filename     TEXT    NOT NULL,
+			path         TEXT    NOT NULL DEFAULT '',
+			content_type TEXT    NOT NULL DEFAULT '',
+			data         BLOB   NOT NULL,
+			size         INTEGER NOT NULL DEFAULT 0,
+			position     INTEGER NOT NULL DEFAULT 0
+		);
+		CREATE INDEX IF NOT EXISTS idx_draft_attachments_draft_id ON draft_attachments(draft_id);
+
 		CREATE TABLE IF NOT EXISTS settings (
 			key   TEXT PRIMARY KEY,
 			value TEXT NOT NULL DEFAULT ''

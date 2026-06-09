@@ -68,6 +68,10 @@ type ComposeModel struct {
 	attachments    []attachmentFile
 	picker         filePicker
 	quoteCollapsed bool
+	draftID        int64
+	dirty          bool
+	lastAutosaved  time.Time
+	autosaveStatus string
 
 	busy      bool
 	statusMsg string
@@ -101,6 +105,35 @@ func NewCompose(acfg config.AccountConfig, accounts []config.AccountConfig, addr
 	c.focusedField = composeFieldTo
 	c.toInput.Focus()
 	c.SetAddressBook(addressBook)
+	return c
+}
+
+func NewComposeFromDraft(draft db.Draft, accounts []config.AccountConfig, addressBook []string) ComposeModel {
+	acfg := config.AccountConfig{Name: draft.AccountName, User: draft.AccountUser}
+	if draft.AccountIndex >= 0 && draft.AccountIndex < len(accounts) {
+		acfg = accounts[draft.AccountIndex]
+	} else {
+		for i, account := range accounts {
+			if account.Name == draft.AccountName && account.User == draft.AccountUser {
+				acfg = account
+				draft.AccountIndex = i
+				break
+			}
+		}
+	}
+	c := NewCompose(acfg, accounts, addressBook)
+	c.draftID = draft.ID
+	c.accountIndex = draft.AccountIndex
+	c.toInput.SetValue(draft.To)
+	c.ccInput.SetValue(draft.CC)
+	c.subjectInput.SetValue(draft.Subject)
+	c.bodyInput.SetValue(draft.BodyText)
+	c.inReplyTo = draft.InReplyTo
+	c.references = draft.References
+	c.dirty = false
+	for _, att := range draft.Attachments {
+		c.attachments = append(c.attachments, attachmentFile{Name: att.Filename, Path: att.Path, Data: att.Data})
+	}
 	return c
 }
 
@@ -530,6 +563,41 @@ func (c ComposeModel) selectedAccount() config.AccountConfig {
 		return c.accounts[c.accountIndex]
 	}
 	return c.accountCfg
+}
+
+func (c ComposeModel) hasContent() bool {
+	return strings.TrimSpace(c.toInput.Value()) != "" ||
+		strings.TrimSpace(c.ccInput.Value()) != "" ||
+		strings.TrimSpace(c.subjectInput.Value()) != "" ||
+		strings.TrimSpace(c.bodyInput.Value()) != "" ||
+		len(c.attachments) > 0
+}
+
+func (c ComposeModel) toDraftRecord() db.Draft {
+	account := c.selectedAccount()
+	draft := db.Draft{
+		ID:           c.draftID,
+		AccountName:  account.Name,
+		AccountUser:  account.User,
+		AccountIndex: c.accountIndex,
+		To:           strings.TrimSpace(c.toInput.Value()),
+		CC:           strings.TrimSpace(c.ccInput.Value()),
+		Subject:      c.subjectInput.Value(),
+		BodyText:     c.bodyInput.Value(),
+		InReplyTo:    c.inReplyTo,
+		References:   c.references,
+		Dirty:        true,
+	}
+	for i, att := range c.attachments {
+		draft.Attachments = append(draft.Attachments, db.DraftAttachment{
+			Filename: att.Name,
+			Path:     att.Path,
+			Data:     att.Data,
+			Size:     int64(len(att.Data)),
+			Position: i,
+		})
+	}
+	return draft
 }
 
 func (c ComposeModel) send() (ComposeModel, tea.Cmd, bool) {

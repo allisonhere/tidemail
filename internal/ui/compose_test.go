@@ -152,3 +152,139 @@ func TestForwardTypingStartsAboveQuotedMessage(t *testing.T) {
 		t.Fatalf("expected forwarded body to remain quoted, got %q", got)
 	}
 }
+
+func TestComposeFromDraftRestoresFieldsAndAttachments(t *testing.T) {
+	draft := db.Draft{
+		ID:           7,
+		AccountName:  "Personal",
+		AccountUser:  "allie@example.com",
+		AccountIndex: 1,
+		To:           "bob@example.com",
+		CC:           "carol@example.com",
+		Subject:      "Saved subject",
+		BodyText:     "Saved body",
+		InReplyTo:    "<orig@example.com>",
+		References:   "<orig@example.com>",
+		Attachments:  []db.DraftAttachment{{Filename: "notes.txt", Path: "/tmp/notes.txt", Data: []byte("notes")}},
+	}
+	accounts := []config.AccountConfig{{Name: "Other", User: "other@example.com"}, {Name: "Personal", User: "allie@example.com"}}
+
+	c := NewComposeFromDraft(draft, accounts, nil)
+
+	if c.draftID != draft.ID || c.toInput.Value() != draft.To || c.ccInput.Value() != draft.CC || c.subjectInput.Value() != draft.Subject || c.bodyInput.Value() != draft.BodyText {
+		t.Fatalf("draft fields not restored: %+v", c)
+	}
+	if c.inReplyTo != draft.InReplyTo || c.references != draft.References || c.accountIndex != 1 {
+		t.Fatalf("draft metadata not restored: %+v", c)
+	}
+	if len(c.attachments) != 1 || c.attachments[0].Name != "notes.txt" || string(c.attachments[0].Data) != "notes" {
+		t.Fatalf("draft attachments not restored: %+v", c.attachments)
+	}
+}
+
+func TestComposeEscapeWithContentOpensDraftCloseConfirm(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	database, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	m.overlay = overlayCompose
+	m.compose = NewCompose(config.AccountConfig{Name: "Personal", User: "allie@example.com"}, []config.AccountConfig{{Name: "Personal", User: "allie@example.com"}}, nil)
+	m.compose.subjectInput.SetValue("Keep me")
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = next.(Model)
+
+	if cmd != nil {
+		t.Fatal("escape should open confirmation modal before saving")
+	}
+	if m.overlay != overlayDraftCloseConfirm {
+		t.Fatalf("expected draft close confirmation overlay, got %v", m.overlay)
+	}
+}
+
+func TestDraftCloseConfirmSavesDraft(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	database, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	m.overlay = overlayDraftCloseConfirm
+	m.compose = NewCompose(config.AccountConfig{Name: "Personal", User: "allie@example.com"}, []config.AccountConfig{{Name: "Personal", User: "allie@example.com"}}, nil)
+	m.compose.toInput.SetValue("bob@example.com")
+	m.compose.subjectInput.SetValue("Keep me")
+	m.compose.bodyInput.SetValue("Body")
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	m = next.(Model)
+	if m.overlay != overlayNone {
+		t.Fatalf("expected compose closed after saving draft, got overlay %v", m.overlay)
+	}
+	if cmd == nil {
+		t.Fatal("expected save draft command")
+	}
+	msg, ok := cmd().(DraftSavedMsg)
+	if !ok || msg.Err != nil {
+		t.Fatalf("expected successful DraftSavedMsg, got %#v", msg)
+	}
+	drafts, err := database.ListDrafts("Personal", "allie@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(drafts) != 1 || drafts[0].Subject != "Keep me" || drafts[0].BodyText != "Body" {
+		t.Fatalf("expected saved draft, got %+v", drafts)
+	}
+}
+
+func TestEnterOnDraftRowReopensCompose(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.focused = paneMessages
+	m.accounts = []db.Account{{ID: 1, Name: "Personal"}}
+	m.mailboxes = []db.Mailbox{{ID: 2, AccountID: 1, Name: "Drafts"}}
+	m.sidebarRows = []sidebarRow{{kind: rowKindMailbox, mailboxID: 2, accountID: 1}}
+	m.drafts = []db.Draft{{ID: 9, AccountName: "Personal", Subject: "Reopen me", BodyText: "draft body"}}
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	if cmd != nil {
+		t.Fatal("reopening local draft should not need a command")
+	}
+	if m.overlay != overlayCompose {
+		t.Fatalf("expected compose overlay, got %v", m.overlay)
+	}
+	if m.compose.draftID != 9 || m.compose.subjectInput.Value() != "Reopen me" || m.compose.bodyInput.Value() != "draft body" {
+		t.Fatalf("expected reopened draft in compose, got %+v", m.compose)
+	}
+}
+
+func TestComposeEditAutosavesDraft(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	database, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	m.overlay = overlayCompose
+	m.compose = NewCompose(config.AccountConfig{Name: "Personal", User: "allie@example.com"}, []config.AccountConfig{{Name: "Personal", User: "allie@example.com"}}, nil)
+	m.compose.focusedField = composeFieldSubject
+	m.compose.toInput.Blur()
+	m.compose.subjectInput.Focus()
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("Draft"), Paste: true})
+	m = next.(Model)
+	if cmd == nil {
+		t.Fatal("expected edit to autosave draft")
+	}
+	msg, ok := cmd().(DraftSavedMsg)
+	if !ok || msg.Err != nil || msg.DraftID == 0 {
+		t.Fatalf("expected successful DraftSavedMsg, got %#v", msg)
+	}
+}

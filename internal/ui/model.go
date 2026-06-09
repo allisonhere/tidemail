@@ -70,6 +70,7 @@ const (
 	overlayGrammarPreview
 	overlayLogViewer
 	overlayFilterManager
+	overlayDraftCloseConfirm
 )
 
 type updateState int
@@ -113,6 +114,7 @@ type Model struct {
 
 	messages         []db.Message
 	filteredMessages []db.Message
+	drafts           []db.Draft
 	messageCursor    int
 	listOffset       int
 	searchQuery      string
@@ -471,6 +473,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.loadUnifiedInboxCmd())
 		} else if selected := m.selectedMailbox(); selected != nil {
 			cmds = append(cmds, m.loadMailboxMessagesCmd(selected.ID))
+			if m.selectedDraftsMailbox() {
+				cmds = append(cmds, m.loadDraftsCmd(selected.ID))
+			}
 		} else {
 			m.clearMessages()
 		}
@@ -498,6 +503,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.filteredMessages) > 0 {
 				m.setViewportMessage(m.filteredMessages[m.messageCursor])
 			}
+		}
+		return m, nil
+
+	case DraftsLoadedMsg:
+		if msg.Err != nil {
+			m.setStatus(fmt.Sprintf("load drafts failed: %v", msg.Err), true)
+			return m, m.clearStatusCmd()
+		}
+		if selected := m.selectedMailbox(); selected != nil && selected.ID == msg.MailboxID {
+			m.drafts = msg.Drafts
+			m.messageCursor = clamp(m.messageCursor, 0, max(0, len(m.drafts)-1))
+			m.listOffset = clamp(m.listOffset, 0, max(0, len(m.drafts)-1))
 		}
 		return m, nil
 
@@ -774,14 +791,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case MessageSentMsg:
+		draftID := m.compose.draftID
 		m.compose = ComposeModel{}
 		m.overlay = overlayNone
 		if msg.Err != nil {
 			m.setStatus(fmt.Sprintf("send failed: %v", msg.Err), true)
-		} else {
-			m.setStatus("message sent", false)
+			return m, m.clearStatusCmd()
+		}
+		m.setStatus("message sent", false)
+		if draftID != 0 {
+			return m, tea.Batch(m.deleteDraftCmd(draftID), m.clearStatusCmd())
 		}
 		return m, m.clearStatusCmd()
+
+	case DraftSavedMsg:
+		if msg.Err != nil {
+			m.setStatus(fmt.Sprintf("draft save failed: %v", msg.Err), true)
+			return m, m.clearStatusCmd()
+		}
+		if m.overlay == overlayCompose && msg.DraftID != 0 {
+			m.compose.draftID = msg.DraftID
+			m.compose.dirty = false
+			m.compose.lastAutosaved = time.Now()
+		}
+		return m, nil
+
+	case DraftDeletedMsg:
+		if msg.Err != nil {
+			m.setStatus(fmt.Sprintf("draft delete failed: %v", msg.Err), true)
+			return m, m.clearStatusCmd()
+		}
+		return m, nil
 
 	case AISummaryFetchedMsg:
 		m.summaryGenerating = false
@@ -978,7 +1018,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
-		if m.focused == paneMessages && len(m.filteredMessages) > 0 {
+		if m.focused == paneMessages && (len(m.filteredMessages) > 0 || (m.selectedDraftsMailbox() && len(m.drafts) > 0)) {
 			return m.focusPane(paneContent)
 		}
 		return m, nil
@@ -1071,6 +1111,13 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.Delete):
+		if m.focused == paneMessages && m.selectedDraftsMailbox() && len(m.drafts) > 0 {
+			idx := clamp(m.messageCursor, 0, len(m.drafts)-1)
+			id := m.drafts[idx].ID
+			m.drafts = append(m.drafts[:idx], m.drafts[idx+1:]...)
+			m.messageCursor = clamp(m.messageCursor, 0, max(0, len(m.drafts)-1))
+			return m, m.deleteDraftCmd(id)
+		}
 		if m.focused != paneAccounts && len(m.filteredMessages) > 0 {
 			if m.hasSelection() {
 				var cmds []tea.Cmd
@@ -1254,6 +1301,13 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) focusPane(next pane) (tea.Model, tea.Cmd) {
 	wasMessages := m.focused == paneMessages
 	m.focused = next
+	if wasMessages && next == paneContent && m.selectedDraftsMailbox() && len(m.drafts) > 0 {
+		idx := clamp(m.messageCursor, 0, len(m.drafts)-1)
+		m.compose = NewComposeFromDraft(m.drafts[idx], m.cfg.Accounts, m.addressBook)
+		m.overlay = overlayCompose
+		m.focused = paneMessages
+		return m, nil
+	}
 	if wasMessages && next == paneContent && len(m.filteredMessages) > 0 {
 		return m, m.openedMessageCmd(m.filteredMessages[m.messageCursor])
 	}
@@ -1273,17 +1327,28 @@ func (m Model) handleUp() (tea.Model, tea.Cmd) {
 				return m, m.loadUnifiedInboxCmd()
 			}
 			if selected := m.selectedMailbox(); selected != nil {
-				return m, m.loadMailboxMessagesCmd(selected.ID)
+				cmd := m.loadMailboxMessagesCmd(selected.ID)
+				if m.selectedDraftsMailbox() {
+					cmd = tea.Batch(cmd, m.loadDraftsCmd(selected.ID))
+				}
+				return m, cmd
 			}
 			m.clearMessages()
 		}
 	case paneMessages:
+		count := len(m.filteredMessages)
+		if m.selectedDraftsMailbox() {
+			count = len(m.drafts)
+		}
 		if m.messageCursor > 0 {
 			m.messageCursor--
 			if m.messageCursor < m.listOffset {
 				m.listOffset = m.messageCursor
 			}
-			if len(m.filteredMessages) > 0 {
+			if m.selectedDraftsMailbox() {
+				return m, nil
+			}
+			if count > 0 {
 				msg2 := m.filteredMessages[m.messageCursor]
 				m.setViewportMessage(msg2)
 				return m, m.focusedMessageChangedCmd(msg2)
@@ -1309,18 +1374,29 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 				return m, m.loadUnifiedInboxCmd()
 			}
 			if selected := m.selectedMailbox(); selected != nil {
-				return m, m.loadMailboxMessagesCmd(selected.ID)
+				cmd := m.loadMailboxMessagesCmd(selected.ID)
+				if m.selectedDraftsMailbox() {
+					cmd = tea.Batch(cmd, m.loadDraftsCmd(selected.ID))
+				}
+				return m, cmd
 			}
 			m.clearMessages()
 		}
 	case paneMessages:
-		if m.messageCursor < len(m.filteredMessages)-1 {
+		count := len(m.filteredMessages)
+		if m.selectedDraftsMailbox() {
+			count = len(m.drafts)
+		}
+		if m.messageCursor < count-1 {
 			m.messageCursor++
 			visible := m.articleRowsVisible()
 			if m.messageCursor >= m.listOffset+visible {
 				m.listOffset = m.messageCursor - visible + 1
 			}
-			if len(m.filteredMessages) > 0 {
+			if m.selectedDraftsMailbox() {
+				return m, nil
+			}
+			if count > 0 {
 				msg2 := m.filteredMessages[m.messageCursor]
 				m.setViewportMessage(msg2)
 				return m, m.focusedMessageChangedCmd(msg2)
@@ -1344,6 +1420,18 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case keyMatches(msg, m.keys.No), keyMatches(msg, m.keys.Cancel):
 			m.overlay = overlayNone
+		}
+		return m, nil
+
+	case overlayDraftCloseConfirm:
+		switch {
+		case keyMatches(msg, m.keys.Yes), keyMatches(msg, m.keys.Confirm):
+			return m.closeComposeSavingDraft()
+		case keyMatches(msg, m.keys.No):
+			return m.discardComposeDraft()
+		case keyMatches(msg, m.keys.Cancel):
+			m.overlay = overlayCompose
+			return m, nil
 		}
 		return m, nil
 
@@ -1685,13 +1773,45 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.grammarCheckCmd(body)
 		}
 	}
+	before := m.compose
 	newC, cmd, exit := m.compose.Update(msg, m.keys)
 	m.compose = newC
+	if composeChanged(before, m.compose) {
+		m.compose.dirty = true
+		if m.compose.hasContent() {
+			return m, m.saveDraftCmd(m.compose)
+		}
+	}
 	if exit {
+		if m.compose.hasContent() {
+			m.overlay = overlayDraftCloseConfirm
+			return m, nil
+		}
+		if m.compose.draftID != 0 {
+			id := m.compose.draftID
+			m.overlay = overlayNone
+			m.compose = ComposeModel{}
+			return m, m.deleteDraftCmd(id)
+		}
 		m.overlay = overlayNone
 		m.compose = ComposeModel{}
 	}
 	return m, cmd
+}
+
+func composeChanged(a, b ComposeModel) bool {
+	if a.toInput.Value() != b.toInput.Value() || a.ccInput.Value() != b.ccInput.Value() || a.subjectInput.Value() != b.subjectInput.Value() || a.bodyInput.Value() != b.bodyInput.Value() {
+		return true
+	}
+	if a.accountIndex != b.accountIndex || len(a.attachments) != len(b.attachments) {
+		return true
+	}
+	for i := range a.attachments {
+		if a.attachments[i].Name != b.attachments[i].Name || a.attachments[i].Path != b.attachments[i].Path || string(a.attachments[i].Data) != string(b.attachments[i].Data) {
+			return true
+		}
+	}
+	return false
 }
 
 // ── Save-attachment folder picker ────────────────────────────────────────
@@ -2047,6 +2167,7 @@ func (m Model) newAccountManager() AccountManager {
 func (m *Model) clearMessages() {
 	m.messages = nil
 	m.filteredMessages = nil
+	m.drafts = nil
 	m.messageCursor = 0
 	m.listOffset = 0
 	m.clearViewportMessage()

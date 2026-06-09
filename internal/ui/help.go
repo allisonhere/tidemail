@@ -60,13 +60,13 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 		{
 			name: "Message List",
 			entries: []entry{
-				{keys.Enter.Help().Key, "open selected message in the content pane"},
+				{keys.Enter.Help().Key, "open selected message; in Drafts, reopen draft compose"},
 				{keys.Space.Help().Key, "select message and advance"},
 				{keys.SelectAll.Help().Key, "select all messages in current view"},
 				{keys.MarkRead.Help().Key, "toggle selected message(s) read/unread"},
 				{keys.Archive.Help().Key, "archive selected message(s)"},
 				{keys.Move.Help().Key, "move selected message(s) to folder/label"},
-				{keys.Delete.Help().Key, "delete selected message(s)"},
+				{keys.Delete.Help().Key, "delete selected message(s); in Drafts, delete draft"},
 				bind(keys.Compose),
 				bind(keys.Reply),
 				bind(keys.Forward),
@@ -98,9 +98,9 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{"ctrl+s/ctrl+d", "send message"},
 				{keys.AttachFile.Help().Key, "attach file"},
 				{keys.RemoveAttach.Help().Key, "remove last attachment"},
-				{keys.CycleSender.Help().Key, "change sender account"},
+				{keys.CycleSender.Help().Key, "change sender account; existing draft moves with sender"},
 				{keys.GrammarCheck.Help().Key, "AI grammar & spell check"},
-				{keys.Cancel.Help().Key, "close compose"},
+				{keys.Cancel.Help().Key, "close compose; prompts to save/discard draft"},
 			},
 		},
 		{

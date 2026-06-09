@@ -101,6 +101,22 @@ type MessageSentMsg struct {
 	Err error
 }
 
+type DraftSavedMsg struct {
+	DraftID int64
+	Err     error
+}
+
+type DraftDeletedMsg struct {
+	DraftID int64
+	Err     error
+}
+
+type DraftsLoadedMsg struct {
+	MailboxID int64
+	Drafts    []db.Draft
+	Err       error
+}
+
 type AISummaryFetchedMsg struct {
 	MessageID int64
 	Summary   string

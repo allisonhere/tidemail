@@ -221,6 +221,33 @@ func (db *DB) FindJunkMailbox(accountID int64) (Mailbox, error) {
 	return Mailbox{}, fmt.Errorf("junk mailbox not found")
 }
 
+func (db *DB) FindDraftsMailbox(accountID int64) (Mailbox, error) {
+	mailboxes, err := db.ListMailboxes(accountID)
+	if err != nil {
+		return Mailbox{}, err
+	}
+	var nameMatch *Mailbox
+	for i, mb := range mailboxes {
+		for _, flag := range mb.Flags {
+			if strings.EqualFold(flag, `\Drafts`) {
+				return mb, nil
+			}
+		}
+		if nameMatch == nil && (isCommonDraftsMailboxName(mb.Name) || isCommonDraftsMailboxName(mb.DisplayName)) {
+			nameMatch = &mailboxes[i]
+		}
+	}
+	if nameMatch != nil {
+		return *nameMatch, nil
+	}
+	return Mailbox{}, fmt.Errorf("drafts mailbox not found")
+}
+
+func isCommonDraftsMailboxName(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	return n == "drafts" || strings.HasSuffix(n, "/drafts") || strings.HasSuffix(n, ".drafts")
+}
+
 func isCommonJunkMailboxName(name string) bool {
 	n := strings.ToLower(strings.TrimSpace(name))
 	return n == "junk" || n == "spam" || n == "junk email" || n == "junk e-mail" ||
