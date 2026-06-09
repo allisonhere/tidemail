@@ -100,6 +100,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{keys.RemoveAttach.Help().Key, "remove last attachment"},
 				{keys.CycleSender.Help().Key, "change sender account; existing draft moves with sender"},
 				{keys.GrammarCheck.Help().Key, "AI grammar & spell check"},
+				{"autosave", "compose saves to the account's Drafts automatically as you type"},
 				{keys.Cancel.Help().Key, "close compose; prompts to save/discard draft"},
 			},
 		},

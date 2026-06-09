@@ -36,6 +36,7 @@ go build -o tidemail .
 - Contacts manager for curated autocomplete, manual entries, adding seen senders, composing to selected contacts, and vCard import/export
 - vCard import/export preserves email, display name, phone, organization, title, and notes
 - Server-backed sync, read/unread, archive, move, delete, compose, and reply
+- **Local drafts** — composes autosave to a per-account Drafts mailbox as you type; reopen one with `Enter`, delete with `d`, and switching the sender account moves the draft with it
 - Local-first delete hides messages immediately, moves remote mail to Trash when available, and prevents deleted mail from reappearing on later syncs
 - Archive auto-detection via `\Archive`, `Archive`, `Archives`, or `All Mail`
 - Trash auto-detection via `\Trash`, `Trash`, `Deleted Items`, `Deleted Messages`, or Gmail's Trash label
@@ -60,6 +61,8 @@ go build -o tidemail .
 Config is stored in `~/.config/tidemail/config.toml`. The local SQLite cache is stored in `~/.local/share/tidemail/mail.db` unless `XDG_DATA_HOME` changes that path.
 
 Open account management with `M`, add an IMAP/SMTP account, then sync the selected mailbox with `f`. Press `f` on the Unified Inbox to sync every account's inbox at once. Use `F` to sync all mailboxes. Configure a per-account `sync_minutes` interval for automatic background refresh.
+
+Composing autosaves your message to the sending account's Drafts mailbox as you type, so closing the compose modal never loses work — closing with content prompts to save or discard. Open the Drafts mailbox to see saved drafts, press `Enter` to reopen one in compose, and `d` to delete it. Sending a draft removes it from Drafts automatically.
 
 Open contacts with `C`. Contacts are the curated address book used for compose autocomplete. Add contacts manually with `n`, add addresses already seen in mail with `f`, import a vCard file with `i`, export to `contacts.vcf` with `x`, select multiple contacts with `Space`, press `c` to compose to the selected contact(s), and delete selected contacts with `d`. vCard import/export keeps email, display name, phone, organization, title, and note fields.
 
@@ -121,7 +124,9 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 | `c` in Contacts | Compose to selected contact(s) |
 | `f` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
 | `F` | Sync all mailboxes |
-| `c` | Compose |
+| `c` | Compose (autosaves to Drafts as you type) |
+| `Enter` in Drafts | Reopen selected draft in compose |
+| `d` in Drafts | Delete selected draft |
 | `r` | Toggle read/unread in message list, reply from content |
 | `a` | Archive selected message |
 | `d` | Delete selected message |

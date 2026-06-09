@@ -71,7 +71,6 @@ type ComposeModel struct {
 	draftID        int64
 	dirty          bool
 	lastAutosaved  time.Time
-	autosaveStatus string
 
 	busy      bool
 	statusMsg string
