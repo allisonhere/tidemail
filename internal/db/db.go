@@ -191,6 +191,12 @@ func (db *DB) migrate() error {
 	// SQLite error on duplicate column is silently ignored.
 	db.Exec(`ALTER TABLE messages ADD COLUMN headers TEXT NOT NULL DEFAULT ''`)         //nolint:errcheck
 	db.Exec(`ALTER TABLE mailboxes ADD COLUMN uid_validity INTEGER NOT NULL DEFAULT 0`) //nolint:errcheck
+	// Enforce one local mirror per remote draft. Drop any duplicates a previous
+	// build's check-then-insert race may have created before adding the index.
+	_, _ = db.Exec(`DELETE FROM drafts WHERE remote_uid != 0 AND id NOT IN (
+		SELECT MIN(id) FROM drafts WHERE remote_uid != 0 GROUP BY mailbox_id, remote_uid)`)
+	_, _ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_drafts_remote_uid
+		ON drafts(mailbox_id, remote_uid) WHERE remote_uid != 0`)
 	if err := db.migrateContactsToCuratedSchema(); err != nil {
 		return err
 	}

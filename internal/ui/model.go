@@ -839,7 +839,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case DraftDeletedMsg:
 		if msg.Err != nil {
 			m.setStatus(fmt.Sprintf("draft delete failed: %v", msg.Err), true)
-			return m, m.clearStatusCmd()
+			// The list row was removed optimistically; the draft still exists, so
+			// reload to bring it back rather than hiding it until the next refresh.
+			cmds := []tea.Cmd{m.clearStatusCmd()}
+			if mb := m.selectedMailbox(); mb != nil && m.isDraftsMailbox(*mb) {
+				cmds = append(cmds, m.loadDraftsCmd(mb.ID))
+			}
+			return m, tea.Batch(cmds...)
 		}
 		return m, nil
 

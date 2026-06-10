@@ -38,7 +38,9 @@ func TestImportRemoteDraftsCmdMirrorsAndDedupes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	cfg := config.DefaultConfig()
+	cfg.Accounts = []config.AccountConfig{{Name: "Acct", User: "alice@x"}}
+	m := NewModel(database, cfg, "dev", false)
 	m.accounts = []db.Account{{ID: accountID, Name: "Acct"}}
 	m.mailboxes = []db.Mailbox{{ID: mailboxID, AccountID: accountID, Name: "Drafts", Flags: []string{"\\Drafts"}}}
 
@@ -82,5 +84,48 @@ func TestImportRemoteDraftsCmdMirrorsAndDedupes(t *testing.T) {
 	// Sidebar count: 2 mirrored locals, 0 unmirrored remote — not 4.
 	if n := m.draftsSidebarCount(m.mailboxes[0]); n != 2 {
 		t.Fatalf("expected sidebar count 2, got %d", n)
+	}
+}
+
+func TestImportRemoteDraftsCmdSkipsWhenAccountUnresolvable(t *testing.T) {
+	database, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	accountID, err := database.AddAccount("Acct", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailboxID, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "Drafts", Flags: []string{"\\Drafts"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertMessage(db.Message{MailboxID: mailboxID, UID: 1, MessageID: "<a@x>", Subject: "draft"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// No matching cfg account → account is unresolvable. Import must not write
+	// orphaned drafts with an empty/unknown account.
+	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	m.accounts = []db.Account{{ID: accountID, Name: "Acct"}}
+	m.mailboxes = []db.Mailbox{{ID: mailboxID, AccountID: accountID, Name: "Drafts", Flags: []string{"\\Drafts"}}}
+
+	result := m.importRemoteDraftsCmd(mailboxID)()
+	loaded := result.(DraftsLoadedMsg)
+	if loaded.Err != nil {
+		t.Fatal(loaded.Err)
+	}
+	if len(loaded.Drafts) != 0 {
+		t.Fatalf("expected no drafts imported when account unresolvable, got %d", len(loaded.Drafts))
+	}
+	// Scoped to this mailbox: the package shares one sandboxed DB across tests.
+	var written int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM drafts WHERE mailbox_id = ?`, mailboxID).Scan(&written); err != nil {
+		t.Fatal(err)
+	}
+	if written != 0 {
+		t.Fatalf("expected zero draft rows written for this mailbox, got %d", written)
 	}
 }

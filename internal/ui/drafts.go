@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -32,12 +33,21 @@ func (m *Model) deleteDraftCmd(id int64) tea.Cmd {
 	if id == 0 || database == nil {
 		return func() tea.Msg { return DraftDeletedMsg{DraftID: id} }
 	}
+	draft, err := database.GetDraft(id)
+	if errors.Is(err, db.ErrDraftNotFound) {
+		return func() tea.Msg { return DraftDeletedMsg{DraftID: id} } // already gone
+	}
+	if err != nil {
+		// Don't blind-delete locally on an unknown error: a mirrored draft's
+		// remote original would survive and re-import on the next sync.
+		return func() tea.Msg { return DraftDeletedMsg{DraftID: id, Err: err} }
+	}
 	// A draft mirrored from the server also has a remote original; delete that
 	// first (remote-first, like message deletes) or it re-imports on next sync.
 	var remote *db.Mailbox
 	var remoteCfg config.AccountConfig
 	var remoteUID uint32
-	if draft, err := database.GetDraft(id); err == nil && draft.RemoteUID != 0 && draft.MailboxID != 0 {
+	if draft.RemoteUID != 0 && draft.MailboxID != 0 {
 		if mb := m.mailboxByID(draft.MailboxID); mb != nil {
 			remote = mb
 			remoteCfg = m.accountCfgForMailbox(draft.MailboxID)
@@ -163,7 +173,7 @@ func (m *Model) loadDraftsCmd(mailboxID int64) tea.Cmd {
 func (m *Model) importRemoteDraftsCmd(mailboxID int64) tea.Cmd {
 	database := m.db
 	accountName, accountUser := m.draftAccountIdentity(mailboxID)
-	accountIndex := 0
+	accountIndex := -1
 	for i, acfg := range m.cfg.Accounts {
 		if acfg.Name == accountName && acfg.User == accountUser {
 			accountIndex = i
@@ -174,17 +184,20 @@ func (m *Model) importRemoteDraftsCmd(mailboxID int64) tea.Cmd {
 		if database == nil {
 			return DraftsLoadedMsg{MailboxID: mailboxID}
 		}
+		// Can't resolve the owning account (mailbox or account gone since the
+		// sync was queued)? Don't write drafts with an empty/unknown account —
+		// they'd be invisible orphans. Just load whatever already exists.
+		if accountName == "" || accountIndex < 0 {
+			drafts, err := database.ListDrafts(accountName, accountUser)
+			return DraftsLoadedMsg{MailboxID: mailboxID, Drafts: drafts, Err: err}
+		}
 		msgs, err := database.ListMessages(mailboxID)
 		if err != nil {
 			return DraftsLoadedMsg{MailboxID: mailboxID, Err: err}
 		}
 		for _, msg := range msgs {
-			mirrored, err := database.HasDraftForRemote(msg.MessageID, mailboxID, msg.UID)
-			if err != nil {
-				return DraftsLoadedMsg{MailboxID: mailboxID, Err: err}
-			}
-			if mirrored {
-				continue
+			if msg.UID == 0 {
+				continue // mirror key is mailbox+uid; a real UID is required
 			}
 			draft := db.Draft{
 				AccountName:     accountName,
@@ -201,7 +214,9 @@ func (m *Model) importRemoteDraftsCmd(mailboxID int64) tea.Cmd {
 				UpdatedAt:       msg.Date,
 				LastRemoteSync:  time.Now(),
 			}
-			if _, err := database.SaveDraft(draft); err != nil {
+			// Idempotent: INSERT OR IGNORE on the unique mirror key, so a
+			// concurrent import can't double-insert.
+			if err := database.ImportRemoteDraft(draft); err != nil {
 				return DraftsLoadedMsg{MailboxID: mailboxID, Err: err}
 			}
 		}

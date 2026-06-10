@@ -109,7 +109,12 @@ func NewCompose(acfg config.AccountConfig, accounts []config.AccountConfig, addr
 
 func NewComposeFromDraft(draft db.Draft, accounts []config.AccountConfig, addressBook []string) ComposeModel {
 	acfg := config.AccountConfig{Name: draft.AccountName, User: draft.AccountUser}
-	if draft.AccountIndex >= 0 && draft.AccountIndex < len(accounts) {
+	// Trust the stored index only if it still points at the same account; the
+	// config may have been reordered since the draft was saved. Otherwise resolve
+	// by name/user so the draft never sends from the wrong account.
+	if draft.AccountIndex >= 0 && draft.AccountIndex < len(accounts) &&
+		accounts[draft.AccountIndex].Name == draft.AccountName &&
+		accounts[draft.AccountIndex].User == draft.AccountUser {
 		acfg = accounts[draft.AccountIndex]
 	} else {
 		for i, account := range accounts {

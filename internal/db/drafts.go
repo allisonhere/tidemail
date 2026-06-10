@@ -2,9 +2,13 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
+
+// ErrDraftNotFound is returned by GetDraft when no draft has the given id.
+var ErrDraftNotFound = errors.New("draft not found")
 
 type Draft struct {
 	ID              int64
@@ -237,16 +241,37 @@ func (db *DB) DraftCount(accountName, accountUser string) (int64, error) {
 	return n, err
 }
 
-// HasDraftForRemote reports whether a remote draft message is already mirrored
-// in the drafts table, matched by Message-ID when available, else mailbox+UID.
-func (db *DB) HasDraftForRemote(remoteMessageID string, mailboxID int64, uid uint32) (bool, error) {
-	var n int
-	err := db.QueryRow(`
-		SELECT COUNT(1) FROM drafts
-		WHERE (? != '' AND remote_message_id = ?)
-		   OR (mailbox_id = ? AND remote_uid != 0 AND remote_uid = ?)`,
-		remoteMessageID, remoteMessageID, mailboxID, uid).Scan(&n)
-	return n > 0, err
+// ImportRemoteDraft inserts a server-side draft as a local mirror, keyed by
+// (mailbox_id, remote_uid). INSERT OR IGNORE + the unique index makes this a
+// no-op when the mirror already exists, so concurrent imports (e.g. an auto-sync
+// racing a manual sync) can't create duplicates. Mirrors carry no attachments at
+// import and are clean (dirty=0) since they match the server.
+func (db *DB) ImportRemoteDraft(d Draft) error {
+	if d.RemoteUID == 0 {
+		return fmt.Errorf("import remote draft: missing remote uid")
+	}
+	createdAt := int64(0)
+	if !d.CreatedAt.IsZero() {
+		createdAt = d.CreatedAt.Unix()
+	}
+	updatedAt := createdAt
+	if !d.UpdatedAt.IsZero() {
+		updatedAt = d.UpdatedAt.Unix()
+	}
+	lastRemoteSync := int64(0)
+	if !d.LastRemoteSync.IsZero() {
+		lastRemoteSync = d.LastRemoteSync.Unix()
+	}
+	_, err := db.Exec(`
+		INSERT OR IGNORE INTO drafts
+			(account_name, account_user, account_index, mailbox_id, remote_uid, remote_message_id,
+			 to_addr, cc_addr, subject, body_text, in_reply_to, references_text,
+			 created_at, updated_at, last_remote_sync, dirty)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+		d.AccountName, d.AccountUser, d.AccountIndex, d.MailboxID, d.RemoteUID, d.RemoteMessageID,
+		d.To, d.CC, d.Subject, d.BodyText, d.InReplyTo, d.References,
+		createdAt, updatedAt, lastRemoteSync)
+	return err
 }
 
 // UnmirroredDraftMessageCount counts messages in a drafts mailbox that have not
@@ -293,7 +318,7 @@ func scanDraft(row draftScanner) (Draft, error) {
 		&createdAt, &updatedAt, &lastRemoteSync, &dirty,
 	); err != nil {
 		if err == sql.ErrNoRows {
-			return Draft{}, fmt.Errorf("draft not found")
+			return Draft{}, ErrDraftNotFound
 		}
 		return Draft{}, err
 	}

@@ -221,7 +221,7 @@ func TestSaveDraftUpdatePreservesRemoteLinkage(t *testing.T) {
 	}
 }
 
-func TestHasDraftForRemoteAndUnmirroredCount(t *testing.T) {
+func TestImportRemoteDraftIsIdempotentAndTracksUnmirrored(t *testing.T) {
 	database := openDraftTestDB(t)
 
 	accountID, err := database.AddAccount("Acct", "")
@@ -243,20 +243,17 @@ func TestHasDraftForRemoteAndUnmirroredCount(t *testing.T) {
 		t.Fatalf("expected 2 unmirrored before import, got %d err=%v", n, err)
 	}
 
-	if _, err := database.SaveDraft(Draft{
-		AccountName: "Acct", MailboxID: mailboxID, RemoteUID: 1, RemoteMessageID: "<m1@x>",
-	}); err != nil {
+	mirror := Draft{AccountName: "Acct", MailboxID: mailboxID, RemoteUID: 1, RemoteMessageID: "<m1@x>", Subject: "one"}
+	if err := database.ImportRemoteDraft(mirror); err != nil {
 		t.Fatal(err)
 	}
-
-	if ok, err := database.HasDraftForRemote("<m1@x>", mailboxID, 1); err != nil || !ok {
-		t.Fatalf("expected mirrored by message-id, got %v err=%v", ok, err)
+	// Importing the same remote draft again (e.g. a racing second sync) must be a
+	// no-op, not a duplicate — guards the unique mirror index.
+	if err := database.ImportRemoteDraft(mirror); err != nil {
+		t.Fatal(err)
 	}
-	if ok, err := database.HasDraftForRemote("", mailboxID, 1); err != nil || !ok {
-		t.Fatalf("expected mirrored by mailbox+uid, got %v err=%v", ok, err)
-	}
-	if ok, err := database.HasDraftForRemote("<m2@x>", mailboxID, 2); err != nil || ok {
-		t.Fatalf("expected unmirrored, got %v err=%v", ok, err)
+	if n, err := database.DraftCount("Acct", ""); err != nil || n != 1 {
+		t.Fatalf("expected exactly 1 mirrored draft after double import, got %d err=%v", n, err)
 	}
 	if n, err := database.UnmirroredDraftMessageCount(mailboxID); err != nil || n != 1 {
 		t.Fatalf("expected 1 unmirrored after import, got %d err=%v", n, err)
