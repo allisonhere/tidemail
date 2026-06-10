@@ -38,8 +38,12 @@ type KeyMap struct {
 	Quit           key.Binding
 
 	Summary       key.Binding
+	VisualSelect  key.Binding
+	VisualLine    key.Binding
 	CopyText      key.Binding
+	PasteText     key.Binding
 	SaveMD        key.Binding
+	DiscardDraft  key.Binding
 	ContentSearch key.Binding
 	ToggleQuote   key.Binding
 	ToggleHeaders key.Binding
@@ -84,7 +88,7 @@ var DefaultKeys = KeyMap{
 	MarkAllRead: key.NewBinding(key.WithKeys("R", "ctrl+x"), key.WithHelp("R/ctrl+x", "mark all read")),
 	OpenBrowser: key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser")),
 	NextLink:    key.NewBinding(key.WithKeys("ctrl+n", "alt+n"), key.WithHelp("ctrl+n", "next link")),
-	PrevLink:    key.NewBinding(key.WithKeys("ctrl+p", "alt+p"), key.WithHelp("ctrl+p", "prev link")),
+	PrevLink:    key.NewBinding(key.WithKeys("alt+p"), key.WithHelp("alt+p", "prev link")),
 	Search:      key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
 	UnreadOnly:  key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "toggle unread only")),
 	Compose:     key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "compose")),
@@ -92,7 +96,7 @@ var DefaultKeys = KeyMap{
 	Forward:     key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "forward")),
 	Archive:     key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),
 	Move:        key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move")),
-	Command:     key.NewBinding(key.WithKeys("p", ":"), key.WithHelp("p", "command")),
+	Command:     key.NewBinding(key.WithKeys(":"), key.WithHelp(":", "command")),
 
 	AccountManager: key.NewBinding(key.WithKeys("M"), key.WithHelp("M", "accounts")),
 	ContactManager: key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "contacts")),
@@ -103,9 +107,13 @@ var DefaultKeys = KeyMap{
 	Help:           key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 	Quit:           key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 
-	Summary:       key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "AI summary")),
+	Summary:       key.NewBinding(key.WithKeys("`"), key.WithHelp("`", "AI summary")),
+	VisualSelect:  key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "visual select")),
+	VisualLine:    key.NewBinding(key.WithKeys("V"), key.WithHelp("V", "select message")),
 	CopyText:      key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "copy")),
+	PasteText:     key.NewBinding(key.WithKeys("ctrl+p"), key.WithHelp("ctrl+p", "paste")),
 	SaveMD:        key.NewBinding(key.WithKeys("M"), key.WithHelp("M", "save .md")),
+	DiscardDraft:  key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "discard")),
 	ContentSearch: key.NewBinding(key.WithKeys("ctrl+f"), key.WithHelp("ctrl+f", "find")),
 	ToggleQuote:   key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "toggle quoted text")),
 	ToggleHeaders: key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "headers")),

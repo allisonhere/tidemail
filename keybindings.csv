@@ -13,7 +13,7 @@ MarkRead,x,x,mark read,main
 MarkAllRead,"R,ctrl+x",R/ctrl+x,mark all read,main
 OpenBrowser,o,o,open in browser,main
 NextLink,"ctrl+n,alt+n",ctrl+n,next link,content
-PrevLink,"ctrl+p,alt+p",ctrl+p,prev link,content
+PrevLink,alt+p,alt+p,prev link,content
 Search,/,/,search,main
 UnreadOnly,u,u,toggle unread only,main
 Compose,c,c,compose,main
@@ -21,7 +21,7 @@ Reply,r,r,reply,main
 Forward,f,f,forward,main
 Archive,a,a,archive,main
 Move,m,m,move to folder/label,main
-Command,"p,:",p,command palette,global
+Command,:,":",command palette,global
 AccountManager,M,M,accounts,global
 ThemePicker,T,T,theme picker,global
 Settings,S,S,settings,global
@@ -29,9 +29,13 @@ UpdateInstall,U,U,install update,main
 UpdateIgnore,i,i,ignore update,main
 Help,?,?,help,global
 Quit,q,q,quit,global
-Summary,v,v,AI summary,main
+Summary,`,`,AI summary,main
+VisualSelect,v,v,visual select,content
+VisualLine,V,V,select message,content
 CopyText,C,C,copy text,summary
+PasteText,ctrl+p,ctrl+p,paste text,compose
 SaveMD,M,M,save as .md,summary
+DiscardDraft,d,d,discard draft,compose
 ContentSearch,ctrl+f,ctrl+f,find in content,content
 ToggleQuote,z,z,toggle quoted text,content
 ToggleHeaders,ctrl+e,ctrl+e,toggle full headers,content

@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -151,6 +152,49 @@ func TestDBUnreadAndSummaryUpdates(t *testing.T) {
 	}
 }
 
+func TestDBListMessagesUnreadFirstGroupsUnreadBeforeRead(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+
+	accountID, err := database.AddAccount("Work", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailboxID, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, msg := range []Message{
+		{MailboxID: mailboxID, UID: 1, Subject: "Old unread", Date: time.Unix(1710000000, 0)},
+		{MailboxID: mailboxID, UID: 2, Subject: "New read", Date: time.Unix(1710000300, 0), Read: true},
+		{MailboxID: mailboxID, UID: 3, Subject: "New unread", Date: time.Unix(1710000200, 0)},
+		{MailboxID: mailboxID, UID: 4, Subject: "Old read", Date: time.Unix(1710000100, 0), Read: true},
+	} {
+		if err := database.UpsertMessage(msg); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	msgs, err := database.ListMessagesUnreadFirst(mailboxID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := subjectsOf(msgs)
+	want := []string{"New unread", "Old unread", "New read", "Old read"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("unexpected unread-first order: got %v want %v", got, want)
+	}
+}
+
 func TestDBListUnifiedInboxUsesInboxMailboxesAcrossAccounts(t *testing.T) {
 	tmp := t.TempDir()
 	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
@@ -216,6 +260,75 @@ func TestDBListUnifiedInboxUsesInboxMailboxesAcrossAccounts(t *testing.T) {
 	if unread[0].Subject != "Work newest" || unread[1].Subject != "Personal older" {
 		t.Fatalf("unexpected unread unified inbox order: %+v", unread)
 	}
+}
+
+func TestDBListUnifiedInboxUnreadFirstGroupsUnreadBeforeRead(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+
+	personalID, err := database.AddAccount("Personal", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workID, err := database.AddAccount("Work", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	personalInboxID, err := database.UpsertMailbox(Mailbox{AccountID: personalID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workInboxID, err := database.UpsertMailbox(Mailbox{AccountID: workID, Name: "Inbox", Flags: []string{"\\Inbox"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, msg := range []Message{
+		{MailboxID: personalInboxID, UID: 1, Subject: "Old unread", Date: time.Unix(1710000000, 0)},
+		{MailboxID: personalInboxID, UID: 2, Subject: "Newest read", Date: time.Unix(1710000400, 0), Read: true},
+		{MailboxID: workInboxID, UID: 3, Subject: "New unread", Date: time.Unix(1710000300, 0)},
+		{MailboxID: workInboxID, UID: 4, Subject: "Old read", Date: time.Unix(1710000200, 0), Read: true},
+	} {
+		if err := database.UpsertMessage(msg); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	msgs, err := database.ListUnifiedInboxUnreadFirst(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := subjectsOf(msgs)
+	want := []string{"New unread", "Old unread", "Newest read", "Old read"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("unexpected unified unread-first order: got %v want %v", got, want)
+	}
+
+	unread, err := database.ListUnifiedInboxUnreadFirst(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = subjectsOf(unread)
+	want = []string{"New unread", "Old unread"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("unexpected unread-only unified order: got %v want %v", got, want)
+	}
+}
+
+func subjectsOf(msgs []Message) []string {
+	out := make([]string, 0, len(msgs))
+	for _, msg := range msgs {
+		out = append(out, msg.Subject)
+	}
+	return out
 }
 
 func TestDBMoveAndDeleteMessageUpdateLocalState(t *testing.T) {

@@ -100,6 +100,11 @@ type MessageRef struct {
 	MailboxID int64
 }
 
+type ClipboardReadMsg struct {
+	Text string
+	Err  error
+}
+
 type MailboxReadUpdatedMsg struct {
 	MailboxIDs []int64
 	Err        error

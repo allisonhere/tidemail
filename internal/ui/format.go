@@ -269,11 +269,64 @@ func splitSentences(s string) []string {
 func renderHTMLBody(html string, width int, th Theme, plainUI bool) string {
 	converter := md.NewConverter("", true, nil)
 	converter.AddRules(spanStyleRule())
+	converter.AddRules(tableTextRule())
 	markdown, err := converter.ConvertString(html)
 	if err != nil || strings.TrimSpace(markdown) == "" {
 		return ""
 	}
 	return renderMarkdown(markdown, width, th, plainUI)
+}
+
+func tableTextRule() md.Rule {
+	return md.Rule{
+		Filter: []string{"table"},
+		Replacement: func(_ string, selec *goquery.Selection, _ *md.Options) *string {
+			var rows [][]string
+			selec.Find("tr").Each(func(_ int, tr *goquery.Selection) {
+				var row []string
+				tr.Find("th,td").Each(func(_ int, cell *goquery.Selection) {
+					row = append(row, normalizeInlineSpacing(cell.Text()))
+				})
+				if len(row) > 0 {
+					rows = append(rows, row)
+				}
+			})
+			if len(rows) == 0 {
+				return md.String("")
+			}
+
+			cols := 0
+			for _, row := range rows {
+				if len(row) > cols {
+					cols = len(row)
+				}
+			}
+			widths := make([]int, cols)
+			for _, row := range rows {
+				for i, cell := range row {
+					if l := lipgloss.Width(cell); l > widths[i] {
+						widths[i] = l
+					}
+				}
+			}
+
+			lines := make([]string, 0, len(rows)+2)
+			lines = append(lines, "```")
+			for _, row := range rows {
+				cells := make([]string, cols)
+				for i := 0; i < cols; i++ {
+					cell := ""
+					if i < len(row) {
+						cell = row[i]
+					}
+					cells[i] = cell + strings.Repeat(" ", widths[i]-lipgloss.Width(cell))
+				}
+				lines = append(lines, strings.Join(cells, " | "))
+			}
+			lines = append(lines, "```")
+			return md.String("\n\n" + strings.Join(lines, "\n") + "\n\n")
+		},
+	}
 }
 
 // spanStyleRule returns a Rule that converts <span style="..."> CSS properties

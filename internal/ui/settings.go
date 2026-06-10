@@ -36,6 +36,7 @@ const (
 	sfFocusLine
 	sfShowSender
 	sfDefaultUnreadOnly
+	sfUnreadFirst
 	sfActionableLinks
 	sfFilterLinks
 	sfReadingWidth
@@ -221,6 +222,7 @@ type Settings struct {
 	focusLine            bool
 	showSender           bool
 	defaultUnreadOnly    bool
+	unreadFirst          bool
 	actionableLinks      bool
 	filterLinks          bool
 	confirmQuit          bool
@@ -311,6 +313,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		focusLine:            cfg.Display.FocusLine,
 		showSender:           cfg.Display.ShowSender,
 		defaultUnreadOnly:    cfg.Display.DefaultUnreadOnly,
+		unreadFirst:          cfg.Display.UnreadFirst,
 		actionableLinks:      cfg.Display.ActionableLinks,
 		filterLinks:          cfg.Display.FilterLinks,
 		confirmQuit:          cfg.Display.ConfirmQuit,
@@ -376,6 +379,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.FocusLine = s.focusLine
 	cfg.Display.ShowSender = s.showSender
 	cfg.Display.DefaultUnreadOnly = s.defaultUnreadOnly
+	cfg.Display.UnreadFirst = s.unreadFirst
 	cfg.Display.ActionableLinks = s.actionableLinks
 	cfg.Display.FilterLinks = s.filterLinks
 	cfg.Display.ConfirmQuit = s.confirmQuit
@@ -593,7 +597,7 @@ func (s Settings) updateNowActionVisible() bool {
 func (s Settings) sectionFields(section settingsSection) []settingsField {
 	switch section {
 	case ssDisplay:
-		fields := []settingsField{sfBackToSections, sfIcons, sfDateFormat, sfMarkReadOnOpen, sfMarkReadOnFocus, sfFocusLine, sfShowSender, sfDefaultUnreadOnly, sfTheme, sfDisplayDensity, sfReadingWidth}
+		fields := []settingsField{sfBackToSections, sfIcons, sfDateFormat, sfMarkReadOnOpen, sfMarkReadOnFocus, sfFocusLine, sfShowSender, sfDefaultUnreadOnly, sfUnreadFirst, sfTheme, sfDisplayDensity, sfReadingWidth}
 		if config.IsRetroTerminalTheme(s.themeName) {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
@@ -1061,6 +1065,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfUnreadFirst:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.unreadFirst = !s.unreadFirst
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfActionableLinks:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.actionableLinks = !s.actionableLinks
@@ -1445,6 +1458,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addToggle("Focus line", s.focusLine, sfFocusLine)
 		b.addToggle("Show sender", s.showSender, sfShowSender)
 		b.addToggle("Default to unread only", s.defaultUnreadOnly, sfDefaultUnreadOnly)
+		b.addToggle("Unread first", s.unreadFirst, sfUnreadFirst)
 		b.addThemeSelector()
 		b.addDensitySelector()
 		b.addInput("Reading width (columns)", s.readingWidthInput, sfReadingWidth)
@@ -2360,14 +2374,9 @@ func (s Settings) renderAboutHero(width int, chrome managerChrome) string {
 	// Centered tagline on row 1
 	taglineCentered := aboutCenterText(tagline, contentW)
 
-	// Signal bar on row 1 — smooth ping-pong, decelerates at edges
-	angle := float64(s.aboutGradientFrame) * 0.065
-	norm := math.Asin(math.Sin(angle)) / (math.Pi / 2) // -1..1
-	signalPos := int(math.Round((norm + 1) / 2 * float64(contentW-1)))
-
 	lines := []string{
 		s.renderAboutHeroTextLine(titleCentered, contentW, 0, true),
-		renderSignalBar(contentW, int(signalPos), float64(s.aboutGradientFrame)),
+		renderDNASignalBar(contentW, s.aboutGradientFrame),
 		s.renderAboutHeroTextLine(taglineCentered, contentW, 1, false),
 		s.renderAboutHeroTextLine("", contentW, 3, false),
 	}
@@ -2385,22 +2394,28 @@ func (s Settings) renderAboutHero(width int, chrome managerChrome) string {
 	return lipgloss.NewStyle().Width(width).Background(lipgloss.Color("#000000")).Align(lipgloss.Center).Render(panel)
 }
 
-// renderSignalBar renders a thin horizontal line across the full row width.
-// The line is rainbow-colored with a bright white point at the eye position,
-// fading smoothly in both directions through the spectrum.
-func renderSignalBar(w, head int, frame float64) string {
-	spread := math.Max(3, float64(w)*0.60)
+var aboutDNAFrames = []string{
+	"⠋⠙⠚⠒⠂",
+	"⠙⠚⠒⠂⠂",
+	"⠚⠒⠂⠂⠒",
+	"⠒⠂⠂⠒⠚",
+	"⠂⠂⠒⠚⠙",
+	"⠂⠒⠚⠙⠋",
+}
+
+func renderDNASignalBar(w int, frame int) string {
+	if w <= 0 {
+		return ""
+	}
+	pattern := []rune(aboutDNAFrames[frame%len(aboutDNAFrames)])
 	bg := lipgloss.Color("#000000")
-	flicker := 0.90 + 0.10*math.Sin(frame*0.11)
 
 	var b strings.Builder
 	for i := 0; i < w; i++ {
-		dist := math.Abs(float64(i - head))
-		intensity := math.Exp(-(dist*dist)/(spread*spread)) * flicker
-		intensity = clamp01(intensity)
-		fg := cylonGlowColor(intensity)
-		cell := lipgloss.NewStyle().Background(bg).Foreground(fg).Render("─")
-		b.WriteString(cell)
+		ch := pattern[i%len(pattern)]
+		pos := float64((i + frame) % w)
+		fg := cylonGlowColor(pos / float64(max(1, w-1)))
+		b.WriteString(lipgloss.NewStyle().Background(bg).Foreground(fg).Render(string(ch)))
 	}
 	return b.String()
 }

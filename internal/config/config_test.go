@@ -43,6 +43,9 @@ func TestDefaultConfigIncludesUpdateDefaults(t *testing.T) {
 	if cfg.Updates.CheckIntervalHours != 24 {
 		t.Fatalf("expected 24 hour update interval, got %d", cfg.Updates.CheckIntervalHours)
 	}
+	if cfg.Display.UnreadFirst {
+		t.Fatal("expected unread-first ordering to be disabled by default")
+	}
 	if len(cfg.Accounts) != 0 {
 		t.Fatalf("expected default accounts to be empty, got %#v", cfg.Accounts)
 	}
@@ -130,6 +133,7 @@ date_format = "relative"
 mark_read_on_open = true
 mark_read_on_focus = true
 focus_line = false
+unread_first = true
 browser = ""
 density = "compact"
 
@@ -206,5 +210,8 @@ from = "alice@example.com"
 	}
 	if cfg.Display.FocusLine {
 		t.Fatal("expected focus_line to load false")
+	}
+	if !cfg.Display.UnreadFirst {
+		t.Fatal("expected unread_first to load true")
 	}
 }

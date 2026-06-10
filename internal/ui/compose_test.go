@@ -153,6 +153,40 @@ func TestForwardTypingStartsAboveQuotedMessage(t *testing.T) {
 	}
 }
 
+func TestCtrlPPastesClipboardIntoComposeBody(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.overlay = overlayCompose
+	m.compose = NewCompose(config.AccountConfig{}, nil, nil)
+	m.compose.focusedField = composeFieldBody
+	m.compose.bodyInput.Focus()
+
+	restore := stubClipboardRead(t, "pasted text")
+	defer restore()
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+	m = next.(Model)
+	if cmd == nil {
+		t.Fatal("expected ctrl+p in compose to read clipboard")
+	}
+	next, _ = m.Update(cmd())
+	m = next.(Model)
+
+	if got := m.compose.bodyInput.Value(); got != "pasted text" {
+		t.Fatalf("expected clipboard text pasted into compose body, got %q", got)
+	}
+}
+
+func stubClipboardRead(t *testing.T, text string) func() {
+	t.Helper()
+	orig := clipboardReadCmd
+	clipboardReadCmd = func() tea.Cmd {
+		return func() tea.Msg {
+			return ClipboardReadMsg{Text: text}
+		}
+	}
+	return func() { clipboardReadCmd = orig }
+}
+
 func TestComposeFromDraftRestoresFieldsAndAttachments(t *testing.T) {
 	draft := db.Draft{
 		ID:           7,
@@ -239,6 +273,23 @@ func TestDraftCloseConfirmSavesDraft(t *testing.T) {
 	}
 	if len(drafts) != 1 || drafts[0].Subject != "Keep me" || drafts[0].BodyText != "Body" {
 		t.Fatalf("expected saved draft, got %+v", drafts)
+	}
+}
+
+func TestDraftCloseConfirmDiscardsWithLowercaseD(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.overlay = overlayDraftCloseConfirm
+	m.compose = NewCompose(config.AccountConfig{}, nil, nil)
+	m.compose.bodyInput.SetValue("Body")
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	m = next.(Model)
+
+	if m.overlay != overlayNone {
+		t.Fatalf("expected compose closed after discarding draft, got overlay %v", m.overlay)
+	}
+	if cmd != nil {
+		t.Fatalf("expected discard without existing draft to need no command, got %#v", cmd)
 	}
 }
 

@@ -226,6 +226,22 @@ func TestSettingsLoadsAndAppliesFocusLine(t *testing.T) {
 	}
 }
 
+func TestSettingsLoadsAndAppliesUnreadFirst(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Display.UnreadFirst = true
+
+	s := newSettings(cfg, settingsUpdateState{})
+	if !s.unreadFirst {
+		t.Fatal("expected settings to load unread-first from config")
+	}
+
+	s.unreadFirst = false
+	next := s.ApplyTo(cfg)
+	if next.Display.UnreadFirst {
+		t.Fatal("expected ApplyTo to save disabled unread-first")
+	}
+}
+
 func TestSettingsViewIncludesFocusLineToggle(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	s.setFocusedPane(settingsPaneDetail)
@@ -235,9 +251,20 @@ func TestSettingsViewIncludesFocusLineToggle(t *testing.T) {
 	}
 }
 
+func TestSettingsViewIncludesUnreadFirstToggle(t *testing.T) {
+	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	s.setFocusedPane(settingsPaneDetail)
+	s.setFocusedField(sfUnreadFirst)
+	v := s.View(62, 24, newManagerChrome(62, CatppuccinMocha, false))
+	if !strings.Contains(v, "Unread first") {
+		t.Fatal("expected settings view to contain unread-first toggle")
+	}
+}
+
 func TestSettingsViewIncludesLayoutDensity(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	s.setFocusedPane(settingsPaneDetail)
+	s.setFocusedField(sfDisplayDensity)
 	v := s.View(62, 32, newManagerChrome(62, CatppuccinMocha, false))
 	if !strings.Contains(v, "Layout density") {
 		t.Fatal("expected settings view to contain layout density label")
@@ -812,6 +839,28 @@ func TestSettingsAboutGradientDoesNotShiftHeroLayout(t *testing.T) {
 		if lipgloss.Width(beforeLines[i]) != lipgloss.Width(afterLines[i]) {
 			t.Fatalf("line %d width changed across about animation frames: before=%d after=%d", i+1, lipgloss.Width(beforeLines[i]), lipgloss.Width(afterLines[i]))
 		}
+	}
+}
+
+func TestRenderDNASignalBarUsesBrailleGlyphs(t *testing.T) {
+	bar := renderDNASignalBar(24, 0)
+	stripped := ansi.Strip(bar)
+	if got := lipgloss.Width(stripped); got != 24 {
+		t.Fatalf("expected DNA signal bar width 24, got %d in %q", got, stripped)
+	}
+	if strings.Contains(stripped, "─") {
+		t.Fatalf("expected DNA signal bar to replace solid line glyphs, got %q", stripped)
+	}
+	if !strings.ContainsAny(stripped, "⠋⠙⠚⠒⠂") {
+		t.Fatalf("expected DNA signal bar to contain braille glyphs, got %q", stripped)
+	}
+}
+
+func TestRenderDNASignalBarAnimatesAcrossFrames(t *testing.T) {
+	first := ansi.Strip(renderDNASignalBar(24, 0))
+	next := ansi.Strip(renderDNASignalBar(24, 1))
+	if first == next {
+		t.Fatalf("expected DNA signal bar frames to differ, got %q", first)
 	}
 }
 

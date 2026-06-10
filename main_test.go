@@ -46,3 +46,10 @@ func TestParseStartupOptionsPrototypeForms(t *testing.T) {
 		t.Fatal("expected --prototype-forms to enable prototype form mode")
 	}
 }
+
+func TestProgramOptionsKeepTerminalMouseSelectionAvailable(t *testing.T) {
+	opts := programOptions()
+	if len(opts) != 1 {
+		t.Fatalf("expected only alt-screen option so terminal mouse selection stays available, got %d options", len(opts))
+	}
+}

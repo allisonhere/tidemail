@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -49,6 +50,75 @@ func TestSaveConfigSuccessNoError(t *testing.T) {
 	m.saveConfig()
 	if m.statusErr {
 		t.Fatalf("did not expect an error status on success, got %q", m.statusMsg)
+	}
+}
+
+func TestSettingsSavePreservesSelectedMessageAfterUnreadFirstReload(t *testing.T) {
+	database, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	accountID, err := database.AddAccount("Acct", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailboxID, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, msg := range []db.Message{
+		{MailboxID: mailboxID, UID: 1, Subject: "Older unread", Date: time.Unix(10, 0)},
+		{MailboxID: mailboxID, UID: 2, Subject: "Newest read", Date: time.Unix(30, 0), Read: true},
+		{MailboxID: mailboxID, UID: 3, Subject: "Older read", Date: time.Unix(20, 0), Read: true},
+	} {
+		if err := database.UpsertMessage(msg); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.Display.UnreadFirst = false
+	m := NewModel(database, cfg, "dev", false)
+	m.accounts = []db.Account{{ID: accountID, Name: "Acct"}}
+	m.mailboxes = []db.Mailbox{{ID: mailboxID, AccountID: accountID, Name: "INBOX"}}
+	m.rebuildSidebar()
+	for i, row := range m.sidebarRows {
+		if row.kind == rowKindMailbox && row.mailboxID == mailboxID {
+			m.sidebarCursor = i
+			break
+		}
+	}
+	msgs, err := database.ListMessages(mailboxID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.messages = msgs
+	m.filteredMessages = msgs
+	m.messageCursor = 0
+	selectedID := msgs[0].ID
+	m.overlay = overlaySettings
+	m.settings = newSettings(cfg, m.settingsUpdateState())
+	m.settings.unreadFirst = true
+
+	origSave := configSave
+	configSave = func(config.Config) error { return nil }
+	defer func() { configSave = origSave }()
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = next.(Model)
+
+	if m.pendingSelectMessageID != selectedID {
+		t.Fatalf("expected settings save to remember selected message %d, got %d", selectedID, m.pendingSelectMessageID)
+	}
+
+	reloaded := []db.Message{msgs[2], msgs[0], msgs[1]}
+	next, _ = m.Update(MessagesLoadedMsg{MailboxID: mailboxID, Messages: reloaded})
+	m = next.(Model)
+
+	if len(m.filteredMessages) == 0 || m.filteredMessages[m.messageCursor].ID != selectedID {
+		t.Fatalf("expected selected message %d preserved after reload, cursor=%d messages=%+v", selectedID, m.messageCursor, m.filteredMessages)
 	}
 }
 

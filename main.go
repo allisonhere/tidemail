@@ -80,10 +80,7 @@ func main() {
 		defer uiModel.CloseSessions()
 	}
 
-	p := tea.NewProgram(model,
-		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
-	)
+	p := tea.NewProgram(model, programOptions()...)
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -95,6 +92,12 @@ func main() {
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", config.RedactSecrets(err.Error(), cfg))
 		os.Exit(1)
+	}
+}
+
+func programOptions() []tea.ProgramOption {
+	return []tea.ProgramOption{
+		tea.WithAltScreen(),
 	}
 }
 

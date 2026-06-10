@@ -49,6 +49,9 @@ func (m *Model) aiSummarizeCmd(msg db.Message) tea.Cmd {
 	}
 }
 
+var clipboardWriteCmd = copyToClipboardCmd
+var clipboardReadCmd = readClipboardCmd
+
 func copyToClipboardCmd(text string) tea.Cmd {
 	return func() tea.Msg {
 		candidates := [][]string{
@@ -69,6 +72,28 @@ func copyToClipboardCmd(text string) tea.Cmd {
 			}
 		}
 		return ClipboardCopiedMsg{Err: fmt.Errorf("no clipboard tool found (wl-copy/xclip/xsel/pbcopy)")}
+	}
+}
+
+func readClipboardCmd() tea.Cmd {
+	return func() tea.Msg {
+		candidates := [][]string{
+			{"wl-paste", "--no-newline"},
+			{"xclip", "-selection", "clipboard", "-out"},
+			{"xsel", "--clipboard", "--output"},
+			{"pbpaste"},
+		}
+		for _, args := range candidates {
+			path, err := exec.LookPath(args[0])
+			if err != nil {
+				continue
+			}
+			out, err := exec.Command(path, args[1:]...).Output()
+			if err == nil {
+				return ClipboardReadMsg{Text: string(out)}
+			}
+		}
+		return ClipboardReadMsg{Err: fmt.Errorf("no clipboard tool found (wl-paste/xclip/xsel/pbpaste)")}
 	}
 }
 

@@ -42,6 +42,19 @@ func (db *DB) ListMessages(mailboxID int64) ([]Message, error) {
 	return scanMessages(rows)
 }
 
+func (db *DB) ListMessagesUnreadFirst(mailboxID int64) ([]Message, error) {
+	rows, err := db.Query(`
+		SELECT id, mailbox_id, uid, message_id, subject, from_addr, to_addr, cc_addr,
+		       reply_to, date, body_text, body_html, summary,		flags, read, has_attachment, headers
+		FROM messages WHERE mailbox_id = ?
+		ORDER BY read ASC, date DESC, id DESC`, mailboxID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanMessages(rows)
+}
+
 func (db *DB) CountMessages(mailboxID int64) (int64, error) {
 	var n int64
 	err := db.QueryRow(`SELECT COUNT(*) FROM messages WHERE mailbox_id = ?`, mailboxID).Scan(&n)
@@ -79,6 +92,31 @@ func (db *DB) ListUnifiedInbox(unreadOnly bool) ([]Message, error) {
 			OR instr(lower(mailboxes.flags), '\inbox') > 0
 		)` + readClause + `
 		ORDER BY messages.date DESC, messages.id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanMessages(rows)
+}
+
+func (db *DB) ListUnifiedInboxUnreadFirst(unreadOnly bool) ([]Message, error) {
+	readClause := ""
+	if unreadOnly {
+		readClause = " AND messages.read = 0"
+	}
+	rows, err := db.Query(`
+		SELECT messages.id, messages.mailbox_id, messages.uid, messages.message_id,
+		       messages.subject, messages.from_addr, messages.to_addr, messages.cc_addr,
+		       messages.reply_to, messages.date, messages.body_text, messages.body_html,
+		       messages.summary, messages.flags, messages.read, messages.has_attachment, messages.headers
+		FROM messages
+		JOIN mailboxes ON mailboxes.id = messages.mailbox_id
+		WHERE (
+			lower(mailboxes.name) = 'inbox'
+			OR lower(mailboxes.display_name) = 'inbox'
+			OR instr(lower(mailboxes.flags), '\inbox') > 0
+		)` + readClause + `
+		ORDER BY messages.read ASC, messages.date DESC, messages.id DESC`)
 	if err != nil {
 		return nil, err
 	}

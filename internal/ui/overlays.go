@@ -43,7 +43,7 @@ func (m Model) renderOverlay(base string) string {
 			Render("Save this draft before closing compose?")
 		actions := renderManagerActions(winW, chrome,
 			"y/enter", "save",
-			"n", "discard",
+			"d", "discard",
 			"esc", "cancel",
 		)
 		inner := lipgloss.JoinVertical(lipgloss.Left, header, body, actions)

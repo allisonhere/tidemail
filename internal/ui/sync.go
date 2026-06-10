@@ -82,8 +82,17 @@ func ensureConfiguredAccounts(database *db.DB, accounts []db.Account, configs []
 
 func (m *Model) loadMailboxMessagesCmd(mailboxID int64) tea.Cmd {
 	database := m.db
+	unreadFirst := m.cfg.Display.UnreadFirst
 	return func() tea.Msg {
-		msgs, err := database.ListMessages(mailboxID)
+		var (
+			msgs []db.Message
+			err  error
+		)
+		if unreadFirst {
+			msgs, err = database.ListMessagesUnreadFirst(mailboxID)
+		} else {
+			msgs, err = database.ListMessages(mailboxID)
+		}
 		if err != nil {
 			return MessagesLoadedMsg{MailboxID: mailboxID, Err: err}
 		}
@@ -94,8 +103,17 @@ func (m *Model) loadMailboxMessagesCmd(mailboxID int64) tea.Cmd {
 func (m *Model) loadUnifiedInboxCmd() tea.Cmd {
 	database := m.db
 	unreadOnly := m.showUnreadOnly
+	unreadFirst := m.cfg.Display.UnreadFirst
 	return func() tea.Msg {
-		msgs, err := database.ListUnifiedInbox(unreadOnly)
+		var (
+			msgs []db.Message
+			err  error
+		)
+		if unreadFirst {
+			msgs, err = database.ListUnifiedInboxUnreadFirst(unreadOnly)
+		} else {
+			msgs, err = database.ListUnifiedInbox(unreadOnly)
+		}
 		if err != nil {
 			return MessagesLoadedMsg{Err: err}
 		}

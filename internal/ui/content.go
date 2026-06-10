@@ -212,6 +212,7 @@ func (m *Model) setViewportMessage(msg db.Message) {
 	m.syncContentLinks(msg)
 	m.contentAttachments = nil
 	m.contentQuotesCollapsed = false
+	m.clearContentSelection()
 	if !sameMsg {
 		m.contentShowHeaders = true
 	}
@@ -245,6 +246,7 @@ func (m *Model) clearViewportMessage() {
 	m.contentFocusable = nil
 	m.contentLines = nil
 	m.contentAttachments = nil
+	m.clearContentSelection()
 	m.clearContentSearch()
 	m.viewport.GotoTop()
 }
@@ -255,6 +257,7 @@ func (m *Model) clearContentSearch() {
 	m.contentSearchMatches = nil
 	m.contentSearchIdx = -1
 	m.contentSearchInput.Blur()
+	m.clearContentSelection()
 	if msg := m.currentContentMessage(); msg != nil {
 		m.setViewportMessage(*msg)
 	}
@@ -299,11 +302,92 @@ func (m *Model) moveContentFocusLine(delta int) {
 	m.ensureContentFocusVisible()
 }
 
+func (m *Model) startContentSelection() {
+	if m.contentLineCount == 0 {
+		return
+	}
+	if m.contentSelectionActive && !m.contentSelectionAll {
+		m.clearContentSelection()
+		return
+	}
+	m.contentSelectionActive = true
+	m.contentSelectionAll = false
+	m.contentSelectionAnchor = clamp(m.contentFocusLine, 0, m.contentLineCount-1)
+}
+
+func (m *Model) selectAllContentLines() {
+	if m.contentLineCount == 0 {
+		return
+	}
+	m.contentSelectionActive = true
+	m.contentSelectionAll = true
+	m.contentSelectionAnchor = 0
+}
+
+func (m *Model) clearContentSelection() {
+	m.contentSelectionActive = false
+	m.contentSelectionAll = false
+	m.contentSelectionAnchor = 0
+}
+
+func (m Model) contentSelectionText(fallbackFocused bool) string {
+	if len(m.contentLines) == 0 {
+		return ""
+	}
+	start, end := -1, -1
+	switch {
+	case m.contentSelectionActive && m.contentSelectionAll:
+		start, end = 0, len(m.contentLines)-1
+	case m.contentSelectionActive:
+		start = clamp(m.contentSelectionAnchor, 0, len(m.contentLines)-1)
+		end = clamp(m.contentFocusLine, 0, len(m.contentLines)-1)
+		if start > end {
+			start, end = end, start
+		}
+	case fallbackFocused:
+		start = clamp(m.contentFocusLine, 0, len(m.contentLines)-1)
+		end = start
+	default:
+		return ""
+	}
+
+	lines := make([]string, 0, end-start+1)
+	for _, line := range m.contentLines[start : end+1] {
+		lines = append(lines, strings.TrimRight(line, " \t"))
+	}
+	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m Model) contentLineSelected(line int) bool {
+	if !m.contentSelectionActive || m.contentLineCount == 0 {
+		return false
+	}
+	if m.contentSelectionAll {
+		return line >= 0 && line < m.contentLineCount
+	}
+	start := clamp(m.contentSelectionAnchor, 0, m.contentLineCount-1)
+	end := clamp(m.contentFocusLine, 0, m.contentLineCount-1)
+	if start > end {
+		start, end = end, start
+	}
+	return line >= start && line <= end
+}
+
 func (m Model) renderContentFocusLine(body string, width, height int, focused bool) string {
 	hasSearch := len(m.contentSearchMatches) > 0
 	hasFocus := m.cfg.Display.FocusLine && focused && m.contentLineCount > 0
+	hasSelection := m.contentSelectionActive && m.contentLineCount > 0
 
-	if !hasSearch && !hasFocus {
+	if !hasSearch && !hasFocus && !hasSelection {
 		return body
 	}
 	if width <= 0 || height <= 0 {
@@ -330,6 +414,14 @@ func (m Model) renderContentFocusLine(body string, width, height int, focused bo
 		}
 		if m.contentSearchIdx >= 0 && m.contentSearchIdx < len(m.contentSearchMatches) {
 			styleLine(m.contentSearchMatches[m.contentSearchIdx], m.styles.ContentFocusLine)
+		}
+	}
+
+	if hasSelection {
+		for lineIdx := range m.contentLines {
+			if m.contentLineSelected(lineIdx) {
+				styleLine(lineIdx, m.styles.ContentFocusLine)
+			}
 		}
 	}
 

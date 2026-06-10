@@ -46,3 +46,15 @@ func TestRenderHelpScopesModalShortcuts(t *testing.T) {
 		t.Fatalf("expected mixed help sections to be replaced with scoped modal sections, got %q", view)
 	}
 }
+
+func TestRenderHelpDocumentsNativeMessageSelection(t *testing.T) {
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys))
+	for _, want := range []string{"v/V", "visual select", "y/ctrl+c", "copy selected message text", "`"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("expected help to document native message copy term %q, got %q", want, view)
+		}
+	}
+	if strings.Contains(view, "v                  open AI summary overlay") {
+		t.Fatalf("expected AI summary to move off v, got %q", view)
+	}
+}

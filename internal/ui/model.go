@@ -127,18 +127,21 @@ type Model struct {
 	showUnreadOnly   bool
 	selectedMessages map[int64]bool
 
-	viewport             viewport.Model
-	contentLinks         []string
-	contentLinkIdx       int
-	contentMessageID     int64
-	contentFocusLine     int
-	contentLineCount     int
-	contentFocusable     []bool
-	contentLines         []string
-	contentSearchInput   textinput.Model
-	contentSearchQuery   string
-	contentSearchMatches []int
-	contentSearchIdx     int
+	viewport               viewport.Model
+	contentLinks           []string
+	contentLinkIdx         int
+	contentMessageID       int64
+	contentFocusLine       int
+	contentLineCount       int
+	contentFocusable       []bool
+	contentLines           []string
+	contentSearchInput     textinput.Model
+	contentSearchQuery     string
+	contentSearchMatches   []int
+	contentSearchIdx       int
+	contentSelectionActive bool
+	contentSelectionAnchor int
+	contentSelectionAll    bool
 
 	contentAttachments     []db.Attachment
 	contentQuotesCollapsed bool
@@ -177,6 +180,7 @@ type Model struct {
 
 	firstLoad              bool
 	pendingSelectMailboxID int64
+	pendingSelectMessageID int64
 	keys                   KeyMap
 
 	settings Settings
@@ -512,6 +516,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}()) {
 			m.messages = msg.Messages
 			m.applyFilter()
+			if m.pendingSelectMessageID != 0 {
+				if idx := m.indexOfFilteredMessage(m.pendingSelectMessageID); idx >= 0 {
+					m.messageCursor = idx
+				}
+				m.pendingSelectMessageID = 0
+			}
 			m.messageCursor = clamp(m.messageCursor, 0, max(0, len(m.filteredMessages)-1))
 			m.listOffset = 0
 			if len(m.filteredMessages) > 0 {
@@ -894,6 +904,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.clearStatusCmd()
 
+	case ClipboardReadMsg:
+		if msg.Err != nil {
+			m.setStatus("paste failed: "+msg.Err.Error(), true)
+			return m, m.clearStatusCmd()
+		}
+		if m.overlay == overlayCompose && msg.Text != "" {
+			return m.handleCompose(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(msg.Text), Paste: true})
+		}
+		return m, nil
+
 	case AttachmentsSavedMsg:
 		if msg.Err != nil {
 			m.setStatus(fmt.Sprintf("save attachments failed: %v", msg.Err), true)
@@ -1035,6 +1055,30 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.Down):
 		return m.handleDown()
 
+	case keyMatches(msg, m.keys.VisualSelect):
+		if m.focused == paneContent && m.contentMessageID != 0 {
+			m.startContentSelection()
+		}
+		return m, nil
+
+	case keyMatches(msg, m.keys.VisualLine):
+		if m.focused == paneContent && m.contentMessageID != 0 {
+			m.selectAllContentLines()
+		}
+		return m, nil
+
+	case msg.String() == "y" || msg.String() == "ctrl+c":
+		if m.focused == paneContent && m.contentMessageID != 0 {
+			text := m.contentSelectionText(msg.String() == "ctrl+c")
+			if text == "" {
+				m.setStatus("nothing to copy", false)
+				return m, m.clearStatusCmd()
+			}
+			m.clearContentSelection()
+			return m, clipboardWriteCmd(text)
+		}
+		return m, nil
+
 	case keyMatches(msg, m.keys.Enter):
 		if m.focused == paneAccounts {
 			if m.toggleSelectedAccount() {
@@ -1051,6 +1095,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keyMatches(msg, m.keys.Back):
 		if m.focused == paneContent {
+			if m.contentSelectionActive {
+				m.clearContentSelection()
+				return m, nil
+			}
 			m.focused = paneMessages
 			return m, nil
 		}
@@ -1326,6 +1374,9 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) focusPane(next pane) (tea.Model, tea.Cmd) {
 	wasMessages := m.focused == paneMessages
+	if m.focused == paneContent && next != paneContent {
+		m.clearContentSelection()
+	}
 	m.focused = next
 	if wasMessages && next == paneContent && m.selectedDraftsMailbox() && len(m.drafts) > 0 {
 		idx := clamp(m.messageCursor, 0, len(m.drafts)-1)
@@ -1453,7 +1504,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch {
 		case keyMatches(msg, m.keys.Yes), keyMatches(msg, m.keys.Confirm):
 			return m.closeComposeSavingDraft()
-		case keyMatches(msg, m.keys.No):
+		case keyMatches(msg, m.keys.DiscardDraft, m.keys.No):
 			return m.discardComposeDraft()
 		case keyMatches(msg, m.keys.Cancel):
 			m.overlay = overlayCompose
@@ -1683,10 +1734,13 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd == "" {
 			return m, nil
 		}
-		return m, copyToClipboardCmd(cmd)
+		return m, clipboardWriteCmd(cmd)
 	}
 	if done {
 		if m.settings.shouldSave {
+			if len(m.filteredMessages) > 0 && m.messageCursor >= 0 && m.messageCursor < len(m.filteredMessages) {
+				m.pendingSelectMessageID = m.filteredMessages[m.messageCursor].ID
+			}
 			m.cfg = m.settings.ApplyTo(m.cfg)
 			m.showUnreadOnly = m.cfg.Display.DefaultUnreadOnly
 			merged, _ := MergedThemeFromConfig(m.cfg)
@@ -1705,9 +1759,6 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.clearViewportMessage()
 			}
 			m.overlay = overlayNone
-			m.sidebarCursor = 0
-			m.sidebarOffset = 0
-			m.messageCursor = 0
 			m.clearMessages()
 			return m, tea.Batch(m.loadAccountsCmd())
 		}
@@ -1736,7 +1787,7 @@ func (m Model) handleSummaryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case keyMatches(msg, m.keys.CopyText):
 		if !m.summaryGenerating && m.summaryErr == "" && m.summaryMessage.Summary != "" {
-			return m, copyToClipboardCmd(m.summaryMessage.Summary)
+			return m, clipboardWriteCmd(m.summaryMessage.Summary)
 		}
 	case keyMatches(msg, m.keys.SaveMD):
 		if !m.summaryGenerating && m.summaryErr == "" && m.summaryMessage.Summary != "" {
@@ -1798,6 +1849,9 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.compose.statusMsg = "checking grammar..."
 			return m, m.grammarCheckCmd(body)
 		}
+	}
+	if km, ok := msg.(tea.KeyMsg); ok && keyMatches(km, m.keys.PasteText) && !m.compose.picker.active {
+		return m, clipboardReadCmd()
 	}
 	before := m.compose
 	newC, cmd, exit := m.compose.Update(msg, m.keys)
@@ -1924,6 +1978,8 @@ func (m Model) renderPaneHint(p pane) string {
 			progress = fmt.Sprintf("%d%%  ", pct)
 		}
 		hint = progress + m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " line  " +
+			m.keyHint(m.keys.VisualSelect) + "/" + m.keyHint(m.keys.VisualLine) + " select  " +
+			"y/ctrl+c copy  " +
 			m.keyHint(m.keys.Reply) + " reply  " + m.keyHint(m.keys.Forward) + " fwd  " +
 			m.keyHint(m.keys.Search) + " find  " +
 			m.keyHint(m.keys.ToggleHeaders) + " headers  " +

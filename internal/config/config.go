@@ -43,6 +43,7 @@ type DisplayConfig struct {
 	ReadingWidth      int                `toml:"reading_width"`
 	ConfirmQuit       bool               `toml:"confirm_quit"`
 	ShowHeaders       bool               `toml:"show_headers"`
+	UnreadFirst       bool               `toml:"unread_first"`
 	Notifications     bool               `toml:"notifications"`
 	Browser           string             `toml:"browser"`
 	Density           string             `toml:"density"`

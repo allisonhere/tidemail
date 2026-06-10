@@ -31,6 +31,7 @@ go build -o tidemail .
 - Select all with `A` — selects every message in current view
 - Full email headers display — toggle with `ctrl+e`, configurable default in Settings
 - Spam/auth headers — SPF, DKIM, DMARC results color-coded in header view
+- Message text can be copied from the content pane with Vim-style `v`/`V` selection, then `y` or `ctrl+c`
 - IMAP/SMTP accounts using passwords, app passwords, or **Gmail OAuth2** (stored in system keychain)
 - Account manager for adding, editing, deleting, and discovering mailboxes
 - Contacts manager for curated autocomplete, manual entries, adding seen senders, composing to selected contacts, and vCard import/export
@@ -152,7 +153,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 
 Settings are opened with `S`.
 
-- Display: icons, date format, mark-read behavior, focus line, show sender, actionable links, reading width, browser command, density, show email headers, desktop notifications, and quit confirmation
+- Display: icons, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, and quit confirmation
 - Accounts: edit account details and set a per-account `sync_minutes` interval for automatic background refresh
 - Updates: check, install, restart, or copy a manual install command
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings

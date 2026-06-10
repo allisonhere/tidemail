@@ -58,7 +58,7 @@ func mdBlock(node ast.Node, source []byte, width int, th Theme, plainUI bool) st
 		var items []string
 		counter := list.Start
 		for item := node.FirstChild(); item != nil; item = item.NextSibling() {
-			t := mdListItemText(item, source, th, plainUI)
+			t := mdListItemText(item, source, width, th, plainUI)
 			if list.IsOrdered() {
 				items = append(items, wrapNumberedBullet(fmt.Sprintf("%d", counter), t, width))
 				counter++
@@ -112,12 +112,20 @@ func mdCodeLines(segs *text.Segments, source []byte) string {
 
 // mdListItemText collects plain text from a list item node.
 // Tight list items contain TextBlock; loose items contain Paragraph.
-func mdListItemText(node ast.Node, source []byte, th Theme, plainUI bool) string {
+func mdListItemText(node ast.Node, source []byte, width int, th Theme, plainUI bool) string {
+	var parts []string
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		k := child.Kind()
 		if k == ast.KindParagraph || k == ast.KindTextBlock {
-			return mdInlineText(child, source, th, plainUI)
+			parts = append(parts, mdInlineText(child, source, th, plainUI))
+			continue
 		}
+		if b := mdBlock(child, source, width, th, plainUI); strings.TrimSpace(b) != "" {
+			parts = append(parts, b)
+		}
+	}
+	if len(parts) > 0 {
+		return strings.Join(parts, " ")
 	}
 	return mdInlineText(node, source, th, plainUI)
 }
