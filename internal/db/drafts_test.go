@@ -174,3 +174,91 @@ func TestDBFindDraftsMailboxPrefersSpecialUseThenCommonNames(t *testing.T) {
 		t.Fatalf("expected common-name drafts mailbox %d, got %+v", plainID, got)
 	}
 }
+
+func TestSaveDraftUpdatePreservesRemoteLinkage(t *testing.T) {
+	database := openDraftTestDB(t)
+
+	id, err := database.SaveDraft(Draft{
+		AccountName:     "Acct",
+		AccountUser:     "a@x",
+		MailboxID:       7,
+		RemoteUID:       42,
+		RemoteMessageID: "<remote@x>",
+		Subject:         "Original",
+		BodyText:        "Original body",
+		CreatedAt:       time.Unix(1710000000, 0),
+		LastRemoteSync:  time.Unix(1710000050, 0),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// An autosave rebuilds the draft from compose state: no mailbox, remote
+	// linkage, or creation time. Those must survive the update.
+	if _, err := database.SaveDraft(Draft{
+		ID:          id,
+		AccountName: "Acct",
+		AccountUser: "a@x",
+		Subject:     "Edited",
+		BodyText:    "Edited body",
+		Dirty:       true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	d, err := database.GetDraft(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Subject != "Edited" || d.BodyText != "Edited body" || !d.Dirty {
+		t.Fatalf("expected content update, got %+v", d)
+	}
+	if d.MailboxID != 7 || d.RemoteUID != 42 || d.RemoteMessageID != "<remote@x>" {
+		t.Fatalf("expected remote linkage preserved, got %+v", d)
+	}
+	if d.CreatedAt.Unix() != 1710000000 || d.LastRemoteSync.Unix() != 1710000050 {
+		t.Fatalf("expected timestamps preserved, got created=%v lastSync=%v", d.CreatedAt, d.LastRemoteSync)
+	}
+}
+
+func TestHasDraftForRemoteAndUnmirroredCount(t *testing.T) {
+	database := openDraftTestDB(t)
+
+	accountID, err := database.AddAccount("Acct", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailboxID, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "Drafts", Flags: []string{"\\Drafts"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertMessage(Message{MailboxID: mailboxID, UID: 1, MessageID: "<m1@x>", Subject: "one"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertMessage(Message{MailboxID: mailboxID, UID: 2, MessageID: "<m2@x>", Subject: "two"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if n, err := database.UnmirroredDraftMessageCount(mailboxID); err != nil || n != 2 {
+		t.Fatalf("expected 2 unmirrored before import, got %d err=%v", n, err)
+	}
+
+	if _, err := database.SaveDraft(Draft{
+		AccountName: "Acct", MailboxID: mailboxID, RemoteUID: 1, RemoteMessageID: "<m1@x>",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if ok, err := database.HasDraftForRemote("<m1@x>", mailboxID, 1); err != nil || !ok {
+		t.Fatalf("expected mirrored by message-id, got %v err=%v", ok, err)
+	}
+	if ok, err := database.HasDraftForRemote("", mailboxID, 1); err != nil || !ok {
+		t.Fatalf("expected mirrored by mailbox+uid, got %v err=%v", ok, err)
+	}
+	if ok, err := database.HasDraftForRemote("<m2@x>", mailboxID, 2); err != nil || ok {
+		t.Fatalf("expected unmirrored, got %v err=%v", ok, err)
+	}
+	if n, err := database.UnmirroredDraftMessageCount(mailboxID); err != nil || n != 1 {
+		t.Fatalf("expected 1 unmirrored after import, got %d err=%v", n, err)
+	}
+}

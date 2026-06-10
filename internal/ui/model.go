@@ -540,6 +540,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if selected := m.selectedMailbox(); selected != nil && msg.MailboxID == selected.ID {
 			cmds = append(cmds, m.loadMailboxMessagesCmd(msg.MailboxID))
 		}
+		if mb := m.mailboxByID(msg.MailboxID); mb != nil && m.isDraftsMailbox(*mb) {
+			cmds = append(cmds, m.importRemoteDraftsCmd(msg.MailboxID))
+		}
 		if msg.Manual && msg.NewCount > 0 {
 			m.setStatus(fmt.Sprintf("synced: %d new", msg.NewCount), false)
 			cmds = append(cmds, m.clearStatusCmd())
