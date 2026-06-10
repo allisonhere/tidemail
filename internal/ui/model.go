@@ -753,19 +753,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setStatus(msg.Action+"d", false)
 		return m, m.clearStatusCmd()
 
-	case MessageDeletedMsg:
-		if msg.Err != nil && !msg.LocalDeleted {
+	case MessagesDeletedMsg:
+		for _, ref := range msg.Deleted {
+			if m.removeMessageFromMemory(ref.ID) {
+				m.adjustMailboxUnreadCount(ref.MailboxID, -1)
+			}
+		}
+		switch {
+		case msg.Failed > 0 && len(msg.Deleted) == 0:
 			m.setStatus(fmt.Sprintf("delete failed: %v", msg.Err), true)
-			return m, m.clearStatusCmd()
+		case msg.Failed > 0:
+			m.setStatus(fmt.Sprintf("deleted %d; %d failed and kept: %v", len(msg.Deleted), msg.Failed, msg.Err), true)
+		case len(msg.Deleted) > 1:
+			m.setStatus(fmt.Sprintf("deleted %d", len(msg.Deleted)), false)
+		default:
+			m.setStatus("deleted", false)
 		}
-		if m.removeMessageFromMemory(msg.MessageID) {
-			m.adjustMailboxUnreadCount(msg.MailboxID, -1)
-		}
-		if msg.Err != nil {
-			m.setStatus(fmt.Sprintf("deleted locally; remote delete failed: %v", msg.Err), true)
-			return m, m.clearStatusCmd()
-		}
-		m.setStatus("deleted", false)
 		return m, m.clearStatusCmd()
 
 	case GrammarCheckedMsg:
@@ -1120,17 +1123,17 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if m.focused != paneAccounts && len(m.filteredMessages) > 0 {
 			if m.hasSelection() {
-				var cmds []tea.Cmd
+				var selected []db.Message
 				for _, msg2 := range m.filteredMessages {
 					if m.selectedMessages[msg2.ID] {
-						cmds = append(cmds, m.deleteMessageCmd(msg2))
+						selected = append(selected, msg2)
 					}
 				}
 				m.clearSelection()
-				return m, tea.Batch(cmds...)
+				return m, m.deleteMessagesCmd(selected)
 			}
 			msg2 := m.filteredMessages[m.messageCursor]
-			return m, m.deleteMessageCmd(msg2)
+			return m, m.deleteMessagesCmd([]db.Message{msg2})
 		}
 		return m, nil
 
@@ -1494,7 +1497,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if m.activeTheme != prevTheme {
-			return m, setTermBgCmd(m.styles.Theme.Bg)
+			return m, setTermColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg)
 		}
 		return m, nil
 
@@ -1613,7 +1616,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.filteredMessages) > 0 {
 			m.setViewportMessage(m.filteredMessages[m.messageCursor])
 		}
-		cmd = tea.Batch(cmd, setTermBgCmd(m.styles.Theme.Bg))
+		cmd = tea.Batch(cmd, setTermColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg))
 	}
 	action := m.settings.takeAction()
 	switch action {
@@ -1692,7 +1695,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.filteredMessages) > 0 {
 				m.setViewportMessage(m.filteredMessages[m.messageCursor])
 			}
-			return m, setTermBgCmd(m.styles.Theme.Bg)
+			return m, setTermColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg)
 		}
 		return m, nil
 	}

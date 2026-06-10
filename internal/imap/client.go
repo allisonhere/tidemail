@@ -170,13 +170,24 @@ func (c *Client) markDeletedAndExpunge(uidSet imap.UIDSet) error {
 }
 
 func (c *Client) MoveMessage(ctx context.Context, mailboxName string, uid uint32, targetMailbox string) error {
+	return c.MoveMessages(ctx, mailboxName, []uint32{uid}, targetMailbox)
+}
+
+// MoveMessages moves a batch of messages in one SELECT/COPY/EXPUNGE round trip.
+// Bulk actions must share one connection: issuing one connection per message
+// trips per-user connection caps (Gmail: 15, Dovecot default: 10) and the
+// overflow silently fails.
+func (c *Client) MoveMessages(ctx context.Context, mailboxName string, uids []uint32, targetMailbox string) error {
 	if c.conn == nil {
 		return fmt.Errorf("not connected")
+	}
+	if len(uids) == 0 {
+		return nil
 	}
 	if _, err := c.conn.Select(mailboxName, nil).Wait(); err != nil {
 		return fmt.Errorf("select %s: %w", mailboxName, err)
 	}
-	uidSet := imap.UIDSetNum(imap.UID(uid))
+	uidSet := uidSetOf(uids)
 	if _, err := c.conn.Copy(uidSet, targetMailbox).Wait(); err != nil {
 		return fmt.Errorf("copy to %s: %w", targetMailbox, err)
 	}
@@ -194,11 +205,28 @@ func (c *Client) CreateMailbox(ctx context.Context, name string) error {
 }
 
 func (c *Client) DeleteMessage(ctx context.Context, mailboxName string, uid uint32) error {
+	return c.DeleteMessages(ctx, mailboxName, []uint32{uid})
+}
+
+// DeleteMessages expunges a batch of messages in one SELECT/STORE/EXPUNGE round
+// trip on this connection (see MoveMessages for why batching matters).
+func (c *Client) DeleteMessages(ctx context.Context, mailboxName string, uids []uint32) error {
 	if c.conn == nil {
 		return fmt.Errorf("not connected")
+	}
+	if len(uids) == 0 {
+		return nil
 	}
 	if _, err := c.conn.Select(mailboxName, nil).Wait(); err != nil {
 		return fmt.Errorf("select %s: %w", mailboxName, err)
 	}
-	return c.markDeletedAndExpunge(imap.UIDSetNum(imap.UID(uid)))
+	return c.markDeletedAndExpunge(uidSetOf(uids))
+}
+
+func uidSetOf(uids []uint32) imap.UIDSet {
+	var set imap.UIDSet
+	for _, uid := range uids {
+		set.AddNum(imap.UID(uid))
+	}
+	return set
 }

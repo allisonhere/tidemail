@@ -72,7 +72,7 @@ func TestDeleteKeyWaitsForDeleteResultBeforeRemovingMessage(t *testing.T) {
 		t.Fatalf("expected message to stay visible until delete succeeds, got %d/%d", len(m.messages), len(m.filteredMessages))
 	}
 
-	next, _ = m.Update(MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID})
+	next, _ = m.Update(MessagesDeletedMsg{Deleted: []MessageRef{{ID: msg.ID, MailboxID: msg.MailboxID}}})
 	m = next.(Model)
 
 	if len(m.messages) != 0 || len(m.filteredMessages) != 0 {
@@ -80,25 +80,31 @@ func TestDeleteKeyWaitsForDeleteResultBeforeRemovingMessage(t *testing.T) {
 	}
 }
 
-func TestMessageDeletedMsgRemovesLocallyDeletedMessageDespiteRemoteError(t *testing.T) {
-	msg := db.Message{ID: 1, MailboxID: 2, Subject: "Delete me"}
+func TestMessagesDeletedMsgKeepsRemoteFailuresVisible(t *testing.T) {
+	deleted := db.Message{ID: 1, MailboxID: 2, Subject: "Gone"}
+	failed := db.Message{ID: 3, MailboxID: 2, Subject: "Still on server"}
 	m := Model{
-		messages:         []db.Message{msg},
-		filteredMessages: []db.Message{msg},
+		messages:         []db.Message{deleted, failed},
+		filteredMessages: []db.Message{deleted, failed},
 		messageCursor:    0,
 		selectedMessages: make(map[int64]bool),
 	}
 
-	next, _ := m.Update(MessageDeletedMsg{
-		MessageID:    msg.ID,
-		MailboxID:    msg.MailboxID,
-		LocalDeleted: true,
-		Err:          errors.New("remote unavailable"),
+	next, _ := m.Update(MessagesDeletedMsg{
+		Deleted: []MessageRef{{ID: deleted.ID, MailboxID: deleted.MailboxID}},
+		Failed:  1,
+		Err:     errors.New("too many simultaneous connections"),
 	})
 	m = next.(Model)
 
-	if len(m.messages) != 0 || len(m.filteredMessages) != 0 {
-		t.Fatalf("expected local delete result to remove message, got %d/%d", len(m.messages), len(m.filteredMessages))
+	if len(m.messages) != 1 || m.messages[0].ID != failed.ID {
+		t.Fatalf("expected only the failed message to stay, got %d messages", len(m.messages))
+	}
+	if !m.statusErr {
+		t.Fatal("expected an error status when some deletes fail")
+	}
+	if !strings.Contains(m.statusMsg, "1 failed") {
+		t.Fatalf("expected status to report the failure count, got %q", m.statusMsg)
 	}
 }
 

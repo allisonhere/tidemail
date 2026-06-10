@@ -85,11 +85,19 @@ type FilterRunMsg struct {
 	Err     error
 }
 
-type MessageDeletedMsg struct {
-	MessageID    int64
-	MailboxID    int64
-	LocalDeleted bool
-	Err          error
+// MessagesDeletedMsg reports the outcome of a (possibly bulk) delete.
+// Deleted lists messages removed both remotely and locally; messages whose
+// remote delete failed are left untouched (still in the DB and list) so the
+// local state never silently diverges from the server.
+type MessagesDeletedMsg struct {
+	Deleted []MessageRef
+	Failed  int
+	Err     error // first remote/local error, when Failed > 0
+}
+
+type MessageRef struct {
+	ID        int64
+	MailboxID int64
 }
 
 type MailboxReadUpdatedMsg struct {

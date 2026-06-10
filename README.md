@@ -60,7 +60,7 @@ go build -o tidemail .
 
 Config is stored in `~/.config/tidemail/config.toml`. The local SQLite cache is stored in `~/.local/share/tidemail/mail.db` unless `XDG_DATA_HOME` changes that path.
 
-Open account management with `M`, add an IMAP/SMTP account, then sync the selected mailbox with `f`. Press `f` on the Unified Inbox to sync every account's inbox at once. Use `F` to sync all mailboxes. Configure a per-account `sync_minutes` interval for automatic background refresh.
+Open account management with `M`, add an IMAP/SMTP account, then sync the selected mailbox with `s`. Press `s` on the Unified Inbox to sync every account's inbox at once. Use `F` to sync all mailboxes. Configure a per-account `sync_minutes` interval for automatic background refresh.
 
 Composing autosaves your message to the sending account's Drafts mailbox as you type, so closing the compose modal never loses work — closing with content prompts to save or discard. Open the Drafts mailbox to see saved drafts, press `Enter` to reopen one in compose, and `d` to delete it. Sending a draft removes it from Drafts automatically.
 
@@ -122,7 +122,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 | `M` | Account manager |
 | `C` | Contacts manager |
 | `c` in Contacts | Compose to selected contact(s) |
-| `f` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
+| `s` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
 | `F` | Sync all mailboxes |
 | `c` | Compose (autosaves to Drafts as you type) |
 | `Enter` in Drafts | Reopen selected draft in compose |

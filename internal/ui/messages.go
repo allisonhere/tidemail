@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
 	imapClient "github.com/allisonhere/tide/internal/imap"
 	tea "github.com/charmbracelet/bubbletea"
@@ -240,42 +241,92 @@ func (m *Model) archiveMessageCmd(msg db.Message) tea.Cmd {
 	}
 }
 
-func (m *Model) deleteMessageCmd(msg db.Message) tea.Cmd {
+// deleteMessagesCmd deletes one or more messages. Messages are grouped by
+// mailbox so each group shares a single IMAP connection — one connection per
+// message trips per-user connection caps (Gmail: 15, Dovecot default: 10) and
+// the overflow fails. The remote operation runs first; the local row (and its
+// resync tombstone) is only removed for messages the server actually deleted,
+// so a failed remote delete leaves the message visible instead of silently
+// diverging from the server.
+func (m *Model) deleteMessagesCmd(msgs []db.Message) tea.Cmd {
 	database := m.db
-	mailbox := m.mailboxByID(msg.MailboxID)
-	acfg := m.accountCfgForMailbox(msg.MailboxID)
-	var trashMailbox *db.Mailbox
-	if mailbox != nil {
-		if trash, err := database.FindTrashMailbox(mailbox.AccountID); err == nil {
-			trashMailbox = &trash
+	type deleteBatch struct {
+		acfg    config.AccountConfig
+		mailbox db.Mailbox
+		trash   *db.Mailbox
+		msgs    []db.Message
+	}
+	var batches []*deleteBatch
+	byMailbox := map[int64]*deleteBatch{}
+	missing := 0
+	for _, msg := range msgs {
+		mailbox := m.mailboxByID(msg.MailboxID)
+		if mailbox == nil {
+			missing++
+			continue
 		}
+		b := byMailbox[mailbox.ID]
+		if b == nil {
+			b = &deleteBatch{acfg: m.accountCfgForMailbox(msg.MailboxID), mailbox: *mailbox}
+			if trash, err := database.FindTrashMailbox(mailbox.AccountID); err == nil {
+				b.trash = &trash
+			}
+			byMailbox[mailbox.ID] = b
+			batches = append(batches, b)
+		}
+		b.msgs = append(b.msgs, msg)
 	}
 	return func() tea.Msg {
-		if mailbox == nil {
-			return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: fmt.Errorf("mailbox not found")}
+		out := MessagesDeletedMsg{Failed: missing}
+		if missing > 0 {
+			out.Err = fmt.Errorf("mailbox not found")
 		}
-		if err := database.DeleteMessage(msg.ID); err != nil {
-			return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Err: err}
-		}
-		if acfg.IMAPHost != "" && msg.UID != 0 {
-			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-			defer cancel()
-			client := imapClient.New(acfg)
-			if err := client.Connect(ctx); err != nil {
-				return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, LocalDeleted: true, Err: err}
-			}
-			defer client.Close()
-			action, target := remoteDeletePlan(*mailbox, trashMailbox)
-			if action == remoteDeleteMoveToTrash {
-				if err := client.MoveMessage(ctx, mailbox.Name, msg.UID, target.Name); err != nil {
-					return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, LocalDeleted: true, Err: err}
+		for _, b := range batches {
+			if err := deleteBatchRemote(b.acfg, b.mailbox, b.trash, b.msgs); err != nil {
+				out.Failed += len(b.msgs)
+				if out.Err == nil {
+					out.Err = err
 				}
-			} else if err := client.DeleteMessage(ctx, mailbox.Name, msg.UID); err != nil {
-				return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, LocalDeleted: true, Err: err}
+				continue
+			}
+			for _, msg := range b.msgs {
+				if err := database.DeleteMessage(msg.ID); err != nil {
+					out.Failed++
+					if out.Err == nil {
+						out.Err = err
+					}
+					continue
+				}
+				out.Deleted = append(out.Deleted, MessageRef{ID: msg.ID, MailboxID: msg.MailboxID})
 			}
 		}
-		return MessageDeletedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, LocalDeleted: true}
+		return out
 	}
+}
+
+// deleteBatchRemote deletes a mailbox's batch on the server over one connection.
+func deleteBatchRemote(acfg config.AccountConfig, mailbox db.Mailbox, trash *db.Mailbox, msgs []db.Message) error {
+	var uids []uint32
+	for _, msg := range msgs {
+		if msg.UID != 0 {
+			uids = append(uids, msg.UID)
+		}
+	}
+	if acfg.IMAPHost == "" || len(uids) == 0 {
+		return nil // local-only message(s); nothing to do on the server
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	client := imapClient.New(acfg)
+	if err := client.Connect(ctx); err != nil {
+		return err
+	}
+	defer client.Close()
+	action, target := remoteDeletePlan(mailbox, trash)
+	if action == remoteDeleteMoveToTrash {
+		return client.MoveMessages(ctx, mailbox.Name, uids, target.Name)
+	}
+	return client.DeleteMessages(ctx, mailbox.Name, uids)
 }
 
 func remoteDeletePlan(source db.Mailbox, trash *db.Mailbox) (remoteDeleteAction, *db.Mailbox) {

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/allisonhere/tide/internal/config"
+	"github.com/allisonhere/tide/internal/db"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -115,7 +116,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "delete":
 		if msg := m.commandMessage(); msg != nil {
-			return m, m.deleteMessageCmd(*msg)
+			return m, m.deleteMessagesCmd([]db.Message{*msg})
 		}
 	case "toggle-read":
 		if msg := m.commandMessage(); msg != nil {

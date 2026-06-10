@@ -57,9 +57,9 @@ func main() {
 		}
 	}
 
-	if setBG, resetBG := ui.TerminalBackgroundSequences(cfg.Theme); setBG != "" {
-		fmt.Print(setBG)
-		defer fmt.Print(resetBG)
+	if setColors, resetColors := ui.TerminalColorSequences(cfg.Theme); setColors != "" {
+		fmt.Print(setColors)
+		defer fmt.Print(resetColors)
 	}
 
 	var model tea.Model
