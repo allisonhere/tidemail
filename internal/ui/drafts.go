@@ -44,16 +44,14 @@ func (m *Model) deleteDraftCmd(id int64) tea.Cmd {
 			remoteUID = draft.RemoteUID
 		}
 	}
+	sessions := m.sessions
 	return func() tea.Msg {
 		if remote != nil && remoteCfg.IMAPHost != "" {
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
-			client := imapClient.New(remoteCfg)
-			if err := client.Connect(ctx); err != nil {
-				return DraftDeletedMsg{DraftID: id, Err: err}
-			}
-			defer client.Close()
-			if err := client.DeleteMessages(ctx, remote.Name, []uint32{remoteUID}); err != nil {
+			if err := sessions.Do(ctx, remoteCfg, func(client *imapClient.Client) error {
+				return client.DeleteMessages(ctx, remote.Name, []uint32{remoteUID})
+			}); err != nil {
 				return DraftDeletedMsg{DraftID: id, Err: err}
 			}
 			if err := database.DeleteMessageByUID(remote.ID, remoteUID); err != nil {

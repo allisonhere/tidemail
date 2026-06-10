@@ -76,6 +76,9 @@ func main() {
 		// --preview-manual-update: open Settings on Updates with a demo manual-install command (dev UI).
 		model = ui.NewModel(database, cfg, resolvedVersion(), opts.previewManualUpdate)
 	}
+	if uiModel, ok := model.(ui.Model); ok {
+		defer uiModel.CloseSessions()
+	}
 
 	p := tea.NewProgram(model,
 		tea.WithAltScreen(),

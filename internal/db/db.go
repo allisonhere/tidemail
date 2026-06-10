@@ -189,7 +189,8 @@ func (db *DB) migrate() error {
 	}
 	// Migrations: add columns that may not exist on older databases.
 	// SQLite error on duplicate column is silently ignored.
-	db.Exec(`ALTER TABLE messages ADD COLUMN headers TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
+	db.Exec(`ALTER TABLE messages ADD COLUMN headers TEXT NOT NULL DEFAULT ''`)         //nolint:errcheck
+	db.Exec(`ALTER TABLE mailboxes ADD COLUMN uid_validity INTEGER NOT NULL DEFAULT 0`) //nolint:errcheck
 	if err := db.migrateContactsToCuratedSchema(); err != nil {
 		return err
 	}

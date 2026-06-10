@@ -95,6 +95,60 @@ func (c *Client) Close() error {
 	return err
 }
 
+// Noop probes connection liveness; the SessionPool uses it to validate a
+// pooled connection before reuse.
+func (c *Client) Noop(ctx context.Context) error {
+	if c.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	return c.conn.Noop().Wait()
+}
+
+// ServerMessage is the lightweight per-message state used by sync reconciliation:
+// the UID and whether the server considers the message read (\Seen).
+type ServerMessage struct {
+	UID  uint32
+	Seen bool
+}
+
+// ServerState returns the state of every message currently in the mailbox plus
+// the mailbox's UIDVALIDITY, via one FETCH 1:* (UID FLAGS). Sync uses it for two
+// things the additive SINCE fetch can't: reconciling away messages removed
+// server-side, and adopting read/unread changes made in another client. An empty
+// (non-nil-error) result for a non-empty mailbox is impossible: NumMessages==0
+// short-circuits, otherwise 1:* yields every message.
+func (c *Client) ServerState(ctx context.Context, mailboxName string) (msgs []ServerMessage, uidValidity uint32, err error) {
+	if c.conn == nil {
+		return nil, 0, fmt.Errorf("not connected")
+	}
+	selectData, err := c.conn.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait()
+	if err != nil {
+		return nil, 0, fmt.Errorf("select %s: %w", mailboxName, err)
+	}
+	uidValidity = selectData.UIDValidity
+	if selectData.NumMessages == 0 {
+		return nil, uidValidity, nil
+	}
+	seqSet := imap.SeqSetNum()
+	seqSet.AddRange(1, 0) // 1:* — 0 means "*"
+	fetched, err := c.conn.Fetch(seqSet, &imap.FetchOptions{UID: true, Flags: true}).Collect()
+	if err != nil {
+		return nil, uidValidity, fmt.Errorf("fetch state: %w", err)
+	}
+	msgs = make([]ServerMessage, 0, len(fetched))
+	for _, m := range fetched {
+		sm := ServerMessage{UID: uint32(m.UID)}
+		for _, f := range m.Flags {
+			if f == imap.FlagSeen {
+				sm.Seen = true
+				break
+			}
+		}
+		msgs = append(msgs, sm)
+	}
+	return msgs, uidValidity, nil
+}
+
 func (c *Client) ListMailboxes(ctx context.Context) ([]MailboxInfo, error) {
 	if c.conn == nil {
 		return nil, fmt.Errorf("not connected")

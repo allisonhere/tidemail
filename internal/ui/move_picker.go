@@ -397,16 +397,14 @@ func (m *Model) createFolderCmd(accountID int64, parentPath, name string) tea.Cm
 		acfg = m.accountCfgForMailbox(m.movePicker.messages[0].MailboxID)
 	}
 	database := m.db
+	sessions := m.sessions
 	return func() tea.Msg {
 		if acfg.IMAPHost != "" {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			client := imapClient.New(acfg)
-			if err := client.Connect(ctx); err != nil {
-				return FolderCreatedMsg{AccountID: accountID, Name: fullName, Err: err}
-			}
-			defer client.Close()
-			if err := client.CreateMailbox(ctx, fullName); err != nil {
+			if err := sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
+				return client.CreateMailbox(ctx, fullName)
+			}); err != nil {
 				return FolderCreatedMsg{AccountID: accountID, Name: fullName, Err: err}
 			}
 		}
@@ -420,6 +418,7 @@ func (m *Model) createFolderCmd(accountID int64, parentPath, name string) tea.Cm
 
 func (m *Model) moveMessageToMailboxCmd(msg db.Message, target db.Mailbox) tea.Cmd {
 	database := m.db
+	sessions := m.sessions
 	source := m.mailboxByID(msg.MailboxID)
 	acfg := m.accountCfgForMailbox(msg.MailboxID)
 	return func() tea.Msg {
@@ -432,12 +431,9 @@ func (m *Model) moveMessageToMailboxCmd(msg db.Message, target db.Mailbox) tea.C
 		if acfg.IMAPHost != "" && msg.UID != 0 {
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
-			client := imapClient.New(acfg)
-			if err := client.Connect(ctx); err != nil {
-				return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, ToMailboxID: target.ID, Action: "move", Err: err}
-			}
-			defer client.Close()
-			if err := client.MoveMessage(ctx, source.Name, msg.UID, target.Name); err != nil {
+			if err := sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
+				return client.MoveMessage(ctx, source.Name, msg.UID, target.Name)
+			}); err != nil {
 				return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, ToMailboxID: target.ID, Action: "move", Err: err}
 			}
 		}

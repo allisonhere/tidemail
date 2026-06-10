@@ -18,6 +18,7 @@ import (
 	"github.com/allisonhere/tide/internal/auth"
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
+	imapClient "github.com/allisonhere/tide/internal/imap"
 	"github.com/allisonhere/tide/internal/update"
 )
 
@@ -95,8 +96,13 @@ const (
 // ── Model ────────────────────────────────────────────────────────────────────
 
 type Model struct {
-	db  *db.DB
-	cfg config.Config
+	db *db.DB
+	// sessions pools one live IMAP connection per account; all background
+	// commands go through it instead of dialing, so bursts of operations
+	// can't exceed per-user server connection caps. Pointer-typed: shared
+	// across the value copies Bubble Tea makes of the model.
+	sessions *imapClient.SessionPool
+	cfg      config.Config
 
 	currentVersion string
 	updater        *update.Updater
@@ -192,6 +198,13 @@ type Model struct {
 	summaryErr        string
 }
 
+// CloseSessions logs out all pooled IMAP connections; called on shutdown.
+func (m Model) CloseSessions() {
+	if m.sessions != nil {
+		m.sessions.Close()
+	}
+}
+
 func NewModel(database *db.DB, cfg config.Config, currentVersion string, previewManualUpdate bool) Model {
 	merged, themeIdx := MergedThemeFromConfig(cfg)
 
@@ -219,6 +232,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 
 	m := Model{
 		db:                    database,
+		sessions:              imapClient.NewSessionPool(),
 		cfg:                   cfg,
 		currentVersion:        currentVersion,
 		previewManualUpdateUI: previewManualUpdate,

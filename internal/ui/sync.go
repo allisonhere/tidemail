@@ -257,53 +257,95 @@ func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
 			break
 		}
 	}
+	sessions := m.sessions
 	return func() tea.Msg {
 		t0 := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
-		client := imapClient.New(acfg)
+		// "connect" in the fetch log now covers session acquisition: a queue
+		// wait plus either a NOOP revalidation or a fresh dial.
 		connectStart := time.Now()
-		if err := client.Connect(ctx); err != nil {
+		var result tea.Msg
+		err := sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
+			connectDur := time.Since(connectStart)
+			since := mailbox.LastSynced
+
+			// Snapshot the server's full message state up front. It drives three
+			// things the additive SINCE fetch can't: detecting a UIDVALIDITY change
+			// (every stored UID is then meaningless), reconciling away messages
+			// removed server-side, and adopting read/unread changes made elsewhere.
+			// A failure here is non-fatal — sync proceeds without it rather than
+			// aborting.
+			serverMsgs, uidValidity, uidErr := client.ServerState(ctx, mailbox.Name)
+			if uidErr == nil && uidValidity != 0 {
+				if stored, e := database.MailboxUIDValidity(mailboxID); e == nil && stored != 0 && stored != uidValidity {
+					_ = database.ResetMailboxCache(mailboxID) //nolint:errcheck
+					since = time.Time{}
+				}
+				_ = database.SetMailboxUIDValidity(mailboxID, uidValidity) //nolint:errcheck
+			}
+
+			if existing, countErr := database.CountMessages(mailboxID); countErr == nil && existing == 0 {
+				since = time.Time{}
+			}
+			fetchStart := time.Now()
+			msgs, err := client.FetchSince(ctx, mailbox.Name, since)
+			fetchDur := time.Since(fetchStart)
+			if err != nil {
+				logFetch(acc.Name, mailbox.Name, 0, connectDur, fetchDur, time.Since(t0), err)
+				result = MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual, Total: time.Since(t0)}
+				return nil
+			}
+			newMsgs, err := storeFetchedMessages(database, mailboxID, msgs)
+			if err != nil {
+				logFetch(acc.Name, mailbox.Name, len(msgs), connectDur, fetchDur, time.Since(t0), err)
+				result = MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual, Total: time.Since(t0)}
+				return nil
+			}
+			if uidErr == nil {
+				// Reconcile: drop locally-cached messages no longer on the server.
+				// Include the just-fetched UIDs so a message that arrived between
+				// the snapshot and the fetch isn't mistaken for a removal.
+				reconcileSet := make([]uint32, 0, len(serverMsgs)+len(msgs))
+				seenByUID := make(map[uint32]bool, len(serverMsgs))
+				for _, sm := range serverMsgs {
+					reconcileSet = append(reconcileSet, sm.UID)
+					seenByUID[sm.UID] = sm.Seen
+				}
+				for _, fm := range msgs {
+					reconcileSet = append(reconcileSet, fm.UID)
+				}
+				_, _ = database.ReconcileMailboxUIDs(mailboxID, reconcileSet) //nolint:errcheck
+				// Adopt server read/unread state for messages we still hold, before
+				// the unread count is recomputed below.
+				_, _ = database.ApplyServerReadStates(mailboxID, seenByUID) //nolint:errcheck
+			}
+			// Auto-apply saved filter rules to newly-arrived mail while the connection
+			// is live. Filter failures must not abort the sync, so they are not fatal.
+			// Rules that move/delete/archive/mark-read mail drop it from newMsgs so it
+			// is neither counted as new nor notified about.
+			if len(newMsgs) > 0 {
+				newMsgs, _ = applyRulesOnArrival(ctx, database, client, mailbox, newMsgs)
+			}
+			unread, _ := database.CountUnread(mailboxID)
+			// A failed bookkeeping write (e.g. last-synced) can cause endless re-syncs, so
+			// don't drop it silently — fold it into the fetch log.
+			var writeErr error
+			if e := database.SetMailboxLastSynced(mailboxID, time.Now()); e != nil {
+				writeErr = e
+			}
+			if e := database.SetMailboxUnreadCount(mailboxID, unread); e != nil {
+				writeErr = e
+			}
+			logFetch(acc.Name, mailbox.Name, len(msgs), connectDur, fetchDur, time.Since(t0), writeErr)
+			result = MailboxSyncedMsg{MailboxID: mailboxID, NewCount: len(newMsgs), NewMessages: newMsgs, Manual: manual, Total: time.Since(t0)}
+			return nil
+		})
+		if err != nil {
 			logFetch(acc.Name, mailbox.Name, 0, time.Since(connectStart), 0, time.Since(t0), err)
 			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual, Total: time.Since(t0)}
 		}
-		defer client.Close()
-		connectDur := time.Since(connectStart)
-		since := mailbox.LastSynced
-		if existing, countErr := database.CountMessages(mailboxID); countErr == nil && existing == 0 {
-			since = time.Time{}
-		}
-		fetchStart := time.Now()
-		msgs, err := client.FetchSince(ctx, mailbox.Name, since)
-		fetchDur := time.Since(fetchStart)
-		if err != nil {
-			logFetch(acc.Name, mailbox.Name, 0, connectDur, fetchDur, time.Since(t0), err)
-			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual, Total: time.Since(t0)}
-		}
-		newMsgs, err := storeFetchedMessages(database, mailboxID, msgs)
-		if err != nil {
-			logFetch(acc.Name, mailbox.Name, len(msgs), connectDur, fetchDur, time.Since(t0), err)
-			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual, Total: time.Since(t0)}
-		}
-		// Auto-apply saved filter rules to newly-arrived mail while the connection
-		// is live. Filter failures must not abort the sync, so they are not fatal.
-		// Rules that move/delete/archive/mark-read mail drop it from newMsgs so it
-		// is neither counted as new nor notified about.
-		if len(newMsgs) > 0 {
-			newMsgs, _ = applyRulesOnArrival(ctx, database, client, mailbox, newMsgs)
-		}
-		unread, _ := database.CountUnread(mailboxID)
-		// A failed bookkeeping write (e.g. last-synced) can cause endless re-syncs, so
-		// don't drop it silently — fold it into the fetch log.
-		var writeErr error
-		if e := database.SetMailboxLastSynced(mailboxID, time.Now()); e != nil {
-			writeErr = e
-		}
-		if e := database.SetMailboxUnreadCount(mailboxID, unread); e != nil {
-			writeErr = e
-		}
-		logFetch(acc.Name, mailbox.Name, len(msgs), connectDur, fetchDur, time.Since(t0), writeErr)
-		return MailboxSyncedMsg{MailboxID: mailboxID, NewCount: len(newMsgs), NewMessages: newMsgs, Manual: manual, Total: time.Since(t0)}
+		return result
 	}
 }
 

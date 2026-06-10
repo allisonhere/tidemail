@@ -175,18 +175,16 @@ func (m *Model) applyFilter() {
 
 func (m *Model) setMessageReadCmd(msg db.Message, read, advance bool) tea.Cmd {
 	database := m.db
+	sessions := m.sessions
 	mailbox := m.mailboxByID(msg.MailboxID)
 	acfg := m.accountCfgForMailbox(msg.MailboxID)
 	return func() tea.Msg {
 		if mailbox != nil && acfg.IMAPHost != "" && msg.UID != 0 {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			client := imapClient.New(acfg)
-			if err := client.Connect(ctx); err != nil {
-				return MessageReadUpdatedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, WasRead: msg.Read, Read: read, Advance: advance, Err: err}
-			}
-			defer client.Close()
-			if err := client.MarkSeen(ctx, mailbox.Name, msg.UID, read); err != nil {
+			if err := sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
+				return client.MarkSeen(ctx, mailbox.Name, msg.UID, read)
+			}); err != nil {
 				return MessageReadUpdatedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, WasRead: msg.Read, Read: read, Advance: advance, Err: err}
 			}
 		}
@@ -212,6 +210,7 @@ func (m *Model) setMessageReadCmd(msg db.Message, read, advance bool) tea.Cmd {
 
 func (m *Model) archiveMessageCmd(msg db.Message) tea.Cmd {
 	database := m.db
+	sessions := m.sessions
 	mailbox := m.mailboxByID(msg.MailboxID)
 	acfg := m.accountCfgForMailbox(msg.MailboxID)
 	return func() tea.Msg {
@@ -225,12 +224,9 @@ func (m *Model) archiveMessageCmd(msg db.Message) tea.Cmd {
 		if acfg.IMAPHost != "" && msg.UID != 0 {
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
-			client := imapClient.New(acfg)
-			if err := client.Connect(ctx); err != nil {
-				return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, ToMailboxID: archive.ID, Action: "archive", Err: err}
-			}
-			defer client.Close()
-			if err := client.MoveMessage(ctx, mailbox.Name, msg.UID, archive.Name); err != nil {
+			if err := sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
+				return client.MoveMessage(ctx, mailbox.Name, msg.UID, archive.Name)
+			}); err != nil {
 				return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, ToMailboxID: archive.ID, Action: "archive", Err: err}
 			}
 		}
@@ -250,6 +246,7 @@ func (m *Model) archiveMessageCmd(msg db.Message) tea.Cmd {
 // diverging from the server.
 func (m *Model) deleteMessagesCmd(msgs []db.Message) tea.Cmd {
 	database := m.db
+	sessions := m.sessions
 	type deleteBatch struct {
 		acfg    config.AccountConfig
 		mailbox db.Mailbox
@@ -282,7 +279,7 @@ func (m *Model) deleteMessagesCmd(msgs []db.Message) tea.Cmd {
 			out.Err = fmt.Errorf("mailbox not found")
 		}
 		for _, b := range batches {
-			if err := deleteBatchRemote(b.acfg, b.mailbox, b.trash, b.msgs); err != nil {
+			if err := deleteBatchRemote(sessions, b.acfg, b.mailbox, b.trash, b.msgs); err != nil {
 				out.Failed += len(b.msgs)
 				if out.Err == nil {
 					out.Err = err
@@ -304,8 +301,9 @@ func (m *Model) deleteMessagesCmd(msgs []db.Message) tea.Cmd {
 	}
 }
 
-// deleteBatchRemote deletes a mailbox's batch on the server over one connection.
-func deleteBatchRemote(acfg config.AccountConfig, mailbox db.Mailbox, trash *db.Mailbox, msgs []db.Message) error {
+// deleteBatchRemote deletes a mailbox's batch on the server over the account's
+// pooled connection.
+func deleteBatchRemote(sessions *imapClient.SessionPool, acfg config.AccountConfig, mailbox db.Mailbox, trash *db.Mailbox, msgs []db.Message) error {
 	var uids []uint32
 	for _, msg := range msgs {
 		if msg.UID != 0 {
@@ -317,16 +315,13 @@ func deleteBatchRemote(acfg config.AccountConfig, mailbox db.Mailbox, trash *db.
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	client := imapClient.New(acfg)
-	if err := client.Connect(ctx); err != nil {
-		return err
-	}
-	defer client.Close()
-	action, target := remoteDeletePlan(mailbox, trash)
-	if action == remoteDeleteMoveToTrash {
-		return client.MoveMessages(ctx, mailbox.Name, uids, target.Name)
-	}
-	return client.DeleteMessages(ctx, mailbox.Name, uids)
+	return sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
+		action, target := remoteDeletePlan(mailbox, trash)
+		if action == remoteDeleteMoveToTrash {
+			return client.MoveMessages(ctx, mailbox.Name, uids, target.Name)
+		}
+		return client.DeleteMessages(ctx, mailbox.Name, uids)
+	})
 }
 
 func remoteDeletePlan(source db.Mailbox, trash *db.Mailbox) (remoteDeleteAction, *db.Mailbox) {

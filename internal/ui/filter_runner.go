@@ -126,26 +126,31 @@ func (m *Model) applyRulesCmd(mailboxIDs []int64, dryRun bool) tea.Cmd {
 			targets = append(targets, mailboxTarget{mailbox: *mb, acfg: m.accountCfgForMailbox(id)})
 		}
 	}
+	sessions := m.sessions
 	return func() tea.Msg {
 		if len(rules) == 0 {
 			return FilterRunMsg{DryRun: dryRun, Err: fmt.Errorf("no enabled rules")}
 		}
-		clients := map[int64]*imapClient.Client{}
-		defer func() {
-			for _, c := range clients {
-				c.Close()
-			}
-		}()
 		var matched, applied int
 		var firstErr error
+		recordErr := func(err error) {
+			if err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
 		for _, t := range targets {
 			msgs, err := database.ListMessages(t.mailbox.ID)
 			if err != nil {
-				if firstErr == nil {
-					firstErr = err
-				}
+				recordErr(err)
 				continue
 			}
+			// Match first, then act: a connection is only needed (and the
+			// account's pooled session only held) when something matched.
+			type pendingAction struct {
+				msg db.Message
+				cr  compiledRule
+			}
+			var pending []pendingAction
 			for _, msg := range msgs {
 				cr, ok := firstMatch(rules, t.mailbox.AccountID, msg)
 				if !ok {
@@ -155,26 +160,31 @@ func (m *Model) applyRulesCmd(mailboxIDs []int64, dryRun bool) tea.Cmd {
 				if dryRun {
 					continue
 				}
-				client, err := clientForAccount(clients, t)
-				if err != nil {
-					if firstErr == nil {
-						firstErr = err
-					}
-					continue
-				}
-				ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-				acted, err := applyFilterAction(ctx, database, client, t.mailbox, msg, cr.rule.Action, cr.rec.AccountID != 0)
-				cancel()
-				if err != nil {
-					if firstErr == nil {
-						firstErr = err
-					}
-					continue
-				}
-				if acted {
-					applied++
-				}
+				pending = append(pending, pendingAction{msg: msg, cr: cr})
 			}
+			if len(pending) == 0 {
+				continue
+			}
+			apply := func(client *imapClient.Client) error {
+				for _, p := range pending {
+					ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+					acted, err := applyFilterAction(ctx, database, client, t.mailbox, p.msg, p.cr.rule.Action, p.cr.rec.AccountID != 0)
+					cancel()
+					recordErr(err)
+					if err == nil && acted {
+						applied++
+					}
+				}
+				return nil
+			}
+			if t.acfg.IMAPHost == "" {
+				// Local-only account: applyFilterAction treats a nil client as local.
+				recordErr(apply(nil))
+				continue
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			recordErr(sessions.Do(ctx, t.acfg, apply))
+			cancel()
 		}
 		return FilterRunMsg{Matched: matched, Applied: applied, DryRun: dryRun, Err: firstErr}
 	}
@@ -233,24 +243,4 @@ func applyRulesOnArrival(ctx context.Context, database *db.DB, client *imapClien
 		}
 	}
 	return survivors, firstErr
-}
-
-// clientForAccount lazily connects (and caches) one IMAP client per account for
-// the duration of a run. Accounts without an IMAP host yield a nil client, which
-// applyFilterAction treats as local-only.
-func clientForAccount(clients map[int64]*imapClient.Client, t mailboxTarget) (*imapClient.Client, error) {
-	if t.acfg.IMAPHost == "" {
-		return nil, nil
-	}
-	if c, ok := clients[t.mailbox.AccountID]; ok {
-		return c, nil
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	c := imapClient.New(t.acfg)
-	if err := c.Connect(ctx); err != nil {
-		return nil, err
-	}
-	clients[t.mailbox.AccountID] = c
-	return c, nil
 }
