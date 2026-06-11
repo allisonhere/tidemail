@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	urlRe   = regexp.MustCompile(`https?://[^\s<>"']+`)
-	emailRe = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
+	urlRe          = regexp.MustCompile(`https?://[^\s<>"']+`)
+	emailRe        = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
+	imageIDLabelRe = regexp.MustCompile(`^[a-fA-F0-9]{8}(-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}$`)
 )
 
 func formatArticleBody(content string, width int, th Theme, plainUI bool) string {
@@ -373,7 +374,11 @@ func normalizeHTMLForRendering(raw string) string {
 func tableTextRule() md.Rule {
 	return md.Rule{
 		Filter: []string{"table"},
-		Replacement: func(_ string, selec *goquery.Selection, _ *md.Options) *string {
+		Replacement: func(content string, selec *goquery.Selection, _ *md.Options) *string {
+			if selec.Find("table").Length() > 0 || selec.Find("th").Length() == 0 {
+				return &content
+			}
+
 			var rows [][]string
 			selec.Find("tr").Each(func(_ int, tr *goquery.Selection) {
 				var row []string
@@ -426,18 +431,46 @@ func imagePlaceholderRule() md.Rule {
 	return md.Rule{
 		Filter: []string{"img"},
 		Replacement: func(_ string, selec *goquery.Selection, _ *md.Options) *string {
-			src := strings.TrimSpace(attrFirst(selec, "src", "data-src"))
 			label := strings.TrimSpace(attrFirst(selec, "alt", "title", "aria-label"))
 			if label == "" {
-				label = "image"
+				return md.String(" ")
 			}
-			placeholder := "[image: " + normalizeInlineSpacing(label) + "]"
-			if src != "" {
-				placeholder += " " + src
+			label = normalizeInlineSpacing(label)
+			if isDecorativeImageLabel(label) {
+				return md.String(" ")
 			}
+			placeholder := "[image: " + label + "]"
 			return md.String("\n\n" + placeholder + "\n\n")
 		},
 	}
+}
+
+func isDecorativeImageLabel(label string) bool {
+	lower := strings.ToLower(strings.TrimSpace(label))
+	if lower == "" || lower == "image" {
+		return true
+	}
+	if imageIDLabelRe.MatchString(label) {
+		return true
+	}
+	if strings.HasPrefix(lower, "commentor") {
+		return true
+	}
+	for _, token := range []string{
+		"avatar",
+		"badge",
+		"comment icon",
+		"icon",
+		"logo",
+		"profile photo",
+		"reaction",
+		"share icon",
+	} {
+		if strings.Contains(lower, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func buttonLinkRule() md.Rule {
@@ -449,15 +482,61 @@ func buttonLinkRule() md.Rule {
 			if text == "" {
 				text = normalizeInlineSpacing(content)
 			}
-			if href == "" || !looksLikeButtonLink(selec) {
-				return nil
+			if href == "" {
+				return md.String(" ")
+			}
+			if selec.Find("table").Length() > 0 {
+				text = layoutCellText(selec)
+				if text == "" {
+					return md.String(" ")
+				}
+				return md.String("\n\n" + text + "\n\n")
+			}
+			if !looksLikeButtonLink(selec) {
+				if text == "" {
+					return md.String(" ")
+				}
+				if isVisualOnlyLinkText(text, selec) {
+					return md.String(" ")
+				}
+				return md.String(" " + text + " ")
 			}
 			if text == "" {
-				text = href
+				return md.String(" ")
 			}
-			return md.String("[" + text + "] (" + href + ")")
+			if isVisualOnlyLinkText(text, selec) {
+				return md.String(" ")
+			}
+			return md.String("[" + text + "]")
 		},
 	}
+}
+
+func layoutCellText(selec *goquery.Selection) string {
+	var parts []string
+	selec.Find("td,th").Each(func(_ int, cell *goquery.Selection) {
+		if cell.Find("td,th").Length() > 0 {
+			return
+		}
+		text := normalizeInlineSpacing(htmlstd.UnescapeString(cell.Text()))
+		if text != "" {
+			parts = append(parts, text)
+		}
+	})
+	if len(parts) == 0 {
+		return normalizeInlineSpacing(htmlstd.UnescapeString(selec.Text()))
+	}
+	return strings.Join(parts, " ")
+}
+
+func isVisualOnlyLinkText(text string, selec *goquery.Selection) bool {
+	text = strings.TrimSpace(text)
+	if len([]rune(text)) != 1 {
+		return false
+	}
+	style := strings.ToLower(attrFirst(selec, "style"))
+	return strings.Contains(style, "display:inline-block") ||
+		strings.Contains(style, "display: inline-block")
 }
 
 func attrFirst(selec *goquery.Selection, names ...string) string {

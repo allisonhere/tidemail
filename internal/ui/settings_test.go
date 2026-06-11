@@ -341,7 +341,7 @@ func TestSettingsAISidebarRightEntersDetailOnAPIKey(t *testing.T) {
 	}
 }
 
-func TestSettingsEscMovesToSidebarThenSavesAndExits(t *testing.T) {
+func TestSettingsEscMovesToSidebarThenCancelsFromSidebar(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	s.setFocusedPane(settingsPaneDetail)
 	s.setActiveSection(ssFeeds)
@@ -365,8 +365,8 @@ func TestSettingsEscMovesToSidebarThenSavesAndExits(t *testing.T) {
 	if !done {
 		t.Fatal("expected second esc from sidebar to exit")
 	}
-	if !next.shouldSave {
-		t.Fatal("expected second esc from sidebar to save edits")
+	if next.shouldSave {
+		t.Fatal("expected second esc from sidebar to cancel without saving")
 	}
 }
 
@@ -573,7 +573,27 @@ func TestSettingsCtrlSSavesWithSuspiciousSelectedProviderKey(t *testing.T) {
 	}
 }
 
-func TestSettingsEscFromSidebarSavesWithSuspiciousSelectedProviderKey(t *testing.T) {
+func TestSettingsCtrlSFromSidebarSavesWithSuspiciousSelectedProviderKey(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.AI.Provider = "claude"
+	cfg.AI.ClaudeKey = "sk-proj-test123"
+
+	s := newSettings(cfg, settingsUpdateState{})
+	s.setActiveSection(ssAI)
+	s.setFocusedPane(settingsPaneSidebar)
+	s.setFocusedField(sfSavePath)
+
+	next, _, done := s.Update(tea.KeyMsg{Type: tea.KeyCtrlS}, DefaultKeys)
+
+	if !done {
+		t.Fatal("expected ctrl+s from sidebar to finish settings")
+	}
+	if !next.shouldSave {
+		t.Fatal("expected suspicious key format not to block ctrl+s save")
+	}
+}
+
+func TestSettingsEscFromSidebarDiscardsWithSuspiciousSelectedProviderKey(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.AI.Provider = "claude"
 	cfg.AI.ClaudeKey = "sk-proj-test123"
@@ -588,8 +608,8 @@ func TestSettingsEscFromSidebarSavesWithSuspiciousSelectedProviderKey(t *testing
 	if !done {
 		t.Fatal("expected esc from sidebar to finish settings")
 	}
-	if !next.shouldSave {
-		t.Fatal("expected suspicious key format not to block esc save")
+	if next.shouldSave {
+		t.Fatal("expected esc from sidebar to discard without saving")
 	}
 }
 
@@ -687,7 +707,7 @@ func TestSettingsAIValidateDoneUpdatesFeedbackWithoutClosing(t *testing.T) {
 	}
 }
 
-func TestSettingsDetailHintsUseEscCategories(t *testing.T) {
+func TestSettingsDetailHintsUseCtrlSSaveAndEscCategories(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	s.setFocusedPane(settingsPaneDetail)
 	s.setFocusedField(sfIcons)
@@ -695,11 +715,30 @@ func TestSettingsDetailHintsUseEscCategories(t *testing.T) {
 	view := s.View(80, 24, newManagerChrome(80, CatppuccinMocha, false))
 	text := strings.ToLower(ansi.Strip(view))
 
-	if strings.Contains(text, "ctrl+s") {
-		t.Fatalf("expected settings detail hints not to reference ctrl+s, got %q", view)
+	if !strings.Contains(text, "ctrl+s") || !strings.Contains(text, "save") {
+		t.Fatalf("expected settings detail hints to reference ctrl+s save, got %q", view)
 	}
 	if !strings.Contains(text, "categories") {
 		t.Fatalf("expected settings detail hints to mention categories, got %q", view)
+	}
+}
+
+func TestSettingsSidebarHintsUseCtrlSSaveAndEscCancel(t *testing.T) {
+	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	s.setFocusedPane(settingsPaneSidebar)
+	s.setFocusedField(sfIcons)
+
+	view := s.View(80, 24, newManagerChrome(80, CatppuccinMocha, false))
+	text := strings.ToLower(ansi.Strip(view))
+
+	if !strings.Contains(text, "ctrl+s") || !strings.Contains(text, "save") {
+		t.Fatalf("expected settings sidebar hints to reference ctrl+s save, got %q", view)
+	}
+	if !strings.Contains(text, "esc") || !strings.Contains(text, "cancel") {
+		t.Fatalf("expected settings sidebar hints to reference esc cancel, got %q", view)
+	}
+	if strings.Contains(text, "esc save") || strings.Contains(text, "save & close") {
+		t.Fatalf("expected settings sidebar hints not to describe esc as save, got %q", view)
 	}
 }
 

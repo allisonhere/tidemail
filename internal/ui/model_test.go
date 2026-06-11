@@ -106,7 +106,7 @@ func TestSettingsSavePreservesSelectedMessageAfterUnreadFirstReload(t *testing.T
 	configSave = func(config.Config) error { return nil }
 	defer func() { configSave = origSave }()
 
-	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
 	m = next.(Model)
 
 	if m.pendingSelectMessageID != selectedID {

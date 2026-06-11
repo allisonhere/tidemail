@@ -47,6 +47,26 @@ func TestRenderHelpScopesModalShortcuts(t *testing.T) {
 	}
 }
 
+func TestRenderHelpDocumentsSettingsCtrlSSave(t *testing.T) {
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys))
+	settingsStart := strings.Index(view, "Settings Modal")
+	if settingsStart < 0 {
+		t.Fatalf("expected Settings Modal section, got %q", view)
+	}
+	settingsEnd := strings.Index(view[settingsStart+len("Settings Modal"):], "Pickers And Overlays")
+	settingsSection := view[settingsStart:]
+	if settingsEnd >= 0 {
+		settingsSection = view[settingsStart : settingsStart+len("Settings Modal")+settingsEnd]
+	}
+
+	if !strings.Contains(settingsSection, "ctrl+s") || !strings.Contains(settingsSection, "save settings") {
+		t.Fatalf("expected Settings help to document ctrl+s save, got %q", settingsSection)
+	}
+	if strings.Contains(settingsSection, "save and close") {
+		t.Fatalf("expected Settings help not to document escape as save-and-close, got %q", settingsSection)
+	}
+}
+
 func TestRenderHelpDocumentsNativeMessageSelection(t *testing.T) {
 	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys))
 	for _, want := range []string{"v/V", "visual select", "y/ctrl+c", "copy selected message text", "`"} {

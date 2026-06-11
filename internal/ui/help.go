@@ -161,7 +161,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{keys.Space.Help().Key + "/" + keys.Enter.Help().Key, "toggle or activate focused setting"},
 				{keys.Left.Help().Key + "/" + keys.Right.Help().Key, "change picker fields"},
 				{keys.SaveAccount.Help().Key, "save settings"},
-				{keys.Cancel.Help().Key, "back to sections, then save and close"},
+				{keys.Cancel.Help().Key, "back to sections, then cancel from the section list"},
 				{"q", "discard and close from the section list"},
 			},
 		},

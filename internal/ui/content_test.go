@@ -70,6 +70,46 @@ func TestRenderHTMLBodyPreservesTablesAsReadableRows(t *testing.T) {
 	}
 }
 
+func TestRenderHTMLBodyDoesNotDuplicateNestedLayoutTables(t *testing.T) {
+	html := `<table><tr><td><table><tr><td>Feature story</td></tr></table></td></tr></table>`
+
+	got := ansi.Strip(renderHTMLBody(html, 80, CatppuccinMocha, true))
+
+	if count := strings.Count(got, "Feature story"); count != 1 {
+		t.Fatalf("expected nested layout table content once, got %d occurrences in %q", count, got)
+	}
+}
+
+func TestRenderHTMLBodyDoesNotFormatSingleCellLayoutTablesAsDataTables(t *testing.T) {
+	html := `<table><tr><td><p>Feature story</p><a href="https://example.com/story"><img alt="Story photo" src="https://cdn.example.com/story.png"></a></td></tr></table>`
+
+	got := ansi.Strip(renderHTMLBody(html, 80, CatppuccinMocha, true))
+
+	if !strings.Contains(got, "Feature story") || !strings.Contains(got, "[image: Story photo]") {
+		t.Fatalf("expected layout table content to render normally, got %q", got)
+	}
+	if strings.Contains(got, "```") || strings.Contains(got, " |") {
+		t.Fatalf("expected single-cell layout table not to render as a data table, got %q", got)
+	}
+}
+
+func TestRenderHTMLBodySeparatesLayoutTableCells(t *testing.T) {
+	html := `<a href="https://example.com/post"><table><tr><td><table><tr><td><p>Story text.</p></td><td><p>Author Name</p></td></tr></table></td></tr></table></a><a href="https://example.com/post"><table><tr><td><p>61</p></td><td><p>57</p></td></tr></table></a><a href="https://example.com/post"><table><tr><td><p>People replied</p></td><td><a href="https://example.com/post" style="display:block;background:#1B8751;padding:8px">View post</a></td></tr></table></a>`
+
+	got := ansi.Strip(renderHTMLBody(html, 80, CatppuccinMocha, true))
+
+	for _, bad := range []string{"text.Author", "Name61", "6157", "replied[View post]"} {
+		if strings.Contains(got, bad) {
+			t.Fatalf("expected layout table cells separated, found %q in %q", bad, got)
+		}
+	}
+	for _, want := range []string{"Story text.", "Author Name", "61", "57", "People replied", "View post"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q in rendered body, got %q", want, got)
+		}
+	}
+}
+
 func TestRenderHTMLBodyKeepsLooseListItemContinuation(t *testing.T) {
 	got := ansi.Strip(renderHTMLBody(`<ul><li><p>First line.</p><p>Second line.</p></li></ul>`, 80, CatppuccinMocha, true))
 
@@ -102,8 +142,30 @@ func TestRenderHTMLBodyShowsSafeImagePlaceholders(t *testing.T) {
 	if !strings.Contains(got, "[image: Quarterly chart]") {
 		t.Fatalf("expected safe image placeholder with alt text, got %q", got)
 	}
-	if !strings.Contains(got, "https://cdn.example.com/chart.png") {
-		t.Fatalf("expected image URL preserved as text for link navigation, got %q", got)
+	if strings.Contains(got, "https://cdn.example.com/chart.png") {
+		t.Fatalf("expected image URL hidden from body text, got %q", got)
+	}
+}
+
+func TestRenderHTMLBodyDropsDecorativeInlineImages(t *testing.T) {
+	got := ansi.Strip(renderHTMLBody(`<p>Hello<img src="https://cdn.example.com/pic.png" alt="Profile photo">World</p>`, 80, CatppuccinMocha, true))
+
+	if strings.Contains(got, "[image: Profile photo]") {
+		t.Fatalf("expected decorative profile image hidden from body text, got %q", got)
+	}
+	if !strings.Contains(got, "Hello World") {
+		t.Fatalf("expected surrounding text to stay readable, got %q", got)
+	}
+}
+
+func TestRenderHTMLBodyDropsEmptyVisualLinks(t *testing.T) {
+	got := ansi.Strip(renderHTMLBody(`<a href="https://example.com/red-dot" style="display:block;width:8px;height:8px"></a><p>Body text</p>`, 80, CatppuccinMocha, true))
+
+	if strings.Contains(got, "https://example.com/red-dot") || strings.Contains(got, "[]") {
+		t.Fatalf("expected empty visual link hidden from body text, got %q", got)
+	}
+	if !strings.Contains(got, "Body text") {
+		t.Fatalf("expected body text to remain, got %q", got)
 	}
 }
 
@@ -112,6 +174,9 @@ func TestRenderHTMLBodyFormatsButtonLinks(t *testing.T) {
 
 	if !strings.Contains(got, "[Confirm account]") {
 		t.Fatalf("expected button-like link to render as readable action text, got %q", got)
+	}
+	if strings.Contains(got, "https://example.com/confirm") {
+		t.Fatalf("expected button link URL hidden from body text, got %q", got)
 	}
 }
 
@@ -124,6 +189,18 @@ func TestRenderHTMLBodyDoesNotInlineLongNamedLinkDestinations(t *testing.T) {
 	}
 	if strings.Contains(got, "AOExmq1KwLPZWD") || strings.Contains(got, longURL) {
 		t.Fatalf("expected long href hidden from body text, got %q", got)
+	}
+}
+
+func TestRenderHTMLBodyDoesNotInlineLayoutTableLinkDestinations(t *testing.T) {
+	longURL := "https://nextdoor.com/p/" + strings.Repeat("token", 20)
+	got := ansi.Strip(renderHTMLBody(`<a href="`+longURL+`"><table><tr><td>View post</td></tr></table></a>`, 42, CatppuccinMocha, true))
+
+	if !strings.Contains(got, "View post") {
+		t.Fatalf("expected layout-table link text to remain readable, got %q", got)
+	}
+	if strings.Contains(got, "nextdoor.com") || strings.Contains(got, "tokentoken") {
+		t.Fatalf("expected layout-table href hidden from body text, got %q", got)
 	}
 }
 

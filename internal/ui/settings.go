@@ -889,7 +889,7 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 	}
 
 	// Global: ctrl+s saves immediately. Esc from detail keeps edits in the
-	// settings model and moves back to categories; esc from categories saves.
+	// settings model and moves back to categories; esc from categories cancels.
 	switch key.String() {
 	case "ctrl+s":
 		return s.saveAndExit()
@@ -898,7 +898,9 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedPane(settingsPaneSidebar)
 			return s, nil, false
 		}
-		return s.saveAndExit()
+		s.shouldSave = false
+		s.shouldExit = true
+		return s, nil, true
 	case "q":
 		if s.focusedPane != settingsPaneSidebar {
 			break
@@ -1777,7 +1779,8 @@ func (s Settings) viewHints(width int, chrome managerChrome) string {
 		return renderManagerActions(width, chrome,
 			"↑/↓", "section",
 			"→", "edit",
-			"esc", "save & close",
+			"ctrl+s", "save",
+			"esc", "cancel",
 			"q", "discard",
 		)
 	}
@@ -1786,6 +1789,7 @@ func (s Settings) viewHints(width int, chrome managerChrome) string {
 			"←/→", "change",
 			"↑/↓", "field",
 			"tab", "next",
+			"ctrl+s", "save",
 			"esc", "categories",
 		)
 	}
@@ -1794,6 +1798,7 @@ func (s Settings) viewHints(width int, chrome managerChrome) string {
 			"enter", "copy",
 			"c", "copy",
 			"tab", "next",
+			"ctrl+s", "save",
 			"esc", "categories",
 		)
 	}
@@ -1801,6 +1806,7 @@ func (s Settings) viewHints(width int, chrome managerChrome) string {
 		"←", "sections",
 		"↑/↓", "field",
 		"tab", "next",
+		"ctrl+s", "save",
 		"esc", "categories",
 	)
 }
