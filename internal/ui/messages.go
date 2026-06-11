@@ -45,17 +45,28 @@ func (m Model) renderMessagesPane() string {
 			rows = append(rows, msgRead.Render("  no drafts"))
 		}
 	} else {
-		visible := m.filteredMessages
-		end := min(m.listOffset+m.articleRowsVisible(), len(visible))
+		rowCount := m.activeMessageRowCount()
+		end := min(m.listOffset+m.articleRowsVisible(), rowCount)
 		for i := m.listOffset; i < end; i++ {
-			msg2 := visible[i]
+			msg2 := m.filteredMessages[i]
+			threadCount := 1
+			threadUnread := 0
+			var thread messageThread
+			if m.threadedMessagesEnabled() {
+				thread = m.messageThreads[i]
+				msg2 = thread.Representative
+				threadCount = thread.Count
+				threadUnread = thread.UnreadCount
+			} else if !msg2.Read {
+				threadUnread = 1
+			}
 			age := m.formatTime(msg2.Date)
 			style := msgRead
-			if !msg2.Read {
+			if threadUnread > 0 {
 				style = msgUnread
 			}
-			dot := m.messageRowPrefix(msg2.Read)
-			if m.selectedMessages[msg2.ID] {
+			dot := m.messageRowPrefix(threadUnread == 0)
+			if m.messageRowSelected(msg2, thread) {
 				dot = "✓ "
 				// When selected but not the cursor, use green checkmark + text
 				if i != m.messageCursor {
@@ -66,11 +77,15 @@ func (m Model) renderMessagesPane() string {
 			if i == m.messageCursor {
 				style = msgSelected
 			}
+			subject := unescapeDisplayText(msg2.Subject)
+			if threadCount > 1 {
+				subject = fmt.Sprintf("%s (%d)", subject, threadCount)
+			}
 			if m.cfg.Display.ShowSender {
 				senderW := min(22, max(0, w/3))
-				rows = append(rows, style.Width(w).Render(renderArticleRowWithSender(dot, senderDisplay(msg2.From), unescapeDisplayText(msg2.Subject), age, w, senderW)))
+				rows = append(rows, style.Width(w).Render(renderArticleRowWithSender(dot, senderDisplay(msg2.From), subject, age, w, senderW)))
 			} else {
-				rows = append(rows, style.Width(w).Render(renderArticleRow(dot, unescapeDisplayText(msg2.Subject), age, w)))
+				rows = append(rows, style.Width(w).Render(renderArticleRow(dot, subject, age, w)))
 			}
 		}
 
@@ -101,6 +116,7 @@ func (m Model) renderMessagesPane() string {
 	}
 
 	bg := m.styles.Theme.Bg
+	content := clampView(strings.Join(contentRows, "\n"), w, h, bg)
 	return lipgloss.NewStyle().
 		Background(bg).
 		Border(lipPaneBorder(m.styles.PlainUI), false, false, true, false).
@@ -112,7 +128,7 @@ func (m Model) renderMessagesPane() string {
 		}())).
 		BorderBackground(bg).
 		Width(w).Height(h).
-		Render(strings.Join(contentRows, "\n"))
+		Render(content)
 }
 
 func (m Model) messageRowStyles() (lipgloss.Style, lipgloss.Style, lipgloss.Style, lipgloss.Style, lipgloss.Color, lipgloss.Color) {
@@ -158,6 +174,7 @@ func (m *Model) applyFilter() {
 	q := strings.ToLower(m.searchQuery)
 	if q == "" && !m.showUnreadOnly {
 		m.filteredMessages = m.messages
+		m.rebuildMessageThreads()
 		return
 	}
 	filtered := make([]db.Message, 0, len(m.messages))
@@ -171,6 +188,7 @@ func (m *Model) applyFilter() {
 		filtered = append(filtered, msg)
 	}
 	m.filteredMessages = filtered
+	m.rebuildMessageThreads()
 }
 
 func (m *Model) setMessageReadCmd(msg db.Message, read, advance bool) tea.Cmd {

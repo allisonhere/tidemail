@@ -14,13 +14,13 @@ import (
 )
 
 func (m Model) openSummary() (tea.Model, tea.Cmd) {
-	if len(m.filteredMessages) == 0 {
+	msg := m.currentRowMessage()
+	if msg == nil {
 		return m, nil
 	}
-	msg := m.filteredMessages[m.messageCursor]
 
 	if msg.Summary != "" {
-		m.summaryMessage = msg
+		m.summaryMessage = *msg
 		m.summaryGenerating = false
 		m.summaryErr = ""
 		m.overlay = overlaySummary
@@ -32,11 +32,11 @@ func (m Model) openSummary() (tea.Model, tea.Cmd) {
 		return m, m.clearStatusCmd()
 	}
 
-	m.summaryMessage = msg
+	m.summaryMessage = *msg
 	m.summaryGenerating = true
 	m.summaryErr = ""
 	m.overlay = overlaySummary
-	return m, m.aiSummarizeCmd(msg)
+	return m, m.aiSummarizeCmd(*msg)
 }
 
 func (m *Model) aiSummarizeCmd(msg db.Message) tea.Cmd {

@@ -46,7 +46,7 @@ func (m Model) renderAccountsPane() string {
 	}
 	footer := fmt.Sprintf("  %d accounts", len(m.accounts))
 	footer = m.styles.ArticleRead.Width(innerW).Render(footer)
-	bodyHeight := max(0, m.mainHeight()-1)
+	bodyHeight := max(0, m.mainHeight()-m.styles.ListItemLineStride())
 	for viewLineCount(rows) < bodyHeight {
 		rows = append(rows, m.styles.FeedItem.Width(innerW).Render(""))
 	}
@@ -57,7 +57,7 @@ func (m Model) renderAccountsPane() string {
 		border = border.BorderForeground(m.styles.Theme.BorderFocus)
 	}
 
-	content := strings.Join(rows, "\n")
+	content := clampView(strings.Join(rows, "\n"), innerW, m.mainHeight(), m.styles.Theme.Bg)
 	return border.Width(innerW).Height(m.mainHeight()).Render(content)
 }
 
@@ -259,15 +259,16 @@ func (m *Model) markMailboxesReadInMemory(mailboxIDs []int64) {
 		return
 	}
 	m.applyFilter()
-	if len(m.filteredMessages) == 0 {
+	if m.activeMessageRowCount() == 0 {
 		m.messageCursor = 0
 		m.listOffset = 0
 		m.clearViewportMessage()
 		return
 	}
-	m.messageCursor = clamp(m.messageCursor, 0, max(0, len(m.filteredMessages)-1))
-	m.listOffset = clamp(m.listOffset, 0, max(0, len(m.filteredMessages)-1))
-	m.setViewportMessage(m.filteredMessages[m.messageCursor])
+	rowCount := m.activeMessageRowCount()
+	m.messageCursor = clamp(m.messageCursor, 0, max(0, rowCount-1))
+	m.listOffset = clamp(m.listOffset, 0, max(0, rowCount-1))
+	m.setViewportForCurrentRow()
 }
 
 func (m *Model) removeMessageFromMemory(messageID int64) bool {
@@ -280,15 +281,16 @@ func (m *Model) removeMessageFromMemory(messageID int64) bool {
 		}
 	}
 	m.applyFilter()
-	if len(m.filteredMessages) == 0 {
+	if m.activeMessageRowCount() == 0 {
 		m.messageCursor = 0
 		m.listOffset = 0
 		m.clearViewportMessage()
 		return wasUnread
 	}
-	m.messageCursor = clamp(m.messageCursor, 0, max(0, len(m.filteredMessages)-1))
-	m.listOffset = clamp(m.listOffset, 0, max(0, len(m.filteredMessages)-1))
-	m.setViewportMessage(m.filteredMessages[m.messageCursor])
+	rowCount := m.activeMessageRowCount()
+	m.messageCursor = clamp(m.messageCursor, 0, max(0, rowCount-1))
+	m.listOffset = clamp(m.listOffset, 0, max(0, rowCount-1))
+	m.setViewportForCurrentRow()
 	return wasUnread
 }
 

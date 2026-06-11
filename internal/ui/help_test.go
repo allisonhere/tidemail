@@ -78,3 +78,10 @@ func TestRenderHelpDocumentsNativeMessageSelection(t *testing.T) {
 		t.Fatalf("expected AI summary to move off v, got %q", view)
 	}
 }
+
+func TestRenderHelpDocumentsThreadToggle(t *testing.T) {
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys))
+	if !strings.Contains(view, "g") || !strings.Contains(view, "toggle threaded conversations") {
+		t.Fatalf("expected help to document threaded conversation toggle, got %q", view)
+	}
+}

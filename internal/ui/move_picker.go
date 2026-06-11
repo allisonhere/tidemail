@@ -74,18 +74,9 @@ func (m *Model) openMovePicker(messages []db.Message) {
 
 func (m *Model) movePickerMessages() []db.Message {
 	if m.hasSelection() {
-		msgs := make([]db.Message, 0, len(m.selectedMessages))
-		for _, msg := range m.filteredMessages {
-			if m.selectedMessages[msg.ID] {
-				msgs = append(msgs, msg)
-			}
-		}
-		return msgs
+		return m.selectedActionMessages()
 	}
-	if msg := m.commandMessage(); msg != nil {
-		return []db.Message{*msg}
-	}
-	return nil
+	return m.currentRowMessages()
 }
 
 func (m *Model) refreshMovePickerEntries() {

@@ -120,6 +120,7 @@ type Model struct {
 
 	messages         []db.Message
 	filteredMessages []db.Message
+	messageThreads   []messageThread
 	drafts           []db.Draft
 	messageCursor    int
 	listOffset       int
@@ -290,8 +291,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.viewport = viewport.New(m.contentBodyWidth(), m.contentBodyHeight())
 		m.viewport.Style = lipgloss.NewStyle()
-		if len(m.filteredMessages) > 0 {
-			m.setViewportMessage(m.filteredMessages[m.messageCursor])
+		if m.activeMessageRowCount() > 0 {
+			m.setViewportForCurrentRow()
 			m.ensureContentFocusVisible()
 		}
 		if m.overlay == overlayHelp {
@@ -522,10 +523,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.pendingSelectMessageID = 0
 			}
-			m.messageCursor = clamp(m.messageCursor, 0, max(0, len(m.filteredMessages)-1))
+			m.messageCursor = clamp(m.messageCursor, 0, max(0, m.activeMessageRowCount()-1))
 			m.listOffset = 0
-			if len(m.filteredMessages) > 0 {
-				m.setViewportMessage(m.filteredMessages[m.messageCursor])
+			if msg := m.currentRowMessage(); msg != nil {
+				m.setViewportForCurrentRow()
 			}
 		}
 		return m, nil
@@ -705,18 +706,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.clearViewportMessage()
 			return m, nil
 		}
-		if idx := m.indexOfFilteredMessage(msg.MessageID); msg.Advance && idx >= 0 && idx == m.messageCursor && idx < len(m.filteredMessages)-1 {
+		rowCount := m.activeMessageRowCount()
+		if idx := m.indexOfFilteredMessage(msg.MessageID); msg.Advance && idx >= 0 && idx == m.messageCursor && idx < rowCount-1 {
 			m.messageCursor = idx + 1
 			visible := max(1, m.articleRowsVisible())
 			if m.messageCursor >= m.listOffset+visible {
 				m.listOffset = m.messageCursor - visible + 1
 			}
 		} else {
-			m.messageCursor = clamp(m.messageCursor, 0, max(0, len(m.filteredMessages)-1))
-			m.listOffset = clamp(m.listOffset, 0, max(0, len(m.filteredMessages)-1))
+			m.messageCursor = clamp(m.messageCursor, 0, max(0, rowCount-1))
+			m.listOffset = clamp(m.listOffset, 0, max(0, rowCount-1))
 		}
-		current := m.filteredMessages[m.messageCursor]
-		m.setViewportMessage(current)
+		m.setViewportForCurrentRow()
 		return m, nil
 
 	case FolderCreatedMsg:
@@ -1010,24 +1011,52 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.showUnreadOnly = !m.showUnreadOnly
 		var currentID int64
-		if len(m.filteredMessages) > 0 {
-			currentID = m.filteredMessages[m.messageCursor].ID
+		if msg := m.currentRowMessage(); msg != nil {
+			currentID = msg.ID
 		}
 		m.applyFilter()
 		if idx := m.indexOfFilteredMessage(currentID); idx >= 0 {
 			m.messageCursor = idx
 		} else {
-			m.messageCursor = clamp(m.messageCursor, 0, max(0, len(m.filteredMessages)-1))
+			m.messageCursor = clamp(m.messageCursor, 0, max(0, m.activeMessageRowCount()-1))
 		}
 		if m.showUnreadOnly {
 			m.setStatus("showing unread only", false)
 		} else {
 			m.setStatus("showing all messages", false)
 		}
-		if len(m.filteredMessages) > 0 {
-			m.setViewportMessage(m.filteredMessages[m.messageCursor])
+		if m.activeMessageRowCount() > 0 {
+			m.setViewportForCurrentRow()
 		} else {
 			m.clearViewportMessage()
+		}
+		return m, m.clearStatusCmd()
+
+	case keyMatches(msg, m.keys.ToggleThreads):
+		if m.focused == paneAccounts || m.selectedDraftsMailbox() {
+			return m, nil
+		}
+		var currentID int64
+		if msg := m.currentRowMessage(); msg != nil {
+			currentID = msg.ID
+		}
+		m.cfg.Display.ThreadedConversations = !m.cfg.Display.ThreadedConversations
+		m.applyFilter()
+		if idx := m.indexOfFilteredMessage(currentID); idx >= 0 {
+			m.messageCursor = idx
+		} else {
+			m.messageCursor = clamp(m.messageCursor, 0, max(0, m.activeMessageRowCount()-1))
+		}
+		if m.activeMessageRowCount() > 0 {
+			m.setViewportForCurrentRow()
+		} else {
+			m.clearViewportMessage()
+		}
+		m.saveConfig()
+		if m.cfg.Display.ThreadedConversations {
+			m.setStatus("threaded conversations on", false)
+		} else {
+			m.setStatus("threaded conversations off", false)
 		}
 		return m, m.clearStatusCmd()
 
@@ -1088,7 +1117,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
-		if m.focused == paneMessages && (len(m.filteredMessages) > 0 || (m.selectedDraftsMailbox() && len(m.drafts) > 0)) {
+		if m.focused == paneMessages && (m.activeMessageRowCount() > 0 || (m.selectedDraftsMailbox() && len(m.drafts) > 0)) {
 			return m.focusPane(paneContent)
 		}
 		return m, nil
@@ -1134,27 +1163,38 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case keyMatches(msg, m.keys.MarkRead):
-		if m.focused == paneMessages && len(m.filteredMessages) > 0 {
-			if m.hasSelection() {
-				var cmds []tea.Cmd
-				for _, msg2 := range m.filteredMessages {
-					if m.selectedMessages[msg2.ID] {
-						read := !msg2.Read
-						cmds = append(cmds, m.setMessageReadCmd(msg2, read, false))
+		if m.focused == paneMessages && m.activeMessageRowCount() > 0 {
+			msgs := m.selectedActionMessages()
+			if len(msgs) == 0 {
+				return m, nil
+			}
+			var cmds []tea.Cmd
+			if !m.hasSelection() {
+				read := false
+				for _, msg2 := range msgs {
+					if !msg2.Read {
+						read = true
+						break
 					}
 				}
-				m.clearSelection()
+				for i, msg2 := range msgs {
+					advance := !msg2.Read && read && len(msgs) == 1 && i == 0
+					cmds = append(cmds, m.setMessageReadCmd(msg2, read, advance))
+				}
 				return m, tea.Batch(cmds...)
 			}
-			msg2 := m.filteredMessages[m.messageCursor]
-			read := !msg2.Read
-			advance := !msg2.Read
-			return m, m.setMessageReadCmd(msg2, read, advance)
+			for _, msg2 := range msgs {
+				read := !msg2.Read
+				advance := false
+				cmds = append(cmds, m.setMessageReadCmd(msg2, read, advance))
+			}
+			m.clearSelection()
+			return m, tea.Batch(cmds...)
 		}
 		return m, nil
 
 	case keyMatches(msg, m.keys.SelectAll):
-		if m.focused == paneMessages && len(m.filteredMessages) > 0 {
+		if m.focused == paneMessages && m.activeMessageRowCount() > 0 {
 			for _, msg2 := range m.filteredMessages {
 				m.selectedMessages[msg2.ID] = true
 			}
@@ -1162,24 +1202,21 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.Archive):
-		if m.focused != paneAccounts && len(m.filteredMessages) > 0 {
-			if m.hasSelection() {
-				var cmds []tea.Cmd
-				for _, msg2 := range m.filteredMessages {
-					if m.selectedMessages[msg2.ID] {
-						cmds = append(cmds, m.archiveMessageCmd(msg2))
-					}
-				}
-				m.clearSelection()
-				return m, tea.Batch(cmds...)
+		if m.focused != paneAccounts && m.activeMessageRowCount() > 0 {
+			msgs := m.selectedActionMessages()
+			var cmds []tea.Cmd
+			for _, msg2 := range msgs {
+				cmds = append(cmds, m.archiveMessageCmd(msg2))
 			}
-			msg2 := m.filteredMessages[m.messageCursor]
-			return m, m.archiveMessageCmd(msg2)
+			if m.hasSelection() {
+				m.clearSelection()
+			}
+			return m, tea.Batch(cmds...)
 		}
 		return m, nil
 
 	case keyMatches(msg, m.keys.Move):
-		if m.focused != paneAccounts && len(m.filteredMessages) > 0 {
+		if m.focused != paneAccounts && m.activeMessageRowCount() > 0 {
 			m.openMovePicker(m.movePickerMessages())
 		}
 		return m, nil
@@ -1192,19 +1229,12 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.messageCursor = clamp(m.messageCursor, 0, max(0, len(m.drafts)-1))
 			return m, m.deleteDraftCmd(id)
 		}
-		if m.focused != paneAccounts && len(m.filteredMessages) > 0 {
-			if m.hasSelection() {
-				var selected []db.Message
-				for _, msg2 := range m.filteredMessages {
-					if m.selectedMessages[msg2.ID] {
-						selected = append(selected, msg2)
-					}
-				}
+		if m.focused != paneAccounts && m.activeMessageRowCount() > 0 {
+			selected := m.selectedActionMessages()
+			if len(selected) > 0 {
 				m.clearSelection()
 				return m, m.deleteMessagesCmd(selected)
 			}
-			msg2 := m.filteredMessages[m.messageCursor]
-			return m, m.deleteMessagesCmd([]db.Message{msg2})
 		}
 		return m, nil
 
@@ -1212,8 +1242,8 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		var cur *db.Message
 		if m.focused == paneContent && m.contentMessageID != 0 {
 			cur = m.currentContentMessage()
-		} else if m.focused == paneMessages && len(m.filteredMessages) > 0 {
-			cur = &m.filteredMessages[m.messageCursor]
+		} else if m.focused == paneMessages {
+			cur = m.currentRowMessage()
 		}
 		if cur != nil {
 			acfg := m.accountCfgForMailbox(cur.MailboxID)
@@ -1226,8 +1256,8 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		var cur *db.Message
 		if m.focused == paneContent && m.contentMessageID != 0 {
 			cur = m.currentContentMessage()
-		} else if m.focused == paneMessages && len(m.filteredMessages) > 0 {
-			cur = &m.filteredMessages[m.messageCursor]
+		} else if m.focused == paneMessages {
+			cur = m.currentRowMessage()
 		}
 		if cur != nil {
 			acfg := m.accountCfgForMailbox(cur.MailboxID)
@@ -1268,8 +1298,8 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.NextLink):
 		if m.focused == paneContent && m.actionableLinksEnabled() {
 			m.stepContentLink(1)
-			if len(m.filteredMessages) > 0 {
-				m.setViewportMessage(m.filteredMessages[m.messageCursor])
+			if m.activeMessageRowCount() > 0 {
+				m.setViewportForCurrentRow()
 				m.viewport.GotoBottom()
 			}
 		}
@@ -1278,8 +1308,8 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.PrevLink):
 		if m.focused == paneContent && m.actionableLinksEnabled() {
 			m.stepContentLink(-1)
-			if len(m.filteredMessages) > 0 {
-				m.setViewportMessage(m.filteredMessages[m.messageCursor])
+			if m.activeMessageRowCount() > 0 {
+				m.setViewportForCurrentRow()
 				m.viewport.GotoBottom()
 			}
 		}
@@ -1298,7 +1328,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.Summary):
-		if m.focused != paneAccounts && len(m.filteredMessages) > 0 {
+		if m.focused != paneAccounts && m.activeMessageRowCount() > 0 {
 			return m.openSummary()
 		}
 		return m, nil
@@ -1314,9 +1344,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.ToggleHeaders):
 		if m.focused == paneContent && m.contentMessageID != 0 {
 			m.contentShowHeaders = !m.contentShowHeaders
-			if cur := m.currentContentMessage(); cur != nil {
-				m.setViewportMessage(*cur)
-			}
+			m.setViewportForCurrentRow()
 		}
 		return m, nil
 
@@ -1347,11 +1375,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
-		if m.focused == paneMessages && len(m.filteredMessages) > 0 {
-			cur := m.filteredMessages[m.messageCursor]
-			m.toggleMessageSelection(cur.ID)
+		if m.focused == paneMessages && m.activeMessageRowCount() > 0 {
+			m.toggleCurrentRowSelection()
 			// Auto-advance cursor for rapid multi-select
-			if m.messageCursor < len(m.filteredMessages)-1 {
+			if m.messageCursor < m.activeMessageRowCount()-1 {
 				m.messageCursor++
 				visible := m.articleRowsVisible()
 				if m.messageCursor >= m.listOffset+visible {
@@ -1385,11 +1412,15 @@ func (m Model) focusPane(next pane) (tea.Model, tea.Cmd) {
 		m.focused = paneMessages
 		return m, nil
 	}
-	if wasMessages && next == paneContent && len(m.filteredMessages) > 0 {
-		return m, m.openedMessageCmd(m.filteredMessages[m.messageCursor])
+	if wasMessages && next == paneContent {
+		if msg := m.currentRowMessage(); msg != nil {
+			return m, m.openedMessageCmd(*msg)
+		}
 	}
-	if !wasMessages && next == paneMessages && len(m.filteredMessages) > 0 {
-		return m, m.focusedMessageChangedCmd(m.filteredMessages[m.messageCursor])
+	if !wasMessages && next == paneMessages {
+		if msg := m.currentRowMessage(); msg != nil {
+			return m, m.focusedMessageChangedCmd(*msg)
+		}
 	}
 	return m, nil
 }
@@ -1413,10 +1444,6 @@ func (m Model) handleUp() (tea.Model, tea.Cmd) {
 			m.clearMessages()
 		}
 	case paneMessages:
-		count := len(m.filteredMessages)
-		if m.selectedDraftsMailbox() {
-			count = len(m.drafts)
-		}
 		if m.messageCursor > 0 {
 			m.messageCursor--
 			if m.messageCursor < m.listOffset {
@@ -1425,10 +1452,9 @@ func (m Model) handleUp() (tea.Model, tea.Cmd) {
 			if m.selectedDraftsMailbox() {
 				return m, nil
 			}
-			if count > 0 {
-				msg2 := m.filteredMessages[m.messageCursor]
-				m.setViewportMessage(msg2)
-				return m, m.focusedMessageChangedCmd(msg2)
+			if msg2 := m.currentRowMessage(); msg2 != nil {
+				m.setViewportForCurrentRow()
+				return m, m.focusedMessageChangedCmd(*msg2)
 			}
 		}
 	case paneContent:
@@ -1460,7 +1486,7 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 			m.clearMessages()
 		}
 	case paneMessages:
-		count := len(m.filteredMessages)
+		count := m.activeMessageRowCount()
 		if m.selectedDraftsMailbox() {
 			count = len(m.drafts)
 		}
@@ -1473,10 +1499,9 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 			if m.selectedDraftsMailbox() {
 				return m, nil
 			}
-			if count > 0 {
-				msg2 := m.filteredMessages[m.messageCursor]
-				m.setViewportMessage(msg2)
-				return m, m.focusedMessageChangedCmd(msg2)
+			if msg2 := m.currentRowMessage(); msg2 != nil {
+				m.setViewportForCurrentRow()
+				return m, m.focusedMessageChangedCmd(*msg2)
 			}
 		}
 	case paneContent:
@@ -1541,8 +1566,8 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.themeCursor--
 				m.activeTheme = m.themeCursor
 				m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density)
-				if len(m.filteredMessages) > 0 {
-					m.setViewportMessage(m.filteredMessages[m.messageCursor])
+				if m.activeMessageRowCount() > 0 {
+					m.setViewportForCurrentRow()
 				}
 			}
 		case keyMatches(msg, m.keys.Down):
@@ -1550,8 +1575,8 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.themeCursor++
 				m.activeTheme = m.themeCursor
 				m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density)
-				if len(m.filteredMessages) > 0 {
-					m.setViewportMessage(m.filteredMessages[m.messageCursor])
+				if m.activeMessageRowCount() > 0 {
+					m.setViewportForCurrentRow()
 				}
 			}
 		case keyMatches(msg, m.keys.Confirm):
@@ -1559,15 +1584,15 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.overlay = overlayNone
 			m.cfg.Theme = BuiltinThemes[m.confirmedTheme].Name
 			m.saveConfig()
-			if len(m.filteredMessages) > 0 {
-				m.setViewportMessage(m.filteredMessages[m.messageCursor])
+			if m.activeMessageRowCount() > 0 {
+				m.setViewportForCurrentRow()
 			}
 		case keyMatches(msg, m.keys.Cancel):
 			m.activeTheme = m.confirmedTheme
 			m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density)
 			m.overlay = overlayNone
-			if len(m.filteredMessages) > 0 {
-				m.setViewportMessage(m.filteredMessages[m.messageCursor])
+			if m.activeMessageRowCount() > 0 {
+				m.setViewportForCurrentRow()
 			}
 		}
 		if m.activeTheme != prevTheme {
@@ -1687,8 +1712,8 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	previewingTheme := m.settings.themeIdx != cfgThemeIdx
 	if tickChanged && !done {
 		m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.settings.themeIdx), m.cfg.Display.Density)
-		if len(m.filteredMessages) > 0 {
-			m.setViewportMessage(m.filteredMessages[m.messageCursor])
+		if m.activeMessageRowCount() > 0 {
+			m.setViewportForCurrentRow()
 		}
 		cmd = tea.Batch(cmd, setTermColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg))
 	}
@@ -1738,8 +1763,8 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if done {
 		if m.settings.shouldSave {
-			if len(m.filteredMessages) > 0 && m.messageCursor >= 0 && m.messageCursor < len(m.filteredMessages) {
-				m.pendingSelectMessageID = m.filteredMessages[m.messageCursor].ID
+			if msg := m.currentRowMessage(); msg != nil {
+				m.pendingSelectMessageID = msg.ID
 			}
 			m.cfg = m.settings.ApplyTo(m.cfg)
 			m.showUnreadOnly = m.cfg.Display.DefaultUnreadOnly
@@ -1753,8 +1778,8 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.saveConfig()
 			summarizer, _ := ai.New(m.cfg.AI)
 			m.summarizer = summarizer
-			if len(m.filteredMessages) > 0 {
-				m.setViewportMessage(m.filteredMessages[m.messageCursor])
+			if m.activeMessageRowCount() > 0 {
+				m.setViewportForCurrentRow()
 			} else {
 				m.clearViewportMessage()
 			}
@@ -1766,8 +1791,8 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if previewingTheme {
 			merged, _ := MergedThemeFromConfig(m.cfg)
 			m.styles = BuildStyles(merged, m.cfg.Display.Density)
-			if len(m.filteredMessages) > 0 {
-				m.setViewportMessage(m.filteredMessages[m.messageCursor])
+			if m.activeMessageRowCount() > 0 {
+				m.setViewportForCurrentRow()
 			}
 			return m, setTermColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg)
 		}
@@ -1906,11 +1931,7 @@ func (m Model) commandMessage() *db.Message {
 	if msg := m.currentContentMessage(); msg != nil {
 		return msg
 	}
-	if len(m.filteredMessages) == 0 {
-		return nil
-	}
-	idx := clamp(m.messageCursor, 0, len(m.filteredMessages)-1)
-	return &m.filteredMessages[idx]
+	return m.currentRowMessage()
 }
 
 // ── View ─────────────────────────────────────────────────────────────────────
@@ -2217,7 +2238,8 @@ func (m *Model) rebuildSidebar() {
 }
 
 func (m Model) sidebarVisibleRows() int {
-	return max(1, m.mainHeight()-2) // mainHeight minus title row and footer row
+	bodyLines := max(0, m.mainHeight()-1-m.styles.ListItemLineStride())
+	return max(1, bodyLines/m.styles.ListItemLineStride())
 }
 
 func (m *Model) clampSidebarOffset() {
@@ -2249,6 +2271,7 @@ func (m Model) newAccountManager() AccountManager {
 func (m *Model) clearMessages() {
 	m.messages = nil
 	m.filteredMessages = nil
+	m.messageThreads = nil
 	m.drafts = nil
 	m.messageCursor = 0
 	m.listOffset = 0
@@ -2329,6 +2352,16 @@ func (m Model) accountByID(accountID int64) *db.Account {
 // loadCollapseState restores sidebar collapse state from the database.
 
 func (m Model) indexOfFilteredMessage(messageID int64) int {
+	if m.threadedMessagesEnabled() {
+		for i, thread := range m.messageThreads {
+			for _, msg := range thread.Messages {
+				if msg.ID == messageID {
+					return i
+				}
+			}
+		}
+		return -1
+	}
 	for i := range m.filteredMessages {
 		if m.filteredMessages[i].ID == messageID {
 			return i

@@ -43,6 +43,8 @@ func TestDBAccountsMailboxesAndMessages(t *testing.T) {
 		MailboxID:     mailboxID,
 		UID:           42,
 		MessageID:     "<hello@example.com>",
+		InReplyTo:     "<parent@example.com>",
+		References:    "<root@example.com> <parent@example.com>",
 		Subject:       "Hello",
 		From:          "Alice <alice@example.com>",
 		To:            "Bob <bob@example.com>",
@@ -84,6 +86,9 @@ func TestDBAccountsMailboxesAndMessages(t *testing.T) {
 	}
 	if messages[0].Subject != "Hello" || !messages[0].Read || !messages[0].HasAttachment {
 		t.Fatalf("unexpected message: %+v", messages[0])
+	}
+	if messages[0].InReplyTo != "<parent@example.com>" || messages[0].References != "<root@example.com> <parent@example.com>" {
+		t.Fatalf("expected threading headers preserved, got in_reply_to=%q references=%q", messages[0].InReplyTo, messages[0].References)
 	}
 }
 

@@ -118,6 +118,35 @@ func TestRenderHTMLBodyKeepsLooseListItemContinuation(t *testing.T) {
 	}
 }
 
+func TestRenderHTMLBodyStripsTrackingInvisibles(t *testing.T) {
+	hidden := strings.Repeat("\u034f \u00ad \u200b ", 80)
+	got := renderHTMLBody(`<p>`+hidden+`Venmo is useful.</p>`, 42, CatppuccinMocha, true)
+
+	for _, bad := range []string{"\u034f", "\u00ad", "\u200b"} {
+		if strings.Contains(got, bad) {
+			t.Fatalf("expected rendered body to strip hidden tracking rune %q from %q", bad, got)
+		}
+	}
+	lines := strings.Split(ansi.Strip(got), "\n")
+	if len(lines) != 1 || strings.TrimSpace(lines[0]) != "Venmo is useful." {
+		t.Fatalf("expected only visible body text, got %q", got)
+	}
+}
+
+func TestFormatArticleBodyStripsTrackingInvisibles(t *testing.T) {
+	hidden := strings.Repeat("\u034f \u00ad \u200b ", 80)
+	got := formatArticleBody(hidden+"Visible text.", 42, CatppuccinMocha, true)
+
+	for _, bad := range []string{"\u034f", "\u00ad", "\u200b"} {
+		if strings.Contains(got, bad) {
+			t.Fatalf("expected formatted body to strip hidden tracking rune %q from %q", bad, got)
+		}
+	}
+	if strings.TrimSpace(ansi.Strip(got)) != "Visible text." {
+		t.Fatalf("expected only visible body text, got %q", got)
+	}
+}
+
 func TestHTMLOnlyMessagePopulatesActionableLinks(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Display.ActionableLinks = true

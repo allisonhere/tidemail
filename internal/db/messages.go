@@ -13,6 +13,8 @@ type Message struct {
 	MailboxID      int64
 	UID            uint32
 	MessageID      string
+	InReplyTo      string
+	References     string
 	Subject        string
 	From           string
 	To             string
@@ -31,7 +33,7 @@ type Message struct {
 
 func (db *DB) ListMessages(mailboxID int64) ([]Message, error) {
 	rows, err := db.Query(`
-		SELECT id, mailbox_id, uid, message_id, subject, from_addr, to_addr, cc_addr,
+		SELECT id, mailbox_id, uid, message_id, in_reply_to, references_text, subject, from_addr, to_addr, cc_addr,
 		       reply_to, date, body_text, body_html, summary,		flags, read, has_attachment, headers
 		FROM messages WHERE mailbox_id = ?
 		ORDER BY date DESC, id DESC`, mailboxID)
@@ -44,7 +46,7 @@ func (db *DB) ListMessages(mailboxID int64) ([]Message, error) {
 
 func (db *DB) ListMessagesUnreadFirst(mailboxID int64) ([]Message, error) {
 	rows, err := db.Query(`
-		SELECT id, mailbox_id, uid, message_id, subject, from_addr, to_addr, cc_addr,
+		SELECT id, mailbox_id, uid, message_id, in_reply_to, references_text, subject, from_addr, to_addr, cc_addr,
 		       reply_to, date, body_text, body_html, summary,		flags, read, has_attachment, headers
 		FROM messages WHERE mailbox_id = ?
 		ORDER BY read ASC, date DESC, id DESC`, mailboxID)
@@ -63,7 +65,7 @@ func (db *DB) CountMessages(mailboxID int64) (int64, error) {
 
 func (db *DB) ListUnreadMessages(mailboxID int64) ([]Message, error) {
 	rows, err := db.Query(`
-		SELECT id, mailbox_id, uid, message_id, subject, from_addr, to_addr, cc_addr,
+		SELECT id, mailbox_id, uid, message_id, in_reply_to, references_text, subject, from_addr, to_addr, cc_addr,
 		       reply_to, date, body_text, body_html, summary,		flags, read, has_attachment, headers
 		FROM messages WHERE mailbox_id = ? AND read = 0
 		ORDER BY date DESC, id DESC`, mailboxID)
@@ -81,7 +83,7 @@ func (db *DB) ListUnifiedInbox(unreadOnly bool) ([]Message, error) {
 	}
 	rows, err := db.Query(`
 		SELECT messages.id, messages.mailbox_id, messages.uid, messages.message_id,
-		       messages.subject, messages.from_addr, messages.to_addr, messages.cc_addr,
+		       messages.in_reply_to, messages.references_text, messages.subject, messages.from_addr, messages.to_addr, messages.cc_addr,
 		       messages.reply_to, messages.date, messages.body_text, messages.body_html,
 		       messages.summary, messages.flags, messages.read, messages.has_attachment, messages.headers
 		FROM messages
@@ -106,7 +108,7 @@ func (db *DB) ListUnifiedInboxUnreadFirst(unreadOnly bool) ([]Message, error) {
 	}
 	rows, err := db.Query(`
 		SELECT messages.id, messages.mailbox_id, messages.uid, messages.message_id,
-		       messages.subject, messages.from_addr, messages.to_addr, messages.cc_addr,
+		       messages.in_reply_to, messages.references_text, messages.subject, messages.from_addr, messages.to_addr, messages.cc_addr,
 		       messages.reply_to, messages.date, messages.body_text, messages.body_html,
 		       messages.summary, messages.flags, messages.read, messages.has_attachment, messages.headers
 		FROM messages
@@ -127,7 +129,7 @@ func (db *DB) ListUnifiedInboxUnreadFirst(unreadOnly bool) ([]Message, error) {
 func (db *DB) SearchMessages(mailboxID int64, query string) ([]Message, error) {
 	q := "%" + query + "%"
 	rows, err := db.Query(`
-		SELECT id, mailbox_id, uid, message_id, subject, from_addr, to_addr, cc_addr,
+		SELECT id, mailbox_id, uid, message_id, in_reply_to, references_text, subject, from_addr, to_addr, cc_addr,
 		       reply_to, date, body_text, body_html, summary,		flags, read, has_attachment, headers
 		FROM messages WHERE mailbox_id = ? AND (subject LIKE ? OR from_addr LIKE ? OR body_text LIKE ?)
 		ORDER BY date DESC, id DESC`, mailboxID, q, q, q)
@@ -144,10 +146,10 @@ func (db *DB) GetMessage(id int64) (Message, error) {
 	var dateUnix int64
 	var read, att int
 	err := db.QueryRow(`
-		SELECT id, mailbox_id, uid, message_id, subject, from_addr, to_addr, cc_addr,
+		SELECT id, mailbox_id, uid, message_id, in_reply_to, references_text, subject, from_addr, to_addr, cc_addr,
 		       reply_to, date, body_text, body_html, summary,		flags, read, has_attachment, headers
 		FROM messages WHERE id = ?`, id).
-		Scan(&m.ID, &m.MailboxID, &m.UID, &m.MessageID, &m.Subject,
+		Scan(&m.ID, &m.MailboxID, &m.UID, &m.MessageID, &m.InReplyTo, &m.References, &m.Subject,
 			&m.From, &m.To, &m.CC, &m.ReplyTo, &dateUnix,
 			&m.BodyText, &m.BodyHTML, &m.Summary, &flagsJSON, &read, &att,
 			&m.Headers)
@@ -179,11 +181,13 @@ func (db *DB) UpsertMessage(m Message) error {
 	}
 	_, err := db.Exec(`
 		INSERT INTO messages
-			(mailbox_id, uid, message_id, subject, from_addr, to_addr, cc_addr,
+			(mailbox_id, uid, message_id, in_reply_to, references_text, subject, from_addr, to_addr, cc_addr,
 			 reply_to, date, body_text, body_html, summary, flags, read, has_attachment, headers)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(mailbox_id, uid) DO UPDATE SET
 			message_id     = excluded.message_id,
+			in_reply_to    = excluded.in_reply_to,
+			references_text = excluded.references_text,
 			subject        = excluded.subject,
 			from_addr      = excluded.from_addr,
 			to_addr        = excluded.to_addr,
@@ -195,7 +199,7 @@ func (db *DB) UpsertMessage(m Message) error {
 			flags          = excluded.flags,
 			has_attachment = excluded.has_attachment,
 			headers        = CASE WHEN excluded.headers != '' THEN excluded.headers ELSE headers END
-	`, m.MailboxID, m.UID, m.MessageID, m.Subject, m.From, m.To, m.CC,
+	`, m.MailboxID, m.UID, m.MessageID, m.InReplyTo, m.References, m.Subject, m.From, m.To, m.CC,
 		m.ReplyTo, dateUnix, m.BodyText, m.BodyHTML, m.Summary,
 		string(flagsJSON), read, att, m.Headers)
 	if err != nil {
@@ -331,7 +335,7 @@ func scanMessages(rows interface {
 		var dateUnix int64
 		var read, att int
 		if err := rows.Scan(
-			&m.ID, &m.MailboxID, &m.UID, &m.MessageID, &m.Subject,
+			&m.ID, &m.MailboxID, &m.UID, &m.MessageID, &m.InReplyTo, &m.References, &m.Subject,
 			&m.From, &m.To, &m.CC, &m.ReplyTo, &dateUnix,
 			&m.BodyText, &m.BodyHTML, &m.Summary, &flagsJSON, &read, &att,
 			&m.Headers,

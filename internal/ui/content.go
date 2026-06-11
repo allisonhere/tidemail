@@ -99,6 +99,22 @@ func (m Model) renderMessageContent(msg db.Message) string {
 		}
 	}
 
+	body := m.renderMessageBody(msg, bodyWidth)
+
+	body = collapseQuoteBlocks(body, m.contentQuotesCollapsed)
+
+	if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
+		body += "\n\n" + m.renderContentLinks(bodyWidth)
+	}
+
+	if len(m.contentAttachments) > 0 {
+		body += "\n\n" + m.renderAttachmentList(bodyWidth)
+	}
+
+	return fillViewWidth(title+"\n"+meta+"\n\n"+fullHeaders+body, paneWidth, m.styles.Theme.Bg)
+}
+
+func (m Model) renderMessageBody(msg db.Message, bodyWidth int) string {
 	var body string
 	if msg.BodyHTML != "" {
 		body = renderHTMLBody(msg.BodyHTML, bodyWidth, m.styles.Theme, m.styles.PlainUI)
@@ -113,18 +129,7 @@ func (m Model) renderMessageContent(msg db.Message) string {
 		}
 		body = indentBlock(m.styles.ContentBody.Width(bodyWidth).Render(formatArticleBody(content, bodyWidth, m.styles.Theme, m.styles.PlainUI)), 1)
 	}
-
-	body = collapseQuoteBlocks(body, m.contentQuotesCollapsed)
-
-	if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
-		body += "\n\n" + m.renderContentLinks(bodyWidth)
-	}
-
-	if len(m.contentAttachments) > 0 {
-		body += "\n\n" + m.renderAttachmentList(bodyWidth)
-	}
-
-	return fillViewWidth(title+"\n"+meta+"\n\n"+fullHeaders+body, paneWidth, m.styles.Theme.Bg)
+	return body
 }
 
 func (m Model) renderAttachmentList(width int) string {
@@ -239,6 +244,43 @@ func (m *Model) setViewportMessage(msg db.Message) {
 	m.ensureContentFocusVisible()
 }
 
+func (m *Model) setViewportThread(thread messageThread) {
+	rep := thread.Representative
+	sameMsg := m.contentMessageID == rep.ID && m.contentLineCount > 0
+	m.syncThreadContentLinks(thread)
+	m.contentAttachments = nil
+	m.contentQuotesCollapsed = false
+	m.clearContentSelection()
+	if !sameMsg {
+		m.contentShowHeaders = true
+	}
+	content := m.renderThreadContent(thread)
+	m.contentSearchMatches = collectSearchMatches(content, m.contentSearchQuery)
+	m.viewport.SetContent(content)
+	m.contentMessageID = rep.ID
+	m.contentLines = strings.Split(ansi.Strip(content), "\n")
+	m.contentLineCount = len(m.contentLines)
+	m.contentFocusable = messageFocusableLines(content)
+	m.contentFocusLine = clamp(m.contentFocusLine, 0, max(0, m.contentLineCount-1))
+	if !sameMsg {
+		m.contentFocusLine = firstFocusableLine(m.contentFocusable)
+		m.viewport.GotoTop()
+	}
+	m.ensureContentFocusVisible()
+}
+
+func (m *Model) setViewportForCurrentRow() {
+	if m.threadedMessagesEnabled() {
+		if m.messageCursor >= 0 && m.messageCursor < len(m.messageThreads) {
+			m.setViewportThread(m.messageThreads[m.messageCursor])
+		}
+		return
+	}
+	if msg := m.currentRowMessage(); msg != nil {
+		m.setViewportMessage(*msg)
+	}
+}
+
 func (m *Model) clearViewportMessage() {
 	m.viewport.SetContent("")
 	m.contentLinks = nil
@@ -252,6 +294,47 @@ func (m *Model) clearViewportMessage() {
 	m.clearContentSelection()
 	m.clearContentSearch()
 	m.viewport.GotoTop()
+}
+
+func (m Model) renderThreadContent(thread messageThread) string {
+	if len(thread.Messages) == 0 {
+		return ""
+	}
+	paneWidth := m.articlesPaneWidth()
+	contentWidth := m.contentBodyWidth()
+	titleWidth := max(1, paneWidth-m.styles.ContentTitle.GetHorizontalFrameSize())
+	titleText := unescapeDisplayText(thread.Representative.Subject)
+	if thread.Count > 1 {
+		titleText = fmt.Sprintf("%s (%d messages)", titleText, thread.Count)
+	}
+	title := m.styles.ContentTitle.Width(paneWidth).Render(truncate(titleText, titleWidth))
+
+	var blocks []string
+	for _, msg := range thread.Messages {
+		header := m.threadMessageHeader(msg, contentWidth)
+		body := m.renderMessageBody(msg, contentWidth)
+		if strings.TrimSpace(body) == "" {
+			body = "No message body."
+		}
+		blocks = append(blocks, header+"\n\n"+body)
+	}
+	body := collapseQuoteBlocks(strings.Join(blocks, "\n\n"), m.contentQuotesCollapsed)
+	if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
+		body += "\n\n" + m.renderContentLinks(contentWidth)
+	}
+	return fillViewWidth(title+"\n\n"+body, paneWidth, m.styles.Theme.Bg)
+}
+
+func (m Model) threadMessageHeader(msg db.Message, width int) string {
+	meta := msg.Date.Format("Mon, 02 Jan 2006 15:04")
+	if msg.From != "" {
+		meta += "  From: " + msg.From
+	}
+	line := "── " + meta + " ──"
+	if lipgloss.Width(line) > width {
+		line = truncate(line, width)
+	}
+	return m.styles.ContentMeta.Width(width).Render(line)
 }
 
 func (m *Model) clearContentSearch() {
@@ -462,6 +545,38 @@ func (m *Model) syncContentLinks(msg db.Message) {
 		}
 	}
 
+	m.contentLinks = links
+	m.contentLinkIdx = 0
+}
+
+func (m *Model) syncThreadContentLinks(thread messageThread) {
+	if !m.actionableLinksEnabled() {
+		m.contentLinks = nil
+		m.contentLinkIdx = -1
+		return
+	}
+	var links []string
+	for _, msg := range thread.Messages {
+		msgLinks := extractActionableLinks(msg.BodyText, "")
+		if msg.BodyHTML != "" {
+			msgLinks = mergeActionableLinks(msgLinks, extractActionableLinksFromHTML(msg.BodyHTML, ""))
+		}
+		links = mergeActionableLinks(links, msgLinks)
+	}
+	if len(links) == 0 {
+		m.contentLinks = nil
+		m.contentLinkIdx = -1
+		return
+	}
+	if cur, ok := m.currentContentLink(); ok {
+		for i, link := range links {
+			if link == cur {
+				m.contentLinks = links
+				m.contentLinkIdx = i
+				return
+			}
+		}
+	}
 	m.contentLinks = links
 	m.contentLinkIdx = 0
 }

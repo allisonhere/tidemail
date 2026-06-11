@@ -80,6 +80,8 @@ func (db *DB) migrate() error {
 			mailbox_id     INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
 			uid            INTEGER NOT NULL DEFAULT 0,
 			message_id     TEXT    NOT NULL DEFAULT '',
+			in_reply_to    TEXT    NOT NULL DEFAULT '',
+			references_text TEXT   NOT NULL DEFAULT '',
 			subject        TEXT    NOT NULL DEFAULT '',
 			from_addr      TEXT    NOT NULL DEFAULT '',
 			to_addr        TEXT    NOT NULL DEFAULT '',
@@ -191,6 +193,8 @@ func (db *DB) migrate() error {
 	// SQLite error on duplicate column is silently ignored.
 	db.Exec(`ALTER TABLE messages ADD COLUMN headers TEXT NOT NULL DEFAULT ''`)         //nolint:errcheck
 	db.Exec(`ALTER TABLE mailboxes ADD COLUMN uid_validity INTEGER NOT NULL DEFAULT 0`) //nolint:errcheck
+	db.Exec(`ALTER TABLE messages ADD COLUMN in_reply_to TEXT NOT NULL DEFAULT ''`)     //nolint:errcheck
+	db.Exec(`ALTER TABLE messages ADD COLUMN references_text TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
 	// Enforce one local mirror per remote draft. Drop any duplicates a previous
 	// build's check-then-insert race may have created before adding the index.
 	_, _ = db.Exec(`DELETE FROM drafts WHERE remote_uid != 0 AND id NOT IN (

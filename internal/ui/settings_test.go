@@ -242,6 +242,22 @@ func TestSettingsLoadsAndAppliesUnreadFirst(t *testing.T) {
 	}
 }
 
+func TestSettingsLoadsAndAppliesThreadedConversations(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Display.ThreadedConversations = true
+
+	s := newSettings(cfg, settingsUpdateState{})
+	if !s.threadedConversations {
+		t.Fatal("expected settings to load threaded conversations from config")
+	}
+
+	s.threadedConversations = false
+	next := s.ApplyTo(cfg)
+	if next.Display.ThreadedConversations {
+		t.Fatal("expected ApplyTo to save disabled threaded conversations")
+	}
+}
+
 func TestSettingsViewIncludesFocusLineToggle(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	s.setFocusedPane(settingsPaneDetail)

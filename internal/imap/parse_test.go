@@ -161,6 +161,7 @@ func TestParseIMAPMessage_Basic(t *testing.T) {
 		Envelope: &imap.Envelope{
 			Subject:   "Test Subject",
 			MessageID: "<abc123@example.com>",
+			InReplyTo: []string{"<parent@example.com>"},
 			Date:      now,
 			From:      []imap.Address{{Name: "Alice", Mailbox: "alice", Host: "example.com"}},
 			To:        []imap.Address{{Name: "Bob", Mailbox: "bob", Host: "test.org"}},
@@ -169,6 +170,10 @@ func TestParseIMAPMessage_Basic(t *testing.T) {
 		},
 		BodySection: []imapclient.FetchBodySectionBuffer{
 			{Bytes: []byte("Content-Type: text/plain\r\n\r\nHello World")},
+			{
+				Section: &imap.FetchItemBodySection{Specifier: imap.PartSpecifierHeader},
+				Bytes:   []byte("References: <root@example.com>\r\n <parent@example.com>\r\nAuthentication-Results: mx.example.com; spf=pass\r\n\r\n"),
+			},
 		},
 	}
 
@@ -188,6 +193,12 @@ func TestParseIMAPMessage_Basic(t *testing.T) {
 	}
 	if m.MessageID != "<abc123@example.com>" {
 		t.Errorf("MessageID = %q, want %q", m.MessageID, "<abc123@example.com>")
+	}
+	if m.InReplyTo != "<parent@example.com>" {
+		t.Errorf("InReplyTo = %q, want %q", m.InReplyTo, "<parent@example.com>")
+	}
+	if m.References != "<root@example.com> <parent@example.com>" {
+		t.Errorf("References = %q, want folded references", m.References)
 	}
 	if !m.Date.Equal(now) {
 		t.Errorf("Date = %v, want %v", m.Date, now)

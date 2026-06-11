@@ -46,7 +46,7 @@ func (m Model) handleCommandPaletteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) commandItems() []commandItem {
-	hasMessage := len(m.filteredMessages) > 0 && m.focused != paneAccounts
+	hasMessage := m.activeMessageRowCount() > 0 && m.focused != paneAccounts
 	hasMailbox := m.selectedMailbox() != nil
 	return []commandItem{
 		{id: "compose", label: "Compose new message", enabled: len(m.cfg.Accounts) > 0},

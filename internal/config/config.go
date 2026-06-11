@@ -31,24 +31,25 @@ type RetroTerminalTweak struct {
 }
 
 type DisplayConfig struct {
-	Icons             bool               `toml:"icons"`
-	DateFormat        string             `toml:"date_format"`
-	MarkReadOnOpen    bool               `toml:"mark_read_on_open"`
-	MarkReadOnFocus   bool               `toml:"mark_read_on_focus"`
-	FocusLine         bool               `toml:"focus_line"`
-	DefaultUnreadOnly bool               `toml:"default_unread_only"`
-	ActionableLinks   bool               `toml:"actionable_links"`
-	FilterLinks       bool               `toml:"filter_links"`
-	ShowSender        bool               `toml:"show_sender"`
-	ReadingWidth      int                `toml:"reading_width"`
-	ConfirmQuit       bool               `toml:"confirm_quit"`
-	ShowHeaders       bool               `toml:"show_headers"`
-	UnreadFirst       bool               `toml:"unread_first"`
-	Notifications     bool               `toml:"notifications"`
-	Browser           string             `toml:"browser"`
-	Density           string             `toml:"density"`
-	VT52              RetroTerminalTweak `toml:"vt52"`
-	VT100             RetroTerminalTweak `toml:"vt100"`
+	Icons                 bool               `toml:"icons"`
+	DateFormat            string             `toml:"date_format"`
+	MarkReadOnOpen        bool               `toml:"mark_read_on_open"`
+	MarkReadOnFocus       bool               `toml:"mark_read_on_focus"`
+	FocusLine             bool               `toml:"focus_line"`
+	DefaultUnreadOnly     bool               `toml:"default_unread_only"`
+	ActionableLinks       bool               `toml:"actionable_links"`
+	FilterLinks           bool               `toml:"filter_links"`
+	ShowSender            bool               `toml:"show_sender"`
+	ThreadedConversations bool               `toml:"threaded_conversations"`
+	ReadingWidth          int                `toml:"reading_width"`
+	ConfirmQuit           bool               `toml:"confirm_quit"`
+	ShowHeaders           bool               `toml:"show_headers"`
+	UnreadFirst           bool               `toml:"unread_first"`
+	Notifications         bool               `toml:"notifications"`
+	Browser               string             `toml:"browser"`
+	Density               string             `toml:"density"`
+	VT52                  RetroTerminalTweak `toml:"vt52"`
+	VT100                 RetroTerminalTweak `toml:"vt100"`
 }
 
 type UpdatesConfig struct {

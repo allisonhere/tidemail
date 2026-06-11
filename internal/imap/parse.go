@@ -111,6 +111,9 @@ func parseIMAPMessage(msg *imapclient.FetchMessageBuffer) (db.Message, error) {
 	if env := msg.Envelope; env != nil {
 		m.Subject = env.Subject
 		m.MessageID = env.MessageID
+		if len(env.InReplyTo) > 0 {
+			m.InReplyTo = strings.Join(env.InReplyTo, " ")
+		}
 		if !env.Date.IsZero() {
 			m.Date = env.Date
 		}
@@ -133,6 +136,7 @@ func parseIMAPMessage(msg *imapclient.FetchMessageBuffer) (db.Message, error) {
 		// Distinguish header section from body section
 		if section.Section != nil && section.Section.Specifier == imap.PartSpecifierHeader {
 			m.Headers = parseAuthHeaders(raw)
+			m.References = parseHeaderValue(raw, "References")
 			continue
 		}
 		text, html, atts := parseBody(raw)
@@ -154,10 +158,22 @@ func parseIMAPMessage(msg *imapclient.FetchMessageBuffer) (db.Message, error) {
 				}
 			}
 		}
-		break
 	}
 
 	return m, nil
+}
+
+func parseHeaderValue(raw []byte, name string) string {
+	tr := textproto.NewReader(bufio.NewReader(bytes.NewReader(raw)))
+	hdr, err := tr.ReadMIMEHeader()
+	if err != nil {
+		return ""
+	}
+	return normalizeHeaderWhitespace(hdr.Get(name))
+}
+
+func normalizeHeaderWhitespace(s string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(s)), " ")
 }
 
 // parseAuthHeaders extracts SPF, DKIM, DMARC, Return-Path, and Received

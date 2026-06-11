@@ -35,6 +35,7 @@ const (
 	sfMarkReadOnFocus
 	sfFocusLine
 	sfShowSender
+	sfThreadedConversations
 	sfDefaultUnreadOnly
 	sfUnreadFirst
 	sfActionableLinks
@@ -215,26 +216,27 @@ func ollamaModelIndex(s string) int {
 
 type Settings struct {
 	// Display
-	icons                bool
-	dateFormatIdx        int // 0=Relative, 1=Absolute, 2=None
-	markReadOnOpen       bool
-	markReadOnFocus      bool
-	focusLine            bool
-	showSender           bool
-	defaultUnreadOnly    bool
-	unreadFirst          bool
-	actionableLinks      bool
-	filterLinks          bool
-	confirmQuit          bool
-	showHeaders          bool
-	notifications        bool
-	layoutDensityIdx     int // 0 = comfortable, 1 = compact
-	readingWidthInput    textinput.Model
-	browserInput         textinput.Model
-	feedMaxBodyInput     textinput.Model
-	updateCheckOnStartup bool
-	update               settingsUpdateState
-	action               settingsAction
+	icons                 bool
+	dateFormatIdx         int // 0=Relative, 1=Absolute, 2=None
+	markReadOnOpen        bool
+	markReadOnFocus       bool
+	focusLine             bool
+	showSender            bool
+	threadedConversations bool
+	defaultUnreadOnly     bool
+	unreadFirst           bool
+	actionableLinks       bool
+	filterLinks           bool
+	confirmQuit           bool
+	showHeaders           bool
+	notifications         bool
+	layoutDensityIdx      int // 0 = comfortable, 1 = compact
+	readingWidthInput     textinput.Model
+	browserInput          textinput.Model
+	feedMaxBodyInput      textinput.Model
+	updateCheckOnStartup  bool
+	update                settingsUpdateState
+	action                settingsAction
 
 	// AI
 	providerIdx         int
@@ -301,47 +303,48 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 	}
 	_, themeIdx := ThemeByName(cfg.Theme)
 	s := Settings{
-		icons:                cfg.Display.Icons,
-		themeName:            cfg.Theme,
-		themeIdx:             themeIdx,
-		retroBgInput:         mkInput(retroTweak.Bg, "optional #rrggbb", false),
-		retroFgInput:         mkInput(retroTweak.Fg, "optional #rrggbb", false),
-		retroAccentInput:     mkInput(retroTweak.Accent, "optional #rrggbb", false),
-		dateFormatIdx:        dateFormatIndex(cfg.Display.DateFormat),
-		markReadOnOpen:       cfg.Display.MarkReadOnOpen,
-		markReadOnFocus:      cfg.Display.MarkReadOnFocus,
-		focusLine:            cfg.Display.FocusLine,
-		showSender:           cfg.Display.ShowSender,
-		defaultUnreadOnly:    cfg.Display.DefaultUnreadOnly,
-		unreadFirst:          cfg.Display.UnreadFirst,
-		actionableLinks:      cfg.Display.ActionableLinks,
-		filterLinks:          cfg.Display.FilterLinks,
-		confirmQuit:          cfg.Display.ConfirmQuit,
-		showHeaders:          cfg.Display.ShowHeaders,
-		notifications:        cfg.Display.Notifications,
-		layoutDensityIdx:     layoutIdx,
-		readingWidthInput:    mkInput(strconv.Itoa(cfg.Display.ReadingWidth), "0 (no limit)", false),
-		browserInput:         mkInput(cfg.Display.Browser, "xdg-open", false),
-		feedMaxBodyInput:     mkInput(strconv.Itoa(cfg.Feed.MaxBodyMiB), "10", false),
-		updateCheckOnStartup: cfg.Updates.CheckOnStartup,
-		update:               updateState,
-		providerIdx:          providerIndex(cfg.AI.Provider),
-		openaiModelIdx:       openaiModelIndex(cfg.AI.OpenAIModel),
-		claudeModelIdx:       claudeModelIndex(cfg.AI.ClaudeModel),
-		geminiModelIdx:       geminiModelIndex(cfg.AI.GeminiModel),
-		ollamaModelIdx:       ollamaModelIndex(cfg.AI.OllamaModel),
-		openaiInput:          mkInput(cfg.AI.OpenAIKey, "sk-...", true),
-		openaiModelInput:     mkInput(cfg.AI.OpenAIModel, "gpt-4o-mini", false),
-		claudeInput:          mkInput(cfg.AI.ClaudeKey, "sk-ant-...", true),
-		claudeModelInput:     mkInput(cfg.AI.ClaudeModel, "claude-sonnet-4", false),
-		geminiInput:          mkInput(cfg.AI.GeminiKey, "AIza...", true),
-		geminiModelInput:     mkInput(cfg.AI.GeminiModel, "gemini-1.5-flash", false),
-		ollamaURLInput:       mkInput(cfg.AI.OllamaURL, "http://localhost:11434", false),
-		ollamaModelInput:     mkInput(cfg.AI.OllamaModel, "llama3.2", false),
-		savePathInput:        mkInput(cfg.AI.SavePath, "~/", false),
-		markReadOnSummarize:  cfg.AI.MarkReadOnSummarize,
-		activeSection:        ssDisplay,
-		focusedPane:          settingsPaneSidebar,
+		icons:                 cfg.Display.Icons,
+		themeName:             cfg.Theme,
+		themeIdx:              themeIdx,
+		retroBgInput:          mkInput(retroTweak.Bg, "optional #rrggbb", false),
+		retroFgInput:          mkInput(retroTweak.Fg, "optional #rrggbb", false),
+		retroAccentInput:      mkInput(retroTweak.Accent, "optional #rrggbb", false),
+		dateFormatIdx:         dateFormatIndex(cfg.Display.DateFormat),
+		markReadOnOpen:        cfg.Display.MarkReadOnOpen,
+		markReadOnFocus:       cfg.Display.MarkReadOnFocus,
+		focusLine:             cfg.Display.FocusLine,
+		showSender:            cfg.Display.ShowSender,
+		threadedConversations: cfg.Display.ThreadedConversations,
+		defaultUnreadOnly:     cfg.Display.DefaultUnreadOnly,
+		unreadFirst:           cfg.Display.UnreadFirst,
+		actionableLinks:       cfg.Display.ActionableLinks,
+		filterLinks:           cfg.Display.FilterLinks,
+		confirmQuit:           cfg.Display.ConfirmQuit,
+		showHeaders:           cfg.Display.ShowHeaders,
+		notifications:         cfg.Display.Notifications,
+		layoutDensityIdx:      layoutIdx,
+		readingWidthInput:     mkInput(strconv.Itoa(cfg.Display.ReadingWidth), "0 (no limit)", false),
+		browserInput:          mkInput(cfg.Display.Browser, "xdg-open", false),
+		feedMaxBodyInput:      mkInput(strconv.Itoa(cfg.Feed.MaxBodyMiB), "10", false),
+		updateCheckOnStartup:  cfg.Updates.CheckOnStartup,
+		update:                updateState,
+		providerIdx:           providerIndex(cfg.AI.Provider),
+		openaiModelIdx:        openaiModelIndex(cfg.AI.OpenAIModel),
+		claudeModelIdx:        claudeModelIndex(cfg.AI.ClaudeModel),
+		geminiModelIdx:        geminiModelIndex(cfg.AI.GeminiModel),
+		ollamaModelIdx:        ollamaModelIndex(cfg.AI.OllamaModel),
+		openaiInput:           mkInput(cfg.AI.OpenAIKey, "sk-...", true),
+		openaiModelInput:      mkInput(cfg.AI.OpenAIModel, "gpt-4o-mini", false),
+		claudeInput:           mkInput(cfg.AI.ClaudeKey, "sk-ant-...", true),
+		claudeModelInput:      mkInput(cfg.AI.ClaudeModel, "claude-sonnet-4", false),
+		geminiInput:           mkInput(cfg.AI.GeminiKey, "AIza...", true),
+		geminiModelInput:      mkInput(cfg.AI.GeminiModel, "gemini-1.5-flash", false),
+		ollamaURLInput:        mkInput(cfg.AI.OllamaURL, "http://localhost:11434", false),
+		ollamaModelInput:      mkInput(cfg.AI.OllamaModel, "llama3.2", false),
+		savePathInput:         mkInput(cfg.AI.SavePath, "~/", false),
+		markReadOnSummarize:   cfg.AI.MarkReadOnSummarize,
+		activeSection:         ssDisplay,
+		focusedPane:           settingsPaneSidebar,
 		sectionField: [settingsSectionCount]settingsField{
 			ssDisplay:  sfBackToSections,
 			ssFeeds:    sfBackToSections,
@@ -378,6 +381,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.MarkReadOnFocus = s.markReadOnFocus
 	cfg.Display.FocusLine = s.focusLine
 	cfg.Display.ShowSender = s.showSender
+	cfg.Display.ThreadedConversations = s.threadedConversations
 	cfg.Display.DefaultUnreadOnly = s.defaultUnreadOnly
 	cfg.Display.UnreadFirst = s.unreadFirst
 	cfg.Display.ActionableLinks = s.actionableLinks
@@ -597,7 +601,7 @@ func (s Settings) updateNowActionVisible() bool {
 func (s Settings) sectionFields(section settingsSection) []settingsField {
 	switch section {
 	case ssDisplay:
-		fields := []settingsField{sfBackToSections, sfIcons, sfDateFormat, sfMarkReadOnOpen, sfMarkReadOnFocus, sfFocusLine, sfShowSender, sfDefaultUnreadOnly, sfUnreadFirst, sfTheme, sfDisplayDensity, sfReadingWidth}
+		fields := []settingsField{sfBackToSections, sfIcons, sfDateFormat, sfMarkReadOnOpen, sfMarkReadOnFocus, sfFocusLine, sfShowSender, sfThreadedConversations, sfDefaultUnreadOnly, sfUnreadFirst, sfTheme, sfDisplayDensity, sfReadingWidth}
 		if config.IsRetroTerminalTheme(s.themeName) {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
@@ -1058,6 +1062,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfThreadedConversations:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.threadedConversations = !s.threadedConversations
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfDefaultUnreadOnly:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.defaultUnreadOnly = !s.defaultUnreadOnly
@@ -1459,6 +1472,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addToggle("Mark read on focus", s.markReadOnFocus, sfMarkReadOnFocus)
 		b.addToggle("Focus line", s.focusLine, sfFocusLine)
 		b.addToggle("Show sender", s.showSender, sfShowSender)
+		b.addToggle("Threaded conversations", s.threadedConversations, sfThreadedConversations)
 		b.addToggle("Default to unread only", s.defaultUnreadOnly, sfDefaultUnreadOnly)
 		b.addToggle("Unread first", s.unreadFirst, sfUnreadFirst)
 		b.addThemeSelector()
@@ -2319,6 +2333,8 @@ func (s Settings) fieldHint(field settingsField) string {
 		return "highlight the current readable line in the content pane"
 	case sfShowSender:
 		return "show the sender's name in a column before the subject in the message list"
+	case sfThreadedConversations:
+		return "group related replies into one optional conversation row"
 	case sfNotifications:
 		return "show a desktop notification when new mail arrives during background sync"
 	case sfUpdateManualCommand:

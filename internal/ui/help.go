@@ -45,6 +45,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				bind(keys.Down),
 				{keys.Search.Help().Key, "search messages; find in content when content is focused"},
 				{keys.UnreadOnly.Help().Key, "toggle unread-only view outside the accounts pane"},
+				{keys.ToggleThreads.Help().Key, "toggle threaded conversations"},
 			},
 		},
 		{

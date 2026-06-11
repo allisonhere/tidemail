@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
@@ -395,6 +396,134 @@ func TestSelectAllKeySelectsFilteredMessages(t *testing.T) {
 	}
 	if m.selectedMessages[3] {
 		t.Fatalf("did not expect hidden message selected, got %+v", m.selectedMessages)
+	}
+}
+
+func TestThreadToggleGroupsMessageRows(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+
+	msgs := []db.Message{
+		{ID: 2, MessageID: "<reply@example.com>", InReplyTo: "<root@example.com>", Subject: "Re: Plan", Date: time.Unix(200, 0)},
+		{ID: 1, MessageID: "<root@example.com>", Subject: "Plan", Date: time.Unix(100, 0), Read: true},
+	}
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.focused = paneMessages
+	m.messages = msgs
+	m.filteredMessages = msgs
+	m.selectedMessages = make(map[int64]bool)
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	m = next.(Model)
+
+	if !m.cfg.Display.ThreadedConversations {
+		t.Fatal("expected threaded conversations enabled")
+	}
+	if got := m.activeMessageRowCount(); got != 1 {
+		t.Fatalf("expected one thread row, got %d", got)
+	}
+	if len(m.messageThreads) != 1 || m.messageThreads[0].Count != 2 {
+		t.Fatalf("expected grouped thread, got %+v", m.messageThreads)
+	}
+	if msg := m.currentRowMessage(); msg == nil || msg.ID != 2 {
+		t.Fatalf("expected newest reply representative, got %+v", msg)
+	}
+}
+
+func TestAccountsPaneComfortableDensityDoesNotExceedMainHeight(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Display.Density = "comfortable"
+	m := NewModel(nil, cfg, "dev", false)
+	m.width = 100
+	m.height = 12
+	m.focused = paneAccounts
+	m.accounts = []db.Account{{ID: 1, Name: "Work"}}
+	for i := 0; i < 20; i++ {
+		m.mailboxes = append(m.mailboxes, db.Mailbox{
+			ID:        int64(i + 1),
+			AccountID: 1,
+			Name:      fmt.Sprintf("Folder %02d", i),
+		})
+	}
+	m.rebuildSidebar()
+
+	view := ansi.Strip(m.renderAccountsPane())
+	if got, want := strings.Count(view, "\n")+1, m.mainHeight(); got > want {
+		t.Fatalf("expected accounts pane height <= %d lines, got %d:\n%s", want, got, view)
+	}
+}
+
+func TestMessagesPaneComfortableDensityDoesNotExceedPaneHeight(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Display.Density = "comfortable"
+	m := NewModel(nil, cfg, "dev", false)
+	m.width = 100
+	m.height = 16
+	m.focused = paneMessages
+	m.selectedMessages = make(map[int64]bool)
+	for i := 0; i < 30; i++ {
+		msg := db.Message{
+			ID:      int64(i + 1),
+			Subject: fmt.Sprintf("Message %02d", i),
+			From:    "sender@example.com",
+			Date:    time.Unix(int64(i), 0),
+		}
+		m.messages = append(m.messages, msg)
+		m.filteredMessages = append(m.filteredMessages, msg)
+	}
+	m.messageCursor = 10
+	m.listOffset = 8
+
+	view := ansi.Strip(m.renderMessagesPane())
+	if got, want := strings.Count(view, "\n")+1, m.articlesPaneOuterHeight(); got > want {
+		t.Fatalf("expected messages pane height <= %d lines, got %d:\n%s", want, got, view)
+	}
+	if got, want := lipgloss.Width(m.renderMessagesPane()), m.articlesPaneWidth(); got > want {
+		t.Fatalf("expected messages pane width <= %d columns, got %d", want, got)
+	}
+}
+
+func TestScrollingMessageListKeepsPaneHeadersVisible(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Display.Density = "comfortable"
+	m := NewModel(nil, cfg, "dev", false)
+	m.width = 100
+	m.height = 16
+	m.focused = paneMessages
+	m.accounts = []db.Account{{ID: 1, Name: "Work"}}
+	m.mailboxes = []db.Mailbox{{ID: 1, AccountID: 1, Name: "INBOX"}}
+	m.selectedMessages = make(map[int64]bool)
+	for i := 0; i < 30; i++ {
+		msg := db.Message{
+			ID:        int64(i + 1),
+			MailboxID: 1,
+			Subject:   fmt.Sprintf("Message %02d", i),
+			From:      "sender@example.com",
+			Date:      time.Unix(int64(i), 0),
+		}
+		m.messages = append(m.messages, msg)
+		m.filteredMessages = append(m.filteredMessages, msg)
+	}
+	m.rebuildSidebar()
+	m.messageCursor = 10
+	m.listOffset = 8
+	m.setViewportForCurrentRow()
+
+	next, _ := m.handleUp()
+	m = next.(Model)
+
+	view := ansi.Strip(m.View())
+	lines := strings.Split(view, "\n")
+	if got, want := len(lines), m.height; got != want {
+		t.Fatalf("expected full view height %d lines, got %d:\n%s", want, got, view)
+	}
+	for i, line := range strings.Split(m.View(), "\n") {
+		if got, want := lipgloss.Width(line), m.width; got > want {
+			t.Fatalf("expected rendered line %d width <= %d columns, got %d: %q", i, want, got, ansi.Strip(line))
+		}
+	}
+	if len(lines) == 0 || !strings.Contains(lines[0], "Accounts") || !strings.Contains(lines[0], "Unified Inbox") {
+		t.Fatalf("expected pane headers to remain visible on top line, got:\n%s", view)
 	}
 }
 
