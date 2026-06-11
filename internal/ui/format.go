@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	htmlstd "html"
 	"regexp"
 	"strings"
 
@@ -77,11 +78,11 @@ func formatArticleParagraph(p string, width int, th Theme, plainUI bool) string 
 	switch {
 	case strings.HasPrefix(trimmed, "#"):
 		text := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
-		style := lipgloss.NewStyle().Background(th.Bg).Bold(true).Foreground(th.BorderFocus)
+		style := lipgloss.NewStyle().Background(th.Bg).Bold(true).Foreground(messageHeadingColor(th))
 		return style.Render(wrapWords(text, width))
 	case strings.HasPrefix(trimmed, ">"):
 		quote := normalizeInlineSpacing(strings.TrimSpace(strings.TrimLeft(trimmed, ">")))
-		style := lipgloss.NewStyle().Background(th.Bg).Foreground(th.Dimmed)
+		style := lipgloss.NewStyle().Background(th.Bg).Foreground(messageMutedColor(th))
 		return style.Render(wrapWords(quoteBar+quote, width))
 	case strings.HasPrefix(trimmed, "- "), strings.HasPrefix(trimmed, "* "):
 		items := make([]string, 0, len(lines))
@@ -210,16 +211,45 @@ func wrapWords(text string, width int) string {
 		return ""
 	}
 
-	lines := []string{words[0]}
+	lines := make([]string, 0, len(words))
+	first := splitLongWord(words[0], width)
+	lines = append(lines, first...)
 	for _, word := range words[1:] {
+		wordParts := splitLongWord(word, width)
 		current := lines[len(lines)-1]
-		if lipgloss.Width(current)+1+lipgloss.Width(word) <= width {
+		if len(wordParts) == 1 && lipgloss.Width(current)+1+lipgloss.Width(word) <= width {
 			lines[len(lines)-1] = current + " " + word
 			continue
 		}
-		lines = append(lines, truncate(word, width))
+		lines = append(lines, wordParts...)
 	}
 	return strings.Join(lines, "\n")
+}
+
+func splitLongWord(word string, width int) []string {
+	if width <= 1 || lipgloss.Width(word) <= width {
+		return []string{word}
+	}
+	var parts []string
+	var b strings.Builder
+	currentW := 0
+	for _, r := range word {
+		rw := lipgloss.Width(string(r))
+		if currentW > 0 && currentW+rw > width {
+			parts = append(parts, b.String())
+			b.Reset()
+			currentW = 0
+		}
+		b.WriteRune(r)
+		currentW += rw
+	}
+	if b.Len() > 0 {
+		parts = append(parts, b.String())
+	}
+	if len(parts) == 0 {
+		return []string{word}
+	}
+	return parts
 }
 
 func normalizeInlineSpacing(s string) string {
@@ -267,14 +297,77 @@ func splitSentences(s string) []string {
 }
 
 func renderHTMLBody(html string, width int, th Theme, plainUI bool) string {
+	html = normalizeHTMLForRendering(html)
 	converter := md.NewConverter("", true, nil)
 	converter.AddRules(spanStyleRule())
+	converter.AddRules(buttonLinkRule())
+	converter.AddRules(imagePlaceholderRule())
 	converter.AddRules(tableTextRule())
 	markdown, err := converter.ConvertString(html)
 	if err != nil || strings.TrimSpace(markdown) == "" {
 		return ""
 	}
 	return renderMarkdown(markdown, width, th, plainUI)
+}
+
+func messageHeadingColor(th Theme) lipgloss.Color {
+	return accentReadableOn(th.BorderFocus, th.Bg, 4.5)
+}
+
+func messageLinkColor(th Theme) lipgloss.Color {
+	return accentReadableOn(th.BorderFocus, th.Bg, 4.5)
+}
+
+func messageMutedColor(th Theme) lipgloss.Color {
+	return readableText(th.Dimmed, th.Bg, 3.0)
+}
+
+func messageCodeBg(th Theme) lipgloss.Color {
+	bg := focusLineBg(th)
+	if bg == "" || contrastRatio(bg, th.Bg) < 1.2 {
+		if isDark(th.Bg) {
+			return adjustLightness(th.Bg, 0.08)
+		}
+		return adjustLightness(th.Bg, -0.08)
+	}
+	return bg
+}
+
+func messageCodeFg(th Theme) lipgloss.Color {
+	return readableText(th.Fg, messageCodeBg(th), 4.5)
+}
+
+func normalizeHTMLForRendering(raw string) string {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(raw))
+	if err != nil {
+		return raw
+	}
+	doc.Find("script,style,noscript,template,head,meta,link,input,textarea,select").Remove()
+	doc.Find("[hidden], [aria-hidden='true']").Remove()
+	doc.Find("[style]").Each(func(_ int, s *goquery.Selection) {
+		style, _ := s.Attr("style")
+		style = strings.ToLower(style)
+		if strings.Contains(style, "display:none") ||
+			strings.Contains(style, "display: none") ||
+			strings.Contains(style, "visibility:hidden") ||
+			strings.Contains(style, "visibility: hidden") ||
+			strings.Contains(style, "font-size:0") ||
+			strings.Contains(style, "font-size: 0") ||
+			strings.Contains(style, "opacity:0") ||
+			strings.Contains(style, "opacity: 0") {
+			s.Remove()
+		}
+	})
+	body := doc.Find("body")
+	if body.Length() > 0 {
+		if out, err := body.Html(); err == nil {
+			return out
+		}
+	}
+	if out, err := doc.Html(); err == nil {
+		return out
+	}
+	return raw
 }
 
 func tableTextRule() md.Rule {
@@ -327,6 +420,65 @@ func tableTextRule() md.Rule {
 			return md.String("\n\n" + strings.Join(lines, "\n") + "\n\n")
 		},
 	}
+}
+
+func imagePlaceholderRule() md.Rule {
+	return md.Rule{
+		Filter: []string{"img"},
+		Replacement: func(_ string, selec *goquery.Selection, _ *md.Options) *string {
+			src := strings.TrimSpace(attrFirst(selec, "src", "data-src"))
+			label := strings.TrimSpace(attrFirst(selec, "alt", "title", "aria-label"))
+			if label == "" {
+				label = "image"
+			}
+			placeholder := "[image: " + normalizeInlineSpacing(label) + "]"
+			if src != "" {
+				placeholder += " " + src
+			}
+			return md.String("\n\n" + placeholder + "\n\n")
+		},
+	}
+}
+
+func buttonLinkRule() md.Rule {
+	return md.Rule{
+		Filter: []string{"a"},
+		Replacement: func(content string, selec *goquery.Selection, _ *md.Options) *string {
+			href := strings.TrimSpace(attrFirst(selec, "href"))
+			text := normalizeInlineSpacing(htmlstd.UnescapeString(selec.Text()))
+			if text == "" {
+				text = normalizeInlineSpacing(content)
+			}
+			if href == "" || !looksLikeButtonLink(selec) {
+				return nil
+			}
+			if text == "" {
+				text = href
+			}
+			return md.String("[" + text + "] (" + href + ")")
+		},
+	}
+}
+
+func attrFirst(selec *goquery.Selection, names ...string) string {
+	for _, name := range names {
+		if v, ok := selec.Attr(name); ok && strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func looksLikeButtonLink(selec *goquery.Selection) bool {
+	style := strings.ToLower(attrFirst(selec, "style"))
+	className := strings.ToLower(attrFirst(selec, "class"))
+	role := strings.ToLower(attrFirst(selec, "role"))
+	return strings.Contains(className, "button") ||
+		strings.Contains(className, "btn") ||
+		role == "button" ||
+		strings.Contains(style, "display:inline-block") ||
+		strings.Contains(style, "display: inline-block") ||
+		strings.Contains(style, "background") && strings.Contains(style, "padding")
 }
 
 // spanStyleRule returns a Rule that converts <span style="..."> CSS properties
@@ -385,7 +537,7 @@ func highlightInlineLinks(text string, th Theme, plainUI bool) string {
 	if plainUI {
 		return text
 	}
-	linkStyle := lipgloss.NewStyle().Background(th.Bg).Foreground(th.BorderFocus).Underline(true)
+	linkStyle := lipgloss.NewStyle().Background(th.Bg).Foreground(messageLinkColor(th)).Underline(true)
 	replace := func(match string) string {
 		return linkStyle.Render(match)
 	}

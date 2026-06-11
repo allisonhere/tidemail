@@ -132,8 +132,8 @@ func (m Model) renderAttachmentList(width int) string {
 		return ""
 	}
 	th := m.styles.Theme
-	accent := lipgloss.NewStyle().Foreground(th.BorderFocus)
-	dimmed := lipgloss.NewStyle().Foreground(th.Dimmed)
+	accent := lipgloss.NewStyle().Foreground(messageLinkColor(th))
+	dimmed := lipgloss.NewStyle().Foreground(messageMutedColor(th))
 	body := m.styles.ContentBody.Width(width)
 
 	lines := []string{
@@ -172,6 +172,7 @@ func (m Model) renderContentLinks(width int) string {
 		Background(m.styles.Theme.BorderFocus).
 		Foreground(contrastFg(m.styles.Theme.BorderFocus)).
 		Bold(true)
+	linkStyle := lipgloss.NewStyle().Foreground(messageLinkColor(m.styles.Theme))
 	for i, link := range m.contentLinks {
 		prefix := "  "
 		if i == m.contentLinkIdx {
@@ -180,6 +181,8 @@ func (m Model) renderContentLinks(width int) string {
 		line := truncate(prefix+link, max(8, width))
 		if i == m.contentLinkIdx {
 			line = activeStyle.Render(line)
+		} else {
+			line = linkStyle.Render(line)
 		}
 		lines = append(lines, line)
 	}
@@ -440,6 +443,9 @@ func (m *Model) syncContentLinks(msg db.Message) {
 	}
 
 	links := extractActionableLinks(msg.BodyText, "")
+	if msg.BodyHTML != "" {
+		links = mergeActionableLinks(links, extractActionableLinksFromHTML(msg.BodyHTML, ""))
+	}
 	if len(links) == 0 {
 		m.contentLinks = nil
 		m.contentLinkIdx = -1
@@ -458,6 +464,28 @@ func (m *Model) syncContentLinks(msg db.Message) {
 
 	m.contentLinks = links
 	m.contentLinkIdx = 0
+}
+
+func mergeActionableLinks(primary, secondary []string) []string {
+	if len(primary) == 0 {
+		return secondary
+	}
+	if len(secondary) == 0 {
+		return primary
+	}
+	seen := make(map[string]struct{}, len(primary)+len(secondary))
+	merged := make([]string, 0, len(primary)+len(secondary))
+	for _, link := range append(primary, secondary...) {
+		if link == "" {
+			continue
+		}
+		if _, ok := seen[link]; ok {
+			continue
+		}
+		seen[link] = struct{}{}
+		merged = append(merged, link)
+	}
+	return merged
 }
 
 func (m *Model) stepContentLink(delta int) {

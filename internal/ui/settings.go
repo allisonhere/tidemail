@@ -2376,6 +2376,7 @@ func (s Settings) renderAboutHero(width int, chrome managerChrome) string {
 
 	lines := []string{
 		s.renderAboutHeroTextLine(titleCentered, contentW, 0, true),
+		s.renderAboutHeroTextLine("", contentW, 1, false),
 		renderDNASignalBar(contentW, s.aboutGradientFrame),
 		s.renderAboutHeroTextLine(taglineCentered, contentW, 1, false),
 		s.renderAboutHeroTextLine("", contentW, 3, false),
@@ -2394,30 +2395,30 @@ func (s Settings) renderAboutHero(width int, chrome managerChrome) string {
 	return lipgloss.NewStyle().Width(width).Background(lipgloss.Color("#000000")).Align(lipgloss.Center).Render(panel)
 }
 
-var aboutDNAFrames = []string{
-	"⠋⠙⠚⠒⠂",
-	"⠙⠚⠒⠂⠂",
-	"⠚⠒⠂⠂⠒",
-	"⠒⠂⠂⠒⠚",
-	"⠂⠂⠒⠚⠙",
-	"⠂⠒⠚⠙⠋",
-}
+const aboutDNAPattern = "⠋⠙⠚⠒⠂"
 
 func renderDNASignalBar(w int, frame int) string {
 	if w <= 0 {
 		return ""
 	}
-	pattern := []rune(aboutDNAFrames[frame%len(aboutDNAFrames)])
+	pattern := []rune(aboutDNAPattern)
 	bg := lipgloss.Color("#000000")
 
 	var b strings.Builder
 	for i := 0; i < w; i++ {
 		ch := pattern[i%len(pattern)]
-		pos := float64((i + frame) % w)
-		fg := cylonGlowColor(pos / float64(max(1, w-1)))
+		fg := dnaSignalColor(w, i, frame)
 		b.WriteString(lipgloss.NewStyle().Background(bg).Foreground(fg).Render(string(ch)))
 	}
 	return b.String()
+}
+
+func dnaSignalColor(width, col, frame int) lipgloss.Color {
+	if width <= 1 {
+		return cylonGlowColor(0)
+	}
+	pos := float64((col + frame) % width)
+	return cylonGlowColor(pos / float64(width-1))
 }
 
 // cylonGlowColor maps an intensity (0..1) to a color along a rainbow spectrum:

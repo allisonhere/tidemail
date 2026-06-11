@@ -78,6 +78,122 @@ func TestRenderHTMLBodyKeepsLooseListItemContinuation(t *testing.T) {
 	}
 }
 
+func TestHTMLOnlyMessagePopulatesActionableLinks(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Display.ActionableLinks = true
+	m := NewModel(nil, cfg, "dev", false)
+	m.width = 100
+
+	m.setViewportMessage(db.Message{
+		ID:       1,
+		Subject:  "HTML link",
+		Date:     time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC),
+		BodyHTML: `<p>Read <a href="https://example.com/article">the article</a>.</p>`,
+	})
+
+	if len(m.contentLinks) != 1 || m.contentLinks[0] != "https://example.com/article" {
+		t.Fatalf("expected HTML link in actionable links, got %#v", m.contentLinks)
+	}
+}
+
+func TestRenderHTMLBodyShowsSafeImagePlaceholders(t *testing.T) {
+	got := ansi.Strip(renderHTMLBody(`<p>Chart below</p><img src="https://cdn.example.com/chart.png" alt="Quarterly chart">`, 80, CatppuccinMocha, true))
+
+	if !strings.Contains(got, "[image: Quarterly chart]") {
+		t.Fatalf("expected safe image placeholder with alt text, got %q", got)
+	}
+	if !strings.Contains(got, "https://cdn.example.com/chart.png") {
+		t.Fatalf("expected image URL preserved as text for link navigation, got %q", got)
+	}
+}
+
+func TestRenderHTMLBodyFormatsButtonLinks(t *testing.T) {
+	got := ansi.Strip(renderHTMLBody(`<a href="https://example.com/confirm" style="display:inline-block;background:#444;color:#fff;padding:12px">Confirm account</a>`, 80, CatppuccinMocha, true))
+
+	if !strings.Contains(got, "[Confirm account]") {
+		t.Fatalf("expected button-like link to render as readable action text, got %q", got)
+	}
+}
+
+func TestRenderHTMLBodyDoesNotInlineLongNamedLinkDestinations(t *testing.T) {
+	longURL := "https://c.gle/" + strings.Repeat("AOExmq1KwLPZWDtpZUmEruS3WaeyYD0bG7DoKy", 4)
+	got := ansi.Strip(renderHTMLBody(`<p>You may <a href="`+longURL+`">unsubscribe</a> or <a href="`+longURL+`">add partners</a> who should receive messages.</p>`, 42, CatppuccinMocha, true))
+
+	if !strings.Contains(got, "unsubscribe") || !strings.Contains(got, "add partners") {
+		t.Fatalf("expected named link text to remain readable, got %q", got)
+	}
+	if strings.Contains(got, "AOExmq1KwLPZWD") || strings.Contains(got, longURL) {
+		t.Fatalf("expected long href hidden from body text, got %q", got)
+	}
+}
+
+func TestHTMLNamedLinkStillPopulatesActionableLinks(t *testing.T) {
+	longURL := "https://c.gle/" + strings.Repeat("AOExmq1KwLPZWDtpZUmEruS3WaeyYD0bG7DoKy", 4)
+	cfg := config.DefaultConfig()
+	cfg.Display.ActionableLinks = true
+	m := NewModel(nil, cfg, "dev", false)
+	m.width = 80
+
+	m.setViewportMessage(db.Message{
+		ID:       1,
+		Subject:  "HTML named link",
+		Date:     time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC),
+		BodyHTML: `<p>You may <a href="` + longURL + `">add partners</a>.</p>`,
+	})
+
+	if len(m.contentLinks) != 1 || m.contentLinks[0] != longURL {
+		t.Fatalf("expected long named href in actionable links, got %#v", m.contentLinks)
+	}
+}
+
+func TestRenderHTMLBodyPreservesPreformattedSpacing(t *testing.T) {
+	got := ansi.Strip(renderHTMLBody(`<pre>alpha
+  beta
+    gamma</pre>`, 80, CatppuccinMocha, true))
+
+	if !strings.Contains(got, "  beta") || !strings.Contains(got, "    gamma") {
+		t.Fatalf("expected preformatted indentation preserved, got %q", got)
+	}
+}
+
+func TestRenderHTMLBodyRendersEmailQuoteBlocks(t *testing.T) {
+	got := ansi.Strip(renderHTMLBody(`<div>New reply</div><div class="gmail_quote"><blockquote>Earlier message</blockquote></div>`, 80, CatppuccinMocha, true))
+
+	if !strings.Contains(got, "New reply") || !strings.Contains(got, "| Earlier message") {
+		t.Fatalf("expected email quote rendered as quote lines, got %q", got)
+	}
+}
+
+func TestWrapWordsBreaksLongURLsWithoutEllipsis(t *testing.T) {
+	url := "https://example.com/" + strings.Repeat("really-long-path-segment-", 5)
+	got := wrapWords("Open "+url+" today", 32)
+
+	if strings.Contains(got, "…") {
+		t.Fatalf("expected long URL to wrap without truncation, got %q", got)
+	}
+	for _, line := range strings.Split(got, "\n") {
+		if width := ansi.StringWidth(line); width > 32 {
+			t.Fatalf("expected wrapped line width <= 32, got %d in %q from %q", width, line, got)
+		}
+	}
+	if !strings.Contains(strings.ReplaceAll(got, "\n", ""), url) {
+		t.Fatalf("expected wrapped text to preserve full URL, got %q", got)
+	}
+}
+
+func TestRenderHTMLBodyNeverExceedsContentWidthForWideBlocks(t *testing.T) {
+	longURL := "https://c.gle/" + strings.Repeat("AOExmq2fudFAlHts7GyfWH4hPGt0Cxr4jV7k9VE2rmd4n85bjVAhw", 3)
+	html := `<table><tr><td>Search Console</td><td><a href="` + longURL + `">Add site variations</a></td></tr></table>` +
+		`<pre>` + longURL + `</pre>`
+	got := ansi.Strip(renderHTMLBody(html, 42, CatppuccinMocha, true))
+
+	for _, line := range strings.Split(got, "\n") {
+		if width := ansi.StringWidth(line); width > 42 {
+			t.Fatalf("expected rendered HTML line width <= 42, got %d in %q from %q", width, line, got)
+		}
+	}
+}
+
 func TestContentFocusKeepsThreePaneLayout(t *testing.T) {
 	m := NewModel(nil, config.DefaultConfig(), "dev", false)
 	m.width = 100

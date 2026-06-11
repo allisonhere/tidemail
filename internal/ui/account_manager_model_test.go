@@ -213,6 +213,28 @@ func TestAccountManagerFormShowsTestAction(t *testing.T) {
 	}
 }
 
+func TestAccountManagerColorListIncludesVibrantChoices(t *testing.T) {
+	want := map[string]string{
+		"Crimson":       "#ff3366",
+		"Electric Blue": "#3b82ff",
+		"Vivid Violet":  "#8b5cf6",
+		"Emerald":       "#00d084",
+		"Hot Pink":      "#ff4fd8",
+		"Aqua":          "#00e5ff",
+		"Amber":         "#ffb000",
+		"Lime":          "#7CFC00",
+	}
+	got := make(map[string]string, len(accountColorList))
+	for _, color := range accountColorList {
+		got[color.Name] = color.Hex
+	}
+	for name, hex := range want {
+		if got[name] != hex {
+			t.Fatalf("expected account color %q to be %q, got %q", name, hex, got[name])
+		}
+	}
+}
+
 func TestAccountManagerFormStaysCompactInShortView(t *testing.T) {
 	am := NewAccountManager(nil)
 	am.mode = amAdd

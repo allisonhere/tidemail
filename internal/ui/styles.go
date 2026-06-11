@@ -244,7 +244,7 @@ func BuildStyles(t Theme, density string) Styles {
 			Italic(true),
 		ContentBody: lipgloss.NewStyle().
 			Background(t.Bg).
-			Foreground(t.Fg),
+			Foreground(readableText(t.Fg, t.Bg, 4.5)),
 		ContentFocusLine: lipgloss.NewStyle().
 			Background(contentFocusBg).
 			Foreground(readableText(t.Fg, contentFocusBg, 4.5)),

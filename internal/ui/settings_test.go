@@ -812,12 +812,33 @@ func TestSettingsAboutTaglineStaysOnOneLine(t *testing.T) {
 	}
 }
 
+func TestSettingsAboutHeroSpacesTitleFromDNABar(t *testing.T) {
+	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	s.setActiveSection(ssAbout)
+	view := ansi.Strip(s.renderAboutHero(56, newManagerChrome(84, CatppuccinMocha, false)))
+	lines := strings.Split(view, "\n")
+
+	for i, line := range lines {
+		if !strings.Contains(line, "TIDEMAIL") {
+			continue
+		}
+		if i+1 >= len(lines) {
+			t.Fatalf("expected spacer row after title, got end of hero in %q", view)
+		}
+		if strings.Trim(lines[i+1], " │") != "" {
+			t.Fatalf("expected blank spacer row after title, got %q in %q", lines[i+1], view)
+		}
+		return
+	}
+	t.Fatalf("expected about hero title in %q", view)
+}
+
 func TestSettingsAboutHeroKeepsPreviousHeight(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	s.setActiveSection(ssAbout)
 	view := s.renderAboutHero(56, newManagerChrome(84, CatppuccinMocha, false))
-	if got := lipgloss.Height(view); got != 6 {
-		t.Fatalf("expected about hero height 6, got %d", got)
+	if got := lipgloss.Height(view); got != 7 {
+		t.Fatalf("expected about hero height 7, got %d", got)
 	}
 }
 
@@ -842,7 +863,7 @@ func TestSettingsAboutGradientDoesNotShiftHeroLayout(t *testing.T) {
 	}
 }
 
-func TestRenderDNASignalBarUsesBrailleGlyphs(t *testing.T) {
+func TestRenderDNASignalBarUsesStaticBrailleHelixGlyphs(t *testing.T) {
 	bar := renderDNASignalBar(24, 0)
 	stripped := ansi.Strip(bar)
 	if got := lipgloss.Width(stripped); got != 24 {
@@ -854,13 +875,25 @@ func TestRenderDNASignalBarUsesBrailleGlyphs(t *testing.T) {
 	if !strings.ContainsAny(stripped, "⠋⠙⠚⠒⠂") {
 		t.Fatalf("expected DNA signal bar to contain braille glyphs, got %q", stripped)
 	}
+	for _, ch := range stripped {
+		if !strings.ContainsRune("⠋⠙⠚⠒⠂", ch) {
+			t.Fatalf("expected DNA signal bar to use only braille helix glyphs, got %q in %q", ch, stripped)
+		}
+	}
 }
 
-func TestRenderDNASignalBarAnimatesAcrossFrames(t *testing.T) {
-	first := ansi.Strip(renderDNASignalBar(24, 0))
-	next := ansi.Strip(renderDNASignalBar(24, 1))
-	if first == next {
-		t.Fatalf("expected DNA signal bar frames to differ, got %q", first)
+func TestRenderDNASignalBarCyclesGradientAcrossStaticGlyphs(t *testing.T) {
+	first := renderDNASignalBar(24, 0)
+	next := renderDNASignalBar(24, 1)
+	firstGlyphs := ansi.Strip(first)
+	nextGlyphs := ansi.Strip(next)
+	if firstGlyphs != nextGlyphs {
+		t.Fatalf("expected DNA signal bar glyphs to stay static across frames, got %q then %q", firstGlyphs, nextGlyphs)
+	}
+	firstColor := dnaSignalColor(24, 0, 0)
+	nextColor := dnaSignalColor(24, 0, 1)
+	if firstColor == nextColor {
+		t.Fatalf("expected DNA signal bar gradient to cycle horizontally, got %q for both frames", firstColor)
 	}
 }
 

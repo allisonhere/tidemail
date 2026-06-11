@@ -31,7 +31,7 @@ func mdBlock(node ast.Node, source []byte, width int, th Theme, plainUI bool) st
 
 	case ast.KindHeading:
 		text := mdInlineText(node, source, th, plainUI)
-		style := lipgloss.NewStyle().Background(th.Bg).Bold(true).Foreground(th.BorderFocus)
+		style := lipgloss.NewStyle().Background(th.Bg).Bold(true).Foreground(messageHeadingColor(th))
 		return style.Render(wrapWords(text, width))
 
 	case ast.KindBlockquote:
@@ -50,7 +50,7 @@ func mdBlock(node ast.Node, source []byte, width int, th Theme, plainUI bool) st
 		for _, line := range strings.Split(joined, "\n") {
 			lines = append(lines, prefix+line)
 		}
-		style := lipgloss.NewStyle().Background(th.Bg).Foreground(th.Dimmed)
+		style := lipgloss.NewStyle().Background(th.Bg).Foreground(messageMutedColor(th))
 		return style.Render(strings.Join(lines, "\n"))
 
 	case ast.KindList:
@@ -70,14 +70,14 @@ func mdBlock(node ast.Node, source []byte, width int, th Theme, plainUI bool) st
 
 	case ast.KindCodeBlock:
 		cb := node.(*ast.CodeBlock)
-		code := mdCodeLines(cb.Lines(), source)
-		style := lipgloss.NewStyle().Background(th.Bg).Foreground(th.Dimmed)
+		code := mdCodeLines(cb.Lines(), source, width)
+		style := lipgloss.NewStyle().Background(th.Bg).Foreground(messageMutedColor(th))
 		return style.Render(code)
 
 	case ast.KindFencedCodeBlock:
 		cb := node.(*ast.FencedCodeBlock)
-		code := mdCodeLines(cb.Lines(), source)
-		style := lipgloss.NewStyle().Background(th.Bg).Foreground(th.Dimmed)
+		code := mdCodeLines(cb.Lines(), source, width)
+		style := lipgloss.NewStyle().Background(th.Bg).Foreground(messageMutedColor(th))
 		return style.Render(code)
 
 	case ast.KindHTMLBlock:
@@ -100,14 +100,47 @@ func mdBlock(node ast.Node, source []byte, width int, th Theme, plainUI bool) st
 	}
 }
 
-func mdCodeLines(segs *text.Segments, source []byte) string {
+func mdCodeLines(segs *text.Segments, source []byte, width int) string {
 	var lines []string
+	prefix := "    "
+	contentW := max(1, width-lipgloss.Width(prefix))
 	for i := 0; i < segs.Len(); i++ {
 		seg := segs.At(i)
 		line := strings.TrimRight(string(seg.Value(source)), "\r\n")
-		lines = append(lines, "    "+line)
+		for _, part := range splitDisplayWidth(line, contentW) {
+			lines = append(lines, prefix+part)
+		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func splitDisplayWidth(s string, width int) []string {
+	if width <= 0 || s == "" {
+		return []string{s}
+	}
+	if lipgloss.Width(s) <= width {
+		return []string{s}
+	}
+	var parts []string
+	var b strings.Builder
+	currentW := 0
+	for _, r := range s {
+		rw := lipgloss.Width(string(r))
+		if currentW > 0 && currentW+rw > width {
+			parts = append(parts, b.String())
+			b.Reset()
+			currentW = 0
+		}
+		b.WriteRune(r)
+		currentW += rw
+	}
+	if b.Len() > 0 {
+		parts = append(parts, b.String())
+	}
+	if len(parts) == 0 {
+		return []string{s}
+	}
+	return parts
 }
 
 // mdListItemText collects plain text from a list item node.
@@ -134,7 +167,7 @@ func mdListItemText(node ast.Node, source []byte, width int, th Theme, plainUI b
 // for bold, emphasis, and code spans.
 func mdInlineText(node ast.Node, source []byte, th Theme, plainUI bool) string {
 	var sb strings.Builder
-	linkStyle := lipgloss.NewStyle().Background(th.Bg).Foreground(th.BorderFocus).Underline(true)
+	linkStyle := lipgloss.NewStyle().Background(th.Bg).Foreground(messageLinkColor(th)).Underline(true)
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		switch child.Kind() {
 		case ast.KindText:
@@ -149,22 +182,16 @@ func mdInlineText(node ast.Node, source []byte, th Theme, plainUI bool) string {
 			sb.Write(s.Value)
 		case ast.KindCodeSpan:
 			inner := mdInlineText(child, source, th, plainUI)
-			style := lipgloss.NewStyle().Background(th.Dimmed)
+			style := lipgloss.NewStyle().Background(messageCodeBg(th)).Foreground(messageCodeFg(th))
 			sb.WriteString(style.Render(inner))
 		case ast.KindLink:
 			link := child.(*ast.Link)
 			linkText := mdInlineText(child, source, th, plainUI)
 			dest := strings.TrimSpace(string(link.Destination))
-			if dest != "" && dest != linkText {
-				sb.WriteString(linkText)
-				sb.WriteString(" (")
-				if !plainUI {
-					sb.WriteString(linkStyle.Render(dest))
-				} else {
-					sb.WriteString(dest)
-				}
-				sb.WriteByte(')')
-			} else {
+			if dest != "" && linkText == "" {
+				linkText = dest
+			}
+			if linkText != "" {
 				if !plainUI {
 					sb.WriteString(linkStyle.Render(linkText))
 				} else {
@@ -190,7 +217,7 @@ func mdInlineText(node ast.Node, source []byte, th Theme, plainUI bool) string {
 				sb.WriteString(style.Render(inner))
 			} else {
 				// Emphasis / italic
-				style := lipgloss.NewStyle().Background(th.Bg).Italic(true).Foreground(th.Dimmed)
+				style := lipgloss.NewStyle().Background(th.Bg).Italic(true).Foreground(messageMutedColor(th))
 				sb.WriteString(style.Render(inner))
 			}
 		default:

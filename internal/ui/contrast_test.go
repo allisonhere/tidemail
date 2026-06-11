@@ -178,6 +178,46 @@ func TestAllThemesContentFocusLineBackgroundIsVisible(t *testing.T) {
 	}
 }
 
+func TestAllThemesMessageInlineRenderingColorsAreReadable(t *testing.T) {
+	for _, theme := range BuiltinThemes {
+		theme := theme
+		t.Run(theme.Name, func(t *testing.T) {
+			checks := []struct {
+				name     string
+				fg, bg   lipgloss.Color
+				minRatio float64
+			}{
+				{name: "heading", fg: messageHeadingColor(theme), bg: theme.Bg, minRatio: 4.5},
+				{name: "link", fg: messageLinkColor(theme), bg: theme.Bg, minRatio: 4.5},
+				{name: "quote", fg: messageMutedColor(theme), bg: theme.Bg, minRatio: 3.0},
+				{name: "code", fg: messageCodeFg(theme), bg: messageCodeBg(theme), minRatio: 4.5},
+			}
+			for _, check := range checks {
+				if ratio := contrastRatio(check.fg, check.bg); ratio < check.minRatio {
+					t.Errorf("%s contrast %.2f:1 < %.1f:1 (fg=%s bg=%s)", check.name, ratio, check.minRatio, check.fg, check.bg)
+				}
+			}
+		})
+	}
+}
+
+func TestAccountPickerColorsAreReadableOnAllThemeBackgrounds(t *testing.T) {
+	for _, theme := range BuiltinThemes {
+		theme := theme
+		t.Run(theme.Name, func(t *testing.T) {
+			for _, color := range accountColorList {
+				if color.Hex == "" {
+					continue
+				}
+				accent := accentReadableOn(lipgloss.Color(color.Hex), theme.Bg, 3)
+				if ratio := contrastRatio(accent, theme.Bg); ratio < 3 {
+					t.Errorf("%s: contrast %.2f:1 < 3.0:1 (accent=%s adjusted=%s bg=%s)", color.Name, ratio, color.Hex, accent, theme.Bg)
+				}
+			}
+		})
+	}
+}
+
 // TestAllThemesContrastReport prints a human-readable table for all themes.
 // Run with: go test -v -run TestAllThemesContrastReport
 func TestAllThemesContrastReport(t *testing.T) {

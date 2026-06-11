@@ -306,6 +306,14 @@ var accountColorList = []struct {
 	{"Mauve", "#cba6f7"},
 	{"Sapphire", "#74c7ec"},
 	{"Sky", "#89dceb"},
+	{"Crimson", "#ff3366"},
+	{"Electric Blue", "#3b82ff"},
+	{"Vivid Violet", "#8b5cf6"},
+	{"Emerald", "#00d084"},
+	{"Hot Pink", "#ff4fd8"},
+	{"Aqua", "#00e5ff"},
+	{"Amber", "#ffb000"},
+	{"Lime", "#7CFC00"},
 }
 
 type AccountManager struct {
