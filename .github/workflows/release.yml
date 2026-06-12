@@ -55,6 +55,10 @@ jobs:
           body: |
             ## TideMail ${{ steps.version.outputs.tag }}
 
+            TideMail is a keyboard-first terminal email client with multi-account mail, a unified inbox, drafts, contacts, search, bulk actions, Gmail OAuth2, and optional AI tools.
+
+            This release adds threaded conversations and stabilizes message rendering, making mail easier to scan, navigate, and read inside the terminal.
+
             ### Quick install
             ```bash
             curl -fsSL https://raw.githubusercontent.com/allisonhere/tidemail/main/install.sh | sh
