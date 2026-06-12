@@ -1066,6 +1066,22 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.PrevPane):
 		return m.focusPane(pane((int(m.focused) + 2) % 3))
 
+	case keyMatches(msg, m.keys.ResizeAccountsNarrow):
+		m.resizeAccountsPane(-accountsPaneStepPercent)
+		return m, m.clearStatusCmd()
+
+	case keyMatches(msg, m.keys.ResizeAccountsWide):
+		m.resizeAccountsPane(accountsPaneStepPercent)
+		return m, m.clearStatusCmd()
+
+	case keyMatches(msg, m.keys.ResizeMessagesShorter):
+		m.resizeMessagesPane(-messagesPaneStepPercent)
+		return m, m.clearStatusCmd()
+
+	case keyMatches(msg, m.keys.ResizeMessagesTaller):
+		m.resizeMessagesPane(messagesPaneStepPercent)
+		return m, m.clearStatusCmd()
+
 	case keyMatches(msg, m.keys.Left):
 		if m.focused > paneAccounts {
 			return m.focusPane(m.focused - 1)
@@ -2452,11 +2468,68 @@ func (m Model) statusLine(left, right string) string {
 
 // ── Dimension helpers ─────────────────────────────────────────────────────────
 
-func (m Model) feedsPaneWidth() int    { return int(float64(m.width) * 0.28) }
+const (
+	defaultAccountsWidthPercent  = 28
+	minAccountsWidthPercent      = 15
+	maxAccountsWidthPercent      = 50
+	accountsPaneStepPercent      = 2
+	defaultMessagesHeightPercent = 40
+	minMessagesHeightPercent     = 20
+	maxMessagesHeightPercent     = 75
+	messagesPaneStepPercent      = 5
+)
+
+func (m Model) accountsWidthPercent() int {
+	pct := m.cfg.Display.AccountsWidthPercent
+	if pct <= 0 {
+		pct = defaultAccountsWidthPercent
+	}
+	return clamp(pct, minAccountsWidthPercent, maxAccountsWidthPercent)
+}
+
+func (m Model) messagesHeightPercent() int {
+	pct := m.cfg.Display.MessagesHeightPercent
+	if pct <= 0 {
+		pct = defaultMessagesHeightPercent
+	}
+	return clamp(pct, minMessagesHeightPercent, maxMessagesHeightPercent)
+}
+
+func (m *Model) resizeAccountsPane(delta int) {
+	m.cfg.Display.AccountsWidthPercent = clamp(m.accountsWidthPercent()+delta, minAccountsWidthPercent, maxAccountsWidthPercent)
+	m.refreshContentAfterPaneResize()
+	m.setStatus("pane layout saved", false)
+	m.saveConfig()
+}
+
+func (m *Model) resizeMessagesPane(delta int) {
+	m.cfg.Display.MessagesHeightPercent = clamp(m.messagesHeightPercent()+delta, minMessagesHeightPercent, maxMessagesHeightPercent)
+	m.refreshContentAfterPaneResize()
+	m.setStatus("pane layout saved", false)
+	m.saveConfig()
+}
+
+func (m *Model) refreshContentAfterPaneResize() {
+	m.viewport.Width = m.contentBodyWidth()
+	m.viewport.Height = m.contentBodyHeight()
+	if m.contentMessageID != 0 && m.activeMessageRowCount() > 0 {
+		m.setViewportForCurrentRow()
+	}
+}
+
+func (m Model) feedsPaneWidth() int {
+	w := m.width * m.accountsWidthPercent() / 100
+	return clamp(w, 1, max(1, m.width-1))
+}
+
 func (m Model) articlesPaneWidth() int { return m.width - m.feedsPaneWidth() }
 func (m Model) mainHeight() int        { return m.height - 1 }
 func (m Model) articlesPaneOuterHeight() int {
-	return max(3, int(float64(m.mainHeight())*0.40))
+	h := m.mainHeight() * m.messagesHeightPercent() / 100
+	if m.mainHeight() <= 6 {
+		return max(1, h)
+	}
+	return clamp(h, 3, m.mainHeight()-3)
 }
 func (m Model) articlesPaneContentHeight() int {
 	return max(2, m.articlesPaneOuterHeight()-1)

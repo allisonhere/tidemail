@@ -42,6 +42,8 @@ type DisplayConfig struct {
 	ShowSender            bool               `toml:"show_sender"`
 	ThreadedConversations bool               `toml:"threaded_conversations"`
 	ReadingWidth          int                `toml:"reading_width"`
+	AccountsWidthPercent  int                `toml:"accounts_width_percent"`
+	MessagesHeightPercent int                `toml:"messages_height_percent"`
 	ConfirmQuit           bool               `toml:"confirm_quit"`
 	ShowHeaders           bool               `toml:"show_headers"`
 	UnreadFirst           bool               `toml:"unread_first"`
@@ -121,15 +123,17 @@ func DefaultConfig() Config {
 	return Config{
 		Theme: "catppuccin-mocha",
 		Display: DisplayConfig{
-			Icons:          true,
-			DateFormat:     "relative",
-			MarkReadOnOpen: true,
-			FocusLine:      true,
-			ShowSender:     true,
-			Density:        "compact",
-			ConfirmQuit:    true,
-			ShowHeaders:    true,
-			Notifications:  true,
+			Icons:                 true,
+			DateFormat:            "relative",
+			MarkReadOnOpen:        true,
+			FocusLine:             true,
+			ShowSender:            true,
+			AccountsWidthPercent:  28,
+			MessagesHeightPercent: 40,
+			Density:               "compact",
+			ConfirmQuit:           true,
+			ShowHeaders:           true,
+			Notifications:         true,
 		},
 		Updates: UpdatesConfig{
 			CheckOnStartup:     true,

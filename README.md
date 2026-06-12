@@ -135,6 +135,8 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 | `A` | Select all messages in current view |
 | `R` | Mark selected mailbox/account read |
 | `/` | Search messages |
+| `Shift+Left` / `Shift+Right` | Resize the accounts pane |
+| `Shift+Up` / `Shift+Down` | Resize the messages/content split |
 | `u` | Toggle unread-only view |
 | `o` | Open link on the focus line (falls back to the selected content link) |
 | `Ctrl+N` / `Alt+N` | Next content link |

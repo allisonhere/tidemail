@@ -95,3 +95,12 @@ func TestRenderHelpDocumentsThreadToggle(t *testing.T) {
 		t.Fatalf("expected help to document threaded conversation toggle, got %q", view)
 	}
 }
+
+func TestRenderHelpDocumentsPaneResizeShortcuts(t *testing.T) {
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys))
+	for _, want := range []string{"shift+←", "shift+→", "resize accounts pane", "shift+↑", "shift+↓", "resize messages/content split"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("expected help to document pane resize term %q, got %q", want, view)
+		}
+	}
+}

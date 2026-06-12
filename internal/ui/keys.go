@@ -3,14 +3,18 @@ package ui
 import "github.com/charmbracelet/bubbles/key"
 
 type KeyMap struct {
-	Up       key.Binding
-	Down     key.Binding
-	Left     key.Binding
-	Right    key.Binding
-	NextPane key.Binding
-	PrevPane key.Binding
-	Enter    key.Binding
-	Back     key.Binding
+	Up                    key.Binding
+	Down                  key.Binding
+	Left                  key.Binding
+	Right                 key.Binding
+	NextPane              key.Binding
+	PrevPane              key.Binding
+	ResizeAccountsNarrow  key.Binding
+	ResizeAccountsWide    key.Binding
+	ResizeMessagesShorter key.Binding
+	ResizeMessagesTaller  key.Binding
+	Enter                 key.Binding
+	Back                  key.Binding
 
 	Sync          key.Binding
 	SyncAll       key.Binding
@@ -74,14 +78,18 @@ type KeyMap struct {
 }
 
 var DefaultKeys = KeyMap{
-	Up:       key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("k/↑", "up")),
-	Down:     key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j/↓", "down")),
-	Left:     key.NewBinding(key.WithKeys("h", "left"), key.WithHelp("h/←", "move left")),
-	Right:    key.NewBinding(key.WithKeys("l", "right"), key.WithHelp("l/→", "move right")),
-	NextPane: key.NewBinding(key.WithKeys("tab", "]"), key.WithHelp("tab/]", "next pane")),
-	PrevPane: key.NewBinding(key.WithKeys("shift+tab", "["), key.WithHelp("shift+tab/[", "prev pane")),
-	Enter:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open")),
-	Back:     key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+	Up:                    key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("k/↑", "up")),
+	Down:                  key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j/↓", "down")),
+	Left:                  key.NewBinding(key.WithKeys("h", "left"), key.WithHelp("h/←", "move left")),
+	Right:                 key.NewBinding(key.WithKeys("l", "right"), key.WithHelp("l/→", "move right")),
+	NextPane:              key.NewBinding(key.WithKeys("tab", "]"), key.WithHelp("tab/]", "next pane")),
+	PrevPane:              key.NewBinding(key.WithKeys("shift+tab", "["), key.WithHelp("shift+tab/[", "prev pane")),
+	ResizeAccountsNarrow:  key.NewBinding(key.WithKeys("shift+left"), key.WithHelp("shift+←", "narrow accounts")),
+	ResizeAccountsWide:    key.NewBinding(key.WithKeys("shift+right"), key.WithHelp("shift+→", "widen accounts")),
+	ResizeMessagesShorter: key.NewBinding(key.WithKeys("shift+up"), key.WithHelp("shift+↑", "shorter messages")),
+	ResizeMessagesTaller:  key.NewBinding(key.WithKeys("shift+down"), key.WithHelp("shift+↓", "taller messages")),
+	Enter:                 key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open")),
+	Back:                  key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 
 	Sync:          key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sync mailbox")),
 	SyncAll:       key.NewBinding(key.WithKeys("F", "ctrl+s"), key.WithHelp("F/ctrl+s", "sync all")),

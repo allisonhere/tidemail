@@ -54,6 +54,81 @@ func TestSaveConfigSuccessNoError(t *testing.T) {
 	}
 }
 
+func TestShiftArrowsPersistPaneResize(t *testing.T) {
+	database, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	cfg := config.DefaultConfig()
+	m := NewModel(database, cfg, "dev", false)
+	m.width = 100
+	m.height = 31
+
+	var saved []config.Config
+	orig := configSave
+	configSave = func(cfg config.Config) error {
+		saved = append(saved, cfg)
+		return nil
+	}
+	defer func() { configSave = orig }()
+
+	next, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyShiftRight})
+	m = next.(Model)
+	if got, want := m.cfg.Display.AccountsWidthPercent, 30; got != want {
+		t.Fatalf("expected shift+right to widen accounts pane to %d%%, got %d%%", want, got)
+	}
+	if got, want := m.feedsPaneWidth(), 30; got != want {
+		t.Fatalf("expected accounts pane width %d, got %d", want, got)
+	}
+
+	next, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyShiftDown})
+	m = next.(Model)
+	if got, want := m.cfg.Display.MessagesHeightPercent, 45; got != want {
+		t.Fatalf("expected shift+down to grow messages pane to %d%%, got %d%%", want, got)
+	}
+	if got, want := m.articlesPaneOuterHeight(), 13; got != want {
+		t.Fatalf("expected messages pane height %d, got %d", want, got)
+	}
+
+	if len(saved) != 2 {
+		t.Fatalf("expected two config saves, got %d", len(saved))
+	}
+	if got := saved[1].Display.MessagesHeightPercent; got != 45 {
+		t.Fatalf("expected saved messages split to be 45%%, got %d%%", got)
+	}
+}
+
+func TestPaneResizeKeysIgnoredInOverlay(t *testing.T) {
+	database, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	cfg := config.DefaultConfig()
+	m := NewModel(database, cfg, "dev", false)
+	m.overlay = overlayHelp
+
+	orig := configSave
+	saveCount := 0
+	configSave = func(config.Config) error {
+		saveCount++
+		return nil
+	}
+	defer func() { configSave = orig }()
+
+	next, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyShiftRight})
+	m = next.(Model)
+	if got, want := m.cfg.Display.AccountsWidthPercent, config.DefaultConfig().Display.AccountsWidthPercent; got != want {
+		t.Fatalf("expected overlay to ignore pane resize, got %d%% want %d%%", got, want)
+	}
+	if saveCount != 0 {
+		t.Fatalf("expected overlay resize key not to save config, got %d saves", saveCount)
+	}
+}
+
 func TestSettingsSavePreservesSelectedMessageAfterUnreadFirstReload(t *testing.T) {
 	database, err := db.Open()
 	if err != nil {

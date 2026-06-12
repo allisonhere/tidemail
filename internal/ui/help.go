@@ -41,6 +41,8 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{keys.PrevPane.Help().Key, "previous pane"},
 				{keys.Left.Help().Key, "move left across panes"},
 				{keys.Right.Help().Key, "move right across panes"},
+				{keys.ResizeAccountsNarrow.Help().Key + "/" + keys.ResizeAccountsWide.Help().Key, "resize accounts pane"},
+				{keys.ResizeMessagesShorter.Help().Key + "/" + keys.ResizeMessagesTaller.Help().Key, "resize messages/content split"},
 				bind(keys.Up),
 				bind(keys.Down),
 				{keys.Search.Help().Key, "search messages; find in content when content is focused"},
