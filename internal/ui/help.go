@@ -201,7 +201,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 			Render("  Help — Keyboard Shortcuts"),
 		"",
 		styles.HelpSectionBody.Width(contentW).Render(
-			"The status bar always shows these shortcuts on the left: M accounts · S settings · / search · ? help.",
+			"The status bar always shows these shortcuts on the left: M accounts · C contacts · S settings · / search · ? help.",
 		),
 		"",
 	}

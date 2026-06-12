@@ -35,6 +35,16 @@ func TestRenderHelpDocumentsAccountManagerShortcutAsUppercaseM(t *testing.T) {
 	}
 }
 
+func TestRenderHelpDocumentsContactManagerShortcutAsUppercaseC(t *testing.T) {
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys))
+	if !strings.Contains(view, "C contacts") {
+		t.Fatalf("expected help to document uppercase contact shortcut, got %q", view)
+	}
+	if strings.Contains(view, "c contacts") {
+		t.Fatalf("expected help not to document lowercase contact shortcut, got %q", view)
+	}
+}
+
 func TestRenderHelpScopesModalShortcuts(t *testing.T) {
 	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys))
 	for _, want := range []string{"Compose Modal", "ctrl+g", "Account Manager Modal", "Contact Manager Modal", "Filters Modal"} {

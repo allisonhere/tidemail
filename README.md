@@ -65,7 +65,7 @@ Open account management with `M`, add an IMAP/SMTP account, then sync the select
 
 Composing autosaves your message to the sending account's Drafts mailbox as you type, so closing the compose modal never loses work — closing with content prompts to save or discard. Open the Drafts mailbox to see saved drafts, press `Enter` to reopen one in compose, and `d` to delete it. Sending a draft removes it from Drafts automatically.
 
-Open contacts with `C`. Contacts are the curated address book used for compose autocomplete. Add contacts manually with `n`, add addresses already seen in mail with `f`, import a vCard file with `i`, export to `contacts.vcf` with `x`, select multiple contacts with `Space`, press `c` to compose to the selected contact(s), and delete selected contacts with `d`. vCard import/export keeps email, display name, phone, organization, title, and note fields.
+Open Contacts with `C`. Contacts are the curated address book used for compose autocomplete. Add contacts manually with `n`, add addresses already seen in mail with `f`, import a vCard file with `i`, export to `contacts.vcf` with `x`, select multiple contacts with `Space`, press `c` to compose to the selected contact(s), and delete selected contacts with `d`. vCard import/export keeps email, display name, phone, organization, title, and note fields.
 
 ## Credential safety
 
@@ -138,10 +138,11 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 | `u` | Toggle unread-only view |
 | `o` | Open link on the focus line (falls back to the selected content link) |
 | `Ctrl+N` / `Alt+N` | Next content link |
-| `Ctrl+P` / `Alt+P` | Previous content link |
+| `Alt+P` | Previous content link |
 | `Ctrl+E` | Toggle email headers on/off |
 | `Ctrl+F` | Find in message |
-| `v` | AI summary |
+| `v` / `V` | Visual select line range / whole message |
+| `` ` `` | AI summary |
 | `S` | Settings |
 | `T` | Theme picker |
 | `Ctrl+D` | Save attachments to folder |
