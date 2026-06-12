@@ -420,7 +420,7 @@ func (m Model) contentSelectionText(fallbackFocused bool) string {
 	if len(m.contentLines) == 0 {
 		return ""
 	}
-	start, end := -1, -1
+	var start, end int
 	switch {
 	case m.contentSelectionActive && m.contentSelectionAll:
 		start, end = 0, len(m.contentLines)-1

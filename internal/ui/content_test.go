@@ -387,7 +387,7 @@ func TestVisualLineYanksFullRenderedMessage(t *testing.T) {
 	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'V'}})
 	m = next.(Model)
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
-	m = next.(Model)
+	_ = next
 	if cmd == nil {
 		t.Fatal("expected yank to return clipboard command")
 	}

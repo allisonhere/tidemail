@@ -158,14 +158,6 @@ func (m *Model) clearSelection() {
 	m.selectedMessages = make(map[int64]bool)
 }
 
-func (m *Model) toggleMessageSelection(id int64) {
-	if m.selectedMessages[id] {
-		delete(m.selectedMessages, id)
-	} else {
-		m.selectedMessages[id] = true
-	}
-}
-
 func (m Model) hasSelection() bool {
 	return len(m.selectedMessages) > 0
 }

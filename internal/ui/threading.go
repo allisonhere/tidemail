@@ -205,20 +205,6 @@ func (m Model) messageRowSelected(msg db.Message, thread messageThread) bool {
 	return m.selectedMessages[msg.ID]
 }
 
-func (m Model) threadForMessage(messageID int64) *messageThread {
-	if !m.threadedMessagesEnabled() {
-		return nil
-	}
-	for i := range m.messageThreads {
-		for _, msg := range m.messageThreads[i].Messages {
-			if msg.ID == messageID {
-				return &m.messageThreads[i]
-			}
-		}
-	}
-	return nil
-}
-
 func rowThreadKey(msg db.Message) string {
 	if msg.ID != 0 {
 		return "row:" + strconvFormatInt(msg.ID)
