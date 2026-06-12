@@ -50,6 +50,25 @@ func (m Model) renderOverlay(base string) string {
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
 
+	case overlayBulkDeleteConfirm:
+		winW := 48
+		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
+		header := renderManagerHeader("DELETE MESSAGES?", winW, chrome)
+		count := len(m.pendingBulkDelete)
+		body := lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Foreground(chrome.text).
+			Width(winW).
+			Padding(1, 2).
+			Render(fmt.Sprintf("Delete %d selected messages?", count))
+		actions := renderManagerActions(winW, chrome,
+			"y/enter", "delete",
+			"esc", "cancel",
+		)
+		inner := lipgloss.JoinVertical(lipgloss.Left, header, body, actions)
+		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
+		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+
 	case overlaySearch:
 		winW := min(m.width-4, 52)
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)

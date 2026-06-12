@@ -72,6 +72,7 @@ const (
 	overlayLogViewer
 	overlayFilterManager
 	overlayDraftCloseConfirm
+	overlayBulkDeleteConfirm
 )
 
 type updateState int
@@ -185,6 +186,8 @@ type Model struct {
 	keys                   KeyMap
 
 	settings Settings
+
+	pendingBulkDelete []db.Message
 
 	updateState          updateState
 	updateInfo           update.ReleaseInfo
@@ -1248,6 +1251,12 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.focused != paneAccounts && m.activeMessageRowCount() > 0 {
 			selected := m.selectedActionMessages()
 			if len(selected) > 0 {
+				if len(selected) > 1 && m.hasSelection() {
+					m.pendingBulkDelete = append([]db.Message(nil), selected...)
+					m.overlay = overlayBulkDeleteConfirm
+					return m, nil
+				}
+				m.pendingBulkDelete = nil
 				m.clearSelection()
 				return m, m.deleteMessagesCmd(selected)
 			}
@@ -1549,6 +1558,24 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.discardComposeDraft()
 		case keyMatches(msg, m.keys.Cancel):
 			m.overlay = overlayCompose
+			return m, nil
+		}
+		return m, nil
+
+	case overlayBulkDeleteConfirm:
+		switch {
+		case keyMatches(msg, m.keys.Yes), keyMatches(msg, m.keys.Confirm):
+			selected := append([]db.Message(nil), m.pendingBulkDelete...)
+			m.pendingBulkDelete = nil
+			m.overlay = overlayNone
+			m.clearSelection()
+			if len(selected) == 0 {
+				return m, nil
+			}
+			return m, m.deleteMessagesCmd(selected)
+		case keyMatches(msg, m.keys.No), keyMatches(msg, m.keys.Cancel):
+			m.pendingBulkDelete = nil
+			m.overlay = overlayNone
 			return m, nil
 		}
 		return m, nil

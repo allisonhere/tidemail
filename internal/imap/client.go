@@ -227,7 +227,8 @@ func (c *Client) MoveMessage(ctx context.Context, mailboxName string, uid uint32
 	return c.MoveMessages(ctx, mailboxName, []uint32{uid}, targetMailbox)
 }
 
-// MoveMessages moves a batch of messages in one SELECT/COPY/EXPUNGE round trip.
+// MoveMessages moves a batch of messages in one SELECT/MOVE round trip when the
+// server supports MOVE. The IMAP library falls back internally when needed.
 // Bulk actions must share one connection: issuing one connection per message
 // trips per-user connection caps (Gmail: 15, Dovecot default: 10) and the
 // overflow silently fails.
@@ -242,10 +243,10 @@ func (c *Client) MoveMessages(ctx context.Context, mailboxName string, uids []ui
 		return fmt.Errorf("select %s: %w", mailboxName, err)
 	}
 	uidSet := uidSetOf(uids)
-	if _, err := c.conn.Copy(uidSet, targetMailbox).Wait(); err != nil {
-		return fmt.Errorf("copy to %s: %w", targetMailbox, err)
+	if _, err := c.conn.Move(uidSet, targetMailbox).Wait(); err != nil {
+		return fmt.Errorf("move to %s: %w", targetMailbox, err)
 	}
-	return c.markDeletedAndExpunge(uidSet)
+	return nil
 }
 
 func (c *Client) CreateMailbox(ctx context.Context, name string) error {

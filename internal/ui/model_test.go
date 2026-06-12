@@ -226,6 +226,100 @@ func TestDeleteKeyWaitsForDeleteResultBeforeRemovingMessage(t *testing.T) {
 	}
 }
 
+func TestBulkDeleteOpensConfirmationOverlay(t *testing.T) {
+	msgs := []db.Message{
+		{ID: 1, MailboxID: 7, Subject: "One"},
+		{ID: 2, MailboxID: 7, Subject: "Two"},
+	}
+	m := Model{
+		keys:             DefaultKeys,
+		focused:          paneMessages,
+		messages:         msgs,
+		filteredMessages: msgs,
+		selectedMessages: map[int64]bool{1: true, 2: true},
+	}
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	m = next.(Model)
+
+	if cmd != nil {
+		t.Fatal("expected bulk delete confirmation to defer delete command")
+	}
+	if m.overlay != overlayBulkDeleteConfirm {
+		t.Fatalf("expected bulk delete confirm overlay, got %v", m.overlay)
+	}
+	if got := len(m.pendingBulkDelete); got != 2 {
+		t.Fatalf("expected 2 pending bulk-delete messages, got %d", got)
+	}
+	if len(m.selectedMessages) != 2 {
+		t.Fatalf("expected selection preserved while confirming, got %+v", m.selectedMessages)
+	}
+}
+
+func TestBulkDeleteConfirmCancelPreservesSelection(t *testing.T) {
+	msgs := []db.Message{
+		{ID: 1, MailboxID: 7, Subject: "One"},
+		{ID: 2, MailboxID: 7, Subject: "Two"},
+	}
+	m := Model{
+		keys:              DefaultKeys,
+		focused:           paneMessages,
+		messages:          msgs,
+		filteredMessages:  msgs,
+		selectedMessages:  map[int64]bool{1: true, 2: true},
+		pendingBulkDelete: msgs,
+		overlay:           overlayBulkDeleteConfirm,
+	}
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = next.(Model)
+
+	if cmd != nil {
+		t.Fatal("expected cancel to close the overlay without running delete")
+	}
+	if m.overlay != overlayNone {
+		t.Fatalf("expected overlay cleared, got %v", m.overlay)
+	}
+	if got := len(m.pendingBulkDelete); got != 0 {
+		t.Fatalf("expected pending bulk delete cleared, got %d", got)
+	}
+	if len(m.selectedMessages) != 2 {
+		t.Fatalf("expected selection preserved after cancel, got %+v", m.selectedMessages)
+	}
+}
+
+func TestBulkDeleteConfirmRunsDeleteAndClearsSelection(t *testing.T) {
+	msgs := []db.Message{
+		{ID: 1, MailboxID: 7, Subject: "One"},
+		{ID: 2, MailboxID: 7, Subject: "Two"},
+	}
+	m := Model{
+		keys:              DefaultKeys,
+		focused:           paneMessages,
+		messages:          msgs,
+		filteredMessages:  msgs,
+		selectedMessages:  map[int64]bool{1: true, 2: true},
+		pendingBulkDelete: msgs,
+		overlay:           overlayBulkDeleteConfirm,
+	}
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+
+	if cmd == nil {
+		t.Fatal("expected confirm to start delete command")
+	}
+	if m.overlay != overlayNone {
+		t.Fatalf("expected overlay cleared after confirm, got %v", m.overlay)
+	}
+	if got := len(m.pendingBulkDelete); got != 0 {
+		t.Fatalf("expected pending bulk delete cleared, got %d", got)
+	}
+	if len(m.selectedMessages) != 0 {
+		t.Fatalf("expected selection cleared after confirm, got %+v", m.selectedMessages)
+	}
+}
+
 func TestMessagesDeletedMsgKeepsRemoteFailuresVisible(t *testing.T) {
 	deleted := db.Message{ID: 1, MailboxID: 2, Subject: "Gone"}
 	failed := db.Message{ID: 3, MailboxID: 2, Subject: "Still on server"}
