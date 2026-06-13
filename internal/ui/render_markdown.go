@@ -34,11 +34,15 @@ func tidemailDarkStyle(th Theme) string {
 		"indent": 1,
 		"indent_token": "│",
 		"prefix": " ",
-		"color": "` + muted + `"
+		"color": "` + muted + `",
+		"background": "` + bg + `"
 	},
-	"paragraph": {},
+	"paragraph": {
+		"background": "` + bg + `"
+	},
 	"list": {
-		"level_indent": 2
+		"level_indent": 2,
+		"background": "` + bg + `"
 	},
 	"heading": {
 		"color": "` + accent + `",
@@ -132,15 +136,18 @@ func tidemailDarkStyle(th Theme) string {
 	},
 	"item": {
 		"block_prefix": "",
-		"block_suffix": ""
+		"block_suffix": "",
+		"background": "` + bg + `"
 	},
 	"enumeration": {
 		"block_prefix": "",
-		"block_suffix": ""
+		"block_suffix": "",
+		"background": "` + bg + `"
 	},
 	"task": {
 		"ticked": "[x]",
-		"unticked": "[ ]"
+		"unticked": "[ ]",
+		"background": "` + bg + `"
 	},
 	"image": {
 		"color": "` + muted + `",
