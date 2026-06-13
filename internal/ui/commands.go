@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/allisonhere/tide/internal/config"
@@ -12,8 +13,7 @@ func (m Model) handleCommandPaletteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	items := m.filteredCommandItems()
 	switch {
 	case keyMatches(msg, m.keys.Cancel):
-		m.overlay = overlayNone
-		m.commandInput.Blur()
+		m.closeCommandPalette(false)
 		return m, nil
 	case keyMatches(msg, m.keys.Up):
 		if len(items) > 0 {
@@ -33,8 +33,7 @@ func (m Model) handleCommandPaletteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !item.enabled {
 			return m, nil
 		}
-		m.overlay = overlayNone
-		m.commandInput.Blur()
+		m.closeCommandPalette(true)
 		return m.executeCommand(item.id)
 	default:
 		var cmd tea.Cmd
@@ -45,7 +44,45 @@ func (m Model) handleCommandPaletteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
+func (m *Model) openCommandPalette(origin overlayMode, ctx commandPaletteContext) {
+	m.commandPaletteOrigin = origin
+	m.commandPaletteContext = ctx
+	m.overlay = overlayCommandPalette
+	m.commandInput.Reset()
+	m.commandInput.Focus()
+	m.commandCursor = 0
+}
+
+func (m *Model) closeCommandPalette(run bool) {
+	m.commandInput.Blur()
+	origin := m.commandPaletteOrigin
+	m.commandPaletteOrigin = overlayNone
+	m.commandPaletteContext = commandPaletteMain
+	if run {
+		m.overlay = origin
+		return
+	}
+	if origin != overlayNone {
+		m.overlay = origin
+		return
+	}
+	m.overlay = overlayNone
+}
+
 func (m Model) commandItems() []commandItem {
+	switch m.commandPaletteContext {
+	case commandPaletteCompose:
+		return m.composeCommandItems()
+	case commandPaletteSummary:
+		return m.summaryCommandItems()
+	case commandPaletteSaveAttach:
+		return m.saveAttachCommandItems()
+	default:
+		return m.mainCommandItems()
+	}
+}
+
+func (m Model) mainCommandItems() []commandItem {
 	hasMessage := m.activeMessageRowCount() > 0 && m.focused != paneAccounts
 	hasMailbox := m.selectedMailbox() != nil
 	return []commandItem{
@@ -61,6 +98,38 @@ func (m Model) commandItems() []commandItem {
 		{id: "accounts", label: "Manage accounts", enabled: true},
 		{id: "filters", label: "Manage filters (AI rules)", enabled: true},
 		{id: "settings", label: "Open settings", enabled: true},
+	}
+}
+
+func (m Model) composeCommandItems() []commandItem {
+	canRemove := len(m.compose.attachments) > 0
+	canCycleSender := len(m.compose.accounts) > 1
+	return []commandItem{
+		{id: "compose-send", label: "Send message", enabled: true},
+		{id: "compose-grammar", label: "Run grammar check", enabled: true},
+		{id: "compose-attach", label: "Attach file", enabled: true},
+		{id: "compose-remove-attach", label: "Remove last attachment", enabled: canRemove},
+		{id: "compose-cycle-sender", label: "Change sender", enabled: canCycleSender},
+		{id: "compose-close", label: "Close compose", enabled: true},
+	}
+}
+
+func (m Model) summaryCommandItems() []commandItem {
+	ready := !m.summaryGenerating && m.summaryErr == "" && m.summaryMessage.Summary != ""
+	return []commandItem{
+		{id: "summary-copy", label: "Copy summary", enabled: ready},
+		{id: "summary-save", label: "Save summary as .md", enabled: ready},
+		{id: "summary-close", label: "Close summary", enabled: true},
+	}
+}
+
+func (m Model) saveAttachCommandItems() []commandItem {
+	canSave := len(m.contentAttachments) > 0 && m.saveAttachPicker.currentDir != ""
+	canUp := m.saveAttachPicker.currentDir != "" && filepath.Dir(m.saveAttachPicker.currentDir) != m.saveAttachPicker.currentDir
+	return []commandItem{
+		{id: "save-attach-save", label: "Save to current folder", enabled: canSave},
+		{id: "save-attach-up", label: "Go to parent folder", enabled: canUp},
+		{id: "save-attach-cancel", label: "Cancel", enabled: true},
 	}
 }
 
@@ -143,6 +212,35 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 	case "settings":
 		m.settings = newSettings(m.cfg, m.settingsUpdateState())
 		m.overlay = overlaySettings
+		return m, nil
+	case "compose-send":
+		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlS})
+	case "compose-grammar":
+		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlG})
+	case "compose-attach":
+		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlA})
+	case "compose-remove-attach":
+		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlR})
+	case "compose-cycle-sender":
+		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlU})
+	case "compose-close":
+		return m.handleCompose(tea.KeyMsg{Type: tea.KeyEsc})
+	case "summary-copy":
+		return m.handleSummaryKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
+	case "summary-save":
+		return m.handleSummaryKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'M'}})
+	case "summary-close":
+		return m.handleSummaryKey(tea.KeyMsg{Type: tea.KeyEsc})
+	case "save-attach-save":
+		m.saveAttachPicker.active = false
+		m.overlay = overlayNone
+		return m, saveAttachmentsCmdTo(m.contentAttachments, m.saveAttachPicker.currentDir)
+	case "save-attach-up":
+		m.saveAttachPickerUpDir()
+		return m, nil
+	case "save-attach-cancel":
+		m.saveAttachPicker.active = false
+		m.overlay = overlayNone
 		return m, nil
 	}
 	return m, nil

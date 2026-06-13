@@ -673,6 +673,142 @@ func TestDBFindTrashMailboxErrorsWhenUnavailable(t *testing.T) {
 	}
 }
 
+func TestDBSearchAllMessagesUsesFTSAcrossAccountsAndMailboxes(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+
+	personalID, err := database.AddAccount("Personal", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workID, err := database.AddAccount("Work", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	personalInboxID, err := database.UpsertMailbox(Mailbox{AccountID: personalID, Name: "INBOX", DisplayName: "Inbox"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workArchiveID, err := database.UpsertMailbox(Mailbox{AccountID: workID, Name: "Archive", DisplayName: "Archive"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, msg := range []Message{
+		{
+			MailboxID: personalInboxID,
+			UID:       1,
+			Subject:   "Quarterly launch",
+			From:      "Alice <alice@example.com>",
+			To:        "Bob <bob@example.com>",
+			Date:      time.Unix(1710000000, 0),
+			BodyText:  "agenda notes and release timeline",
+		},
+		{
+			MailboxID: workArchiveID,
+			UID:       2,
+			Subject:   "Budget review",
+			From:      "Carol <carol@example.com>",
+			CC:        "launch-team@example.com",
+			Date:      time.Unix(1710000100, 0),
+			BodyText:  "launch retrospective summary",
+			Read:      true,
+		},
+	} {
+		if err := database.UpsertMessage(msg); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	results, err := database.SearchAllMessages("launch", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 global search results, got %d: %+v", len(results), results)
+	}
+	if results[0].AccountName == "" || results[0].MailboxName == "" {
+		t.Fatalf("expected mailbox/account context on results, got %+v", results[0])
+	}
+
+	subjects := subjectsOf(results)
+	if !strings.Contains(strings.Join(subjects, "|"), "Quarterly launch") || !strings.Contains(strings.Join(subjects, "|"), "Budget review") {
+		t.Fatalf("expected launch hits from both mailboxes, got %v", subjects)
+	}
+
+	bodyResults, err := database.SearchAllMessages("retrospective", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bodyResults) != 1 || bodyResults[0].Subject != "Budget review" {
+		t.Fatalf("expected body-text hit from second mailbox, got %+v", bodyResults)
+	}
+
+	addrResults, err := database.SearchAllMessages("launch-team@example.com", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(addrResults) != 1 || addrResults[0].Subject != "Budget review" {
+		t.Fatalf("expected cc-address hit, got %+v", addrResults)
+	}
+}
+
+func TestDBSearchAllMessagesUnreadFirstAndDeleteSyncFTS(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+
+	accountID, err := database.AddAccount("Personal", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailboxID, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, msg := range []Message{
+		{MailboxID: mailboxID, UID: 1, Subject: "Launch read", BodyText: "launch item", Read: true, Date: time.Unix(10, 0)},
+		{MailboxID: mailboxID, UID: 2, Subject: "Launch unread", BodyText: "launch item", Date: time.Unix(20, 0)},
+	} {
+		if err := database.UpsertMessage(msg); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	results, err := database.SearchAllMessages("launch", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 || results[0].Read {
+		t.Fatalf("expected unread result first, got %+v", results)
+	}
+
+	if err := database.DeleteMessage(results[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	results, err = database.SearchAllMessages("launch", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Subject != "Launch read" {
+		t.Fatalf("expected deleted message removed from FTS results, got %+v", results)
+	}
+}
+
 func openSQLite(path string) (*DB, error) {
 	conn, err := sql.Open("sqlite", path)
 	if err != nil {

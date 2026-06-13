@@ -29,6 +29,8 @@ type Message struct {
 	HasAttachment  bool
 	Headers        string       // auth-related headers parsed from MIME
 	AttachmentData []Attachment // transient, not stored in messages table
+	AccountName    string       // transient, populated for cross-mailbox search results
+	MailboxName    string       // transient, populated for cross-mailbox search results
 }
 
 func (db *DB) ListMessages(mailboxID int64) ([]Message, error) {
@@ -140,6 +142,34 @@ func (db *DB) SearchMessages(mailboxID int64, query string) ([]Message, error) {
 	return scanMessages(rows)
 }
 
+func (db *DB) SearchAllMessages(query string, unreadFirst bool) ([]Message, error) {
+	match := ftsQuery(query)
+	if match == "" {
+		return nil, nil
+	}
+	orderBy := "bm25(messages_fts), messages.date DESC, messages.id DESC"
+	if unreadFirst {
+		orderBy = "messages.read ASC, bm25(messages_fts), messages.date DESC, messages.id DESC"
+	}
+	rows, err := db.Query(`
+		SELECT messages.id, messages.mailbox_id, messages.uid, messages.message_id,
+		       messages.in_reply_to, messages.references_text, messages.subject, messages.from_addr, messages.to_addr, messages.cc_addr,
+		       messages.reply_to, messages.date, messages.body_text, messages.body_html, messages.summary,
+		       messages.flags, messages.read, messages.has_attachment, messages.headers,
+		       accounts.name, COALESCE(NULLIF(mailboxes.display_name, ''), mailboxes.name)
+		FROM messages_fts
+		JOIN messages ON messages.id = messages_fts.rowid
+		JOIN mailboxes ON mailboxes.id = messages.mailbox_id
+		JOIN accounts ON accounts.id = mailboxes.account_id
+		WHERE messages_fts MATCH ?
+		ORDER BY `+orderBy, match)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanMessagesWithContext(rows)
+}
+
 func (db *DB) GetMessage(id int64) (Message, error) {
 	var m Message
 	var flagsJSON string
@@ -206,14 +236,19 @@ func (db *DB) UpsertMessage(m Message) error {
 		return err
 	}
 
+	msgID := m.ID
+	if msgID == 0 {
+		if err := db.QueryRow(`SELECT id FROM messages WHERE mailbox_id = ? AND uid = ?`, m.MailboxID, m.UID).Scan(&msgID); err != nil {
+			return err
+		}
+	}
+	if err := db.upsertMessageFTS(msgID); err != nil {
+		return err
+	}
+
 	// Save attachments if any
 	if len(m.AttachmentData) > 0 {
 		// Get the message ID (works with INSERT or ON CONFLICT UPDATE)
-		msgID := m.ID
-		if msgID == 0 {
-			// Look up the ID by mailbox_id + uid
-			_ = db.QueryRow(`SELECT id FROM messages WHERE mailbox_id = ? AND uid = ?`, m.MailboxID, m.UID).Scan(&msgID)
-		}
 		if msgID != 0 {
 			// Delete old attachments and re-insert
 			if delErr := db.DeleteAttachmentsForMessage(msgID); delErr != nil {
@@ -308,6 +343,9 @@ func (db *DB) DeleteMessage(id int64) error {
 		}
 	}
 	_ = db.DeleteAttachmentsForMessage(id)
+	if err := db.deleteMessageFTS(id); err != nil {
+		return err
+	}
 	_, err := db.Exec(`DELETE FROM messages WHERE id = ?`, id)
 	return err
 }
@@ -321,6 +359,70 @@ func (db *DB) CountUnread(mailboxID int64) (int64, error) {
 	var n int64
 	err := db.QueryRow(`SELECT COUNT(*) FROM messages WHERE mailbox_id = ? AND read = 0`, mailboxID).Scan(&n)
 	return n, err
+}
+
+func scanMessagesWithContext(rows interface {
+	Next() bool
+	Scan(...any) error
+	Err() error
+}) ([]Message, error) {
+	var msgs []Message
+	for rows.Next() {
+		var m Message
+		var flagsJSON string
+		var dateUnix int64
+		var read, att int
+		if err := rows.Scan(
+			&m.ID, &m.MailboxID, &m.UID, &m.MessageID, &m.InReplyTo, &m.References, &m.Subject,
+			&m.From, &m.To, &m.CC, &m.ReplyTo, &dateUnix,
+			&m.BodyText, &m.BodyHTML, &m.Summary, &flagsJSON, &read, &att,
+			&m.Headers, &m.AccountName, &m.MailboxName,
+		); err != nil {
+			return nil, err
+		}
+		json.Unmarshal([]byte(flagsJSON), &m.Flags) //nolint:errcheck
+		if dateUnix > 0 {
+			m.Date = time.Unix(dateUnix, 0)
+		}
+		m.Read = read != 0
+		m.HasAttachment = att != 0
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
+
+func ftsQuery(query string) string {
+	parts := strings.Fields(strings.TrimSpace(query))
+	if len(parts) == 0 {
+		return ""
+	}
+	quoted := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.ReplaceAll(part, `"`, `""`)
+		if part == "" {
+			continue
+		}
+		quoted = append(quoted, `"`+part+`"`)
+	}
+	return strings.Join(quoted, " AND ")
+}
+
+func (db *DB) upsertMessageFTS(id int64) error {
+	if _, err := db.Exec(`DELETE FROM messages_fts WHERE rowid = ?`, id); err != nil {
+		return err
+	}
+	_, err := db.Exec(`
+		INSERT INTO messages_fts(rowid, subject, from_addr, to_addr, cc_addr, body_text)
+		SELECT id, subject, from_addr, to_addr, cc_addr, body_text
+		FROM messages
+		WHERE id = ?
+	`, id)
+	return err
+}
+
+func (db *DB) deleteMessageFTS(id int64) error {
+	_, err := db.Exec(`DELETE FROM messages_fts WHERE rowid = ?`, id)
+	return err
 }
 
 func scanMessages(rows interface {

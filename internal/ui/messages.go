@@ -77,7 +77,7 @@ func (m Model) renderMessagesPane() string {
 			if i == m.messageCursor {
 				style = msgSelected
 			}
-			subject := unescapeDisplayText(msg2.Subject)
+			subject := m.messageRowTitle(msg2)
 			if threadCount > 1 {
 				subject = fmt.Sprintf("%s (%d)", subject, threadCount)
 			}
@@ -90,7 +90,7 @@ func (m Model) renderMessagesPane() string {
 		}
 
 		if len(m.filteredMessages) == 0 {
-			if m.searchQuery != "" {
+			if m.searchMode {
 				rows = append(rows, msgRead.Render("  no results"))
 			} else {
 				rows = append(rows, msgRead.Render("  no messages"))
@@ -103,14 +103,36 @@ func (m Model) renderMessagesPane() string {
 	if m.selectedUnifiedInbox() {
 		title = "Unified Inbox"
 	}
-	if m.searchQuery != "" {
-		title = fmt.Sprintf("%s [/%s]", title, m.searchQuery)
+	if m.searchMode {
+		if m.searchQuery != "" {
+			title = fmt.Sprintf("Search: %s", m.searchQuery)
+		} else {
+			title = "Search:"
+		}
 	}
 	if m.showUnreadOnly {
 		title += " (unread)"
 	}
 
-	contentRows := append([]string{m.renderPaneHeaderWithAccent(paneMessages, title, focused, w, headerActive)}, rows...)
+	var headerLine string
+	if m.searchMode {
+		// Dark badge fills from text through the gap to the hint area.
+		badgeStyle := lipgloss.NewStyle().
+			Background(lipgloss.Color("#2a2a2a")).
+			Foreground(lipgloss.Color("#ffffff")).
+			Bold(true)
+		badgeText := "> " + m.headerLabel(title)
+		badgeW := lipgloss.Width(badgeText)
+		hint := m.renderPaneHint(paneMessages)
+		hintW := lipgloss.Width(hint)
+		gap := max(0, w-badgeW-hintW)
+		left := badgeStyle.Width(badgeW + gap).Render(badgeText)
+		headerLine = m.styles.PaneHeaderInactive.Width(w).Render(left + hint)
+	} else {
+		headerLine = m.renderPaneHeaderWithAccent(paneMessages, title, focused, w, headerActive)
+	}
+
+	contentRows := append([]string{headerLine}, rows...)
 	for viewLineCount(contentRows) < h {
 		contentRows = append(contentRows, msgRead.Width(w).Render(""))
 	}
@@ -121,7 +143,7 @@ func (m Model) renderMessagesPane() string {
 		Background(bg).
 		Border(lipPaneBorder(m.styles.PlainUI), false, false, true, false).
 		BorderForeground(lipgloss.Color(func() string {
-			if focused {
+			if focused || m.searchMode {
 				return string(borderFocus)
 			}
 			return string(borderColor)
@@ -163,6 +185,11 @@ func (m Model) hasSelection() bool {
 }
 
 func (m *Model) applyFilter() {
+	if m.searchActive() && !m.showUnreadOnly {
+		m.filteredMessages = m.messages
+		m.rebuildMessageThreads()
+		return
+	}
 	q := strings.ToLower(m.searchQuery)
 	if q == "" && !m.showUnreadOnly {
 		m.filteredMessages = m.messages
@@ -181,6 +208,25 @@ func (m *Model) applyFilter() {
 	}
 	m.filteredMessages = filtered
 	m.rebuildMessageThreads()
+}
+
+func (m Model) messageRowTitle(msg db.Message) string {
+	subject := unescapeDisplayText(msg.Subject)
+	if !m.searchActive() {
+		return subject
+	}
+	context := strings.TrimSpace(msg.AccountName)
+	if name := strings.TrimSpace(msg.MailboxName); name != "" {
+		if context != "" {
+			context += " / " + name
+		} else {
+			context = name
+		}
+	}
+	if context == "" {
+		return subject
+	}
+	return subject + " [" + context + "]"
 }
 
 func (m *Model) setMessageReadCmd(msg db.Message, read, advance bool) tea.Cmd {

@@ -171,7 +171,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 		{
 			name: "Pickers And Overlays",
 			entries: []entry{
-				{"Command palette", "type to filter; up/down/tab moves; enter runs; esc closes"},
+				{"Command palette", ": or ctrl+p opens it from the main UI; : also opens contextual commands in compose, summary, and save attachments"},
 				{"Theme picker", "up/down previews; enter saves; esc cancels"},
 				{"Move picker", "enter opens/moves; n creates folder; h/left parent; letters jump"},
 				{"Save attachments", "enter opens/selects folder; h/left parent; letters jump"},

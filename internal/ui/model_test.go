@@ -720,3 +720,168 @@ func TestValidateAccountForConnect(t *testing.T) {
 		}
 	}
 }
+
+func TestSearchResultsReplaceCurrentMailboxListAndRenderContext(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := NewModel(nil, cfg, "dev", false)
+	m.width = 100
+	m.height = 20
+	m.focused = paneMessages
+	m.accounts = []db.Account{{ID: 1, Name: "Personal"}, {ID: 2, Name: "Work"}}
+	m.mailboxes = []db.Mailbox{
+		{ID: 11, AccountID: 1, Name: "INBOX", DisplayName: "Inbox"},
+		{ID: 22, AccountID: 2, Name: "Archive", DisplayName: "Archive"},
+	}
+	m.rebuildSidebar()
+	m.sidebarCursor = 1
+	m.searchMode = true
+	m.searchQuery = "launch"
+
+	next, _ := m.Update(MessagesLoadedMsg{
+		Search: true,
+		Query:  "launch",
+		Messages: []db.Message{
+			{ID: 1, MailboxID: 11, Subject: "Quarterly launch", AccountName: "Personal", MailboxName: "Inbox", Date: time.Unix(10, 0)},
+			{ID: 2, MailboxID: 22, Subject: "Retrospective", AccountName: "Work", MailboxName: "Archive", Date: time.Unix(20, 0)},
+		},
+	})
+	m = next.(Model)
+
+	if len(m.filteredMessages) != 2 {
+		t.Fatalf("expected 2 search results, got %+v", m.filteredMessages)
+	}
+	view := ansi.Strip(m.renderMessagesPane())
+	if !strings.Contains(view, "Quarterly launch [Personal / Inbox]") {
+		t.Fatalf("expected rendered row to include mailbox/account context, got:\n%s", view)
+	}
+	if !strings.Contains(view, "Search: launch") {
+		t.Fatalf("expected search-results title, got:\n%s", view)
+	}
+}
+
+func TestSidebarNavigationDoesNotReloadWhileSearchIsActive(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := NewModel(nil, cfg, "dev", false)
+	m.accounts = []db.Account{{ID: 1, Name: "Personal"}}
+	m.mailboxes = []db.Mailbox{
+		{ID: 11, AccountID: 1, Name: "INBOX"},
+		{ID: 12, AccountID: 1, Name: "Archive"},
+	}
+	m.rebuildSidebar()
+	m.sidebarCursor = 1
+	m.focused = paneAccounts
+	m.searchMode = true
+	m.searchQuery = "launch"
+	m.messages = []db.Message{{ID: 1, MailboxID: 11, Subject: "Search hit"}}
+	m.filteredMessages = append([]db.Message(nil), m.messages...)
+
+	next, cmd := m.handleDown()
+	m = next.(Model)
+
+	if cmd != nil {
+		t.Fatal("expected sidebar move during search not to trigger reload")
+	}
+	if m.sidebarCursor != 2 {
+		t.Fatalf("expected cursor to move to next sidebar row, got %d", m.sidebarCursor)
+	}
+	if len(m.filteredMessages) != 1 || m.filteredMessages[0].Subject != "Search hit" {
+		t.Fatalf("expected search results preserved, got %+v", m.filteredMessages)
+	}
+}
+
+func TestSearchModePersistsAfterMultipleCharacters(t *testing.T) {
+	cfg := config.DefaultConfig()
+	mm := NewModel(nil, cfg, "dev", false)
+	mm.searchMode = true
+	mm.searchEditing = true
+	mm.searchQuery = "l"
+
+	// Type second character — search mode and editing should stay active.
+	next, _ := mm.handleMainKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	m := next.(Model)
+
+	if !m.searchMode {
+		t.Fatal("expected searchMode to stay true after typing second character")
+	}
+	if !m.searchEditing {
+		t.Fatal("expected searchEditing to stay true after typing second character")
+	}
+	if m.searchQuery != "la" {
+		t.Fatalf("expected searchQuery to be 'la', got %q", m.searchQuery)
+	}
+}
+
+func TestEscExitsPersistentSearchMode(t *testing.T) {
+	cfg := config.DefaultConfig()
+	mm := NewModel(nil, cfg, "dev", false)
+	mm.searchMode = true
+	mm.searchEditing = false
+	mm.searchQuery = "launch"
+
+	next, _ := mm.handleMainKey(createKeyMsg("esc"))
+	m := next.(Model)
+
+	if m.searchMode {
+		t.Fatal("expected searchMode to be false after Esc")
+	}
+	if m.searchEditing {
+		t.Fatal("expected searchEditing to be false after Esc")
+	}
+	if m.searchQuery != "" {
+		t.Fatalf("expected searchQuery to be empty after Esc, got %q", m.searchQuery)
+	}
+}
+
+func TestEnterStopsEditingButKeepsSearchMode(t *testing.T) {
+	cfg := config.DefaultConfig()
+	mm := NewModel(nil, cfg, "dev", false)
+	mm.searchMode = true
+	mm.searchEditing = true
+	mm.searchQuery = "launch"
+
+	next, _ := mm.handleMainKey(createKeyMsg("enter"))
+	m := next.(Model)
+
+	if !m.searchMode {
+		t.Fatal("expected searchMode to stay true after Enter")
+	}
+	if m.searchEditing {
+		t.Fatal("expected searchEditing to be false after Enter")
+	}
+	if m.searchQuery != "launch" {
+		t.Fatalf("expected searchQuery preserved after Enter, got %q", m.searchQuery)
+	}
+}
+
+func TestEmptyQueryKeepsSearchModeActive(t *testing.T) {
+	cfg := config.DefaultConfig()
+	mm := NewModel(nil, cfg, "dev", false)
+	mm.searchMode = true
+	mm.searchEditing = true
+	mm.searchQuery = "x"
+
+	// Backspace to clear query.
+	next, _ := mm.handleMainKey(tea.KeyMsg{Type: tea.KeyBackspace})
+	m := next.(Model)
+
+	if !m.searchMode {
+		t.Fatal("expected searchMode to stay true after clearing query")
+	}
+	if !m.searchEditing {
+		t.Fatal("expected searchEditing to stay true after clearing query")
+	}
+	if m.searchQuery != "" {
+		t.Fatalf("expected searchQuery to be empty after backspace on single char, got %q", m.searchQuery)
+	}
+}
+
+func createKeyMsg(s string) tea.KeyMsg {
+	switch s {
+	case "esc":
+		return tea.KeyMsg{Type: tea.KeyEscape}
+	case "enter":
+		return tea.KeyMsg{Type: tea.KeyEnter}
+	default:
+		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+	}
+}

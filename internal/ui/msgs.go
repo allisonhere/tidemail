@@ -18,6 +18,8 @@ type AccountsLoadedMsg struct {
 type MessagesLoadedMsg struct {
 	MailboxID int64
 	Messages  []db.Message
+	Search    bool
+	Query     string
 	Err       error
 }
 

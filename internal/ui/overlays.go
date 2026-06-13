@@ -69,13 +69,6 @@ func (m Model) renderOverlay(base string) string {
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
 
-	case overlaySearch:
-		winW := min(m.width-4, 52)
-		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
-		inner := m.renderSearchOverlay(winW, chrome)
-		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
-
 	case overlayThemePicker:
 		winW := min(m.width-4, 40)
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
@@ -195,33 +188,6 @@ func (m Model) renderOverlay(base string) string {
 	}
 
 	return overlayOnBase(base, box, m.width, m.height, m.styles.Theme.Bg)
-}
-
-func (m Model) renderSearchOverlay(width int, chrome managerChrome) string {
-	header := renderManagerHeader("SEARCH MESSAGES", width, chrome)
-	input := m.searchInput
-	inputW := max(1, width-4)
-	input.Width = inputW
-	input.PromptStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.accent).Bold(true)
-	input.TextStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text)
-	input.PlaceholderStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted)
-	input.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
-	input.Cursor.TextStyle = lipgloss.NewStyle().Background(chrome.accent).Foreground(contrastFg(chrome.accent))
-
-	body := lipgloss.NewStyle().
-		Background(chrome.baseBg).
-		Foreground(chrome.text).
-		Width(width).
-		Padding(1, 2, 0, 2).
-		Render(inputViewWithCursor(input, true))
-	hint := lipgloss.NewStyle().
-		Background(chrome.baseBg).
-		Foreground(chrome.muted).
-		Width(width).
-		Padding(0, 2, 0, 2).
-		Render("esc  cancel    enter  apply")
-	actions := renderManagerActions(width, chrome, "enter", "apply", "esc", "clear")
-	return lipgloss.JoinVertical(lipgloss.Left, header, body, hint, actions)
 }
 
 func (m Model) renderCommandPalette(width int, chrome managerChrome) string {

@@ -121,6 +121,33 @@ func (m *Model) loadUnifiedInboxCmd() tea.Cmd {
 	}
 }
 
+func (m *Model) searchAllMessagesCmd(query string) tea.Cmd {
+	database := m.db
+	unreadFirst := m.cfg.Display.UnreadFirst
+	query = strings.TrimSpace(query)
+	return func() tea.Msg {
+		msgs, err := database.SearchAllMessages(query, unreadFirst)
+		if err != nil {
+			return MessagesLoadedMsg{Search: true, Query: query, Err: err}
+		}
+		return MessagesLoadedMsg{Search: true, Query: query, Messages: msgs}
+	}
+}
+
+func (m *Model) visibleMessagesCmd() tea.Cmd {
+	if m.selectedUnifiedInbox() {
+		return m.loadUnifiedInboxCmd()
+	}
+	if selected := m.selectedMailbox(); selected != nil {
+		cmd := m.loadMailboxMessagesCmd(selected.ID)
+		if m.selectedDraftsMailbox() {
+			cmd = tea.Batch(cmd, m.loadDraftsCmd(selected.ID))
+		}
+		return cmd
+	}
+	return nil
+}
+
 func (m *Model) loadAddressBookCmd() tea.Cmd {
 	database := m.db
 	return func() tea.Msg {

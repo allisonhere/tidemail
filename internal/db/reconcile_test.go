@@ -77,6 +77,14 @@ func TestReconcileMailboxUIDsRemovesVanishedKeepsPresent(t *testing.T) {
 	if attCount != 0 {
 		t.Fatalf("expected attachment of removed message to cascade-delete, got %d", attCount)
 	}
+
+	results, err := database.SearchAllMessages("local", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].UID != 0 {
+		t.Fatalf("expected only local-only row to remain searchable, got %+v", results)
+	}
 }
 
 func TestReconcileMailboxUIDsEmptyServerSetWipesUIDMessages(t *testing.T) {
@@ -188,6 +196,13 @@ func TestUIDValidityRoundTripAndResetMailboxCache(t *testing.T) {
 	}
 	if !mb.LastSynced.IsZero() {
 		t.Fatalf("expected last_synced reset, got %v", mb.LastSynced)
+	}
+	results, err := database.SearchAllMessages("x", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("expected reset mailbox cache to clear FTS rows, got %+v", results)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/allisonhere/tide/internal/db"
 	"github.com/charmbracelet/bubbles/key"
@@ -89,6 +90,17 @@ func collectSearchMatches(content, query string) []int {
 		}
 	}
 	return matches
+}
+
+func deleteLastRune(s string) string {
+	if s == "" {
+		return s
+	}
+	_, size := utf8.DecodeLastRuneInString(s)
+	if size <= 0 {
+		return ""
+	}
+	return s[:len(s)-size]
 }
 
 func messageFocusableLines(content string) []bool {

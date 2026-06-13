@@ -101,6 +101,14 @@ func (db *DB) migrate() error {
 		CREATE INDEX IF NOT EXISTS idx_messages_mailbox_id ON messages(mailbox_id);
 		CREATE INDEX IF NOT EXISTS idx_messages_read       ON messages(read);
 
+		CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+			subject,
+			from_addr,
+			to_addr,
+			cc_addr,
+			body_text
+		);
+
 		CREATE TABLE IF NOT EXISTS deleted_messages (
 			id         INTEGER PRIMARY KEY AUTOINCREMENT,
 			mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
@@ -207,6 +215,9 @@ func (db *DB) migrate() error {
 	if err := db.migrateContactMetadataColumns(); err != nil {
 		return err
 	}
+	if err := db.rebuildMessageFTS(); err != nil {
+		return err
+	}
 	if err := db.PruneDeletedMessageTombstones(); err != nil {
 		return err
 	}
@@ -285,6 +296,18 @@ func (db *DB) migrateContactMetadataColumns() error {
 		db.Exec(stmt) //nolint:errcheck
 	}
 	return nil
+}
+
+func (db *DB) rebuildMessageFTS() error {
+	if _, err := db.Exec(`DELETE FROM messages_fts`); err != nil {
+		return err
+	}
+	_, err := db.Exec(`
+		INSERT INTO messages_fts(rowid, subject, from_addr, to_addr, cc_addr, body_text)
+		SELECT id, subject, from_addr, to_addr, cc_addr, body_text
+		FROM messages
+	`)
+	return err
 }
 
 // GetSetting retrieves a UI setting value by key.

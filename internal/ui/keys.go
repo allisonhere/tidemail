@@ -106,7 +106,7 @@ var DefaultKeys = KeyMap{
 	Forward:       key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "forward")),
 	Archive:       key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),
 	Move:          key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move")),
-	Command:       key.NewBinding(key.WithKeys(":"), key.WithHelp(":", "command")),
+	Command:       key.NewBinding(key.WithKeys(":", "ctrl+p"), key.WithHelp(":/ctrl+p", "command")),
 
 	AccountManager: key.NewBinding(key.WithKeys("M"), key.WithHelp("M", "accounts")),
 	ContactManager: key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "contacts")),

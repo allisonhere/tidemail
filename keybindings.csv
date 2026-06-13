@@ -21,7 +21,7 @@ Reply,r,r,reply,main
 Forward,f,f,forward,main
 Archive,a,a,archive,main
 Move,m,m,move to folder/label,main
-Command,:,":",command palette,global
+Command,":,ctrl+p",":/ctrl+p",command palette,global
 AccountManager,M,M,accounts,global
 ThemePicker,T,T,theme picker,global
 Settings,S,S,settings,global

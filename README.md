@@ -41,7 +41,7 @@ go build -o tidemail .
 - Local-first delete hides messages immediately, moves remote mail to Trash when available, and prevents deleted mail from reappearing on later syncs
 - Archive auto-detection via `\Archive`, `Archive`, `Archives`, or `All Mail`
 - Trash auto-detection via `\Trash`, `Trash`, `Deleted Items`, `Deleted Messages`, or Gmail's Trash label
-- Command palette for common mail actions
+- Command palette for main mail actions, plus contextual commands in compose, AI summary, and save-attachments overlays
 - Search and unread-only filtering
 - Optional actionable links in the message content pane
 - AI summaries with copy and save-to-Markdown actions
@@ -118,7 +118,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 
 | Key | Action |
 |-----|--------|
-| `p` or `:` | Command palette |
+| `:` or `Ctrl+P` | Command palette (`Ctrl+P` stays paste inside compose; `:` also opens it in compose, AI summary, and save-attachments overlays) |
 | `m` | Move selected message(s) to folder/label |
 | `M` | Account manager |
 | `C` | Contacts manager |

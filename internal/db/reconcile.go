@@ -52,6 +52,9 @@ func (db *DB) ReconcileMailboxUIDs(mailboxID int64, serverUIDs []uint32) (int, e
 	defer tx.Rollback() //nolint:errcheck
 	// Attachments cascade via ON DELETE CASCADE (foreign_keys=ON).
 	for _, id := range stale {
+		if _, err := tx.Exec(`DELETE FROM messages_fts WHERE rowid = ?`, id); err != nil {
+			return 0, err
+		}
 		if _, err := tx.Exec(`DELETE FROM messages WHERE id = ?`, id); err != nil {
 			return 0, err
 		}
@@ -123,6 +126,11 @@ func (db *DB) ResetMailboxCache(mailboxID int64) error {
 		return err
 	}
 	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.Exec(`
+		DELETE FROM messages_fts
+		WHERE rowid IN (SELECT id FROM messages WHERE mailbox_id = ?)`, mailboxID); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`DELETE FROM messages WHERE mailbox_id = ?`, mailboxID); err != nil {
 		return err
 	}

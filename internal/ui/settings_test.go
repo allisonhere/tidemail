@@ -847,6 +847,24 @@ func TestAboutHeroBackgroundStaysStaticAcrossFrames(t *testing.T) {
 	}
 }
 
+func TestAboutHeroBackgroundIsPureBlack(t *testing.T) {
+	for _, row := range []int{0, 1, 2, 3} {
+		if got := aboutHeroBackground(0, row, 4, 24); got != lipgloss.Color("#000000") {
+			t.Fatalf("expected pure black background on row %d, got %q", row, got)
+		}
+	}
+}
+
+func TestSettingsSectionDetailBgUsesBlackForAbout(t *testing.T) {
+	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	s.setActiveSection(ssAbout)
+	chrome := newManagerChrome(84, CatppuccinMocha, false)
+
+	if got := s.sectionDetailBg(chrome); got != lipgloss.Color("#000000") {
+		t.Fatalf("expected about detail background black, got %q", got)
+	}
+}
+
 func TestAboutHeroSpacerRowsAreBlank(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	for _, row := range []int{1, 3} {

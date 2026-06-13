@@ -75,6 +75,15 @@ const (
 	overlayBulkDeleteConfirm
 )
 
+type commandPaletteContext int
+
+const (
+	commandPaletteMain commandPaletteContext = iota
+	commandPaletteCompose
+	commandPaletteSummary
+	commandPaletteSaveAttach
+)
+
 type updateState int
 
 type logEntry struct {
@@ -126,6 +135,8 @@ type Model struct {
 	messageCursor    int
 	listOffset       int
 	searchQuery      string
+	searchMode       bool
+	searchEditing    bool
 	showUnreadOnly   bool
 	selectedMessages map[int64]bool
 
@@ -158,11 +169,13 @@ type Model struct {
 
 	logBuffer []logEntry
 
-	helpVP        viewport.Model
-	overlay       overlayMode
-	searchInput   textinput.Model
-	commandInput  textinput.Model
-	commandCursor int
+	helpVP                viewport.Model
+	overlay               overlayMode
+	searchInput           textinput.Model
+	commandInput          textinput.Model
+	commandCursor         int
+	commandPaletteOrigin  overlayMode
+	commandPaletteContext commandPaletteContext
 
 	confirmedTheme int
 	activeTheme    int
@@ -507,6 +520,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case MessagesLoadedMsg:
+		if msg.Search {
+			if strings.TrimSpace(m.searchQuery) != strings.TrimSpace(msg.Query) {
+				return m, nil
+			}
+			if msg.Err != nil {
+				m.clearMessages()
+				m.setStatus(msg.Err.Error(), true)
+				return m, m.clearStatusCmd()
+			}
+			currentID := int64(0)
+			if current := m.currentRowMessage(); current != nil {
+				currentID = current.ID
+			}
+			m.messages = msg.Messages
+			m.applyFilter()
+			if idx := m.indexOfFilteredMessage(currentID); idx >= 0 {
+				m.messageCursor = idx
+			} else {
+				m.messageCursor = clamp(m.messageCursor, 0, max(0, m.activeMessageRowCount()-1))
+			}
+			m.listOffset = clamp(m.listOffset, 0, max(0, m.activeMessageRowCount()-1))
+			if current := m.currentRowMessage(); current != nil {
+				m.setViewportForCurrentRow()
+			} else {
+				m.clearViewportMessage()
+			}
+			return m, nil
+		}
+		if m.searchActive() {
+			return m, nil
+		}
 		if msg.Err != nil {
 			if selected := m.selectedMailbox(); selected != nil && msg.MailboxID == selected.ID {
 				m.clearMessages()
@@ -961,6 +1005,30 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Search mode editing intercept — capture typed characters for the query.
+	if m.searchMode && m.searchEditing {
+		switch {
+		case keyMatches(msg, m.keys.Cancel):
+			return m.exitSearchMode()
+		case keyMatches(msg, m.keys.Confirm):
+			m.searchEditing = false
+			m.searchInput.Blur()
+			return m, nil
+		case keyMatches(msg, m.keys.Backspace):
+			return m.handleSearchCharacter(deleteLastRune(m.searchQuery))
+		default:
+			if msg.String() != "" && len(msg.Runes) > 0 {
+				return m.handleSearchCharacter(m.searchQuery + string(msg.Runes))
+			}
+		}
+		return m, nil
+	}
+
+	// Esc exits search mode when not editing.
+	if m.searchMode && keyMatches(msg, m.keys.Cancel) {
+		return m.exitSearchMode()
+	}
+
 	switch {
 	case keyMatches(msg, m.keys.Quit):
 		if !m.cfg.Display.ConfirmQuit {
@@ -996,16 +1064,22 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.contentSearchInput.Focus()
 			return m, nil
 		}
-		m.overlay = overlaySearch
-		m.searchInput.Reset()
+		if m.searchMode {
+			// Already in search mode — re-enter editing.
+			m.searchEditing = true
+			m.searchInput.SetValue(m.searchQuery)
+			m.searchInput.Focus()
+			return m, nil
+		}
+		// Enter persistent search mode.
+		m.searchMode = true
+		m.searchEditing = true
+		m.searchInput.SetValue(m.searchQuery)
 		m.searchInput.Focus()
 		return m, nil
 
 	case keyMatches(msg, m.keys.Command):
-		m.overlay = overlayCommandPalette
-		m.commandInput.Reset()
-		m.commandInput.Focus()
-		m.commandCursor = 0
+		m.openCommandPalette(overlayNone, commandPaletteMain)
 		return m, nil
 
 	case keyMatches(msg, m.keys.UnreadOnly):
@@ -1456,6 +1530,9 @@ func (m Model) handleUp() (tea.Model, tea.Cmd) {
 		if m.sidebarCursor > 0 {
 			m.sidebarCursor--
 			m.clampSidebarOffset()
+			if m.searchActive() {
+				return m, nil
+			}
 			if m.selectedUnifiedInbox() {
 				return m, m.loadUnifiedInboxCmd()
 			}
@@ -1498,6 +1575,9 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 		if m.sidebarCursor < len(m.sidebarRows)-1 {
 			m.sidebarCursor++
 			m.clampSidebarOffset()
+			if m.searchActive() {
+				return m, nil
+			}
 			if m.selectedUnifiedInbox() {
 				return m, m.loadUnifiedInboxCmd()
 			}
@@ -1540,6 +1620,22 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == ":" {
+		switch m.overlay {
+		case overlayCompose:
+			if !m.compose.picker.active {
+				m.openCommandPalette(overlayCompose, commandPaletteCompose)
+				return m, nil
+			}
+		case overlaySummary:
+			m.openCommandPalette(overlaySummary, commandPaletteSummary)
+			return m, nil
+		case overlaySaveAttach:
+			m.openCommandPalette(overlaySaveAttach, commandPaletteSaveAttach)
+			return m, nil
+		}
+	}
+
 	switch m.overlay {
 	case overlayQuitConfirm:
 		switch {
@@ -1577,27 +1673,6 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.pendingBulkDelete = nil
 			m.overlay = overlayNone
 			return m, nil
-		}
-		return m, nil
-
-	case overlaySearch:
-		switch {
-		case keyMatches(msg, m.keys.Cancel):
-			m.overlay = overlayNone
-			m.searchQuery = ""
-			m.applyFilter()
-			m.messageCursor = 0
-			m.listOffset = 0
-		case keyMatches(msg, m.keys.Confirm):
-			m.overlay = overlayNone
-		default:
-			var cmd tea.Cmd
-			m.searchInput, cmd = m.searchInput.Update(msg)
-			m.searchQuery = m.searchInput.Value()
-			m.applyFilter()
-			m.messageCursor = 0
-			m.listOffset = 0
-			return m, cmd
 		}
 		return m, nil
 
@@ -2322,6 +2397,29 @@ func (m *Model) clearMessages() {
 	m.clearSelection()
 }
 
+func (m Model) exitSearchMode() (tea.Model, tea.Cmd) {
+	m.searchMode = false
+	m.searchEditing = false
+	m.searchQuery = ""
+	m.searchInput.Reset()
+	return m, m.visibleMessagesCmd()
+}
+
+func (m Model) handleSearchCharacter(newValue string) (tea.Model, tea.Cmd) {
+	m.searchInput.SetValue(newValue)
+	m.searchQuery = strings.TrimSpace(newValue)
+	m.messageCursor = 0
+	m.listOffset = 0
+	m.messages = nil
+	m.filteredMessages = nil
+	m.messageThreads = nil
+	m.clearSelection()
+	if m.searchQuery == "" {
+		return m, nil
+	}
+	return m, m.searchAllMessagesCmd(m.searchQuery)
+}
+
 // effectiveManualCommand is the command shown in Settings (real install result, or suggested script when an update is available but the install path is not writable).
 
 func (m Model) currentSidebarSelection() (sidebarRowKind, int64) {
@@ -2346,6 +2444,10 @@ func (m Model) selectedUnifiedInbox() bool {
 		return false
 	}
 	return m.sidebarRows[m.sidebarCursor].kind == rowKindUnified
+}
+
+func (m Model) searchActive() bool {
+	return m.searchMode
 }
 
 func (m Model) selectedMailbox() *db.Mailbox {

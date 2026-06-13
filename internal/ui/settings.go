@@ -1422,15 +1422,22 @@ func (s *Settings) viewSectionPane(width, height int, chrome managerChrome) stri
 	if s.focusedPane == settingsPaneDetail {
 		titleStyle = chrome.sectionLabelActive
 	}
-	titleRow := titleStyle.Width(width).Render(title)
-	paneBg := chrome.baseBg
 	if s.activeSection == ssAbout {
-		paneBg = lipgloss.Color("#000000")
+		titleStyle = titleStyle.Background(lipgloss.Color("#000000")).Foreground(lipgloss.Color("#ffffff"))
 	}
+	titleRow := titleStyle.Width(width).Render(title)
+	paneBg := s.sectionDetailBg(chrome)
 	headingGap := lipgloss.NewStyle().Background(paneBg).Width(width).Render("")
 	bodyHeight := max(1, height-2)
 	section := lipgloss.JoinVertical(lipgloss.Left, titleRow, headingGap, s.scrollSectionBody(body, width, bodyHeight, paneBg))
 	return lipgloss.NewStyle().Width(width).Height(height).Background(paneBg).Render(section)
+}
+
+func (s Settings) sectionDetailBg(chrome managerChrome) lipgloss.Color {
+	if s.activeSection == ssAbout {
+		return lipgloss.Color("#000000")
+	}
+	return chrome.baseBg
 }
 
 func (s Settings) scrollSectionBody(body settingsSectionBody, width, height int, bg lipgloss.Color) string {
@@ -2077,8 +2084,9 @@ func (s Settings) renderBackLinkRow(focused bool, width int, chrome managerChrom
 // prependBackLink inserts the back-link row and a blank separator at the top of an
 // already-rendered section body, bumping existing anchors by the insertion count.
 func (s Settings) prependBackLink(body settingsSectionBody, width int, chrome managerChrome) settingsSectionBody {
-	ind := lipgloss.NewStyle().Background(chrome.baseBg).Width(width)
-	blank := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
+	bg := s.sectionDetailBg(chrome)
+	ind := lipgloss.NewStyle().Background(bg).Width(width)
+	blank := lipgloss.NewStyle().Background(bg).Width(width).Render("")
 	prefix := []string{
 		ind.Render(s.renderBackLinkRow(s.focusedField == sfBackToSections, width, chrome)),
 		blank,
@@ -2400,8 +2408,8 @@ func (s Settings) renderAboutHero(width int, chrome managerChrome) string {
 		s.renderAboutHeroTextLine(titleCentered, contentW, 0, true),
 		s.renderAboutHeroTextLine("", contentW, 1, false),
 		renderDNASignalBar(contentW, s.aboutGradientFrame),
+		s.renderAboutHeroTextLine("", contentW, 2, false),
 		s.renderAboutHeroTextLine(taglineCentered, contentW, 1, false),
-		s.renderAboutHeroTextLine("", contentW, 3, false),
 	}
 
 	panelBg := lipgloss.Color("#000000")
@@ -2578,16 +2586,7 @@ func renderAboutHeroCell(ch rune, bg, fg lipgloss.Color, bold bool) string {
 }
 
 func aboutHeroBackground(frame, row, col, width int) lipgloss.Color {
-	// CRT terminal: near-black with subtle scanline alternating
-	// and a very faint vertical scan variation.
-	base := lipgloss.Color("#0a0e14")
-	scanAlt := lipgloss.Color("#0b0f16")
-
-	// Horizontal scanline: alternate slightly every row
-	if row%2 == 0 {
-		return base
-	}
-	return scanAlt
+	return lipgloss.Color("#000000")
 }
 
 func aboutHeroTextForeground(bg lipgloss.Color, row int, ch rune) lipgloss.Color {
