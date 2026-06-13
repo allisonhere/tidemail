@@ -597,6 +597,7 @@ func (c *ComposeModel) handleEditorKey(km tea.KeyMsg) {
 				c.bodyInput.Insert(r)
 			}
 		}
+		c.bodyInput.ClampViewport()
 	}
 }
 
@@ -929,10 +930,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	if c.statusMsg != "" {
 		fixedH++
 	}
-	// -3 accounts for Recipient rows + Subject + internal spacer.
-	// The RECIPIENTS panel's 4 fields (From/To/CC/BCC) naturally take their
-	// rows; the body gets what remains.
-	bodyH := max(1, height-fixedH-attachLines-3)
+	bodyH := max(1, height-fixedH-attachLines-4) // 4: From+To+CC+BCC field rows inside RECIPIENTS panel
 	if bodyH < 1 {
 		bodyH = 1
 	}

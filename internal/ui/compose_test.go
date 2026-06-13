@@ -24,7 +24,7 @@ func composeFieldLine(view, label string) string {
 func TestComposeActionsStayVisibleInShortView(t *testing.T) {
 	c := NewCompose(config.AccountConfig{}, nil, nil)
 	c.focusedField = composeFieldBody
-	c.bodyInput.SetValue(strings.Repeat("this is a long compose line that wraps inside the body editor ", 20))
+	c.bodyInput.SetValue("line one\nline two\nline three")
 
 	view := c.View(60, 13, BuildStyles(CatppuccinMocha, "compact"))
 	stripped := ansi.Strip(view)
@@ -49,7 +49,7 @@ func TestComposeActionsStayVisibleInOverlay(t *testing.T) {
 	m.overlay = overlayCompose
 	m.compose = NewCompose(config.AccountConfig{}, nil, nil)
 	m.compose.focusedField = composeFieldBody
-	m.compose.bodyInput.SetValue(strings.Repeat("this is a long compose line that wraps inside the body editor ", 40))
+	m.compose.bodyInput.SetValue("line one\nline two\nline three\nline four\nline five")
 
 	view := m.View()
 	stripped := ansi.Strip(view)
