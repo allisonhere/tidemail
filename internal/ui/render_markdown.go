@@ -191,7 +191,7 @@ func renderMarkdown(src string, width int, th Theme, plainUI bool) string {
 	if err != nil {
 		return src
 	}
-	return enforceWidth(strings.TrimSpace(out), width)
+	return strings.TrimSpace(out)
 }
 
 // enforceWidth ensures no rendered line exceeds the given width by hard-breaking
