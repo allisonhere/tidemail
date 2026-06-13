@@ -176,7 +176,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{"Move picker", "enter opens/moves; n creates folder; h/left parent; letters jump"},
 				{"Save attachments", "enter opens/selects folder; h/left parent; letters jump"},
 				{"Summary overlay", "C copies; M saves .md; z toggles quoted text; esc closes"},
-				{"Search overlays", "type to filter/find; enter accepts or advances result; esc closes"},
+				{"Search overlays", "/ enters persistent search mode — type to filter globally, enter stops editing, esc exits; ctrl+f opens in-content find overlay" },
 				{"Confirm dialogs", "enter/y confirms; esc/n cancels"},
 			},
 		},

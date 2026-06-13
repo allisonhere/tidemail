@@ -42,7 +42,7 @@ go build -o tidemail .
 - Archive auto-detection via `\Archive`, `Archive`, `Archives`, or `All Mail`
 - Trash auto-detection via `\Trash`, `Trash`, `Deleted Items`, `Deleted Messages`, or Gmail's Trash label
 - Command palette for main mail actions, plus contextual commands in compose, AI summary, and save-attachments overlays
-- Search and unread-only filtering
+- Global message search (`/` enters persistent search mode; type to filter, esc to exit) and unread-only filtering
 - Optional actionable links in the message content pane
 - AI summaries with copy and save-to-Markdown actions
 - AI grammar & spell check in compose with preview overlay
