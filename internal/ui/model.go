@@ -2000,6 +2000,10 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 	before := m.compose
 	newC, cmd, exit := m.compose.Update(msg, m.keys)
 	m.compose = newC
+	if km, ok := msg.(tea.KeyMsg); ok && km.Paste {
+		m.setStatus(fmt.Sprintf("pasted %d chars", len(km.Runes)), false)
+		m.compose.dirty = true
+	}
 	if composeChanged(before, m.compose) {
 		m.compose.dirty = true
 		if m.compose.hasContent() {
