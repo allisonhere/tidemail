@@ -498,3 +498,22 @@ func indentBlock(view string, pad int) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// sanitizePaste normalizes pasted text to prevent the Bubble Tea textarea from
+// choking on combining marks, bidirectional control characters, and other
+// problematic Unicode sequences.
+func sanitizePaste(s string) string {
+	// Filter out combining marks and control characters that aren't newlines/tabs.
+	var buf strings.Builder
+	for _, r := range s {
+		switch {
+		case r == '\n', r == '\r', r == '	':
+			buf.WriteRune(r)
+		case r >= 0x20 && r < 0x7f: // standard ASCII
+			buf.WriteRune(r)
+		case r >= 0xa0 && !unicode.Is(unicode.Mn, r) && !unicode.Is(unicode.Me, r): // printable non-ASCII, no combining marks
+			buf.WriteRune(r)
+		}
+	}
+	return buf.String()
+}

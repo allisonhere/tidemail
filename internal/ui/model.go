@@ -958,8 +958,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.clearStatusCmd()
 		}
 		if m.overlay == overlayCompose && msg.Text != "" {
-			m.setStatus(fmt.Sprintf("pasted %d chars", len(msg.Text)), false)
-			return m.handleCompose(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(msg.Text), Paste: true})
+			sanitized := sanitizePaste(msg.Text)
+			m.setStatus(fmt.Sprintf("pasted %d chars", len(sanitized)), false)
+			return m.handleCompose(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(sanitized), Paste: true})
 		}
 		return m, nil
 
@@ -1996,6 +1997,11 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if km, ok := msg.(tea.KeyMsg); ok && keyMatches(km, m.keys.PasteText) && !m.compose.picker.active {
 		return m, clipboardReadCmd()
+	}
+	// Sanitize system paste to prevent textarea corruption from combining marks.
+	if km, ok := msg.(tea.KeyMsg); ok && km.Paste {
+		sanitized := sanitizePaste(string(km.Runes))
+		msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(sanitized), Paste: true}
 	}
 	before := m.compose
 	newC, cmd, exit := m.compose.Update(msg, m.keys)
