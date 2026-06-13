@@ -436,11 +436,14 @@ func clampView(view string, width, height int, bg lipgloss.Color) string {
 	}
 	for i, line := range lines {
 		line = ansi.Truncate(line, width, "")
-		pad := max(0, width-lipgloss.Width(line))
-		if pad > 0 {
-			line += strings.Repeat(" ", pad)
+		if !strings.HasSuffix(line, ansi.ResetStyle) {
+			line += ansi.ResetStyle
 		}
-		lines[i] = bgStyle.Render(line)
+		pad := width - lipgloss.Width(line)
+		if pad > 0 {
+			line += bgStyle.Render(strings.Repeat(" ", pad))
+		}
+		lines[i] = line
 	}
 	for len(lines) < height {
 		lines = append(lines, bgStyle.Render(strings.Repeat(" ", width)))

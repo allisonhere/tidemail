@@ -28,134 +28,134 @@ func tidemailDarkStyle(th Theme) string {
 	"document": {
 		"style": "",
 		"margin": 0,
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"block_quote": {
 		"indent": 1,
 		"indent_token": "│",
 		"prefix": " ",
 		"color": "` + muted + `",
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"paragraph": {
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"list": {
 		"level_indent": 2,
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"heading": {
 		"color": "` + accent + `",
 		"bold": true,
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"h1": {
 		"color": "` + accent + `",
 		"bold": true,
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"h2": {
 		"color": "` + accent + `",
 		"bold": true,
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"h3": {
 		"color": "` + accent + `",
 		"bold": true,
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"h4": {
 		"color": "` + accent + `",
 		"bold": true,
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"h5": {
 		"color": "` + accent + `",
 		"bold": true,
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"h6": {
 		"color": "` + accent + `",
 		"bold": true,
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"text": {
 		"color": "` + fg + `",
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"bold": {
 		"bold": true,
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"italic": {
 		"italic": true,
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"strikethrough": {
 		"crossed_out": true,
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"link": {
 		"color": "` + accent + `",
 		"underline": true,
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"link_text": {
 		"color": "` + accent + `",
 		"underline": true,
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"code": {
 		"color": "` + codeFg + `",
-		"background": "` + codeBg + `"
+		"background_color": "` + codeBg + `"
 	},
 	"code_block": {
 		"color": "` + codeFg + `",
-		"background": "` + codeBg + `",
+		"background_color": "` + codeBg + `",
 		"margin": 0,
 		"chroma": {
 			"text": {
 				"color": "` + codeFg + `"
 			},
-			"background": {
+			"background_color": {
 				"color": "` + codeBg + `"
 			}
 		}
 	},
 	"table": {
 		"style": "color:` + muted + `",
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"table_separator": {
 		"style": "color:` + muted + `",
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"hr": {
 		"color": "` + border + `",
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"item": {
 		"block_prefix": "",
 		"block_suffix": "",
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"enumeration": {
 		"block_prefix": "",
 		"block_suffix": "",
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"task": {
 		"ticked": "[x]",
 		"unticked": "[ ]",
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"image": {
 		"color": "` + muted + `",
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	},
 	"image_text": {
 		"color": "` + muted + `",
-		"background": "` + bg + `"
+		"background_color": "` + bg + `"
 	}
 }` + "\n"
 }
