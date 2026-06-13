@@ -59,6 +59,7 @@ type OutgoingMessage struct {
 	From        string
 	To          []string
 	CC          []string
+	BCC         []string
 	Subject     string
 	Body        string
 	InReplyTo   string
@@ -78,6 +79,7 @@ func Send(ctx context.Context, cfg config.AccountConfig, msg OutgoingMessage) er
 	var allTo []string
 	allTo = append(allTo, msg.To...)
 	allTo = append(allTo, msg.CC...)
+	allTo = append(allTo, msg.BCC...)
 	if len(allTo) == 0 {
 		return fmt.Errorf("no recipients")
 	}

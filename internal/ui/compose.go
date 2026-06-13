@@ -26,6 +26,7 @@ type composeField int
 const (
 	composeFieldTo composeField = iota
 	composeFieldCC
+	composeFieldBCC
 	composeFieldSubject
 	composeFieldBody
 	composeFieldCount
@@ -54,6 +55,7 @@ type fileEntry struct {
 type ComposeModel struct {
 	toInput      textinput.Model
 	ccInput      textinput.Model
+	bccInput     textinput.Model
 	subjectInput textinput.Model
 	bodyInput    textarea.Model
 
@@ -91,6 +93,8 @@ func NewCompose(acfg config.AccountConfig, accounts []config.AccountConfig, addr
 	c.toInput = newComposeInput("to@example.com")
 	c.ccInput = newComposeInput("")
 	c.ccInput.Placeholder = "cc (optional)"
+	c.bccInput = newComposeInput("")
+	c.bccInput.Placeholder = "bcc (optional)"
 	c.subjectInput = newComposeInput("Subject")
 	c.bodyInput = textarea.New()
 	c.bodyInput.Placeholder = "Write your message here..."
@@ -130,6 +134,7 @@ func NewComposeFromDraft(draft db.Draft, accounts []config.AccountConfig, addres
 	c.accountIndex = draft.AccountIndex
 	c.toInput.SetValue(draft.To)
 	c.ccInput.SetValue(draft.CC)
+	c.bccInput.SetValue(draft.BCC)
 	c.subjectInput.SetValue(draft.Subject)
 	c.bodyInput.SetValue(draft.BodyText)
 	c.inReplyTo = draft.InReplyTo
@@ -150,6 +155,8 @@ func (c *ComposeModel) SetAddressBook(addrs []string) {
 	c.toInput.SetSuggestions(addrs)
 	c.ccInput.ShowSuggestions = true
 	c.ccInput.SetSuggestions(addrs)
+	c.bccInput.ShowSuggestions = true
+	c.bccInput.SetSuggestions(addrs)
 }
 
 // NewReply creates a compose model pre-filled for replying to a message.
@@ -399,6 +406,8 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 			c.toInput, cmd = c.toInput.Update(msg)
 		case composeFieldCC:
 			c.ccInput, cmd = c.ccInput.Update(msg)
+		case composeFieldBCC:
+			c.bccInput, cmd = c.bccInput.Update(msg)
 		case composeFieldSubject:
 			c.subjectInput, cmd = c.subjectInput.Update(msg)
 		case composeFieldBody:
@@ -430,6 +439,11 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 		}
 		if c.focusedField == composeFieldCC && hasPendingComposeSuggestion(c.ccInput) {
 			c.ccInput, _ = c.ccInput.Update(msg)
+			c.advanceField(1)
+			return c, nil, false
+		}
+		if c.focusedField == composeFieldBCC && hasPendingComposeSuggestion(c.bccInput) {
+			c.bccInput, _ = c.bccInput.Update(msg)
 			c.advanceField(1)
 			return c, nil, false
 		}
@@ -478,6 +492,12 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 				return c, nil, false
 			}
 			c.ccInput, cmd = c.ccInput.Update(msg)
+		case composeFieldBCC:
+			if keyMatches(km, keys.Confirm) {
+				c.advanceField(1)
+				return c, nil, false
+			}
+			c.bccInput, cmd = c.bccInput.Update(msg)
 		case composeFieldSubject:
 			if keyMatches(km, keys.Confirm) {
 				c.advanceField(1)
@@ -548,6 +568,7 @@ func (c *ComposeModel) advanceField(delta int) {
 	c.focusedField = composeField(next)
 	c.toInput.Blur()
 	c.ccInput.Blur()
+	c.bccInput.Blur()
 	c.subjectInput.Blur()
 	c.bodyInput.Blur()
 	switch c.focusedField {
@@ -555,6 +576,8 @@ func (c *ComposeModel) advanceField(delta int) {
 		c.toInput.Focus()
 	case composeFieldCC:
 		c.ccInput.Focus()
+	case composeFieldBCC:
+		c.bccInput.Focus()
 	case composeFieldSubject:
 		c.subjectInput.Focus()
 	case composeFieldBody:
@@ -586,6 +609,7 @@ func (c ComposeModel) toDraftRecord() db.Draft {
 		AccountIndex: c.accountIndex,
 		To:           strings.TrimSpace(c.toInput.Value()),
 		CC:           strings.TrimSpace(c.ccInput.Value()),
+		BCC:          strings.TrimSpace(c.bccInput.Value()),
 		Subject:      c.subjectInput.Value(),
 		BodyText:     c.bodyInput.Value(),
 		InReplyTo:    c.inReplyTo,
@@ -625,6 +649,14 @@ func (c ComposeModel) send() (ComposeModel, tea.Cmd, bool) {
 			return c, nil, false
 		}
 	}
+	bcc := strings.TrimSpace(c.bccInput.Value())
+	if bcc != "" {
+		if err := validateAddressList(bcc); err != "" {
+			c.statusMsg = err
+			c.isErr = true
+			return c, nil, false
+		}
+	}
 	acfg := c.selectedAccount()
 
 	// Build attachment list from stored file data
@@ -639,6 +671,7 @@ func (c ComposeModel) send() (ComposeModel, tea.Cmd, bool) {
 	msg := smtp.OutgoingMessage{
 		To:          parseAddressList(to),
 		CC:          parseAddressList(c.ccInput.Value()),
+		BCC:         parseAddressList(bcc),
 		Subject:     c.subjectInput.Value(),
 		Body:        c.bodyInput.Value(),
 		InReplyTo:   c.inReplyTo,
@@ -858,7 +891,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	if c.statusMsg != "" {
 		fixedH++
 	}
-	bodyH := max(1, height-fixedH-attachLines-3) // -3 for From + subject + spacer inside panels
+	bodyH := max(1, height-fixedH-attachLines-4) // -4 for From + To + CC + BCC reciprocal rows + subject + spacer inside panels
 	if bodyH < 1 {
 		bodyH = 1
 	}
@@ -959,6 +992,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 		renderComposeFromRow("From", c.selectedAccountLabel(), width, panelLabelW, panelCtrlW, chrome),
 		renderComposePanelRow(c.toInput, "To", c.focusedField == composeFieldTo, width, panelLabelW, panelCtrlW, chrome),
 		renderComposePanelRow(c.ccInput, "CC", c.focusedField == composeFieldCC, width, panelLabelW, panelCtrlW, chrome),
+		renderComposePanelRow(c.bccInput, "BCC", c.focusedField == composeFieldBCC, width, panelLabelW, panelCtrlW, chrome),
 	}
 	rows = append(rows, renderComposePanel("RECIPIENTS", recipRows, width, chrome))
 

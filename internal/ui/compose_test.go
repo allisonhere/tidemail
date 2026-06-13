@@ -27,7 +27,7 @@ func TestComposeActionsStayVisibleInShortView(t *testing.T) {
 	c.bodyInput.Focus()
 	c.bodyInput.SetValue(strings.Repeat("this is a long compose line that wraps inside the body editor ", 20))
 
-	view := c.View(60, 12, BuildStyles(CatppuccinMocha, "compact"))
+	view := c.View(60, 13, BuildStyles(CatppuccinMocha, "compact"))
 	stripped := ansi.Strip(view)
 
 	if !strings.Contains(stripped, "SEND") {
@@ -109,8 +109,8 @@ func TestComposeTabAdvancesAfterAcceptingCCSuggestion(t *testing.T) {
 	if got := c.ccInput.Value(); got != "carol <carol@example.com>" {
 		t.Fatalf("expected tab to accept CC suggestion, got %q", got)
 	}
-	if c.focusedField != composeFieldSubject {
-		t.Fatalf("tab should accept CC suggestion and advance to Subject, got focus %v", c.focusedField)
+	if c.focusedField != composeFieldBCC {
+		t.Fatalf("tab should accept CC suggestion and advance to BCC, got focus %v", c.focusedField)
 	}
 }
 

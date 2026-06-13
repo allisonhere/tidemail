@@ -20,6 +20,7 @@ type Draft struct {
 	RemoteMessageID string
 	To              string
 	CC              string
+	BCC             string
 	Subject         string
 	BodyText        string
 	InReplyTo       string
@@ -75,11 +76,11 @@ func (db *DB) SaveDraft(d Draft) (int64, error) {
 		res, err := tx.Exec(`
 			INSERT INTO drafts
 				(account_name, account_user, account_index, mailbox_id, remote_uid, remote_message_id,
-				 to_addr, cc_addr, subject, body_text, in_reply_to, references_text,
+				 to_addr, cc_addr, bcc_addr, subject, body_text, in_reply_to, references_text,
 				 created_at, updated_at, last_remote_sync, dirty)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			d.AccountName, d.AccountUser, d.AccountIndex, d.MailboxID, d.RemoteUID, d.RemoteMessageID,
-			d.To, d.CC, d.Subject, d.BodyText, d.InReplyTo, d.References,
+			d.To, d.CC, d.BCC, d.Subject, d.BodyText, d.InReplyTo, d.References,
 			createdAt, updatedAt, lastRemoteSync, dirty)
 		if err != nil {
 			return 0, err
@@ -99,7 +100,7 @@ func (db *DB) SaveDraft(d Draft) (int64, error) {
 				mailbox_id = CASE WHEN ? != 0 THEN ? ELSE mailbox_id END,
 				remote_uid = CASE WHEN ? != 0 THEN ? ELSE remote_uid END,
 				remote_message_id = CASE WHEN ? != '' THEN ? ELSE remote_message_id END,
-				to_addr = ?, cc_addr = ?,
+				to_addr = ?, cc_addr = ?, bcc_addr = ?,
 				subject = ?, body_text = ?, in_reply_to = ?, references_text = ?,
 				created_at = CASE WHEN ? != 0 THEN ? ELSE created_at END,
 				updated_at = ?,
@@ -110,7 +111,7 @@ func (db *DB) SaveDraft(d Draft) (int64, error) {
 			d.MailboxID, d.MailboxID,
 			d.RemoteUID, d.RemoteUID,
 			d.RemoteMessageID, d.RemoteMessageID,
-			d.To, d.CC,
+			d.To, d.CC, d.BCC,
 			d.Subject, d.BodyText, d.InReplyTo, d.References,
 			createdAt, createdAt,
 			updatedAt,
@@ -150,7 +151,7 @@ func (db *DB) SaveDraft(d Draft) (int64, error) {
 func (db *DB) GetDraft(id int64) (Draft, error) {
 	row := db.QueryRow(`
 		SELECT id, account_name, account_user, account_index, mailbox_id, remote_uid, remote_message_id,
-		       to_addr, cc_addr, subject, body_text, in_reply_to, references_text,
+		       to_addr, cc_addr, bcc_addr, subject, body_text, in_reply_to, references_text,
 		       created_at, updated_at, last_remote_sync, dirty
 		FROM drafts WHERE id = ?`, id)
 	d, err := scanDraft(row)
@@ -168,7 +169,7 @@ func (db *DB) GetDraft(id int64) (Draft, error) {
 func (db *DB) ListDrafts(accountName, accountUser string) ([]Draft, error) {
 	rows, err := db.Query(`
 		SELECT id, account_name, account_user, account_index, mailbox_id, remote_uid, remote_message_id,
-		       to_addr, cc_addr, subject, body_text, in_reply_to, references_text,
+		       to_addr, cc_addr, bcc_addr, subject, body_text, in_reply_to, references_text,
 		       created_at, updated_at, last_remote_sync, dirty
 		FROM drafts
 		WHERE account_name = ? AND account_user = ?
@@ -314,7 +315,7 @@ func scanDraft(row draftScanner) (Draft, error) {
 	var dirty int
 	if err := row.Scan(
 		&d.ID, &d.AccountName, &d.AccountUser, &d.AccountIndex, &d.MailboxID, &d.RemoteUID, &d.RemoteMessageID,
-		&d.To, &d.CC, &d.Subject, &d.BodyText, &d.InReplyTo, &d.References,
+		&d.To, &d.CC, &d.BCC, &d.Subject, &d.BodyText, &d.InReplyTo, &d.References,
 		&createdAt, &updatedAt, &lastRemoteSync, &dirty,
 	); err != nil {
 		if err == sql.ErrNoRows {

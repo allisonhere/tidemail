@@ -143,6 +143,7 @@ func (db *DB) migrate() error {
 			remote_message_id TEXT    NOT NULL DEFAULT '',
 			to_addr           TEXT    NOT NULL DEFAULT '',
 			cc_addr           TEXT    NOT NULL DEFAULT '',
+			bcc_addr          TEXT    NOT NULL DEFAULT '',
 			subject           TEXT    NOT NULL DEFAULT '',
 			body_text         TEXT    NOT NULL DEFAULT '',
 			in_reply_to       TEXT    NOT NULL DEFAULT '',
@@ -213,6 +214,9 @@ func (db *DB) migrate() error {
 		return err
 	}
 	if err := db.migrateContactMetadataColumns(); err != nil {
+		return err
+	}
+	if err := db.migrateDraftsBCC(); err != nil {
 		return err
 	}
 	if err := db.rebuildMessageFTS(); err != nil {
@@ -295,6 +299,11 @@ func (db *DB) migrateContactMetadataColumns() error {
 	} {
 		db.Exec(stmt) //nolint:errcheck
 	}
+	return nil
+}
+
+func (db *DB) migrateDraftsBCC() error {
+	db.Exec(`ALTER TABLE drafts ADD COLUMN bcc_addr TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
 	return nil
 }
 
