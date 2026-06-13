@@ -15,6 +15,7 @@ import (
 
 	"github.com/allisonhere/tide/internal/auth"
 	"github.com/allisonhere/tide/internal/config"
+	"github.com/yuin/goldmark"
 )
 
 var (
@@ -62,6 +63,7 @@ type OutgoingMessage struct {
 	BCC         []string
 	Subject     string
 	Body        string
+	HTMLBody    string
 	InReplyTo   string
 	References  string
 	Attachments []Attachment
@@ -210,25 +212,47 @@ func buildRaw(from string, msg OutgoingMessage) []byte {
 	}
 	hdr.WriteString("MIME-Version: 1.0\r\n")
 
-	// Plain text — no attachments
 	if len(msg.Attachments) == 0 {
-		hdr.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+		if msg.HTMLBody == "" {
+			hdr.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+			hdr.WriteString("\r\n")
+			hdr.WriteString(msg.Body)
+			return []byte(hdr.String())
+		}
+		// multipart/alternative: plain text + HTML
+		var buf bytes.Buffer
+		mw := multipart.NewWriter(&buf)
+		hdr.WriteString("Content-Type: multipart/alternative; boundary=\"" + mw.Boundary() + "\"\r\n")
 		hdr.WriteString("\r\n")
-		hdr.WriteString(msg.Body)
-		return []byte(hdr.String())
+		buf.WriteString(hdr.String())
+		addTextPart(mw, msg.Body)
+		addHTMLPart(mw, msg.HTMLBody)
+		mw.Close()
+		return buf.Bytes()
 	}
 
-	// Multipart/mixed with attachments
+	// Attachments present
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 	hdr.WriteString("Content-Type: multipart/mixed; boundary=\"" + mw.Boundary() + "\"\r\n")
 	hdr.WriteString("\r\n")
 	buf.WriteString(hdr.String())
 
-	// Body part
-	bodyHdr := textproto.MIMEHeader{"Content-Type": {"text/plain; charset=utf-8"}}
-	w, _ := mw.CreatePart(bodyHdr)
-	_, _ = w.Write([]byte(msg.Body))
+	if msg.HTMLBody != "" {
+		// Wrap text+html in multipart/alternative inside multipart/mixed
+		altWriter := multipart.NewWriter(&buf)
+		altHdr := textproto.MIMEHeader{"Content-Type": {"multipart/alternative; boundary=\"" + altWriter.Boundary() + "\""}}
+		altPart, _ := mw.CreatePart(altHdr)
+		altHeader := fmt.Sprintf("Content-Type: multipart/alternative; boundary=\"%s\"\r\n\r\n", altWriter.Boundary())
+		altPart.Write([]byte(altHeader))
+		addTextPart(altWriter, msg.Body)
+		addHTMLPart(altWriter, msg.HTMLBody)
+		altWriter.Close()
+	} else {
+		bodyHdr := textproto.MIMEHeader{"Content-Type": {"text/plain; charset=utf-8"}}
+		w, _ := mw.CreatePart(bodyHdr)
+		_, _ = w.Write([]byte(msg.Body))
+	}
 
 	// Attachment parts
 	for _, att := range msg.Attachments {
@@ -239,7 +263,6 @@ func buildRaw(from string, msg OutgoingMessage) []byte {
 		}
 		w, _ := mw.CreatePart(attHdr)
 		encoded := base64.StdEncoding.EncodeToString(att.Data)
-		// Wrap base64 at 76 chars per line
 		for i := 0; i < len(encoded); i += 76 {
 			end := i + 76
 			if end > len(encoded) {
@@ -251,6 +274,27 @@ func buildRaw(from string, msg OutgoingMessage) []byte {
 
 	mw.Close()
 	return buf.Bytes()
+}
+
+func addTextPart(mw *multipart.Writer, body string) {
+	hdr := textproto.MIMEHeader{"Content-Type": {"text/plain; charset=utf-8"}}
+	w, _ := mw.CreatePart(hdr)
+	_, _ = w.Write([]byte(body))
+}
+
+func addHTMLPart(mw *multipart.Writer, html string) {
+	hdr := textproto.MIMEHeader{"Content-Type": {"text/html; charset=utf-8"}}
+	w, _ := mw.CreatePart(hdr)
+	_, _ = w.Write([]byte(html))
+}
+
+// MarkdownToHTML converts Markdown text to HTML using goldmark.
+func MarkdownToHTML(md string) string {
+	var buf bytes.Buffer
+	if err := goldmark.Convert([]byte(md), &buf); err != nil {
+		return ""
+	}
+	return buf.String()
 }
 
 // cleanEmail extracts a bare email address from formats like "user@host" or "Name <user@host>".

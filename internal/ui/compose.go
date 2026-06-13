@@ -668,12 +668,14 @@ func (c ComposeModel) send() (ComposeModel, tea.Cmd, bool) {
 		})
 	}
 
+	body := c.bodyInput.Value()
 	msg := smtp.OutgoingMessage{
 		To:          parseAddressList(to),
 		CC:          parseAddressList(c.ccInput.Value()),
 		BCC:         parseAddressList(bcc),
 		Subject:     c.subjectInput.Value(),
-		Body:        c.bodyInput.Value(),
+		Body:        body,
+		HTMLBody:    smtp.MarkdownToHTML(body),
 		InReplyTo:   c.inReplyTo,
 		References:  c.references,
 		Attachments: atts,
