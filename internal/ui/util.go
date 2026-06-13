@@ -436,12 +436,15 @@ func clampView(view string, width, height int, bg lipgloss.Color) string {
 	}
 	for i, line := range lines {
 		line = ansi.Truncate(line, width, "")
-		if !strings.HasSuffix(line, ansi.ResetStyle) {
-			line += ansi.ResetStyle
-		}
-		pad := width - lipgloss.Width(line)
+		pad := max(0, width-lipgloss.Width(line))
 		if pad > 0 {
-			line += bgStyle.Render(strings.Repeat(" ", pad))
+			line += strings.Repeat(" ", pad)
+		}
+		// glamour emits \033[0m which clears backgrounds. Re-apply the
+		// background after every reset so the pane bg is never transparent.
+		if r, g, b, ok := hexToRGB(bg); ok {
+			bgReset := fmt.Sprintf("%s\x1b[48;2;%d;%d;%dm", ansi.ResetStyle, int(r*255), int(g*255), int(b*255))
+			line = strings.ReplaceAll(line, ansi.ResetStyle, bgReset)
 		}
 		lines[i] = line
 	}

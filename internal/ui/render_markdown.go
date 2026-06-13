@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/glamour"
@@ -192,50 +191,7 @@ func renderMarkdown(src string, width int, th Theme, plainUI bool) string {
 	if err != nil {
 		return src
 	}
-	return wrapWithBackground(strings.TrimSpace(out), string(th.Bg), width)
-}
-
-// wrapWithBackground ensures every line has the correct background color.
-// glamour's output may have ANSI sequences that reset the background mid-line;
-// wrapping each line in the background style guarantees consistent coloring.
-func wrapWithBackground(s string, bg string, width int) string {
-	if s == "" || bg == "" {
-		return s
-	}
-	bgStyle := "\033[48;2;" + hexToAnsiBg(bg) + "m"
-	var result []string
-	for _, line := range strings.Split(s, "\n") {
-		result = append(result, bgStyle+line+"\033[0m")
-	}
-	return strings.Join(result, "\n")
-}
-
-// hexToAnsiBg converts a hex color like "#1a1b26" to ANSI 24-bit background
-// parameters like "26;27;28" for use in \033[48;2;R;G;Bm.
-func hexToAnsiBg(hex string) string {
-	if len(hex) != 7 || hex[0] != '#' {
-		return ""
-	}
-	r := hexToByte(hex[1:3])
-	g := hexToByte(hex[3:5])
-	b := hexToByte(hex[5:7])
-	return fmt.Sprintf("%d;%d;%d", r, g, b)
-}
-
-func hexToByte(s string) int {
-	var v int
-	for _, c := range s {
-		v *= 16
-		switch {
-		case c >= '0' && c <= '9':
-			v += int(c - '0')
-		case c >= 'a' && c <= 'f':
-			v += int(c - 'a' + 10)
-		case c >= 'A' && c <= 'F':
-			v += int(c - 'A' + 10)
-		}
-	}
-	return v
+	return strings.TrimSpace(out)
 }
 
 // enforceWidth ensures no rendered line exceeds the given width by hard-breaking
