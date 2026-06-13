@@ -24,7 +24,6 @@ func composeFieldLine(view, label string) string {
 func TestComposeActionsStayVisibleInShortView(t *testing.T) {
 	c := NewCompose(config.AccountConfig{}, nil, nil)
 	c.focusedField = composeFieldBody
-	c.bodyInput.Focus()
 	c.bodyInput.SetValue(strings.Repeat("this is a long compose line that wraps inside the body editor ", 20))
 
 	view := c.View(60, 13, BuildStyles(CatppuccinMocha, "compact"))
@@ -50,7 +49,6 @@ func TestComposeActionsStayVisibleInOverlay(t *testing.T) {
 	m.overlay = overlayCompose
 	m.compose = NewCompose(config.AccountConfig{}, nil, nil)
 	m.compose.focusedField = composeFieldBody
-	m.compose.bodyInput.Focus()
 	m.compose.bodyInput.SetValue(strings.Repeat("this is a long compose line that wraps inside the body editor ", 40))
 
 	view := m.View()
@@ -122,7 +120,6 @@ func TestReplyTypingStartsAboveQuotedMessage(t *testing.T) {
 		BodyText:  "quoted line",
 	}, config.AccountConfig{}, nil)
 	c.focusedField = composeFieldBody
-	c.bodyInput.Focus()
 
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("H")}, DefaultKeys)
 
@@ -140,7 +137,6 @@ func TestForwardTypingStartsAboveQuotedMessage(t *testing.T) {
 		BodyText:  "forwarded line",
 	}, config.AccountConfig{}, nil)
 	c.focusedField = composeFieldBody
-	c.bodyInput.Focus()
 
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("H")}, DefaultKeys)
 
@@ -158,7 +154,6 @@ func TestCtrlPPastesClipboardIntoComposeBody(t *testing.T) {
 	m.overlay = overlayCompose
 	m.compose = NewCompose(config.AccountConfig{}, nil, nil)
 	m.compose.focusedField = composeFieldBody
-	m.compose.bodyInput.Focus()
 
 	restore := stubClipboardRead(t, "pasted text")
 	defer restore()
