@@ -332,6 +332,7 @@ func renderHTMLBody(html string, width int, th Theme, plainUI bool) string {
 	if err != nil || strings.TrimSpace(markdown) == "" {
 		return ""
 	}
+	markdown = stripEmailInvisibles(markdown)
 	return renderMarkdown(markdown, width, th, plainUI)
 }
 
