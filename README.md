@@ -3,6 +3,7 @@
 ![TideMail screenshot](screen.png)
 
 A keyboard-first terminal mail client built with [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lipgloss](https://github.com/charmbracelet/lipgloss).
+Currently in process of writing GO editor library for compose.
 
 ## Install
 
