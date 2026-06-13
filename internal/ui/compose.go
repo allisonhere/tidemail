@@ -893,7 +893,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	if c.statusMsg != "" {
 		fixedH++
 	}
-	bodyH := max(1, height-fixedH-attachLines-4) // -4 for From + To + CC + BCC reciprocal rows + subject + spacer inside panels
+	bodyH := max(1, height-fixedH-attachLines-7) // 7 non-body rows: From + To + CC + BCC + Subject + 2 internal spacers
 	if bodyH < 1 {
 		bodyH = 1
 	}
