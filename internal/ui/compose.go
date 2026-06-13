@@ -929,7 +929,10 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	if c.statusMsg != "" {
 		fixedH++
 	}
-	bodyH := max(1, height-fixedH-attachLines-4) // -4 for From + To + CC + BCC + Subject + internal spacer (the blank rows and spacers are counted in gapRows)
+	// -3 accounts for Recipient rows + Subject + internal spacer.
+	// The RECIPIENTS panel's 4 fields (From/To/CC/BCC) naturally take their
+	// rows; the body gets what remains.
+	bodyH := max(1, height-fixedH-attachLines-3)
 	if bodyH < 1 {
 		bodyH = 1
 	}
