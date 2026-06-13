@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/glamour"
@@ -191,7 +192,15 @@ func renderMarkdown(src string, width int, th Theme, plainUI bool) string {
 	if err != nil {
 		return src
 	}
-	return strings.TrimSpace(out)
+	out = strings.TrimSpace(out)
+	// glamour emits \033[0m to reset inline styling (bold, italic, links)
+	// which also clears the background. Re-establish the theme background
+	// after every reset so the pane bg never goes transparent.
+	if r, g, b, ok := hexToRGB(th.Bg); ok {
+		bgReset := fmt.Sprintf("\x1b[0m\x1b[48;2;%d;%d;%dm", int(r*255), int(g*255), int(b*255))
+		out = strings.ReplaceAll(out, ansi.ResetStyle, bgReset)
+	}
+	return out
 }
 
 // enforceWidth ensures no rendered line exceeds the given width by hard-breaking
