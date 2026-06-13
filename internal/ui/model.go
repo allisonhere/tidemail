@@ -958,6 +958,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.clearStatusCmd()
 		}
 		if m.overlay == overlayCompose && msg.Text != "" {
+			m.setStatus(fmt.Sprintf("pasted %d chars", len(msg.Text)), false)
 			return m.handleCompose(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(msg.Text), Paste: true})
 		}
 		return m, nil
