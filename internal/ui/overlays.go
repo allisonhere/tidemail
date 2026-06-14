@@ -93,7 +93,7 @@ func (m Model) renderOverlay(base string) string {
 		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
 
 	case overlayCompose:
-		winW := min(m.width-4, 74)
+		winW := composeOverlayWidth(m.width)
 		winH := min(m.height-4, 36)
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		inner := m.compose.View(winW, winH, m.styles)

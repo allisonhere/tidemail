@@ -1982,6 +1982,12 @@ func (m Model) handleContactManager(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Keep the stored body editor sized to the rendered width so vertical
+	// navigation maps to the same wrapped rows the user sees. View sizes only a
+	// copy (it's a value receiver), so the stored editor must be synced here.
+	if m.width > 0 {
+		m.compose.bodyInput.SetWidth(composeBodyWidth(m.width))
+	}
 	// Intercept grammar check key before compose gets it
 	if km, ok := msg.(tea.KeyMsg); ok && keyMatches(km, m.keys.GrammarCheck) {
 		body := m.compose.bodyInput.Value()

@@ -212,6 +212,33 @@ func TestComposeCutWritesClipboardWhileAutosaving(t *testing.T) {
 	}
 }
 
+func TestComposeBodyEditorSyncedToRenderWidth(t *testing.T) {
+	// The stored body editor must wrap at the same width it's rendered at, or
+	// up/down navigation skips/sticks relative to the displayed wrapping.
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	database, err := db.Open()
+	if err != nil {
+		t.Fatalf("Open DB: %v", err)
+	}
+	defer database.Close()
+
+	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = next.(Model)
+	m.overlay = overlayCompose
+	m.compose = NewReply(db.Message{From: "A", MessageID: "<x>", Subject: "S", BodyText: "hello"},
+		config.AccountConfig{}, nil)
+	m.compose.focusedField = composeFieldBody
+
+	// Any key routed through handleCompose should size the stored editor.
+	n, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = n.(Model)
+
+	if got, want := m.compose.bodyInput.w, composeBodyWidth(120); got != want {
+		t.Fatalf("stored body editor width = %d, want render width %d", got, want)
+	}
+}
+
 func TestComposeAttachMovedOffCtrlA(t *testing.T) {
 	// ctrl+a in the body selects all and does NOT open the picker.
 	c := NewCompose(config.AccountConfig{}, nil, nil)

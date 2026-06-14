@@ -836,6 +836,20 @@ func renderComposeFromRow(label, value string, width, labelW, ctrlW int, chrome 
 	return marker + labelCell + valueCell
 }
 
+// composeOverlayWidth is the width of the compose overlay box for a given
+// terminal width. renderOverlay (overlays.go) and the body-editor sizing must
+// agree on this value.
+func composeOverlayWidth(termWidth int) int {
+	return min(termWidth-4, 74)
+}
+
+// composeBodyWidth is the content width of the body editor inside the compose
+// overlay. handleCompose uses it to keep the stored editor wrapping identically
+// to the rendered copy, so vertical navigation matches what the user sees.
+func composeBodyWidth(termWidth int) int {
+	return max(1, composeOverlayWidth(termWidth)-4)
+}
+
 func (c ComposeModel) View(width, height int, styles Styles) string {
 	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
 
@@ -907,7 +921,9 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 		bodyH = 1
 	}
 
-	// Body textarea inside Message panel — content area minus internal padding
+	// Body editor inside Message panel — content area minus internal padding.
+	// Must equal composeBodyWidth(terminalWidth) so the stored editor (sized in
+	// handleCompose for key handling) wraps identically to this render copy.
 	bodyInputW := max(1, width-4)
 	c.bodyInput.SetWidth(bodyInputW)
 	c.bodyInput.SetHeight(bodyH)
