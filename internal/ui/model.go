@@ -2034,7 +2034,7 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func composeChanged(a, b ComposeModel) bool {
-	if a.toInput.Value() != b.toInput.Value() || a.ccInput.Value() != b.ccInput.Value() || a.subjectInput.Value() != b.subjectInput.Value() || a.bodyInput.Value() != b.bodyInput.Value() {
+	if a.toInput.Value() != b.toInput.Value() || a.ccInput.Value() != b.ccInput.Value() || a.bccInput.Value() != b.bccInput.Value() || a.subjectInput.Value() != b.subjectInput.Value() || a.bodyInput.Value() != b.bodyInput.Value() {
 		return true
 	}
 	if a.accountIndex != b.accountIndex || len(a.attachments) != len(b.attachments) {
