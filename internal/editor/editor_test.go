@@ -471,6 +471,81 @@ func TestUndoRedoViaKeys(t *testing.T) {
 	}
 }
 
+func TestBlurHidesCursorAndFocusRestoresIt(t *testing.T) {
+	var e Model
+	e.SetSize(20, 1)
+	e.SetValue("hi")
+
+	focused := e.View(Options{Cursor: "|"})
+	if !strings.Contains(focused, "|") {
+		t.Fatalf("focused editor should render the cursor, got %q", focused)
+	}
+
+	e.Blur()
+	blurred := e.View(Options{Cursor: "|"})
+	if strings.Contains(blurred, "|") {
+		t.Fatalf("blurred editor should not render the cursor, got %q", blurred)
+	}
+	if !strings.Contains(blurred, "hi") {
+		t.Fatalf("blurred editor should still render its text unobscured, got %q", blurred)
+	}
+
+	e.Focus()
+	if got := e.View(Options{Cursor: "|"}); !strings.Contains(got, "|") {
+		t.Fatalf("focus should restore the cursor, got %q", got)
+	}
+}
+
+func TestPlaceholderShownOnlyWhenEmpty(t *testing.T) {
+	var e Model
+	e.SetSize(40, 2)
+	e.SetPlaceholder("Write your message…")
+
+	view := e.View(Options{Cursor: "|"})
+	if !strings.Contains(view, "rite your message") {
+		t.Fatalf("empty editor should show the placeholder, got %q", view)
+	}
+	if got := len(strings.Split(view, "\n")); got != 2 {
+		t.Fatalf("placeholder render should honor height, got %d lines: %q", got, view)
+	}
+	if !strings.Contains(view, "|") {
+		t.Fatalf("focused placeholder should still show the cursor, got %q", view)
+	}
+
+	// Blurred + empty: placeholder text, no cursor.
+	e.Blur()
+	if got := e.View(Options{Cursor: "|"}); strings.Contains(got, "|") {
+		t.Fatalf("blurred placeholder should not show the cursor, got %q", got)
+	}
+	e.Focus()
+
+	// Once there is content, the placeholder disappears.
+	e.InsertString("x")
+	if got := e.View(Options{Cursor: "|"}); strings.Contains(got, "rite your message") {
+		t.Fatalf("placeholder should vanish once text is entered, got %q", got)
+	}
+}
+
+func TestPlaceholderStyledRenderStaysWithinWidth(t *testing.T) {
+	var e Model
+	e.SetSize(6, 3)
+	e.SetPlaceholder("abcdefghijkl") // wider than the editor; must wrap
+
+	view := e.View(Options{
+		Cursor:      "|",
+		Placeholder: func(s string) string { return "\x1b[2m" + s + "\x1b[0m" },
+	})
+	lines := strings.Split(view, "\n")
+	if len(lines) != 3 {
+		t.Fatalf("placeholder should render exactly height lines, got %d: %q", len(lines), view)
+	}
+	for _, line := range lines {
+		if got := ansi.StringWidth(line); got > 6 {
+			t.Fatalf("placeholder line display width = %d, want <= 6, line %q", got, line)
+		}
+	}
+}
+
 func TestWrappedVerticalMovementAndViewport(t *testing.T) {
 	var e Model
 	e.SetSize(5, 2)

@@ -16,8 +16,9 @@ type Change struct {
 }
 
 type Options struct {
-	Cursor   string
-	Selected func(string) string
+	Cursor      string
+	Selected    func(string) string
+	Placeholder func(string) string
 }
 
 type Model struct {
@@ -32,6 +33,9 @@ type Model struct {
 	undo         []snapshot
 	redo         []snapshot
 	coalesceKind editKind
+
+	blurred     bool // when true the cursor is not rendered
+	placeholder string
 }
 
 func New() Model {
@@ -126,9 +130,15 @@ func (m Model) ViewportTop() int {
 	return m.viewport
 }
 
-func (m *Model) Focus() {}
+// Focus makes the editor render its cursor. Editors are focused by default.
+func (m *Model) Focus() { m.blurred = false }
 
-func (m *Model) Blur() {}
+// Blur stops the editor from rendering its cursor (e.g. when focus moves to
+// another field). Editing state is otherwise unchanged.
+func (m *Model) Blur() { m.blurred = true }
+
+// SetPlaceholder sets hint text shown only while the document is empty.
+func (m *Model) SetPlaceholder(s string) { m.placeholder = s }
 
 func (m *Model) UpdateKey(msg tea.KeyMsg) Change {
 	beforeText := string(m.text)
@@ -220,9 +230,17 @@ func (m *Model) UpdateKey(msg tea.KeyMsg) Change {
 }
 
 func (m Model) View(opts Options) string {
-	cursor := opts.Cursor
-	if cursor == "" {
-		cursor = " "
+	// The cursor is only drawn while focused; a blurred editor renders its
+	// glyphs unobscured.
+	cursor := ""
+	if !m.blurred {
+		cursor = opts.Cursor
+		if cursor == "" {
+			cursor = " "
+		}
+	}
+	if len(m.text) == 0 && m.placeholder != "" {
+		return m.renderPlaceholder(cursor, opts.Placeholder)
 	}
 	lines := m.visualLines()
 	if len(lines) == 0 {
@@ -285,6 +303,44 @@ func (m Model) renderVisualLine(vl visualLine, cursor string, selected func(stri
 	}
 	flush(&buf, bufSelected)
 	return out.String()
+}
+
+// renderPlaceholder draws the placeholder hint for an empty document. It honors
+// the configured width (wrapping) and height (exact line count), styles the
+// text via style (if non-nil), and overlays the cursor on the first cell when
+// focused — mirroring the editor's block-cursor model.
+func (m Model) renderPlaceholder(cursor string, style func(string) string) string {
+	ph := []rune(m.placeholder)
+	lines := appendWrapped(nil, ph, 0, len(ph), max(1, m.width))
+	out := make([]string, 0, m.height)
+	for row := 0; row < m.height; row++ {
+		if row >= len(lines) {
+			if row == 0 && cursor != "" {
+				out = append(out, cursor)
+			} else {
+				out = append(out, "")
+			}
+			continue
+		}
+		seg := ph[lines[row].start:lines[row].end]
+		if row == 0 && cursor != "" {
+			rest := ""
+			if len(seg) > 0 {
+				rest = string(seg[1:])
+			}
+			if style != nil {
+				rest = style(rest)
+			}
+			out = append(out, cursor+rest)
+			continue
+		}
+		text := string(seg)
+		if style != nil {
+			text = style(text)
+		}
+		out = append(out, text)
+	}
+	return strings.Join(out, "\n")
 }
 
 // Undo reverts the most recent edit group, restoring the prior text, cursor,
