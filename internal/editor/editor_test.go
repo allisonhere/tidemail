@@ -576,6 +576,51 @@ func TestSanitizesControlCharactersOnInput(t *testing.T) {
 	}
 }
 
+func TestVerticalMovementIsMonotonicAcrossLinesAndWraps(t *testing.T) {
+	var e Model
+	e.SetSize(10, 10)
+	e.SetValue("first\nsecond line\nthird\nfourth wraps because it is long\nlast")
+	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlHome})
+
+	// visualPosition must be monotonic over the whole buffer — the caret at a
+	// line end must never report as a far-away row (the bug that made up/down
+	// jump to the last line and get stuck).
+	prevRow := -1
+	for i := 0; i <= len([]rune(e.Value())); i++ {
+		r, _ := e.visualPosition(i)
+		if r < prevRow {
+			t.Fatalf("index %d reports row %d, before previous row %d", i, r, prevRow)
+		}
+		prevRow = r
+	}
+
+	// Pressing Down repeatedly must never move the caret to an earlier row.
+	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlHome})
+	last := -1
+	for k := 0; k < 14; k++ {
+		r, _ := e.visualPosition(e.CursorIndex())
+		if r < last {
+			t.Fatalf("Down moved caret up: row %d after row %d", r, last)
+		}
+		last = r
+		e.UpdateKey(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	if last == 0 {
+		t.Fatal("Down never advanced past the first row")
+	}
+
+	// Symmetrically, Up must never move to a later row.
+	last = 1 << 30
+	for k := 0; k < 14; k++ {
+		r, _ := e.visualPosition(e.CursorIndex())
+		if r > last {
+			t.Fatalf("Up moved caret down: row %d after row %d", r, last)
+		}
+		last = r
+		e.UpdateKey(tea.KeyMsg{Type: tea.KeyUp})
+	}
+}
+
 func TestWrappedVerticalMovementAndViewport(t *testing.T) {
 	var e Model
 	e.SetSize(5, 2)

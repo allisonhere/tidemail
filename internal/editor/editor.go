@@ -584,10 +584,15 @@ func (m Model) visualPosition(index int) (int, int) {
 			return row, m.cellWidth(line.start, index)
 		}
 		if index == line.end {
-			if line.start == line.end || row == len(lines)-1 {
-				return row, m.cellWidth(line.start, index)
+			// At a line boundary. Only a soft wrap — where the next visual line
+			// continues the same logical line, starting at this same index —
+			// pushes the caret to that next line's start. A newline boundary
+			// (next line starts past the '\n'), the final line, or an empty line
+			// all keep the caret at the end of this line.
+			if row+1 < len(lines) && lines[row+1].start == line.end {
+				continue
 			}
-			continue
+			return row, m.cellWidth(line.start, line.end)
 		}
 	}
 	if len(lines) == 0 {
