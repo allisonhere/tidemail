@@ -132,6 +132,33 @@ func TestReplyTypingStartsAboveQuotedMessage(t *testing.T) {
 	}
 }
 
+func TestComposeBodyNeverEscapesWidth(t *testing.T) {
+	// The editor wraps with go-runewidth while lipgloss measures with x/ansi;
+	// for emoji/flags they disagree. Compose must frame (clip+pad), not re-wrap,
+	// the editor output — otherwise overflow escapes to the app's left edge.
+	styles := BuildStyles(BuiltinThemes[0], "compact")
+	contents := []string{
+		strings.Repeat("🇺🇸", 40), // regional-indicator flags (worst offender)
+		strings.Repeat("👍", 60),  // emoji
+		strings.Repeat("x", 300), // long unbroken ASCII
+		strings.Repeat("hello world ", 40),
+	}
+	for _, w := range []int{30, 40, 60, 80} {
+		for _, content := range contents {
+			c := NewCompose(config.AccountConfig{}, nil, nil)
+			c.focusedField = composeFieldBody
+			c.bodyInput.Focus()
+			c.bodyInput.SetValue(content)
+			for i, line := range strings.Split(c.View(w, 24, styles), "\n") {
+				if got := ansi.StringWidth(line); got != w {
+					t.Fatalf("width=%d content=%.8q: line %d has display width %d, want %d",
+						w, content, i, got, w)
+				}
+			}
+		}
+	}
+}
+
 func TestComposeBodyCopyCutToClipboard(t *testing.T) {
 	var copied string
 	defer stubClipboardWrite(t, &copied)()

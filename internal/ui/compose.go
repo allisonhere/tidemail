@@ -934,13 +934,24 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	}
 
 	raw := c.bodyInput.View()
-	// Wrap each line individually with bodyBg so the background covers
-	// every line. The cursor character's ANSI reset (\033[0m) clears the
-	// background for the rest of the line — split on resets and wrap each
-	// segment individually so bodyBg is re-applied after each one.
+	// The editor is authoritative on wrapping — it has already fit each line to
+	// bodyInputW. We must only FRAME that output, never re-wrap it: letting
+	// lipgloss.Width() reflow the lines re-measures grapheme widths with a
+	// different model (x/ansi vs the editor's go-runewidth), and for emoji/flags
+	// the two disagree, so a line the editor considered full overflows and the
+	// wrapped remainder escapes to the app's left edge. Instead, clip and pad
+	// each line to the content width using the terminal's own width measure, so
+	// nothing can overflow, then frame with bodyBg padding.
 	bgWrap := lipgloss.NewStyle().Background(bodyBg)
-	lines := strings.Split(raw, "\n")
-	for i, line := range lines {
+	pad := bgWrap.Render("  ")
+	var lines []string
+	for _, line := range strings.Split(raw, "\n") {
+		line = ansi.Truncate(line, bodyInputW, "")
+		if gap := bodyInputW - ansi.StringWidth(line); gap > 0 {
+			line += strings.Repeat(" ", gap)
+		}
+		// Re-apply bodyBg after every reset so the cursor/selection styles (whose
+		// trailing \033[0m clears the background) don't punch holes in the line.
 		if strings.Contains(line, "\033[0m") {
 			segs := strings.Split(line, "\033[0m")
 			for j, seg := range segs {
@@ -949,12 +960,13 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 					segs[j] += "\033[0m"
 				}
 			}
-			lines[i] = strings.Join(segs, "")
+			line = strings.Join(segs, "")
 		} else {
-			lines[i] = bgWrap.Render(line)
+			line = bgWrap.Render(line)
 		}
+		lines = append(lines, pad+line+pad)
 	}
-	bodyRow := lipgloss.NewStyle().Background(bodyBg).Width(width).Padding(0, 2).Render(strings.Join(lines, "\n"))
+	bodyRow := strings.Join(lines, "\n")
 
 	// Status line
 	statusLine := ""
