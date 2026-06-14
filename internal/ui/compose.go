@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -57,7 +56,7 @@ type ComposeModel struct {
 	ccInput      textinput.Model
 	bccInput     textinput.Model
 	subjectInput textinput.Model
-	bodyInput    textarea.Model
+	bodyInput    editorArea
 
 	focusedField composeField
 	inReplyTo    string
@@ -96,15 +95,8 @@ func NewCompose(acfg config.AccountConfig, accounts []config.AccountConfig, addr
 	c.bccInput = newComposeInput("")
 	c.bccInput.Placeholder = "bcc (optional)"
 	c.subjectInput = newComposeInput("Subject")
-	c.bodyInput = textarea.New()
-	c.bodyInput.Placeholder = "Write your message here..."
-	c.bodyInput.ShowLineNumbers = false
-	c.bodyInput.Prompt = ""
-	// Remove the default black CursorLine background from the original's
-	// FocusedStyle — Focus() stores a pointer to it, and View() copies inherit
-	// that pointer. If left as default (black on dark mode), the cursor line
-	// renders with black background regardless of per-line wrapping.
-	c.bodyInput.FocusedStyle.CursorLine = lipgloss.NewStyle()
+	c.bodyInput = newEditorArea()
+	c.bodyInput.SetPlaceholder("Write your message here...")
 	c.focusedField = composeFieldTo
 	c.toInput.Focus()
 	c.SetAddressBook(addressBook)
@@ -505,6 +497,19 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 			}
 			c.subjectInput, cmd = c.subjectInput.Update(msg)
 		case composeFieldBody:
+			switch km.String() {
+			case "ctrl+o": // copy selection to the system clipboard
+				if sel := c.bodyInput.SelectedText(); sel != "" {
+					return c, clipboardWriteCmd(sel), false
+				}
+				return c, nil, false
+			case "ctrl+k": // cut selection to the system clipboard
+				if sel := c.bodyInput.SelectedText(); sel != "" {
+					c.bodyInput.DeleteSelection()
+					return c, clipboardWriteCmd(sel), false
+				}
+				return c, nil, false
+			}
 			c.bodyInput, cmd = c.bodyInput.Update(msg)
 		}
 		return c, cmd, false
@@ -864,6 +869,10 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 
 	// Action bar
 	actionKeys := []string{"ctrl+s", "send", "ctrl+g", "grammar", "ctrl+u", "sender", "ctrl+a", "attach"}
+	if c.focusedField == composeFieldBody {
+		// Copy/cut act on the editor selection, so only show them in the body.
+		actionKeys = append(actionKeys, "ctrl+o", "copy", "ctrl+k", "cut")
+	}
 	navKeys := []string{"tab", "next", "esc", "cancel"}
 	if len(c.attachments) > 0 {
 		navKeys = []string{"tab", "next", "ctrl+r", "remove", "esc", "cancel"}
@@ -903,42 +912,21 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	c.bodyInput.SetWidth(bodyInputW)
 	c.bodyInput.SetHeight(bodyH)
 
-	// Clear all textarea style backgrounds — Inline(true) in computed styles
-	// strips margins/padding but keeps background. We force a uniform bg by
-	// setting each style layer and also wrapping every line post-render.
 	bodyBg := chrome.baseBg
 	if c.focusedField == composeFieldBody {
 		bodyBg = chrome.fieldBg
 	}
 
-	// Don't set background on textarea style layers — the Focus() method on the
-	// original stores a pointer to its own FocusedStyle, and View() copies keep
-	// pointing to the original's FocusedStyle (with default black cursor line).
-	// Instead, clear everything to a plain style and let the per-line wrapping
-	// below apply the uniform background.
-	plain := lipgloss.NewStyle()
-	c.bodyInput.FocusedStyle.Base = plain
-	c.bodyInput.FocusedStyle.Text = plain
-	c.bodyInput.FocusedStyle.Prompt = plain
-	c.bodyInput.FocusedStyle.Placeholder = plain
-	c.bodyInput.FocusedStyle.CursorLine = plain
-	c.bodyInput.FocusedStyle.CursorLineNumber = plain
-	c.bodyInput.FocusedStyle.LineNumber = plain
-	c.bodyInput.FocusedStyle.EndOfBuffer = plain
-	c.bodyInput.BlurredStyle.Base = plain
-	c.bodyInput.BlurredStyle.Text = plain
-	c.bodyInput.BlurredStyle.Prompt = plain
-	c.bodyInput.BlurredStyle.Placeholder = plain
-	c.bodyInput.BlurredStyle.CursorLine = plain
-	c.bodyInput.BlurredStyle.CursorLineNumber = plain
-	c.bodyInput.BlurredStyle.LineNumber = plain
-	c.bodyInput.BlurredStyle.EndOfBuffer = plain
-	// Cursor character: after Reverse(true) gives accent-bg with bodyBg-text.
-	c.bodyInput.Cursor.Style = plain.Background(bodyBg).Foreground(chrome.accent)
+	// Style the owned editor for this render: accent block cursor, a muted
+	// selection highlight, and a dim placeholder. The per-line background
+	// wrapping below covers the remainder of each line.
+	c.bodyInput.CursorStyle = lipgloss.NewStyle().Background(chrome.accent).Foreground(bodyBg)
+	c.bodyInput.SelectedStyle = lipgloss.NewStyle().Background(chrome.muted).Foreground(chrome.text)
+	c.bodyInput.PlaceholderStyle = lipgloss.NewStyle().Background(bodyBg).Foreground(chrome.muted)
 
-	// Apply focus only to the render copy. Focus() points the textarea at the copy's
-	// FocusedStyle; Blur() prevents inactive compose fields from leaving cursor
-	// artifacts when focus moves back to To/CC/Subject.
+	// Gate the cursor to the focused field — a blurred body renders no cursor,
+	// so inactive compose fields leave no cursor artifact. This is the render
+	// copy; advanceField keeps the model's focus state in sync.
 	if c.focusedField == composeFieldBody {
 		c.bodyInput.Focus()
 	} else {

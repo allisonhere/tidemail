@@ -132,6 +132,50 @@ func TestReplyTypingStartsAboveQuotedMessage(t *testing.T) {
 	}
 }
 
+func TestComposeBodyCopyCutToClipboard(t *testing.T) {
+	var copied string
+	defer stubClipboardWrite(t, &copied)()
+
+	c := NewCompose(config.AccountConfig{}, nil, nil)
+	c.focusedField = composeFieldBody
+	c.bodyInput.Focus()
+
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hello")}, DefaultKeys)
+	// Select "hello" via shift movement (ctrl+a is AttachFile in compose).
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyCtrlHome}, DefaultKeys)
+	for range len("hello") {
+		c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyShiftRight}, DefaultKeys)
+	}
+
+	// Copy: clipboard receives the selection; the body is unchanged.
+	var cmd tea.Cmd
+	c, cmd, _ = c.Update(tea.KeyMsg{Type: tea.KeyCtrlO}, DefaultKeys)
+	if cmd == nil {
+		t.Fatal("ctrl+o should return a clipboard write command")
+	}
+	cmd()
+	if copied != "hello" {
+		t.Fatalf("copy should put the selection on the clipboard, got %q", copied)
+	}
+	if got := c.bodyInput.Value(); got != "hello" {
+		t.Fatalf("copy must not modify the body, got %q", got)
+	}
+
+	// Cut: clipboard receives the selection; the body is emptied.
+	copied = ""
+	c, cmd, _ = c.Update(tea.KeyMsg{Type: tea.KeyCtrlK}, DefaultKeys)
+	if cmd == nil {
+		t.Fatal("ctrl+k should return a clipboard write command")
+	}
+	cmd()
+	if copied != "hello" {
+		t.Fatalf("cut should put the selection on the clipboard, got %q", copied)
+	}
+	if got := c.bodyInput.Value(); got != "" {
+		t.Fatalf("cut should remove the selection from the body, got %q", got)
+	}
+}
+
 func TestForwardTypingStartsAboveQuotedMessage(t *testing.T) {
 	c := NewForward(db.Message{
 		From:      "alice@example.com",
