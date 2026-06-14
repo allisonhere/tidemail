@@ -159,6 +159,59 @@ func TestComposeBodyNeverEscapesWidth(t *testing.T) {
 	}
 }
 
+// runCmd runs a tea.Cmd and returns every leaf message it produces, recursing
+// into batched commands so tests can observe commands wrapped in a Batch.
+func runCmd(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		var out []tea.Msg
+		for _, c := range batch {
+			out = append(out, runCmd(c)...)
+		}
+		return out
+	}
+	return []tea.Msg{msg}
+}
+
+func TestComposeCutWritesClipboardWhileAutosaving(t *testing.T) {
+	// Cut changes the body, which triggers autosave in handleCompose. The
+	// clipboard-write command must survive that, not be swallowed by the
+	// draft-save command.
+	var copied string
+	defer stubClipboardWrite(t, &copied)()
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	database, err := db.Open()
+	if err != nil {
+		t.Fatalf("Open DB: %v", err)
+	}
+	defer database.Close()
+
+	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = next.(Model)
+	m.overlay = overlayCompose
+	m.compose = NewCompose(config.AccountConfig{}, nil, nil)
+	m.compose.focusedField = composeFieldBody
+	m.compose.bodyInput.Focus()
+	m.compose.bodyInput.SetValue("cut me")
+
+	n2, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlA}) // select all
+	m = n2.(Model)
+	n3, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlX}) // cut
+	m = n3.(Model)
+
+	runCmd(cmd)
+	if copied != "cut me" {
+		t.Fatalf("cut should write the selection to the clipboard, got %q", copied)
+	}
+	if got := m.compose.bodyInput.Value(); got != "" {
+		t.Fatalf("cut should empty the body, got %q", got)
+	}
+}
+
 func TestComposeAttachMovedOffCtrlA(t *testing.T) {
 	// ctrl+a in the body selects all and does NOT open the picker.
 	c := NewCompose(config.AccountConfig{}, nil, nil)
@@ -428,8 +481,13 @@ func TestComposeEditAutosavesDraft(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected edit to autosave draft")
 	}
-	msg, ok := cmd().(DraftSavedMsg)
-	if !ok || msg.Err != nil || msg.DraftID == 0 {
-		t.Fatalf("expected successful DraftSavedMsg, got %#v", msg)
+	var saved *DraftSavedMsg
+	for _, msg := range runCmd(cmd) {
+		if ds, ok := msg.(DraftSavedMsg); ok {
+			saved = &ds
+		}
+	}
+	if saved == nil || saved.Err != nil || saved.DraftID == 0 {
+		t.Fatalf("expected successful DraftSavedMsg, got %#v", saved)
 	}
 }

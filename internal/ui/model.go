@@ -2013,7 +2013,13 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if composeChanged(before, m.compose) {
 		m.compose.dirty = true
 		if m.compose.hasContent() {
-			return m, m.saveDraftCmd(m.compose)
+			save := m.saveDraftCmd(m.compose)
+			// Preserve any command the edit produced (e.g. cut's clipboard
+			// write) — autosaving must not swallow it.
+			if cmd != nil {
+				return m, tea.Batch(cmd, save)
+			}
+			return m, save
 		}
 	}
 	if exit {
