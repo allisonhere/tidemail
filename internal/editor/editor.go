@@ -49,7 +49,7 @@ func (m Model) Value() string {
 // SetValue replaces the whole document and resets undo/redo history — loading
 // fresh content is a new starting point, not an undoable edit.
 func (m *Model) SetValue(s string) {
-	m.text = []rune(s)
+	m.text = []rune(sanitizeInput(s))
 	m.cursor = len(m.text)
 	m.selAnchor = -1
 	m.undo = nil
@@ -69,7 +69,7 @@ func (m *Model) InsertString(s string) {
 
 func (m *Model) insertRunes(s string) {
 	m.deleteSelection()
-	r := []rune(s)
+	r := []rune(sanitizeInput(s))
 	next := make([]rune, 0, len(m.text)+len(r))
 	next = append(next, m.text[:m.cursor]...)
 	next = append(next, r...)
@@ -679,6 +679,41 @@ func runeCellWidth(r rune) int {
 
 func isWordRune(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_'
+}
+
+// sanitizeInput normalizes text entering the buffer so it cannot corrupt
+// terminal rendering. A stray carriage return moves the cursor to column 0,
+// a tab jumps to the next tab stop, and other C0 controls (including ESC,
+// which could inject ANSI) have no place in editable text. Newlines survive.
+func sanitizeInput(s string) string {
+	needsWork := false
+	for _, r := range s {
+		if (r < 0x20 && r != '\n') || r == 0x7f {
+			needsWork = true
+			break
+		}
+	}
+	if !needsWork {
+		return s
+	}
+	// Normalize line endings first: CRLF and lone CR both become a single \n.
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r == '\n':
+			b.WriteByte('\n')
+		case r == '\t':
+			b.WriteString("    ")
+		case r < 0x20 || r == 0x7f:
+			// drop other control characters (e.g. NUL, BEL, ESC)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // maxUndoLevels caps history growth; the oldest entries are dropped past this.

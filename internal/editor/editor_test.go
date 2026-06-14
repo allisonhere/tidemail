@@ -546,6 +546,36 @@ func TestPlaceholderStyledRenderStaysWithinWidth(t *testing.T) {
 	}
 }
 
+func TestSanitizesControlCharactersOnInput(t *testing.T) {
+	var e Model
+	// CRLF and lone CR normalize to \n; ESC/NUL/BEL are dropped; tab → spaces.
+	// ESC byte is dropped (neutralizing ANSI injection); the literal "[31m"
+	// survives as harmless text.
+	e.SetValue("a\r\nb\rc\x1b[31m\x00d\te")
+	if got := e.Value(); got != "a\nb\nc[31md    e" {
+		t.Fatalf("SetValue sanitized value = %q", got)
+	}
+	if strings.ContainsRune(e.Value(), '\r') {
+		t.Fatalf("value must not retain carriage returns: %q", e.Value())
+	}
+
+	// Same via InsertString (paste path).
+	var p Model
+	p.InsertString("x\r\ny")
+	if got := p.Value(); got != "x\ny" {
+		t.Fatalf("InsertString sanitized value = %q", got)
+	}
+
+	// Rendered output must never contain a raw CR (which would carriage-return
+	// the terminal cursor to column 0).
+	var r Model
+	r.SetSize(20, 3)
+	r.SetValue("line one\r\nline two")
+	if strings.ContainsRune(r.View(Options{Cursor: "|"}), '\r') {
+		t.Fatalf("rendered view must not contain a carriage return")
+	}
+}
+
 func TestWrappedVerticalMovementAndViewport(t *testing.T) {
 	var e Model
 	e.SetSize(5, 2)
