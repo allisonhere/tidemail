@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/allisonhere/tide/internal/clipboard"
 	"github.com/allisonhere/tide/internal/db"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -54,46 +54,14 @@ var clipboardReadCmd = readClipboardCmd
 
 func copyToClipboardCmd(text string) tea.Cmd {
 	return func() tea.Msg {
-		candidates := [][]string{
-			{"wl-copy"},
-			{"xclip", "-selection", "clipboard"},
-			{"xsel", "--clipboard", "--input"},
-			{"pbcopy"},
-		}
-		for _, args := range candidates {
-			path, err := exec.LookPath(args[0])
-			if err != nil {
-				continue
-			}
-			cmd := exec.Command(path, args[1:]...)
-			cmd.Stdin = strings.NewReader(text)
-			if err := cmd.Run(); err == nil {
-				return ClipboardCopiedMsg{}
-			}
-		}
-		return ClipboardCopiedMsg{Err: fmt.Errorf("no clipboard tool found (wl-copy/xclip/xsel/pbcopy)")}
+		return ClipboardCopiedMsg{Err: clipboard.Copy(text)}
 	}
 }
 
 func readClipboardCmd() tea.Cmd {
 	return func() tea.Msg {
-		candidates := [][]string{
-			{"wl-paste", "--no-newline"},
-			{"xclip", "-selection", "clipboard", "-out"},
-			{"xsel", "--clipboard", "--output"},
-			{"pbpaste"},
-		}
-		for _, args := range candidates {
-			path, err := exec.LookPath(args[0])
-			if err != nil {
-				continue
-			}
-			out, err := exec.Command(path, args[1:]...).Output()
-			if err == nil {
-				return ClipboardReadMsg{Text: string(out)}
-			}
-		}
-		return ClipboardReadMsg{Err: fmt.Errorf("no clipboard tool found (wl-paste/xclip/xsel/pbpaste)")}
+		text, err := clipboard.Read()
+		return ClipboardReadMsg{Text: text, Err: err}
 	}
 }
 
