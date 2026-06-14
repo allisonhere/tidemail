@@ -498,12 +498,12 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 			c.subjectInput, cmd = c.subjectInput.Update(msg)
 		case composeFieldBody:
 			switch km.String() {
-			case "ctrl+o": // copy selection to the system clipboard
+			case "ctrl+c": // copy selection to the system clipboard
 				if sel := c.bodyInput.SelectedText(); sel != "" {
 					return c, clipboardWriteCmd(sel), false
 				}
 				return c, nil, false
-			case "ctrl+k": // cut selection to the system clipboard
+			case "ctrl+x": // cut selection to the system clipboard
 				if sel := c.bodyInput.SelectedText(); sel != "" {
 					c.bodyInput.DeleteSelection()
 					return c, clipboardWriteCmd(sel), false
@@ -868,10 +868,10 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	}
 
 	// Action bar
-	actionKeys := []string{"ctrl+s", "send", "ctrl+g", "grammar", "ctrl+u", "sender", "ctrl+a", "attach"}
+	actionKeys := []string{"ctrl+s", "send", "ctrl+g", "grammar", "ctrl+u", "sender", "alt+f", "attach"}
 	if c.focusedField == composeFieldBody {
 		// Copy/cut act on the editor selection, so only show them in the body.
-		actionKeys = append(actionKeys, "ctrl+o", "copy", "ctrl+k", "cut")
+		actionKeys = append(actionKeys, "ctrl+c", "copy", "ctrl+x", "cut")
 	}
 	navKeys := []string{"tab", "next", "esc", "cancel"}
 	if len(c.attachments) > 0 {

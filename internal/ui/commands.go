@@ -218,7 +218,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 	case "compose-grammar":
 		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlG})
 	case "compose-attach":
-		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlA})
+		return m.handleCompose(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f"), Alt: true})
 	case "compose-remove-attach":
 		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlR})
 	case "compose-cycle-sender":

@@ -121,7 +121,7 @@ var DefaultKeys = KeyMap{
 	VisualSelect:  key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "visual select")),
 	VisualLine:    key.NewBinding(key.WithKeys("V"), key.WithHelp("V", "select message")),
 	CopyText:      key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "copy")),
-	PasteText:     key.NewBinding(key.WithKeys("ctrl+p"), key.WithHelp("ctrl+p", "paste")),
+	PasteText:     key.NewBinding(key.WithKeys("ctrl+v", "ctrl+p"), key.WithHelp("ctrl+v", "paste")),
 	SaveMD:        key.NewBinding(key.WithKeys("M"), key.WithHelp("M", "save .md")),
 	DiscardDraft:  key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "discard")),
 	ContentSearch: key.NewBinding(key.WithKeys("ctrl+f"), key.WithHelp("ctrl+f", "find")),
@@ -134,7 +134,7 @@ var DefaultKeys = KeyMap{
 	SaveAccount: key.NewBinding(key.WithKeys("ctrl+s", "f2"), key.WithHelp("ctrl+s", "save")),
 	TestAccount: key.NewBinding(key.WithKeys("ctrl+t", "f5"), key.WithHelp("ctrl+t", "test")),
 
-	AttachFile: key.NewBinding(key.WithKeys("ctrl+a"), key.WithHelp("ctrl+a", "attach file")),
+	AttachFile: key.NewBinding(key.WithKeys("alt+f"), key.WithHelp("alt+f", "attach file")),
 
 	GrammarCheck: key.NewBinding(key.WithKeys("ctrl+g"), key.WithHelp("ctrl+g", "fix grammar")),
 

@@ -159,6 +159,29 @@ func TestComposeBodyNeverEscapesWidth(t *testing.T) {
 	}
 }
 
+func TestComposeAttachMovedOffCtrlA(t *testing.T) {
+	// ctrl+a in the body selects all and does NOT open the picker.
+	c := NewCompose(config.AccountConfig{}, nil, nil)
+	c.focusedField = composeFieldBody
+	c.bodyInput.Focus()
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hi there")}, DefaultKeys)
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyCtrlA}, DefaultKeys)
+	if c.picker.active {
+		t.Fatal("ctrl+a must not open the attach picker anymore")
+	}
+	if got := c.bodyInput.SelectedText(); got != "hi there" {
+		t.Fatalf("ctrl+a should select all, got %q", got)
+	}
+
+	// alt+f opens the attach picker.
+	c2 := NewCompose(config.AccountConfig{}, nil, nil)
+	c2.focusedField = composeFieldBody
+	c2, _, _ = c2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f"), Alt: true}, DefaultKeys)
+	if !c2.picker.active {
+		t.Fatal("alt+f should open the attach picker")
+	}
+}
+
 func TestComposeBodyCopyCutToClipboard(t *testing.T) {
 	var copied string
 	defer stubClipboardWrite(t, &copied)()
@@ -168,17 +191,17 @@ func TestComposeBodyCopyCutToClipboard(t *testing.T) {
 	c.bodyInput.Focus()
 
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hello")}, DefaultKeys)
-	// Select "hello" via shift movement (ctrl+a is AttachFile in compose).
-	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyCtrlHome}, DefaultKeys)
-	for range len("hello") {
-		c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyShiftRight}, DefaultKeys)
+	// ctrl+a selects all in the body (it no longer triggers attach).
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyCtrlA}, DefaultKeys)
+	if got := c.bodyInput.SelectedText(); got != "hello" {
+		t.Fatalf("ctrl+a should select all body text, got %q", got)
 	}
 
 	// Copy: clipboard receives the selection; the body is unchanged.
 	var cmd tea.Cmd
-	c, cmd, _ = c.Update(tea.KeyMsg{Type: tea.KeyCtrlO}, DefaultKeys)
+	c, cmd, _ = c.Update(tea.KeyMsg{Type: tea.KeyCtrlC}, DefaultKeys)
 	if cmd == nil {
-		t.Fatal("ctrl+o should return a clipboard write command")
+		t.Fatal("ctrl+c should return a clipboard write command")
 	}
 	cmd()
 	if copied != "hello" {
@@ -190,9 +213,9 @@ func TestComposeBodyCopyCutToClipboard(t *testing.T) {
 
 	// Cut: clipboard receives the selection; the body is emptied.
 	copied = ""
-	c, cmd, _ = c.Update(tea.KeyMsg{Type: tea.KeyCtrlK}, DefaultKeys)
+	c, cmd, _ = c.Update(tea.KeyMsg{Type: tea.KeyCtrlX}, DefaultKeys)
 	if cmd == nil {
-		t.Fatal("ctrl+k should return a clipboard write command")
+		t.Fatal("ctrl+x should return a clipboard write command")
 	}
 	cmd()
 	if copied != "hello" {
