@@ -1,13 +1,13 @@
 package ui
 
 import (
+	"github.com/allisonhere/ripple"
 	"github.com/allisonhere/tide/internal/clipboard"
-	"github.com/allisonhere/tide/internal/editor"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-// systemClipboard adapts internal/clipboard to editor.Clipboard so the editor
+// systemClipboard adapts internal/clipboard to ripple.Clipboard so the editor
 // owns copy/cut/paste without importing the host's clipboard package directly.
 type systemClipboard struct{}
 
@@ -16,16 +16,16 @@ func (systemClipboard) Write(text string) error { return clipboard.Copy(text) }
 
 // editorClipboard is the clipboard wired into every compose editor. It is a
 // package var so tests can substitute an in-memory fake.
-var editorClipboard editor.Clipboard = systemClipboard{}
+var editorClipboard ripple.Clipboard = systemClipboard{}
 
-// editorArea adapts editor.Model to the subset of the Bubble Tea textarea API
+// editorArea adapts ripple.Model to the subset of the Bubble Tea textarea API
 // that compose relies on (Value/SetValue/Focus/Blur/SetWidth/SetHeight/Update/
 // View), so swapping the textarea for the owned editor is a minimal diff.
 //
 // Copy/cut/paste are owned by the editor itself (wired to the system clipboard
 // via SetClipboard in newEditorArea); the host no longer intercepts those keys.
 type editorArea struct {
-	ed   editor.Model
+	ed   ripple.Model
 	w, h int
 
 	// Styling, configurable by the consumer (e.g. from the active theme).
@@ -35,7 +35,7 @@ type editorArea struct {
 }
 
 func newEditorArea() editorArea {
-	ed := editor.New()
+	ed := ripple.New()
 	ed.SetClipboard(editorClipboard)
 	return editorArea{
 		ed:               ed,
@@ -69,8 +69,8 @@ func (e *editorArea) SetSize(w, h int) { e.w, e.h = w, h; e.ed.SetSize(w, h) }
 func (e editorArea) SelectedText() string { return e.ed.SelectedText() }
 
 // Update forwards every message to the editor and propagates the command it
-// returns (e.g. a copy/cut clipboard write, or the read that produces an
-// editor.PasteMsg), so clipboard side effects ride back with the model.
+// returns (e.g. a copy/cut clipboard write, or the read that produces a
+// ripple.PasteMsg), so clipboard side effects ride back with the model.
 func (e editorArea) Update(msg tea.Msg) (editorArea, tea.Cmd) {
 	var cmd tea.Cmd
 	e.ed, cmd = e.ed.Update(msg)
@@ -78,7 +78,7 @@ func (e editorArea) Update(msg tea.Msg) (editorArea, tea.Cmd) {
 }
 
 func (e editorArea) View() string {
-	return e.ed.View(editor.Options{
+	return e.ed.View(ripple.Options{
 		Cursor:      e.CursorStyle.Render(" "),
 		Selected:    func(s string) string { return e.SelectedStyle.Render(s) },
 		Placeholder: func(s string) string { return e.PlaceholderStyle.Render(s) },

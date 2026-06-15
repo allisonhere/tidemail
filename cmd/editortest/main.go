@@ -1,5 +1,5 @@
-// Command editortest is a throwaway harness for driving internal/editor in
-// isolation, before it is wired into compose. It hosts the real editor.Model
+// Command editortest is a throwaway harness for driving the ripple editor in
+// isolation. It hosts the real ripple.Model
 // in a minimal Bubble Tea program so you can type, select, move by word, and
 // resize the terminal to watch soft-wrap reflow.
 //
@@ -16,13 +16,13 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/allisonhere/ripple"
 	"github.com/allisonhere/tide/internal/clipboard"
-	"github.com/allisonhere/tide/internal/editor"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-// sysClipboard adapts internal/clipboard to editor.Clipboard.
+// sysClipboard adapts internal/clipboard to ripple.Clipboard.
 type sysClipboard struct{}
 
 func (sysClipboard) Read() (string, error)   { return clipboard.Read() }
@@ -42,14 +42,14 @@ const seed = "Type here.\n\n" +
 	"Resize the terminal to watch soft-wrap reflow."
 
 type model struct {
-	ed     editor.Model
+	ed     ripple.Model
 	w, h   int
 	ready  bool
 	status string
 }
 
 func initialModel() model {
-	ed := editor.New()
+	ed := ripple.New()
 	ed.SetClipboard(sysClipboard{})
 	ed.SetValue(seed)
 	return model{ed: ed}
@@ -73,14 +73,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ed.SetSize(ew, eh)
 		m.ready = true
 		return m, nil
-	case editor.CopiedMsg:
+	case ripple.CopiedMsg:
 		if msg.Err != nil {
 			m.status = "copy failed: " + msg.Err.Error()
 		} else {
 			m.status = "copied to clipboard"
 		}
 		return m, nil
-	case editor.PasteMsg:
+	case ripple.PasteMsg:
 		if msg.Err != nil {
 			m.status = "paste failed: " + msg.Err.Error()
 			return m, nil
@@ -103,7 +103,7 @@ func (m model) View() string {
 	if !m.ready {
 		return "starting…"
 	}
-	body := m.ed.View(editor.Options{
+	body := m.ed.View(ripple.Options{
 		Cursor:   cursorStyle.Render(" "),
 		Selected: func(s string) string { return selStyle.Render(s) },
 	})

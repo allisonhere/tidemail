@@ -1,9 +1,10 @@
-package editor
+package ripple
 
 import (
 	"strings"
 	"unicode"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mattn/go-runewidth"
 )
@@ -51,10 +52,36 @@ type Model struct {
 	blurred     bool // when true the cursor is not rendered
 	placeholder string
 	clipboard   Clipboard
+	keys        KeyMap
+}
+
+// KeyMap holds the editor's editing-command bindings. Text input and cursor
+// movement (arrows, word jumps, home/end, page up/down, and their shift
+// selection variants) are fixed; only the discrete commands below are
+// reconfigurable. Override the defaults with SetKeyMap.
+type KeyMap struct {
+	Undo      key.Binding
+	Redo      key.Binding
+	SelectAll key.Binding
+	Copy      key.Binding
+	Cut       key.Binding
+	Paste     key.Binding
+}
+
+// DefaultKeyMap returns the conventional desktop-editor bindings.
+func DefaultKeyMap() KeyMap {
+	return KeyMap{
+		Undo:      key.NewBinding(key.WithKeys("ctrl+z"), key.WithHelp("ctrl+z", "undo")),
+		Redo:      key.NewBinding(key.WithKeys("ctrl+y"), key.WithHelp("ctrl+y", "redo")),
+		SelectAll: key.NewBinding(key.WithKeys("ctrl+a"), key.WithHelp("ctrl+a", "select all")),
+		Copy:      key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "copy")),
+		Cut:       key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("ctrl+x", "cut")),
+		Paste:     key.NewBinding(key.WithKeys("ctrl+v"), key.WithHelp("ctrl+v", "paste")),
+	}
 }
 
 func New() Model {
-	return Model{width: 80, height: 24, selAnchor: -1}
+	return Model{width: 80, height: 24, selAnchor: -1, keys: DefaultKeyMap()}
 }
 
 func (m Model) Value() string {
@@ -159,6 +186,10 @@ func (m *Model) SetPlaceholder(s string) { m.placeholder = s }
 // disable those keys (the editor then leaves the clipboard untouched).
 func (m *Model) SetClipboard(c Clipboard) { m.clipboard = c }
 
+// SetKeyMap overrides the editing-command bindings (undo/redo/select-all/
+// copy/cut/paste). Cursor movement and text input are not affected.
+func (m *Model) SetKeyMap(k KeyMap) { m.keys = k }
+
 // Update applies a message and returns the updated editor plus any command it
 // produced. Keys that touch the clipboard (copy/cut/paste) emit a tea.Cmd so
 // the content change and the clipboard side effect travel back together — the
@@ -179,6 +210,42 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
+	// A zero-value Model (no New) has an empty KeyMap; fall back to the defaults
+	// so the command keys still work without requiring SetKeyMap.
+	km := m.keys
+	if len(km.Undo.Keys()) == 0 {
+		km = DefaultKeyMap()
+	}
+	// Configurable editing commands take precedence; everything else is text
+	// input and (fixed) cursor movement.
+	switch {
+	case key.Matches(msg, km.Undo):
+		m.Undo()
+	case key.Matches(msg, km.Redo):
+		m.Redo()
+	case key.Matches(msg, km.SelectAll):
+		m.SelectAll()
+	case key.Matches(msg, km.Copy):
+		cmd = m.copyCmd(m.SelectedText())
+	case key.Matches(msg, km.Cut):
+		if sel := m.SelectedText(); sel != "" {
+			m.DeleteSelection()
+			cmd = m.copyCmd(sel)
+		}
+	case key.Matches(msg, km.Paste):
+		cmd = m.pasteCmd()
+	default:
+		m.handleInput(msg)
+	}
+
+	m.clamp()
+	m.ensureCursorVisible()
+	return m, cmd
+}
+
+// handleInput applies text entry and cursor movement — the keys that are not
+// part of the configurable command KeyMap.
+func (m *Model) handleInput(msg tea.KeyMsg) {
 	switch msg.Type {
 	case tea.KeyRunes:
 		// A bracketed paste is one atomic undo unit; typed runes coalesce.
@@ -217,21 +284,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.text = append(m.text[:m.cursor], m.text[m.cursor+1:]...)
 		}
 		m.goalCol = -1
-	case tea.KeyCtrlZ:
-		m.Undo()
-	case tea.KeyCtrlY:
-		m.Redo()
-	case tea.KeyCtrlA:
-		m.SelectAll()
-	case tea.KeyCtrlC:
-		cmd = m.copyCmd(m.SelectedText())
-	case tea.KeyCtrlX:
-		if sel := m.SelectedText(); sel != "" {
-			m.DeleteSelection()
-			cmd = m.copyCmd(sel)
-		}
-	case tea.KeyCtrlV:
-		cmd = m.pasteCmd()
 	case tea.KeyLeft, tea.KeyShiftLeft:
 		m.moveHorizontal(-1, isSelectionKey(msg.Type))
 	case tea.KeyRight, tea.KeyShiftRight:
@@ -260,10 +312,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	case tea.KeyPgDown:
 		m.moveVertical(m.height, false)
 	}
-
-	m.clamp()
-	m.ensureCursorVisible()
-	return m, cmd
 }
 
 // copyCmd writes text to the clipboard. It returns nil when there is no

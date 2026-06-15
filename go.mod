@@ -15,14 +15,16 @@ require (
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
 	github.com/emersion/go-vcard v0.0.0-20241024213814-c9703dde27ff
-	github.com/mattn/go-runewidth v0.0.19
 	github.com/muesli/termenv v0.16.0
 	github.com/yuin/goldmark v1.7.13
 	modernc.org/sqlite v1.48.0
 )
 
+require github.com/mattn/go-runewidth v0.0.19 // indirect
+
 require (
 	github.com/alecthomas/chroma/v2 v2.20.0 // indirect
+	github.com/allisonhere/ripple v0.0.0
 	github.com/andybalholm/cascadia v1.3.2 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
@@ -59,3 +61,5 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
+
+replace github.com/allisonhere/ripple => ./ripple
