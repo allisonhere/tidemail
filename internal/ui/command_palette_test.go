@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestCommandPaletteFiltersCommands(t *testing.T) {

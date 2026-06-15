@@ -5,7 +5,6 @@ import (
 
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/glamour/styles"
-	"github.com/charmbracelet/x/ansi"
 )
 
 // tidemailDarkStyle is a glamour JSON theme that matches TideMail's terminal
@@ -192,13 +191,4 @@ func renderMarkdown(src string, width int, th Theme, plainUI bool) string {
 		return src
 	}
 	return strings.TrimSpace(out)
-}
-
-// enforceWidth ensures no rendered line exceeds the given width by hard-breaking
-// long unbroken strings (URLs, code, etc.) that glamour's word-wrap leaves intact.
-func enforceWidth(s string, width int) string {
-	if width <= 0 || s == "" {
-		return s
-	}
-	return ansi.Hardwrap(s, width, false)
 }
