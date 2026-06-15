@@ -3,7 +3,7 @@
 ![TideMail screenshot](screen.png)
 
 A keyboard-first terminal mail client built with [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lipgloss](https://github.com/charmbracelet/lipgloss).
-The compose message body uses an owned keyboard-first text editor (selection, undo/redo, system-clipboard copy/cut/paste, word movement, soft-wrap) that is being extracted into a standalone Go TUI editor library.
+The compose message body is powered by [ripple](https://github.com/allisonhere/ripple) — an owned keyboard-first text editor (selection, undo/redo, system-clipboard copy/cut/paste, word movement, soft-wrap) extracted from TideMail into a standalone Go TUI editor library.
 
 ## Install
 
