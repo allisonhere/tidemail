@@ -30,12 +30,21 @@ type PasteMsg struct {
 	Err  error
 }
 
+// Options controls how View renders. All fields are optional.
 type Options struct {
-	Cursor      string
-	Selected    func(string) string
+	// Cursor is drawn at the caret cell (e.g. a styled space or block). Empty
+	// defaults to a single space; nothing is drawn while the editor is blurred.
+	Cursor string
+	// Selected wraps the selected run for styling (e.g. reverse video). Nil
+	// leaves the selection unstyled.
+	Selected func(string) string
+	// Placeholder styles the placeholder text shown while the document is empty.
 	Placeholder func(string) string
 }
 
+// Model is a multi-line text editor: create one with New, drive it with Update,
+// and render it with View. The zero value is usable (it falls back to the
+// default key bindings) but has no clipboard wired; prefer New.
 type Model struct {
 	text      []rune
 	cursor    int
@@ -80,10 +89,13 @@ func DefaultKeyMap() KeyMap {
 	}
 }
 
+// New returns an editor with default sizing (80x24) and the default key
+// bindings. Size it with SetSize and wire a clipboard with SetClipboard.
 func New() Model {
 	return Model{width: 80, height: 24, selAnchor: -1, keys: DefaultKeyMap()}
 }
 
+// Value returns the full document text.
 func (m Model) Value() string {
 	return string(m.text)
 }
@@ -123,6 +135,7 @@ func (m *Model) insertRunes(s string) {
 	m.ensureCursorVisible()
 }
 
+// SelectedText returns the currently selected text, or "" if nothing is selected.
 func (m Model) SelectedText() string {
 	start, end, ok := m.selectionRange()
 	if !ok {
@@ -131,6 +144,8 @@ func (m Model) SelectedText() string {
 	return string(m.text[start:end])
 }
 
+// DeleteSelection removes the current selection as a single undo unit. It is a
+// no-op when there is no selection.
 func (m *Model) DeleteSelection() {
 	if _, _, ok := m.selectionRange(); ok {
 		m.pushUndo(kindBoundary)
@@ -139,6 +154,7 @@ func (m *Model) DeleteSelection() {
 	m.ensureCursorVisible()
 }
 
+// SelectAll selects the whole document, leaving the caret at the end.
 func (m *Model) SelectAll() {
 	m.selAnchor = 0
 	m.cursor = len(m.text)
@@ -147,11 +163,15 @@ func (m *Model) SelectAll() {
 	m.ensureCursorVisible()
 }
 
+// ClearSelection drops any active selection without changing the caret or text.
 func (m *Model) ClearSelection() {
 	m.selAnchor = -1
 	m.coalesceKind = kindNone
 }
 
+// SetSize sets the editor's visible width and height in terminal cells (each
+// clamped to a minimum of 1) and reflows soft-wrapping to the new width. The
+// editor owns wrapping; do not re-wrap View's output to this width.
 func (m *Model) SetSize(width, height int) {
 	if width < 1 {
 		width = 1
@@ -164,10 +184,13 @@ func (m *Model) SetSize(width, height int) {
 	m.ensureCursorVisible()
 }
 
+// CursorIndex returns the caret position as a rune offset into Value.
 func (m Model) CursorIndex() int {
 	return m.cursor
 }
 
+// ViewportTop returns the index of the first visual (wrapped) line currently
+// scrolled into view.
 func (m Model) ViewportTop() int {
 	return m.viewport
 }
@@ -336,6 +359,10 @@ func (m Model) pasteCmd() tea.Cmd {
 	}
 }
 
+// View renders the visible viewport as exactly height lines, each fit to width,
+// using opts for the cursor, selection, and placeholder styling. The output is
+// already wrapped to the configured width — clip or pad it to frame it, but do
+// not re-wrap it (see the package doc).
 func (m Model) View(opts Options) string {
 	// The cursor is only drawn while focused; a blurred editor renders its
 	// glyphs unobscured.
