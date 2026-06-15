@@ -839,13 +839,15 @@ func composeBodyWidth(termWidth int) int {
 	return max(1, composeOverlayWidth(termWidth)-4)
 }
 
-func (c ComposeModel) View(width, height int, styles Styles) string {
+// composeLayout builds the header and action bar and computes the body editor's
+// content width and visible height for the given overlay content size. It is the
+// single source of the height budget: View renders with these values, and
+// handleCompose sizes the *stored* editor to the same bodyW/bodyH so vertical
+// navigation and the rendered viewport stay in lockstep. (View sizes only a
+// copy — it is a value receiver — so the stored editor must be synced separately,
+// and if it isn't, it keeps height 1 and the caret sticks to the top of the body.)
+func (c ComposeModel) composeLayout(width, height int, styles Styles) (header, actions string, bodyW, bodyH int) {
 	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
-
-	// File picker view
-	if c.picker.active {
-		return c.pickerView(width, height, chrome)
-	}
 
 	title := "COMPOSE"
 	if c.inReplyTo != "" {
@@ -860,15 +862,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	if sender != "" {
 		title += "  ◉ " + sender
 	}
-	header := renderManagerHeader(title, width, chrome)
-
-	// Panel content area (full width, no border inset needed)
-	panelLabelW := min(10, formLabelWidth(width))
-	panelCtrlW := max(1, width-panelLabelW-2)
-
-	blankRow := func(bg lipgloss.Color) string {
-		return lipgloss.NewStyle().Background(bg).Width(width).Render("")
-	}
+	header = renderManagerHeader(title, width, chrome)
 
 	// Action bar
 	actionKeys := []string{"ctrl+s", "send", "ctrl+g", "grammar", "ctrl+u", "sender", "alt+f", "attach"}
@@ -880,7 +874,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	if len(c.attachments) > 0 {
 		navKeys = []string{"tab", "next", "ctrl+r", "remove", "esc", "cancel"}
 	}
-	actions := renderManagerActionGroups(width, chrome, actionKeys, navKeys)
+	actions = renderManagerActionGroups(width, chrome, actionKeys, navKeys)
 	if c.busy {
 		actions = renderManagerActions(width, chrome)
 	}
@@ -905,17 +899,31 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	if c.statusMsg != "" {
 		fixedH++
 	}
-	bodyH := max(1, height-fixedH-attachLines-4) // -4 for From + To + CC + BCC + Subject + internal spacer (the blank rows and spacers are counted in gapRows)
-	if bodyH < 1 {
-		bodyH = 1
+	bodyH = max(1, height-fixedH-attachLines-4) // -4 for From + To + CC + BCC + Subject + internal spacer (the blank rows and spacers are counted in gapRows)
+	// Body editor content width = overlay width minus internal padding.
+	bodyW = max(1, width-4)
+	return header, actions, bodyW, bodyH
+}
+
+func (c ComposeModel) View(width, height int, styles Styles) string {
+	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
+
+	// File picker view
+	if c.picker.active {
+		return c.pickerView(width, height, chrome)
 	}
 
-	// Body editor inside Message panel — content area minus internal padding.
-	// Must equal composeBodyWidth(terminalWidth) so the stored editor (sized in
-	// handleCompose for key handling) wraps identically to this render copy.
-	bodyInputW := max(1, width-4)
-	c.bodyInput.SetWidth(bodyInputW)
-	c.bodyInput.SetHeight(bodyH)
+	header, actions, bodyInputW, bodyH := c.composeLayout(width, height, styles)
+
+	// Panel content area (full width, no border inset needed)
+	panelLabelW := min(10, formLabelWidth(width))
+	panelCtrlW := max(1, width-panelLabelW-2)
+
+	blankRow := func(bg lipgloss.Color) string {
+		return lipgloss.NewStyle().Background(bg).Width(width).Render("")
+	}
+
+	c.bodyInput.SetSize(bodyInputW, bodyH)
 
 	bodyBg := chrome.baseBg
 	if c.focusedField == composeFieldBody {

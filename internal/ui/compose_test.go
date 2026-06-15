@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -303,6 +304,47 @@ func TestComposeBodyCopyCutToClipboard(t *testing.T) {
 	}
 	if got := c.bodyInput.Value(); got != "" {
 		t.Fatalf("cut should remove the selection from the body, got %q", got)
+	}
+}
+
+// TestComposeBodyCaretFollowsTypingAboveQuote guards against the body editor
+// pinning the caret to the top while typing a reply: the stored editor must be
+// sized to the rendered body height (not left at height 1), or each keystroke
+// scrolls the freshly typed lines off the top behind the quote.
+func TestComposeBodyCaretFollowsTypingAboveQuote(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	mm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 33})
+	m = mm.(Model)
+
+	// Reply-shaped body: a long quote below, caret moved to the top.
+	var quote strings.Builder
+	quote.WriteString("\n\n")
+	for i := 0; i < 40; i++ {
+		fmt.Fprintf(&quote, "> QUOTED%02d\n", i)
+	}
+	m.overlay = overlayCompose
+	m.compose = NewCompose(config.AccountConfig{}, nil, nil)
+	m.compose.focusedField = composeFieldBody
+	m.compose.bodyInput.SetValue(quote.String())
+	m.compose.bodyInput.Focus()
+	m.compose.bodyInput, _ = m.compose.bodyInput.Update(tea.KeyMsg{Type: tea.KeyCtrlHome})
+
+	// Type a few reply lines at the top.
+	for i := 0; i < 4; i++ {
+		mm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(fmt.Sprintf("MYREPLY%02d", i))})
+		m = mm.(Model)
+		mm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		m = mm.(Model)
+	}
+
+	if top := m.compose.bodyInput.ed.ViewportTop(); top != 0 {
+		t.Fatalf("typing at the top of a reply should not scroll the body (viewportTop=%d)", top)
+	}
+	view := ansi.Strip(m.View())
+	for i := 0; i < 4; i++ {
+		if marker := fmt.Sprintf("MYREPLY%02d", i); !strings.Contains(view, marker) {
+			t.Fatalf("typed reply line %q scrolled off the top of the body", marker)
+		}
 	}
 }
 

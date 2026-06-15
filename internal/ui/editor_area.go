@@ -60,6 +60,12 @@ func (e *editorArea) Blur() { e.ed.Blur() }
 func (e *editorArea) SetWidth(w int)  { e.w = w; e.ed.SetSize(e.w, e.h) }
 func (e *editorArea) SetHeight(h int) { e.h = h; e.ed.SetSize(e.w, e.h) }
 
+// SetSize sets width and height together so the editor's viewport is computed
+// once against both real dimensions. Sizing via SetWidth then SetHeight would
+// briefly clamp the still-unset dimension to 1 — and a height-1 pass pins the
+// viewport to the cursor row, which sticks the caret to the top of the body.
+func (e *editorArea) SetSize(w, h int) { e.w, e.h = w, h; e.ed.SetSize(w, h) }
+
 func (e editorArea) SelectedText() string { return e.ed.SelectedText() }
 
 // Update forwards every message to the editor and propagates the command it
