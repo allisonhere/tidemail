@@ -55,9 +55,24 @@ jobs:
           body: |
             ## TideMail ${{ steps.version.outputs.tag }}
 
-            TideMail is a keyboard-first terminal email client with multi-account mail, a unified inbox, drafts, contacts, search, bulk actions, Gmail OAuth2, and optional AI tools.
+            TideMail is a keyboard-first terminal email client with multi-account mail, a unified inbox, drafts, contacts, search, bulk actions, and optional AI tools.
 
-            This release adds threaded conversations and stabilizes message rendering, making mail easier to scan, navigate, and read inside the terminal.
+            ### Highlights
+            A new, owned compose editor replaces the stock textarea for the message body — bringing real text editing to compose:
+            - Text selection (`shift`+arrows / `ctrl+shift`+arrows) and select-all (`ctrl+a`)
+            - Undo / redo (`ctrl+z` / `ctrl+y`)
+            - Copy / cut / paste (`ctrl+c` / `ctrl+x` / `ctrl+v`) via the system clipboard
+            - Word movement (`ctrl`+arrows) and smooth soft-wrap
+
+            ### Changed
+            - **Sign in with an App Password — OAuth removed.** Google accounts authenticate with an app password (enable 2-Step Verification → myaccount.google.com/apppasswords), ending the ~7-day OAuth re-authentication. If you used "Sign in with Google", edit your Gmail account in the Account Manager (`M`) and paste an app password.
+            - Attach file moved to `alt+f` (freeing `ctrl+a` for select-all).
+
+            ### Fixed
+            - Compose body no longer spills onto the left edge when replying.
+            - Up/down arrow navigation tracks wrapped lines correctly.
+            - Cut (`ctrl+x`) copies to the clipboard instead of just deleting.
+            - BCC edits are included in compose autosave.
 
             ### Quick install
             ```bash
