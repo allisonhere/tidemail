@@ -2,6 +2,22 @@
 
 All notable changes to TideMail are documented in this file.
 
+## v0.5.1
+
+### Fixed
+
+- Compose: the message-body caret no longer sticks to the top while typing a
+  reply. The stored editor was sized by width only and collapsed to a single
+  row, so freshly typed lines scrolled off the top behind the quoted message;
+  it is now sized to the same height the form renders.
+
+### Internal
+
+- The compose editor adopts the idiomatic Bubble Tea `Update(msg) (Model,
+  tea.Cmd)` signature and owns copy/cut/paste through a pluggable clipboard,
+  replacing the host-managed clipboard glue — work toward extracting it as a
+  standalone Go TUI editor library.
+
 ## v0.5.0
 
 ### Highlights

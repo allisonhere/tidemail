@@ -48,45 +48,43 @@ jobs:
             echo "Built dist/$name.tar.gz"
           done
 
+      - name: Extract release notes
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          {
+            echo "## TideMail $TAG"
+            echo
+            echo "TideMail is a keyboard-first terminal email client with multi-account mail, a unified inbox, drafts, contacts, search, bulk actions, and optional AI tools."
+            echo
+            # Pull the section for this tag out of CHANGELOG.md (between "## $TAG"
+            # and the next "## " heading) so release notes never drift from it.
+            awk -v ver="## $TAG" '
+              $0 == ver { flag = 1; next }
+              /^## / && flag { flag = 0 }
+              flag { print }
+            ' CHANGELOG.md
+            echo
+            echo "### Quick install"
+            echo '```bash'
+            echo 'curl -fsSL https://raw.githubusercontent.com/allisonhere/tidemail/main/install.sh | sh'
+            echo '```'
+            echo
+            echo "### Manual install"
+            echo
+            echo "Download a binary below for your platform and add it to your PATH, or build from source:"
+            echo '```bash'
+            echo 'git clone https://github.com/allisonhere/tidemail'
+            echo 'cd tidemail'
+            echo 'go build -o tidemail .'
+            echo '```'
+          } > release-notes.md
+          echo "----- release-notes.md -----"
+          cat release-notes.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: "TideMail ${{ steps.version.outputs.tag }}"
-          body: |
-            ## TideMail ${{ steps.version.outputs.tag }}
-
-            TideMail is a keyboard-first terminal email client with multi-account mail, a unified inbox, drafts, contacts, search, bulk actions, and optional AI tools.
-
-            ### Highlights
-            A new, owned compose editor replaces the stock textarea for the message body — bringing real text editing to compose:
-            - Text selection (`shift`+arrows / `ctrl+shift`+arrows) and select-all (`ctrl+a`)
-            - Undo / redo (`ctrl+z` / `ctrl+y`)
-            - Copy / cut / paste (`ctrl+c` / `ctrl+x` / `ctrl+v`) via the system clipboard
-            - Word movement (`ctrl`+arrows) and smooth soft-wrap
-
-            ### Changed
-            - **Sign in with an App Password — OAuth removed.** Google accounts authenticate with an app password (enable 2-Step Verification → myaccount.google.com/apppasswords), ending the ~7-day OAuth re-authentication. If you used "Sign in with Google", edit your Gmail account in the Account Manager (`M`) and paste an app password.
-            - Attach file moved to `alt+f` (freeing `ctrl+a` for select-all).
-
-            ### Fixed
-            - Compose body no longer spills onto the left edge when replying.
-            - Up/down arrow navigation tracks wrapped lines correctly.
-            - Cut (`ctrl+x`) copies to the clipboard instead of just deleting.
-            - BCC edits are included in compose autosave.
-
-            ### Quick install
-            ```bash
-            curl -fsSL https://raw.githubusercontent.com/allisonhere/tidemail/main/install.sh | sh
-            ```
-
-            ### Manual install
-
-            Download a binary below for your platform and add it to your PATH.
-
-            Or build from source:
-            ```bash
-            git clone https://github.com/allisonhere/tidemail
-            cd tidemail
-            go build -o tidemail .
-            ```
+          body_path: release-notes.md
           files: dist/*.tar.gz
