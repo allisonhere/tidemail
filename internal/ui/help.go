@@ -111,6 +111,19 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 			},
 		},
 		{
+			name: "Message Body Editor",
+			entries: []entry{
+				{"ctrl+a", "select all body text"},
+				{"shift+arrows", "extend selection by character/line"},
+				{"ctrl+shift+arrows", "extend selection by word"},
+				{"ctrl+c / ctrl+x", "copy / cut selection to the system clipboard"},
+				{"ctrl+v", "paste from the system clipboard"},
+				{"ctrl+z / ctrl+y", "undo / redo"},
+				{"ctrl+arrows", "move by word"},
+				{"home/end", "jump to start/end of the logical line"},
+			},
+		},
+		{
 			name: "Account Manager Modal",
 			entries: []entry{
 				{keys.Up.Help().Key + "/" + keys.Down.Help().Key, "move through accounts or form fields"},
