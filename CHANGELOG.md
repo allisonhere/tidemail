@@ -2,6 +2,15 @@
 
 All notable changes to TideMail are documented in this file.
 
+## v0.5.2
+
+### Internal
+
+- The compose message-body editor now lives in its own published module,
+  [`github.com/allisonhere/ripple`](https://github.com/allisonhere/ripple)
+  (v0.1.0), instead of the in-tree `internal/editor` package. No user-facing
+  changes. The library adds a configurable `KeyMap`; TideMail uses the defaults.
+
 ## v0.5.1
 
 ### Fixed
