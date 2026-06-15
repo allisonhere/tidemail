@@ -12,7 +12,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/allisonhere/tide/internal/auth"
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
 	"github.com/allisonhere/tide/internal/imap"
@@ -274,9 +273,7 @@ const (
 	amFieldSMTPPort
 	amFieldSMTPTLS
 	amFieldUser
-	amFieldOAuth2Toggle
 	amFieldPass
-	amFieldOAuth2SignIn
 	amFieldFrom
 	amFieldSyncInterval
 	amFieldCount
@@ -343,12 +340,6 @@ type AccountManager struct {
 	editAccountID int64
 	colorIdx      int
 
-	useOAuth2          bool
-	oauth2Signed       bool
-	oauth2RefreshToken string
-	startedOAuth2      bool
-	oauthCfg           config.OAuthConfig
-
 	busy      bool
 	busyMsg   string
 	statusMsg string
@@ -378,11 +369,10 @@ func newAMInput(placeholder string, password bool) textinput.Model {
 	return ti
 }
 
-func (am *AccountManager) setData(accounts []db.Account, mailboxes []db.Mailbox, configs []config.AccountConfig, oauthCfg config.OAuthConfig) {
+func (am *AccountManager) setData(accounts []db.Account, mailboxes []db.Mailbox, configs []config.AccountConfig) {
 	am.accounts = accounts
 	am.mailboxes = mailboxes
 	am.configs = configs
-	am.oauthCfg = oauthCfg
 	am.cursor = clamp(am.cursor, 0, max(0, len(accounts)-1))
 }
 
@@ -418,8 +408,6 @@ func (am *AccountManager) focusField(f amField) {
 		am.fromInput.Focus()
 	case amFieldSyncInterval:
 		am.syncInput.Focus()
-	case amFieldOAuth2Toggle, amFieldOAuth2SignIn:
-		// no input to focus; handled in updateForm
 	}
 }
 
@@ -439,12 +427,6 @@ func (am *AccountManager) populateFormFrom(acfg config.AccountConfig) {
 	am.passInput.SetValue(acfg.Password)
 	am.fromInput.SetValue(acfg.From)
 	am.syncInput.SetValue(strconv.Itoa(acfg.SyncMinutes))
-	am.useOAuth2 = acfg.UsesOAuth2()
-	am.oauth2Signed = acfg.RefreshToken != ""
-	// Carry the existing refresh token so buildCfg preserves OAuth2 on save.
-	// Without this, editing a signed-in account (e.g. to change sync interval)
-	// would write back an empty token and fall back to password login.
-	am.oauth2RefreshToken = acfg.RefreshToken
 }
 
 func (am AccountManager) buildCfg() config.AccountConfig {
@@ -469,14 +451,6 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 		Password:    am.passInput.Value(),
 		From:        strings.TrimSpace(am.fromInput.Value()),
 		SyncMinutes: func() int { n, _ := strconv.Atoi(am.syncInput.Value()); return n }(),
-	}
-	// For OAuth2: clear the password field, set refresh token. ClientID/Secret
-	// are needed immediately for IMAP/SMTP connect during the save flow.
-	if am.useOAuth2 && am.oauth2Signed {
-		cfg.Password = ""
-		cfg.RefreshToken = am.oauth2RefreshToken
-		cfg.ClientID = am.oauthCfg.GoogleClientID
-		cfg.ClientSecret = am.oauthCfg.GoogleClientSecret
 	}
 	if preset, ok := providerPresets[am.provider]; ok {
 		cfg.IMAPHost = preset.IMAPHost
@@ -629,37 +603,7 @@ func (am *AccountManager) updateFocusedInput(msg tea.Msg) tea.Cmd {
 }
 
 func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, tea.Cmd, bool) {
-	// Handle async messages (e.g. OAuth2DoneMsg)
-	if oa2, ok := msg.(OAuth2DoneMsg); ok {
-		am.busy = false
-		am.busyMsg = ""
-		if !am.startedOAuth2 {
-			// Cancelled by Escape — ignore the late result.
-			return am, nil, false
-		}
-		am.startedOAuth2 = false
-		if oa2.Err != nil {
-			am.statusMsg = fmt.Sprintf("OAuth2 failed: %v", oa2.Err)
-			return am, nil, false
-		}
-		am.useOAuth2 = true
-		am.oauth2Signed = true
-		am.oauth2RefreshToken = oa2.RefreshToken
-		am.statusMsg = "signed in with Google"
-		// Move focus past the non-actionable sign-in row to From.
-		am.focusField(amFieldFrom)
-		return am, nil, false
-	}
 	if am.busy {
-		km, ok := msg.(tea.KeyMsg)
-		// Allow cancel during OAuth2 browser wait.
-		if am.startedOAuth2 && ok && keyMatches(km, keys.Cancel) {
-			am.busy = false
-			am.busyMsg = ""
-			am.startedOAuth2 = false
-			am.statusMsg = "sign-in cancelled"
-			return am, nil, false
-		}
 		return am, nil, false
 	}
 	km, ok := msg.(tea.KeyMsg)
@@ -701,7 +645,7 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 		// let input handle it
 		fallthrough
 	default:
-		// toggle TLS/OAuth2 fields
+		// toggle TLS fields
 		if km.String() == " " {
 			switch am.focusedField {
 			case amFieldIMAPTLS:
@@ -710,27 +654,9 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 			case amFieldSMTPTLS:
 				am.smtpTLS = !am.smtpTLS
 				return am, nil, false
-			case amFieldOAuth2Toggle:
-				am.useOAuth2 = !am.useOAuth2
-				if !am.useOAuth2 {
-					am.oauth2Signed = false
-				}
-				return am, nil, false
-			case amFieldOAuth2SignIn:
-				return am.startOAuth2Flow()
 			}
 		}
 		if keyMatches(km, keys.Confirm) {
-			if am.focusedField == amFieldOAuth2Toggle {
-				am.useOAuth2 = !am.useOAuth2
-				if !am.useOAuth2 {
-					am.oauth2Signed = false
-				}
-				return am, nil, false
-			}
-			if am.focusedField == amFieldOAuth2SignIn {
-				return am.startOAuth2Flow()
-			}
 			if am.focusedField == amFieldFrom {
 				// submit
 				return am.submitForm()
@@ -819,16 +745,6 @@ func (am *AccountManager) advanceField(delta int) {
 		}
 		next += delta
 	}
-	// Skip password field when OAuth2 is active
-	if am.useOAuth2 && amField(next) == amFieldPass {
-		next += delta
-		next = ((next % int(amFieldCount)) + int(amFieldCount)) % int(amFieldCount)
-	}
-	// Skip OAuth2 sign-in button when not signed in (toggle is always reachable)
-	if !am.useOAuth2 && amField(next) == amFieldOAuth2SignIn {
-		next += delta
-		next = ((next % int(amFieldCount)) + int(amFieldCount)) % int(amFieldCount)
-	}
 	am.focusField(amField(next))
 }
 
@@ -848,10 +764,6 @@ func (am *AccountManager) resetForm() {
 	am.statusMsg = ""
 	am.busy = false
 	am.busyMsg = ""
-	am.useOAuth2 = false
-	am.oauth2Signed = false
-	am.startedOAuth2 = false
-	am.oauth2RefreshToken = ""
 }
 
 func (am AccountManager) View(width, height int, styles Styles) string {
@@ -1124,49 +1036,20 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 	addControl(amFieldUser, row(userLabel, am.userInput, am.focusedField == amFieldUser))
 	addBlank()
 	// Auth method toggle (Gmail only)
+	addControl(amFieldPass, row("Password", passInput, am.focusedField == amFieldPass))
+	addBlank()
 	if am.provider == "Gmail" {
-		authFg := chrome.text
-		if am.focusedField == amFieldOAuth2Toggle {
-			authFg = chrome.accent
-		}
-		authVal := "Password"
-		if am.useOAuth2 {
-			authVal = "OAuth2"
-		}
-		authLeft := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, labelW-2)).Padding(0, 1).Render("Auth")
-		authRight := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(authFg).Width(max(1, fieldW-2)).Padding(0, 1).Render("◀ " + authVal + " ▶")
-		addControl(amFieldOAuth2Toggle, lipgloss.JoinHorizontal(lipgloss.Left, authLeft, authRight))
-		addBlank()
-	}
-	if am.useOAuth2 {
-		// Sign-in button or signed-in status
-		signInBg := chrome.surfaceBg
-		signInFg := chrome.text
-		if am.focusedField == amFieldOAuth2SignIn {
-			signInBg = chrome.fieldBg
-			signInFg = chrome.accent
-		}
-		if am.oauth2Signed {
-			signInVal := "✓ signed in with Google"
-			siLeft := lipgloss.NewStyle().Background(chrome.baseBg).Width(max(1, labelW-2)).Padding(0, 1).Render("")
-			siRight := lipgloss.NewStyle().Background(signInBg).Foreground(chrome.successFg).Width(max(1, fieldW-2)).Padding(0, 1).Render(signInVal)
-			addControl(amFieldOAuth2SignIn, lipgloss.JoinHorizontal(lipgloss.Left, siLeft, siRight))
-			addBlank()
-		} else {
-			siLeft := lipgloss.NewStyle().Background(chrome.baseBg).Width(max(1, labelW-2)).Padding(0, 1).Render("")
-			siRight := lipgloss.NewStyle().Background(signInBg).Foreground(signInFg).Width(max(1, fieldW-2)).Padding(0, 1).Render("[Sign in with Google]")
-			addControl(amFieldOAuth2SignIn, lipgloss.JoinHorizontal(lipgloss.Left, siLeft, siRight))
-			addBlank()
-		}
-	} else {
-		addControl(amFieldPass, row("Password", passInput, am.focusedField == amFieldPass))
-		addBlank()
-		if am.provider == "Gmail" {
+		for _, hint := range []string{
+			"Gmail needs an App Password (not your normal password):",
+			"1. Turn on 2-Step Verification in your Google account",
+			"2. myaccount.google.com/apppasswords → create one",
+			"3. Paste the 16-character code above",
+		} {
 			hintLeft := lipgloss.NewStyle().Background(chrome.baseBg).Width(max(1, labelW-2)).Padding(0, 1).Render("")
-			hintRight := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, fieldW-2)).Padding(0, 1).Render("Google account → Security → App passwords")
+			hintRight := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, fieldW-2)).Padding(0, 1).Render(hint)
 			addLine(lipgloss.JoinHorizontal(lipgloss.Left, hintLeft, hintRight))
-			addBlank()
 		}
+		addBlank()
 	}
 	addControl(amFieldFrom, row("From", am.fromInput, am.focusedField == amFieldFrom))
 	addControl(amFieldSyncInterval, row("Sync (min)", am.syncInput, am.focusedField == amFieldSyncInterval))
@@ -1236,33 +1119,6 @@ func (am AccountManager) viewConfirmDelete(width int, chrome managerChrome) stri
 }
 
 // ── Async commands ────────────────────────────────────────────────────────────
-
-// startOAuth2Flow initiates the Google OAuth2 sign-in flow, opening the browser.
-// Uses the app-level OAuth2 credentials, so users don't need to set up a Google Cloud project.
-func (am AccountManager) startOAuth2Flow() (AccountManager, tea.Cmd, bool) {
-	if am.busy {
-		return am, nil, false
-	}
-	clientID := am.oauthCfg.GoogleClientID
-	clientSecret := am.oauthCfg.GoogleClientSecret
-	if clientID == "" {
-		am.statusMsg = "Google OAuth2 not configured (set [oauth] in config)"
-		return am, nil, false
-	}
-	am.busy = true
-	am.busyMsg = "opening browser for Google sign-in..."
-	am.startedOAuth2 = true
-	return am, func() tea.Msg {
-		tok, err := auth.StartGmailOAuthFlow(clientID, clientSecret, 0)
-		if err != nil {
-			return OAuth2DoneMsg{Err: err}
-		}
-		return OAuth2DoneMsg{
-			AccessToken:  tok.AccessToken,
-			RefreshToken: tok.RefreshToken,
-		}
-	}, false
-}
 
 func saveAccountCmd(database *db.DB, acfg config.AccountConfig, editID int64, color string) tea.Cmd {
 	return func() tea.Msg {

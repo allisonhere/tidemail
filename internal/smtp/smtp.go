@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/allisonhere/tide/internal/auth"
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/yuin/goldmark"
 )
@@ -28,28 +27,6 @@ var (
 		}).DialContext(ctx, network, addr)
 	}
 )
-
-// xoauth2Auth implements the smtp.Auth interface for XOAUTH2.
-type xoauth2Auth struct {
-	user, token string
-}
-
-func (a *xoauth2Auth) Start(server *smtp.ServerInfo) (string, []byte, error) {
-	// Return the RAW initial-response bytes. net/smtp's Client.Auth base64-encodes
-	// whatever Start returns before sending "AUTH XOAUTH2 <base64>"; encoding here
-	// too would double-encode and Gmail rejects it with "501 5.5.2 Cannot Decode".
-	resp := "user=" + a.user + "\x01auth=Bearer " + a.token + "\x01\x01"
-	return "XOAUTH2", []byte(resp), nil
-}
-
-func (a *xoauth2Auth) Next(fromServer []byte, more bool) ([]byte, error) {
-	if more {
-		// On auth failure the server sends a challenge whose body is a JSON
-		// error description (already base64-decoded by net/smtp) — surface it.
-		return nil, fmt.Errorf("xoauth2 rejected: %s", fromServer)
-	}
-	return nil, nil
-}
 
 type Attachment struct {
 	Name string
@@ -99,22 +76,9 @@ func Send(ctx context.Context, cfg config.AccountConfig, msg OutgoingMessage) er
 	return sendSTARTTLS(ctx, addr, cfg, envelopeFrom, allTo, raw)
 }
 
-// smtpAuth returns the appropriate smtp.Auth for the given config.
+// smtpAuth returns the smtp.Auth for the given config. TideMail authenticates
+// with an app password over PLAIN (Gmail requires an app password + 2FA).
 func smtpAuth(cfg config.AccountConfig, host string) (smtp.Auth, error) {
-	if cfg.UsesOAuth2() {
-		accessToken := cfg.Password
-		if cfg.RefreshToken != "" {
-			tok, err := auth.RefreshAccessToken(cfg.ClientID, cfg.ClientSecret, cfg.RefreshToken)
-			if err != nil {
-				return nil, fmt.Errorf("oauth2 refresh: %w", err)
-			}
-			accessToken = tok.AccessToken
-		}
-		if accessToken == "" {
-			return nil, fmt.Errorf("oauth2: no access token or refresh token available")
-		}
-		return &xoauth2Auth{user: cfg.User, token: accessToken}, nil
-	}
 	return smtp.PlainAuth("", cfg.User, cfg.Password, host), nil
 }
 
@@ -244,7 +208,7 @@ func buildRaw(from string, msg OutgoingMessage) []byte {
 		altHdr := textproto.MIMEHeader{"Content-Type": {"multipart/alternative; boundary=\"" + altWriter.Boundary() + "\""}}
 		altPart, _ := mw.CreatePart(altHdr)
 		altHeader := fmt.Sprintf("Content-Type: multipart/alternative; boundary=\"%s\"\r\n\r\n", altWriter.Boundary())
-		altPart.Write([]byte(altHeader))
+		_, _ = altPart.Write([]byte(altHeader))
 		addTextPart(altWriter, msg.Body)
 		addHTMLPart(altWriter, msg.HTMLBody)
 		altWriter.Close()

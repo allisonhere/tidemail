@@ -9,7 +9,7 @@ import (
 
 func TestRenderHelpDocumentsCredentialSafety(t *testing.T) {
 	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys))
-	for _, want := range []string{"OAuth2", "keychain", "redacted"} {
+	for _, want := range []string{"App Password", "keychain", "redacted"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expected help to document credential safety term %q, got %q", want, view)
 		}

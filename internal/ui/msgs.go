@@ -180,14 +180,6 @@ type AttachmentsSavedMsg struct {
 
 type StatusClearMsg struct{}
 
-type OAuth2DoneMsg struct {
-	ClientID     string
-	ClientSecret string
-	AccessToken  string
-	RefreshToken string
-	Err          error
-}
-
 type AutoSyncMsg struct {
 	AccountID int64
 }

@@ -389,39 +389,6 @@ func TestSendMail_DATAError(t *testing.T) {
 	}
 }
 
-func TestXOAUTH2AuthUsesGmailInitialResponseFormat(t *testing.T) {
-	auth := &xoauth2Auth{user: "drbayless@gmail.com", token: "ya29.token"}
-	mechanism, payload, err := auth.Start(&smtp.ServerInfo{Name: "smtp.gmail.com"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if mechanism != "XOAUTH2" {
-		t.Fatalf("expected XOAUTH2 mechanism, got %q", mechanism)
-	}
-	// Start must return RAW bytes — net/smtp base64-encodes them itself. Encoding
-	// here too double-encodes and Gmail rejects with "501 5.5.2 Cannot Decode".
-	got := string(payload)
-	want := "user=drbayless@gmail.com\x01auth=Bearer ya29.token\x01\x01"
-	if got != want {
-		t.Fatalf("unexpected XOAUTH2 payload: got %q want %q", got, want)
-	}
-}
-
-func TestXOAUTH2AuthNextSurfacesServerChallenge(t *testing.T) {
-	auth := &xoauth2Auth{user: "u@example.com", token: "tok"}
-	challenge := `{"status":"400","schemes":"Bearer","scope":"https://mail.google.com/"}`
-	_, err := auth.Next([]byte(challenge), true)
-	if err == nil {
-		t.Fatal("expected error on server challenge")
-	}
-	if !strings.Contains(err.Error(), challenge) {
-		t.Fatalf("error should include server challenge, got %q", err.Error())
-	}
-	if _, err := auth.Next(nil, false); err != nil {
-		t.Fatalf("Next without challenge should succeed, got %v", err)
-	}
-}
-
 func TestBuildRaw_WithAttachments(t *testing.T) {
 	raw := buildRaw("a@x", OutgoingMessage{
 		To:      []string{"b@x"},

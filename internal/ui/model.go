@@ -445,7 +445,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			statusCmd = m.clearStatusCmd()
 		}
 		m.rebuildSidebar()
-		m.accountManager.setData(m.accounts, m.mailboxes, m.cfg.Accounts, m.cfg.OAuth)
+		m.accountManager.setData(m.accounts, m.mailboxes, m.cfg.Accounts)
 		openAccountManagerOnEmptyFirstLoad := m.firstLoad && msg.Err == nil && len(m.accounts) == 0
 		if m.firstLoad {
 			m.loadCollapseState()
@@ -593,7 +593,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case MailboxSyncedMsg:
 		delete(m.syncing, msg.MailboxID)
 		if msg.Err != nil {
-			if auth.IsTokenRevoked(msg.Err) {
+			if auth.IsAuthFailure(msg.Err) {
 				name := "account"
 				if mb := m.mailboxByID(msg.MailboxID); mb != nil {
 					name = m.accountName(mb.AccountID)
@@ -2405,7 +2405,7 @@ func (m *Model) clampSidebarOffset() {
 func (m Model) newAccountManager() AccountManager {
 	am := NewAccountManager(m.db)
 	am.mode = amList
-	am.setData(m.accounts, m.mailboxes, m.cfg.Accounts, m.cfg.OAuth)
+	am.setData(m.accounts, m.mailboxes, m.cfg.Accounts)
 	return am
 }
 
