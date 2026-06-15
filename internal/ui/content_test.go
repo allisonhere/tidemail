@@ -476,12 +476,25 @@ func indexContentLine(t *testing.T, m Model, needle string) int {
 
 func stubClipboardWrite(t *testing.T, copied *string) func() {
 	t.Helper()
-	orig := clipboardWriteCmd
+	origCmd := clipboardWriteCmd
 	clipboardWriteCmd = func(text string) tea.Cmd {
 		return func() tea.Msg {
 			*copied = text
 			return ClipboardCopiedMsg{}
 		}
 	}
-	return func() { clipboardWriteCmd = orig }
+	// The compose editor owns copy/cut and writes via its own clipboard, so
+	// stub that seam too. Set it before any editor is constructed.
+	origEditor := editorClipboard
+	editorClipboard = fakeClipboard{copied: copied}
+	return func() {
+		clipboardWriteCmd = origCmd
+		editorClipboard = origEditor
+	}
 }
+
+// fakeClipboard captures editor writes in tests instead of touching the OS.
+type fakeClipboard struct{ copied *string }
+
+func (f fakeClipboard) Read() (string, error)   { return "", nil }
+func (f fakeClipboard) Write(text string) error { *f.copied = text; return nil }

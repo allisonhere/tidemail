@@ -24,14 +24,19 @@ func TestEditorAreaTextareaLikeAPI(t *testing.T) {
 		t.Fatalf("Value after SetValue = %q", got)
 	}
 
-	// Selection + clipboard hooks the textarea lacks.
+	// Select-all then cut (editor-owned) empties the buffer and returns a
+	// clipboard write command (not executed here, so no real shell-out).
 	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyCtrlA})
 	if got := e.SelectedText(); got != "replaced" {
 		t.Fatalf("SelectedText after select-all = %q", got)
 	}
-	e.DeleteSelection()
+	var cmd tea.Cmd
+	e, cmd = e.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
 	if got := e.Value(); got != "" {
-		t.Fatalf("Value after DeleteSelection = %q", got)
+		t.Fatalf("Value after cut = %q", got)
+	}
+	if cmd == nil {
+		t.Fatal("cut should return a clipboard write command")
 	}
 }
 

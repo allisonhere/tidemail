@@ -1,20 +1,29 @@
 package ui
 
 import (
+	"github.com/allisonhere/tide/internal/clipboard"
 	"github.com/allisonhere/tide/internal/editor"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
+// systemClipboard adapts internal/clipboard to editor.Clipboard so the editor
+// owns copy/cut/paste without importing the host's clipboard package directly.
+type systemClipboard struct{}
+
+func (systemClipboard) Read() (string, error)   { return clipboard.Read() }
+func (systemClipboard) Write(text string) error { return clipboard.Copy(text) }
+
+// editorClipboard is the clipboard wired into every compose editor. It is a
+// package var so tests can substitute an in-memory fake.
+var editorClipboard editor.Clipboard = systemClipboard{}
+
 // editorArea adapts editor.Model to the subset of the Bubble Tea textarea API
 // that compose relies on (Value/SetValue/Focus/Blur/SetWidth/SetHeight/Update/
 // View), so swapping the textarea for the owned editor is a minimal diff.
 //
-// It also surfaces SelectedText/DeleteSelection, which the textarea lacks, so
-// compose can add copy/cut against the system clipboard (internal/clipboard).
-//
-// Not yet wired into compose — compose stays on the textarea until the editor
-// is validated in cmd/editortest.
+// Copy/cut/paste are owned by the editor itself (wired to the system clipboard
+// via SetClipboard in newEditorArea); the host no longer intercepts those keys.
 type editorArea struct {
 	ed   editor.Model
 	w, h int
@@ -26,8 +35,10 @@ type editorArea struct {
 }
 
 func newEditorArea() editorArea {
+	ed := editor.New()
+	ed.SetClipboard(editorClipboard)
 	return editorArea{
-		ed:               editor.New(),
+		ed:               ed,
 		CursorStyle:      lipgloss.NewStyle().Reverse(true),
 		SelectedStyle:    lipgloss.NewStyle().Reverse(true),
 		PlaceholderStyle: lipgloss.NewStyle().Faint(true),
@@ -51,16 +62,13 @@ func (e *editorArea) SetHeight(h int) { e.h = h; e.ed.SetSize(e.w, e.h) }
 
 func (e editorArea) SelectedText() string { return e.ed.SelectedText() }
 
-func (e *editorArea) DeleteSelection() { e.ed.DeleteSelection() }
-
-// Update mirrors textarea.Model.Update: it applies a key message and returns
-// the updated value (non-key messages are ignored). The returned command is
-// always nil today; the signature matches the textarea for a drop-in swap.
+// Update forwards every message to the editor and propagates the command it
+// returns (e.g. a copy/cut clipboard write, or the read that produces an
+// editor.PasteMsg), so clipboard side effects ride back with the model.
 func (e editorArea) Update(msg tea.Msg) (editorArea, tea.Cmd) {
-	if k, ok := msg.(tea.KeyMsg); ok {
-		e.ed.UpdateKey(k)
-	}
-	return e, nil
+	var cmd tea.Cmd
+	e.ed, cmd = e.ed.Update(msg)
+	return e, cmd
 }
 
 func (e editorArea) View() string {

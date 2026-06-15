@@ -497,19 +497,8 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 			}
 			c.subjectInput, cmd = c.subjectInput.Update(msg)
 		case composeFieldBody:
-			switch km.String() {
-			case "ctrl+c": // copy selection to the system clipboard
-				if sel := c.bodyInput.SelectedText(); sel != "" {
-					return c, clipboardWriteCmd(sel), false
-				}
-				return c, nil, false
-			case "ctrl+x": // cut selection to the system clipboard
-				if sel := c.bodyInput.SelectedText(); sel != "" {
-					c.bodyInput.DeleteSelection()
-					return c, clipboardWriteCmd(sel), false
-				}
-				return c, nil, false
-			}
+			// Copy/cut/paste are handled inside the editor, which emits the
+			// clipboard command through Update.
 			c.bodyInput, cmd = c.bodyInput.Update(msg)
 		}
 		return c, cmd, false

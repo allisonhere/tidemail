@@ -8,11 +8,25 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
-type Change struct {
-	Content   bool
-	Cursor    bool
-	Viewport  bool
-	Selection bool
+// Clipboard is the system clipboard the editor uses for copy, cut, and paste.
+// Provide one with SetClipboard; without it those keys are inert. Keeping it an
+// interface lets the editor own its clipboard keybindings without depending on
+// any particular OS-clipboard implementation.
+type Clipboard interface {
+	Read() (string, error)
+	Write(text string) error
+}
+
+// CopiedMsg reports the result of a copy or cut. A nil Err means the selection
+// reached the clipboard; the host may surface a failure.
+type CopiedMsg struct{ Err error }
+
+// PasteMsg carries clipboard text back into Update after a ctrl+v read, so it is
+// inserted as a single atomic, sanitized edit. The host must route it to Update
+// — forwarding every message to the focused editor is enough.
+type PasteMsg struct {
+	Text string
+	Err  error
 }
 
 type Options struct {
@@ -36,6 +50,7 @@ type Model struct {
 
 	blurred     bool // when true the cursor is not rendered
 	placeholder string
+	clipboard   Clipboard
 }
 
 func New() Model {
@@ -140,12 +155,30 @@ func (m *Model) Blur() { m.blurred = true }
 // SetPlaceholder sets hint text shown only while the document is empty.
 func (m *Model) SetPlaceholder(s string) { m.placeholder = s }
 
-func (m *Model) UpdateKey(msg tea.KeyMsg) Change {
-	beforeText := string(m.text)
-	beforeCursor := m.cursor
-	beforeViewport := m.viewport
-	beforeSelection := m.SelectedText()
+// SetClipboard wires the system clipboard used by copy/cut/paste. Pass nil to
+// disable those keys (the editor then leaves the clipboard untouched).
+func (m *Model) SetClipboard(c Clipboard) { m.clipboard = c }
 
+// Update applies a message and returns the updated editor plus any command it
+// produced. Keys that touch the clipboard (copy/cut/paste) emit a tea.Cmd so
+// the content change and the clipboard side effect travel back together — the
+// host batches them via the standard (model, cmd) return rather than wiring the
+// clipboard itself. A PasteMsg (the result of a ctrl+v read) is inserted here.
+func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		return m.handleKey(msg)
+	case PasteMsg:
+		if msg.Err == nil && msg.Text != "" {
+			m.InsertString(stripCombiningMarks(msg.Text))
+		}
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
+	var cmd tea.Cmd
 	switch msg.Type {
 	case tea.KeyRunes:
 		// A bracketed paste is one atomic undo unit; typed runes coalesce.
@@ -190,6 +223,15 @@ func (m *Model) UpdateKey(msg tea.KeyMsg) Change {
 		m.Redo()
 	case tea.KeyCtrlA:
 		m.SelectAll()
+	case tea.KeyCtrlC:
+		cmd = m.copyCmd(m.SelectedText())
+	case tea.KeyCtrlX:
+		if sel := m.SelectedText(); sel != "" {
+			m.DeleteSelection()
+			cmd = m.copyCmd(sel)
+		}
+	case tea.KeyCtrlV:
+		cmd = m.pasteCmd()
 	case tea.KeyLeft, tea.KeyShiftLeft:
 		m.moveHorizontal(-1, isSelectionKey(msg.Type))
 	case tea.KeyRight, tea.KeyShiftRight:
@@ -221,11 +263,28 @@ func (m *Model) UpdateKey(msg tea.KeyMsg) Change {
 
 	m.clamp()
 	m.ensureCursorVisible()
-	return Change{
-		Content:   beforeText != string(m.text),
-		Cursor:    beforeCursor != m.cursor,
-		Viewport:  beforeViewport != m.viewport,
-		Selection: beforeSelection != m.SelectedText(),
+	return m, cmd
+}
+
+// copyCmd writes text to the clipboard. It returns nil when there is no
+// clipboard wired or nothing selected, so copying an empty selection is inert.
+func (m Model) copyCmd(text string) tea.Cmd {
+	if m.clipboard == nil || text == "" {
+		return nil
+	}
+	cb := m.clipboard
+	return func() tea.Msg { return CopiedMsg{Err: cb.Write(text)} }
+}
+
+// pasteCmd reads the clipboard and returns a PasteMsg for Update to insert.
+func (m Model) pasteCmd() tea.Cmd {
+	if m.clipboard == nil {
+		return nil
+	}
+	cb := m.clipboard
+	return func() tea.Msg {
+		text, err := cb.Read()
+		return PasteMsg{Text: text, Err: err}
 	}
 }
 
@@ -690,6 +749,28 @@ func isWordRune(r rune) bool {
 // terminal rendering. A stray carriage return moves the cursor to column 0,
 // a tab jumps to the next tab stop, and other C0 controls (including ESC,
 // which could inject ANSI) have no place in editable text. Newlines survive.
+// stripCombiningMarks removes non-spacing and enclosing combining marks, which
+// can corrupt terminal rendering when pasted in bulk. Control-character and
+// line-ending normalization is left to sanitizeInput, which insertRunes runs.
+func stripCombiningMarks(s string) string {
+	if strings.IndexFunc(s, isCombiningMark) < 0 {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if isCombiningMark(r) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+func isCombiningMark(r rune) bool {
+	return unicode.Is(unicode.Mn, r) || unicode.Is(unicode.Me, r)
+}
+
 func sanitizeInput(s string) string {
 	needsWork := false
 	for _, r := range s {

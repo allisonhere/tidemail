@@ -5,10 +5,11 @@
 //
 //	go run ./cmd/editortest
 //
-// Keys: ctrl+c / esc quit · arrows move · shift+arrows select ·
-// ctrl+arrows word · home/end · pgup/pgdn · ctrl+a select all ·
-// ctrl+z undo · ctrl+y redo · ctrl+o copy · ctrl+k cut · ctrl+p paste ·
-// bracketed paste.
+// Keys: esc quits · arrows move · shift+arrows select · ctrl+arrows word ·
+// home/end · pgup/pgdn · ctrl+a select all · ctrl+z undo · ctrl+y redo ·
+// ctrl+x cut · ctrl+v paste · bracketed paste. Copy/cut/paste are owned by the
+// editor (wired via SetClipboard); this harness only routes keys and surfaces
+// the resulting CopiedMsg/PasteMsg.
 package main
 
 import (
@@ -20,6 +21,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// sysClipboard adapts internal/clipboard to editor.Clipboard.
+type sysClipboard struct{}
+
+func (sysClipboard) Read() (string, error)   { return clipboard.Read() }
+func (sysClipboard) Write(text string) error { return clipboard.Copy(text) }
 
 var (
 	boxStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
@@ -41,29 +48,11 @@ type model struct {
 	status string
 }
 
-// copiedMsg / pastedMsg carry the result of an async clipboard command so the
-// shell-out never blocks the UI loop.
-type copiedMsg struct{ err error }
-type pastedMsg struct {
-	text string
-	err  error
-}
-
 func initialModel() model {
 	ed := editor.New()
+	ed.SetClipboard(sysClipboard{})
 	ed.SetValue(seed)
 	return model{ed: ed}
-}
-
-func copyCmd(text string) tea.Cmd {
-	return func() tea.Msg { return copiedMsg{err: clipboard.Copy(text)} }
-}
-
-func pasteCmd() tea.Cmd {
-	return func() tea.Msg {
-		text, err := clipboard.Read()
-		return pastedMsg{text: text, err: err}
-	}
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -84,45 +73,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ed.SetSize(ew, eh)
 		m.ready = true
 		return m, nil
-	case copiedMsg:
-		if msg.err != nil {
-			m.status = "copy failed: " + msg.err.Error()
+	case editor.CopiedMsg:
+		if msg.Err != nil {
+			m.status = "copy failed: " + msg.Err.Error()
 		} else {
 			m.status = "copied to clipboard"
 		}
 		return m, nil
-	case pastedMsg:
-		if msg.err != nil {
-			m.status = "paste failed: " + msg.err.Error()
+	case editor.PasteMsg:
+		if msg.Err != nil {
+			m.status = "paste failed: " + msg.Err.Error()
 			return m, nil
 		}
-		m.ed.InsertString(msg.text)
-		m.status = fmt.Sprintf("pasted %d chars", len([]rune(msg.text)))
+		m.ed, _ = m.ed.Update(msg) // editor inserts the pasted text
+		m.status = fmt.Sprintf("pasted %d chars", len([]rune(msg.Text)))
 		return m, nil
 	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyCtrlC, tea.KeyEsc:
+		if msg.Type == tea.KeyEsc {
 			return m, tea.Quit
-		case tea.KeyCtrlO: // copy
-			sel := m.ed.SelectedText()
-			if sel == "" {
-				m.status = "nothing selected"
-				return m, nil
-			}
-			return m, copyCmd(sel)
-		case tea.KeyCtrlK: // cut
-			sel := m.ed.SelectedText()
-			if sel == "" {
-				m.status = "nothing selected"
-				return m, nil
-			}
-			m.ed.DeleteSelection()
-			return m, copyCmd(sel)
-		case tea.KeyCtrlP: // paste via clipboard read (mirrors the app; terminal paste also works)
-			return m, pasteCmd()
 		}
-		m.ed.UpdateKey(msg)
-		return m, nil
+		var cmd tea.Cmd
+		m.ed, cmd = m.ed.Update(msg)
+		return m, cmd
 	}
 	return m, nil
 }
@@ -136,7 +108,7 @@ func (m model) View() string {
 		Selected: func(s string) string { return selStyle.Render(s) },
 	})
 	box := boxStyle.Width(m.w - 2).Render(body)
-	help := helpStyle.Render("ctrl+c/esc quit · shift+arrows select · ctrl+arrows word · ctrl+a all · ctrl+z/y undo/redo · ctrl+o copy · ctrl+k cut · ctrl+p paste")
+	help := helpStyle.Render("esc quit · shift+arrows select · ctrl+arrows word · ctrl+a all · ctrl+z/y undo/redo · ctrl+c copy · ctrl+x cut · ctrl+v paste")
 	status := statusStyle.Render(fmt.Sprintf(
 		"idx=%d  top=%d  size=%dx%d  sel=%q  %s",
 		m.ed.CursorIndex(), m.ed.ViewportTop(), m.w-4, m.h-4, clip(m.ed.SelectedText()), m.status,

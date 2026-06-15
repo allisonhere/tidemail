@@ -12,13 +12,18 @@ func keyRunes(s string) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 }
 
+// apply drives Update in place so the sequential-key tests read naturally,
+// returning any command the key produced (e.g. a clipboard write).
+func apply(e *Model, msg tea.Msg) tea.Cmd {
+	var cmd tea.Cmd
+	*e, cmd = e.Update(msg)
+	return cmd
+}
+
 func TestInsertDeleteSelectAllAndSelectionText(t *testing.T) {
 	var e Model
 
-	ch := e.UpdateKey(keyRunes("hello"))
-	if !ch.Content {
-		t.Fatal("typing should report a content change")
-	}
+	apply(&e, keyRunes("hello"))
 	e.InsertString("\nworld")
 
 	if got := e.Value(); got != "hello\nworld" {
@@ -36,8 +41,8 @@ func TestInsertDeleteSelectAllAndSelectionText(t *testing.T) {
 	}
 
 	e.InsertString("abc")
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyBackspace})
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyDelete})
+	apply(&e, tea.KeyMsg{Type: tea.KeyBackspace})
+	apply(&e, tea.KeyMsg{Type: tea.KeyDelete})
 	if got := e.Value(); got != "ab" {
 		t.Fatalf("backspace/delete value = %q", got)
 	}
@@ -61,16 +66,13 @@ func TestInsertStringReplacesSelection(t *testing.T) {
 func TestPasteKeyReplacesSelection(t *testing.T) {
 	var e Model
 	e.SetValue("hello world")
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlHome})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlHome})
 	for range len("hello") {
-		e.UpdateKey(tea.KeyMsg{Type: tea.KeyShiftRight})
+		apply(&e, tea.KeyMsg{Type: tea.KeyShiftRight})
 	}
 
-	ch := e.UpdateKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("goodbye"), Paste: true})
+	apply(&e, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("goodbye"), Paste: true})
 
-	if !ch.Content || !ch.Selection {
-		t.Fatalf("paste over selection should report content and selection changes: %+v", ch)
-	}
 	if got := e.Value(); got != "goodbye world" {
 		t.Fatalf("value after paste over selection = %q", got)
 	}
@@ -82,9 +84,9 @@ func TestPasteKeyReplacesSelection(t *testing.T) {
 func TestDeleteSelectionHandlesReversedSelection(t *testing.T) {
 	var e Model
 	e.SetValue("alpha beta gamma")
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlEnd})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlEnd})
 	for range len(" gamma") {
-		e.UpdateKey(tea.KeyMsg{Type: tea.KeyShiftLeft})
+		apply(&e, tea.KeyMsg{Type: tea.KeyShiftLeft})
 	}
 
 	e.DeleteSelection()
@@ -101,18 +103,15 @@ func TestKeyboardSelectionAndMovement(t *testing.T) {
 	var e Model
 	e.SetValue("first\nsecond\nthird")
 
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlHome})
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyShiftDown})
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyShiftRight})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlHome})
+	apply(&e, tea.KeyMsg{Type: tea.KeyShiftDown})
+	apply(&e, tea.KeyMsg{Type: tea.KeyShiftRight})
 
 	if got := e.SelectedText(); got != "first\ns" {
 		t.Fatalf("selected text after shift movement = %q", got)
 	}
 
-	ch := e.UpdateKey(tea.KeyMsg{Type: tea.KeyEnd})
-	if !ch.Selection || !ch.Cursor {
-		t.Fatalf("clearing selection with movement should report selection and cursor change: %+v", ch)
-	}
+	apply(&e, tea.KeyMsg{Type: tea.KeyEnd})
 	if got := e.SelectedText(); got != "" {
 		t.Fatalf("selection should clear after plain movement, got %q", got)
 	}
@@ -122,9 +121,9 @@ func TestViewMarksSelectedText(t *testing.T) {
 	var e Model
 	e.SetSize(20, 2)
 	e.SetValue("select me")
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlHome})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlHome})
 	for range len("select") {
-		e.UpdateKey(tea.KeyMsg{Type: tea.KeyShiftRight})
+		apply(&e, tea.KeyMsg{Type: tea.KeyShiftRight})
 	}
 
 	view := e.View(Options{
@@ -143,7 +142,7 @@ func TestViewDoesNotExceedConfiguredWidth(t *testing.T) {
 	var e Model
 	e.SetSize(5, 2)
 	e.SetValue("abcde")
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlHome})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlHome})
 
 	view := e.View(Options{Cursor: "|"})
 	for _, line := range strings.Split(view, "\n") {
@@ -170,7 +169,7 @@ func TestViewWrapsWideRunesByTerminalCellWidth(t *testing.T) {
 	var e Model
 	e.SetSize(4, 3)
 	e.SetValue("界界界")
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlHome})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlHome})
 
 	view := e.View(Options{Cursor: "|"})
 
@@ -211,17 +210,17 @@ func TestViewStyledSelectionStaysWithinConfiguredDisplayWidth(t *testing.T) {
 func TestWordMovementLeftRight(t *testing.T) {
 	var e Model
 	e.SetValue("foo bar baz")
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlHome})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlHome})
 
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlRight})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlRight})
 	if got := e.CursorIndex(); got != 3 {
 		t.Fatalf("ctrl+right should land after first word, cursor = %d", got)
 	}
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlRight})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlRight})
 	if got := e.CursorIndex(); got != 7 {
 		t.Fatalf("ctrl+right should land after second word, cursor = %d", got)
 	}
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlLeft})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlLeft})
 	if got := e.CursorIndex(); got != 4 {
 		t.Fatalf("ctrl+left should land at start of word, cursor = %d", got)
 	}
@@ -230,16 +229,13 @@ func TestWordMovementLeftRight(t *testing.T) {
 func TestWordSelectionExtendsSelection(t *testing.T) {
 	var e Model
 	e.SetValue("foo bar baz")
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlHome})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlHome})
 
-	ch := e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlShiftRight})
-	if !ch.Selection {
-		t.Fatalf("ctrl+shift+right should report a selection change: %+v", ch)
-	}
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlShiftRight})
 	if got := e.SelectedText(); got != "foo" {
 		t.Fatalf("ctrl+shift+right should select first word, got %q", got)
 	}
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlShiftRight})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlShiftRight})
 	if got := e.SelectedText(); got != "foo bar" {
 		t.Fatalf("ctrl+shift+right should extend to second word, got %q", got)
 	}
@@ -249,21 +245,21 @@ func TestBackspaceAndDeleteRemoveSelection(t *testing.T) {
 	selectABC := func() Model {
 		var e Model
 		e.SetValue("abcdef")
-		e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlHome})
+		apply(&e, tea.KeyMsg{Type: tea.KeyCtrlHome})
 		for range 3 {
-			e.UpdateKey(tea.KeyMsg{Type: tea.KeyShiftRight})
+			apply(&e, tea.KeyMsg{Type: tea.KeyShiftRight})
 		}
 		return e
 	}
 
 	bs := selectABC()
-	bs.UpdateKey(tea.KeyMsg{Type: tea.KeyBackspace})
+	apply(&bs, tea.KeyMsg{Type: tea.KeyBackspace})
 	if got := bs.Value(); got != "def" {
 		t.Fatalf("backspace over selection = %q, want %q", got, "def")
 	}
 
 	del := selectABC()
-	del.UpdateKey(tea.KeyMsg{Type: tea.KeyDelete})
+	apply(&del, tea.KeyMsg{Type: tea.KeyDelete})
 	if got := del.Value(); got != "def" {
 		t.Fatalf("delete over selection = %q, want %q", got, "def")
 	}
@@ -276,15 +272,15 @@ func TestHomeEndOperateOnLogicalNotWrappedLine(t *testing.T) {
 	var e Model
 	e.SetSize(5, 5)
 	e.SetValue("abcdefghij") // wraps to "abcde" / "fghij"
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlEnd})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlEnd})
 
 	// Cursor sits on the second visual row; Home must jump to the logical
 	// line start (index 0), not the wrapped row start (index 5).
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyHome})
+	apply(&e, tea.KeyMsg{Type: tea.KeyHome})
 	if got := e.CursorIndex(); got != 0 {
 		t.Fatalf("home should go to logical line start, cursor = %d", got)
 	}
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyEnd})
+	apply(&e, tea.KeyMsg{Type: tea.KeyEnd})
 	if got := e.CursorIndex(); got != 10 {
 		t.Fatalf("end should go to logical line end, cursor = %d", got)
 	}
@@ -295,17 +291,17 @@ func TestViewportStableAtDocumentEdges(t *testing.T) {
 	e.SetSize(4, 2)
 	e.SetValue("a\nb\nc\nd\ne\nf") // six single-rune visual lines
 
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlEnd})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlEnd})
 	for range 3 { // over-page past the end
-		e.UpdateKey(tea.KeyMsg{Type: tea.KeyPgDown})
+		apply(&e, tea.KeyMsg{Type: tea.KeyPgDown})
 	}
 	if got := e.ViewportTop(); got != 4 { // 6 lines - height 2
 		t.Fatalf("viewport should clamp to last page at end, top = %d", got)
 	}
 
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlHome})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlHome})
 	for range 3 { // over-page past the start
-		e.UpdateKey(tea.KeyMsg{Type: tea.KeyPgUp})
+		apply(&e, tea.KeyMsg{Type: tea.KeyPgUp})
 	}
 	if got := e.ViewportTop(); got != 0 {
 		t.Fatalf("viewport should clamp to 0 at start, top = %d", got)
@@ -335,12 +331,12 @@ func TestViewSelectionDoesNotLeakStyles(t *testing.T) {
 	var e Model
 	e.SetSize(20, 1)
 	e.SetValue("abcdefgh")
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlHome})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlHome})
 	for range 3 { // move past "abc"
-		e.UpdateKey(tea.KeyMsg{Type: tea.KeyRight})
+		apply(&e, tea.KeyMsg{Type: tea.KeyRight})
 	}
 	for range 2 { // select "de", leaving the cursor past the selection
-		e.UpdateKey(tea.KeyMsg{Type: tea.KeyShiftRight})
+		apply(&e, tea.KeyMsg{Type: tea.KeyShiftRight})
 	}
 
 	view := e.View(Options{
@@ -381,11 +377,11 @@ func TestUndoRedoRoundTrip(t *testing.T) {
 func TestUndoCoalescesTypingButBreaksOnWordBoundary(t *testing.T) {
 	var e Model
 	for _, r := range "foo" {
-		e.UpdateKey(keyRunes(string(r)))
+		apply(&e, keyRunes(string(r)))
 	}
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeySpace})
+	apply(&e, tea.KeyMsg{Type: tea.KeySpace})
 	for _, r := range "bar" {
-		e.UpdateKey(keyRunes(string(r)))
+		apply(&e, keyRunes(string(r)))
 	}
 	if got := e.Value(); got != "foo bar" {
 		t.Fatalf("typed value = %q", got)
@@ -407,14 +403,14 @@ func TestUndoCoalescesTypingButBreaksOnWordBoundary(t *testing.T) {
 
 func TestNewEditInvalidatesRedo(t *testing.T) {
 	var e Model
-	e.UpdateKey(keyRunes("a"))
-	e.UpdateKey(keyRunes("b")) // coalesces with "a" into one unit
+	apply(&e, keyRunes("a"))
+	apply(&e, keyRunes("b")) // coalesces with "a" into one unit
 
 	e.Undo()
 	if got := e.Value(); got != "" {
 		t.Fatalf("value after undo = %q", got)
 	}
-	e.UpdateKey(keyRunes("c"))
+	apply(&e, keyRunes("c"))
 	if e.Redo() {
 		t.Fatal("redo should be invalidated after a new edit")
 	}
@@ -427,7 +423,7 @@ func TestUndoRestoresCursorAndSelection(t *testing.T) {
 	var e Model
 	e.SetValue("hello")
 	e.SelectAll()
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyBackspace}) // delete the selection
+	apply(&e, tea.KeyMsg{Type: tea.KeyBackspace}) // delete the selection
 
 	if got := e.Value(); got != "" {
 		t.Fatalf("value after deleting selection = %q", got)
@@ -448,26 +444,23 @@ func TestSetValueResetsHistory(t *testing.T) {
 	if e.Undo() {
 		t.Fatal("freshly loaded content should not be undoable")
 	}
-	ch := e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlZ})
-	if ch.Content {
-		t.Fatalf("ctrl+z on a reset document should not change content: %+v", ch)
-	}
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlZ})
 	if got := e.Value(); got != "draft" {
-		t.Fatalf("value should be unchanged, got %q", got)
+		t.Fatalf("ctrl+z on a reset document should leave content unchanged, got %q", got)
 	}
 }
 
 func TestUndoRedoViaKeys(t *testing.T) {
 	var e Model
-	e.UpdateKey(keyRunes("x"))
+	apply(&e, keyRunes("x"))
 
-	ch := e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlZ})
-	if !ch.Content || e.Value() != "" {
-		t.Fatalf("ctrl+z should undo: change=%+v value=%q", ch, e.Value())
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlZ})
+	if e.Value() != "" {
+		t.Fatalf("ctrl+z should undo, value=%q", e.Value())
 	}
-	ch = e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlY})
-	if !ch.Content || e.Value() != "x" {
-		t.Fatalf("ctrl+y should redo: change=%+v value=%q", ch, e.Value())
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlY})
+	if e.Value() != "x" {
+		t.Fatalf("ctrl+y should redo, value=%q", e.Value())
 	}
 }
 
@@ -580,7 +573,7 @@ func TestVerticalMovementIsMonotonicAcrossLinesAndWraps(t *testing.T) {
 	var e Model
 	e.SetSize(10, 10)
 	e.SetValue("first\nsecond line\nthird\nfourth wraps because it is long\nlast")
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlHome})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlHome})
 
 	// visualPosition must be monotonic over the whole buffer — the caret at a
 	// line end must never report as a far-away row (the bug that made up/down
@@ -595,7 +588,7 @@ func TestVerticalMovementIsMonotonicAcrossLinesAndWraps(t *testing.T) {
 	}
 
 	// Pressing Down repeatedly must never move the caret to an earlier row.
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlHome})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlHome})
 	last := -1
 	for k := 0; k < 14; k++ {
 		r, _ := e.visualPosition(e.CursorIndex())
@@ -603,7 +596,7 @@ func TestVerticalMovementIsMonotonicAcrossLinesAndWraps(t *testing.T) {
 			t.Fatalf("Down moved caret up: row %d after row %d", r, last)
 		}
 		last = r
-		e.UpdateKey(tea.KeyMsg{Type: tea.KeyDown})
+		apply(&e, tea.KeyMsg{Type: tea.KeyDown})
 	}
 	if last == 0 {
 		t.Fatal("Down never advanced past the first row")
@@ -617,7 +610,7 @@ func TestVerticalMovementIsMonotonicAcrossLinesAndWraps(t *testing.T) {
 			t.Fatalf("Up moved caret down: row %d after row %d", r, last)
 		}
 		last = r
-		e.UpdateKey(tea.KeyMsg{Type: tea.KeyUp})
+		apply(&e, tea.KeyMsg{Type: tea.KeyUp})
 	}
 }
 
@@ -625,14 +618,14 @@ func TestWrappedVerticalMovementAndViewport(t *testing.T) {
 	var e Model
 	e.SetSize(5, 2)
 	e.SetValue("abcdefghij\nklmno\npqrst")
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyCtrlHome})
+	apply(&e, tea.KeyMsg{Type: tea.KeyCtrlHome})
 
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyDown})
+	apply(&e, tea.KeyMsg{Type: tea.KeyDown})
 	if got := e.CursorIndex(); got != 5 {
 		t.Fatalf("cursor after moving down one wrapped row = %d", got)
 	}
 
-	e.UpdateKey(tea.KeyMsg{Type: tea.KeyPgDown})
+	apply(&e, tea.KeyMsg{Type: tea.KeyPgDown})
 	if top := e.ViewportTop(); top == 0 {
 		t.Fatalf("page down should move viewport for a short editor")
 	}
