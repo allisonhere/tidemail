@@ -157,6 +157,13 @@ Settings are opened with `S`.
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings
 - About: repository and issue links
 
+## Related projects
+
+TideMail grew alongside two of its own libraries:
+
+- **[tideui](https://github.com/allisonhere/tideui)** — a themeable multi-pane terminal UI toolkit for Bubble Tea and Lipgloss. It was extracted from this project and used to build the base of TideMail's interface (the multi-pane layout, theming, and styles live on in `internal/ui`).
+- **[ripple](https://github.com/allisonhere/ripple)** — the keyboard-first text editor behind the compose message body, later extracted into a standalone library. TideMail depends on it directly (`github.com/allisonhere/ripple`).
+
 ## Development
 
 Run the full suite:
