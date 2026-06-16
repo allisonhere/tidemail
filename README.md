@@ -34,6 +34,7 @@ go build -o tidemail .
 - Spam/auth headers — SPF, DKIM, DMARC results color-coded in header view
 - Message text can be copied from the content pane with Vim-style `v`/`V` selection, then `y` or `ctrl+c`
 - **Owned compose editor** for the message body — text selection (`shift`/`ctrl+shift`+arrows), select-all (`ctrl+a`), undo/redo (`ctrl+z`/`ctrl+y`), system-clipboard copy/cut/paste (`ctrl+c`/`ctrl+x`/`ctrl+v`), word movement, and soft-wrap
+- **Optional vim editing in compose** — enable it in Settings → Editor (or `[display] compose_vim`); the body gets Normal/Insert/Visual modes, motions (`hjkl`, `w/b/e`, `0/^/$`, `gg/G`, counts), edits (`x`, `dd`, `yy`, `p`, `dw`, `cw`), visual `v`/`V`, `u`/`ctrl+r`, and a `:` command line where `:w`/`:wq` send and `:q` cancels. Off by default
 - IMAP/SMTP accounts using passwords or app passwords (stored in system keychain)
 - Account manager for adding, editing, deleting, and discovering mailboxes
 - Contacts manager for curated autocomplete, manual entries, adding seen senders, composing to selected contacts, and vCard import/export
@@ -113,7 +114,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 
 | Key | Action |
 |-----|--------|
-| `:` or `Ctrl+P` | Command palette (`Ctrl+P` stays paste inside compose; `:` also opens it in compose, AI summary, and save-attachments overlays) |
+| `:` or `Ctrl+P` | Command palette (also contextual commands in compose, AI summary, and save-attachments overlays). In a vim compose body `:` is the editor's command line — use `Ctrl+P` there |
 | `m` | Move selected message(s) to folder/label |
 | `M` | Account manager |
 | `C` | Contacts manager |
@@ -144,6 +145,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 | `T` | Theme picker |
 | `Ctrl+D` | Save attachments to folder |
 | `Ctrl+G` | AI grammar & spell check (compose) |
+| Vim editing (compose) | Optional — enable in Settings → Editor; `:w`/`:wq` send, `:q` or double-`Esc` cancels |
 | `?` | Help |
 | `q` | Quit |
 
@@ -152,10 +154,13 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 Settings are opened with `S`.
 
 - Display: icons, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, and quit confirmation
-- Accounts: edit account details and set a per-account `sync_minutes` interval for automatic background refresh
+- Editor: vim keys in the compose body (off by default)
 - Updates: check, install, restart, or copy a manual install command
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings
+- Advanced: view logs and feed max body size
 - About: repository and issue links
+
+(Account details are managed in the Account Manager — press `M` — not in Settings.)
 
 ## Related projects
 

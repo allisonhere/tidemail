@@ -317,8 +317,8 @@ func TestSettingsSidebarDownChangesSection(t *testing.T) {
 
 	next, _, _ := s.Update(tea.KeyMsg{Type: tea.KeyDown}, DefaultKeys)
 
-	if next.activeSection != ssFeeds {
-		t.Fatalf("expected active section to move to FEEDS, got %v", next.activeSection)
+	if next.activeSection != ssEditor {
+		t.Fatalf("expected active section to move to EDITOR, got %v", next.activeSection)
 	}
 	if next.focusedField != sfBackToSections {
 		t.Fatalf("expected sidebar navigation to keep back-link focus within detail pane, got %v", next.focusedField)
@@ -328,7 +328,7 @@ func TestSettingsSidebarDownChangesSection(t *testing.T) {
 func TestSettingsSidebarRightEntersDetail(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	s.setFocusedPane(settingsPaneSidebar)
-	s.setActiveSection(ssFeeds)
+	s.setActiveSection(ssEditor)
 
 	next, _, _ := s.Update(tea.KeyMsg{Type: tea.KeyRight}, DefaultKeys)
 
@@ -360,7 +360,7 @@ func TestSettingsAISidebarRightEntersDetailOnAPIKey(t *testing.T) {
 func TestSettingsEscMovesToSidebarThenCancelsFromSidebar(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	s.setFocusedPane(settingsPaneDetail)
-	s.setActiveSection(ssFeeds)
+	s.setActiveSection(ssAdvanced)
 	s.feedMaxBodyInput.SetValue("20")
 
 	next, _, done := s.Update(tea.KeyMsg{Type: tea.KeyEsc}, DefaultKeys)
@@ -1048,7 +1048,7 @@ func TestSettingsSectionsUseSharedRightPaneGroupHeaders(t *testing.T) {
 		want    string
 	}{
 		{section: ssDisplay, want: "━ DISPLAY"},
-		{section: ssFeeds, want: "━ STORAGE"},
+		{section: ssEditor, want: "━ COMPOSE"},
 		{section: ssUpdates, want: "━ UPDATES"},
 		{section: ssAI, want: "━ PROVIDER CREDENTIALS"},
 	}
@@ -1356,16 +1356,16 @@ func TestSettingsAIMarkReadRowStaysSingleLineInNarrowPane(t *testing.T) {
 	t.Fatal("expected mark-read row to be present")
 }
 
-func TestSettingsFeedsSectionShowsFeedMaxSizeFieldOnly(t *testing.T) {
+func TestSettingsAdvancedSectionShowsFeedMaxSizeField(t *testing.T) {
 	cfg := config.DefaultConfig()
 
 	s := newSettings(cfg, settingsUpdateState{})
-	s.setActiveSection(ssFeeds)
+	s.setActiveSection(ssAdvanced)
 
 	view := ansi.Strip(s.View(96, 24, newManagerChrome(96, CatppuccinMocha, false)))
 
 	if !strings.Contains(view, "Max body size (MiB)") {
-		t.Fatalf("expected feeds settings view to contain feed max size, got %q", view)
+		t.Fatalf("expected advanced settings view to contain feed max size, got %q", view)
 	}
 	for _, unwanted := range []string{"GReader API URL", "Login", "Password", "Source"} {
 		if strings.Contains(view, unwanted) {

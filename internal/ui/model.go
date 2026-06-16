@@ -1906,6 +1906,8 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.cfg = m.settings.ApplyTo(m.cfg)
 			m.showUnreadOnly = m.cfg.Display.DefaultUnreadOnly
+			// Apply the vim toggle to future compose editors (read in newEditorArea).
+			setEditorVimMode(m.cfg.Display.ComposeVim)
 			merged, _ := MergedThemeFromConfig(m.cfg)
 			m.styles = BuildStyles(merged, m.cfg.Display.Density)
 			if ThemeUsesASCII(merged.Name) {

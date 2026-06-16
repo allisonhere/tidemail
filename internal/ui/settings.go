@@ -70,6 +70,7 @@ const (
 	sfConfirmQuit
 	sfShowHeaders
 	sfNotifications
+	sfComposeVim
 	// sfBackToSections is the first focusable target in the detail pane.
 	// Activating it restores focus to the sidebar so users never auto-land on a text input.
 	sfBackToSections
@@ -79,7 +80,7 @@ type settingsSection int
 
 const (
 	ssDisplay settingsSection = iota
-	ssFeeds
+	ssEditor
 	ssUpdates
 	ssAI
 	ssAdvanced
@@ -150,7 +151,7 @@ var (
 	ollamaModelLabels     = []string{"llama3.2", "llama3.1", "mistral", "gemma3", "phi4"}
 	settingsSectionLabels = [settingsSectionCount]string{
 		"DISPLAY",
-		"ACCOUNTS",
+		"EDITOR",
 		"UPDATES",
 		"AI",
 		"ADVANCED",
@@ -230,6 +231,7 @@ type Settings struct {
 	confirmQuit           bool
 	showHeaders           bool
 	notifications         bool
+	composeVim            bool
 	layoutDensityIdx      int // 0 = comfortable, 1 = compact
 	readingWidthInput     textinput.Model
 	browserInput          textinput.Model
@@ -322,6 +324,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		confirmQuit:           cfg.Display.ConfirmQuit,
 		showHeaders:           cfg.Display.ShowHeaders,
 		notifications:         cfg.Display.Notifications,
+		composeVim:            cfg.Display.ComposeVim,
 		layoutDensityIdx:      layoutIdx,
 		readingWidthInput:     mkInput(strconv.Itoa(cfg.Display.ReadingWidth), "0 (no limit)", false),
 		browserInput:          mkInput(cfg.Display.Browser, "xdg-open", false),
@@ -347,7 +350,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		focusedPane:           settingsPaneSidebar,
 		sectionField: [settingsSectionCount]settingsField{
 			ssDisplay:  sfBackToSections,
-			ssFeeds:    sfBackToSections,
+			ssEditor:   sfBackToSections,
 			ssUpdates:  sfBackToSections,
 			ssAI:       sfBackToSections,
 			ssAdvanced: sfBackToSections,
@@ -389,6 +392,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.ConfirmQuit = s.confirmQuit
 	cfg.Display.ShowHeaders = s.showHeaders
 	cfg.Display.Notifications = s.notifications
+	cfg.Display.ComposeVim = s.composeVim
 	if w, err := strconv.Atoi(strings.TrimSpace(s.readingWidthInput.Value())); err == nil {
 		cfg.Display.ReadingWidth = max(0, w)
 	}
@@ -606,8 +610,8 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
 		return append(fields, sfActionableLinks, sfFilterLinks, sfBrowser, sfConfirmQuit, sfShowHeaders, sfNotifications)
-	case ssFeeds:
-		return []settingsField{sfBackToSections, sfFeedMaxBody}
+	case ssEditor:
+		return []settingsField{sfBackToSections, sfComposeVim}
 	case ssUpdates:
 		fields := []settingsField{sfBackToSections, sfUpdateCheckOnStartup, sfUpdateCheckNow}
 		if s.updateNowActionVisible() {
@@ -638,7 +642,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		fields = append(fields, sfTestAIConnection, sfSavePath, sfMarkReadOnSummarize)
 		return fields
 	case ssAdvanced:
-		return []settingsField{sfBackToSections, sfViewLogs}
+		return []settingsField{sfBackToSections, sfViewLogs, sfFeedMaxBody}
 
 	case ssAbout:
 		return []settingsField{sfBackToSections, sfAboutRepo, sfAboutIssues}
@@ -1116,6 +1120,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfComposeVim:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.composeVim = !s.composeVim
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfShowHeaders:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.showHeaders = !s.showHeaders
@@ -1498,9 +1511,9 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addToggle("Show email headers", s.showHeaders, sfShowHeaders)
 		b.addToggle("Desktop notifications", s.notifications, sfNotifications)
 
-	case ssFeeds:
-		b.addGroup("Storage")
-		b.addInput("Max body size (MiB)", s.feedMaxBodyInput, sfFeedMaxBody)
+	case ssEditor:
+		b.addGroup("Compose")
+		b.addToggle("Vim keys in compose", s.composeVim, sfComposeVim)
 
 	case ssUpdates:
 		b.addGroup("Updates")
@@ -1740,6 +1753,8 @@ func (b *settingsFormBuilder) addAITestConnection() {
 func (b *settingsFormBuilder) addAdvancedSection() {
 	b.addGroup("Logs")
 	b.addAction("View Logs", "review errors and status messages", sfViewLogs)
+	b.addGroup("Storage")
+	b.addInput("Max body size (MiB)", b.s.feedMaxBodyInput, sfFeedMaxBody)
 }
 
 type aiConnectionState int

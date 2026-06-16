@@ -124,6 +124,21 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 			},
 		},
 		{
+			name: "Message Body Editor — Vim Mode",
+			entries: []entry{
+				{"enable", "Settings → Editor → \"Vim keys in compose\" (off by default)"},
+				{"i a o O I A", "enter Insert mode (the body starts in Insert)"},
+				{"esc", "Insert → Normal; a second esc from Normal cancels (save/discard prompt)"},
+				{"h j k l / arrows", "move; w/b/e by word; 0/^/$ line; gg/G document; counts e.g. 3j"},
+				{"x dd yy p P D C s", "delete / yank / paste / change"},
+				{"d c y + motion", "operators, e.g. dw, cw, d$"},
+				{"v / V", "visual / visual-line selection"},
+				{"u / ctrl+r", "undo / redo"},
+				{":w :wq :x", "send the message"},
+				{":q", "cancel compose (save/discard prompt)"},
+			},
+		},
+		{
 			name: "Account Manager Modal",
 			entries: []entry{
 				{keys.Up.Help().Key + "/" + keys.Down.Help().Key, "move through accounts or form fields"},

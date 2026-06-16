@@ -10,8 +10,8 @@ github.com/alecthomas/chroma/v2 v2.20.0 h1:sfIHpxPyR07/Oylvmcai3X/exDlE8+FA820NT
 github.com/alecthomas/chroma/v2 v2.20.0/go.mod h1:e7tViK0xh/Nf4BYHl00ycY6rV7b8iXBksI9E359yNmA=
 github.com/alecthomas/repr v0.5.1 h1:E3G4t2QbHTSNpPKBgMTln5KLkZHLOcU7r37J4pXBuIg=
 github.com/alecthomas/repr v0.5.1/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
-github.com/allisonhere/ripple v0.1.0 h1:BKKqUoq4quf15Oh18inFExl7/nrTgHVfTZB0p8jQR7o=
-github.com/allisonhere/ripple v0.1.0/go.mod h1:yq1fAzYCYPE3JZbdI1HwhCBu9TgGK892fbt6E00CCOE=
+github.com/allisonhere/ripple v0.2.0 h1:+ki77g240VxelEWAkajP6nhpPs4O4X/0aWWmIM52mzI=
+github.com/allisonhere/ripple v0.2.0/go.mod h1:tUOwwHoip07xZ2C+xDtwLFF5dkPCUliQ8OqL6FEbO+I=
 github.com/andybalholm/cascadia v1.3.2 h1:3Xi6Dw5lHF15JtdcmAHD3i1+T8plmv7BQ/nsViSLyss=
 github.com/andybalholm/cascadia v1.3.2/go.mod h1:7gtRlve5FxPPgIgX36uWBX58OdBsSS6lUvCFb+h7KvU=
 github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=

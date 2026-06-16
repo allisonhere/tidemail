@@ -2,6 +2,44 @@
 
 All notable changes to TideMail are documented in this file.
 
+## v0.6.0
+
+### Added
+
+- **Optional vim (modal) editing in the compose body.** Turn it on in
+  Settings → Editor (or `[display] compose_vim` in config). The message body
+  gains Normal / Insert / Visual modes with the common vim grammar:
+  - Motions: `h j k l`, `w b e`, `0 ^ $`, `gg G`, and numeric counts (e.g. `3j`);
+    arrows work too.
+  - Edits: `x`, `dd`, `yy`, `p`/`P`, `D`, `C`, `s`, and the `d`/`c`/`y` operators
+    with motions (`dw`, `cw`, `d$`, …).
+  - Visual `v` / `V`, undo/redo `u` / `ctrl+r`.
+  - A `:` command line where `:w` / `:wq` / `:x` send and `:q` (or double-`Esc`)
+    cancels.
+  - A mode indicator in the compose title and a mode-aware cursor — a block in
+    Normal/Visual, a thin bar in Insert.
+
+  Vim mode is **off by default**, so nothing changes unless you enable it. It is
+  powered by the [ripple](https://github.com/allisonhere/ripple) editor library.
+- A new **Editor** category in Settings, home to the vim toggle.
+
+### Changed
+
+- **`ctrl+p` now opens the command palette everywhere** (it previously pasted
+  inside compose). `ctrl+v` is the single paste key. In a vim compose body, `:`
+  is the editor's command line — use `ctrl+p` to open the palette there.
+- Settings reorganized: the mislabeled "Accounts" section (which only held the
+  feed max-body size — not account settings) is replaced by the new **Editor**
+  category, and the feed max-body knob moved to **Advanced**. Account details
+  are still managed in the Account Manager (`M`).
+- Replying now places the cursor at the top of the body, above the quoted text,
+  ready to type.
+
+### Internal
+
+- The compose editor library [ripple](https://github.com/allisonhere/ripple) is
+  bumped to v0.2.0, which adds the opt-in vim mode.
+
 ## v0.5.2
 
 ### Internal
