@@ -1649,7 +1649,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// (`:w`/`:q`); there we fall through so the key reaches handleCompose → the
 	// body editor. ctrl+p always opens the palette, so it stays reachable from
 	// the vim body (where `:` is taken) and behaves the same as in the main UI.
-	if keyMatches(msg, m.keys.Command) && !(msg.String() == ":" && m.composeBodyIsVim()) {
+	if keyMatches(msg, m.keys.Command) && (msg.String() != ":" || !m.composeBodyIsVim()) {
 		switch m.overlay {
 		case overlayCompose:
 			if !m.compose.picker.active {
