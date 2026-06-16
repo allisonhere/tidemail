@@ -575,3 +575,25 @@ func TestComposeEditAutosavesDraft(t *testing.T) {
 		t.Fatalf("expected successful DraftSavedMsg, got %#v", saved)
 	}
 }
+
+func TestSplitReplyAndQuote(t *testing.T) {
+	body := "My reply here.\n\nOn bob@example.com wrote:\n> original line\n> more"
+	reply, quote := splitReplyAndQuote(body)
+	if reply != "My reply here." {
+		t.Fatalf("reply = %q, want %q", reply, "My reply here.")
+	}
+	if reply+quote != body {
+		t.Fatalf("reply+quote != body:\n got %q\nwant %q", reply+quote, body)
+	}
+	// No quote → whole body is the reply.
+	r2, q2 := splitReplyAndQuote("just a new message")
+	if r2 != "just a new message" || q2 != "" {
+		t.Fatalf("no-quote split = (%q,%q)", r2, q2)
+	}
+	// Forward header is a boundary too.
+	fb := "see below\n\n---------- Forwarded message ----------\nFrom: a@b.com"
+	rf, qf := splitReplyAndQuote(fb)
+	if rf != "see below" || rf+qf != fb {
+		t.Fatalf("forward split = (%q,%q)", rf, qf)
+	}
+}

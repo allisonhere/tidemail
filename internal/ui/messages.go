@@ -113,6 +113,11 @@ func (m Model) renderMessagesPane() string {
 	if m.showUnreadOnly {
 		title += " (unread)"
 	}
+	// Surface an active multi-selection so it's clear a bulk action (d/a/m/x)
+	// will apply to those messages, not just the focused row.
+	if n := len(m.selectedMessages); n > 0 {
+		title += fmt.Sprintf("  ✓ %d selected", n)
+	}
 
 	var headerLine string
 	if m.searchMode {

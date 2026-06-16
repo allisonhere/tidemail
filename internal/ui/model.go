@@ -164,8 +164,9 @@ type Model struct {
 	movePicker       movePicker
 	filterManager    filterManager
 
-	grammarOriginal  string
-	grammarCorrected string
+	grammarOriginal    string
+	grammarCorrected   string
+	grammarQuoteSuffix string // quoted/forwarded text held aside during a grammar check
 
 	logBuffer []logEntry
 
@@ -1490,6 +1491,14 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.listOffset = m.messageCursor - visible + 1
 				}
 			}
+			// Preview the now-focused message, just like cursor navigation, so the
+			// user sees what they're advancing through while multi-selecting.
+			if !m.selectedDraftsMailbox() {
+				if msg2 := m.currentRowMessage(); msg2 != nil {
+					m.setViewportForCurrentRow()
+					return m, m.focusedMessageChangedCmd(*msg2)
+				}
+			}
 			return m, nil
 		}
 		return m, nil
@@ -1759,13 +1768,20 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayGrammarPreview:
 		switch {
 		case keyMatches(msg, m.keys.Yes):
-			m.compose.bodyInput.SetValue(m.grammarCorrected)
+			m.compose.bodyInput.SetValue(m.grammarCorrected + m.grammarQuoteSuffix)
+			m.grammarQuoteSuffix = ""
 			m.compose.statusMsg = "grammar checked"
 			m.compose.isErr = false
 			m.overlay = overlayCompose
+			// Return focus to the body at the top in Insert mode — SetValue parks
+			// the caret at the end (inside the quote, off-screen), which made it
+			// look like typing did nothing.
+			m.compose.focusBodyAtStart()
 		case keyMatches(msg, m.keys.No), keyMatches(msg, m.keys.Cancel):
+			m.grammarQuoteSuffix = ""
 			m.compose.statusMsg = ""
 			m.overlay = overlayCompose
+			m.compose.focusBodyAtStart()
 		}
 		return m, nil
 
@@ -2012,15 +2028,17 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	// Intercept grammar check key before compose gets it
 	if km, ok := msg.(tea.KeyMsg); ok && keyMatches(km, m.keys.GrammarCheck) {
-		body := m.compose.bodyInput.Value()
-		if body == "" {
+		// Only check the reply the user wrote, not the quoted/forwarded original.
+		reply, quote := splitReplyAndQuote(m.compose.bodyInput.Value())
+		if strings.TrimSpace(reply) == "" {
 			m.compose.statusMsg = "nothing to check"
 		} else if m.summarizer == nil {
 			m.compose.statusMsg = "AI not configured — press S to open settings"
 		} else {
 			m.compose.busy = true
 			m.compose.statusMsg = "checking grammar..."
-			return m, m.grammarCheckCmd(body)
+			m.grammarQuoteSuffix = quote
+			return m, m.grammarCheckCmd(reply)
 		}
 	}
 	if km, ok := msg.(tea.KeyMsg); ok && keyMatches(km, m.keys.PasteText) && !m.compose.picker.active {

@@ -249,6 +249,37 @@ func quoteReply(body, from string) string {
 	return buf.String()
 }
 
+// splitReplyAndQuote separates the reply the user wrote from the quoted or
+// forwarded original below it, so grammar check only touches the user's text.
+// quote keeps its leading blank-line separator and attribution line, so
+// reply+quote reconstructs the original body exactly. quote is "" when there is
+// no quoted block.
+func splitReplyAndQuote(body string) (reply, quote string) {
+	lines := strings.Split(body, "\n")
+	boundary := -1
+	for i, ln := range lines {
+		t := strings.TrimSpace(ln)
+		if (strings.HasPrefix(t, "On ") && strings.HasSuffix(t, "wrote:")) ||
+			strings.Contains(t, "---------- Forwarded message") ||
+			strings.HasPrefix(ln, "> ") {
+			boundary = i
+			break
+		}
+	}
+	if boundary < 0 {
+		return body, ""
+	}
+	idx := 0
+	for i := 0; i < boundary; i++ {
+		idx += len(lines[i]) + 1 // +1 for the '\n' that Split removed
+	}
+	// Pull the blank-line separator into the quote so reply+quote round-trips.
+	for idx > 0 && body[idx-1] == '\n' {
+		idx--
+	}
+	return body[:idx], body[idx:]
+}
+
 // quoteForward formats a forwarded message block with headers.
 func quoteForward(body string, original db.Message) string {
 	var buf strings.Builder
