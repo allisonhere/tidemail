@@ -229,6 +229,10 @@ func (m Model) CloseSessions() {
 func NewModel(database *db.DB, cfg config.Config, currentVersion string, previewManualUpdate bool) Model {
 	merged, themeIdx := MergedThemeFromConfig(cfg)
 
+	// Compose body editors pick up vim mode from config via this package var
+	// (read in newEditorArea), the same way the clipboard is injected.
+	setEditorVimMode(cfg.Display.ComposeVim)
+
 	si := textinput.New()
 	si.Placeholder = "search messages..."
 	si.CharLimit = 100
@@ -1621,8 +1625,22 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// composeBodyIsVim reports whether the compose overlay is active with the body
+// focused in vim mode — the one place `:` belongs to the editor's command line
+// rather than TideMail's command palette.
+func (m Model) composeBodyIsVim() bool {
+	return m.overlay == overlayCompose &&
+		m.compose.focusedField == composeFieldBody &&
+		m.compose.bodyInput.vimMode()
+}
+
 func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if msg.String() == ":" {
+	// The command palette keys (`:` / ctrl+p) open it over an overlay — except
+	// `:` in the vim compose body, where it's the editor's command line
+	// (`:w`/`:q`); there we fall through so the key reaches handleCompose → the
+	// body editor. ctrl+p always opens the palette, so it stays reachable from
+	// the vim body (where `:` is taken) and behaves the same as in the main UI.
+	if keyMatches(msg, m.keys.Command) && !(msg.String() == ":" && m.composeBodyIsVim()) {
 		switch m.overlay {
 		case overlayCompose:
 			if !m.compose.picker.active {

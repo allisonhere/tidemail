@@ -121,7 +121,7 @@ var DefaultKeys = KeyMap{
 	VisualSelect:  key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "visual select")),
 	VisualLine:    key.NewBinding(key.WithKeys("V"), key.WithHelp("V", "select message")),
 	CopyText:      key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "copy")),
-	PasteText:     key.NewBinding(key.WithKeys("ctrl+v", "ctrl+p"), key.WithHelp("ctrl+v", "paste")),
+	PasteText:     key.NewBinding(key.WithKeys("ctrl+v"), key.WithHelp("ctrl+v", "paste")),
 	SaveMD:        key.NewBinding(key.WithKeys("M"), key.WithHelp("M", "save .md")),
 	DiscardDraft:  key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "discard")),
 	ContentSearch: key.NewBinding(key.WithKeys("ctrl+f"), key.WithHelp("ctrl+f", "find")),

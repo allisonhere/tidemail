@@ -369,7 +369,7 @@ func TestForwardTypingStartsAboveQuotedMessage(t *testing.T) {
 	}
 }
 
-func TestCtrlPPastesClipboardIntoComposeBody(t *testing.T) {
+func TestCtrlVPastesClipboardIntoComposeBody(t *testing.T) {
 	m := NewModel(nil, config.DefaultConfig(), "dev", false)
 	m.overlay = overlayCompose
 	m.compose = NewCompose(config.AccountConfig{}, nil, nil)
@@ -379,16 +379,31 @@ func TestCtrlPPastesClipboardIntoComposeBody(t *testing.T) {
 	restore := stubClipboardRead(t, "pasted text")
 	defer restore()
 
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlV})
 	m = next.(Model)
 	if cmd == nil {
-		t.Fatal("expected ctrl+p in compose to read clipboard")
+		t.Fatal("expected ctrl+v in compose to read clipboard")
 	}
 	next, _ = m.Update(cmd())
 	m = next.(Model)
 
 	if got := m.compose.bodyInput.Value(); got != "pasted text" {
 		t.Fatalf("expected clipboard text pasted into compose body, got %q", got)
+	}
+}
+
+func TestCtrlPOpensCommandPaletteInCompose(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.overlay = overlayCompose
+	m.compose = NewCompose(config.AccountConfig{}, nil, nil)
+	m.compose.focusedField = composeFieldBody
+	m.compose.bodyInput.Focus()
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+	m = next.(Model)
+
+	if m.overlay != overlayCommandPalette {
+		t.Fatalf("expected ctrl+p to open the command palette, overlay = %v", m.overlay)
 	}
 }
 

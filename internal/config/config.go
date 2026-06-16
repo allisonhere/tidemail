@@ -50,6 +50,7 @@ type DisplayConfig struct {
 	Notifications         bool               `toml:"notifications"`
 	Browser               string             `toml:"browser"`
 	Density               string             `toml:"density"`
+	ComposeVim            bool               `toml:"compose_vim"`
 	VT52                  RetroTerminalTweak `toml:"vt52"`
 	VT100                 RetroTerminalTweak `toml:"vt100"`
 }

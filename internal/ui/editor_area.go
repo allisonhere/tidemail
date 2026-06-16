@@ -18,6 +18,15 @@ func (systemClipboard) Write(text string) error { return clipboard.Copy(text) }
 // package var so tests can substitute an in-memory fake.
 var editorClipboard ripple.Clipboard = systemClipboard{}
 
+// editorVimMode, when true, starts every compose body editor in vim mode. It is
+// a package var (set once from config in NewModel) so all four compose
+// constructors pick it up through newEditorArea without threading config
+// through each. Mirrors the editorClipboard pattern.
+var editorVimMode bool
+
+// setEditorVimMode sets whether new compose editors use vim modal editing.
+func setEditorVimMode(on bool) { editorVimMode = on }
+
 // editorArea adapts ripple.Model to the subset of the Bubble Tea textarea API
 // that compose relies on (Value/SetValue/Focus/Blur/SetWidth/SetHeight/Update/
 // View), so swapping the textarea for the owned editor is a minimal diff.
@@ -37,6 +46,9 @@ type editorArea struct {
 func newEditorArea() editorArea {
 	ed := ripple.New()
 	ed.SetClipboard(editorClipboard)
+	if editorVimMode {
+		ed.SetInputMode(ripple.ModeVim)
+	}
 	return editorArea{
 		ed:               ed,
 		CursorStyle:      lipgloss.NewStyle().Reverse(true),
@@ -68,6 +80,20 @@ func (e *editorArea) SetSize(w, h int) { e.w, e.h = w, h; e.ed.SetSize(w, h) }
 
 func (e editorArea) SelectedText() string { return e.ed.SelectedText() }
 
+// vimMode reports whether this editor is in vim input mode.
+func (e editorArea) vimMode() bool { return e.ed.InputMode() == ripple.ModeVim }
+
+// EnterInsert puts a vim editor into Insert mode (no-op otherwise), so focusing
+// the body lets the user type immediately and Esc returns to Normal.
+func (e *editorArea) EnterInsert() { e.ed.StartInsert() }
+
+// Mode returns the vim sub-mode label ("NORMAL", "INSERT", …) for the status
+// indicator, or "" when not in vim mode.
+func (e editorArea) Mode() string { return e.ed.Mode() }
+
+// CommandLine returns the ":" command line being typed, or "" when not active.
+func (e editorArea) CommandLine() string { return e.ed.CommandLine() }
+
 // Update forwards every message to the editor and propagates the command it
 // returns (e.g. a copy/cut clipboard write, or the read that produces a
 // ripple.PasteMsg), so clipboard side effects ride back with the model.
@@ -78,9 +104,31 @@ func (e editorArea) Update(msg tea.Msg) (editorArea, tea.Cmd) {
 }
 
 func (e editorArea) View() string {
-	return e.ed.View(ripple.Options{
-		Cursor:      e.CursorStyle.Render(" "),
+	opts := ripple.Options{
 		Selected:    func(s string) string { return e.SelectedStyle.Render(s) },
 		Placeholder: func(s string) string { return e.PlaceholderStyle.Render(s) },
-	})
+	}
+	switch e.ed.Mode() {
+	case "INSERT":
+		// A thin bar marks Insert mode, distinct from the Normal block.
+		opts.Cursor = e.barCursor()
+	case "":
+		// Plain (non-vim) editing: the conventional block cursor.
+		opts.Cursor = e.CursorStyle.Render(" ")
+	default:
+		// vim Normal/Visual/Command: the caret rests on a character, so render a
+		// block that still shows the glyph underneath.
+		opts.CursorRune = func(s string) string { return e.CursorStyle.Render(s) }
+	}
+	return e.ed.View(opts)
+}
+
+// barCursor renders a thin vertical bar for Insert mode by reusing the block
+// cursor's colors swapped — a foreground bar on the body background, versus the
+// Normal block's filled cell.
+func (e editorArea) barCursor() string {
+	return lipgloss.NewStyle().
+		Foreground(e.CursorStyle.GetBackground()).
+		Background(e.CursorStyle.GetForeground()).
+		Render("▏")
 }

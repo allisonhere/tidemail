@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/allisonhere/ripple"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -173,9 +174,11 @@ func NewReply(original db.Message, acfg config.AccountConfig, accounts []config.
 		plain := ansi.Strip(original.BodyText)
 		quoted := quoteReply(plain, original.From)
 		c.bodyInput.SetValue(quoted)
-		c.moveBodyCursorToStart()
 	}
 
+	// To/Subject are already filled for a reply, so land in the body with the
+	// caret at the top (above the quote), ready to type — and showing a cursor.
+	c.focusBodyAtStart()
 	return c
 }
 
@@ -216,6 +219,21 @@ func (c *ComposeModel) moveBodyCursorToStart() {
 	c.bodyInput.Focus()
 	c.bodyInput, _ = c.bodyInput.Update(tea.KeyMsg{Type: tea.KeyCtrlHome})
 	c.bodyInput.Blur()
+}
+
+// focusBodyAtStart moves focus into the message body with the caret at the top
+// (above any quoted text) and, in vim mode, Insert mode — so the user sees a
+// cursor and can type immediately. Used for replies, where To/Subject are
+// already filled in.
+func (c *ComposeModel) focusBodyAtStart() {
+	c.toInput.Blur()
+	c.ccInput.Blur()
+	c.bccInput.Blur()
+	c.subjectInput.Blur()
+	c.focusedField = composeFieldBody
+	c.bodyInput.Focus()
+	c.bodyInput, _ = c.bodyInput.Update(tea.KeyMsg{Type: tea.KeyCtrlHome})
+	c.bodyInput.EnterInsert()
 }
 
 // quoteReply formats a quoted reply block from the original message.
@@ -390,6 +408,14 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 	if c.busy {
 		return c, nil, false
 	}
+	// Host intents emitted by the vim body editor: :w/:wq/:x send; :q or a second
+	// Esc in Normal mode cancels (routed through the normal exit/draft-confirm).
+	switch msg.(type) {
+	case ripple.SubmitMsg:
+		return c.send()
+	case ripple.CancelMsg:
+		return c, nil, true
+	}
 	km, ok := msg.(tea.KeyMsg)
 	if !ok {
 		var cmd tea.Cmd
@@ -416,6 +442,14 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 	// Normal compose mode
 	switch {
 	case keyMatches(km, keys.Cancel):
+		// In vim mode the body editor owns Esc (Insert→Normal; a second Esc in
+		// Normal or :q emits ripple.CancelMsg, handled above). Route it to the
+		// editor instead of closing compose outright.
+		if c.focusedField == composeFieldBody && c.bodyInput.vimMode() {
+			var cmd tea.Cmd
+			c.bodyInput, cmd = c.bodyInput.Update(msg)
+			return c, cmd, false
+		}
 		return c, nil, true
 
 	case km.String() == "ctrl+s" || km.String() == "ctrl+d":
@@ -576,6 +610,10 @@ func (c *ComposeModel) advanceField(delta int) {
 		c.subjectInput.Focus()
 	case composeFieldBody:
 		c.bodyInput.Focus()
+		// In vim mode, land in Insert so the user types right away; Esc then
+		// goes Insert→Normal, and a second Esc closes (the double-Esc design).
+		// Without this the body sits in Normal and the first Esc closes outright.
+		c.bodyInput.EnterInsert()
 	}
 }
 
@@ -861,6 +899,15 @@ func (c ComposeModel) composeLayout(width, height int, styles Styles) (header, a
 	}
 	if sender != "" {
 		title += "  ◉ " + sender
+	}
+	// Vim mode badge / command line, shown while the body is focused: the ":"
+	// line as you type it, otherwise the mode (-- NORMAL --, -- INSERT --, …).
+	if c.focusedField == composeFieldBody && c.bodyInput.vimMode() {
+		if cl := c.bodyInput.CommandLine(); cl != "" {
+			title += "  " + cl
+		} else if mode := c.bodyInput.Mode(); mode != "" {
+			title += "  -- " + mode + " --"
+		}
 	}
 	header = renderManagerHeader(title, width, chrome)
 
