@@ -194,6 +194,11 @@ type Model struct {
 	syncing map[int64]bool
 	spinner spinner.Model
 
+	// lastFolderRefresh throttles the per-account server folder LIST so it runs
+	// far less often than message sync. Keyed by account ID; zero value means
+	// "never refreshed", so the first auto-sync after launch picks up folders.
+	lastFolderRefresh map[int64]time.Time
+
 	firstLoad              bool
 	pendingSelectMailboxID int64
 	pendingSelectMessageID int64
@@ -272,6 +277,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		commandInput:          ci,
 		spinner:               sp,
 		syncing:               make(map[int64]bool),
+		lastFolderRefresh:     make(map[int64]time.Time),
 		collapsedAccounts:     map[int64]bool{},
 		collapsedSections:     map[string]bool{},
 		firstLoad:             true,
@@ -687,6 +693,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, m.syncMailboxCmd(mb.ID, false))
 			}
 		}
+		// Piggyback an account-level folder refresh on the auto-sync tick, but
+		// throttled far below the message sync cadence — the folder tree changes
+		// rarely and a LIST per minute would be wasteful. The first tick after
+		// launch always passes (zero-value timestamp).
+		if last := m.lastFolderRefresh[msg.AccountID]; time.Since(last) >= folderRefreshInterval {
+			if cmd := m.refreshMailboxesCmd(msg.AccountID); cmd != nil {
+				m.lastFolderRefresh[msg.AccountID] = time.Now()
+				cmds = append(cmds, cmd)
+			}
+		}
 		// Reschedule next auto-sync for this account — only one pending
 		// timer per account, avoiding the accumulation that causes
 		// "Too many simultaneous connections" errors.
@@ -696,6 +712,48 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(cmds) > 0 {
 			return m, tea.Batch(cmds...)
 		}
+		return m, nil
+
+	case MailboxesRefreshedMsg:
+		if msg.Err != nil {
+			// Non-fatal: log to the fetch log and move on. Folder refresh is a
+			// convenience, so don't intrude on the status line during routine
+			// auto-sync.
+			logFetch(fmt.Sprintf("account %d", msg.AccountID), "(folders)", 0, 0, 0, 0, msg.Err)
+			return m, nil
+		}
+		if len(msg.Mailboxes) == 0 && len(msg.Removed) == 0 {
+			return m, nil
+		}
+		// Capture the active folder before mutating so we can detect whether it
+		// was just pruned out from under the user.
+		var activeID int64
+		if sel := m.selectedMailbox(); sel != nil {
+			activeID = sel.ID
+		}
+		if len(msg.Mailboxes) > 0 {
+			m.mailboxes = append(m.mailboxes, msg.Mailboxes...)
+		}
+		if len(msg.Removed) > 0 {
+			gone := make(map[int64]bool, len(msg.Removed))
+			for _, id := range msg.Removed {
+				gone[id] = true
+			}
+			kept := m.mailboxes[:0]
+			for _, mb := range m.mailboxes {
+				if !gone[mb.ID] {
+					kept = append(kept, mb)
+				}
+			}
+			m.mailboxes = kept
+			// If the folder being viewed was pruned, drop its now-orphaned
+			// message list so the content pane doesn't show stale rows.
+			if gone[activeID] {
+				m.messages = nil
+				m.filteredMessages = nil
+			}
+		}
+		m.rebuildSidebar()
 		return m, nil
 
 	case AddressBookLoadedMsg:

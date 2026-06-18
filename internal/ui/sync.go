@@ -280,6 +280,124 @@ func (m *Model) syncInboxesNowCmd() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// folderRefreshInterval throttles how often an account's full folder tree is
+// re-enumerated from the server. Message sync may run every minute, but the
+// folder set changes rarely, so the LIST is gated to at most once per account
+// per this interval no matter how aggressive the message sync cadence is.
+const folderRefreshInterval = time.Hour
+
+// refreshMailboxesCmd re-enumerates an account's server folders, upserts any
+// that aren't stored yet, and prunes ones that vanished server-side. It rides
+// the per-account auto-sync timer (never the per-mailbox message sync), so a
+// single LIST covers the whole tree; it reuses the session pool instead of
+// dialing fresh; and it treats any failure as non-fatal.
+//
+// Pruning mirrors the user's intent — a folder deleted in the webmail UI should
+// disappear locally too — but is guarded against mass deletion: an empty server
+// list is treated as a hiccup, not "all folders deleted", so nothing is pruned,
+// and INBOX is never pruned. See prunableMailboxIDs for why this can't lose
+// locally-composed drafts.
+func (m *Model) refreshMailboxesCmd(accountID int64) tea.Cmd {
+	database := m.db
+	var acc db.Account
+	for _, a := range m.accounts {
+		if a.ID == accountID {
+			acc = a
+			break
+		}
+	}
+	if acc.ID == 0 {
+		return nil
+	}
+	var acfg config.AccountConfig
+	for _, a := range m.cfg.Accounts {
+		if a.Name == acc.Name {
+			acfg = a
+			break
+		}
+	}
+	sessions := m.sessions
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		existing, err := database.ListMailboxes(accountID)
+		if err != nil {
+			return MailboxesRefreshedMsg{AccountID: accountID, Err: err}
+		}
+		known := make(map[string]bool, len(existing))
+		for _, mb := range existing {
+			known[mb.Name] = true
+		}
+
+		var added []db.Mailbox
+		var removed []int64
+		err = sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
+			infos, listErr := client.ListMailboxes(ctx)
+			if listErr != nil {
+				return listErr
+			}
+			server := make(map[string]bool, len(infos))
+			for _, info := range infos {
+				server[info.Name] = true
+				if known[info.Name] {
+					continue
+				}
+				mb := db.Mailbox{
+					AccountID:   accountID,
+					Name:        info.Name,
+					DisplayName: cleanDisplayName(info.Name),
+					Delimiter:   info.Delimiter,
+					Flags:       info.Flags,
+				}
+				id, upsertErr := database.UpsertMailbox(mb)
+				if upsertErr != nil {
+					continue
+				}
+				mb.ID = id
+				added = append(added, mb)
+			}
+
+			for _, id := range prunableMailboxIDs(existing, server) {
+				// Clear cached messages + FTS first (the FTS mirror has no FK
+				// cascade), then drop the now-empty mailbox row.
+				if e := database.ResetMailboxCache(id); e != nil {
+					continue
+				}
+				if e := database.DeleteMailbox(id); e != nil {
+					continue
+				}
+				removed = append(removed, id)
+			}
+			return nil
+		})
+		return MailboxesRefreshedMsg{AccountID: accountID, Mailboxes: added, Removed: removed, Err: err}
+	}
+}
+
+// prunableMailboxIDs decides which stored folders should be deleted because they
+// no longer exist server-side. server is the set of folder names the LIST
+// returned. Safety guards: never prune on an empty server set (a likely
+// transient fault — a real account always has INBOX), and never prune INBOX.
+//
+// Pruning is safe for local data: only cached messages (a mirror of server
+// state the server itself just deleted) cascade away with the mailbox row.
+// Locally-composed drafts live in the drafts table keyed by account, not by a
+// mailbox foreign key, so they survive a folder being pruned.
+func prunableMailboxIDs(existing []db.Mailbox, server map[string]bool) []int64 {
+	if len(server) == 0 {
+		return nil
+	}
+	var ids []int64
+	for _, mb := range existing {
+		if server[mb.Name] || isInboxMailbox(mb) {
+			continue
+		}
+		ids = append(ids, mb.ID)
+	}
+	return ids
+}
+
 func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
 	m.syncing[mailboxID] = true
 	database := m.db

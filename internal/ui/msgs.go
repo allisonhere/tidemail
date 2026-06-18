@@ -184,6 +184,18 @@ type AutoSyncMsg struct {
 	AccountID int64
 }
 
+// MailboxesRefreshedMsg reports the result of an account-level folder LIST.
+// Mailboxes carries folders newly discovered server-side (additions) and
+// Removed carries the IDs of locally pruned folders that vanished server-side.
+// Err is non-nil when the LIST failed, in which case it's surfaced quietly
+// since folder refresh is a convenience, not part of mail delivery.
+type MailboxesRefreshedMsg struct {
+	AccountID int64
+	Mailboxes []db.Mailbox
+	Removed   []int64
+	Err       error
+}
+
 type AddressBookLoadedMsg struct {
 	Addresses []string
 	Err       error
