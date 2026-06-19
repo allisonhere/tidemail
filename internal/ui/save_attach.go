@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/allisonhere/tide/internal/db"
@@ -13,43 +12,15 @@ import (
 )
 
 func (m *Model) openSaveAttachPicker(dir string) {
-	entries, err := os.ReadDir(dir)
+	fe, err := listDirEntries(dir, m.saveAttachPicker.showHidden)
 	if err != nil {
 		// Fall back to immediate save
 		m.overlay = overlayNone
 		return
 	}
 
-	var fe []fileEntry
-	// Add "select this folder" entry at the top
-	fe = append(fe, fileEntry{name: "✓ select this folder", isDir: false, size: 0})
-	// Add parent-dir entry unless we're at filesystem root
-	if dir != "/" {
-		fe = append(fe, fileEntry{name: "..", isDir: true})
-	}
-	for _, e := range entries {
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		// Skip hidden files
-		if strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-		fe = append(fe, fileEntry{
-			name:  e.Name(),
-			isDir: e.IsDir(),
-			size:  info.Size(),
-		})
-	}
-
-	// Sort: dirs first, then files; alphabetically within each group
-	sort.Slice(fe, func(i, j int) bool {
-		if fe[i].isDir != fe[j].isDir {
-			return fe[i].isDir
-		}
-		return strings.ToLower(fe[i].name) < strings.ToLower(fe[j].name)
-	})
+	// Prepend "select this folder" entry above the parent-dir entry.
+	fe = append([]fileEntry{{name: "✓ select this folder"}}, fe...)
 
 	m.saveAttachPicker.currentDir = dir
 	m.saveAttachPicker.entries = fe
@@ -121,6 +92,11 @@ func (m Model) handleSaveAttachPicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keyMatches(msg, m.keys.Left), keyMatches(msg, m.keys.Back):
 		m.saveAttachPickerUpDir()
+		return m, nil
+
+	case msg.String() == ".":
+		m.saveAttachPicker.showHidden = !m.saveAttachPicker.showHidden
+		m.openSaveAttachPicker(m.saveAttachPicker.currentDir)
 		return m, nil
 
 	default:
@@ -260,6 +236,7 @@ func (m Model) renderSaveAttachPicker(width, height int, chrome managerChrome) s
 	actions := renderManagerActions(width, chrome,
 		"↵", "open/confirm",
 		"←", "parent",
+		".", "hidden",
 		"esc", "cancel",
 	)
 

@@ -2,6 +2,21 @@
 
 All notable changes to TideMail are documented in this file.
 
+## Unreleased
+
+### Added
+
+- **Toggle hidden files in the file browsers.** The attach-file picker
+  (compose) and the save-attachments picker hide dotfiles by default; press
+  `.` to show hidden files and folders, and `.` again to hide them. The choice
+  persists as you navigate directories. The `.` hint now appears in each
+  browser's footer.
+
+### Fixed
+
+- The compose attach-file picker footer no longer clips its second row of key
+  hints (it reserved too few lines for the action bar).
+
 ## v0.6.0
 
 ### Added

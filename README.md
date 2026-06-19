@@ -47,6 +47,7 @@ go build -o tidemail .
 - Command palette for main mail actions, plus contextual commands in compose, AI summary, and save-attachments overlays
 - Global message search (`/` enters persistent search mode; type to filter, esc to exit) and unread-only filtering
 - Optional actionable links in the message content pane
+- File browsers for attaching and saving attachments hide dotfiles by default; press `.` to toggle hidden files and folders
 - AI summaries with copy and save-to-Markdown actions
 - AI grammar & spell check in compose with preview overlay
 - **AI mail filters** — describe a rule in plain English ("move newsletters from substack to Reading") and AI turns it into a real, deterministic filter that runs locally with no per-message AI cost. Choose which account it applies to (or **All accounts**), review the generated rule, then save (auto-applied to new mail on sync), run once on a mailbox, or run on all existing mail. Actions: move, mark read, archive, delete, spam. Open from the command palette (`p` → "filters").

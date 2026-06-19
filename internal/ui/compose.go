@@ -44,6 +44,7 @@ type filePicker struct {
 	cursor     int
 	currentDir string
 	active     bool
+	showHidden bool // when true, dotfiles/dirs are listed
 }
 
 type fileEntry struct {
@@ -312,14 +313,13 @@ func newComposeInput(placeholder string) textinput.Model {
 	return ti
 }
 
-// openPicker reads the given directory and populates the file picker.
-func (c *ComposeModel) openPicker(dir string) {
+// listDirEntries reads dir into fileEntry values, dirs-first then alphabetical,
+// prefixed with a ".." parent entry unless at the filesystem root. Dotfiles are
+// included only when showHidden is true.
+func listDirEntries(dir string, showHidden bool) ([]fileEntry, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		c.statusMsg = fmt.Sprintf("pick: %v", err)
-		c.isErr = true
-		c.picker.active = false
-		return
+		return nil, err
 	}
 
 	var fe []fileEntry
@@ -332,8 +332,8 @@ func (c *ComposeModel) openPicker(dir string) {
 		if err != nil {
 			continue
 		}
-		// Skip hidden files
-		if strings.HasPrefix(e.Name(), ".") {
+		// Skip hidden files unless the user has toggled them on
+		if !showHidden && strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
 		fe = append(fe, fileEntry{
@@ -350,6 +350,19 @@ func (c *ComposeModel) openPicker(dir string) {
 		}
 		return strings.ToLower(fe[i].name) < strings.ToLower(fe[j].name)
 	})
+
+	return fe, nil
+}
+
+// openPicker reads the given directory and populates the file picker.
+func (c *ComposeModel) openPicker(dir string) {
+	fe, err := listDirEntries(dir, c.picker.showHidden)
+	if err != nil {
+		c.statusMsg = fmt.Sprintf("pick: %v", err)
+		c.isErr = true
+		c.picker.active = false
+		return
+	}
 
 	c.picker.currentDir = dir
 	c.picker.entries = fe
@@ -605,6 +618,11 @@ func (c ComposeModel) updatePicker(km tea.KeyMsg, keys KeyMap) (ComposeModel, te
 
 	case keyMatches(km, keys.Left), keyMatches(km, keys.Back):
 		c.pickerUpDir()
+		return c, nil, false
+
+	case km.String() == ".":
+		c.picker.showHidden = !c.picker.showHidden
+		c.openPicker(c.picker.currentDir)
 		return c, nil, false
 
 	default:
@@ -1150,8 +1168,15 @@ func (c ComposeModel) pickerView(width, height int, chrome managerChrome) string
 		Padding(0, 2).
 		Render(c.picker.currentDir)
 
+	// Actions footer — render first so the file list can reserve its true height
+	// (two action rows, each with a top border = more than the old fixed 2 lines).
+	actions := renderManagerActionGroups(width, chrome,
+		[]string{"↑/↓", "navigate", "enter", "open/attach"},
+		[]string{"esc/h", "up dir", ".", "hidden"},
+	)
+
 	// File listing — fit within available height
-	availH := height - lipgloss.Height(header) - lipgloss.Height(pathLine) - 2 // 2 for action bar
+	availH := height - lipgloss.Height(header) - lipgloss.Height(pathLine) - lipgloss.Height(actions)
 	if availH < 1 {
 		availH = 1
 	}
@@ -1229,12 +1254,6 @@ func (c ComposeModel) pickerView(width, height int, chrome managerChrome) string
 	}
 
 	fileList := lipgloss.JoinVertical(lipgloss.Left, lines...)
-
-	// Actions
-	actions := renderManagerActionGroups(width, chrome,
-		[]string{"↑/↓", "navigate", "enter", "open/attach"},
-		[]string{"esc/h", "up dir"},
-	)
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		header,
