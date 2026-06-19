@@ -2,7 +2,7 @@
 
 All notable changes to TideMail are documented in this file.
 
-## v0.6.1 — 2026-06-18
+## v0.6.1
 
 ### Added
 
