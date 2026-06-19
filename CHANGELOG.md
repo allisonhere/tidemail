@@ -2,6 +2,21 @@
 
 All notable changes to TideMail are documented in this file.
 
+## v0.6.2
+
+### Fixed
+
+- **Terminal no longer left broken after quitting.** TideMail sets the
+  terminal's default colors to match the theme and resets them on exit. That
+  reset was skipped when the program ended through an error path or `Ctrl+C`,
+  leaving the shell prompt drawn in the theme's colors (an invisible / garbled
+  prompt). Cleanup now runs on every exit path.
+- **In-app update restart no longer corrupts the terminal.** "Restart after
+  update" previously launched the new version while the old one still held the
+  terminal, so two processes fought over it. The app now quits first — letting
+  the terminal fully restore — then re-execs the freshly installed binary for a
+  clean handoff.
+
 ## v0.6.1
 
 ### Added

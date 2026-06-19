@@ -216,6 +216,12 @@ type Model struct {
 	updateErr            string
 	updateDismissed      bool
 	pendingUpdateInstall bool
+	// restartExecPath, when non-empty, asks main to replace this process with
+	// the binary at that path AFTER the program exits — so BubbleTea has fully
+	// restored the terminal before the new version takes over (see
+	// settingsActionRestartAfterUpdate). Restarting from inside the running TUI
+	// would leave two processes fighting over the terminal.
+	restartExecPath string
 
 	previewManualUpdateUI bool
 
@@ -231,6 +237,11 @@ func (m Model) CloseSessions() {
 		m.sessions.Close()
 	}
 }
+
+// RestartExecPath returns the binary main should exec after the program exits
+// to complete an in-app update restart, or "" when no restart was requested.
+// Exec-ing only after exit guarantees the terminal is fully restored first.
+func (m Model) RestartExecPath() string { return m.restartExecPath }
 
 func NewModel(database *db.DB, cfg config.Config, currentVersion string, previewManualUpdate bool) Model {
 	merged, themeIdx := MergedThemeFromConfig(cfg)
@@ -430,13 +441,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncSettingsUpdateState()
 		m.setStatus("Tide updated to "+msg.Result.Version+m.styles.InlineMidDot()+"restart when ready", false)
 		return m, m.clearStatusCmd()
-
-	case RestartedMsg:
-		if msg.Err != nil {
-			m.setStatus(msg.Err.Error(), true)
-			return m, m.clearStatusCmd()
-		}
-		return m, tea.Quit
 
 	case AccountsLoadedMsg:
 		if msg.Err != nil && len(msg.Accounts) == 0 && len(msg.Mailboxes) == 0 {
@@ -1954,8 +1958,12 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case settingsActionDismissVersion:
 		return m, m.dismissAvailableUpdate()
 	case settingsActionRestartAfterUpdate:
-		if m.updateInstall.Restartable {
-			return m, restartProcessCmd(m.updateInstall.ExecutablePath)
+		if m.updateInstall.Restartable && m.updateInstall.ExecutablePath != "" {
+			// Record the target and quit. main execs it once the program has
+			// exited and BubbleTea has restored the terminal — a clean handoff
+			// with no second process competing for the terminal.
+			m.restartExecPath = m.updateInstall.ExecutablePath
+			return m, tea.Quit
 		}
 		return m, nil
 	case settingsActionOpenRepo, settingsActionOpenIssues:

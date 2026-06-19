@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"runtime/debug"
 	"strings"
+	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -35,12 +36,37 @@ func parseStartupOptions(args []string) startupOptions {
 }
 
 func main() {
+	// Run the program through a helper that returns an exit code so os.Exit is
+	// called exactly once, here, after every deferred cleanup has run. Calling
+	// os.Exit deeper in the program would skip those defers — including the
+	// terminal default-color reset below — and leave the shell prompt rendered
+	// in the theme's colors (an invisible / "broken" prompt after quitting).
+	code, restartExec := run()
+
+	// An in-app update restart asks us to re-exec the freshly installed binary.
+	// We only reach here after run() has returned, so all of its defers have run:
+	// BubbleTea restored the terminal, the DB and IMAP sessions are closed (so the
+	// new process can take the DB lock), and the theme colors were reset. Replacing
+	// the process now — rather than spawning a second one from inside the live TUI —
+	// hands the clean terminal to the new version without two processes racing over it.
+	if restartExec != "" {
+		argv := append([]string{restartExec}, os.Args[1:]...)
+		if err := syscall.Exec(restartExec, argv, os.Environ()); err != nil {
+			fmt.Fprintln(os.Stderr, "restart failed:", err)
+			os.Exit(1)
+		}
+	}
+
+	os.Exit(code)
+}
+
+func run() (code int, restartExec string) {
 	opts := parseStartupOptions(os.Args[1:])
 	for _, a := range os.Args[1:] {
 		switch strings.TrimSpace(a) {
 		case "--version", "-version", "-v":
 			fmt.Printf("tidemail %s\n", resolvedVersion())
-			return
+			return 0, ""
 		}
 	}
 
@@ -69,7 +95,7 @@ func main() {
 		database, err := db.Open()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "error opening database:", config.RedactSecrets(err.Error(), cfg))
-			os.Exit(1)
+			return 1, ""
 		}
 		defer database.Close()
 
@@ -86,13 +112,20 @@ func main() {
 		if r := recover(); r != nil {
 			p.Kill()
 			fmt.Fprintln(os.Stderr, "panic:", config.RedactSecrets(fmt.Sprint(r), cfg))
-			os.Exit(1)
+			code = 1
 		}
 	}()
-	if _, err := p.Run(); err != nil {
+	finalModel, err := p.Run()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", config.RedactSecrets(err.Error(), cfg))
-		os.Exit(1)
+		return 1, ""
 	}
+	// A finished session may ask to re-exec the freshly installed binary (in-app
+	// update restart). main does the exec after this function's defers run.
+	if um, ok := finalModel.(ui.Model); ok {
+		restartExec = um.RestartExecPath()
+	}
+	return 0, restartExec
 }
 
 func programOptions() []tea.ProgramOption {

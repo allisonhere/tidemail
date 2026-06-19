@@ -159,10 +159,6 @@ type UpdateInstalledMsg struct {
 	Err    error
 }
 
-type RestartedMsg struct {
-	Err error
-}
-
 type SummarySavedMsg struct {
 	Path string
 	Err  error

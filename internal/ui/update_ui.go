@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
@@ -49,19 +48,6 @@ func (m *Model) installUpdateCmd(asset update.DownloadedAsset) tea.Cmd {
 	return func() tea.Msg {
 		result, err := updater.Install(asset, currentExec)
 		return UpdateInstalledMsg{Result: result, Err: err}
-	}
-}
-
-func restartProcessCmd(executablePath string) tea.Cmd {
-	return func() tea.Msg {
-		cmd := exec.Command(executablePath, os.Args[1:]...)
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Start(); err != nil {
-			return RestartedMsg{Err: fmt.Errorf("restart Tide: %w", err)}
-		}
-		return RestartedMsg{}
 	}
 }
 
