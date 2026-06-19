@@ -2,7 +2,7 @@
 
 All notable changes to TideMail are documented in this file.
 
-## Unreleased
+## v0.6.1 — 2026-06-18
 
 ### Added
 
@@ -16,6 +16,13 @@ All notable changes to TideMail are documented in this file.
 
 - The compose attach-file picker footer no longer clips its second row of key
   hints (it reserved too few lines for the action bar).
+- Account form field navigation stops at the first and last field instead of
+  wrapping around.
+- The inbox now syncs immediately on startup rather than waiting for the first
+  timer tick.
+- Near-black terminal themes (vt100, vt52) render monochrome phosphor text and
+  a more visible selection background, and inline markdown styles set an
+  explicit foreground so text no longer falls back to the terminal default.
 
 ## v0.6.0
 
