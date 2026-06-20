@@ -102,6 +102,42 @@ func TestSessionPoolSerializesPerAccount(t *testing.T) {
 	}
 }
 
+func TestSessionPoolDoRespectsContextWhileLockHeld(t *testing.T) {
+	p, _ := newTestPool()
+	acfg := config.AccountConfig{Name: "Acct", IMAPHost: "imap.x", User: "a@x"}
+
+	// Hold the per-account lock from a goroutine until we release it, simulating a
+	// wedged in-flight operation.
+	holding := make(chan struct{})
+	release := make(chan struct{})
+	go func() {
+		_ = p.Do(context.Background(), acfg, func(c *Client) error {
+			close(holding)
+			<-release
+			return nil
+		})
+	}()
+	<-holding
+	defer close(release)
+
+	// A second operation for the same account with a short deadline must give up
+	// with a context error instead of blocking forever behind the held lock.
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- p.Do(ctx, acfg, func(c *Client) error { return nil })
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("expected context deadline error, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Do blocked on a held lock instead of honoring its context")
+	}
+}
+
 func TestSessionPoolReapsIdleConnections(t *testing.T) {
 	p, dials := newTestPool()
 	acfg := config.AccountConfig{Name: "Acct", IMAPHost: "imap.x", User: "a@x"}

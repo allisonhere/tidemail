@@ -107,6 +107,32 @@ func TestMailboxesRefreshedPrunesAndClearsActiveFolder(t *testing.T) {
 	}
 }
 
+// TestMailboxesRefreshedPruneClearsSyncingState verifies pruning a folder that
+// is mid-sync drops its spinner entry. syncing is keyed by mailbox ID and only
+// cleared on MailboxSyncedMsg, which can never arrive for a deleted mailbox, so
+// without this the status-line spinner (len(syncing) > 0) would leak forever.
+func TestMailboxesRefreshedPruneClearsSyncingState(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := NewModel(nil, cfg, "dev", false)
+	m.accounts = []db.Account{{ID: 1, Name: "Personal"}}
+	m.mailboxes = []db.Mailbox{
+		{ID: 10, AccountID: 1, Name: "INBOX"},
+		{ID: 11, AccountID: 1, Name: "Receipts", DisplayName: "Receipts"},
+	}
+	m.rebuildSidebar()
+	m.syncing[11] = true
+
+	next, _ := m.Update(MailboxesRefreshedMsg{AccountID: 1, Removed: []int64{11}})
+	m = next.(Model)
+
+	if m.syncing[11] {
+		t.Fatal("expected syncing entry for the pruned mailbox to be cleared")
+	}
+	if len(m.syncing) != 0 {
+		t.Fatalf("expected no leaked syncing entries, got %d", len(m.syncing))
+	}
+}
+
 // TestMailboxesRefreshedErrorIsNonFatal verifies a failed folder LIST leaves the
 // mailbox list untouched and does not hijack the status line — folder refresh is
 // a convenience that must never disrupt routine auto-sync.

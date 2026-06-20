@@ -27,6 +27,7 @@ func (c *Client) fetchMessages(ctx context.Context, mailboxName string, limit in
 	if c.conn == nil {
 		return nil, fmt.Errorf("not connected")
 	}
+	defer c.applyDeadline(ctx)()
 
 	selectData, err := c.conn.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait()
 	if err != nil {

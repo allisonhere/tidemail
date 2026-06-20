@@ -742,6 +742,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			gone := make(map[int64]bool, len(msg.Removed))
 			for _, id := range msg.Removed {
 				gone[id] = true
+				// Drop any in-flight spinner state for the pruned mailbox.
+				// syncing is only cleared on MailboxSyncedMsg, which is keyed by
+				// mailbox ID — once the row is gone that message can never land,
+				// so the entry (and its status-line spinner) would leak forever.
+				delete(m.syncing, id)
 			}
 			kept := m.mailboxes[:0]
 			for _, mb := range m.mailboxes {

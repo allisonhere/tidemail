@@ -14,6 +14,37 @@ import (
 	"github.com/emersion/go-imap/v2/imapserver/imapmemserver"
 )
 
+// TestApplyDeadlineHonorsContext verifies applyDeadline pushes the ctx deadline
+// down onto the transport so a blocked socket read fails instead of hanging
+// (go-imap commands take no ctx, so the socket deadline is the only lever). An
+// already-expired ctx must make the very next read return immediately.
+func TestApplyDeadlineHonorsContext(t *testing.T) {
+	local, remote := net.Pipe()
+	defer local.Close()
+	defer remote.Close()
+	c := &Client{netConn: local}
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	clear := c.applyDeadline(ctx)
+	defer clear()
+
+	buf := make([]byte, 1)
+	done := make(chan error, 1)
+	go func() {
+		_, err := local.Read(buf)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected a deadline error from a read past the ctx deadline")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("read blocked despite an expired context deadline")
+	}
+}
+
 // startTestServer creates an in-memory IMAP server on a random port
 // and returns the port and a cleanup function.
 func startTestServer(t *testing.T) (int, func()) {

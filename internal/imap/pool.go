@@ -25,11 +25,27 @@ type SessionPool struct {
 }
 
 type session struct {
-	mu       sync.Mutex // serializes operations per account
+	// lockCh is a capacity-1 channel used as a context-aware mutex: it serializes
+	// operations per account, but unlike sync.Mutex a waiter can give up when its
+	// ctx expires instead of blocking indefinitely behind a wedged operation.
+	lockCh   chan struct{}
 	client   *Client
 	cfg      config.AccountConfig
 	lastUsed time.Time
 }
+
+// lock acquires the session, honoring ctx; it returns ctx.Err() if the caller's
+// deadline passes first. unlock releases it.
+func (s *session) lock(ctx context.Context) error {
+	select {
+	case s.lockCh <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (s *session) unlock() { <-s.lockCh }
 
 const sessionIdleTimeout = 3 * time.Minute
 
@@ -56,8 +72,10 @@ func NewSessionPool() *SessionPool {
 // for later operations — fn must not close it.
 func (p *SessionPool) Do(ctx context.Context, acfg config.AccountConfig, fn func(*Client) error) error {
 	s := p.entry(acfg)
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if err := s.lock(ctx); err != nil {
+		return err
+	}
+	defer s.unlock()
 
 	// A changed account config (edited credentials, host) invalidates the
 	// cached connection; so does failing the NOOP liveness probe.
@@ -93,12 +111,12 @@ func (p *SessionPool) Close() {
 	}
 	p.mu.Unlock()
 	for _, s := range entries {
-		s.mu.Lock()
+		s.lockCh <- struct{}{}
 		if s.client != nil {
 			s.client.Close() //nolint:errcheck
 			s.client = nil
 		}
-		s.mu.Unlock()
+		<-s.lockCh
 	}
 }
 
@@ -111,7 +129,7 @@ func (p *SessionPool) entry(acfg config.AccountConfig) *session {
 	defer p.mu.Unlock()
 	s := p.entries[key]
 	if s == nil {
-		s = &session{}
+		s = &session{lockCh: make(chan struct{}, 1)}
 		p.entries[key] = s
 	}
 	return s
@@ -140,13 +158,17 @@ func (p *SessionPool) reapIdle(now time.Time) {
 	}
 	p.mu.Unlock()
 	for _, s := range entries {
-		if !s.mu.TryLock() {
+		// TryLock-equivalent: skip sessions with an operation in flight rather
+		// than waiting on them.
+		select {
+		case s.lockCh <- struct{}{}:
+		default:
 			continue
 		}
 		if s.client != nil && now.Sub(s.lastUsed) > sessionIdleTimeout {
 			s.client.Close() //nolint:errcheck
 			s.client = nil
 		}
-		s.mu.Unlock()
+		<-s.lockCh
 	}
 }

@@ -20,8 +20,13 @@ type MailboxInfo struct {
 }
 
 type Client struct {
-	cfg  config.AccountConfig
-	conn *imapclient.Client
+	cfg config.AccountConfig
+	// conn is the IMAP protocol client; netConn is the underlying transport it
+	// rides on, retained so per-operation deadlines can be applied (go-imap v2
+	// commands don't take a context, so a deadline on the socket is the only way
+	// to keep a hung read from blocking forever — see applyDeadline).
+	conn    *imapclient.Client
+	netConn net.Conn
 }
 
 func New(cfg config.AccountConfig) *Client {
@@ -30,34 +35,62 @@ func New(cfg config.AccountConfig) *Client {
 
 func (c *Client) Connect(ctx context.Context) error {
 	addr := fmt.Sprintf("%s:%d", c.cfg.IMAPHost, c.cfg.IMAPPort)
-	var (
-		client *imapclient.Client
-		err    error
-	)
-	if c.cfg.IMAPTLS {
-		tlsCfg := &tls.Config{ServerName: c.cfg.IMAPHost}
-		client, err = imapclient.DialTLS(addr, &imapclient.Options{TLSConfig: tlsCfg})
-	} else {
-		var conn net.Conn
-		dialer := &net.Dialer{}
-		conn, err = dialer.DialContext(ctx, "tcp", addr)
-		if err != nil {
-			return fmt.Errorf("dial %s: %w", addr, err)
-		}
-		client = imapclient.New(conn, nil)
-	}
+	dialer := &net.Dialer{}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return fmt.Errorf("connect %s: %w", addr, err)
+		return fmt.Errorf("dial %s: %w", addr, err)
 	}
+	if c.cfg.IMAPTLS {
+		// Dial the TCP socket ourselves (above) and layer TLS on top, rather than
+		// imapclient.DialTLS, so we keep a handle on the transport for deadlines
+		// and so the handshake honors ctx.
+		tlsConn := tls.Client(conn, &tls.Config{ServerName: c.cfg.IMAPHost})
+		if dl, ok := ctx.Deadline(); ok {
+			tlsConn.SetDeadline(dl) //nolint:errcheck
+		}
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			tlsConn.Close() //nolint:errcheck
+			return fmt.Errorf("tls handshake %s: %w", addr, err)
+		}
+		tlsConn.SetDeadline(time.Time{}) //nolint:errcheck
+		conn = tlsConn
+	}
+	c.netConn = conn
+	client := imapclient.New(conn, nil)
 
 	// TideMail authenticates with an app password over IMAP LOGIN (Gmail
 	// requires an app password + 2FA).
-	if err := client.Login(c.cfg.User, c.cfg.Password).Wait(); err != nil {
+	clear := c.applyDeadline(ctx)
+	loginErr := client.Login(c.cfg.User, c.cfg.Password).Wait()
+	clear()
+	if loginErr != nil {
 		client.Close()
-		return fmt.Errorf("login: %w", err)
+		c.netConn = nil
+		return fmt.Errorf("login: %w", loginErr)
 	}
 	c.conn = client
 	return nil
+}
+
+// applyDeadline bounds the IMAP commands that follow it by ctx's deadline and
+// returns a func that clears the deadline again; callers use it as
+// `defer c.applyDeadline(ctx)()`. go-imap v2's command results
+// (.Wait()/.Collect()) block on the socket with no context awareness, so a
+// stalled server read would otherwise hang indefinitely and — because the
+// SessionPool serializes one operation per account — wedge every later
+// operation for that account. Setting the deadline on the transport makes the
+// blocked read fail; the timed-out connection is torn down and the pool dials a
+// fresh one on next use.
+func (c *Client) applyDeadline(ctx context.Context) func() {
+	if c.netConn == nil {
+		return func() {}
+	}
+	dl, ok := ctx.Deadline()
+	if !ok {
+		return func() {}
+	}
+	c.netConn.SetDeadline(dl)                            //nolint:errcheck
+	return func() { c.netConn.SetDeadline(time.Time{}) } //nolint:errcheck
 }
 
 func (c *Client) Close() error {
@@ -67,6 +100,7 @@ func (c *Client) Close() error {
 	c.conn.Logout() //nolint:errcheck
 	err := c.conn.Close()
 	c.conn = nil
+	c.netConn = nil
 	return err
 }
 
@@ -76,6 +110,7 @@ func (c *Client) Noop(ctx context.Context) error {
 	if c.conn == nil {
 		return fmt.Errorf("not connected")
 	}
+	defer c.applyDeadline(ctx)()
 	return c.conn.Noop().Wait()
 }
 
@@ -96,6 +131,7 @@ func (c *Client) ServerState(ctx context.Context, mailboxName string) (msgs []Se
 	if c.conn == nil {
 		return nil, 0, fmt.Errorf("not connected")
 	}
+	defer c.applyDeadline(ctx)()
 	selectData, err := c.conn.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait()
 	if err != nil {
 		return nil, 0, fmt.Errorf("select %s: %w", mailboxName, err)
@@ -128,6 +164,7 @@ func (c *Client) ListMailboxes(ctx context.Context) ([]MailboxInfo, error) {
 	if c.conn == nil {
 		return nil, fmt.Errorf("not connected")
 	}
+	defer c.applyDeadline(ctx)()
 
 	cmd := c.conn.List("", "*", nil)
 	data, err := cmd.Collect()
@@ -161,6 +198,7 @@ func (c *Client) MarkSeen(ctx context.Context, mailboxName string, uid uint32, s
 	if c.conn == nil {
 		return fmt.Errorf("not connected")
 	}
+	defer c.applyDeadline(ctx)()
 	if _, err := c.conn.Select(mailboxName, nil).Wait(); err != nil {
 		return fmt.Errorf("select %s: %w", mailboxName, err)
 	}
@@ -214,6 +252,7 @@ func (c *Client) MoveMessages(ctx context.Context, mailboxName string, uids []ui
 	if len(uids) == 0 {
 		return nil
 	}
+	defer c.applyDeadline(ctx)()
 	if _, err := c.conn.Select(mailboxName, nil).Wait(); err != nil {
 		return fmt.Errorf("select %s: %w", mailboxName, err)
 	}
@@ -228,6 +267,7 @@ func (c *Client) CreateMailbox(ctx context.Context, name string) error {
 	if c.conn == nil {
 		return fmt.Errorf("not connected")
 	}
+	defer c.applyDeadline(ctx)()
 	if err := c.conn.Create(name, nil).Wait(); err != nil {
 		return fmt.Errorf("create %s: %w", name, err)
 	}
@@ -247,6 +287,7 @@ func (c *Client) DeleteMessages(ctx context.Context, mailboxName string, uids []
 	if len(uids) == 0 {
 		return nil
 	}
+	defer c.applyDeadline(ctx)()
 	if _, err := c.conn.Select(mailboxName, nil).Wait(); err != nil {
 		return fmt.Errorf("select %s: %w", mailboxName, err)
 	}
