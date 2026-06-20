@@ -2,6 +2,17 @@
 
 All notable changes to TideMail are documented in this file.
 
+## v0.6.3
+
+### Fixed
+
+- **Accounts no longer get stuck on the syncing spinner.** After folder
+  auto-refresh was added, a stalled server folder listing could hold an
+  account's IMAP connection open indefinitely, blocking that account's inbox
+  sync so it spun forever (other accounts kept working). IMAP operations are
+  now bounded by a timeout — a hung connection fails and is redialed instead of
+  wedging the account.
+
 ## v0.6.2
 
 ### Fixed
