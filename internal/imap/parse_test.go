@@ -277,3 +277,24 @@ func TestParseIMAPMessage_AttachmentFlag(t *testing.T) {
 		t.Error("HasAttachment = false, want true")
 	}
 }
+
+func TestSanitizeControl(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain", "hello world", "hello world"},
+		{"keeps tab/newline", "a\tb\nc", "a\tb\nc"},
+		{"strips ESC", "a\x1b[31mb", "a[31mb"},
+		{"strips BEL and OSC payload delimiters", "x\x07y", "xy"},
+		{"strips OSC52 clipboard hijack", "\x1b]52;c;ZXZpbAo=\x07done", "]52;c;ZXZpbAo=done"},
+		{"strips DEL", "a\x7fb", "ab"},
+		{"keeps unicode", "café — π", "café — π"},
+	}
+	for _, tc := range cases {
+		if got := sanitizeControl(tc.in); got != tc.want {
+			t.Errorf("%s: sanitizeControl(%q) = %q, want %q", tc.name, tc.in, got, tc.want)
+		}
+	}
+}

@@ -47,6 +47,11 @@ jobs:
             rm "dist/$name"
             echo "Built dist/$name.tar.gz"
           done
+          # Checksums for in-app self-update integrity verification. The updater
+          # refuses to install an archive whose SHA-256 isn't listed here.
+          ( cd dist && sha256sum *.tar.gz > SHA256SUMS )
+          echo "----- SHA256SUMS -----"
+          cat dist/SHA256SUMS
 
       - name: Extract release notes
         env:
@@ -87,4 +92,6 @@ jobs:
         with:
           name: "TideMail ${{ steps.version.outputs.tag }}"
           body_path: release-notes.md
-          files: dist/*.tar.gz
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS

@@ -110,18 +110,18 @@ func parseIMAPMessage(msg *imapclient.FetchMessageBuffer) (db.Message, error) {
 	}
 
 	if env := msg.Envelope; env != nil {
-		m.Subject = env.Subject
-		m.MessageID = env.MessageID
+		m.Subject = sanitizeControl(env.Subject)
+		m.MessageID = sanitizeControl(env.MessageID)
 		if len(env.InReplyTo) > 0 {
-			m.InReplyTo = strings.Join(env.InReplyTo, " ")
+			m.InReplyTo = sanitizeControl(strings.Join(env.InReplyTo, " "))
 		}
 		if !env.Date.IsZero() {
 			m.Date = env.Date
 		}
-		m.From = addressList(env.From)
-		m.To = addressList(env.To)
-		m.CC = addressList(env.Cc)
-		m.ReplyTo = addressList(env.ReplyTo)
+		m.From = sanitizeControl(addressList(env.From))
+		m.To = sanitizeControl(addressList(env.To))
+		m.CC = sanitizeControl(addressList(env.Cc))
+		m.ReplyTo = sanitizeControl(addressList(env.ReplyTo))
 	}
 	// Fallback: some servers (Dovecot) may omit envelope date for system messages.
 	// INTERNALDATE is always present and never zero.
@@ -136,23 +136,26 @@ func parseIMAPMessage(msg *imapclient.FetchMessageBuffer) (db.Message, error) {
 		}
 		// Distinguish header section from body section
 		if section.Section != nil && section.Section.Specifier == imap.PartSpecifierHeader {
-			m.Headers = parseAuthHeaders(raw)
-			m.References = parseHeaderValue(raw, "References")
+			m.Headers = sanitizeControl(parseAuthHeaders(raw))
+			m.References = sanitizeControl(parseHeaderValue(raw, "References"))
 			continue
 		}
 		text, html, atts := parseBody(raw)
 		if text != "" {
-			m.BodyText = text
+			m.BodyText = sanitizeControl(text)
 		}
 		if html != "" {
-			m.BodyHTML = html
+			// Raw control bytes are stripped here; HTML entity-encoded escapes
+			// (e.g. &#27;) are neutralized downstream after decoding, before the
+			// text is styled and written to the terminal.
+			m.BodyHTML = sanitizeControl(html)
 		}
 		if len(atts) > 0 {
 			m.HasAttachment = true
 			m.AttachmentData = make([]db.Attachment, len(atts))
 			for i, a := range atts {
 				m.AttachmentData[i] = db.Attachment{
-					Filename:    a.Filename,
+					Filename:    sanitizeControl(a.Filename),
 					ContentType: a.ContentType,
 					Data:        a.Data,
 					Size:        int64(len(a.Data)),
@@ -162,6 +165,27 @@ func parseIMAPMessage(msg *imapclient.FetchMessageBuffer) (db.Message, error) {
 	}
 
 	return m, nil
+}
+
+// sanitizeControl strips C0 control bytes (and DEL) that a terminal would
+// interpret as escape sequences from untrusted message text, preserving only
+// tab, newline, and carriage return. Message content is rendered straight to
+// the user's terminal, so without this an attacker could embed ANSI/OSC
+// sequences in a subject, address, filename, or body and — when the message is
+// viewed — hijack the clipboard (OSC 52), spoof the UI, or move the cursor.
+// C1 controls (U+0080–U+009F) are intentionally left alone: on a UTF-8 terminal
+// they are not control-interpreted, and dropping them would corrupt decoded text.
+func sanitizeControl(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case '\t', '\n', '\r':
+			return r
+		}
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 func parseHeaderValue(raw []byte, name string) string {

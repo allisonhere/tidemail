@@ -262,6 +262,14 @@ func normalizeInlineSpacing(s string) string {
 
 func stripEmailInvisibles(s string) string {
 	return strings.Map(func(r rune) rune {
+		// Strip C0 control bytes (and DEL) that the terminal would interpret as
+		// escape sequences. This runs after HTML entities are decoded but before
+		// lipgloss styling is applied, so it neutralizes both raw and
+		// entity-encoded (e.g. &#27;) escapes in message content without touching
+		// the app's own styling codes. Tab/newline are preserved for layout.
+		if (r < 0x20 && r != '\t' && r != '\n' && r != '\r') || r == 0x7f {
+			return -1
+		}
 		switch r {
 		case '\u00ad', // soft hyphen
 			'\u034f', // combining grapheme joiner

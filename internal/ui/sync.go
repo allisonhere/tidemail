@@ -168,7 +168,9 @@ func (m *Model) notifyCmd(mailboxID int64, newMsgs []db.Message) tea.Cmd {
 		}
 		title, body := composeNotification(acctName, newMsgs)
 		// notify-send is fire-and-forget; exec the non-interactive version.
-		_ = exec.Command("notify-send", "-a", "tidemail", "-i", "mail-unread", title, body).Run()
+		// "--" terminates option parsing so a sender/subject beginning with "-"
+		// (attacker-controlled) can't be misread as a notify-send flag.
+		_ = exec.Command("notify-send", "-a", "tidemail", "-i", "mail-unread", "--", title, body).Run()
 		return nil
 	}
 }

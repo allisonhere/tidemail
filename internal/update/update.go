@@ -2,11 +2,15 @@ package update
 
 import (
 	"archive/tar"
+	"bufio"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,6 +18,12 @@ import (
 	"strings"
 	"time"
 )
+
+// checksumsAssetName is the release asset listing the SHA-256 of every archive.
+// The updater verifies a downloaded archive against it and refuses to install
+// on mismatch or if it is missing, so a tampered release asset can't be
+// auto-installed as arbitrary code.
+const checksumsAssetName = "SHA256SUMS"
 
 const defaultReleasesURL = "https://api.github.com/repos/allisonhere/tidemail/releases/latest"
 
@@ -30,12 +40,13 @@ type Updater struct {
 
 // ReleaseInfo is the normalized release and asset metadata the UI needs after a check. -allie
 type ReleaseInfo struct {
-	Version     string
-	PublishedAt time.Time
-	Summary     string
-	Body        string
-	AssetName   string
-	DownloadURL string
+	Version      string
+	PublishedAt  time.Time
+	Summary      string
+	Body         string
+	AssetName    string
+	DownloadURL  string
+	ChecksumsURL string
 }
 
 // CheckResult reports whether a newer stable release is available for the running version. -allie
@@ -110,11 +121,13 @@ func (u *Updater) Check(currentVersion string) (CheckResult, error) {
 		return CheckResult{}, err
 	}
 
-	var downloadURL string
+	var downloadURL, checksumsURL string
 	for _, asset := range release.Assets {
-		if asset.Name == assetName+".tar.gz" {
+		switch asset.Name {
+		case assetName + ".tar.gz":
 			downloadURL = asset.DownloadURL
-			break
+		case checksumsAssetName:
+			checksumsURL = asset.DownloadURL
 		}
 	}
 	if downloadURL == "" {
@@ -122,12 +135,13 @@ func (u *Updater) Check(currentVersion string) (CheckResult, error) {
 	}
 
 	info := ReleaseInfo{
-		Version:     strings.TrimSpace(release.TagName),
-		PublishedAt: release.PublishedAt,
-		Summary:     summarizeReleaseNotes(release.Body),
-		Body:        strings.TrimSpace(release.Body),
-		AssetName:   assetName,
-		DownloadURL: downloadURL,
+		Version:      strings.TrimSpace(release.TagName),
+		PublishedAt:  release.PublishedAt,
+		Summary:      summarizeReleaseNotes(release.Body),
+		Body:         strings.TrimSpace(release.Body),
+		AssetName:    assetName,
+		DownloadURL:  downloadURL,
+		ChecksumsURL: checksumsURL,
 	}
 	return CheckResult{
 		CurrentVersion: currentVersion,
@@ -137,6 +151,17 @@ func (u *Updater) Check(currentVersion string) (CheckResult, error) {
 }
 
 func (u *Updater) Download(release ReleaseInfo) (DownloadedAsset, error) {
+	// Integrity is enforced before anything from the archive touches disk as an
+	// executable: the download host must be GitHub, and the archive's SHA-256
+	// must match the signed-by-channel SHA256SUMS asset. A release missing
+	// checksums is rejected rather than installed unverified.
+	if !isTrustedAssetHost(release.DownloadURL) {
+		return DownloadedAsset{}, fmt.Errorf("refusing to download update from untrusted host: %s", release.DownloadURL)
+	}
+	if release.ChecksumsURL == "" {
+		return DownloadedAsset{}, fmt.Errorf("release %s has no %s asset; refusing to install unverified update", release.Version, checksumsAssetName)
+	}
+
 	client := u.httpClient()
 	req, err := http.NewRequest(http.MethodGet, release.DownloadURL, nil)
 	if err != nil {
@@ -173,6 +198,11 @@ func (u *Updater) Download(release ReleaseInfo) (DownloadedAsset, error) {
 		return DownloadedAsset{}, fmt.Errorf("close archive file: %w", err)
 	}
 
+	if err := u.verifyArchiveChecksum(release, archivePath); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return DownloadedAsset{}, err
+	}
+
 	binaryPath, err := extractTarGz(archivePath, tmpDir, release.AssetName)
 	if err != nil {
 		return DownloadedAsset{}, err
@@ -186,6 +216,87 @@ func (u *Updater) Download(release ReleaseInfo) (DownloadedAsset, error) {
 		ArchivePath: archivePath,
 		BinaryPath:  binaryPath,
 	}, nil
+}
+
+// verifyArchiveChecksum downloads the release's SHA256SUMS asset and confirms
+// the on-disk archive's SHA-256 matches the entry for its filename. Any
+// problem — untrusted host, download failure, missing entry, or mismatch — is a
+// hard error so a tampered or corrupt archive is never extracted and installed.
+func (u *Updater) verifyArchiveChecksum(release ReleaseInfo, archivePath string) error {
+	if !isTrustedAssetHost(release.ChecksumsURL) {
+		return fmt.Errorf("refusing to fetch checksums from untrusted host: %s", release.ChecksumsURL)
+	}
+
+	client := u.httpClient()
+	req, err := http.NewRequest(http.MethodGet, release.ChecksumsURL, nil)
+	if err != nil {
+		return fmt.Errorf("build checksums request: %w", err)
+	}
+	req.Header.Set("User-Agent", "tide-update-checksums")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("download checksums: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download checksums failed: HTTP %d", resp.StatusCode)
+	}
+
+	sums := parseChecksums(io.LimitReader(resp.Body, 1<<20))
+	want, ok := sums[release.AssetName+".tar.gz"]
+	if !ok {
+		return fmt.Errorf("%s does not list a checksum for %s.tar.gz", checksumsAssetName, release.AssetName)
+	}
+
+	got, err := sha256File(archivePath)
+	if err != nil {
+		return fmt.Errorf("hash downloaded archive: %w", err)
+	}
+	if !strings.EqualFold(got, want) {
+		return fmt.Errorf("update checksum mismatch for %s.tar.gz: expected %s, got %s", release.AssetName, want, got)
+	}
+	return nil
+}
+
+// parseChecksums reads `sha256sum`-style lines ("<hex>␠␠<name>") into a
+// filename→hash map, tolerating the binary-mode "*name" marker.
+func parseChecksums(r io.Reader) map[string]string {
+	out := map[string]string{}
+	sc := bufio.NewScanner(r)
+	for sc.Scan() {
+		fields := strings.Fields(sc.Text())
+		if len(fields) < 2 {
+			continue
+		}
+		name := strings.TrimPrefix(fields[len(fields)-1], "*")
+		out[name] = strings.ToLower(fields[0])
+	}
+	return out
+}
+
+func sha256File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// isTrustedAssetHost restricts update downloads to GitHub-hosted HTTPS URLs so a
+// tampered API response can't redirect the updater to an attacker's host.
+func isTrustedAssetHost(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme != "https" {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "github.com" || host == "githubusercontent.com" || strings.HasSuffix(host, ".githubusercontent.com")
 }
 
 func (u *Updater) Install(asset DownloadedAsset, currentExec string) (InstallResult, error) {

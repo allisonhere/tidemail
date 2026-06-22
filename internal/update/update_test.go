@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"net/http"
 	"os"
@@ -24,7 +26,8 @@ func TestCheckResolvesMatchingAsset(t *testing.T) {
 			"published_at":"2026-03-30T12:00:00Z",
 			"assets":[
 				{"name":"tidemail-linux-x86_64.tar.gz","browser_download_url":"https://example.com/download"},
-				{"name":"tidemail-darwin-aarch64.tar.gz","browser_download_url":"https://example.com/other"}
+				{"name":"tidemail-darwin-aarch64.tar.gz","browser_download_url":"https://example.com/other"},
+				{"name":"SHA256SUMS","browser_download_url":"https://example.com/sums"}
 			]
 		}`), nil
 	})}
@@ -48,6 +51,9 @@ func TestCheckResolvesMatchingAsset(t *testing.T) {
 	if result.Latest.DownloadURL != "https://example.com/download" {
 		t.Fatalf("unexpected download URL: %q", result.Latest.DownloadURL)
 	}
+	if result.Latest.ChecksumsURL != "https://example.com/sums" {
+		t.Fatalf("unexpected checksums URL: %q", result.Latest.ChecksumsURL)
+	}
 	if result.Latest.Summary != "Faster updates." {
 		t.Fatalf("unexpected summary: %q", result.Latest.Summary)
 	}
@@ -56,22 +62,40 @@ func TestCheckResolvesMatchingAsset(t *testing.T) {
 	}
 }
 
+// archiveServer returns an HTTP client that serves the archive at the GitHub
+// download URL and a SHA256SUMS body at the checksums URL. sums lets a test
+// inject a wrong/absent checksum to exercise the fail-closed paths.
+func archiveServer(archive []byte, sums string) *http.Client {
+	return &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.String() {
+		case "https://github.com/o/r/releases/download/archive.tar.gz":
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/gzip"}},
+				Body:       io.NopCloser(bytes.NewReader(archive)),
+			}, nil
+		case "https://github.com/o/r/releases/download/SHA256SUMS":
+			return responseWithBody(http.StatusOK, sums), nil
+		default:
+			return responseWithBody(http.StatusNotFound, "not found"), nil
+		}
+	})}
+}
+
+const (
+	testDownloadURL  = "https://github.com/o/r/releases/download/archive.tar.gz"
+	testChecksumsURL = "https://github.com/o/r/releases/download/SHA256SUMS"
+)
+
 func TestDownloadExtractsBinary(t *testing.T) {
 	archive := testArchive(t, "tidemail-linux-x86_64", "#!/bin/sh\necho tide\n")
-	updater := &Updater{HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if req.URL.String() != "https://example.com/download" {
-			t.Fatalf("unexpected URL: %s", req.URL)
-		}
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": []string{"application/gzip"}},
-			Body:       io.NopCloser(bytes.NewReader(archive)),
-		}, nil
-	})}}
+	sums := sha256Hex(archive) + "  tidemail-linux-x86_64.tar.gz\n"
+	updater := &Updater{HTTPClient: archiveServer(archive, sums)}
 	asset, err := updater.Download(ReleaseInfo{
-		Version:     "v1.2.3",
-		AssetName:   "tidemail-linux-x86_64",
-		DownloadURL: "https://example.com/download",
+		Version:      "v1.2.3",
+		AssetName:    "tidemail-linux-x86_64",
+		DownloadURL:  testDownloadURL,
+		ChecksumsURL: testChecksumsURL,
 	})
 	if err != nil {
 		t.Fatalf("Download returned error: %v", err)
@@ -84,6 +108,81 @@ func TestDownloadExtractsBinary(t *testing.T) {
 	if !strings.Contains(string(data), "echo tide") {
 		t.Fatalf("unexpected binary content: %q", string(data))
 	}
+}
+
+func TestDownloadRejectsChecksumMismatch(t *testing.T) {
+	archive := testArchive(t, "tidemail-linux-x86_64", "real")
+	// Checksum of different content — must not install.
+	sums := sha256Hex([]byte("tampered")) + "  tidemail-linux-x86_64.tar.gz\n"
+	updater := &Updater{HTTPClient: archiveServer(archive, sums)}
+	_, err := updater.Download(ReleaseInfo{
+		Version:      "v1.2.3",
+		AssetName:    "tidemail-linux-x86_64",
+		DownloadURL:  testDownloadURL,
+		ChecksumsURL: testChecksumsURL,
+	})
+	if err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
+		t.Fatalf("expected checksum mismatch error, got: %v", err)
+	}
+}
+
+func TestDownloadRejectsMissingChecksumsAsset(t *testing.T) {
+	archive := testArchive(t, "tidemail-linux-x86_64", "real")
+	updater := &Updater{HTTPClient: archiveServer(archive, "")}
+	_, err := updater.Download(ReleaseInfo{
+		Version:     "v1.2.3",
+		AssetName:   "tidemail-linux-x86_64",
+		DownloadURL: testDownloadURL,
+		// ChecksumsURL deliberately empty.
+	})
+	if err == nil || !strings.Contains(err.Error(), "refusing to install unverified") {
+		t.Fatalf("expected unverified-update refusal, got: %v", err)
+	}
+}
+
+func TestDownloadRejectsUntrustedHost(t *testing.T) {
+	archive := testArchive(t, "tidemail-linux-x86_64", "real")
+	updater := &Updater{HTTPClient: archiveServer(archive, "")}
+	_, err := updater.Download(ReleaseInfo{
+		Version:      "v1.2.3",
+		AssetName:    "tidemail-linux-x86_64",
+		DownloadURL:  "https://evil.example.com/payload.tar.gz",
+		ChecksumsURL: testChecksumsURL,
+	})
+	if err == nil || !strings.Contains(err.Error(), "untrusted host") {
+		t.Fatalf("expected untrusted-host refusal, got: %v", err)
+	}
+}
+
+func TestIsTrustedAssetHost(t *testing.T) {
+	trusted := []string{
+		"https://github.com/o/r/releases/download/x.tar.gz",
+		"https://objects.githubusercontent.com/abc",
+		"https://release-assets.githubusercontent.com/abc",
+	}
+	for _, u := range trusted {
+		if !isTrustedAssetHost(u) {
+			t.Errorf("expected %q to be trusted", u)
+		}
+	}
+	untrusted := []string{
+		"http://github.com/o/r/x.tar.gz", // not https
+		"https://github.com.evil.com/x",  // suffix trick
+		"https://evilgithub.com/x",       // not github
+		"https://raw.githubusercontent.com.evil.com/x",
+		"not a url",
+		"",
+	}
+	for _, u := range untrusted {
+		if isTrustedAssetHost(u) {
+			t.Errorf("expected %q to be untrusted", u)
+		}
+	}
+}
+
+func sha256Hex(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
 }
 
 func TestInstallReplacesExistingBinary(t *testing.T) {

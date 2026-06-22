@@ -210,6 +210,10 @@ build_all() {
     print_file_size "$archive"
   done
 
+  # Checksums for in-app self-update integrity verification. The updater refuses
+  # to install an archive whose SHA-256 isn't listed here.
+  ( cd "$DIST_DIR" && sha256sum *.tar.gz > SHA256SUMS )
+
   print_success "Build complete"
 }
 
@@ -333,7 +337,7 @@ $default_notes")
   print_success "Release created"
 
   print_substep "Uploading archives..."
-  for f in "$DIST_DIR"/*.tar.gz; do
+  for f in "$DIST_DIR"/*.tar.gz "$DIST_DIR"/SHA256SUMS; do
     if [ -f "$f" ]; then
       if ! gh release upload "$VERSION" "$f" --repo "$REPO"; then
         print_error "Failed to upload $(basename "$f")"
