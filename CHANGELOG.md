@@ -2,6 +2,33 @@
 
 All notable changes to TideMail are documented in this file.
 
+## v0.7.0
+
+### Security
+
+- **Email content can no longer hijack your terminal.** Message subjects,
+  sender names, attachment filenames, and bodies were rendered with raw
+  control bytes intact, so a crafted message could emit terminal escape
+  sequences when viewed — manipulating the clipboard (OSC 52), spoofing the
+  UI, or moving the cursor. Control bytes are now stripped from all untrusted
+  message text, both when it's stored and when it's drawn (covering escapes
+  hidden behind HTML entities such as `&#27;`).
+- **In-app updates are now integrity-checked.** Each release publishes a
+  `SHA256SUMS` file; the updater pins downloads to GitHub and verifies the
+  downloaded archive's checksum before installing, refusing to replace the
+  binary if the checksum is missing, unreachable, or doesn't match. Previously
+  the self-update trusted whatever it downloaded.
+- **Desktop notifications are hardened** against a sender or subject beginning
+  with `-` being misread as a `notify-send` option.
+
+### Fixed
+
+- **Deleting a Gmail message no longer reports a false "delete failed".** Gmail
+  returns a technically-malformed `COPYUID` response on a successful move to
+  Trash that the IMAP library rejected, so the message was moved on the server
+  but left visible locally with an error. The move is now recognized as the
+  success it is.
+
 ## v0.6.3
 
 ### Fixed
