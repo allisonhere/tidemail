@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/allisonhere/tide/internal/config"
@@ -258,9 +259,26 @@ func (c *Client) MoveMessages(ctx context.Context, mailboxName string, uids []ui
 	}
 	uidSet := uidSetOf(uids)
 	if _, err := c.conn.Move(uidSet, targetMailbox).Wait(); err != nil {
+		if isCopyUIDParseError(err) {
+			// The MOVE succeeded; go-imap only choked parsing the COPYUID
+			// resp-code on the OK response (see isCopyUIDParseError).
+			return nil
+		}
 		return fmt.Errorf("move to %s: %w", targetMailbox, err)
 	}
 	return nil
+}
+
+// isCopyUIDParseError reports whether err is go-imap failing to parse a COPYUID
+// resp-code rather than the MOVE/COPY itself failing. Gmail returns a malformed
+// `[COPYUID <validity> <src> 0]` on a successful MOVE to Trash, and go-imap
+// rejects the `0` ("imap: bad number set value") because IMAP seq-numbers must
+// be >= 1. Per RFC 4315 the COPYUID code only appears in a tagged OK response,
+// so a parse failure here means the server completed the move — we treat it as
+// success. (The failed parse also tripped go-imap's read loop and closed this
+// connection; the SessionPool's NOOP probe reconnects before the next use.)
+func isCopyUIDParseError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "resp-code-copy")
 }
 
 func (c *Client) CreateMailbox(ctx context.Context, name string) error {

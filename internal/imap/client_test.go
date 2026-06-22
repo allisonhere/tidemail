@@ -1,9 +1,11 @@
 package imap
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -374,6 +376,110 @@ func TestDeleteMessage(t *testing.T) {
 	}
 	if len(msgs) != 0 {
 		t.Errorf("expected 0 messages after delete, got %d", len(msgs))
+	}
+}
+
+// startGmailTrashQuirkServer speaks just enough IMAP to drive LOGIN, SELECT and
+// UID MOVE, replying to the MOVE with a tagged OK carrying Gmail's malformed
+// `[COPYUID 1 1 0]` resp-code. go-imap rejects the `0` while parsing the OK
+// response, so a faithful reproduction needs a raw server rather than
+// imapmemserver (which always returns a well-formed COPYUID).
+func startGmailTrashQuirkServer(t *testing.T) (int, func()) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		reader := bufio.NewReader(conn)
+		write := func(s string) { _, _ = conn.Write([]byte(s)) }
+		write("* OK [CAPABILITY IMAP4rev1 MOVE UIDPLUS] ready\r\n")
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				return
+			}
+			fields := strings.Fields(line)
+			if len(fields) < 2 {
+				continue
+			}
+			tag, cmd := fields[0], strings.ToUpper(fields[1])
+			switch {
+			case cmd == "LOGIN":
+				write(tag + " OK LOGIN completed\r\n")
+			case cmd == "CAPABILITY":
+				// Advertise MOVE so go-imap issues a real UID MOVE rather than
+				// falling back to COPY+STORE+EXPUNGE — only the MOVE path
+				// surfaces Gmail's malformed COPYUID this test reproduces.
+				write("* CAPABILITY IMAP4rev1 MOVE UIDPLUS\r\n")
+				write(tag + " OK CAPABILITY completed\r\n")
+			case cmd == "SELECT":
+				write("* 1 EXISTS\r\n")
+				write("* OK [UIDVALIDITY 1] .\r\n")
+				write("* OK [UIDNEXT 2] .\r\n")
+				write("* FLAGS (\\Seen \\Deleted)\r\n")
+				write("* OK [PERMANENTFLAGS (\\Seen \\Deleted)] .\r\n")
+				write(tag + " OK [READ-WRITE] SELECT completed\r\n")
+			case cmd == "UID" && len(fields) >= 3 && strings.ToUpper(fields[2]) == "MOVE":
+				// The move succeeds server-side; the OK carries Gmail's
+				// malformed COPYUID with a destination set of "0".
+				write("* 1 EXPUNGE\r\n")
+				write(tag + " OK [COPYUID 1 1 0] MOVE completed\r\n")
+			case cmd == "LOGOUT":
+				write("* BYE logging out\r\n")
+				write(tag + " OK LOGOUT completed\r\n")
+				return
+			default:
+				write(tag + " OK completed\r\n")
+			}
+		}
+	}()
+	return ln.Addr().(*net.TCPAddr).Port, func() { ln.Close() }
+}
+
+// TestMoveMessages_GmailTrashCopyUIDQuirk verifies that a MOVE which the server
+// completes is reported as success even when go-imap fails to parse Gmail's
+// malformed COPYUID resp-code — otherwise a deleted message wrongly looks like
+// "delete failed" and stays visible.
+func TestMoveMessages_GmailTrashCopyUIDQuirk(t *testing.T) {
+	port, cleanup := startGmailTrashQuirkServer(t)
+	defer cleanup()
+
+	client := New(config.AccountConfig{
+		IMAPHost: "127.0.0.1",
+		IMAPPort: port,
+		User:     "testuser",
+		Password: "testpass",
+	})
+	if err := client.Connect(context.Background()); err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+	defer client.Close()
+
+	if err := client.MoveMessages(context.Background(), "INBOX", []uint32{1}, "[Gmail]/Trash"); err != nil {
+		t.Fatalf("MoveMessages should treat the COPYUID parse failure as success, got: %v", err)
+	}
+}
+
+func TestIsCopyUIDParseError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"copyuid parse", fmt.Errorf("in resp-code-copy: imap: bad number set value %q", "0"), true},
+		{"other error", fmt.Errorf("move to Archive: connection reset"), false},
+	}
+	for _, tc := range cases {
+		if got := isCopyUIDParseError(tc.err); got != tc.want {
+			t.Errorf("%s: isCopyUIDParseError = %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }
 
