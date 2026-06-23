@@ -3,7 +3,7 @@
 ![TideMail screenshot](screen.png)
 
 A keyboard-first terminal mail client built with [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lipgloss](https://github.com/charmbracelet/lipgloss).
-The compose message body is powered by [ripple](https://github.com/allisonhere/ripple) — an owned keyboard-first text editor (selection, undo/redo, system-clipboard copy/cut/paste, word movement, soft-wrap) extracted from TideMail into a standalone Go TUI editor library.
+Currently in process of writing GO editor library for compose.
 
 ## Install
 
@@ -29,13 +29,10 @@ go build -o tidemail .
 - Three-pane mail layout: accounts, messages, content
 - Unified Inbox across all configured accounts
 - Multi-select messages with space bar — auto-advances for bulk delete, archive, move, mark read
-- Select all with `A` — selects every message in current view
 - Full email headers display — toggle with `ctrl+e`, configurable default in Settings
 - Spam/auth headers — SPF, DKIM, DMARC results color-coded in header view
 - Message text can be copied from the content pane with Vim-style `v`/`V` selection, then `y` or `ctrl+c`
-- **Owned compose editor** for the message body — text selection (`shift`/`ctrl+shift`+arrows), select-all (`ctrl+a`), undo/redo (`ctrl+z`/`ctrl+y`), system-clipboard copy/cut/paste (`ctrl+c`/`ctrl+x`/`ctrl+v`), word movement, and soft-wrap
-- **Optional vim editing in compose** — enable it in Settings → Editor (or `[display] compose_vim`); the body gets Normal/Insert/Visual modes, motions (`hjkl`, `w/b/e`, `0/^/$`, `gg/G`, counts), edits (`x`, `dd`, `yy`, `p`, `dw`, `cw`), visual `v`/`V`, `u`/`ctrl+r`, and a `:` command line where `:w`/`:wq` send and `:q` cancels. Off by default
-- IMAP/SMTP accounts using passwords or app passwords (stored in system keychain)
+- IMAP/SMTP accounts using passwords, app passwords, or **Gmail OAuth2** (stored in system keychain)
 - Account manager for adding, editing, deleting, and discovering mailboxes
 - Contacts manager for curated autocomplete, manual entries, adding seen senders, composing to selected contacts, and vCard import/export
 - vCard import/export preserves email, display name, phone, organization, title, and notes
@@ -54,6 +51,7 @@ go build -o tidemail .
 - Theme-aware dialogs, overlays, and terminal background sync
 - Collapsible account folders (System, Labels) in sidebar
 - **Desktop notifications** on genuinely new unread mail via auto-sync (notify-send), with sender and subject details
+- **Gmail OAuth2** — sign-in via browser, no app passwords needed
 
 ## Usage
 
@@ -74,23 +72,29 @@ Open Contacts with `C`. Contacts are the curated address book used for compose a
 
 TideMail stores IMAP/SMTP passwords and AI API keys in the system keychain via `secret-tool` (libsecret on Linux, Keychain on macOS). Empty `password` and `openai_key`/`claude_key`/`gemini_key` fields in the config file are looked up from the keychain at startup. When you save settings, any in-memory secrets are moved to the keychain and removed from the config file automatically.
 
-If `secret-tool` is not installed, passwords and API keys fall back to being stored directly in `~/.config/tidemail/config.toml`. Treat the config file like a secret in that case.
+OAuth2 refresh tokens are also stored in the keychain. Client ID and secret live in the `[oauth]` section of the config file — the defaults are baked into the binary so you never need to set them up.
 
-- Gmail: enable 2-Step Verification, then Google Account → Security → App passwords
+If `secret-tool` is not installed, passwords, API keys, and refresh tokens fall back to being stored directly in `~/.config/tidemail/config.toml`. Treat the config file like a secret in that case.
+
+- Gmail (password method): Google Account → Security → App passwords
+- Gmail (OAuth2 method): sign-in with Google in the account manager — no app passwords needed
 - Yahoo: Account Security → Generate app password
 - iCloud: Apple ID → Sign-In and Security → App-Specific Passwords
 
-If you paste or accidentally expose an app password, revoke it and create a new one.
+If you paste or accidentally expose an app password or refresh token, revoke it and create a new one.
 
-## Gmail
+## Gmail OAuth2
 
-Gmail requires a Google **App Password** (OAuth "Sign in with Google" was removed in v0.5.0):
-1. Enable 2-Step Verification on your Google account
-2. Create an app password at myaccount.google.com/apppasswords
-3. Press `M` to open the account manager, add or edit your Gmail account
-4. Paste the app password into the password field and save (`Ctrl+S`)
+Gmail accounts can use OAuth2 instead of app passwords:
+1. Press `M` to open account manager
+2. Select your Gmail account and press `Enter` to edit
+3. Tab to the **Auth** field and toggle to **OAuth2** (Space or Enter)
+4. Tab to **[Sign in with Google]** and press Enter
+5. Your browser opens — sign in and grant access
+6. Focus jumps to the From field — finish editing and save (Ctrl+S)
+7. TideMail authenticates with your refresh token — no password storage needed
 
-The app password is stored in the system keychain (or the config file if `secret-tool` is unavailable).
+On future launches, the refresh token is restored from the keychain automatically.
 
 Example account config:
 
@@ -115,7 +119,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 
 | Key | Action |
 |-----|--------|
-| `:` or `Ctrl+P` | Command palette (also contextual commands in compose, AI summary, and save-attachments overlays). In a vim compose body `:` is the editor's command line — use `Ctrl+P` there |
+| `:` or `Ctrl+P` | Command palette (`Ctrl+P` stays paste inside compose; `:` also opens it in compose, AI summary, and save-attachments overlays) |
 | `m` | Move selected message(s) to folder/label |
 | `M` | Account manager |
 | `C` | Contacts manager |
@@ -146,7 +150,6 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 | `T` | Theme picker |
 | `Ctrl+D` | Save attachments to folder |
 | `Ctrl+G` | AI grammar & spell check (compose) |
-| Vim editing (compose) | Optional — enable in Settings → Editor; `:w`/`:wq` send, `:q` or double-`Esc` cancels |
 | `?` | Help |
 | `q` | Quit |
 
@@ -155,20 +158,10 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 Settings are opened with `S`.
 
 - Display: icons, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, and quit confirmation
-- Editor: vim keys in the compose body (off by default)
+- Accounts: edit account details and set a per-account `sync_minutes` interval for automatic background refresh
 - Updates: check, install, restart, or copy a manual install command
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings
-- Advanced: view logs and feed max body size
 - About: repository and issue links
-
-(Account details are managed in the Account Manager — press `M` — not in Settings.)
-
-## Related projects
-
-TideMail grew alongside two of its own libraries:
-
-- **[tideui](https://github.com/allisonhere/tideui)** — a themeable multi-pane terminal UI toolkit for Bubble Tea and Lipgloss. It was extracted from this project and used to build the base of TideMail's interface (the multi-pane layout, theming, and styles live on in `internal/ui`).
-- **[ripple](https://github.com/allisonhere/ripple)** — the keyboard-first text editor behind the compose message body, later extracted into a standalone library. TideMail depends on it directly (`github.com/allisonhere/ripple`).
 
 ## Development
 

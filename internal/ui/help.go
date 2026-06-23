@@ -56,6 +56,7 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 				{keys.Enter.Help().Key + "/" + keys.Space.Help().Key, "expand or collapse selected account/section"},
 				{keys.Sync.Help().Key, "sync selected mailbox; on Unified Inbox, sync all inboxes"},
 				bind(keys.SyncAll),
+				{"auto", "folder list refreshes on background sync (≈hourly): webmail-added labels appear, deleted ones are pruned"},
 				{keys.MarkAllRead.Help().Key, "mark selected mailbox or account as read"},
 				bind(keys.AccountManager),
 			},
