@@ -28,10 +28,12 @@ func (m *Model) checkForUpdatesCmd(manual bool) tea.Cmd {
 	m.updateState = updateStateChecking
 	updater := m.updater
 	currentVersion := m.currentVersion
-	return func() tea.Msg {
+	check := func() tea.Msg {
 		result, err := updater.Check(currentVersion)
 		return UpdateCheckedMsg{Result: result, Manual: manual, Err: err}
 	}
+	// Start the spinner animation for this update check (no-op if already running).
+	return tea.Batch(check, m.ensureSpinner())
 }
 
 func (m *Model) downloadUpdateCmd(info update.ReleaseInfo) tea.Cmd {

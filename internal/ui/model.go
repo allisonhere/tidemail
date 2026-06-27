@@ -193,6 +193,11 @@ type Model struct {
 
 	syncing map[int64]bool
 	spinner spinner.Model
+	// spinnerRunning tracks whether the spinner's self-rescheduling tick loop is
+	// currently live. The loop only runs while something is loading (see
+	// spinnerActive); this flag prevents starting a second parallel loop, which
+	// would double the frame rate. See ensureSpinner and the spinner.TickMsg case.
+	spinnerRunning bool
 
 	// lastFolderRefresh throttles the per-account server folder LIST so it runs
 	// far less often than message sync. Keyed by account ID; zero value means
@@ -309,7 +314,10 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 }
 
 func (m Model) Init() tea.Cmd {
-	cmds := []tea.Cmd{m.loadAccountsCmd(), m.spinner.Tick}
+	// The spinner tick loop is started lazily by ensureSpinner when a loading
+	// state begins — not here. Kicking it at startup would re-render the idle TUI
+	// ~10×/sec forever (the spinner self-reschedules on every tick).
+	cmds := []tea.Cmd{m.loadAccountsCmd()}
 	if !m.previewManualUpdateUI {
 		if cmd := m.maybeCheckForUpdatesCmd(false); cmd != nil {
 			cmds = append(cmds, cmd)
@@ -339,6 +347,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
+		// The spinner self-perpetuates: Update returns a fresh Tick on every
+		// TickMsg. Only keep the loop alive while something is actually animating,
+		// otherwise an idle TUI would re-render ~10×/sec forever. Once nothing is
+		// loading, drop the tick and mark the loop stopped so ensureSpinner can
+		// restart it next time.
+		if !m.spinnerActive() {
+			m.spinnerRunning = false
+			return m, nil
+		}
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
@@ -2479,6 +2496,31 @@ func (m *Model) clearStatusCmd() tea.Cmd {
 	return tea.Tick(4*time.Second, func(time.Time) tea.Msg {
 		return StatusClearMsg{}
 	})
+}
+
+// spinnerActive reports whether any state that displays the spinner is in
+// flight. It is the single gate for the spinner tick loop: when this is false
+// the loop stops (see the spinner.TickMsg case) so the idle TUI does no work.
+// Keep this in exact sync with every call site that renders m.spinner.View()
+// (sidebar sync indicator, status bar "syncing…", update check, AI summary) —
+// a state shown there but missing here leaves that spinner frozen.
+func (m Model) spinnerActive() bool {
+	return len(m.syncing) > 0 ||
+		m.updateState == updateStateChecking ||
+		m.summaryGenerating
+}
+
+// ensureSpinner starts the spinner tick loop if a loading state is active and
+// the loop isn't already running. It returns nil when no tick should be
+// scheduled, so callers can safely batch it into their returned command (a nil
+// Cmd is dropped by tea.Batch). Call it wherever a state in spinnerActive
+// begins.
+func (m *Model) ensureSpinner() tea.Cmd {
+	if !m.spinnerActive() || m.spinnerRunning {
+		return nil
+	}
+	m.spinnerRunning = true
+	return m.spinner.Tick
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

@@ -430,7 +430,7 @@ func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
 		}
 	}
 	sessions := m.sessions
-	return func() tea.Msg {
+	fetch := func() tea.Msg {
 		t0 := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
@@ -519,6 +519,8 @@ func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
 		}
 		return result
 	}
+	// Start the spinner animation while this sync runs (no-op if already running).
+	return tea.Batch(fetch, m.ensureSpinner())
 }
 
 // storeFetchedMessages upserts msgs and returns the genuinely-new unread ones

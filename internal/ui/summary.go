@@ -36,7 +36,8 @@ func (m Model) openSummary() (tea.Model, tea.Cmd) {
 	m.summaryGenerating = true
 	m.summaryErr = ""
 	m.overlay = overlaySummary
-	return m, m.aiSummarizeCmd(*msg)
+	// Start the spinner animation while the summary generates (no-op if already running).
+	return m, tea.Batch(m.aiSummarizeCmd(*msg), m.ensureSpinner())
 }
 
 func (m *Model) aiSummarizeCmd(msg db.Message) tea.Cmd {
