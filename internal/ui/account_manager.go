@@ -8,10 +8,15 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/cursor"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"golang.org/x/oauth2"
+
+	"github.com/allisonhere/tide/internal/auth"
+	"github.com/allisonhere/tide/internal/clipboard"
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
 	"github.com/allisonhere/tide/internal/imap"
@@ -274,6 +279,8 @@ const (
 	amFieldSMTPTLS
 	amFieldUser
 	amFieldPass
+	amFieldMSSignIn
+	amFieldMSCode
 	amFieldFrom
 	amFieldSyncInterval
 	amFieldCount
@@ -340,6 +347,20 @@ type AccountManager struct {
 	editAccountID int64
 	colorIdx      int
 
+	// Microsoft OAuth (Outlook provider) sign-in state. The shipped Thunderbird
+	// client ID uses the authorization-code flow (browser + paste the code);
+	// custom client IDs use the device-code flow.
+	oauthCfg       config.OAuthConfig
+	browser        string // configured browser command for opening the sign-in URL
+	msSignedIn     bool
+	msRefreshToken string
+	msOAuthActive  bool
+	msAwaitingCode bool // authorization-code flow: waiting for the pasted code
+	msFlow         *auth.MSAuthCodeFlow
+	msCodeInput    textinput.Model
+	oauthCtx       context.Context
+	oauthCancel    context.CancelFunc
+
 	busy      bool
 	busyMsg   string
 	statusMsg string
@@ -356,6 +377,7 @@ func NewAccountManager(database *db.DB) AccountManager {
 	am.passInput = newAMInput("password", true)
 	am.fromInput = newAMInput("Your Name <you@example.com>", false)
 	am.syncInput = newAMInput("0 (disabled)", false)
+	am.msCodeInput = newAMInput("code or full https://localhost/?code=... URL", false)
 	return am
 }
 
@@ -369,10 +391,12 @@ func newAMInput(placeholder string, password bool) textinput.Model {
 	return ti
 }
 
-func (am *AccountManager) setData(accounts []db.Account, mailboxes []db.Mailbox, configs []config.AccountConfig) {
+func (am *AccountManager) setData(accounts []db.Account, mailboxes []db.Mailbox, configs []config.AccountConfig, oauthCfg config.OAuthConfig, browser string) {
 	am.accounts = accounts
 	am.mailboxes = mailboxes
 	am.configs = configs
+	am.oauthCfg = oauthCfg
+	am.browser = browser
 	am.cursor = clamp(am.cursor, 0, max(0, len(accounts)-1))
 }
 
@@ -387,6 +411,7 @@ func (am *AccountManager) focusField(f amField) {
 	am.passInput.Blur()
 	am.fromInput.Blur()
 	am.syncInput.Blur()
+	am.msCodeInput.Blur()
 	switch f {
 	case amFieldName:
 		am.nameInput.Focus()
@@ -404,6 +429,8 @@ func (am *AccountManager) focusField(f amField) {
 		am.userInput.Focus()
 	case amFieldPass:
 		am.passInput.Focus()
+	case amFieldMSCode:
+		am.msCodeInput.Focus()
 	case amFieldFrom:
 		am.fromInput.Focus()
 	case amFieldSyncInterval:
@@ -427,6 +454,9 @@ func (am *AccountManager) populateFormFrom(acfg config.AccountConfig) {
 	am.passInput.SetValue(acfg.Password)
 	am.fromInput.SetValue(acfg.From)
 	am.syncInput.SetValue(strconv.Itoa(acfg.SyncMinutes))
+	// Carry the existing refresh token so buildCfg preserves OAuth on save.
+	am.msRefreshToken = acfg.RefreshToken
+	am.msSignedIn = acfg.RefreshToken != ""
 }
 
 func (am AccountManager) buildCfg() config.AccountConfig {
@@ -459,6 +489,14 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 		cfg.SMTPHost = preset.SMTPHost
 		cfg.SMTPPort = preset.SMTPPort
 		cfg.SMTPTLS = preset.SMTPTLS
+	}
+	// Signed-in Outlook accounts use XOAUTH2: the refresh token replaces the
+	// password. ClientID is toml:"-" — it only feeds the live connect on
+	// save/test; fillSecrets re-fills it on later loads.
+	if am.provider == "Outlook" && am.msRefreshToken != "" {
+		cfg.RefreshToken = am.msRefreshToken
+		cfg.ClientID = am.oauthCfg.MSClientID
+		cfg.Password = ""
 	}
 	return cfg
 }
@@ -502,7 +540,8 @@ func (am AccountManager) configForAccount(acc db.Account) (config.AccountConfig,
 func (am AccountManager) statusForeground(chrome managerChrome) lipgloss.Color {
 	msg := strings.ToUpper(strings.TrimSpace(am.statusMsg))
 	switch {
-	case strings.HasPrefix(msg, "CONNECTED:"), strings.HasPrefix(msg, "SAVED:"), strings.HasPrefix(msg, "DELETED"):
+	case strings.HasPrefix(msg, "CONNECTED:"), strings.HasPrefix(msg, "SAVED:"), strings.HasPrefix(msg, "DELETED"),
+		strings.HasPrefix(msg, "SIGNED IN"), strings.HasPrefix(msg, "SIGN-IN PAGE"):
 		return chrome.successFg
 	default:
 		return chrome.errorFg
@@ -594,6 +633,8 @@ func (am *AccountManager) updateFocusedInput(msg tea.Msg) tea.Cmd {
 		am.userInput, cmd = am.userInput.Update(msg)
 	case amFieldPass:
 		am.passInput, cmd = am.passInput.Update(msg)
+	case amFieldMSCode:
+		am.msCodeInput, cmd = am.msCodeInput.Update(msg)
 	case amFieldFrom:
 		am.fromInput, cmd = am.fromInput.Update(msg)
 	case amFieldSyncInterval:
@@ -603,7 +644,58 @@ func (am *AccountManager) updateFocusedInput(msg tea.Msg) tea.Cmd {
 }
 
 func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, tea.Cmd, bool) {
+	// Device-flow results arrive async while the form is busy — handle them
+	// before the busy guard.
+	switch dm := msg.(type) {
+	case DeviceCodeMsg:
+		if !am.msOAuthActive {
+			return am, nil, false // stale result from a cancelled flow
+		}
+		if dm.Err != nil {
+			am.cancelMSOAuth()
+			am.statusMsg = fmt.Sprintf("SIGN-IN FAILED: %v", dm.Err)
+			return am, nil, false
+		}
+		am.busyMsg = fmt.Sprintf("GO TO %s AND ENTER CODE %s (ESC CANCELS)", dm.VerificationURL, dm.UserCode)
+		return am, pollMSTokenCmd(am.oauthCtx, am.oauthCfg.MSClientID, dm.da), false
+	case OAuth2DoneMsg:
+		if !am.msOAuthActive {
+			return am, nil, false // stale result from a cancelled flow
+		}
+		if dm.Err != nil && am.msAwaitingCode {
+			// A bad paste doesn't consume the PKCE verifier — keep the flow
+			// alive so the user can paste again without restarting.
+			am.busy = false
+			am.busyMsg = ""
+			am.statusMsg = fmt.Sprintf("SIGN-IN FAILED: %v", dm.Err)
+			am.focusField(amFieldMSCode)
+			return am, nil, false
+		}
+		am.cancelMSOAuth()
+		if dm.Err != nil {
+			am.statusMsg = fmt.Sprintf("SIGN-IN FAILED: %v", dm.Err)
+			return am, nil, false
+		}
+		if dm.RefreshToken == "" {
+			am.statusMsg = "SIGN-IN FAILED: NO REFRESH TOKEN RETURNED"
+			return am, nil, false
+		}
+		am.msSignedIn = true
+		am.msRefreshToken = dm.RefreshToken
+		// Drop any cached tokens for this account so the next connect seeds
+		// from the freshly issued refresh token.
+		auth.ForgetMSToken(strings.TrimSpace(am.nameInput.Value()))
+		am.statusMsg = "SIGNED IN: MICROSOFT ACCOUNT LINKED"
+		am.focusField(amFieldFrom)
+		return am, nil, false
+	}
 	if am.busy {
+		// Allow bailing out of a pending device-code approval (can take up to
+		// ~15 minutes to expire on its own).
+		if km, ok := msg.(tea.KeyMsg); ok && am.msOAuthActive && keyMatches(km, keys.Cancel) {
+			am.cancelMSOAuth()
+			am.statusMsg = "SIGN-IN CANCELLED"
+		}
 		return am, nil, false
 	}
 	km, ok := msg.(tea.KeyMsg)
@@ -612,17 +704,28 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 	}
 	switch {
 	case keyMatches(km, keys.Cancel):
+		if am.msAwaitingCode {
+			// Esc during code entry abandons the sign-in, not the form.
+			am.cancelMSOAuth()
+			am.statusMsg = "SIGN-IN CANCELLED"
+			am.focusField(amFieldMSSignIn)
+			return am, nil, false
+		}
 		am.mode = amList
 		am.statusMsg = ""
 	case keyMatches(km, keys.TestAccount):
 		return am.testForm()
 	case keyMatches(km, keys.SaveAccount):
 		return am.submitForm()
+	case keyMatches(km, keys.OAuthSignIn):
+		if am.provider == "Outlook" {
+			return am.startMSOAuth()
+		}
 	case keyMatches(km, keys.Tab):
 		am.advanceField(1)
-	case keyMatches(km, keys.Down):
+	case am.formNavMatches(km, keys.Down):
 		am.advanceField(1)
-	case keyMatches(km, keys.Up):
+	case am.formNavMatches(km, keys.Up):
 		am.advanceField(-1)
 	case am.focusedField == amFieldProvider && (keyMatches(km, keys.Left) || keyMatches(km, keys.Right)):
 		for i, p := range providerList {
@@ -657,6 +760,12 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 			}
 		}
 		if keyMatches(km, keys.Confirm) {
+			if am.focusedField == amFieldMSSignIn {
+				return am.startMSOAuth()
+			}
+			if am.focusedField == amFieldMSCode {
+				return am.submitMSCode()
+			}
 			if am.focusedField == amFieldFrom {
 				// submit
 				return am.submitForm()
@@ -680,6 +789,109 @@ func (am AccountManager) submitForm() (AccountManager, tea.Cmd, bool) {
 	am.busyMsg = "CONNECTING TO IMAP..."
 	am.statusMsg = ""
 	return am, saveAccountCmd(am.db, acfg, am.editAccountID, color), false
+}
+
+// startMSOAuth kicks off a Microsoft sign-in. The shipped Thunderbird client
+// ID forbids the device-code flow, so it uses the authorization-code flow:
+// open the browser, user approves, lands on a dead https://localhost page and
+// pastes the code back. Custom client IDs (TIDEMAIL_MS_CLIENT_ID) use the
+// device-code flow: show a short code, poll until approved.
+func (am AccountManager) startMSOAuth() (AccountManager, tea.Cmd, bool) {
+	clientID := am.oauthCfg.MSClientID
+	if clientID == "" {
+		am.statusMsg = "MICROSOFT OAUTH NOT CONFIGURED (SET TIDEMAIL_MS_CLIENT_ID)"
+		return am, nil, false
+	}
+	am.cancelMSOAuth() // drop any previous attempt
+	am.statusMsg = ""
+	if clientID == config.ThunderbirdMSClientID {
+		am.msFlow = auth.NewMSAuthCodeFlow(clientID)
+		am.msOAuthActive = true
+		am.msAwaitingCode = true
+		am.msCodeInput.Reset()
+		am.focusField(amFieldMSCode)
+		urlNote := "SIGN-IN PAGE OPENED IN BROWSER"
+		if err := clipboardCopy(am.msFlow.AuthURL); err == nil {
+			urlNote += " (URL ALSO ON CLIPBOARD)"
+		}
+		am.statusMsg = urlNote
+		return am, openBrowserCmd(am.browser, am.msFlow.AuthURL), false
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	am.oauthCtx = ctx
+	am.oauthCancel = cancel
+	am.msOAuthActive = true
+	am.busy = true
+	am.busyMsg = "REQUESTING SIGN-IN CODE..."
+	return am, startMSDeviceFlowCmd(ctx, clientID), false
+}
+
+// submitMSCode exchanges the pasted authorization code for tokens.
+func (am AccountManager) submitMSCode() (AccountManager, tea.Cmd, bool) {
+	pasted := strings.TrimSpace(am.msCodeInput.Value())
+	if pasted == "" {
+		am.statusMsg = "PASTE THE CODE FROM THE BROWSER FIRST"
+		return am, nil, false
+	}
+	if am.msFlow == nil {
+		am.statusMsg = "SIGN-IN EXPIRED — PRESS CTRL+O TO START AGAIN"
+		return am, nil, false
+	}
+	am.busy = true
+	am.busyMsg = "EXCHANGING SIGN-IN CODE..."
+	am.statusMsg = ""
+	return am, exchangeMSCodeCmd(am.msFlow, pasted), false
+}
+
+// cancelMSOAuth stops any in-flight sign-in (either flow) and clears its
+// state; safe to call when no flow is active.
+func (am *AccountManager) cancelMSOAuth() {
+	if am.oauthCancel != nil {
+		am.oauthCancel()
+	}
+	am.oauthCtx = nil
+	am.oauthCancel = nil
+	am.msOAuthActive = false
+	am.msAwaitingCode = false
+	am.msFlow = nil
+	am.msCodeInput.Reset()
+	am.busy = false
+	am.busyMsg = ""
+}
+
+// clipboardCopy is a seam so tests don't touch the real clipboard.
+var clipboardCopy = clipboard.Copy
+
+func startMSDeviceFlowCmd(ctx context.Context, clientID string) tea.Cmd {
+	return func() tea.Msg {
+		da, err := auth.StartMSDeviceFlow(ctx, clientID)
+		if err != nil {
+			return DeviceCodeMsg{Err: err}
+		}
+		return DeviceCodeMsg{VerificationURL: da.VerificationURI, UserCode: da.UserCode, da: da}
+	}
+}
+
+func pollMSTokenCmd(ctx context.Context, clientID string, da *oauth2.DeviceAuthResponse) tea.Cmd {
+	return func() tea.Msg {
+		tok, err := auth.PollMSDeviceToken(ctx, clientID, da)
+		if err != nil {
+			return OAuth2DoneMsg{Err: err}
+		}
+		return OAuth2DoneMsg{RefreshToken: tok.RefreshToken}
+	}
+}
+
+func exchangeMSCodeCmd(flow *auth.MSAuthCodeFlow, pasted string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		tok, err := flow.Exchange(ctx, pasted)
+		if err != nil {
+			return OAuth2DoneMsg{Err: err}
+		}
+		return OAuth2DoneMsg{RefreshToken: tok.RefreshToken}
+	}
 }
 
 func (am AccountManager) testForm() (AccountManager, tea.Cmd, bool) {
@@ -710,6 +922,9 @@ func validateAccountForConnect(acfg config.AccountConfig) string {
 	if acfg.SMTPPort < 1 || acfg.SMTPPort > 65535 {
 		return "SMTP PORT MUST BE 1-65535"
 	}
+	if acfg.Provider == "Outlook" && acfg.Password == "" && acfg.RefreshToken == "" {
+		return "SIGN IN WITH MICROSOFT (CTRL+O) OR ENTER AN APP PASSWORD"
+	}
 	return ""
 }
 
@@ -732,6 +947,27 @@ func (am AccountManager) updateConfirmDelete(msg tea.Msg, keys KeyMap) (AccountM
 	return am, nil, false
 }
 
+// formNavMatches treats the vim navigation runes (j/k on Up/Down) as
+// navigation only while a non-text row is focused. While a text input is
+// focused only the arrow keys navigate — typing "outlook.com" must insert the
+// 'k', not jump to the next field.
+func (am AccountManager) formNavMatches(km tea.KeyMsg, b key.Binding) bool {
+	if km.Type == tea.KeyRunes && am.focusedIsTextInput() {
+		return false
+	}
+	return keyMatches(km, b)
+}
+
+// focusedIsTextInput reports whether the focused form row is a free-text
+// input (as opposed to a picker/toggle/button row).
+func (am AccountManager) focusedIsTextInput() bool {
+	switch am.focusedField {
+	case amFieldProvider, amFieldColor, amFieldIMAPTLS, amFieldSMTPTLS, amFieldMSSignIn:
+		return false
+	}
+	return true
+}
+
 func (am *AccountManager) advanceField(delta int) {
 	next := int(am.focusedField) + delta
 	if next < 0 || next >= int(amFieldCount) {
@@ -747,6 +983,20 @@ func (am *AccountManager) advanceField(delta int) {
 			}
 			f = amField(next)
 		}
+	}
+	// The Microsoft sign-in controls only exist for the Outlook provider, and
+	// the code field only while a sign-in is waiting for its pasted code.
+	for {
+		f := amField(next)
+		if f == amFieldMSSignIn && am.provider != "Outlook" ||
+			f == amFieldMSCode && (am.provider != "Outlook" || !am.msAwaitingCode) {
+			next += delta
+			if next < 0 || next >= int(amFieldCount) {
+				return
+			}
+			continue
+		}
+		break
 	}
 	am.focusField(amField(next))
 }
@@ -764,6 +1014,9 @@ func (am *AccountManager) resetForm() {
 	am.userInput.Reset()
 	am.passInput.Reset()
 	am.fromInput.Reset()
+	am.cancelMSOAuth()
+	am.msSignedIn = false
+	am.msRefreshToken = ""
 	am.statusMsg = ""
 	am.busy = false
 	am.busyMsg = ""
@@ -1038,9 +1291,49 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 	}
 	addControl(amFieldUser, row(userLabel, am.userInput, am.focusedField == amFieldUser))
 	addBlank()
-	// Auth method toggle (Gmail only)
 	addControl(amFieldPass, row("Password", passInput, am.focusedField == amFieldPass))
 	addBlank()
+	if am.provider == "Outlook" {
+		signFg := chrome.text
+		if am.focusedField == amFieldMSSignIn {
+			signFg = chrome.accent
+		}
+		signVal := "[ Sign in with Microsoft ]"
+		switch {
+		case am.msAwaitingCode:
+			signVal = "… waiting for code (esc cancels)"
+		case am.msSignedIn:
+			signVal = "✓ signed in with Microsoft"
+			signFg = chrome.successFg
+			if am.focusedField == amFieldMSSignIn {
+				signVal += "  (enter re-links)"
+			}
+		}
+		signLeft := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, labelW-2)).Padding(0, 1).Render("OAuth")
+		signRight := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(signFg).Width(max(1, fieldW-2)).Padding(0, 1).Render(signVal)
+		addControl(amFieldMSSignIn, lipgloss.JoinHorizontal(lipgloss.Left, signLeft, signRight))
+		hints := []string{
+			"Outlook.com requires OAuth sign-in (Microsoft retired basic auth):",
+			"press enter here or ctrl+o, then approve in the browser.",
+			"A password only works for M365 tenants that allow app passwords.",
+		}
+		if am.msAwaitingCode {
+			hints = []string{
+				"Approve TideMail in the browser, you'll land on an unreachable",
+				"https://localhost page — paste that page's URL (or just the",
+				"code= value from it) below and press enter.",
+			}
+		}
+		for _, hint := range hints {
+			hintLeft := lipgloss.NewStyle().Background(chrome.baseBg).Width(max(1, labelW-2)).Padding(0, 1).Render("")
+			hintRight := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, fieldW-2)).Padding(0, 1).Render(hint)
+			addLine(lipgloss.JoinHorizontal(lipgloss.Left, hintLeft, hintRight))
+		}
+		if am.msAwaitingCode {
+			addControl(amFieldMSCode, row("Code", am.msCodeInput, am.focusedField == amFieldMSCode))
+		}
+		addBlank()
+	}
 	if am.provider == "Gmail" {
 		for _, hint := range []string{
 			"Gmail needs an App Password (not your normal password):",

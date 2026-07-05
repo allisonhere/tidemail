@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/allisonhere/tide/internal/auth"
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
 	"github.com/emersion/go-imap/v2"
@@ -59,11 +60,25 @@ func (c *Client) Connect(ctx context.Context) error {
 	c.netConn = conn
 	client := imapclient.New(conn, nil)
 
-	// TideMail authenticates with an app password over IMAP LOGIN (Gmail
-	// requires an app password + 2FA).
-	clear := c.applyDeadline(ctx)
-	loginErr := client.Login(c.cfg.User, c.cfg.Password).Wait()
-	clear()
+	// Outlook accounts with a refresh token authenticate over SASL XOAUTH2
+	// (Microsoft retired basic auth for Outlook.com); everything else uses an
+	// app password over IMAP LOGIN (Gmail requires an app password + 2FA).
+	var loginErr error
+	if c.cfg.UsesMicrosoftOAuth2() {
+		tok, err := auth.MSAccessToken(ctx, c.cfg.ClientID, c.cfg.Name, c.cfg.RefreshToken)
+		if err != nil {
+			client.Close()
+			c.netConn = nil
+			return fmt.Errorf("oauth2: %w", err)
+		}
+		clear := c.applyDeadline(ctx)
+		loginErr = client.Authenticate(&xoauth2Client{user: c.cfg.User, token: tok})
+		clear()
+	} else {
+		clear := c.applyDeadline(ctx)
+		loginErr = client.Login(c.cfg.User, c.cfg.Password).Wait()
+		clear()
+	}
 	if loginErr != nil {
 		client.Close()
 		c.netConn = nil

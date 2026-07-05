@@ -54,7 +54,12 @@ func (m *Model) installUpdateCmd(asset update.DownloadedAsset) tea.Cmd {
 }
 
 func (m Model) openBrowserCmd(url string) tea.Cmd {
-	browser := m.cfg.Display.Browser
+	return openBrowserCmd(m.cfg.Display.Browser, url)
+}
+
+// openBrowserCmd opens url with the configured browser command, falling back
+// to the platform opener.
+func openBrowserCmd(browser, url string) tea.Cmd {
 	return func() tea.Msg {
 		var cmd *exec.Cmd
 		if browser != "" {

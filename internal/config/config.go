@@ -22,7 +22,20 @@ type Config struct {
 type OAuthConfig struct {
 	GoogleClientID     string `toml:"google_client_id"`
 	GoogleClientSecret string `toml:"google_client_secret"`
+	MSClientID         string `toml:"ms_client_id"`
 }
+
+// ThunderbirdMSClientID is Mozilla Thunderbird's Microsoft app registration —
+// the de facto shared client ID of the open-source mail ecosystem (mutt,
+// getmail, mbsync setups). A public client's ID identifies the app, it is not
+// a secret; Thunderbird's own docs publish it. Microsoft forbids the
+// device-code flow for this registration, so accounts using it sign in via
+// the authorization-code (paste the code) flow instead.
+const ThunderbirdMSClientID = "9e5f94bc-e8a4-4e73-b8be-63364c29d753"
+
+// DefaultMSClientID is the client ID Outlook accounts use unless
+// TIDEMAIL_MS_CLIENT_ID overrides it.
+const DefaultMSClientID = ThunderbirdMSClientID
 
 type RetroTerminalTweak struct {
 	Bg     string `toml:"bg"`
@@ -111,6 +124,13 @@ func (a AccountConfig) UsesOAuth2() bool {
 	return a.RefreshToken != ""
 }
 
+// UsesMicrosoftOAuth2 reports whether the account authenticates with Microsoft
+// XOAUTH2. The provider gate keeps orphaned refresh tokens from removed Gmail
+// OAuth accounts on the password LOGIN path.
+func (a AccountConfig) UsesMicrosoftOAuth2() bool {
+	return a.UsesOAuth2() && a.Provider == "Outlook"
+}
+
 func DefaultAccountConfig() AccountConfig {
 	return AccountConfig{
 		IMAPPort: 993,
@@ -153,6 +173,7 @@ func DefaultConfig() Config {
 			// then config file. These identify the app, not individual users.
 			GoogleClientID:     firstNonEmpty(os.Getenv("TIDEMAIL_GOOGLE_CLIENT_ID"), ""),
 			GoogleClientSecret: firstNonEmpty(os.Getenv("TIDEMAIL_GOOGLE_CLIENT_SECRET"), ""),
+			MSClientID:         firstNonEmpty(os.Getenv("TIDEMAIL_MS_CLIENT_ID"), DefaultMSClientID),
 		},
 	}
 }

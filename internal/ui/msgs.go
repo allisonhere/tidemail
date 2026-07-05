@@ -7,7 +7,23 @@ import (
 	"github.com/allisonhere/tide/internal/db"
 	"github.com/allisonhere/tide/internal/filter"
 	"github.com/allisonhere/tide/internal/update"
+	"golang.org/x/oauth2"
 )
+
+// DeviceCodeMsg carries the Microsoft device-code details the user needs to
+// approve the sign-in (visit the URL, enter the code).
+type DeviceCodeMsg struct {
+	VerificationURL string
+	UserCode        string
+	Err             error                      // the device-code request itself failed
+	da              *oauth2.DeviceAuthResponse // polling handle for the follow-up token cmd
+}
+
+// OAuth2DoneMsg reports the outcome of the device-flow polling.
+type OAuth2DoneMsg struct {
+	RefreshToken string
+	Err          error
+}
 
 type AccountsLoadedMsg struct {
 	Accounts  []db.Account

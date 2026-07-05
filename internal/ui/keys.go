@@ -60,6 +60,7 @@ type KeyMap struct {
 	Delete      key.Binding
 	SaveAccount key.Binding
 	TestAccount key.Binding
+	OAuthSignIn key.Binding
 
 	AttachFile   key.Binding
 	RemoveAttach key.Binding
@@ -133,6 +134,7 @@ var DefaultKeys = KeyMap{
 	Delete:      key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
 	SaveAccount: key.NewBinding(key.WithKeys("ctrl+s", "f2"), key.WithHelp("ctrl+s", "save")),
 	TestAccount: key.NewBinding(key.WithKeys("ctrl+t", "f5"), key.WithHelp("ctrl+t", "test")),
+	OAuthSignIn: key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "sign in")),
 
 	AttachFile: key.NewBinding(key.WithKeys("alt+f"), key.WithHelp("alt+f", "attach file")),
 

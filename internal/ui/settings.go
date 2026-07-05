@@ -1346,15 +1346,17 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 	case sfBrowser, sfFeedMaxBody, sfReadingWidth, sfAPIKey, sfOllamaURL, sfSavePath,
 		sfRetroBg, sfRetroFg, sfRetroAccent:
 		// Enter advances to next field; everything else goes to the text input.
+		// Only arrow keys navigate here — the j/k vim runes must reach the
+		// input as characters (e.g. "konqueror" in the browser field).
 		if keyMatches(key, keys.Enter) {
 			s.setFocusedField(s.nextField())
 			return s, nil, false
 		}
-		if keyMatches(key, keys.Up) {
+		if key.Type != tea.KeyRunes && keyMatches(key, keys.Up) {
 			s.setFocusedField(s.prevField())
 			return s, nil, false
 		}
-		if keyMatches(key, keys.Down) {
+		if key.Type != tea.KeyRunes && keyMatches(key, keys.Down) {
 			s.setFocusedField(s.nextField())
 			return s, nil, false
 		}

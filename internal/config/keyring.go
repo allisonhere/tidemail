@@ -235,6 +235,13 @@ func fillSecrets(cfg *Config) {
 		// Fill OAuth2 client credentials from app-level config (must be after
 		// refresh token restoration so the condition detects the account uses OAuth2).
 		if cfg.Accounts[i].RefreshToken != "" || cfg.Accounts[i].ClientID != "" {
+			if cfg.Accounts[i].Provider == "Outlook" {
+				// Microsoft is a public client: client ID only, no secret.
+				if cfg.Accounts[i].ClientID == "" {
+					cfg.Accounts[i].ClientID = cfg.OAuth.MSClientID
+				}
+				continue
+			}
 			if cfg.Accounts[i].ClientID == "" {
 				cfg.Accounts[i].ClientID = cfg.OAuth.GoogleClientID
 			}

@@ -13,10 +13,14 @@ func IsAuthFailure(err error) bool {
 	m := strings.ToLower(err.Error())
 	for _, sig := range []string{
 		"authenticationfailed", // IMAP LOGIN rejected
+		"authenticate failed",  // IMAP AUTHENTICATE (XOAUTH2) rejected
 		"invalid credentials",  // common SMTP/IMAP wording
 		"username and password not accepted",
-		"invalid_grant", // legacy OAuth token expired/revoked
+		"invalid_grant", // OAuth token expired/revoked
 		"expired or revoked",
+		"aadsts70008",  // Microsoft: refresh token expired
+		"aadsts700082", // Microsoft: refresh token expired (inactivity)
+		"aadsts50173",  // Microsoft: token revoked (password change etc.)
 	} {
 		if strings.Contains(m, sig) {
 			return true
