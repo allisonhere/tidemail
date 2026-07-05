@@ -82,7 +82,7 @@ func (m Model) renderOverlay(base string) string {
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		inner := m.accountManager.View(winW, winH, m.styles)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+		box = renderSoftPanelBox(inner, winW, "tidemail", m.accountManager.softTitle(), chrome)
 
 	case overlayContactManager:
 		winW := min(m.width-4, 74)
@@ -144,11 +144,27 @@ func (m Model) renderOverlay(base string) string {
 			border = t.BorderFocus
 		}
 		m.helpVP.Style = lipgloss.NewStyle().Background(surface)
+		var footerText string
+		switch {
+		case m.helpSearchActive:
+			input := m.helpSearchInput
+			input.Width = max(1, winW-12)
+			input.Prompt = "/ "
+			input.PromptStyle = lipgloss.NewStyle().Background(surface).Foreground(t.BorderFocus).Bold(true)
+			input.TextStyle = lipgloss.NewStyle().Background(surface).Foreground(t.Fg)
+			input.PlaceholderStyle = lipgloss.NewStyle().Background(surface).Foreground(readableText(t.Dimmed, surface, 3.0))
+			input.Cursor.Style = lipgloss.NewStyle().Background(t.BorderFocus).Foreground(accentReadableOn(t.Fg, t.BorderFocus, 4.5))
+			footerText = inputViewWithCursor(input, true)
+		case m.helpSearchInput.Value() != "":
+			footerText = "[/] edit search  [esc] clear  [?/q] close  [j/k/↑↓] scroll"
+		default:
+			footerText = "[/] search  [esc/?/q] close  [j/k/↑↓] scroll"
+		}
 		footer := m.styles.OverlayHint.
 			MarginTop(1).
 			Width(max(1, winW-1)).
 			Padding(0, 1, 0, 4).
-			Render("[esc/?/q] close  [j/k/↑↓] scroll")
+			Render(footerText)
 		box = lipgloss.NewStyle().
 			Background(surface).
 			Border(lipPaneBorder(m.styles.PlainUI)).
@@ -162,7 +178,7 @@ func (m Model) renderOverlay(base string) string {
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		inner := m.settings.View(winW, winH, chrome)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+		box = renderSoftPanelBox(inner, winW, "tidemail", "settings", chrome)
 
 	case overlayUpdateConfirm:
 		winW := min(m.width-8, 72)

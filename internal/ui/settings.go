@@ -605,11 +605,15 @@ func (s Settings) updateNowActionVisible() bool {
 func (s Settings) sectionFields(section settingsSection) []settingsField {
 	switch section {
 	case ssDisplay:
-		fields := []settingsField{sfBackToSections, sfIcons, sfDateFormat, sfMarkReadOnOpen, sfMarkReadOnFocus, sfFocusLine, sfShowSender, sfThreadedConversations, sfDefaultUnreadOnly, sfUnreadFirst, sfTheme, sfDisplayDensity, sfReadingWidth}
+		// Keep this order in lockstep with the ssDisplay case in viewSectionBody:
+		// Appearance, Terminal colors (retro themes), Message list, Reading, Behavior.
+		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfIcons, sfDateFormat, sfFocusLine}
 		if config.IsRetroTerminalTheme(s.themeName) {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
-		return append(fields, sfActionableLinks, sfFilterLinks, sfBrowser, sfConfirmQuit, sfShowHeaders, sfNotifications)
+		fields = append(fields, sfShowSender, sfThreadedConversations, sfDefaultUnreadOnly, sfUnreadFirst)
+		fields = append(fields, sfReadingWidth, sfShowHeaders, sfMarkReadOnOpen, sfMarkReadOnFocus, sfActionableLinks, sfFilterLinks)
+		return append(fields, sfBrowser, sfConfirmQuit, sfNotifications)
 	case ssEditor:
 		return []settingsField{sfBackToSections, sfComposeVim}
 	case ssUpdates:
@@ -1373,13 +1377,12 @@ func (s Settings) saveAndExit() (Settings, tea.Cmd, bool) {
 // ── View ──────────────────────────────────────────────────────────────────────
 
 func (s *Settings) View(width, height int, chrome managerChrome) string {
-	header := renderManagerHeader("SETTINGS", width, chrome)
 	gap := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
 	hints := s.viewHints(width, chrome)
-	bodyH := max(1, height-lipgloss.Height(header)-lipgloss.Height(gap)-lipgloss.Height(hints))
+	bodyH := max(1, height-lipgloss.Height(gap)-lipgloss.Height(hints))
 	body := s.viewSplit(width, bodyH, chrome)
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, gap, body, hints)
+	return lipgloss.JoinVertical(lipgloss.Left, gap, body, hints)
 }
 
 func (s *Settings) viewSplit(width, height int, chrome managerChrome) string {
@@ -1390,9 +1393,13 @@ func (s *Settings) viewSplit(width, height int, chrome managerChrome) string {
 	rightW := max(18, width-leftW-1)
 	left := s.viewSectionsPane(leftW, height, chrome)
 	right := s.viewSectionPane(rightW, height, chrome)
+	sepGlyph := "│"
+	if chrome.plainUI {
+		sepGlyph = "|"
+	}
 	sepLines := make([]string, height)
 	for i := range sepLines {
-		sepLines[i] = "│"
+		sepLines[i] = sepGlyph
 	}
 	separator := lipgloss.NewStyle().
 		Background(chrome.baseBg).
@@ -1415,30 +1422,24 @@ func (s Settings) viewSectionsPane(width, height int, chrome managerChrome) stri
 		}
 		rows = append(rows, s.renderSectionNavRow(width, label, subtitle, selected, s.focusedPane == settingsPaneSidebar, chrome))
 	}
-	body := lipgloss.JoinVertical(lipgloss.Left, append([]string{blank}, rows...)...)
-	title := "CATEGORIES"
-	if s.focusedPane == settingsPaneSidebar {
-		title = "CATEGORIES >"
-	}
-	section := clampView(renderManagerSection(title, body, chrome, s.focusedPane == settingsPaneSidebar), width, height, chrome.baseBg)
+	body := lipgloss.JoinVertical(lipgloss.Left, rows...)
+	section := clampView(body, width, height, chrome.baseBg)
 	return lipgloss.NewStyle().Width(width).Height(height).Background(chrome.baseBg).Render(section)
 }
 
 func (s *Settings) viewSectionPane(width, height int, chrome managerChrome) string {
 	s.detailHeight = height - 2 // title row + gap
-	title := settingsSectionLabels[s.activeSection]
-	if s.focusedPane == settingsPaneDetail {
-		title += " >"
-	}
+	title := titleCaseSectionLabel(settingsSectionLabels[s.activeSection])
 	body := s.viewSectionBody(width, chrome)
-	titleStyle := chrome.sectionLabel
-	if s.focusedPane == settingsPaneDetail {
-		titleStyle = chrome.sectionLabelActive
-	}
+	titleBg := chrome.baseBg
+	titleFg := chrome.accent
 	if s.activeSection == ssAbout {
-		titleStyle = titleStyle.Background(lipgloss.Color("#000000")).Foreground(lipgloss.Color("#ffffff"))
+		titleBg = lipgloss.Color("#000000")
+		titleFg = lipgloss.Color("#ffffff")
 	}
-	titleRow := titleStyle.Width(width).Render(title)
+	titleRow := softRail(chrome, s.focusedPane == settingsPaneDetail, titleBg) +
+		lipgloss.NewStyle().Background(titleBg).Foreground(titleFg).Bold(true).Render(title)
+	titleRow = padStyled(titleRow, width, titleBg)
 	paneBg := s.sectionDetailBg(chrome)
 	headingGap := lipgloss.NewStyle().Background(paneBg).Width(width).Render("")
 	bodyHeight := max(1, height-2)
@@ -1485,30 +1486,34 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 	b.addBackLink()
 	switch s.activeSection {
 	case ssDisplay:
-		b.addGroup("Display")
-		b.addToggle("Icons", s.icons, sfIcons)
-		b.addDateFormatSelector()
-		b.addToggle("Mark read on open", s.markReadOnOpen, sfMarkReadOnOpen)
-		b.addToggle("Mark read on focus", s.markReadOnFocus, sfMarkReadOnFocus)
-		b.addToggle("Focus line", s.focusLine, sfFocusLine)
-		b.addToggle("Show sender", s.showSender, sfShowSender)
-		b.addToggle("Threaded conversations", s.threadedConversations, sfThreadedConversations)
-		b.addToggle("Default to unread only", s.defaultUnreadOnly, sfDefaultUnreadOnly)
-		b.addToggle("Unread first", s.unreadFirst, sfUnreadFirst)
+		// Keep this order in lockstep with the ssDisplay case in sectionFields.
+		b.addGroup("Appearance")
 		b.addThemeSelector()
 		b.addDensitySelector()
-		b.addInput("Reading width (columns)", s.readingWidthInput, sfReadingWidth)
+		b.addToggle("Icons", s.icons, sfIcons)
+		b.addDateFormatSelector()
+		b.addToggle("Focus line", s.focusLine, sfFocusLine)
 		if config.IsRetroTerminalTheme(s.themeName) {
 			b.addGroup("Terminal colors")
 			b.addInput("VT background (#rrggbb)", s.retroBgInput, sfRetroBg)
 			b.addInput("VT foreground (#rrggbb)", s.retroFgInput, sfRetroFg)
 			b.addInput("VT accent (#rrggbb)", s.retroAccentInput, sfRetroAccent)
 		}
+		b.addGroup("Message list")
+		b.addToggle("Show sender", s.showSender, sfShowSender)
+		b.addToggle("Threaded conversations", s.threadedConversations, sfThreadedConversations)
+		b.addToggle("Default to unread only", s.defaultUnreadOnly, sfDefaultUnreadOnly)
+		b.addToggle("Unread first", s.unreadFirst, sfUnreadFirst)
+		b.addGroup("Reading")
+		b.addInput("Reading width (columns)", s.readingWidthInput, sfReadingWidth)
+		b.addToggle("Show email headers", s.showHeaders, sfShowHeaders)
+		b.addToggle("Mark read on open", s.markReadOnOpen, sfMarkReadOnOpen)
+		b.addToggle("Mark read on focus", s.markReadOnFocus, sfMarkReadOnFocus)
 		b.addToggle("Actionable article links", s.actionableLinks, sfActionableLinks)
 		b.addToggle("Filter links from articles", s.filterLinks, sfFilterLinks)
+		b.addGroup("Behavior")
 		b.addInput("Browser command", s.browserInput, sfBrowser)
 		b.addToggle("Confirm before quitting", s.confirmQuit, sfConfirmQuit)
-		b.addToggle("Show email headers", s.showHeaders, sfShowHeaders)
 		b.addToggle("Desktop notifications", s.notifications, sfNotifications)
 
 	case ssEditor:
@@ -1629,13 +1634,13 @@ func (b *settingsFormBuilder) addBackLink() {
 }
 
 func (b *settingsFormBuilder) addGroup(label string) {
-	b.addLine(renderFormGroupTitle(label, b.contentW, b.chrome))
+	b.addLine(renderSoftGroupTitle(label, b.contentW, b.chrome))
 	b.addBlank()
 }
 
 func (b *settingsFormBuilder) addControl(label string, field settingsField, control string) {
 	b.markAnchor(field)
-	b.addLine(renderFormRow(label, b.s.focusedField == field, control, b.contentW, b.labelW, b.chrome))
+	b.addLine(renderSoftRow(label, b.s.focusedField == field, control, b.contentW, b.labelW, b.chrome))
 	b.addBlank()
 }
 
@@ -1656,7 +1661,7 @@ func (b *settingsFormBuilder) addInput(label string, input textinput.Model, fiel
 	fieldW := min(controlW, b.s.inputWidth(field, controlW))
 	control := renderInsetControl(renderTextInput(input, fieldW, focused, false, b.chrome), rowFieldW, 2, b.chrome)
 	b.markAnchor(field)
-	b.addLine(renderFormRow(label, focused, control, b.contentW, b.labelW, b.chrome))
+	b.addLine(renderSoftRow(label, focused, control, b.contentW, b.labelW, b.chrome))
 	if hint := b.s.fieldHint(field); hint != "" {
 		b.addHint(hint)
 	}
@@ -1712,32 +1717,29 @@ func (b *settingsFormBuilder) addDateFormatSelector() {
 
 func (b *settingsFormBuilder) addAISection() {
 	b.addGroup("Provider credentials")
-	b.addControl("Provider", sfProvider, renderSettingsPicker(min(max(12, b.contentW-b.labelW), 18), aiProviderLabels[b.s.providerIdx], b.s.focusedField == sfProvider, b.chrome))
+	b.addControl("Provider", sfProvider, renderSettingsPicker(min(max(12, b.contentW-b.labelW-2), 18), aiProviderLabels[b.s.providerIdx], b.s.focusedField == sfProvider, b.chrome))
 
 	switch b.s.providerIdx {
 	case 1:
 		b.addBareInput(b.s.openaiInput, sfAPIKey)
-		b.addControl("Model", sfOpenAIModel, renderSettingsPicker(min(max(12, b.contentW-b.labelW), 24), openaiModelLabels[b.s.openaiModelIdx], b.s.focusedField == sfOpenAIModel, b.chrome))
+		b.addControl("Model", sfOpenAIModel, renderSettingsPicker(min(max(12, b.contentW-b.labelW-2), 24), openaiModelLabels[b.s.openaiModelIdx], b.s.focusedField == sfOpenAIModel, b.chrome))
 	case 2:
 		b.addBareInput(b.s.claudeInput, sfAPIKey)
-		b.addControl("Model", sfClaudeModel, renderSettingsPicker(min(max(12, b.contentW-b.labelW), 24), claudeModelLabels[b.s.claudeModelIdx], b.s.focusedField == sfClaudeModel, b.chrome))
+		b.addControl("Model", sfClaudeModel, renderSettingsPicker(min(max(12, b.contentW-b.labelW-2), 24), claudeModelLabels[b.s.claudeModelIdx], b.s.focusedField == sfClaudeModel, b.chrome))
 	case 3:
 		b.addBareInput(b.s.geminiInput, sfAPIKey)
-		b.addControl("Model", sfGeminiModel, renderSettingsPicker(min(max(12, b.contentW-b.labelW), 24), geminiModelLabels[b.s.geminiModelIdx], b.s.focusedField == sfGeminiModel, b.chrome))
+		b.addControl("Model", sfGeminiModel, renderSettingsPicker(min(max(12, b.contentW-b.labelW-2), 24), geminiModelLabels[b.s.geminiModelIdx], b.s.focusedField == sfGeminiModel, b.chrome))
 	case 4:
 		b.addInput("Ollama URL", b.s.ollamaURLInput, sfOllamaURL)
-		b.addControl("Model", sfOllamaModel, renderSettingsPicker(min(max(12, b.contentW-b.labelW), 24), ollamaModelLabels[b.s.ollamaModelIdx], b.s.focusedField == sfOllamaModel, b.chrome))
+		b.addControl("Model", sfOllamaModel, renderSettingsPicker(min(max(12, b.contentW-b.labelW-2), 24), ollamaModelLabels[b.s.ollamaModelIdx], b.s.focusedField == sfOllamaModel, b.chrome))
 	}
 
 	b.addAITestConnection()
 	b.addGroup("Summary output")
 	b.addBareInput(b.s.savePathInput, sfSavePath)
 
-	toggleLabel := "OFF"
-	if b.s.markReadOnSummarize {
-		toggleLabel = "ON"
-	}
-	b.addControl("Mark read on summarize", sfMarkReadOnSummarize, b.s.renderBadge(toggleLabel, b.s.focusedField == sfMarkReadOnSummarize, b.chrome))
+	b.addControl("Mark read on summarize", sfMarkReadOnSummarize,
+		renderSoftToggle(b.s.markReadOnSummarize, b.s.focusedField == sfMarkReadOnSummarize, b.chrome))
 }
 
 func (b *settingsFormBuilder) addAITestConnection() {
@@ -1812,74 +1814,83 @@ const labelColW = 22
 
 func (s Settings) viewHints(width int, chrome managerChrome) string {
 	if s.focusedPane == settingsPaneSidebar {
-		return renderManagerActions(width, chrome,
-			"↑/↓", "section",
+		return renderSoftHints(width, chrome,
+			"↑↓", "section",
 			"→", "edit",
-			"ctrl+s", "save",
+			"^s", "save",
 			"esc", "cancel",
 			"q", "discard",
 		)
 	}
 	if s.isPickerField() {
-		return renderManagerActions(width, chrome,
-			"←/→", "change",
-			"↑/↓", "field",
+		return renderSoftHints(width, chrome,
+			chrome.softChevrons(), "change",
+			"↑↓", "field",
 			"tab", "next",
-			"ctrl+s", "save",
-			"esc", "categories",
+			"^s", "save",
+			"esc", "sections",
 		)
 	}
 	if s.activeSection == ssUpdates && s.focusedField == sfUpdateManualCommand {
-		return renderManagerActions(width, chrome,
+		return renderSoftHints(width, chrome,
 			"enter", "copy",
-			"c", "copy",
 			"tab", "next",
-			"ctrl+s", "save",
-			"esc", "categories",
+			"^s", "save",
+			"esc", "sections",
 		)
 	}
-	return renderManagerActions(width, chrome,
+	return renderSoftHints(width, chrome,
 		"←", "sections",
-		"↑/↓", "field",
+		"↑↓", "field",
 		"tab", "next",
-		"ctrl+s", "save",
-		"esc", "categories",
+		"^s", "save",
+		"esc", "sections",
 	)
 }
 
 func (s Settings) renderSectionNavRow(width int, label, subtitle string, selected, paneFocused bool, chrome managerChrome) string {
-	bg, fg, subFg := chrome.baseBg, chrome.text, chrome.muted
+	fg, subFg := chrome.muted, chrome.muted
 	bold := false
+	display := titleCaseSectionLabel(label)
 	if selected {
-		bg = chrome.surfaceBg
-		fg = chrome.highlight
-		subFg = chrome.highlight
+		display = strings.ToUpper(label)
+		fg = chrome.accent
+		subFg = chrome.muted
 		bold = true
-		if paneFocused {
-			bg = chrome.highlight
-			fg = chrome.highlightFg
-			subFg = chrome.highlightFg
-		}
 	}
 
-	innerW := max(1, width-2)
+	marker := softRail(chrome, selected && paneFocused, chrome.baseBg)
+	innerW := max(1, width-lipgloss.Width(marker)-1)
 	var row string
 	if subtitle == "" {
-		row = padRight(truncate(label, innerW), innerW)
+		row = padRight(truncate(display, innerW), innerW)
 	} else {
 		subW := lipgloss.Width(subtitle)
 		labelW := max(1, innerW-subW-1)
-		left := lipgloss.NewStyle().Background(bg).Foreground(fg).Bold(bold).Width(labelW).Render(truncate(label, labelW))
-		spacer := lipgloss.NewStyle().Background(bg).Width(1).Render("")
-		right := lipgloss.NewStyle().Background(bg).Foreground(subFg).Render(subtitle)
+		left := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(fg).Bold(bold).Width(labelW).Render(truncate(display, labelW))
+		spacer := lipgloss.NewStyle().Background(chrome.baseBg).Width(1).Render("")
+		right := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(subFg).Render(subtitle)
 		row = left + spacer + right
 	}
-	return lipgloss.NewStyle().
-		Background(bg).
+	styled := marker + lipgloss.NewStyle().
+		Background(chrome.baseBg).
 		Foreground(fg).
 		Bold(bold).
-		Padding(0, 1).
 		Render(row)
+	return padStyled(styled, width, chrome.baseBg)
+}
+
+// titleCaseSectionLabel converts an uppercase section label ("DISPLAY", "AI")
+// to its quiet sidebar form ("Display", "AI").
+func titleCaseSectionLabel(label string) string {
+	if label == "" || strings.ToUpper(label) != label {
+		return label
+	}
+	if len([]rune(label)) <= 2 { // acronyms like AI stay uppercase
+		return label
+	}
+	lower := strings.ToLower(label)
+	return strings.ToUpper(lower[:1]) + lower[1:]
 }
 
 func (s Settings) renderFieldLabel(label string, focused bool, _ int, chrome managerChrome) string {
@@ -1897,13 +1908,13 @@ func (s Settings) renderValueRow(label, value string, focused bool, width int, c
 	lines := wrapShellCommand(trimmed, valueW)
 	valueStyle := chrome.body.Foreground(chrome.text)
 	if len(lines) == 1 {
-		return renderFormRow(label, focused, valueStyle.Width(valueW).Render(lines[0]), width, labelW, chrome)
+		return renderSoftRow(label, focused, valueStyle.Width(valueW).Render(lines[0]), width, labelW, chrome)
 	}
 	padCont := lipgloss.NewStyle().Background(chrome.baseBg).Width(labelW).Render("")
 	var b strings.Builder
 	for i, line := range lines {
 		if i == 0 {
-			b.WriteString(renderFormRow(label, focused, valueStyle.Render(line), width, labelW, chrome))
+			b.WriteString(renderSoftRow(label, focused, valueStyle.Render(line), width, labelW, chrome))
 			continue
 		}
 		b.WriteString("\n")
@@ -2089,11 +2100,13 @@ func hardWrapString(s string, maxW int) []string {
 
 func (s Settings) renderBackLinkRow(focused bool, width int, chrome managerChrome) string {
 	label := "← Back to sections"
-	style := chrome.body.Foreground(chrome.muted)
+	marker := softRail(chrome, focused, s.sectionDetailBg(chrome))
+	fg := chrome.muted
 	if focused {
-		style = chrome.sectionLabelActive
+		fg = chrome.text
 	}
-	return style.Width(max(1, width)).Render(label)
+	row := marker + lipgloss.NewStyle().Background(s.sectionDetailBg(chrome)).Foreground(fg).Render(label)
+	return padStyled(row, max(1, width), s.sectionDetailBg(chrome))
 }
 
 // prependBackLink inserts the back-link row and a blank separator at the top of an
@@ -2127,17 +2140,12 @@ func (s Settings) renderActionRow(label, hint string, focused bool, width int, c
 	}
 	controlW := max(1, width-2-labelW)
 	control := badge + renderFormInlineStatus(hintText, max(1, controlW-lipgloss.Width(badge)), chrome)
-	return renderFormRow(label, focused, control, width, labelW, chrome)
+	return renderSoftRow(label, focused, control, width, labelW, chrome)
 }
 
 func (s Settings) renderToggle(label string, on bool, focused bool, width int, chrome managerChrome) string {
-	val := "OFF"
-	if on {
-		val = "ON"
-	}
-	badge := s.renderBadge(val, focused, chrome)
-	control := badge + s.renderToggleHint(on, "enabled", "disabled", focused, chrome)
-	return renderFormRow(label, focused, control, width, formLabelWidth(width), chrome)
+	control := renderSoftToggle(on, focused, chrome)
+	return renderSoftRow(label, focused, control, width, formLabelWidth(width), chrome)
 }
 
 func (u settingsUpdateState) statusLabel() string {
@@ -2241,67 +2249,40 @@ func (s Settings) renderAIConnectionStatus(width int, focused bool, chrome manag
 	return indicator + gap + label
 }
 
-// renderToggleHint appends a small hint showing the current value label.
-func (s Settings) renderToggleHint(active bool, trueLabel, falseLabel string, focused bool, chrome managerChrome) string {
-	val := falseLabel
-	if active {
-		val = trueLabel
-	}
-	style := chrome.keyLabel
-	if !focused {
-		style = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted)
-	}
-	return style.Render("  " + val)
-}
-
 func (s Settings) renderProviderSelector(width int, chrome managerChrome) string {
 	focused := s.focusedField == sfProvider
 	providerName := aiProviderLabels[s.providerIdx]
 	labelW := formLabelWidth(width)
-	pickerW := max(1, width-labelW)
-	return renderFormRow("Provider", focused, renderSettingsPicker(pickerW, providerName, focused, chrome), width, labelW, chrome)
+	pickerW := max(1, width-labelW-2)
+	return renderSoftRow("Provider", focused, renderSettingsPicker(pickerW, providerName, focused, chrome), width, labelW, chrome)
 }
 
 func (s Settings) renderDateFormatSelector(width int, chrome managerChrome) string {
 	focused := s.focusedField == sfDateFormat
 	name := dateFormatLabels[s.dateFormatIdx]
 	labelW := formLabelWidth(width)
-	pickerW := max(1, width-labelW)
-	return renderFormRow("Dates", focused, renderSettingsPicker(pickerW, name, focused, chrome), width, labelW, chrome)
+	pickerW := max(1, width-labelW-2)
+	return renderSoftRow("Dates", focused, renderSettingsPicker(pickerW, name, focused, chrome), width, labelW, chrome)
 }
 
 func (s Settings) renderDensitySelector(width int, chrome managerChrome) string {
 	focused := s.focusedField == sfDisplayDensity
 	name := layoutDensityLabels[s.layoutDensityIdx]
 	labelW := formLabelWidth(width)
-	pickerW := max(1, width-labelW)
-	return renderFormRow("Layout density", focused, renderSettingsPicker(pickerW, name, focused, chrome), width, labelW, chrome)
+	pickerW := max(1, width-labelW-2)
+	return renderSoftRow("Layout density", focused, renderSettingsPicker(pickerW, name, focused, chrome), width, labelW, chrome)
 }
 
 func (s Settings) renderThemeSelector(width int, chrome managerChrome) string {
 	focused := s.focusedField == sfTheme
 	name := BuiltinThemes[s.themeIdx].Name
 	labelW := formLabelWidth(width)
-	pickerW := max(1, width-labelW)
-	return renderFormRow("Theme", focused, renderSettingsPicker(pickerW, name, focused, chrome), width, labelW, chrome)
+	pickerW := max(1, width-labelW-2)
+	return renderSoftRow("Theme", focused, renderSettingsPicker(pickerW, name, focused, chrome), width, labelW, chrome)
 }
 
 func renderSettingsPicker(width int, value string, focused bool, chrome managerChrome) string {
-	// Chrome cells: 2 (left chevron) + 2 (right chevron) + 2 (horizontal padding) = 6.
-	maxTextW := max(1, width-6)
-	bg := chrome.surfaceBg
-	fg := chrome.text
-	accentFg := chrome.muted
-	if focused {
-		bg = chrome.fieldBg
-		fg = chrome.text
-		accentFg = chrome.accent
-	}
-	value = truncate(value, maxTextW)
-	text := lipgloss.NewStyle().Background(bg).Foreground(fg)
-	accent := lipgloss.NewStyle().Background(bg).Foreground(accentFg).Bold(true)
-	line := accent.Render(chrome.pickerChevronLeft()) + text.Render(value) + accent.Render(chrome.pickerChevronRight())
-	return lipgloss.NewStyle().Background(bg).Padding(0, 1).MaxWidth(width).Render(line)
+	return renderSoftPicker(width, value, focused, chrome)
 }
 
 func (s Settings) fieldHint(field settingsField) string {

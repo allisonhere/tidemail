@@ -1,13 +1,14 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/lipgloss"
 )
 
-func renderHelp(width int, styles Styles, keys KeyMap) string {
+func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 	type entry struct{ key, desc string }
 	type section struct {
 		name    string
@@ -221,6 +222,33 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 		},
 	}
 
+	// Filter by query: an entry matches on its key or description; a matching
+	// section name keeps the whole section.
+	query = strings.TrimSpace(strings.ToLower(query))
+	matchCount := 0
+	if query != "" {
+		filtered := sections[:0]
+		for _, s := range sections {
+			if strings.Contains(strings.ToLower(s.name), query) {
+				filtered = append(filtered, s)
+				matchCount += len(s.entries)
+				continue
+			}
+			var kept []entry
+			for _, e := range s.entries {
+				if strings.Contains(strings.ToLower(e.key), query) ||
+					strings.Contains(strings.ToLower(e.desc), query) {
+					kept = append(kept, e)
+				}
+			}
+			if len(kept) > 0 {
+				filtered = append(filtered, section{name: s.name, entries: kept})
+				matchCount += len(kept)
+			}
+		}
+		sections = filtered
+	}
+
 	contentW := max(1, width)
 	bodyInnerW := max(1, contentW-styles.HelpSectionBody.GetHorizontalFrameSize())
 	keyW := min(20, max(8, bodyInnerW/3))
@@ -232,10 +260,17 @@ func renderHelp(width int, styles Styles, keys KeyMap) string {
 			Width(contentW).
 			Render("  Help — Keyboard Shortcuts"),
 		"",
-		styles.HelpSectionBody.Width(contentW).Render(
+	}
+	if query != "" {
+		summary := fmt.Sprintf("%d shortcuts match %q.", matchCount, query)
+		if matchCount == 0 {
+			summary = fmt.Sprintf("No shortcuts match %q.", query)
+		}
+		lines = append(lines, styles.HelpSectionBody.Width(contentW).Render(summary), "")
+	} else {
+		lines = append(lines, styles.HelpSectionBody.Width(contentW).Render(
 			"The status bar always shows these shortcuts on the left: M accounts · C contacts · S settings · / search · ? help.",
-		),
-		"",
+		), "")
 	}
 
 	for _, s := range sections {

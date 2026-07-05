@@ -171,6 +171,8 @@ type Model struct {
 	logBuffer []logEntry
 
 	helpVP                viewport.Model
+	helpSearchInput       textinput.Model
+	helpSearchActive      bool
 	overlay               overlayMode
 	searchInput           textinput.Model
 	commandInput          textinput.Model
@@ -267,6 +269,10 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 	csi.Placeholder = "find in message..."
 	csi.CharLimit = 100
 
+	hsi := textinput.New()
+	hsi.Placeholder = "search help..."
+	hsi.CharLimit = 100
+
 	sp := spinner.New()
 	if ThemeUsesASCII(merged.Name) {
 		sp.Spinner = spinner.Line
@@ -290,6 +296,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		styles:                BuildStyles(merged, cfg.Display.Density),
 		accountManager:        NewAccountManager(database),
 		searchInput:           si,
+		helpSearchInput:       hsi,
 		commandInput:          ci,
 		spinner:               sp,
 		syncing:               make(map[int64]bool),
@@ -1879,8 +1886,40 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case overlayHelp:
-		if keyMatches(msg, m.keys.Back, m.keys.Help, m.keys.Quit) {
+		if m.helpSearchActive {
+			switch {
+			case keyMatches(msg, m.keys.Cancel):
+				m.helpSearchActive = false
+				m.helpSearchInput.SetValue("")
+				m.helpSearchInput.Blur()
+				m.resetHelpVP()
+			case keyMatches(msg, m.keys.Confirm):
+				// Stop editing but keep the filter so the list stays scrollable.
+				m.helpSearchActive = false
+				m.helpSearchInput.Blur()
+			default:
+				var cmd tea.Cmd
+				m.helpSearchInput, cmd = m.helpSearchInput.Update(msg)
+				m.resetHelpVP()
+				return m, cmd
+			}
+			return m, nil
+		}
+		switch {
+		case keyMatches(msg, m.keys.Search):
+			m.helpSearchActive = true
+			m.helpSearchInput.Focus()
+			return m, nil
+		case keyMatches(msg, m.keys.Back, m.keys.Help, m.keys.Quit):
+			// esc/q/? first clear an applied filter, then close.
+			if m.helpSearchInput.Value() != "" && keyMatches(msg, m.keys.Back) {
+				m.helpSearchInput.SetValue("")
+				m.resetHelpVP()
+				return m, nil
+			}
 			m.overlay = overlayNone
+			m.helpSearchActive = false
+			m.helpSearchInput.SetValue("")
 			return m, nil
 		}
 		var cmd tea.Cmd

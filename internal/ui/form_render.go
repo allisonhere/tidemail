@@ -16,64 +16,6 @@ func formLabelWidth(width int) int {
 	return min(28, max(22, width/2+4))
 }
 
-func renderFormGroupTitle(label string, width int, chrome managerChrome) string {
-	marker := "━"
-	rule := "─"
-	if chrome.plainUI {
-		marker = "="
-		rule = "-"
-	}
-	titleText := strings.ToUpper(strings.TrimSpace(label))
-	title := lipgloss.NewStyle().
-		Background(chrome.baseBg).
-		Foreground(chrome.muted).
-		Bold(true).
-		Render(marker + " " + truncate(titleText, max(1, width-2)))
-	row := title
-	ruleW := max(0, width-lipgloss.Width(row)-1)
-	if ruleW > 0 {
-		row += lipgloss.NewStyle().Background(chrome.baseBg).Render(" ")
-		row += lipgloss.NewStyle().
-			Background(chrome.baseBg).
-			Foreground(chrome.muted).
-			Render(strings.Repeat(rule, ruleW))
-	}
-	if gap := width - lipgloss.Width(row); gap > 0 {
-		row += lipgloss.NewStyle().Background(chrome.baseBg).Render(strings.Repeat(" ", gap))
-	}
-	return row
-}
-
-func renderFormRow(label string, focused bool, control string, width, labelW int, chrome managerChrome) string {
-	rowBg := chrome.baseBg
-	labelFg := chrome.muted
-	if focused {
-		labelFg = chrome.text
-	}
-	markerCell := lipgloss.NewStyle().
-		Background(rowBg).
-		Width(2).
-		Render(" ")
-	if focused {
-		markerCell = lipgloss.NewStyle().
-			Background(rowBg).
-			Foreground(chrome.accent).
-			Bold(true).
-			Width(2).
-			Render(" >")
-	}
-	labelW = min(labelW, max(1, width-lipgloss.Width(markerCell)-1))
-	controlW := max(1, width-lipgloss.Width(markerCell)-labelW)
-	labelCell := lipgloss.NewStyle().
-		Background(rowBg).
-		Foreground(labelFg).
-		Width(labelW).
-		Render(truncate(label, max(1, labelW-1)))
-	control = truncateStyled(control, controlW, chrome.baseBg)
-	controlCell := padStyled(control, controlW, rowBg)
-	return markerCell + labelCell + controlCell
-}
-
 func padStyled(s string, width int, bg lipgloss.Color) string {
 	s = truncateStyled(s, width, bg)
 	if gap := width - lipgloss.Width(s); gap > 0 {

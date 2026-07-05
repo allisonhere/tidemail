@@ -611,7 +611,7 @@ func (m *Model) resetHelpVP() {
 	vpW := max(1, winW-1)
 	vpH := winH - 3 // inside border, minus footer row
 	m.helpVP = viewport.New(vpW, vpH)
-	m.helpVP.SetContent(renderHelp(vpW, m.styles, m.keys))
+	m.helpVP.SetContent(renderHelp(vpW, m.styles, m.keys, m.helpSearchInput.Value()))
 }
 
 func renderChromeOverlayBox(inner string, width int, chrome managerChrome, border lipgloss.Color) string {

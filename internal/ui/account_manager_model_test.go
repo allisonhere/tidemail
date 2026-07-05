@@ -208,8 +208,8 @@ func TestAccountManagerFormShowsTestAction(t *testing.T) {
 
 	view := am.View(80, 30, BuildStyles(CatppuccinMocha, "compact"))
 
-	if !strings.Contains(view, "TEST") {
-		t.Fatalf("expected add account form actions to include TEST, got %q", view)
+	if !strings.Contains(view, "^t test") {
+		t.Fatalf("expected add account form actions to include ^t test, got %q", view)
 	}
 }
 
@@ -244,7 +244,7 @@ func TestAccountManagerFormStaysCompactInShortView(t *testing.T) {
 
 	view := am.View(74, 28, BuildStyles(CatppuccinMocha, "compact"))
 
-	for _, want := range []string{"Name", "Color", "IMAP Host", "SMTP Host", "Username", "From", "TEST", "CANCEL"} {
+	for _, want := range []string{"Name", "Color", "IMAP Host", "SMTP Host", "Username", "From", "test", "cancel"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expected compact account form to keep %q visible, got %q", want, view)
 		}
@@ -494,7 +494,7 @@ func TestAccountManagerViewDoesNotRenderPassword(t *testing.T) {
 	am.statusMsg = "TEST FAILED: mail-secret rejected"
 	chrome := newManagerChrome(80, CatppuccinMocha, false)
 
-	view := am.viewForm(80, 30, chrome, "EDIT ACCOUNT")
+	view := am.viewForm(80, 30, chrome)
 	if strings.Contains(view, "mail-secret") {
 		t.Fatalf("expected rendered account form to hide password, got %q", view)
 	}

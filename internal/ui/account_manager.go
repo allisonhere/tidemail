@@ -45,20 +45,6 @@ type managerChrome struct {
 	plainUI            bool
 }
 
-func (c managerChrome) pickerChevronLeft() string {
-	if c.plainUI {
-		return "< "
-	}
-	return "◀ "
-}
-
-func (c managerChrome) pickerChevronRight() string {
-	if c.plainUI {
-		return " >"
-	}
-	return " ▶"
-}
-
 func newManagerChrome(width int, t Theme, plainUI bool) managerChrome {
 	baseBg := modalSurface(t)
 	surfaceDelta := 0.04
@@ -174,16 +160,6 @@ func newManagerChrome(width int, t Theme, plainUI bool) managerChrome {
 func renderManagerHeader(title string, width int, chrome managerChrome) string {
 	gap := max(0, width-lipgloss.Width(title)-2)
 	return chrome.header.Render(title + strings.Repeat(" ", gap))
-}
-
-func renderManagerSection(label, body string, chrome managerChrome, labelActive bool) string {
-	w := lipgloss.Width(body)
-	style := chrome.sectionLabel
-	if labelActive {
-		style = chrome.sectionLabelActive
-	}
-	styledLabel := style.Width(w).Render(label)
-	return lipgloss.JoinVertical(lipgloss.Left, styledLabel, body)
 }
 
 func renderManagerActionGroups(width int, chrome managerChrome, primaryPairs, secondaryPairs []string) string {
@@ -413,7 +389,9 @@ func (am *AccountManager) focusField(f amField) {
 
 func (am *AccountManager) populateFormFrom(acfg config.AccountConfig) {
 	am.provider = acfg.Provider
-	if am.provider == "" {
+	// Unknown providers (empty, or presets that no longer exist, e.g. the
+	// removed Outlook preset) edit as Custom so the saved hosts stay visible.
+	if _, ok := providerPresets[am.provider]; !ok {
 		am.provider = "Custom"
 	}
 	am.nameInput.SetValue(acfg.Name)
@@ -477,17 +455,6 @@ func colorIndexForHex(hex string) int {
 		}
 	}
 	return 0
-}
-
-func colorSuffix(hex string, bg lipgloss.Color) string {
-	if hex == "" {
-		return ""
-	}
-	return " " + lipgloss.NewStyle().
-		Background(lipgloss.Color(hex)).
-		Foreground(contrastFg(lipgloss.Color(hex))).
-		Padding(0, 1).
-		Render("  ")
 }
 
 func (am AccountManager) configForAccount(acc db.Account) (config.AccountConfig, bool) {
@@ -772,10 +739,8 @@ func (am *AccountManager) resetForm() {
 func (am AccountManager) View(width, height int, styles Styles) string {
 	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
 	switch am.mode {
-	case amAdd:
-		return am.viewForm(width, height, chrome, "ADD ACCOUNT")
-	case amEdit:
-		return am.viewForm(width, height, chrome, "EDIT ACCOUNT")
+	case amAdd, amEdit:
+		return am.viewForm(width, height, chrome)
 	case amConfirmDelete:
 		return am.viewConfirmDelete(width, chrome)
 	default:
@@ -783,9 +748,21 @@ func (am AccountManager) View(width, height int, styles Styles) string {
 	}
 }
 
-func (am AccountManager) viewList(width, height int, chrome managerChrome, styles Styles) string {
-	header := renderManagerHeader("ACCOUNTS", width, chrome)
+// softTitle names the account manager's current mode for the soft-panel border.
+func (am AccountManager) softTitle() string {
+	switch am.mode {
+	case amAdd:
+		return "add account"
+	case amEdit:
+		return "edit account"
+	case amConfirmDelete:
+		return "delete account?"
+	default:
+		return "accounts"
+	}
+}
 
+func (am AccountManager) viewList(width, height int, chrome managerChrome, styles Styles) string {
 	mailboxCounts := make(map[int64]int, len(am.accounts))
 	for _, mb := range am.mailboxes {
 		mailboxCounts[mb.AccountID]++
@@ -795,10 +772,11 @@ func (am AccountManager) viewList(width, height int, chrome managerChrome, style
 		cfgByName[c.Name] = c
 	}
 
-	rows := []string{}
+	blank := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
+	rows := []string{blank}
 	for i, acc := range am.accounts {
 		selected := i == am.cursor
-		rows = append(rows, am.renderAccountCard(width, acc, selected, chrome, styles, mailboxCounts[acc.ID], cfgByName[acc.Name]))
+		rows = append(rows, am.renderAccountCard(width, acc, selected, chrome, styles, mailboxCounts[acc.ID], cfgByName[acc.Name]), blank)
 	}
 
 	if len(am.accounts) == 0 {
@@ -810,7 +788,7 @@ func (am AccountManager) viewList(width, height int, chrome managerChrome, style
 			Render("No accounts. Press a to add one."))
 	}
 
-	bodyH := max(1, height-lipgloss.Height(header)-3)
+	bodyH := max(1, height-2)
 	body := clampView(
 		lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(
 			strings.Join(rows, "\n"),
@@ -828,18 +806,15 @@ func (am AccountManager) viewList(width, height int, chrome managerChrome, style
 			Render(am.statusMsg)
 	}
 
-	var primaryActions []string
+	var actionPairs []string
 	if len(am.accounts) > 0 {
-		primaryActions = []string{"e", "edit", "d", "delete", "esc", "close"}
+		actionPairs = []string{"a", "add", "e", "edit", "d", "delete", "esc", "close"}
 	} else {
-		primaryActions = []string{"esc", "close"}
+		actionPairs = []string{"a", "add", "esc", "close"}
 	}
-	actions := renderManagerActionGroups(width, chrome,
-		[]string{"a", "add account"},
-		primaryActions,
-	)
+	actions := renderSoftHints(width, chrome, actionPairs...)
 
-	parts := []string{header, body}
+	parts := []string{body}
 	if statusLine != "" {
 		parts = append(parts, statusLine)
 	}
@@ -864,33 +839,49 @@ func (am AccountManager) renderAccountCard(width int, acc db.Account, selected b
 	}
 
 	bg := chrome.baseBg
-	fg := chrome.text
+	nameFg := chrome.text
+	serverFg := chrome.muted
+	emailFg := chrome.muted
 	if selected {
-		bg = terminalColorAsColor(managerSelectedListStyle(styles).GetBackground())
-		fg = terminalColorAsColor(managerSelectedListStyle(styles).GetForeground())
-		if fg == "" {
-			fg = chrome.text
-		}
+		bg = chrome.surfaceBg
+		emailFg = chrome.text
 	}
-	row := func(label, value string) string {
-		labelW := clamp(width/5, 8, 12)
-		valueW := max(8, width-labelW)
-		left := lipgloss.NewStyle().Background(bg).Foreground(chrome.muted).Width(labelW).Padding(0, 1).Render(label)
-		right := lipgloss.NewStyle().Background(bg).Foreground(fg).Width(valueW).Padding(0, 1).Render(truncate(value, max(1, valueW-2)))
-		return lipgloss.JoinHorizontal(lipgloss.Left, left, right)
+	gutter := lipgloss.NewStyle().Background(bg).Width(2).Render("")
+	rail := func() string { return gutter + softRail(chrome, selected, bg) }
+
+	dot := ""
+	if acc.Color != "" {
+		dotGlyph := "●"
+		if chrome.plainUI {
+			dotGlyph = "*"
+		}
+		dot = lipgloss.NewStyle().Background(bg).Render(" ") +
+			lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color(acc.Color)).Render(dotGlyph)
+	}
+	nameCell := lipgloss.NewStyle().Background(bg).Foreground(nameFg).Bold(true).Render(name) + dot
+	emailCell := lipgloss.NewStyle().Background(bg).Foreground(emailFg).Render(email)
+	nameLine := rail() + nameCell
+	gap := width - lipgloss.Width(nameLine) - lipgloss.Width(emailCell) - 2
+	if gap >= 1 {
+		nameLine += lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", gap)) + emailCell
 	}
 
+	servers := imapServer
+	if smtpServer != "" && smtpServer != "not configured" {
+		sep := " · "
+		if chrome.plainUI {
+			sep = " | "
+		}
+		servers += sep + smtpServer
+	}
+	serverLine := rail() + lipgloss.NewStyle().Background(bg).Foreground(serverFg).Render(truncate(servers, max(1, width-6)))
+	statusLine := rail() + lipgloss.NewStyle().Background(bg).Foreground(chrome.successFg).Render(status)
+
 	rows := []string{
-		row("Name", name+colorSuffix(acc.Color, bg)),
-		row("Email", email),
-		row("IMAP", imapServer),
-		row("SMTP", smtpServer),
+		padStyled(nameLine, width, bg),
+		padStyled(serverLine, width, bg),
+		padStyled(statusLine, width, bg),
 	}
-	statusLine := lipgloss.NewStyle().Background(bg).Foreground(chrome.successFg).Padding(0, 1).Render(status)
-	if gap := width - lipgloss.Width(statusLine); gap > 0 {
-		statusLine += lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", gap))
-	}
-	rows = append(rows, statusLine)
 	return clampView(strings.Join(rows, "\n"), width, len(rows), bg)
 }
 
@@ -907,11 +898,10 @@ func compactServer(host string, port int, tls bool, tlsLabel string) string {
 	return host
 }
 
-func (am AccountManager) viewForm(width, height int, chrome managerChrome, title string) string {
-	header := renderManagerHeader(title, width, chrome)
-
-	fieldW := max(12, width-18)
-	labelW := max(10, width-fieldW)
+func (am AccountManager) viewForm(width, height int, chrome managerChrome) string {
+	fieldW := max(12, width-20)
+	labelW := max(10, width-fieldW-2)
+	rail := func(focused bool) string { return softRail(chrome, focused, chrome.baseBg) }
 	row := func(label string, ti textinput.Model, focused bool) string {
 		bg := chrome.surfaceBg
 		if focused {
@@ -927,7 +917,11 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 			_ = ti.Cursor.SetMode(cursor.CursorHide)
 		}
 		ti.Width = fieldW
-		left := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, labelW-2)).Padding(0, 1).Render(label)
+		labelFg := chrome.muted
+		if focused {
+			labelFg = chrome.text
+		}
+		left := rail(focused) + lipgloss.NewStyle().Background(chrome.baseBg).Foreground(labelFg).Width(max(1, labelW-2)).Padding(0, 1).Render(label)
 		var fieldView string
 		if focused {
 			fieldView = inputViewWithCursor(ti, true)
@@ -944,25 +938,32 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 		right := lipgloss.NewStyle().Background(bg).Render(fieldView)
 		return lipgloss.JoinHorizontal(lipgloss.Left, left, right)
 	}
-	tlsRow := func(label string, on bool, focused bool) string {
-		val := "off"
-		if on {
-			val = "on"
-		}
-		fg := chrome.text
+	labelCell := func(label string, focused bool) string {
+		labelFg := chrome.muted
 		if focused {
-			fg = chrome.accent
+			labelFg = chrome.text
 		}
-		left := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, labelW-2)).Padding(0, 1).Render(label)
-		right := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(fg).Width(max(1, fieldW-2)).Padding(0, 1).Render("[space] " + val)
-		return lipgloss.JoinHorizontal(lipgloss.Left, left, right)
+		return rail(focused) + lipgloss.NewStyle().Background(chrome.baseBg).Foreground(labelFg).Width(max(1, labelW-2)).Padding(0, 1).Render(label)
+	}
+	tlsRow := func(label string, on bool, focused bool) string {
+		right := lipgloss.NewStyle().Background(chrome.baseBg).Render(" ") + renderSoftToggle(on, focused, chrome)
+		return padStyled(labelCell(label, focused)+right, width, chrome.baseBg)
+	}
+
+	pickerVal := func(value, swatch string, focused bool) string {
+		valueFg := chrome.muted
+		chevronFg := chrome.muted
+		if focused {
+			valueFg = chrome.text
+			chevronFg = chrome.accent
+		}
+		val := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(valueFg).Render(" "+value) + swatch +
+			lipgloss.NewStyle().Background(chrome.baseBg).Render("  ") +
+			lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chevronFg).Bold(focused).Render(chrome.softChevrons())
+		return val
 	}
 
 	providerRow := func(focused bool) string {
-		fg := chrome.text
-		if focused {
-			fg = chrome.accent
-		}
 		idx := 0
 		for i, p := range providerList {
 			if p == am.provider {
@@ -970,34 +971,27 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 				break
 			}
 		}
-		val := "◀ " + providerList[idx] + " ▶"
-		left := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, labelW-2)).Padding(0, 1).Render("Provider")
-		right := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(fg).Width(max(1, fieldW-2)).Padding(0, 1).Render(val)
-		return lipgloss.JoinHorizontal(lipgloss.Left, left, right)
+		return padStyled(labelCell("Provider", focused)+pickerVal(providerList[idx], "", focused), width, chrome.baseBg)
 	}
 
 	colorRow := func(focused bool) string {
-		fg := chrome.text
-		if focused {
-			fg = chrome.accent
-		}
 		c := accountColorList[am.colorIdx]
 		swatch := ""
 		if c.Hex != "" {
+			dotGlyph := " ●"
+			if chrome.plainUI {
+				dotGlyph = " *"
+			}
 			swatch = lipgloss.NewStyle().
-				Background(lipgloss.Color(c.Hex)).
-				Foreground(contrastFg(lipgloss.Color(c.Hex))).
-				Padding(0, 1).
-				Render("  ")
+				Background(chrome.baseBg).
+				Foreground(lipgloss.Color(c.Hex)).
+				Render(dotGlyph)
 		}
-		val := "◀ " + c.Name + " ▶ " + swatch
-		left := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, labelW-2)).Padding(0, 1).Render("Color")
-		right := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(fg).Width(max(1, fieldW-2)).Padding(0, 1).Render(val)
-		return lipgloss.JoinHorizontal(lipgloss.Left, left, right)
+		return padStyled(labelCell("Color", focused)+pickerVal(c.Name, swatch, focused), width, chrome.baseBg)
 	}
 
 	blank := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
-	rows := []string{}
+	rows := []string{blank}
 	anchors := make(map[amField]int)
 	addLine := func(line string) {
 		rows = append(rows, line)
@@ -1048,7 +1042,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 			"2. myaccount.google.com/apppasswords → create one",
 			"3. Paste the 16-character code above",
 		} {
-			hintLeft := lipgloss.NewStyle().Background(chrome.baseBg).Width(max(1, labelW-2)).Padding(0, 1).Render("")
+			hintLeft := lipgloss.NewStyle().Background(chrome.baseBg).Width(max(1, labelW)).Render("")
 			hintRight := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, fieldW-2)).Padding(0, 1).Render(hint)
 			addLine(lipgloss.JoinHorizontal(lipgloss.Left, hintLeft, hintRight))
 		}
@@ -1075,7 +1069,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 			Render(am.redactSensitive(am.busyMsg))
 	}
 
-	bodyH := max(1, height-lipgloss.Height(header)-4)
+	bodyH := max(1, height-3)
 	offset := 0
 	if anchor, ok := anchors[am.focusedField]; ok {
 		offset = settingsScrollOffset(viewLineCount(rows), anchor, bodyH)
@@ -1089,14 +1083,12 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 	)
 
 	var actionPairs []string
-	if am.busy {
-		actionPairs = []string{}
-	} else {
-		actionPairs = []string{"ctrl+s", "save", "ctrl+t", "test", "esc", "cancel"}
+	if !am.busy {
+		actionPairs = []string{"↑↓", "move", "^s", "save", "^t", "test", "space", "toggle", "esc", "cancel"}
 	}
-	actions := renderManagerActions(width, chrome, actionPairs...)
+	actions := renderSoftHints(width, chrome, actionPairs...)
 
-	parts := []string{header, body}
+	parts := []string{body}
 	if statusLine != "" {
 		parts = append(parts, statusLine)
 	}
@@ -1105,7 +1097,6 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome, title
 }
 
 func (am AccountManager) viewConfirmDelete(width int, chrome managerChrome) string {
-	header := renderManagerHeader("DELETE ACCOUNT?", width, chrome)
 	acc := am.selectedAccount()
 	name := "this account"
 	if acc != nil {
@@ -1117,8 +1108,8 @@ func (am AccountManager) viewConfirmDelete(width int, chrome managerChrome) stri
 		Width(width).
 		Padding(1, 2).
 		Render(fmt.Sprintf("Delete %q? All mailboxes and messages will be removed.", name))
-	actions := renderManagerActions(width, chrome, "y", "delete", "esc", "cancel")
-	return lipgloss.JoinVertical(lipgloss.Left, header, body, actions)
+	actions := renderSoftHints(width, chrome, "y", "delete", "esc", "cancel")
+	return lipgloss.JoinVertical(lipgloss.Left, body, actions)
 }
 
 // ── Async commands ────────────────────────────────────────────────────────────

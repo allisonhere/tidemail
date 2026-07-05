@@ -731,11 +731,11 @@ func TestSettingsDetailHintsUseCtrlSSaveAndEscCategories(t *testing.T) {
 	view := s.View(80, 24, newManagerChrome(80, CatppuccinMocha, false))
 	text := strings.ToLower(ansi.Strip(view))
 
-	if !strings.Contains(text, "ctrl+s") || !strings.Contains(text, "save") {
-		t.Fatalf("expected settings detail hints to reference ctrl+s save, got %q", view)
+	if !strings.Contains(text, "^s save") {
+		t.Fatalf("expected settings detail hints to reference ^s save, got %q", view)
 	}
-	if !strings.Contains(text, "categories") {
-		t.Fatalf("expected settings detail hints to mention categories, got %q", view)
+	if !strings.Contains(text, "esc sections") {
+		t.Fatalf("expected settings detail hints to mention esc sections, got %q", view)
 	}
 }
 
@@ -747,8 +747,8 @@ func TestSettingsSidebarHintsUseCtrlSSaveAndEscCancel(t *testing.T) {
 	view := s.View(80, 24, newManagerChrome(80, CatppuccinMocha, false))
 	text := strings.ToLower(ansi.Strip(view))
 
-	if !strings.Contains(text, "ctrl+s") || !strings.Contains(text, "save") {
-		t.Fatalf("expected settings sidebar hints to reference ctrl+s save, got %q", view)
+	if !strings.Contains(text, "^s save") {
+		t.Fatalf("expected settings sidebar hints to reference ^s save, got %q", view)
 	}
 	if !strings.Contains(text, "esc") || !strings.Contains(text, "cancel") {
 		t.Fatalf("expected settings sidebar hints to reference esc cancel, got %q", view)
@@ -1047,10 +1047,13 @@ func TestSettingsSectionsUseSharedRightPaneGroupHeaders(t *testing.T) {
 		section settingsSection
 		want    string
 	}{
-		{section: ssDisplay, want: "━ DISPLAY"},
-		{section: ssEditor, want: "━ COMPOSE"},
-		{section: ssUpdates, want: "━ UPDATES"},
-		{section: ssAI, want: "━ PROVIDER CREDENTIALS"},
+		{section: ssDisplay, want: "  Appearance"},
+		{section: ssDisplay, want: "  Message list"},
+		{section: ssDisplay, want: "  Reading"},
+		{section: ssDisplay, want: "  Behavior"},
+		{section: ssEditor, want: "  Compose"},
+		{section: ssUpdates, want: "  Updates"},
+		{section: ssAI, want: "  Provider credentials"},
 	}
 
 	for _, tt := range tests {
@@ -1062,6 +1065,49 @@ func TestSettingsSectionsUseSharedRightPaneGroupHeaders(t *testing.T) {
 			text := ansi.Strip(strings.Join(body.lines, "\n"))
 			if !strings.Contains(text, tt.want) {
 				t.Fatalf("expected shared group header %q, got %q", tt.want, text)
+			}
+		})
+	}
+}
+
+// TestSettingsNavOrderMatchesRenderOrder guards the hand-maintained duplication
+// between sectionFields (keyboard order) and viewSectionBody (render order): every
+// focusable field's scroll anchor must appear top-to-bottom in nav order, or
+// tab/arrow focus would jump around the screen.
+func TestSettingsNavOrderMatchesRenderOrder(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.AI.Provider = "openai"
+	retroCfg := config.DefaultConfig()
+	retroCfg.Theme = "vt52"
+
+	cases := []struct {
+		name    string
+		cfg     config.Config
+		section settingsSection
+	}{
+		{"display", cfg, ssDisplay},
+		{"display-retro", retroCfg, ssDisplay},
+		{"editor", cfg, ssEditor},
+		{"updates", cfg, ssUpdates},
+		{"ai", cfg, ssAI},
+		{"advanced", cfg, ssAdvanced},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newSettings(tc.cfg, settingsUpdateState{})
+			s.setActiveSection(tc.section)
+
+			body := s.viewSectionBody(60, newManagerChrome(72, CatppuccinMocha, false))
+			prev := -1
+			for _, f := range s.sectionFields(tc.section) {
+				anchor, ok := body.anchors[f]
+				if !ok {
+					t.Fatalf("nav field %v has no render anchor in section %v", f, tc.section)
+				}
+				if anchor <= prev {
+					t.Fatalf("nav field %v renders at line %d, before the previous nav field (line %d) — sectionFields and viewSectionBody are out of sync", f, anchor, prev)
+				}
+				prev = anchor
 			}
 		})
 	}
@@ -1140,8 +1186,8 @@ func TestSettingsProviderSelectorStaysSingleLineInNarrowPane(t *testing.T) {
 		t.Fatalf("expected provider selector to stay on one line, got height %d", got)
 	}
 	stripped := ansi.Strip(row)
-	if !strings.Contains(stripped, "◀") || !strings.Contains(stripped, "▶") {
-		t.Fatalf("expected provider selector to render side arrows, got %q", stripped)
+	if !strings.Contains(stripped, "‹›") {
+		t.Fatalf("expected provider selector to render the ‹› affordance, got %q", stripped)
 	}
 	if got := lipgloss.Width(row); got != 42 {
 		t.Fatalf("expected provider selector to fill the stable form row width 42, got width %d", got)
