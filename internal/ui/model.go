@@ -206,6 +206,10 @@ type Model struct {
 	// "never refreshed", so the first auto-sync after launch picks up folders.
 	lastFolderRefresh map[int64]time.Time
 
+	// idleWatchers holds the per-account IMAP IDLE push watchers (keyed by
+	// account ID); see startIdleWatchers. The map is shared across Model copies.
+	idleWatchers map[int64]idleWatcherEntry
+
 	firstLoad              bool
 	pendingSelectMailboxID int64
 	pendingSelectMessageID int64
@@ -238,8 +242,10 @@ type Model struct {
 	summaryErr        string
 }
 
-// CloseSessions logs out all pooled IMAP connections; called on shutdown.
+// CloseSessions logs out all pooled IMAP connections and stops the IDLE push
+// watchers; called on shutdown.
 func (m Model) CloseSessions() {
+	m.stopIdleWatchers()
 	if m.sessions != nil {
 		m.sessions.Close()
 	}
@@ -301,6 +307,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		spinner:               sp,
 		syncing:               make(map[int64]bool),
 		lastFolderRefresh:     make(map[int64]time.Time),
+		idleWatchers:          make(map[int64]idleWatcherEntry),
 		collapsedAccounts:     map[int64]bool{},
 		collapsedSections:     map[string]bool{},
 		firstLoad:             true,
@@ -491,6 +498,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.rebuildSidebar()
 			statusCmd = tea.Batch(statusCmd, m.startSyncTimers(), m.syncInboxesNowCmd(), m.loadAddressBookCmd())
 		}
+		// (Re)start the push watchers on every account load: it runs at startup
+		// and again whenever accounts are added, edited, or deleted, so watcher
+		// credentials and inbox targets never go stale.
+		statusCmd = tea.Batch(statusCmd, m.startIdleWatchers())
 		m.firstLoad = false
 		if prevID == 0 && prevKind == rowKindMailbox {
 			m.sidebarCursor = 0
@@ -713,6 +724,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pendingSelectMailboxID = msg.Mailboxes[0].ID
 		}
 		return m, tea.Batch(m.loadAccountsCmd(), m.clearStatusCmd(), m.scheduleNextSync(msg.Account.ID))
+
+	case IdleEventMsg:
+		// Ignore events from a watcher that has since been replaced or stopped —
+		// re-arming a wait on it would leak a goroutine per stale event.
+		if msg.Stopped || m.idleWatchers[msg.AccountID].watcher != msg.Watcher {
+			return m, nil
+		}
+		// Re-arm the wait first, then sync the inbox the server nudged us about.
+		// The sync is the ordinary incremental one, so reconciliation, filters,
+		// and notifications all behave exactly as on a polling tick.
+		return m, tea.Batch(
+			waitIdleCmd(msg.Watcher, msg.AccountID, msg.MailboxID),
+			m.syncMailboxCmd(msg.MailboxID, false),
+		)
 
 	case AutoSyncMsg:
 		var cmds []tea.Cmd

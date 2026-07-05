@@ -28,10 +28,29 @@ type Client struct {
 	// to keep a hung read from blocking forever — see applyDeadline).
 	conn    *imapclient.Client
 	netConn net.Conn
+	// onUpdate, when set, is invoked from the client's read goroutine whenever
+	// the server sends unilateral mailbox data for the selected mailbox. Used
+	// by Watcher for IMAP IDLE push notifications.
+	onUpdate func(MailboxUpdate)
+}
+
+// MailboxUpdate is unilateral mailbox data relayed to NewWithUpdates' callback.
+// NumMessages is set for EXISTS updates (nil for flags-only chatter);
+// Expunged marks an EXPUNGE.
+type MailboxUpdate struct {
+	NumMessages *uint32
+	Expunged    bool
 }
 
 func New(cfg config.AccountConfig) *Client {
 	return &Client{cfg: cfg}
+}
+
+// NewWithUpdates returns a Client that reports unilateral mailbox updates
+// (EXISTS/FLAGS/EXPUNGE while a mailbox is selected) by calling onUpdate.
+// onUpdate runs on the connection's read goroutine and must not block.
+func NewWithUpdates(cfg config.AccountConfig, onUpdate func(MailboxUpdate)) *Client {
+	return &Client{cfg: cfg, onUpdate: onUpdate}
 }
 
 func (c *Client) Connect(ctx context.Context) error {
@@ -57,7 +76,19 @@ func (c *Client) Connect(ctx context.Context) error {
 		conn = tlsConn
 	}
 	c.netConn = conn
-	client := imapclient.New(conn, nil)
+	var opts *imapclient.Options
+	if c.onUpdate != nil {
+		notify := c.onUpdate
+		opts = &imapclient.Options{
+			UnilateralDataHandler: &imapclient.UnilateralDataHandler{
+				Mailbox: func(d *imapclient.UnilateralDataMailbox) {
+					notify(MailboxUpdate{NumMessages: d.NumMessages})
+				},
+				Expunge: func(uint32) { notify(MailboxUpdate{Expunged: true}) },
+			},
+		}
+	}
+	client := imapclient.New(conn, opts)
 
 	// TideMail authenticates with an app password over IMAP LOGIN (Gmail
 	// requires an app password + 2FA).

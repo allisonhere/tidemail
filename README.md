@@ -51,6 +51,7 @@ go build -o tidemail .
 - Theme-aware dialogs, overlays, and terminal background sync
 - Collapsible account folders (System, Labels) in sidebar
 - **Desktop notifications** on genuinely new unread mail via auto-sync (notify-send), with sender and subject details
+- **Instant new mail via IMAP IDLE** — accounts with `sync_minutes > 0` hold a push connection per account, so new mail syncs (and notifies) the moment the server announces it; interval polling stays on as the fallback, and servers without IDLE quietly fall back to polling alone
 
 ## Usage
 
