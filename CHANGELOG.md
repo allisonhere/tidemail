@@ -2,6 +2,38 @@
 
 All notable changes to TideMail are documented in this file.
 
+## v0.8.0
+
+### Added
+
+- **Instant new mail via IMAP IDLE.** Accounts with `sync_minutes > 0` now hold
+  a push connection per account, so new mail syncs — and desktop-notifies — the
+  moment the server announces it instead of at the next polling tick. Interval
+  polling stays on as the fallback, and servers without IDLE quietly keep
+  polling alone. Watchers reconnect with backoff and log diagnostics to
+  `fetch.log`.
+- **Help is searchable.** Press `/` in the help overlay to filter shortcuts as
+  you type; `enter` keeps the filter while you scroll, `esc` clears it.
+
+### Changed
+
+- **Settings and the Account Manager have a new look.** The heavy accent header
+  bars are gone: overlay titles now live in a rounded border
+  (`╭─ tidemail · settings ─╮`), focus is a left accent rail, toggles read
+  `● on / ○ off`, pickers end in `‹›`, and the key hints are one quiet
+  lowercase line. Account cards are tighter (3 lines instead of 5). VT52 and
+  other ASCII terminals degrade gracefully.
+- **The Display settings section is organized into topical groups** —
+  Appearance, Terminal colors, Message list, Reading, and Behavior — instead of
+  one long list, and keyboard order follows the visual order.
+
+### Removed
+
+- **The Outlook provider preset.** Microsoft disabled password/app-password
+  IMAP sign-in for Outlook.com in 2024, so the preset could only ever produce a
+  failed login. Existing accounts saved with the Outlook preset now edit as
+  Custom with their saved servers intact.
+
 ## v0.7.0
 
 ### Security
