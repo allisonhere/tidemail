@@ -157,19 +157,6 @@ func newManagerChrome(width int, t Theme, plainUI bool) managerChrome {
 	}
 }
 
-func renderManagerHeader(title string, width int, chrome managerChrome) string {
-	gap := max(0, width-lipgloss.Width(title)-2)
-	return chrome.header.Render(title + strings.Repeat(" ", gap))
-}
-
-func renderManagerActionGroups(width int, chrome managerChrome, primaryPairs, secondaryPairs []string) string {
-	rows := []string{renderManagerActions(width, chrome, primaryPairs...)}
-	if len(secondaryPairs) > 0 {
-		rows = append(rows, renderManagerActions(width, chrome, secondaryPairs...))
-	}
-	return lipgloss.JoinVertical(lipgloss.Left, rows...)
-}
-
 func renderManagerActions(width int, chrome managerChrome, pairs ...string) string {
 	bar := lipgloss.NewStyle().
 		Width(width).
@@ -200,29 +187,6 @@ func renderManagerActions(width int, chrome managerChrome, pairs ...string) stri
 		row += lipgloss.NewStyle().Background(chrome.baseBg).Render(strings.Repeat(" ", width-w))
 	}
 	return bar.Render(row)
-}
-
-func renderManagerSelectedRow(width int, title string, chrome managerChrome, styles Styles) string {
-	textW := max(1, width-2)
-	row := padRight(truncate(title, textW), textW)
-	bg := terminalColorAsColor(managerSelectedListStyle(styles).GetBackground())
-	return clampView(managerSelectedListStyle(styles).Render(row), width, 1, bg)
-}
-
-func managerSelectedListStyle(styles Styles) lipgloss.Style {
-	bg := terminalColorAsColor(styles.FeedItemSelectedFocused.GetBackground())
-	if bg != "" {
-		if isDark(bg) {
-			bg = adjustLightness(bg, 0.08)
-		} else {
-			bg = adjustLightness(bg, -0.08)
-		}
-	}
-	return lipgloss.NewStyle().
-		Background(bg).
-		Foreground(readableText(styles.Theme.Fg, bg, 4.5)).
-		Bold(true).
-		Padding(0, 1)
 }
 
 // ── AccountManager ────────────────────────────────────────────────────────────

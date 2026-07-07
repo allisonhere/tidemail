@@ -132,8 +132,6 @@ func saveAttachmentsCmdTo(atts []db.Attachment, dir string) tea.Cmd {
 }
 
 func (m Model) renderSaveAttachPicker(width, height int, chrome managerChrome) string {
-	header := renderManagerHeader("SAVE ATTACHMENTS", width, chrome)
-
 	// Current directory display
 	dirStr := m.saveAttachPicker.currentDir
 	if dirStr == "" {
@@ -147,7 +145,8 @@ func (m Model) renderSaveAttachPicker(width, height int, chrome managerChrome) s
 		Render(clampView(dirStr, width-2, 1, chrome.baseBg))
 
 	// Entry list — scroll within available height
-	listH := max(1, height-7) // header(1) + dir(1) + actions(1) + padding
+	labelW := max(1, width-2) // minus the 2-cell rail
+	listH := max(1, height-6)
 	entries := m.saveAttachPicker.entries
 
 	// Calculate visible range
@@ -161,64 +160,32 @@ func (m Model) renderSaveAttachPicker(width, height int, chrome managerChrome) s
 	var rows []string
 	for i, e := range visible {
 		idx := start + i
-		cursor := idx == m.saveAttachPicker.cursor
+		selected := idx == m.saveAttachPicker.cursor
 
-		entryStyle := lipgloss.NewStyle().
-			Background(chrome.baseBg).
-			Width(width).
-			Padding(0, 2)
-
-		if cursor {
-			entryStyle = entryStyle.
-				Background(chrome.accent).
-				Foreground(contrastFg(chrome.accent))
-		} else {
-			entryStyle = entryStyle.Foreground(chrome.text)
-		}
-
-		var label string
+		// Selection is the accent rail; entries keep their semantic colour.
+		fg := chrome.text
+		var text string
 		switch {
 		case e.name == "✓ select this folder":
-			if cursor {
-				label = lipgloss.NewStyle().
-					Background(chrome.accent).
-					Foreground(contrastFg(chrome.accent)).
-					Render(e.name)
-			} else {
-				label = lipgloss.NewStyle().
-					Background(chrome.baseBg).
-					Foreground(lipgloss.Color("2")).
-					Render(e.name)
+			text = e.name
+			if !selected {
+				fg = chrome.successFg
 			}
 		case e.isDir && e.name == "..":
-			if cursor {
-				label = lipgloss.NewStyle().
-					Background(chrome.accent).
-					Foreground(contrastFg(chrome.accent)).
-					Render("📁 " + e.name)
-			} else {
-				label = lipgloss.NewStyle().
-					Background(chrome.baseBg).
-					Foreground(chrome.accent).
-					Render("📁 " + e.name)
-			}
+			text = "📁 " + e.name
+			fg = chrome.accent
 		case e.isDir:
-			label = "📁 " + e.name
-			if !cursor {
-				label = lipgloss.NewStyle().
-					Foreground(chrome.accent).
-					Render(label)
-			}
+			text = "📁 " + e.name
+			fg = chrome.accent
 		default:
-			label = "📄 " + e.name
+			text = "📄 " + e.name
 		}
-
-		// Truncate to fit width
-		entryWidth := max(1, width-4)
-		label = clampView(label, entryWidth, 1, chrome.baseBg)
-
-		row := entryStyle.Render(label)
-		rows = append(rows, row)
+		if selected {
+			fg = chrome.text
+		}
+		cell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(fg).Render(" " + text)
+		cell = truncateStyled(cell, labelW, chrome.baseBg)
+		rows = append(rows, softRail(chrome, selected, chrome.baseBg)+padStyled(cell, labelW, chrome.baseBg))
 	}
 
 	// Fill remaining rows to maintain consistent height
@@ -226,21 +193,19 @@ func (m Model) renderSaveAttachPicker(width, height int, chrome managerChrome) s
 		rows = append(rows, lipgloss.NewStyle().
 			Background(chrome.baseBg).
 			Width(width).
-			Padding(0, 2).
 			Render(""))
 	}
 
 	body := lipgloss.JoinVertical(lipgloss.Left, rows...)
 
-	// Actions
-	actions := renderManagerActions(width, chrome,
+	hints := renderSoftHints(width, chrome,
 		"↵", "open/confirm",
 		"←", "parent",
 		".", "hidden",
 		"esc", "cancel",
 	)
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, dirLine, body, actions)
+	return lipgloss.JoinVertical(lipgloss.Left, dirLine, body, hints)
 }
 
 func saveAttachmentsCmd(atts []db.Attachment) tea.Cmd {

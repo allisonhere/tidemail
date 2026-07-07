@@ -63,6 +63,7 @@ type ComposeModel struct {
 	focusedField composeField
 	inReplyTo    string
 	references   string
+	isForward    bool // distinguishes a forward from a plain compose (no inReplyTo)
 	accountCfg   config.AccountConfig
 
 	accounts     []config.AccountConfig
@@ -189,6 +190,7 @@ func NewReply(original db.Message, acfg config.AccountConfig, accounts []config.
 func NewForward(original db.Message, acfg config.AccountConfig, accounts []config.AccountConfig) ComposeModel {
 	c := NewCompose(acfg, accounts, nil)
 	c.quoteCollapsed = true
+	c.isForward = true
 
 	subject := original.Subject
 	if !strings.HasPrefix(strings.ToLower(subject), "fwd:") {
@@ -310,7 +312,24 @@ func newComposeInput(placeholder string) textinput.Model {
 	ti := textinput.New()
 	ti.Placeholder = placeholder
 	ti.CharLimit = 512
+	// Drop the default "> " prompt: the soft rows carry their own label column,
+	// and renderTextInput (used by the soft-panel View) doesn't clear it.
+	ti.Prompt = ""
 	return ti
+}
+
+// softTitle returns the lowercase mode word embedded in the compose overlay's
+// rounded border (mirrors accountManager.softTitle): "reply" for a reply,
+// "forward" for a forward, else "compose".
+func (c ComposeModel) softTitle() string {
+	switch {
+	case c.inReplyTo != "":
+		return "reply"
+	case c.isForward:
+		return "forward"
+	default:
+		return "compose"
+	}
 }
 
 // listDirEntries reads dir into fileEntry values, dirs-first then alphabetical,
@@ -835,56 +854,6 @@ func fileIcon(name string) string {
 	}
 }
 
-// renderComposePanel wraps content rows in a surfaceBg section with an
-// accent title bar. No border — the surfaceBg background change provides
-// visual separation.
-func renderComposePanel(title string, rows []string, width int, chrome managerChrome) string {
-	titleBar := lipgloss.NewStyle().
-		Background(chrome.surfaceBg).
-		Foreground(chrome.accent).
-		Bold(true).
-		Width(width).
-		Padding(0, 2).
-		Render(title)
-	body := lipgloss.JoinVertical(lipgloss.Left, rows...)
-	inner := lipgloss.JoinVertical(lipgloss.Left, titleBar, body)
-	return lipgloss.NewStyle().
-		Background(chrome.surfaceBg).
-		Width(width).
-		Render(inner)
-}
-
-func renderComposePanelRow(ti textinput.Model, label string, focused bool, width, labelW, ctrlW int, chrome managerChrome) string {
-	bg := chrome.surfaceBg
-	labelFg := chrome.muted
-	if focused {
-		bg = chrome.fieldBg
-		labelFg = chrome.text
-	}
-	// Marker + label sit on the panel background (surfaceBg) so To/CC/Subject match
-	// the RECIPIENTS/MESSAGE panel and the From row. Only the input cell shifts to
-	// fieldBg on focus.
-	marker := lipgloss.NewStyle().Background(chrome.surfaceBg).Width(2).Render(" ")
-	if focused {
-		marker = lipgloss.NewStyle().Background(chrome.surfaceBg).Foreground(chrome.accent).Bold(true).Width(2).Render(" >")
-	}
-	labelCell := lipgloss.NewStyle().Background(chrome.surfaceBg).Foreground(labelFg).Width(labelW).Render(truncate(label, max(1, labelW-1)))
-	ti.Width = ctrlW
-	ti.Prompt = ""
-	ti.PromptStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.accent)
-	ti.TextStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.text)
-	ti.PlaceholderStyle = lipgloss.NewStyle().Foreground(chrome.muted)
-	ti.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(accentReadableOn(chrome.text, chrome.accent, 4.5))
-	if focused {
-		ti.Focus()
-	} else {
-		ti.Blur()
-	}
-	view := truncateStyled(inputViewWithCursor(ti, focused), ctrlW, bg)
-	ctrlCell := lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Width(ctrlW).Render(view)
-	return marker + labelCell + ctrlCell
-}
-
 func (c ComposeModel) selectedAccountLabel() string {
 	acfg := c.selectedAccount()
 	s := acfg.From
@@ -895,15 +864,6 @@ func (c ComposeModel) selectedAccountLabel() string {
 		s = acfg.Name
 	}
 	return s
-}
-
-// renderComposeFromRow renders a non-focusable "From" row showing the current sender account.
-func renderComposeFromRow(label, value string, width, labelW, ctrlW int, chrome managerChrome) string {
-	bg := chrome.surfaceBg
-	marker := lipgloss.NewStyle().Background(bg).Width(2).Render(" ")
-	labelCell := lipgloss.NewStyle().Background(bg).Foreground(chrome.muted).Width(labelW).Render(truncate(label, max(1, labelW-1)))
-	valueCell := lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Width(ctrlW).Render(truncate(value, ctrlW))
-	return marker + labelCell + valueCell
 }
 
 // composeOverlayWidth is the width of the compose overlay box for a given
@@ -920,79 +880,106 @@ func composeBodyWidth(termWidth int) int {
 	return max(1, composeOverlayWidth(termWidth)-4)
 }
 
-// composeLayout builds the header and action bar and computes the body editor's
+// composeLayout builds the soft-panel hint footer and computes the body editor's
 // content width and visible height for the given overlay content size. It is the
 // single source of the height budget: View renders with these values, and
 // handleCompose sizes the *stored* editor to the same bodyW/bodyH so vertical
 // navigation and the rendered viewport stay in lockstep. (View sizes only a
 // copy — it is a value receiver — so the stored editor must be synced separately,
 // and if it isn't, it keeps height 1 and the caret sticks to the top of the body.)
-func (c ComposeModel) composeLayout(width, height int, styles Styles) (header, actions string, bodyW, bodyH int) {
+//
+// The soft look has no header bar: the mode/title lives in the overlay border and
+// the sender lives in the From row. fixedLines below must match, one-for-one, the
+// non-body lines View appends — if they drift, clampView clips the footer or the
+// caret desyncs from the viewport.
+func (c ComposeModel) composeLayout(width, height int, styles Styles) (hints string, bodyW, bodyH int) {
 	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
+	hints = c.composeHints(width, chrome)
 
-	title := "COMPOSE"
+	fixedLines := 0
+	fixedLines += 2 // recipients group title + blank
+	fixedLines += 4 // From / To / CC / BCC
+	fixedLines++    // gap before message group
+	fixedLines += 2 // message group title + blank
+	fixedLines++    // Subject
+	fixedLines++    // spacer before body
 	if c.inReplyTo != "" {
-		title = "REPLY"
+		fixedLines++ // quote toggle line
 	}
-	// Add sender badge from selected account
-	acfg := c.selectedAccount()
-	sender := acfg.From
-	if sender == "" {
-		sender = acfg.User
-	}
-	if sender != "" {
-		title += "  ◉ " + sender
-	}
-	// Vim mode badge / command line, shown while the body is focused: the ":"
-	// line as you type it, otherwise the mode (-- NORMAL --, -- INSERT --, …).
-	if c.focusedField == composeFieldBody && c.bodyInput.vimMode() {
-		if cl := c.bodyInput.CommandLine(); cl != "" {
-			title += "  " + cl
-		} else if mode := c.bodyInput.Mode(); mode != "" {
-			title += "  -- " + mode + " --"
-		}
-	}
-	header = renderManagerHeader(title, width, chrome)
-
-	// Action bar
-	actionKeys := []string{"ctrl+s", "send", "ctrl+g", "grammar", "ctrl+u", "sender", "alt+f", "attach"}
-	if c.focusedField == composeFieldBody {
-		// Copy/cut act on the editor selection, so only show them in the body.
-		actionKeys = append(actionKeys, "ctrl+c", "copy", "ctrl+x", "cut")
-	}
-	navKeys := []string{"tab", "next", "esc", "cancel"}
 	if len(c.attachments) > 0 {
-		navKeys = []string{"tab", "next", "ctrl+r", "remove", "esc", "cancel"}
+		fixedLines += 3 + len(c.attachments) // gap + group title + blank + one row per file
 	}
-	actions = renderManagerActionGroups(width, chrome, actionKeys, navKeys)
-	if c.busy {
-		actions = renderManagerActions(width, chrome)
-	}
-
-	// Height budget: panel overhead (title bar) + gaps + reply
-	overheadPerPanel := 1 // title bar only (no border)
-	panelCount := 2       // recipients + message
-	if len(c.attachments) > 0 {
-		panelCount++
-	}
-	panelOH := panelCount * overheadPerPanel
-	gapRows := panelCount - 1 // gaps between panels
-	if c.inReplyTo != "" {
-		gapRows++ // quote toggle line
-	}
-	attachLines := 0
-	if len(c.attachments) > 0 {
-		attachLines = len(c.attachments)
-	}
-
-	fixedH := lipgloss.Height(header) + panelOH + gapRows + lipgloss.Height(actions)
 	if c.statusMsg != "" {
-		fixedH++
+		fixedLines++
 	}
-	bodyH = max(1, height-fixedH-attachLines-4) // -4 for From + To + CC + BCC + Subject + internal spacer (the blank rows and spacers are counted in gapRows)
+	fixedLines += lipgloss.Height(hints)
+
+	bodyH = max(1, height-fixedLines)
 	// Body editor content width = overlay width minus internal padding.
 	bodyW = max(1, width-4)
-	return header, actions, bodyW, bodyH
+	return hints, bodyW, bodyH
+}
+
+// composeHints renders the quiet lowercase soft-panel footer. When the body is
+// focused in vim mode it leads with the mode / ":" command-line indicator (kept
+// verbatim, not lowercased, so typed commands read correctly). Parts are greedily
+// packed into as many lines as needed for the width; composeLayout accounts for
+// the resulting height via lipgloss.Height.
+func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
+	base := lipgloss.NewStyle().Background(chrome.baseBg)
+	keyStyle := base.Foreground(chrome.text)
+	lblStyle := base.Foreground(chrome.muted)
+
+	if c.busy {
+		// While sending, the status line carries the message; keep a blank footer.
+		return padStyled(base.Render("  "), width, chrome.baseBg)
+	}
+
+	var parts []string
+	if c.focusedField == composeFieldBody && c.bodyInput.vimMode() {
+		if cl := c.bodyInput.CommandLine(); cl != "" {
+			parts = append(parts, base.Foreground(chrome.accent).Render(cl))
+		} else if mode := c.bodyInput.Mode(); mode != "" {
+			parts = append(parts, base.Foreground(chrome.accent).Render("-- "+mode+" --"))
+		}
+	}
+
+	pairs := []string{"^s", "send", "^g", "grammar", "^u", "sender", "alt+f", "attach", "tab", "next"}
+	if len(c.attachments) > 0 {
+		pairs = append(pairs, "^r", "remove")
+	}
+	if c.focusedField == composeFieldBody {
+		// Copy/cut act on the editor selection, so only show them in the body.
+		pairs = append(pairs, "^c", "copy", "^x", "cut")
+	}
+	pairs = append(pairs, "esc", "cancel")
+	for i := 0; i+1 < len(pairs); i += 2 {
+		parts = append(parts, keyStyle.Render(pairs[i])+lblStyle.Render(" "+pairs[i+1]))
+	}
+
+	// Greedy-pack into lines no wider than width, indented 2, separated by 3 spaces.
+	indent := base.Render("  ")
+	indentW := 2
+	sep := base.Render("   ")
+	var lines []string
+	cur := indent
+	curW := indentW
+	for _, p := range parts {
+		pw := lipgloss.Width(p)
+		if curW > indentW && curW+3+pw > width {
+			lines = append(lines, padStyled(cur, width, chrome.baseBg))
+			cur = indent
+			curW = indentW
+		}
+		if curW > indentW {
+			cur += sep
+			curW += 3
+		}
+		cur += p
+		curW += pw
+	}
+	lines = append(lines, padStyled(cur, width, chrome.baseBg))
+	return strings.Join(lines, "\n")
 }
 
 func (c ComposeModel) View(width, height int, styles Styles) string {
@@ -1003,14 +990,23 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 		return c.pickerView(width, height, chrome)
 	}
 
-	header, actions, bodyInputW, bodyH := c.composeLayout(width, height, styles)
+	hints, bodyInputW, bodyH := c.composeLayout(width, height, styles)
 
-	// Panel content area (full width, no border inset needed)
-	panelLabelW := min(10, formLabelWidth(width))
-	panelCtrlW := max(1, width-panelLabelW-2)
+	// Soft-panel rows share a short label column; the input text is inset 2 cells
+	// to match the settings / account-manager forms.
+	labelW := min(10, formLabelWidth(width))
 
 	blankRow := func(bg lipgloss.Color) string {
 		return lipgloss.NewStyle().Background(bg).Width(width).Render("")
+	}
+
+	// softInput renders one To/CC/BCC/Subject field as a soft row: an accent rail
+	// marks focus and the bubbles textinput sits inset in the control column.
+	softInput := func(label string, ti textinput.Model, field composeField) string {
+		focused := c.focusedField == field
+		rowFieldW := max(1, width-2-labelW)
+		control := renderInsetControl(renderTextInput(ti, max(1, rowFieldW-4), focused, false, chrome), rowFieldW, 2, chrome)
+		return renderSoftRow(label, focused, control, width, labelW, chrome)
 	}
 
 	c.bodyInput.SetSize(bodyInputW, bodyH)
@@ -1088,69 +1084,59 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 		}
 	}
 
-	// ── Build rows ──
+	// ── Build rows ── (line count must match composeLayout's fixedLines)
 	var rows []string
-	rows = append(rows, header)
 
-	// ═══════════════════ RECIPIENTS ═══════════════════
-	recipRows := []string{
-		renderComposeFromRow("From", c.selectedAccountLabel(), width, panelLabelW, panelCtrlW, chrome),
-		renderComposePanelRow(c.toInput, "To", c.focusedField == composeFieldTo, width, panelLabelW, panelCtrlW, chrome),
-		renderComposePanelRow(c.ccInput, "CC", c.focusedField == composeFieldCC, width, panelLabelW, panelCtrlW, chrome),
-		renderComposePanelRow(c.bccInput, "BCC", c.focusedField == composeFieldBCC, width, panelLabelW, panelCtrlW, chrome),
-	}
-	rows = append(rows, renderComposePanel("RECIPIENTS", recipRows, width, chrome))
+	// recipients
+	rows = append(rows, renderSoftGroupTitle("recipients", width, chrome))
+	rows = append(rows, blankRow(chrome.baseBg))
+	fromText := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render(c.selectedAccountLabel())
+	rows = append(rows, renderSoftRow("From", false, renderInsetControl(fromText, max(1, width-2-labelW), 2, chrome), width, labelW, chrome))
+	rows = append(rows, softInput("To", c.toInput, composeFieldTo))
+	rows = append(rows, softInput("CC", c.ccInput, composeFieldCC))
+	rows = append(rows, softInput("BCC", c.bccInput, composeFieldBCC))
 
-	// ═══════════════════ MESSAGE ═══════════════════
-	msgRows := []string{
-		renderComposePanelRow(c.subjectInput, "Subject", c.focusedField == composeFieldSubject, width, panelLabelW, panelCtrlW, chrome),
-		lipgloss.NewStyle().Background(chrome.surfaceBg).Width(width).Render(""),
-		bodyRow,
-	}
-	rows = append(rows, blankRow(chrome.baseBg)) // gap between panels
-	rows = append(rows, renderComposePanel("MESSAGE", msgRows, width, chrome))
+	// message
+	rows = append(rows, blankRow(chrome.baseBg)) // gap between groups
+	rows = append(rows, renderSoftGroupTitle("message", width, chrome))
+	rows = append(rows, blankRow(chrome.baseBg))
+	rows = append(rows, softInput("Subject", c.subjectInput, composeFieldSubject))
+	rows = append(rows, blankRow(chrome.baseBg)) // spacer before body
+	rows = append(rows, bodyRow)
 
-	// ── Reply quote (outside panels) ──
+	// reply quote toggle
 	if c.inReplyTo != "" {
 		qIcon := "▸"
 		if !c.quoteCollapsed {
 			qIcon = "▾"
 		}
-		qLine := lipgloss.NewStyle().
-			Background(chrome.baseBg).
-			Foreground(chrome.muted).
-			Padding(0, 2).
-			Render(fmt.Sprintf("  %s  Show quoted original (enter to toggle)", qIcon))
-		if gap := width - lipgloss.Width(qLine); gap > 0 {
-			qLine += lipgloss.NewStyle().Background(chrome.baseBg).Render(strings.Repeat(" ", gap))
+		if chrome.plainUI {
+			qIcon = ">"
+			if !c.quoteCollapsed {
+				qIcon = "v"
+			}
 		}
-		rows = append(rows, qLine)
+		qText := fmt.Sprintf("  %s  quoted original (enter to toggle)", qIcon)
+		qLine := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render(qText)
+		rows = append(rows, padStyled(qLine, width, chrome.baseBg))
 	}
 
-	// ═══════════════════ ATTACHMENTS ═══════════════════
+	// attachments
 	if len(c.attachments) > 0 {
-		var attachRows []string
-		for _, af := range c.attachments {
-			icon := fileIcon(af.Name)
-			line := fmt.Sprintf("  %s%s  %s    [ctrl+r remove]", icon, af.Name, humanSize(len(af.Data)))
-			attachLine := lipgloss.NewStyle().
-				Background(chrome.surfaceBg).
-				Foreground(chrome.accent).
-				Padding(0, 2).
-				Render(line)
-			if gap := width - lipgloss.Width(attachLine); gap > 0 {
-				attachLine += lipgloss.NewStyle().Background(chrome.surfaceBg).Render(strings.Repeat(" ", gap))
-			}
-			attachRows = append(attachRows, attachLine)
-		}
+		rows = append(rows, blankRow(chrome.baseBg)) // gap before group
+		rows = append(rows, renderSoftGroupTitle("attachments", width, chrome))
 		rows = append(rows, blankRow(chrome.baseBg))
-		rows = append(rows, renderComposePanel("ATTACHMENTS", attachRows, width, chrome))
+		for _, af := range c.attachments {
+			txt := fmt.Sprintf("  %s%s  %s", fileIcon(af.Name), af.Name, humanSize(len(af.Data)))
+			line := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Render(txt)
+			rows = append(rows, padStyled(line, width, chrome.baseBg))
+		}
 	}
 
 	if statusLine != "" {
 		rows = append(rows, statusLine)
 	}
-	rows = append(rows, actions)
+	rows = append(rows, hints)
 
 	content := lipgloss.JoinVertical(lipgloss.Left, rows...)
 	return clampView(content, width, height, chrome.baseBg)
@@ -1158,25 +1144,17 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 
 // pickerView renders the yazi-style file browser.
 func (c ComposeModel) pickerView(width, height int, chrome managerChrome) string {
-	header := renderManagerHeader("ATTACH FILE", width, chrome)
+	// Current directory breadcrumb (the "attach file" title lives in the overlay
+	// border via ComposeModel.softTitle when the picker is active).
+	pathLine := padStyled(
+		lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.accent).Render("  "+c.picker.currentDir),
+		width, chrome.baseBg)
 
-	// Path line
-	pathLine := lipgloss.NewStyle().
-		Background(chrome.baseBg).
-		Foreground(chrome.accent).
-		Width(width).
-		Padding(0, 2).
-		Render(c.picker.currentDir)
+	// Quiet soft footer — render first so the file list can reserve its true height.
+	hints := renderSoftHints(width, chrome, "↑↓", "navigate", "enter", "open/attach", "esc/h", "up dir", ".", "hidden")
 
-	// Actions footer — render first so the file list can reserve its true height
-	// (two action rows, each with a top border = more than the old fixed 2 lines).
-	actions := renderManagerActionGroups(width, chrome,
-		[]string{"↑/↓", "navigate", "enter", "open/attach"},
-		[]string{"esc/h", "up dir", ".", "hidden"},
-	)
-
-	// File listing — fit within available height
-	availH := height - lipgloss.Height(header) - lipgloss.Height(pathLine) - lipgloss.Height(actions)
+	// File listing — fit within available height (path line + footer).
+	availH := height - lipgloss.Height(pathLine) - lipgloss.Height(hints)
 	if availH < 1 {
 		availH = 1
 	}
@@ -1199,50 +1177,47 @@ func (c ComposeModel) pickerView(width, height int, chrome managerChrome) string
 	}
 	visible := shown[start:end]
 
+	railW := 2
+	contentW := max(1, width-railW)
 	var lines []string
 	for i, entry := range visible {
 		idx := start + i
 		focused := idx == c.picker.cursor
-		var line string
-		if entry.isDir {
-			if entry.name == ".." {
-				line = "  ../"
-			} else {
-				line = fmt.Sprintf("  %s/", entry.name)
+
+		// Selection is a left accent rail (soft-panel convention) — no full-width
+		// accent fill. The label brightens to text when focused.
+		fg := chrome.text
+		var label, size string
+		switch {
+		case entry.isDir && entry.name == "..":
+			label = "../"
+			if !focused {
+				fg = chrome.muted
 			}
-		} else {
-			sz := humanSize(int(entry.size))
-			// Pad name to align sizes to the right
-			line = fmt.Sprintf("  %-*s  %s", max(1, width-14), entry.name, sz)
-		}
-		if len(line) > width {
-			line = line[:width]
+		case entry.isDir:
+			label = entry.name + "/"
+			if !focused {
+				fg = chrome.accent
+			}
+		default:
+			label = entry.name
+			size = humanSize(int(entry.size))
+			if !focused {
+				fg = chrome.text
+			}
 		}
 
-		if focused {
-			highlightStyle := lipgloss.NewStyle().
-				Background(chrome.accent).
-				Foreground(accentReadableOn(chrome.text, chrome.accent, 4.5))
-			if idx < width && len(line) < width {
-				line = line + strings.Repeat(" ", width-len(line))
-			}
-			lines = append(lines, highlightStyle.Width(width).Render(line))
+		labelStyle := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(fg)
+		var content string
+		if size != "" {
+			sizeCell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render(size + " ")
+			left := labelStyle.Render(" " + truncate(label, max(1, contentW-lipgloss.Width(sizeCell)-2)))
+			gap := max(1, contentW-lipgloss.Width(left)-lipgloss.Width(sizeCell))
+			content = left + lipgloss.NewStyle().Background(chrome.baseBg).Render(strings.Repeat(" ", gap)) + sizeCell
 		} else {
-			bg := chrome.baseBg
-			if entry.isDir {
-				fg := chrome.accent
-				if entry.name == ".." {
-					fg = chrome.muted
-				}
-				lines = append(lines, lipgloss.NewStyle().
-					Background(bg).Foreground(fg).
-					Width(width).Render(line))
-			} else {
-				lines = append(lines, lipgloss.NewStyle().
-					Background(bg).Foreground(chrome.text).
-					Width(width).Render(line))
-			}
+			content = labelStyle.Render(" " + truncate(label, max(1, contentW-1)))
 		}
+		lines = append(lines, softRail(chrome, focused, chrome.baseBg)+padStyled(content, contentW, chrome.baseBg))
 	}
 
 	// Fill remaining space
@@ -1256,10 +1231,9 @@ func (c ComposeModel) pickerView(width, height int, chrome managerChrome) string
 	fileList := lipgloss.JoinVertical(lipgloss.Left, lines...)
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
-		header,
 		pathLine,
 		fileList,
-		actions,
+		hints,
 	)
 	return clampView(content, width, height, chrome.baseBg)
 }
