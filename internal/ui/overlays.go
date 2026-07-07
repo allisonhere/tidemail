@@ -16,44 +16,34 @@ func (m Model) renderOverlay(base string) string {
 		quitW := 40
 		qt := m.styles.Theme
 		chrome := newManagerChrome(quitW, qt, m.styles.PlainUI)
-		header := renderManagerHeader("QUIT TIDE?", quitW, chrome)
 		body := lipgloss.NewStyle().
 			Background(chrome.baseBg).
 			Foreground(chrome.text).
 			Width(quitW).
 			Padding(1, 2).
 			Render("Exit Tide now?")
-		actions := renderManagerActions(quitW, chrome,
-			"y", "quit",
-			"esc", "cancel",
-		)
-		inner := lipgloss.JoinVertical(lipgloss.Left, header, body, actions)
+		hints := renderSoftHints(quitW, chrome, "y", "quit", "esc", "cancel")
+		inner := lipgloss.JoinVertical(lipgloss.Left, body, hints)
 		inner = clampView(inner, quitW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderChromeOverlayBox(inner, quitW, chrome, chrome.accent)
+		box = renderSoftPanelBox(inner, quitW, "tidemail", "quit tide?", chrome)
 
 	case overlayDraftCloseConfirm:
 		winW := 48
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
-		header := renderManagerHeader("SAVE DRAFT?", winW, chrome)
 		body := lipgloss.NewStyle().
 			Background(chrome.baseBg).
 			Foreground(chrome.text).
 			Width(winW).
 			Padding(1, 2).
 			Render("Save this draft before closing compose?")
-		actions := renderManagerActions(winW, chrome,
-			"y/enter", "save",
-			"d", "discard",
-			"esc", "cancel",
-		)
-		inner := lipgloss.JoinVertical(lipgloss.Left, header, body, actions)
+		hints := renderSoftHints(winW, chrome, "y/enter", "save", "d", "discard", "esc", "cancel")
+		inner := lipgloss.JoinVertical(lipgloss.Left, body, hints)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+		box = renderSoftPanelBox(inner, winW, "tidemail", "save draft?", chrome)
 
 	case overlayBulkDeleteConfirm:
 		winW := 48
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
-		header := renderManagerHeader("DELETE MESSAGES?", winW, chrome)
 		count := len(m.pendingBulkDelete)
 		body := lipgloss.NewStyle().
 			Background(chrome.baseBg).
@@ -61,20 +51,17 @@ func (m Model) renderOverlay(base string) string {
 			Width(winW).
 			Padding(1, 2).
 			Render(fmt.Sprintf("Delete %d selected messages?", count))
-		actions := renderManagerActions(winW, chrome,
-			"y/enter", "delete",
-			"esc", "cancel",
-		)
-		inner := lipgloss.JoinVertical(lipgloss.Left, header, body, actions)
+		hints := renderSoftHints(winW, chrome, "y/enter", "delete", "esc", "cancel")
+		inner := lipgloss.JoinVertical(lipgloss.Left, body, hints)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+		box = renderSoftPanelBox(inner, winW, "tidemail", "delete messages?", chrome)
 
 	case overlayThemePicker:
 		winW := min(m.width-4, 40)
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		inner := m.renderThemePicker(winW, chrome)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+		box = renderSoftPanelBox(inner, winW, "tidemail", "theme", chrome)
 
 	case overlayAccountManager:
 		winW := min(m.width-4, 74)
@@ -90,7 +77,7 @@ func (m Model) renderOverlay(base string) string {
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		inner := m.contactManager.View(winW, winH, m.styles)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+		box = renderSoftPanelBox(inner, winW, "tidemail", m.contactManager.softTitle(), chrome)
 
 	case overlayCompose:
 		winW := composeOverlayWidth(m.width)
@@ -98,7 +85,11 @@ func (m Model) renderOverlay(base string) string {
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		inner := m.compose.View(winW, winH, m.styles)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+		title := m.compose.softTitle()
+		if m.compose.picker.active {
+			title = "attach file"
+		}
+		box = renderSoftPanelBox(inner, winW, "tidemail", title, chrome)
 
 	case overlaySaveAttach:
 		winW := min(m.width-4, 74)
@@ -106,7 +97,7 @@ func (m Model) renderOverlay(base string) string {
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		inner := m.renderSaveAttachPicker(winW, winH, chrome)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+		box = renderSoftPanelBox(inner, winW, "tidemail", "save attachments", chrome)
 
 	case overlayMoveMessage:
 		winW := min(m.width-4, 74)
@@ -114,7 +105,7 @@ func (m Model) renderOverlay(base string) string {
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		inner := m.renderMovePicker(winW, winH, chrome)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+		box = renderSoftPanelBox(inner, winW, "tidemail", "move to", chrome)
 
 	case overlayFilterManager:
 		winW := min(m.width-4, 78)
@@ -122,7 +113,7 @@ func (m Model) renderOverlay(base string) string {
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		inner := m.renderFilterManager(winW, winH, chrome)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+		box = renderSoftPanelBox(inner, winW, "tidemail", "filters", chrome)
 
 	case overlayGrammarPreview:
 		winW := min(m.width-10, 70)
@@ -136,41 +127,27 @@ func (m Model) renderOverlay(base string) string {
 
 	case overlayHelp:
 		winW := min(m.width-6, 90)
-		winH := min(m.height-4, 38)
-		t := m.styles.Theme
-		surface := modalSurface(t)
-		border := t.OverlayBorder
-		if border == "" {
-			border = t.BorderFocus
-		}
-		m.helpVP.Style = lipgloss.NewStyle().Background(surface)
-		var footerText string
+		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
+		m.helpVP.Style = lipgloss.NewStyle().Background(chrome.baseBg)
+		var footer string
 		switch {
 		case m.helpSearchActive:
 			input := m.helpSearchInput
-			input.Width = max(1, winW-12)
+			input.Width = max(1, winW-6)
 			input.Prompt = "/ "
-			input.PromptStyle = lipgloss.NewStyle().Background(surface).Foreground(t.BorderFocus).Bold(true)
-			input.TextStyle = lipgloss.NewStyle().Background(surface).Foreground(t.Fg)
-			input.PlaceholderStyle = lipgloss.NewStyle().Background(surface).Foreground(readableText(t.Dimmed, surface, 3.0))
-			input.Cursor.Style = lipgloss.NewStyle().Background(t.BorderFocus).Foreground(accentReadableOn(t.Fg, t.BorderFocus, 4.5))
-			footerText = inputViewWithCursor(input, true)
+			input.PromptStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.accent).Bold(true)
+			input.TextStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text)
+			input.PlaceholderStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted)
+			input.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(accentReadableOn(chrome.text, chrome.accent, 4.5))
+			footer = padStyled("  "+inputViewWithCursor(input, true), winW, chrome.baseBg)
 		case m.helpSearchInput.Value() != "":
-			footerText = "[/] edit search  [esc] clear  [?/q] close  [j/k/↑↓] scroll"
+			footer = renderSoftHints(winW, chrome, "/", "edit search", "esc", "clear", "?/q", "close", "j/k", "scroll")
 		default:
-			footerText = "[/] search  [esc/?/q] close  [j/k/↑↓] scroll"
+			footer = renderSoftHints(winW, chrome, "/", "search", "esc/?/q", "close", "j/k", "scroll")
 		}
-		footer := m.styles.OverlayHint.
-			MarginTop(1).
-			Width(max(1, winW-1)).
-			Padding(0, 1, 0, 4).
-			Render(footerText)
-		box = lipgloss.NewStyle().
-			Background(surface).
-			Border(lipPaneBorder(m.styles.PlainUI)).
-			BorderForeground(border).
-			Width(winW).Height(winH).
-			Render(m.helpVP.View() + "\n" + footer)
+		inner := m.helpVP.View() + "\n\n" + footer
+		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
+		box = renderSoftPanelBox(inner, winW, "tidemail", "help", chrome)
 
 	case overlaySettings:
 		winW := min(m.width-4, 62)
@@ -185,7 +162,7 @@ func (m Model) renderOverlay(base string) string {
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		inner := m.renderUpdateConfirmOverlay(winW, chrome)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+		box = renderSoftPanelBox(inner, winW, "tidemail", "install update?", chrome)
 
 	case overlaySummary:
 		winW := min(m.width-8, 76)
@@ -193,21 +170,20 @@ func (m Model) renderOverlay(base string) string {
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		inner := m.renderSummaryOverlay(winW, winH, chrome)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+		box = renderSoftPanelBox(inner, winW, "tidemail", "ai summary", chrome)
 
 	case overlayCommandPalette:
 		winW := min(m.width-6, 72)
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		inner := m.renderCommandPalette(winW, chrome)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderChromeOverlayBox(inner, winW, chrome, chrome.accent)
+		box = renderSoftPanelBox(inner, winW, "tidemail", "command", chrome)
 	}
 
 	return overlayOnBase(base, box, m.width, m.height, m.styles.Theme.Bg)
 }
 
 func (m Model) renderCommandPalette(width int, chrome managerChrome) string {
-	header := renderManagerHeader("COMMAND", width, chrome)
 	input := m.commandInput
 	inputW := max(1, width-4)
 	input.Width = inputW
@@ -220,7 +196,7 @@ func (m Model) renderCommandPalette(width int, chrome managerChrome) string {
 	items := m.filteredCommandItems()
 	rows := []string{inputViewWithCursor(input, true), ""}
 	if len(items) == 0 {
-		rows = append(rows, lipgloss.NewStyle().Foreground(chrome.muted).Render("No commands"))
+		rows = append(rows, lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render("No commands"))
 	} else {
 		limit := min(8, len(items))
 		start := 0
@@ -229,16 +205,16 @@ func (m Model) renderCommandPalette(width int, chrome managerChrome) string {
 		}
 		for i := start; i < min(start+limit, len(items)); i++ {
 			item := items[i]
-			prefix := "  "
-			style := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text)
+			selected := i == m.commandCursor
+			fg := chrome.text
 			if !item.enabled {
-				style = style.Foreground(chrome.muted)
+				fg = chrome.muted
+			} else if selected {
+				fg = chrome.text
 			}
-			if i == m.commandCursor {
-				prefix = "> "
-				style = style.Background(chrome.accent).Foreground(accentReadableOn(chrome.text, chrome.accent, 4.5)).Bold(true)
-			}
-			rows = append(rows, style.Width(max(1, width-4)).Render(truncate(prefix+item.label, max(1, width-4))))
+			labelW := max(1, width-4-2) // minus the 2-cell rail
+			label := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(fg).Render(" " + truncate(item.label, max(1, labelW-1)))
+			rows = append(rows, softRail(chrome, selected, chrome.baseBg)+padStyled(label, labelW, chrome.baseBg))
 		}
 	}
 	body := lipgloss.NewStyle().
@@ -247,13 +223,11 @@ func (m Model) renderCommandPalette(width int, chrome managerChrome) string {
 		Width(width).
 		Padding(1, 2).
 		Render(strings.Join(rows, "\n"))
-	actions := renderManagerActions(width, chrome, "enter", "run", "esc", "close")
-	return lipgloss.JoinVertical(lipgloss.Left, header, body, actions)
+	hints := renderSoftHints(width, chrome, "enter", "run", "esc", "close")
+	return lipgloss.JoinVertical(lipgloss.Left, body, hints)
 }
 
 func (m Model) renderSummaryOverlay(width, height int, chrome managerChrome) string {
-	header := renderManagerHeader("AI SUMMARY", width, chrome)
-
 	var bodyText string
 	switch {
 	case m.summaryGenerating:
@@ -289,20 +263,18 @@ func (m Model) renderSummaryOverlay(width, height int, chrome managerChrome) str
 			Render(provider)
 		hints = lipgloss.JoinVertical(lipgloss.Left,
 			providerLine,
-			renderManagerActions(width, chrome, "c", "copy", "M", "save .md", "esc", "close"),
+			renderSoftHints(width, chrome, "c", "copy", "M", "save .md", "esc", "close"),
 		)
 	} else {
-		hints = renderManagerActions(width, chrome, "esc", "close")
+		hints = renderSoftHints(width, chrome, "esc", "close")
 	}
 
-	bodyH := max(1, height-lipgloss.Height(header)-lipgloss.Height(hints))
+	bodyH := max(1, height-lipgloss.Height(hints)-1)
 	body = clampView(body, width, bodyH, chrome.baseBg)
-	return lipgloss.JoinVertical(lipgloss.Left, header, body, hints)
+	return lipgloss.JoinVertical(lipgloss.Left, body, hints)
 }
 
 func (m Model) renderUpdateConfirmOverlay(width int, chrome managerChrome) string {
-	header := renderManagerHeader("INSTALL TIDE UPDATE?", width, chrome)
-
 	target, _ := os.Executable()
 	bodyLines := []string{
 		"Install Tide " + m.updateInfo.Version + "?",
@@ -333,8 +305,8 @@ func (m Model) renderUpdateConfirmOverlay(width int, chrome managerChrome) strin
 		Padding(0, 2, 1, 2).
 		Render("Also available in Settings > Updates")
 
-	actions := renderManagerActions(width, chrome, "enter", "install", "esc", "cancel")
-	return lipgloss.JoinVertical(lipgloss.Left, header, body, note, actions)
+	hints := renderSoftHints(width, chrome, "enter", "install", "esc", "cancel")
+	return lipgloss.JoinVertical(lipgloss.Left, body, note, hints)
 }
 
 func (m Model) renderGrammarPreview(width, height int) string {
@@ -416,25 +388,14 @@ func (m Model) renderLogViewer(width, height int) string {
 }
 
 func (m Model) renderThemePicker(width int, chrome managerChrome) string {
-	header := renderManagerHeader("THEME", width, chrome)
+	labelW := max(1, width-2) // minus the 2-cell rail
 	rows := make([]string, 0, len(BuiltinThemes))
 	for i, t := range BuiltinThemes {
-		if i == m.themeCursor {
-			rows = append(rows, renderManagerSelectedRow(width, m.styles.ThemePickerCursor()+t.Name, chrome, m.styles))
-		} else {
-			rows = append(rows, clampView(
-				lipgloss.NewStyle().
-					Background(chrome.baseBg).
-					Foreground(chrome.text).
-					Padding(0, 1).
-					Render("  "+t.Name),
-				width,
-				1,
-				chrome.baseBg,
-			))
-		}
+		selected := i == m.themeCursor
+		label := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Render(" " + truncate(t.Name, max(1, labelW-1)))
+		rows = append(rows, softRail(chrome, selected, chrome.baseBg)+padStyled(label, labelW, chrome.baseBg))
 	}
 	body := clampView(lipgloss.JoinVertical(lipgloss.Left, rows...), width, len(rows), chrome.baseBg)
-	hints := renderManagerActions(width, chrome, "enter", "confirm", "esc", "revert")
-	return lipgloss.JoinVertical(lipgloss.Left, header, body, hints)
+	hints := renderSoftHints(width, chrome, "enter", "confirm", "esc", "revert")
+	return lipgloss.JoinVertical(lipgloss.Left, body, hints)
 }

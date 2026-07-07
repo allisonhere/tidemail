@@ -31,7 +31,7 @@ func TestComposeActionsStayVisibleInShortView(t *testing.T) {
 	view := c.View(60, 13, BuildStyles(CatppuccinMocha, "compact"))
 	stripped := ansi.Strip(view)
 
-	if !strings.Contains(stripped, "SEND") {
+	if !strings.Contains(stripped, "send") {
 		t.Fatalf("expected compose actions to stay visible in short view, got %q", stripped)
 	}
 }
@@ -57,7 +57,7 @@ func TestComposeActionsStayVisibleInOverlay(t *testing.T) {
 	view := m.View()
 	stripped := ansi.Strip(view)
 
-	if !strings.Contains(stripped, "SEND") {
+	if !strings.Contains(stripped, "send") {
 		t.Fatalf("expected compose actions to stay visible in overlay, got %q", stripped)
 	}
 }
@@ -67,7 +67,7 @@ func TestComposeActionsWrapInNarrowView(t *testing.T) {
 	view := c.View(32, 16, BuildStyles(CatppuccinMocha, "compact"))
 	stripped := ansi.Strip(view)
 
-	for _, want := range []string{"SEND", "GRAMMAR"} {
+	for _, want := range []string{"send", "grammar"} {
 		if !strings.Contains(stripped, want) {
 			t.Fatalf("expected compose action %q to stay visible in narrow view, got %q", want, stripped)
 		}

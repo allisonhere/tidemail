@@ -305,27 +305,23 @@ func (m Model) filterScopeAccountID() int64 {
 }
 
 func (m Model) renderFilterManager(width, height int, chrome managerChrome) string {
-	header := renderManagerHeader("FILTERS", width, chrome)
-
 	// Build the footer first so the body can fill the remaining height exactly.
-	// Two-line action groups keep every shortcut visible (a single line would be
+	// Two-line hint groups keep every shortcut visible (a single line would be
 	// truncated) and give the modal a stable height.
 	var actions string
 	switch m.filterManager.mode {
 	case fmPickAccount:
-		actions = renderManagerActionGroups(width, chrome,
-			[]string{"enter", "choose", "esc", "back"}, nil)
+		actions = renderSoftHints(width, chrome, "enter", "choose", "esc", "back")
 	case fmInput:
-		actions = renderManagerActionGroups(width, chrome,
-			[]string{"enter", "generate", "esc", "back"}, nil)
+		actions = renderSoftHints(width, chrome, "enter", "generate", "esc", "back")
 	case fmReview:
-		actions = renderManagerActionGroups(width, chrome,
-			[]string{"s/enter", "save", "r", "save+run", "esc", "discard"},
-			[]string{"R", "save+run all", "e", "edit text"})
+		actions = lipgloss.JoinVertical(lipgloss.Left,
+			renderSoftHints(width, chrome, "s/enter", "save", "r", "save+run", "esc", "discard"),
+			renderSoftHints(width, chrome, "R", "save+run all", "e", "edit text"))
 	default:
-		actions = renderManagerActionGroups(width, chrome,
-			[]string{"n", "new", "space", "on/off", "t", "test", "esc", "close"},
-			[]string{"r", "run", "R", "run all", "J/K", "reorder", "d", "delete"})
+		actions = lipgloss.JoinVertical(lipgloss.Left,
+			renderSoftHints(width, chrome, "n", "new", "space", "on/off", "t", "test", "esc", "close"),
+			renderSoftHints(width, chrome, "r", "run", "R", "run all", "J/K", "reorder", "d", "delete"))
 	}
 
 	// Reserve exactly one status line (blank when empty) so the modal never
@@ -334,10 +330,10 @@ func (m Model) renderFilterManager(width, height int, chrome managerChrome) stri
 	status := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(width).Padding(0, 2).
 		Render(clampView(statusText, max(1, width-4), 1, chrome.baseBg))
 
-	// Blank spacer between the header and the body for breathing room.
+	// Blank spacer at the top for breathing room (the title lives in the border).
 	headerGap := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
 
-	bodyH := max(1, height-lipgloss.Height(header)-lipgloss.Height(headerGap)-lipgloss.Height(actions)-1)
+	bodyH := max(1, height-lipgloss.Height(headerGap)-lipgloss.Height(actions)-1)
 
 	var bodyLines []string
 	switch m.filterManager.mode {
@@ -362,7 +358,7 @@ func (m Model) renderFilterManager(width, height int, chrome managerChrome) stri
 	}
 	body := padBlock(bodyLines, bodyH, width, chrome.baseBg)
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, headerGap, body, status, actions)
+	return lipgloss.JoinVertical(lipgloss.Left, headerGap, body, status, actions)
 }
 
 // wrapBodyBlock renders a text block at the modal width with consistent bg and
@@ -393,8 +389,10 @@ func (m Model) filterListRows(width int, chrome managerChrome) []string {
 		return []string{lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(width).Padding(0, 2).
 			Render(clampView("No filters yet. Press n to create one from plain English.", max(1, width-4), 1, chrome.baseBg))}
 	}
+	labelW := max(1, width-2) // minus the 2-cell rail
 	rows := make([]string, 0, len(m.filterManager.rules))
 	for i, rec := range m.filterManager.rules {
+		selected := i == m.filterManager.cursor
 		mark := "○ "
 		if rec.Enabled {
 			mark = "● "
@@ -403,14 +401,12 @@ func (m Model) filterListRows(width int, chrome managerChrome) []string {
 		if rec.AccountID != 0 {
 			scope = "[" + m.accountName(rec.AccountID) + "]"
 		}
-		style := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Width(width).Padding(0, 2)
-		if i == m.filterManager.cursor {
-			style = style.Background(chrome.accent).Foreground(contrastFg(chrome.accent))
+		fg := chrome.text
+		if !rec.Enabled {
+			fg = chrome.muted // dim disabled rules; the ○ glyph also signals off
 		}
-		// Let lipgloss fill the full width with the row's own background (accent
-		// when selected). Pre-padding with clampView would bake in the base
-		// background, leaving the highlight not spanning the row.
-		rows = append(rows, style.Render(truncate(mark+scope+" "+ruleLabel(rec), max(1, width-4))))
+		cell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(fg).Render(" " + truncate(mark+scope+" "+ruleLabel(rec), max(1, labelW-1)))
+		rows = append(rows, softRail(chrome, selected, chrome.baseBg)+padStyled(cell, labelW, chrome.baseBg))
 	}
 	return rows
 }
@@ -421,13 +417,12 @@ func (m Model) filterAccountRows(width int, chrome managerChrome) []string {
 	for _, a := range m.accounts {
 		labels = append(labels, a.Name)
 	}
+	labelW := max(1, width-2) // minus the 2-cell rail
 	rows := make([]string, 0, len(labels))
 	for i, label := range labels {
-		style := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Width(width).Padding(0, 2)
-		if i == m.filterManager.acctCursor {
-			style = style.Background(chrome.accent).Foreground(contrastFg(chrome.accent))
-		}
-		rows = append(rows, style.Render(truncate("Apply to: "+label, max(1, width-4))))
+		selected := i == m.filterManager.acctCursor
+		cell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Render(" " + truncate("Apply to: "+label, max(1, labelW-1)))
+		rows = append(rows, softRail(chrome, selected, chrome.baseBg)+padStyled(cell, labelW, chrome.baseBg))
 	}
 	return rows
 }

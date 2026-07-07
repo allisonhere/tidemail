@@ -648,9 +648,9 @@ func (cm ContactManager) View(width, height int, styles Styles) string {
 	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
 	switch cm.mode {
 	case cmAdd:
-		return cm.viewForm(width, height, chrome, "ADD CONTACT")
+		return cm.viewForm(width, height, chrome)
 	case cmEdit:
-		return cm.viewForm(width, height, chrome, "EDIT CONTACT")
+		return cm.viewForm(width, height, chrome)
 	case cmConfirmDelete:
 		return cm.viewConfirmDelete(width, chrome)
 	case cmPickSeen:
@@ -662,12 +662,33 @@ func (cm ContactManager) View(width, height int, styles Styles) string {
 	}
 }
 
+// softTitle is the lowercase mode name shown in the overlay's rounded border,
+// mirroring accountManager.softTitle.
+func (cm ContactManager) softTitle() string {
+	switch cm.mode {
+	case cmAdd:
+		return "add contact"
+	case cmEdit:
+		return "edit contact"
+	case cmConfirmDelete:
+		return "delete contact?"
+	case cmPickSeen:
+		return "add from mail"
+	case cmPickFile:
+		if cm.importing {
+			return "import contacts"
+		}
+		return "export contacts"
+	default:
+		return "contacts"
+	}
+}
+
 func (cm ContactManager) viewList(width, height int, chrome managerChrome, styles Styles) string {
-	header := renderManagerHeader("CONTACTS", width, chrome)
 	lines := make([]string, 0, max(1, len(cm.contacts)))
 	anchor := 0
 	if len(cm.contacts) == 0 {
-		lines = append(lines, lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(width).Padding(0, 1).Render("No contacts."))
+		lines = append(lines, lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(width).Padding(0, 2).Render("No contacts."))
 	} else {
 		for i, c := range cm.contacts {
 			selected := i == cm.cursor
@@ -677,20 +698,20 @@ func (cm ContactManager) viewList(width, height int, chrome managerChrome, style
 			lines = append(lines, cm.renderContactRow(width, chrome, styles, c, i, selected))
 		}
 	}
-	bodyH := max(1, height-lipgloss.Height(header)-3)
+	bodyH := max(1, height-4)
 	offset := settingsScrollOffset(len(lines), anchor, bodyH)
 	end := min(len(lines), offset+bodyH)
 	body := clampView(
 		lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(strings.Join(lines[offset:end], "\n")),
 		width, bodyH, chrome.baseBg,
 	)
-	parts := []string{header, body}
+	parts := []string{body}
 	if status := cm.statusLine(width, chrome); status != "" {
 		parts = append(parts, status)
 	}
-	parts = append(parts, renderManagerActionGroups(width, chrome,
-		[]string{"space", "select", "c", "compose", "n", "new", "f", "from mail", "i", "import", "x", "export"},
-		[]string{"e", "edit", "d", "delete", "esc", "close"},
+	parts = append(parts, lipgloss.JoinVertical(lipgloss.Left,
+		renderSoftHints(width, chrome, "space", "select", "c", "compose", "n", "new", "f", "from mail", "i", "import", "x", "export"),
+		renderSoftHints(width, chrome, "e", "edit", "d", "delete", "esc", "close"),
 	))
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
@@ -708,11 +729,9 @@ func (cm ContactManager) renderContactRow(width int, chrome managerChrome, style
 			mark = "✓ "
 		}
 	}
-	label = mark + label
-	if selected {
-		return renderManagerSelectedRow(width, label, chrome, styles)
-	}
-	return lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Width(width).Padding(0, 1).Render(truncate(label, max(1, width-2)))
+	labelW := max(1, width-2) // minus the 2-cell rail
+	cell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Render(" " + truncate(mark+label, max(1, labelW-1)))
+	return softRail(chrome, selected, chrome.baseBg) + padStyled(cell, labelW, chrome.baseBg)
 }
 
 func (cm ContactManager) statusLine(width int, chrome managerChrome) string {
@@ -726,47 +745,41 @@ func (cm ContactManager) statusLine(width int, chrome managerChrome) string {
 	return lipgloss.NewStyle().Background(chrome.baseBg).Foreground(fg).Width(width).Padding(0, 1).Render(cm.statusMsg)
 }
 
-func (cm ContactManager) viewForm(width, height int, chrome managerChrome, title string) string {
-	header := renderManagerHeader(title, width, chrome)
+func (cm ContactManager) viewForm(width, height int, chrome managerChrome) string {
+	labelW := clamp(width/5, 8, 14)
 	field := func(lbl string, in textinput.Model, focused bool) string {
-		labelW := clamp(width/5, 8, 14)
-		fieldW := max(8, width-labelW)
-		bg := chrome.fieldBg
-		if !focused {
-			bg = chrome.surfaceBg
-		}
-		left := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(labelW).Padding(0, 1).Render(lbl)
-		right := lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Width(fieldW).Padding(0, 1).Render(truncateStyled(inputViewWithCursor(in, focused), max(1, fieldW-2), bg))
-		return lipgloss.JoinHorizontal(lipgloss.Left, left, right)
+		rowFieldW := max(1, width-2-labelW)
+		control := renderInsetControl(renderTextInput(in, max(1, rowFieldW-4), focused, false, chrome), rowFieldW, 2, chrome)
+		return renderSoftRow(lbl, focused, control, width, labelW, chrome)
 	}
+	blank := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
 	rows := []string{
 		field("Name", cm.nameInput, cm.formFocus == 0),
-		lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(""),
+		blank,
 		field("Email", cm.emailInput, cm.formFocus == 1),
-		lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(""),
+		blank,
 		field("Phone", cm.phoneInput, cm.formFocus == 2),
-		lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(""),
+		blank,
 		field("Org", cm.organizationInput, cm.formFocus == 3),
-		lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(""),
+		blank,
 		field("Title", cm.titleInput, cm.formFocus == 4),
-		lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(""),
+		blank,
 		field("Note", cm.noteInput, cm.formFocus == 5),
 	}
-	bodyH := max(1, height-lipgloss.Height(header)-4)
+	bodyH := max(1, height-5)
 	anchor := clamp(cm.formFocus*2, 0, max(0, len(rows)-1))
 	offset := settingsScrollOffset(len(rows), anchor, bodyH)
 	end := min(len(rows), offset+bodyH)
 	body := clampView(lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(strings.Join(rows[offset:end], "\n")), width, bodyH, chrome.baseBg)
-	parts := []string{header, body}
+	parts := []string{body}
 	if status := cm.statusLine(width, chrome); status != "" {
 		parts = append(parts, status)
 	}
-	parts = append(parts, renderManagerActions(width, chrome, "enter", "save", "tab", "next field", "esc", "cancel"))
+	parts = append(parts, renderSoftHints(width, chrome, "enter", "save", "tab", "next field", "esc", "cancel"))
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
 func (cm ContactManager) viewConfirmDelete(width int, chrome managerChrome) string {
-	header := renderManagerHeader("DELETE CONTACT?", width, chrome)
 	prompt := "Delete this contact?"
 	if ids := cm.targetIndexes(); len(ids) > 1 {
 		prompt = fmt.Sprintf("Delete %d selected contacts?", len(ids))
@@ -774,12 +787,11 @@ func (cm ContactManager) viewConfirmDelete(width int, chrome managerChrome) stri
 		prompt = fmt.Sprintf("Delete %q from your contacts?", c.Addr)
 	}
 	body := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Width(width).Padding(1, 2).Render(prompt)
-	actions := renderManagerActions(width, chrome, "y", "delete", "esc", "cancel")
-	return lipgloss.JoinVertical(lipgloss.Left, header, body, actions)
+	hints := renderSoftHints(width, chrome, "y", "delete", "esc", "cancel")
+	return lipgloss.JoinVertical(lipgloss.Left, body, hints)
 }
 
 func (cm ContactManager) viewPicker(width, height int, chrome managerChrome, styles Styles) string {
-	header := renderManagerHeader("ADD FROM MAIL", width, chrome)
 	filterW := max(8, width-2)
 	filterLine := lipgloss.NewStyle().Background(chrome.fieldBg).Foreground(chrome.text).Width(filterW).Padding(0, 1).
 		Render(truncateStyled(inputViewWithCursor(cm.filter, true), max(1, filterW-2), chrome.fieldBg))
@@ -793,15 +805,15 @@ func (cm ContactManager) viewPicker(width, height int, chrome managerChrome, sty
 			lines = append(lines, cm.renderPickerRow(width, chrome, styles, c, i == cm.pickCursor))
 		}
 	}
-	bodyH := max(1, height-lipgloss.Height(header)-lipgloss.Height(filterLine)-4)
+	bodyH := max(1, height-lipgloss.Height(filterLine)-5)
 	offset := settingsScrollOffset(len(lines), anchor, bodyH)
 	end := min(len(lines), offset+bodyH)
 	body := clampView(lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(strings.Join(lines[offset:end], "\n")), width, bodyH, chrome.baseBg)
-	parts := []string{header, filterLine, body}
+	parts := []string{filterLine, body}
 	if status := cm.statusLine(width, chrome); status != "" {
 		parts = append(parts, status)
 	}
-	parts = append(parts, renderManagerActions(width, chrome, "space", "select", "enter", "add", "esc", "cancel"))
+	parts = append(parts, renderSoftHints(width, chrome, "space", "select", "enter", "add", "esc", "cancel"))
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
@@ -818,19 +830,12 @@ func (cm ContactManager) renderPickerRow(width int, chrome managerChrome, styles
 			mark = "✓ "
 		}
 	}
-	label = mark + label
-	if selected {
-		return renderManagerSelectedRow(width, label, chrome, styles)
-	}
-	return lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Width(width).Padding(0, 1).Render(truncate(label, max(1, width-2)))
+	labelW := max(1, width-2) // minus the 2-cell rail
+	cell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Render(" " + truncate(mark+label, max(1, labelW-1)))
+	return softRail(chrome, selected, chrome.baseBg) + padStyled(cell, labelW, chrome.baseBg)
 }
 
 func (cm ContactManager) viewFilePicker(width, height int, chrome managerChrome) string {
-	title := "EXPORT CONTACTS"
-	if cm.importing {
-		title = "IMPORT CONTACTS"
-	}
-	header := renderManagerHeader(title, width, chrome)
 	dirLine := lipgloss.NewStyle().
 		Background(chrome.baseBg).
 		Foreground(chrome.muted).
@@ -838,7 +843,8 @@ func (cm ContactManager) viewFilePicker(width, height int, chrome managerChrome)
 		Padding(0, 2).
 		Render(clampView(cm.filePicker.currentDir, width-2, 1, chrome.baseBg))
 
-	listH := max(1, height-lipgloss.Height(header)-lipgloss.Height(dirLine)-3)
+	labelW := max(1, width-2) // minus the 2-cell rail
+	listH := max(1, height-lipgloss.Height(dirLine)-4)
 	start := 0
 	if cm.filePicker.cursor >= listH {
 		start = cm.filePicker.cursor - listH + 1
@@ -851,22 +857,25 @@ func (cm ContactManager) viewFilePicker(width, height int, chrome managerChrome)
 		idx := start + i
 		selected := idx == cm.filePicker.cursor
 		label := contactFileEntryLabel(entry)
-		style := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Width(width).Padding(0, 2)
-		if selected {
-			style = style.Background(chrome.accent).Foreground(contrastFg(chrome.accent))
-		} else if entry.isDir {
-			style = style.Foreground(chrome.accent)
-		} else if entry.name == "✓ select this folder" {
-			style = style.Foreground(chrome.successFg)
+		// Selection is the accent rail; entries keep their semantic colour.
+		fg := chrome.text
+		switch {
+		case selected:
+			fg = chrome.text
+		case entry.isDir:
+			fg = chrome.accent
+		case entry.name == "✓ select this folder":
+			fg = chrome.successFg
 		}
-		rows = append(rows, style.Render(clampView(label, max(1, width-4), 1, chrome.baseBg)))
+		cell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(fg).Render(" " + truncate(label, max(1, labelW-1)))
+		rows = append(rows, softRail(chrome, selected, chrome.baseBg)+padStyled(cell, labelW, chrome.baseBg))
 	}
 	for len(rows) < listH {
-		rows = append(rows, lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Padding(0, 2).Render(""))
+		rows = append(rows, lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(""))
 	}
 	body := lipgloss.JoinVertical(lipgloss.Left, rows...)
 
-	parts := []string{header, dirLine, body}
+	parts := []string{dirLine, body}
 	if status := cm.statusLine(width, chrome); status != "" {
 		parts = append(parts, status)
 	}
@@ -874,7 +883,7 @@ func (cm ContactManager) viewFilePicker(width, height int, chrome managerChrome)
 	if !cm.importing {
 		action = "open/export"
 	}
-	parts = append(parts, renderManagerActions(width, chrome, "enter", action, "←", "parent", "esc", "cancel"))
+	parts = append(parts, renderSoftHints(width, chrome, "enter", action, "←", "parent", "esc", "cancel"))
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 

@@ -608,8 +608,8 @@ func (m Model) emptyAccountsHint() string {
 func (m *Model) resetHelpVP() {
 	winW := min(m.width-6, 90)
 	winH := min(m.height-4, 38)
-	vpW := max(1, winW-1)
-	vpH := winH - 3 // inside border, minus footer row
+	vpW := winW
+	vpH := max(1, winH-4) // soft box: title line + bottom border + blank + footer
 	m.helpVP = viewport.New(vpW, vpH)
 	m.helpVP.SetContent(renderHelp(vpW, m.styles, m.keys, m.helpSearchInput.Value()))
 }

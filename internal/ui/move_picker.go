@@ -303,7 +303,6 @@ func (m Model) confirmMovePicker(targetMailboxID int64) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) renderMovePicker(width, height int, chrome managerChrome) string {
-	header := renderManagerHeader("MOVE TO FOLDER", width, chrome)
 	path := m.movePicker.accountName
 	if m.movePicker.currentPath != "" {
 		path += " / " + m.movePicker.currentPath
@@ -315,7 +314,8 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 		Padding(0, 2).
 		Render(clampView(path, width-2, 1, chrome.baseBg))
 
-	listH := max(1, height-7)
+	labelW := max(1, width-2) // minus the 2-cell rail
+	listH := max(1, height-6)
 
 	if m.movePicker.creating {
 		prompt := lipgloss.NewStyle().
@@ -326,13 +326,10 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 			Render(clampView("new folder: "+m.movePicker.nameInput.View(), max(1, width-4), 1, chrome.baseBg))
 		rows := []string{prompt}
 		for len(rows) < listH {
-			rows = append(rows, lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Padding(0, 2).Render(""))
+			rows = append(rows, lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(""))
 		}
-		actions := renderManagerActions(width, chrome,
-			"enter", "create",
-			"esc", "cancel",
-		)
-		return lipgloss.JoinVertical(lipgloss.Left, header, pathLine, lipgloss.JoinVertical(lipgloss.Left, rows...), actions)
+		hints := renderSoftHints(width, chrome, "enter", "create", "esc", "cancel")
+		return lipgloss.JoinVertical(lipgloss.Left, pathLine, lipgloss.JoinVertical(lipgloss.Left, rows...), hints)
 	}
 
 	start := 0
@@ -345,13 +342,7 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 	rows := make([]string, 0, listH)
 	for i, e := range visible {
 		idx := start + i
-		cursor := idx == m.movePicker.cursor
-		entryStyle := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Padding(0, 2)
-		if cursor {
-			entryStyle = entryStyle.Background(chrome.accent).Foreground(accentReadableOn(chrome.text, chrome.accent, 4.5))
-		} else {
-			entryStyle = entryStyle.Foreground(chrome.text)
-		}
+		selected := idx == m.movePicker.cursor
 		label := e.label
 		switch {
 		case e.isConfirm:
@@ -361,20 +352,20 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 		case e.isDir:
 			label = e.label + "/"
 		}
-		label = clampView(label, max(1, width-4), 1, chrome.baseBg)
-		rows = append(rows, entryStyle.Render(label))
+		cell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Render(" " + truncate(label, max(1, labelW-1)))
+		rows = append(rows, softRail(chrome, selected, chrome.baseBg)+padStyled(cell, labelW, chrome.baseBg))
 	}
 	for len(rows) < listH {
-		rows = append(rows, lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Padding(0, 2).Render(""))
+		rows = append(rows, lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(""))
 	}
 
-	actions := renderManagerActions(width, chrome,
+	hints := renderSoftHints(width, chrome,
 		"enter", "open/move",
 		"n", "new folder",
 		"h", "parent",
 		"esc", "cancel",
 	)
-	return lipgloss.JoinVertical(lipgloss.Left, header, pathLine, lipgloss.JoinVertical(lipgloss.Left, rows...), actions)
+	return lipgloss.JoinVertical(lipgloss.Left, pathLine, lipgloss.JoinVertical(lipgloss.Left, rows...), hints)
 }
 
 func (m *Model) createFolderCmd(accountID int64, parentPath, name string) tea.Cmd {

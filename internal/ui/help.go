@@ -249,45 +249,36 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		sections = filtered
 	}
 
+	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
 	contentW := max(1, width)
-	bodyInnerW := max(1, contentW-styles.HelpSectionBody.GetHorizontalFrameSize())
-	keyW := min(20, max(8, bodyInnerW/3))
-	descW := max(1, bodyInnerW-keyW)
-	sectionBg := terminalColorAsColor(styles.HelpSectionBody.GetBackground())
-
-	lines := []string{
-		lipgloss.NewStyle().
-			Width(contentW).
-			Render("  Help — Keyboard Shortcuts"),
-		"",
+	keyW := min(20, max(8, contentW/3))
+	descW := max(1, contentW-keyW)
+	blank := lipgloss.NewStyle().Background(chrome.baseBg).Width(contentW).Render("")
+	muted := func(s string) string {
+		return padStyled(lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render("  "+s), contentW, chrome.baseBg)
 	}
+
+	var lines []string
 	if query != "" {
 		summary := fmt.Sprintf("%d shortcuts match %q.", matchCount, query)
 		if matchCount == 0 {
 			summary = fmt.Sprintf("No shortcuts match %q.", query)
 		}
-		lines = append(lines, styles.HelpSectionBody.Width(contentW).Render(summary), "")
+		lines = append(lines, muted(summary), blank)
 	} else {
-		lines = append(lines, styles.HelpSectionBody.Width(contentW).Render(
-			"The status bar always shows these shortcuts on the left: M accounts · C contacts · S settings · / search · ? help.",
-		), "")
+		lines = append(lines, muted("The status bar always shows: M accounts · C contacts · S settings · / search · ? help"), blank)
 	}
 
 	for _, s := range sections {
-		rows := []string{styles.HelpSection.Width(contentW).Render(s.name)}
+		lines = append(lines, renderSoftGroupTitle(s.name, contentW, chrome))
 		for _, e := range s.entries {
-			line := styles.HelpKey.Width(keyW).Render(" " + e.key)
-			line += styles.HelpDesc.Width(descW).Render(e.desc)
-			line = clampView(line, bodyInnerW, 1, sectionBg)
-			rows = append(rows, styles.HelpSectionBody.Width(contentW).Render(line))
+			keyCell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Width(keyW).Render(truncate(" "+e.key, max(1, keyW-1)))
+			descCell := truncateStyled(lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render(e.desc), descW, chrome.baseBg)
+			lines = append(lines, keyCell+padStyled(descCell, descW, chrome.baseBg))
 		}
-		rows = append(rows, styles.HelpSectionBody.Width(contentW).Render(""))
-		lines = append(lines, strings.Join(rows, "\n"), "")
+		lines = append(lines, blank)
 	}
 
 	content := strings.TrimRight(strings.Join(lines, "\n"), "\n")
-	return lipgloss.NewStyle().
-		Width(width).
-		PaddingTop(1).
-		Render(content)
+	return lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(content)
 }
