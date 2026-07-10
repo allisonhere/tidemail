@@ -70,32 +70,11 @@ func (m Model) renderMessageContent(msg db.Message) string {
 	}
 	meta := " " + m.styles.ContentMeta.Width(contentWidth).Render(truncate(metaStr, metaWidth))
 
-	// Full headers block (togglable via ctrl+h)
+	// Full headers block (togglable via ctrl+e)
 	var fullHeaders string
 	if m.contentShowHeaders {
-		dim := readableText(m.styles.Theme.Dimmed, m.styles.Theme.Bg, 3.0)
-		type headerField struct{ label, value string }
-		fields := []headerField{
-			{"Date", msg.Date.Format("Mon, 02 Jan 2006 15:04:05 -0700")},
-			{"From", msg.From},
-			{"To", msg.To},
-			{"CC", msg.CC},
-			{"Reply-To", msg.ReplyTo},
-			{"Message-ID", msg.MessageID},
-		}
-		var headerLines []string
-		for _, f := range fields {
-			if f.value == "" {
-				continue
-			}
-			line := lipgloss.NewStyle().Background(m.styles.Theme.Bg).Foreground(dim).Width(contentWidth).Render(fmt.Sprintf("  %-12s %s", f.label+":", f.value))
-			headerLines = append(headerLines, line)
-			if f.label == "Message-ID" {
-				headerLines = append(headerLines, lipgloss.NewStyle().Background(m.styles.Theme.Bg).Width(contentWidth).Render(""))
-			}
-		}
-		if len(headerLines) > 0 {
-			fullHeaders = strings.Join(headerLines, "\n") + "\n"
+		if block := m.renderFullHeaders(msg, contentWidth); block != "" {
+			fullHeaders = block + "\n"
 		}
 	}
 
@@ -334,7 +313,44 @@ func (m Model) threadMessageHeader(msg db.Message, width int) string {
 	if lipgloss.Width(line) > width {
 		line = truncate(line, width)
 	}
-	return m.styles.ContentMeta.Width(width).Render(line)
+	header := m.styles.ContentMeta.Width(width).Render(line)
+	if m.contentShowHeaders {
+		if block := m.renderFullHeaders(msg, width); block != "" {
+			header += "\n" + block
+		}
+	}
+	return header
+}
+
+// renderFullHeaders renders the toggleable full-header block (Date, From, To,
+// CC, Reply-To, Message-ID) shared by the single-message and threaded views.
+// Returns "" when the message has no populated header fields.
+func (m Model) renderFullHeaders(msg db.Message, width int) string {
+	dim := readableText(m.styles.Theme.Dimmed, m.styles.Theme.Bg, 3.0)
+	type headerField struct{ label, value string }
+	fields := []headerField{
+		{"Date", msg.Date.Format("Mon, 02 Jan 2006 15:04:05 -0700")},
+		{"From", msg.From},
+		{"To", msg.To},
+		{"CC", msg.CC},
+		{"Reply-To", msg.ReplyTo},
+		{"Message-ID", msg.MessageID},
+	}
+	var headerLines []string
+	for _, f := range fields {
+		if f.value == "" {
+			continue
+		}
+		line := lipgloss.NewStyle().Background(m.styles.Theme.Bg).Foreground(dim).Width(width).Render(fmt.Sprintf("  %-12s %s", f.label+":", f.value))
+		headerLines = append(headerLines, line)
+		if f.label == "Message-ID" {
+			headerLines = append(headerLines, lipgloss.NewStyle().Background(m.styles.Theme.Bg).Width(width).Render(""))
+		}
+	}
+	if len(headerLines) == 0 {
+		return ""
+	}
+	return strings.Join(headerLines, "\n")
 }
 
 func (m *Model) clearContentSearch() {
