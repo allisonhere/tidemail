@@ -32,6 +32,9 @@ go build -o tidemail .
 - Full email headers display — toggle with `ctrl+e`, configurable default in Settings
 - Spam/auth headers — SPF, DKIM, DMARC results color-coded in header view
 - Message text can be copied from the content pane with Vim-style `v`/`V` selection, then `y` or `ctrl+c`
+- Select all messages in the current view with `A`
+- Compose body editor with selection, select-all, undo/redo, system clipboard copy/cut/paste, word movement, and soft wrap
+- **Optional vim editing in compose** — Normal, Insert, and Visual modes; motions (`hjkl`, `w`, `b`, `e`, `0`, `^`, `$`, `gg`, `G`) with counts; edits (`x`, `dd`, `yy`, `p`, `dw`, `cw`); undo/redo with `u` and `ctrl+r`; and a `:` command line where `:w`/`:wq` send and `:q` cancels. Off by default — enable in Settings → Editor or with `compose_vim` under `[display]`.
 - IMAP/SMTP accounts using passwords or app passwords (stored in system keychain)
 - Account manager for adding, editing, deleting, and discovering mailboxes
 - Contacts manager for curated autocomplete, manual entries, adding seen senders, composing to selected contacts, and vCard import/export
@@ -80,6 +83,15 @@ If `secret-tool` is not installed, passwords and API keys fall back to being sto
 
 If you paste or accidentally expose an app password, revoke it and create a new one.
 
+### Gmail
+
+Gmail requires a Google App Password — TideMail removed OAuth "Sign in with Google" in v0.5.0.
+
+1. Enable 2-Step Verification on your Google account.
+2. Create an app password at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
+3. Press `M` to open the account manager, then add or edit your Gmail account.
+4. Paste the app password into the password field and save with `Ctrl+S`.
+
 Example account config:
 
 ```toml
@@ -103,7 +115,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 
 | Key | Action |
 |-----|--------|
-| `:` or `Ctrl+P` | Command palette (`Ctrl+P` stays paste inside compose; `:` also opens it in compose, AI summary, and save-attachments overlays) |
+| `:` or `Ctrl+P` | Command palette (`Ctrl+P` stays paste inside compose; `:` also opens it in compose, AI summary, and save-attachments overlays — but in a vim compose body `:` opens the editor command line, so use `Ctrl+P` there) |
 | `m` | Move selected message(s) to folder/label |
 | `M` | Account manager |
 | `C` | Contacts manager |
@@ -134,6 +146,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 | `T` | Theme picker |
 | `Ctrl+D` | Save attachments to folder |
 | `Ctrl+G` | AI grammar & spell check (compose) |
+| Vim keys in compose | Enable in Settings → Editor. `:w`/`:wq` send; `:q` or double `Esc` cancels |
 | `?` | Help |
 | `q` | Quit |
 
@@ -142,10 +155,19 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 Settings are opened with `S`.
 
 - Display: icons, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, and quit confirmation
+- Editor: vim keys in the compose body (off by default)
 - Accounts: edit account details and set a per-account `sync_minutes` interval for automatic background refresh
 - Updates: check, install, restart, or copy a manual install command
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings
+- Advanced: logs and feed max body size
 - About: repository and issue links
+
+## Related projects
+
+TideMail grew alongside two libraries extracted from it:
+
+- [tideui](https://github.com/allisonhere/tideui) — a themeable multi-pane terminal UI toolkit for Bubble Tea and Lipgloss. The multi-pane layout, theming, and styles live on in `internal/ui`.
+- [ripple](https://github.com/allisonhere/ripple) — the keyboard-first text editor behind the compose body, now a standalone dependency (`github.com/allisonhere/ripple`).
 
 ## Development
 
