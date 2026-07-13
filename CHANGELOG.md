@@ -2,6 +2,26 @@
 
 All notable changes to TideMail are documented in this file.
 
+## v0.9.0
+
+### Changed
+
+- **Every overlay now wears the soft-panel look.** The restyle that landed for
+  Settings and the Account Manager in v0.8.0 now covers the rest of the app:
+  compose, help, the theme picker, the command palette, AI summary, the move,
+  save-attachment and filter pickers, the contact manager and all five of its
+  sub-views, and the save-draft, quit, bulk-delete and update confirms. The old
+  square chrome and shouty uppercase headers are gone — overlays are a rounded
+  border with the title in the top rule, focus and selection are a left accent
+  rail, and key hints are one quiet lowercase line.
+- **Compose shows the sender in the From row** instead of a separate header,
+  and the vim-mode indicator moved down to the footer.
+
+### Fixed
+
+- **`ctrl+e` toggles full headers in threaded view.** The threaded renderer
+  ignored the toggle, so it only worked in the non-threaded reading pane.
+
 ## v0.8.0
 
 ### Added
