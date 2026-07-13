@@ -117,12 +117,12 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 |-----|--------|
 | `:` or `Ctrl+P` | Command palette (`Ctrl+P` stays paste inside compose; `:` also opens it in compose, AI summary, and save-attachments overlays — but in a vim compose body `:` opens the editor command line, so use `Ctrl+P` there) |
 | `m` | Move selected message(s) to folder/label |
-| `M` | Account manager |
+| `c` | Compose (autosaves to Drafts as you type) |
 | `C` | Contacts manager |
 | `c` in Contacts | Compose to selected contact(s) |
+| `M` | Account manager |
 | `s` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
 | `F` | Sync all mailboxes |
-| `c` | Compose (autosaves to Drafts as you type) |
 | `Enter` in Drafts | Reopen selected draft in compose |
 | `d` in Drafts | Delete selected draft |
 | `r` | Toggle read/unread in message list, reply from content |
