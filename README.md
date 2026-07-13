@@ -33,8 +33,7 @@ go build -o tidemail .
 - Spam/auth headers — SPF, DKIM, DMARC results color-coded in header view
 - Message text can be copied from the content pane with Vim-style `v`/`V` selection, then `y` or `ctrl+c`
 - Select all messages in the current view with `A`
-- Compose body editor with selection, select-all, undo/redo, system clipboard copy/cut/paste, word movement, and soft wrap
-- **Optional vim editing in compose** — Normal, Insert, and Visual modes; motions (`hjkl`, `w`, `b`, `e`, `0`, `^`, `$`, `gg`, `G`) with counts; edits (`x`, `dd`, `yy`, `p`, `dw`, `cw`); undo/redo with `u` and `ctrl+r`; and a `:` command line where `:w`/`:wq` send and `:q` cancels. Off by default — enable in Settings → Editor or with `compose_vim` under `[display]`.
+- **Vim keys in compose** — modes, motions, counts, and operators (`dw`, `cw`, `dd`), plus a `:` line where `:w`/`:wq` send and `:q` cancels. Off by default; turn it on in Settings → Editor.
 - IMAP/SMTP accounts using passwords or app passwords (stored in system keychain)
 - Account manager for adding, editing, deleting, and discovering mailboxes
 - Contacts manager for curated autocomplete, manual entries, adding seen senders, composing to selected contacts, and vCard import/export
@@ -83,14 +82,10 @@ If `secret-tool` is not installed, passwords and API keys fall back to being sto
 
 If you paste or accidentally expose an app password, revoke it and create a new one.
 
-### Gmail
-
-Gmail requires a Google App Password — TideMail removed OAuth "Sign in with Google" in v0.5.0.
-
-1. Enable 2-Step Verification on your Google account.
-2. Create an app password at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
-3. Press `M` to open the account manager, then add or edit your Gmail account.
-4. Paste the app password into the password field and save with `Ctrl+S`.
+Gmail needs an app password — there is no "Sign in with Google"; OAuth was removed in
+v0.5.0. Turn on 2-Step Verification, generate a password at
+[myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords), then paste
+it into the password field in the account manager (`M`) and save with `Ctrl+S`.
 
 Example account config:
 
@@ -115,7 +110,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 
 | Key | Action |
 |-----|--------|
-| `:` or `Ctrl+P` | Command palette (`Ctrl+P` stays paste inside compose; `:` also opens it in compose, AI summary, and save-attachments overlays — but in a vim compose body `:` opens the editor command line, so use `Ctrl+P` there) |
+| `:` or `Ctrl+P` | Command palette (`Ctrl+P` stays paste inside compose; `:` also opens it in compose, AI summary, and save-attachments overlays). With vim keys on, `:` is the editor's command line — use `Ctrl+P` there |
 | `m` | Move selected message(s) to folder/label |
 | `c` | Compose (autosaves to Drafts as you type) |
 | `C` | Contacts manager |
@@ -164,10 +159,10 @@ Settings are opened with `S`.
 
 ## Related projects
 
-TideMail grew alongside two libraries extracted from it:
+Two libraries came out of this one:
 
-- [tideui](https://github.com/allisonhere/tideui) — a themeable multi-pane terminal UI toolkit for Bubble Tea and Lipgloss. The multi-pane layout, theming, and styles live on in `internal/ui`.
-- [ripple](https://github.com/allisonhere/ripple) — the keyboard-first text editor behind the compose body, now a standalone dependency (`github.com/allisonhere/ripple`).
+- [ripple](https://github.com/allisonhere/ripple) — the editor behind the compose body, now a standalone dependency.
+- [tideui](https://github.com/allisonhere/tideui) — a themeable multi-pane TUI toolkit for Bubble Tea. Its layout and theming still live in `internal/ui`.
 
 ## Development
 
