@@ -4,6 +4,9 @@ All notable changes to TideMail are documented in this file.
 
 ## v0.9.1
 
+**Release highlights:** server-synced message stars, starred-first sorting, and
+faster startup with immediate loading feedback and on-demand search indexing.
+
 ### Added
 
 - **Messages can be starred and synced with the mail server.** Press `*` to
