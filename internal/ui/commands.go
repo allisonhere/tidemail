@@ -178,14 +178,14 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "archive":
 		if msg := m.commandMessage(); msg != nil {
-			return m, m.archiveMessageCmd(*msg)
+			return m, m.scheduleArchive([]db.Message{*msg})
 		}
 	case "move":
 		m.openMovePicker(m.movePickerMessages())
 		return m, nil
 	case "delete":
 		if msg := m.commandMessage(); msg != nil {
-			return m, m.deleteMessagesCmd([]db.Message{*msg})
+			return m, m.scheduleDelete([]db.Message{*msg})
 		}
 	case "toggle-read":
 		if msg := m.commandMessage(); msg != nil {

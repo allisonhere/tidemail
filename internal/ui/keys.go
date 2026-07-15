@@ -43,6 +43,7 @@ type KeyMap struct {
 	UpdateIgnore   key.Binding
 	Help           key.Binding
 	Quit           key.Binding
+	Undo           key.Binding
 
 	Summary       key.Binding
 	VisualSelect  key.Binding
@@ -120,6 +121,7 @@ var DefaultKeys = KeyMap{
 	UpdateIgnore:   key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "ignore update")),
 	Help:           key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 	Quit:           key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
+	Undo:           key.NewBinding(key.WithKeys("ctrl+z"), key.WithHelp("ctrl+z", "undo action")),
 
 	Summary:       key.NewBinding(key.WithKeys("`"), key.WithHelp("`", "AI summary")),
 	VisualSelect:  key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "visual select")),

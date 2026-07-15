@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
 	imapClient "github.com/allisonhere/tide/internal/imap"
 	tea "github.com/charmbracelet/bubbletea"
@@ -205,21 +204,27 @@ func (m Model) hasSelection() bool {
 }
 
 func (m *Model) applyFilter() {
+	visible := make([]db.Message, 0, len(m.messages))
+	for _, msg := range m.messages {
+		if !m.messagePendingDestructive(msg.ID) {
+			visible = append(visible, msg)
+		}
+	}
 	if m.searchActive() && !m.showUnreadOnly {
-		m.filteredMessages = m.messages
+		m.filteredMessages = visible
 		m.sortFilteredStarred()
 		m.rebuildMessageThreads()
 		return
 	}
 	q := strings.ToLower(m.searchQuery)
 	if q == "" && !m.showUnreadOnly {
-		m.filteredMessages = m.messages
+		m.filteredMessages = visible
 		m.sortFilteredStarred()
 		m.rebuildMessageThreads()
 		return
 	}
-	filtered := make([]db.Message, 0, len(m.messages))
-	for _, msg := range m.messages {
+	filtered := make([]db.Message, 0, len(visible))
+	for _, msg := range visible {
 		if m.showUnreadOnly && msg.Read {
 			continue
 		}
@@ -322,122 +327,6 @@ func (m *Model) setMessageStarredCmd(msg db.Message, starred bool) tea.Cmd {
 		}
 		return MessageStarredUpdatedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Starred: starred}
 	}
-}
-
-func (m *Model) archiveMessageCmd(msg db.Message) tea.Cmd {
-	database := m.db
-	sessions := m.sessions
-	mailbox := m.mailboxByID(msg.MailboxID)
-	acfg := m.accountCfgForMailbox(msg.MailboxID)
-	return func() tea.Msg {
-		if mailbox == nil {
-			return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, Action: "archive", Err: fmt.Errorf("mailbox not found")}
-		}
-		archive, err := database.FindArchiveMailbox(mailbox.AccountID)
-		if err != nil {
-			return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, Action: "archive", Err: err}
-		}
-		if acfg.IMAPHost != "" && msg.UID != 0 {
-			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-			defer cancel()
-			if err := sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
-				return client.MoveMessage(ctx, mailbox.Name, msg.UID, archive.Name)
-			}); err != nil {
-				return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, ToMailboxID: archive.ID, Action: "archive", Err: err}
-			}
-		}
-		if err := database.MoveMessage(msg.ID, archive.ID); err != nil {
-			return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, ToMailboxID: archive.ID, Action: "archive", Err: err}
-		}
-		return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, ToMailboxID: archive.ID, Action: "archive"}
-	}
-}
-
-// deleteMessagesCmd deletes one or more messages. Messages are grouped by
-// mailbox so each group shares a single IMAP connection — one connection per
-// message trips per-user connection caps (Gmail: 15, Dovecot default: 10) and
-// the overflow fails. The remote operation runs first; the local row (and its
-// resync tombstone) is only removed for messages the server actually deleted,
-// so a failed remote delete leaves the message visible instead of silently
-// diverging from the server.
-func (m *Model) deleteMessagesCmd(msgs []db.Message) tea.Cmd {
-	database := m.db
-	sessions := m.sessions
-	type deleteBatch struct {
-		acfg    config.AccountConfig
-		mailbox db.Mailbox
-		trash   *db.Mailbox
-		msgs    []db.Message
-	}
-	var batches []*deleteBatch
-	byMailbox := map[int64]*deleteBatch{}
-	missing := 0
-	for _, msg := range msgs {
-		mailbox := m.mailboxByID(msg.MailboxID)
-		if mailbox == nil {
-			missing++
-			continue
-		}
-		b := byMailbox[mailbox.ID]
-		if b == nil {
-			b = &deleteBatch{acfg: m.accountCfgForMailbox(msg.MailboxID), mailbox: *mailbox}
-			if trash, err := database.FindTrashMailbox(mailbox.AccountID); err == nil {
-				b.trash = &trash
-			}
-			byMailbox[mailbox.ID] = b
-			batches = append(batches, b)
-		}
-		b.msgs = append(b.msgs, msg)
-	}
-	return func() tea.Msg {
-		out := MessagesDeletedMsg{Failed: missing}
-		if missing > 0 {
-			out.Err = fmt.Errorf("mailbox not found")
-		}
-		for _, b := range batches {
-			if err := deleteBatchRemote(sessions, b.acfg, b.mailbox, b.trash, b.msgs); err != nil {
-				out.Failed += len(b.msgs)
-				if out.Err == nil {
-					out.Err = err
-				}
-				continue
-			}
-			for _, msg := range b.msgs {
-				if err := database.DeleteMessage(msg.ID); err != nil {
-					out.Failed++
-					if out.Err == nil {
-						out.Err = err
-					}
-					continue
-				}
-				out.Deleted = append(out.Deleted, MessageRef{ID: msg.ID, MailboxID: msg.MailboxID})
-			}
-		}
-		return out
-	}
-}
-
-// deleteBatchRemote deletes a mailbox's batch on the server over the account's
-// pooled connection.
-func deleteBatchRemote(sessions *imapClient.SessionPool, acfg config.AccountConfig, mailbox db.Mailbox, trash *db.Mailbox, msgs []db.Message) error {
-	var uids []uint32
-	for _, msg := range msgs {
-		if msg.UID != 0 {
-			uids = append(uids, msg.UID)
-		}
-	}
-	if acfg.IMAPHost == "" || len(uids) == 0 {
-		return nil // local-only message(s); nothing to do on the server
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-	defer cancel()
-	return sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
-		action, target := remoteDeletePlan(mailbox, trash)
-		if action == remoteDeleteMoveToTrash {
-			return client.MoveMessages(ctx, mailbox.Name, uids, target.Name)
-		}
-		return client.DeleteMessages(ctx, mailbox.Name, uids)
-	})
 }
 
 func remoteDeletePlan(source db.Mailbox, trash *db.Mailbox) (remoteDeleteAction, *db.Mailbox) {

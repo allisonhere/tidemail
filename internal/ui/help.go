@@ -74,6 +74,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.Archive.Help().Key, "archive selected message(s)"},
 				{keys.Move.Help().Key, "move selected message(s) to folder/label"},
 				{keys.Delete.Help().Key, "delete selected message(s); in Drafts, delete draft"},
+				{keys.Undo.Help().Key, "undo latest pending archive, move, or delete"},
 				bind(keys.Compose),
 				bind(keys.Reply),
 				bind(keys.Forward),

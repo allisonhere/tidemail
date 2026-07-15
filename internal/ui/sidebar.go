@@ -352,7 +352,7 @@ func (m Model) accountUnreadCount(accountID int64) int64 {
 	var total int64
 	for _, mb := range m.mailboxes {
 		if mb.AccountID == accountID {
-			total += mb.UnreadCount
+			total += m.displayMailboxUnreadCount(mb)
 		}
 	}
 	return total
@@ -362,10 +362,14 @@ func (m Model) unifiedUnreadCount() int64 {
 	var total int64
 	for _, mb := range m.mailboxes {
 		if isInboxMailbox(mb) {
-			total += mb.UnreadCount
+			total += m.displayMailboxUnreadCount(mb)
 		}
 	}
 	return total
+}
+
+func (m Model) displayMailboxUnreadCount(mb db.Mailbox) int64 {
+	return max(0, mb.UnreadCount-m.pendingUnreadCount(mb.ID))
 }
 
 func (m Model) accountHeaderStyle(accountID int64, selected bool) lipgloss.Style {
@@ -536,8 +540,8 @@ func (m Model) renderSidebarMailboxRow(mb db.Mailbox, selected bool, width int) 
 		if count := m.draftsSidebarCount(mb); count > 0 {
 			badge = m.mailboxBadgeStyle(mb, selected).Render(fmt.Sprintf("(%d)", count))
 		}
-	} else if mb.UnreadCount > 0 {
-		badge = m.mailboxBadgeStyle(mb, selected).Render(fmt.Sprintf("(%d)", mb.UnreadCount))
+	} else if unread := m.displayMailboxUnreadCount(mb); unread > 0 {
+		badge = m.mailboxBadgeStyle(mb, selected).Render(fmt.Sprintf("(%d)", unread))
 	}
 	raw := mb.DisplayName
 	if raw == "" {

@@ -65,14 +65,6 @@ type MessageStarredUpdatedMsg struct {
 	Err       error
 }
 
-type MessageMovedMsg struct {
-	MessageID     int64
-	FromMailboxID int64
-	ToMailboxID   int64
-	Action        string
-	Err           error
-}
-
 type FolderCreatedMsg struct {
 	AccountID int64
 	MailboxID int64

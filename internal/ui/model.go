@@ -141,6 +141,9 @@ type Model struct {
 	starredFirst     bool
 	selectedMessages map[int64]bool
 
+	pendingDestructiveActions []pendingDestructiveAction
+	nextDestructiveActionID   uint64
+
 	viewport               viewport.Model
 	contentLinks           []string
 	contentLinkIdx         int
@@ -396,6 +399,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusMsg = ""
 		m.statusErr = false
 		return m, nil
+
+	case CommitDestructiveActionMsg:
+		return m, m.beginDestructiveCommit(msg.ID)
+
+	case DestructiveActionResultMsg:
+		return m, m.handleDestructiveResult(msg)
 
 	case UpdateCheckedMsg:
 		m.updateErr = ""
@@ -982,20 +991,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 
-	case MessageMovedMsg:
-		if msg.Err != nil {
-			m.setStatus(fmt.Sprintf("%s failed: %v", msg.Action, msg.Err), true)
-			return m, m.clearStatusCmd()
-		}
-		if m.removeMessageFromMemory(msg.MessageID) {
-			m.adjustMailboxUnreadCount(msg.FromMailboxID, -1)
-		}
-		if msg.Action == "" {
-			msg.Action = "move"
-		}
-		m.setStatus(msg.Action+"d", false)
-		return m, m.clearStatusCmd()
-
 	case MessagesDeletedMsg:
 		for _, ref := range msg.Deleted {
 			if m.removeMessageFromMemory(ref.ID) {
@@ -1200,6 +1195,9 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch {
+	case keyMatches(msg, m.keys.Undo):
+		return m, m.undoLatestDestructive()
+
 	case keyMatches(msg, m.keys.Quit):
 		if !m.cfg.Display.ConfirmQuit {
 			m.quitActivated = true
@@ -1527,14 +1525,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.Archive):
 		if m.focused != paneAccounts && m.activeMessageRowCount() > 0 {
 			msgs := m.selectedActionMessages()
-			var cmds []tea.Cmd
-			for _, msg2 := range msgs {
-				cmds = append(cmds, m.archiveMessageCmd(msg2))
-			}
 			if m.hasSelection() {
 				m.clearSelection()
 			}
-			return m, tea.Batch(cmds...)
+			return m, m.scheduleArchive(msgs)
 		}
 		return m, nil
 
@@ -1562,7 +1556,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				m.pendingBulkDelete = nil
 				m.clearSelection()
-				return m, m.deleteMessagesCmd(selected)
+				return m, m.scheduleDelete(selected)
 			}
 		}
 		return m, nil
@@ -1921,7 +1915,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if len(selected) == 0 {
 				return m, nil
 			}
-			return m, m.deleteMessagesCmd(selected)
+			return m, m.scheduleDelete(selected)
 		case keyMatches(msg, m.keys.No), keyMatches(msg, m.keys.Cancel):
 			m.pendingBulkDelete = nil
 			m.overlay = overlayNone
@@ -2551,6 +2545,18 @@ func (m Model) renderStatusBar() string {
 		idx := clamp(m.contentLinkIdx, 0, len(m.contentLinks)-1) + 1
 		linkPart = m.statusBarInlineText(m.styles.StatusBar, fmt.Sprintf("link %d/%d", idx, len(m.contentLinks)))
 	}
+	if prompt := m.destructiveUndoPrompt(); prompt != "" {
+		style := m.styles.StatusBar
+		parts := []string{m.statusBarInlineText(style, prompt)}
+		if updateInfoPart != "" {
+			parts = append(parts, updateInfoPart)
+		}
+		if linkPart != "" {
+			parts = append(parts, linkPart)
+		}
+		parts = append(parts, m.statusBarKeyHintStrip())
+		return style.Width(w).Render(m.statusLine(m.statusBarJoin(parts...), updateActionPart))
+	}
 
 	if m.statusMsg != "" {
 		style := m.styles.StatusBar
@@ -2587,8 +2593,8 @@ func (m Model) renderStatusBar() string {
 			}
 		} else if mb := m.selectedMailbox(); mb != nil {
 			parts = append(parts, m.statusBarInlineText(sb, cleanDisplayName(mb.DisplayName)))
-			if mb.UnreadCount > 0 {
-				parts = append(parts, m.statusBarInlineText(sb, fmt.Sprintf("%d unread", mb.UnreadCount)))
+			if unread := m.displayMailboxUnreadCount(*mb); unread > 0 {
+				parts = append(parts, m.statusBarInlineText(sb, fmt.Sprintf("%d unread", unread)))
 			}
 			if !mb.LastSynced.IsZero() && mb.LastSynced.Unix() > 0 {
 				parts = append(parts, m.statusBarInlineText(sb, "synced "+m.formatTime(mb.LastSynced)))

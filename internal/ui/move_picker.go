@@ -2,7 +2,6 @@ package ui
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -295,11 +294,7 @@ func (m Model) confirmMovePicker(targetMailboxID int64) (tea.Model, tea.Cmd) {
 	m.movePicker = movePicker{}
 	m.overlay = overlayNone
 	m.clearSelection()
-	cmds := make([]tea.Cmd, 0, len(msgs))
-	for _, msg := range msgs {
-		cmds = append(cmds, m.moveMessageToMailboxCmd(msg, *target))
-	}
-	return m, tea.Batch(cmds...)
+	return m, m.scheduleMove(msgs, *target)
 }
 
 func (m Model) renderMovePicker(width, height int, chrome managerChrome) string {
@@ -395,33 +390,5 @@ func (m *Model) createFolderCmd(accountID int64, parentPath, name string) tea.Cm
 			return FolderCreatedMsg{AccountID: accountID, Name: fullName, Err: err}
 		}
 		return FolderCreatedMsg{AccountID: accountID, MailboxID: id, Name: fullName, Delimiter: delimiter}
-	}
-}
-
-func (m *Model) moveMessageToMailboxCmd(msg db.Message, target db.Mailbox) tea.Cmd {
-	database := m.db
-	sessions := m.sessions
-	source := m.mailboxByID(msg.MailboxID)
-	acfg := m.accountCfgForMailbox(msg.MailboxID)
-	return func() tea.Msg {
-		if source == nil {
-			return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, ToMailboxID: target.ID, Action: "move", Err: fmt.Errorf("mailbox not found")}
-		}
-		if source.AccountID != target.AccountID {
-			return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, ToMailboxID: target.ID, Action: "move", Err: fmt.Errorf("target mailbox is in another account")}
-		}
-		if acfg.IMAPHost != "" && msg.UID != 0 {
-			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-			defer cancel()
-			if err := sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
-				return client.MoveMessage(ctx, source.Name, msg.UID, target.Name)
-			}); err != nil {
-				return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, ToMailboxID: target.ID, Action: "move", Err: err}
-			}
-		}
-		if err := database.MoveMessage(msg.ID, target.ID); err != nil {
-			return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, ToMailboxID: target.ID, Action: "move", Err: err}
-		}
-		return MessageMovedMsg{MessageID: msg.ID, FromMailboxID: msg.MailboxID, ToMailboxID: target.ID, Action: "move"}
 	}
 }

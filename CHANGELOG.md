@@ -2,6 +2,14 @@
 
 All notable changes to TideMail are documented in this file.
 
+## Unreleased
+
+### Added
+
+- **Delete, archive, and move actions can be undone.** Message actions disappear
+  immediately but wait six seconds before syncing to the server; press `ctrl+z`
+  to restore the latest pending single or bulk action.
+
 ## v0.9.1
 
 **Release highlights:** server-synced message stars, starred-first sorting, and
