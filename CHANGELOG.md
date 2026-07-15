@@ -2,6 +2,29 @@
 
 All notable changes to TideMail are documented in this file.
 
+## v0.9.1
+
+### Added
+
+- **Messages can be starred and synced with the mail server.** Press `*` to
+  toggle IMAP `\Flagged` on the current message or selection. Press `t`, or use
+  the new Display setting, to keep starred messages and threads at the top.
+- **Initial mailbox loading now has visible progress.** The message pane shows
+  an animated loading state until the first account and message load finishes.
+
+### Changed
+
+- **Startup avoids unnecessary full-text index rebuilds.** TideMail now records
+  the FTS schema version and only rebuilds when the schema changes or the index
+  falls out of sync with the message cache.
+
+### Fixed
+
+- **Quitting no longer appears frozen on slow or wedged IMAP connections.**
+  Active operations are interrupted, account sessions close concurrently with
+  bounded network waits, and `Safely Quitting...` shimmers in the terminal
+  while the remaining database and connection cleanup completes.
+
 ## v0.9.0
 
 ### Changed

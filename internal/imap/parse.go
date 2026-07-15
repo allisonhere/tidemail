@@ -107,6 +107,9 @@ func parseIMAPMessage(msg *imapclient.FetchMessageBuffer) (db.Message, error) {
 		if f == imap.FlagSeen {
 			m.Read = true
 		}
+		if f == imap.FlagFlagged {
+			m.Starred = true
+		}
 	}
 
 	if env := msg.Envelope; env != nil {

@@ -3,6 +3,7 @@ package imap
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/allisonhere/tide/internal/config"
@@ -28,8 +29,13 @@ type session struct {
 	// lockCh is a capacity-1 channel used as a context-aware mutex: it serializes
 	// operations per account, but unlike sync.Mutex a waiter can give up when its
 	// ctx expires instead of blocking indefinitely behind a wedged operation.
-	lockCh   chan struct{}
-	client   *Client
+	lockCh chan struct{}
+	client *Client
+	// active holds the client while an operation is running fn, so Close can
+	// interrupt an in-flight fetch (expire its socket) instead of blocking on the
+	// lock until the fetch finishes. Published via atomic Store/Load so Close can
+	// read it without holding the per-session lock.
+	active   atomic.Pointer[Client]
 	cfg      config.AccountConfig
 	lastUsed time.Time
 }
@@ -98,6 +104,9 @@ func (p *SessionPool) Do(ctx context.Context, acfg config.AccountConfig, fn func
 		s.cfg = acfg
 	}
 	s.lastUsed = time.Now()
+	// Publish the live client so Close can interrupt this operation on shutdown.
+	s.active.Store(s.client)
+	defer s.active.Store(nil)
 	return fn(s.client)
 }
 
@@ -110,14 +119,27 @@ func (p *SessionPool) Close() {
 		entries = append(entries, s)
 	}
 	p.mu.Unlock()
+	// Close concurrently so a slow LOGOUT on one account can't serialize behind
+	// the others — quit time is bounded by the slowest single close, not the sum.
+	var wg sync.WaitGroup
 	for _, s := range entries {
-		s.lockCh <- struct{}{}
-		if s.client != nil {
-			s.client.Close() //nolint:errcheck
-			s.client = nil
-		}
-		<-s.lockCh
+		wg.Add(1)
+		go func(s *session) {
+			defer wg.Done()
+			// Abort any in-flight operation first so acquiring the lock doesn't
+			// wait out a full network fetch; the interrupted op then releases it.
+			if c := s.active.Load(); c != nil {
+				c.interrupt()
+			}
+			s.lockCh <- struct{}{}
+			if s.client != nil {
+				s.client.Close() //nolint:errcheck
+				s.client = nil
+			}
+			<-s.lockCh
+		}(s)
 	}
+	wg.Wait()
 }
 
 func (p *SessionPool) entry(acfg config.AccountConfig) *session {

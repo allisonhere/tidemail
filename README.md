@@ -121,6 +121,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 | `Enter` in Drafts | Reopen selected draft in compose |
 | `d` in Drafts | Delete selected draft |
 | `r` | Toggle read/unread in message list, reply from content |
+| `*` | Toggle star (IMAP `\Flagged`) on selected message(s); syncs to the server |
 | `a` | Archive selected message |
 | `d` | Delete selected message |
 | `Space` | Multi-select messages; auto-advances and keeps the cursor visible (then `d`/`a`/`m`/`x` for bulk actions) |
@@ -130,6 +131,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 | `Shift+Left` / `Shift+Right` | Resize the accounts pane |
 | `Shift+Up` / `Shift+Down` | Resize the messages/content split |
 | `u` | Toggle unread-only view |
+| `t` | Toggle starred-first sort (starred messages float to the top) |
 | `o` | Open link on the focus line (falls back to the selected content link) |
 | `Ctrl+N` / `Alt+N` | Next content link |
 | `Alt+P` | Previous content link |

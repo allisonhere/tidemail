@@ -126,10 +126,35 @@ func (c *Client) applyDeadline(ctx context.Context) func() {
 }
 
 func (c *Client) Close() error {
+	return c.closeConn(true)
+}
+
+// interrupt expires the socket so any in-flight read/write returns immediately
+// with a deadline error. It is safe to call concurrently with an operation in
+// progress (net.Conn methods are goroutine-safe) and is used on shutdown to abort
+// a blocked fetch instead of waiting the full network timeout for it to finish.
+func (c *Client) interrupt() {
+	if c.netConn != nil {
+		c.netConn.SetDeadline(time.Now()) //nolint:errcheck
+	}
+}
+
+// closeConn tears down the connection. When logout is true it sends a graceful
+// IMAP LOGOUT first, but bounded by a short socket deadline so a wedged
+// connection can't hang the caller (quitting must not wait on the network — a
+// dropped TCP connection is fine for IMAP servers). Callers that have already
+// expired the socket (e.g. an IDLE watcher shutting down) pass logout=false to
+// skip the pointless round-trip entirely.
+func (c *Client) closeConn(logout bool) error {
 	if c.conn == nil {
 		return nil
 	}
-	c.conn.Logout() //nolint:errcheck
+	if logout {
+		if c.netConn != nil {
+			c.netConn.SetDeadline(time.Now().Add(2 * time.Second)) //nolint:errcheck
+		}
+		c.conn.Logout() //nolint:errcheck
+	}
 	err := c.conn.Close()
 	c.conn = nil
 	c.netConn = nil
@@ -243,6 +268,28 @@ func (c *Client) MarkSeen(ctx context.Context, mailboxName string, uid uint32, s
 		Op:     op,
 		Silent: true,
 		Flags:  []imap.Flag{imap.FlagSeen},
+	}
+	return c.conn.Store(imap.UIDSetNum(imap.UID(uid)), flags, nil).Close()
+}
+
+// MarkFlagged adds or removes the \Flagged keyword (the "star") on a message.
+func (c *Client) MarkFlagged(ctx context.Context, mailboxName string, uid uint32, flagged bool) error {
+	if c.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	defer c.applyDeadline(ctx)()
+	if _, err := c.conn.Select(mailboxName, nil).Wait(); err != nil {
+		return fmt.Errorf("select %s: %w", mailboxName, err)
+	}
+
+	op := imap.StoreFlagsDel
+	if flagged {
+		op = imap.StoreFlagsAdd
+	}
+	flags := &imap.StoreFlags{
+		Op:     op,
+		Silent: true,
+		Flags:  []imap.Flag{imap.FlagFlagged},
 	}
 	return c.conn.Store(imap.UIDSetNum(imap.UID(uid)), flags, nil).Close()
 }

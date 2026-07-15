@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -81,18 +82,29 @@ func (m Model) renderMessagesPane() string {
 			if threadCount > 1 {
 				subject = fmt.Sprintf("%s (%d)", subject, threadCount)
 			}
+			if msg2.Starred {
+				subject = m.messageStarPrefix() + subject
+			}
+			var line string
 			if m.cfg.Display.ShowSender {
 				senderW := min(22, max(0, w/3))
-				rows = append(rows, style.Width(w).Render(renderArticleRowWithSender(dot, senderDisplay(msg2.From), subject, age, w, senderW)))
+				line = style.Width(w).Render(renderArticleRowWithSender(dot, senderDisplay(msg2.From), subject, age, w, senderW))
 			} else {
-				rows = append(rows, style.Width(w).Render(renderArticleRow(dot, subject, age, w)))
+				line = style.Width(w).Render(renderArticleRow(dot, subject, age, w))
 			}
+			if msg2.Starred && !m.styles.PlainUI {
+				line = recolorGlyph(line, strings.TrimSpace(m.messageStarPrefix()), starColor(m.styles.Theme))
+			}
+			rows = append(rows, line)
 		}
 
 		if len(m.filteredMessages) == 0 {
-			if m.searchMode {
+			switch {
+			case m.initialLoading:
+				rows = append(rows, msgRead.Render("  "+m.spinner.View()+" Loading messages…"))
+			case m.searchMode:
 				rows = append(rows, msgRead.Render("  no results"))
-			} else {
+			default:
 				rows = append(rows, msgRead.Render("  no messages"))
 			}
 		}
@@ -112,6 +124,9 @@ func (m Model) renderMessagesPane() string {
 	}
 	if m.showUnreadOnly {
 		title += " (unread)"
+	}
+	if m.starredFirst {
+		title += " (starred first)"
 	}
 	// Surface an active multi-selection so it's clear a bulk action (d/a/m/x)
 	// will apply to those messages, not just the focused row.
@@ -192,12 +207,14 @@ func (m Model) hasSelection() bool {
 func (m *Model) applyFilter() {
 	if m.searchActive() && !m.showUnreadOnly {
 		m.filteredMessages = m.messages
+		m.sortFilteredStarred()
 		m.rebuildMessageThreads()
 		return
 	}
 	q := strings.ToLower(m.searchQuery)
 	if q == "" && !m.showUnreadOnly {
 		m.filteredMessages = m.messages
+		m.sortFilteredStarred()
 		m.rebuildMessageThreads()
 		return
 	}
@@ -212,7 +229,23 @@ func (m *Model) applyFilter() {
 		filtered = append(filtered, msg)
 	}
 	m.filteredMessages = filtered
+	m.sortFilteredStarred()
 	m.rebuildMessageThreads()
+}
+
+// sortFilteredStarred stably floats starred messages to the top when the
+// starred-first sort (key `t`) is active. It copies before sorting so the
+// shared m.messages slice (which m.filteredMessages may alias) is never mutated.
+func (m *Model) sortFilteredStarred() {
+	if !m.starredFirst || len(m.filteredMessages) == 0 {
+		return
+	}
+	sorted := make([]db.Message, len(m.filteredMessages))
+	copy(sorted, m.filteredMessages)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].Starred && !sorted[j].Starred
+	})
+	m.filteredMessages = sorted
 }
 
 func (m Model) messageRowTitle(msg db.Message) string {
@@ -266,6 +299,28 @@ func (m *Model) setMessageReadCmd(msg db.Message, read, advance bool) tea.Cmd {
 			Read:      read,
 			Advance:   advance,
 		}
+	}
+}
+
+func (m *Model) setMessageStarredCmd(msg db.Message, starred bool) tea.Cmd {
+	database := m.db
+	sessions := m.sessions
+	mailbox := m.mailboxByID(msg.MailboxID)
+	acfg := m.accountCfgForMailbox(msg.MailboxID)
+	return func() tea.Msg {
+		if mailbox != nil && acfg.IMAPHost != "" && msg.UID != 0 {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
+				return client.MarkFlagged(ctx, mailbox.Name, msg.UID, starred)
+			}); err != nil {
+				return MessageStarredUpdatedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Starred: starred, Err: err}
+			}
+		}
+		if err := database.MarkStarred(msg.ID, starred); err != nil {
+			return MessageStarredUpdatedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Starred: starred, Err: err}
+		}
+		return MessageStarredUpdatedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Starred: starred}
 	}
 }
 
@@ -468,6 +523,48 @@ func renderArticleRowWithSender(prefix, sender, title, age string, width, sender
 		padRight(truncate(title, titleW), titleW) + strings.Repeat(" ", gapW) +
 		age + strings.Repeat(" ", trailingW)
 	return padRight(row, width)
+}
+
+// starColor returns a readable gold/yellow for the star glyph on the current theme.
+func starColor(t Theme) lipgloss.Color {
+	return accentReadableOn(lipgloss.Color("#f9c74f"), t.Bg, 3)
+}
+
+// recolorGlyph recolors the first occurrence of glyph in an already-styled row
+// with fg, keeping the row's background and restoring the row's original styling
+// for everything after the glyph. It injects only the foreground SGR (no reset)
+// so the row background carries through, then re-opens the row's leading SGR.
+func recolorGlyph(line, glyph string, fg lipgloss.Color) string {
+	idx := strings.Index(line, glyph)
+	if idx < 0 {
+		return line
+	}
+	reopen := leadingSGR(line)
+	if reopen == "" {
+		return line
+	}
+	fgOpen := leadingSGR(lipgloss.NewStyle().Foreground(fg).Render("x"))
+	return line[:idx] + fgOpen + glyph + reopen + line[idx+len(glyph):]
+}
+
+// leadingSGR returns the ANSI SGR (\x1b[...m) sequence a string opens with, if any.
+func leadingSGR(s string) string {
+	if !strings.HasPrefix(s, "\x1b[") {
+		return ""
+	}
+	if i := strings.IndexByte(s, 'm'); i >= 0 {
+		return s[:i+1]
+	}
+	return ""
+}
+
+// messageStarPrefix returns a compact star marker prepended to a starred
+// message's subject, respecting the plain-UI / icons display tiers.
+func (m Model) messageStarPrefix() string {
+	if m.styles.PlainUI || !m.iconsEnabled() {
+		return "* "
+	}
+	return "★ "
 }
 
 func (m Model) messageRowPrefix(read bool) string {

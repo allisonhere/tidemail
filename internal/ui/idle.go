@@ -3,6 +3,7 @@ package ui
 import (
 	"log"
 	"os"
+	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -98,10 +99,18 @@ func (m *Model) startIdleWatchers() tea.Cmd {
 
 // stopIdleWatchers closes every running watcher; safe to call repeatedly.
 func (m *Model) stopIdleWatchers() {
+	// Close watchers concurrently: each Close waits for its connection to tear
+	// down, so serializing them would add up across accounts on quit.
+	var wg sync.WaitGroup
 	for id, e := range m.idleWatchers {
-		e.watcher.Close()
+		wg.Add(1)
+		go func(w *imapClient.Watcher) {
+			defer wg.Done()
+			w.Close()
+		}(e.watcher)
 		delete(m.idleWatchers, id)
 	}
+	wg.Wait()
 }
 
 // waitIdleCmd blocks until the watcher signals a change (or stops) and turns

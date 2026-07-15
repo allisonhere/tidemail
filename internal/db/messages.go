@@ -26,6 +26,7 @@ type Message struct {
 	Summary        string
 	Flags          []string
 	Read           bool
+	Starred        bool
 	HasAttachment  bool
 	Headers        string       // auth-related headers parsed from MIME
 	AttachmentData []Attachment // transient, not stored in messages table
@@ -36,7 +37,7 @@ type Message struct {
 func (db *DB) ListMessages(mailboxID int64) ([]Message, error) {
 	rows, err := db.Query(`
 		SELECT id, mailbox_id, uid, message_id, in_reply_to, references_text, subject, from_addr, to_addr, cc_addr,
-		       reply_to, date, body_text, body_html, summary,		flags, read, has_attachment, headers
+		       reply_to, date, body_text, body_html, summary,		flags, read, starred, has_attachment, headers
 		FROM messages WHERE mailbox_id = ?
 		ORDER BY date DESC, id DESC`, mailboxID)
 	if err != nil {
@@ -49,7 +50,7 @@ func (db *DB) ListMessages(mailboxID int64) ([]Message, error) {
 func (db *DB) ListMessagesUnreadFirst(mailboxID int64) ([]Message, error) {
 	rows, err := db.Query(`
 		SELECT id, mailbox_id, uid, message_id, in_reply_to, references_text, subject, from_addr, to_addr, cc_addr,
-		       reply_to, date, body_text, body_html, summary,		flags, read, has_attachment, headers
+		       reply_to, date, body_text, body_html, summary,		flags, read, starred, has_attachment, headers
 		FROM messages WHERE mailbox_id = ?
 		ORDER BY read ASC, date DESC, id DESC`, mailboxID)
 	if err != nil {
@@ -68,7 +69,7 @@ func (db *DB) CountMessages(mailboxID int64) (int64, error) {
 func (db *DB) ListUnreadMessages(mailboxID int64) ([]Message, error) {
 	rows, err := db.Query(`
 		SELECT id, mailbox_id, uid, message_id, in_reply_to, references_text, subject, from_addr, to_addr, cc_addr,
-		       reply_to, date, body_text, body_html, summary,		flags, read, has_attachment, headers
+		       reply_to, date, body_text, body_html, summary,		flags, read, starred, has_attachment, headers
 		FROM messages WHERE mailbox_id = ? AND read = 0
 		ORDER BY date DESC, id DESC`, mailboxID)
 	if err != nil {
@@ -87,7 +88,7 @@ func (db *DB) ListUnifiedInbox(unreadOnly bool) ([]Message, error) {
 		SELECT messages.id, messages.mailbox_id, messages.uid, messages.message_id,
 		       messages.in_reply_to, messages.references_text, messages.subject, messages.from_addr, messages.to_addr, messages.cc_addr,
 		       messages.reply_to, messages.date, messages.body_text, messages.body_html,
-		       messages.summary, messages.flags, messages.read, messages.has_attachment, messages.headers
+		       messages.summary, messages.flags, messages.read, messages.starred, messages.has_attachment, messages.headers
 		FROM messages
 		JOIN mailboxes ON mailboxes.id = messages.mailbox_id
 		WHERE (
@@ -112,7 +113,7 @@ func (db *DB) ListUnifiedInboxUnreadFirst(unreadOnly bool) ([]Message, error) {
 		SELECT messages.id, messages.mailbox_id, messages.uid, messages.message_id,
 		       messages.in_reply_to, messages.references_text, messages.subject, messages.from_addr, messages.to_addr, messages.cc_addr,
 		       messages.reply_to, messages.date, messages.body_text, messages.body_html,
-		       messages.summary, messages.flags, messages.read, messages.has_attachment, messages.headers
+		       messages.summary, messages.flags, messages.read, messages.starred, messages.has_attachment, messages.headers
 		FROM messages
 		JOIN mailboxes ON mailboxes.id = messages.mailbox_id
 		WHERE (
@@ -132,7 +133,7 @@ func (db *DB) SearchMessages(mailboxID int64, query string) ([]Message, error) {
 	q := "%" + query + "%"
 	rows, err := db.Query(`
 		SELECT id, mailbox_id, uid, message_id, in_reply_to, references_text, subject, from_addr, to_addr, cc_addr,
-		       reply_to, date, body_text, body_html, summary,		flags, read, has_attachment, headers
+		       reply_to, date, body_text, body_html, summary,		flags, read, starred, has_attachment, headers
 		FROM messages WHERE mailbox_id = ? AND (subject LIKE ? OR from_addr LIKE ? OR body_text LIKE ?)
 		ORDER BY date DESC, id DESC`, mailboxID, q, q, q)
 	if err != nil {
@@ -155,7 +156,7 @@ func (db *DB) SearchAllMessages(query string, unreadFirst bool) ([]Message, erro
 		SELECT messages.id, messages.mailbox_id, messages.uid, messages.message_id,
 		       messages.in_reply_to, messages.references_text, messages.subject, messages.from_addr, messages.to_addr, messages.cc_addr,
 		       messages.reply_to, messages.date, messages.body_text, messages.body_html, messages.summary,
-		       messages.flags, messages.read, messages.has_attachment, messages.headers,
+		       messages.flags, messages.read, messages.starred, messages.has_attachment, messages.headers,
 		       accounts.name, COALESCE(NULLIF(mailboxes.display_name, ''), mailboxes.name)
 		FROM messages_fts
 		JOIN messages ON messages.id = messages_fts.rowid
@@ -174,14 +175,14 @@ func (db *DB) GetMessage(id int64) (Message, error) {
 	var m Message
 	var flagsJSON string
 	var dateUnix int64
-	var read, att int
+	var read, starred, att int
 	err := db.QueryRow(`
 		SELECT id, mailbox_id, uid, message_id, in_reply_to, references_text, subject, from_addr, to_addr, cc_addr,
-		       reply_to, date, body_text, body_html, summary,		flags, read, has_attachment, headers
+		       reply_to, date, body_text, body_html, summary,		flags, read, starred, has_attachment, headers
 		FROM messages WHERE id = ?`, id).
 		Scan(&m.ID, &m.MailboxID, &m.UID, &m.MessageID, &m.InReplyTo, &m.References, &m.Subject,
 			&m.From, &m.To, &m.CC, &m.ReplyTo, &dateUnix,
-			&m.BodyText, &m.BodyHTML, &m.Summary, &flagsJSON, &read, &att,
+			&m.BodyText, &m.BodyHTML, &m.Summary, &flagsJSON, &read, &starred, &att,
 			&m.Headers)
 	if err != nil {
 		return Message{}, err
@@ -191,6 +192,7 @@ func (db *DB) GetMessage(id int64) (Message, error) {
 		m.Date = time.Unix(dateUnix, 0)
 	}
 	m.Read = read != 0
+	m.Starred = starred != 0
 	m.HasAttachment = att != 0
 	return m, nil
 }
@@ -209,11 +211,15 @@ func (db *DB) UpsertMessage(m Message) error {
 	if !m.Date.IsZero() {
 		dateUnix = m.Date.Unix()
 	}
+	starred := 0
+	if m.Starred {
+		starred = 1
+	}
 	_, err := db.Exec(`
 		INSERT INTO messages
 			(mailbox_id, uid, message_id, in_reply_to, references_text, subject, from_addr, to_addr, cc_addr,
-			 reply_to, date, body_text, body_html, summary, flags, read, has_attachment, headers)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 reply_to, date, body_text, body_html, summary, flags, read, starred, has_attachment, headers)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(mailbox_id, uid) DO UPDATE SET
 			message_id     = excluded.message_id,
 			in_reply_to    = excluded.in_reply_to,
@@ -231,7 +237,7 @@ func (db *DB) UpsertMessage(m Message) error {
 			headers        = CASE WHEN excluded.headers != '' THEN excluded.headers ELSE headers END
 	`, m.MailboxID, m.UID, m.MessageID, m.InReplyTo, m.References, m.Subject, m.From, m.To, m.CC,
 		m.ReplyTo, dateUnix, m.BodyText, m.BodyHTML, m.Summary,
-		string(flagsJSON), read, att, m.Headers)
+		string(flagsJSON), read, starred, att, m.Headers)
 	if err != nil {
 		return err
 	}
@@ -313,6 +319,15 @@ func (db *DB) MarkRead(id int64, read bool) error {
 	return err
 }
 
+func (db *DB) MarkStarred(id int64, starred bool) error {
+	v := 0
+	if starred {
+		v = 1
+	}
+	_, err := db.Exec(`UPDATE messages SET starred = ? WHERE id = ?`, v, id)
+	return err
+}
+
 func (db *DB) MarkAllRead(mailboxID int64) error {
 	_, err := db.Exec(`UPDATE messages SET read = 1 WHERE mailbox_id = ? AND read = 0`, mailboxID)
 	return err
@@ -371,11 +386,11 @@ func scanMessagesWithContext(rows interface {
 		var m Message
 		var flagsJSON string
 		var dateUnix int64
-		var read, att int
+		var read, starred, att int
 		if err := rows.Scan(
 			&m.ID, &m.MailboxID, &m.UID, &m.MessageID, &m.InReplyTo, &m.References, &m.Subject,
 			&m.From, &m.To, &m.CC, &m.ReplyTo, &dateUnix,
-			&m.BodyText, &m.BodyHTML, &m.Summary, &flagsJSON, &read, &att,
+			&m.BodyText, &m.BodyHTML, &m.Summary, &flagsJSON, &read, &starred, &att,
 			&m.Headers, &m.AccountName, &m.MailboxName,
 		); err != nil {
 			return nil, err
@@ -385,6 +400,7 @@ func scanMessagesWithContext(rows interface {
 			m.Date = time.Unix(dateUnix, 0)
 		}
 		m.Read = read != 0
+		m.Starred = starred != 0
 		m.HasAttachment = att != 0
 		msgs = append(msgs, m)
 	}
@@ -435,11 +451,11 @@ func scanMessages(rows interface {
 		var m Message
 		var flagsJSON string
 		var dateUnix int64
-		var read, att int
+		var read, starred, att int
 		if err := rows.Scan(
 			&m.ID, &m.MailboxID, &m.UID, &m.MessageID, &m.InReplyTo, &m.References, &m.Subject,
 			&m.From, &m.To, &m.CC, &m.ReplyTo, &dateUnix,
-			&m.BodyText, &m.BodyHTML, &m.Summary, &flagsJSON, &read, &att,
+			&m.BodyText, &m.BodyHTML, &m.Summary, &flagsJSON, &read, &starred, &att,
 			&m.Headers,
 		); err != nil {
 			return nil, err
@@ -449,6 +465,7 @@ func scanMessages(rows interface {
 			m.Date = time.Unix(dateUnix, 0)
 		}
 		m.Read = read != 0
+		m.Starred = starred != 0
 		m.HasAttachment = att != 0
 		msgs = append(msgs, m)
 	}

@@ -54,6 +54,45 @@ func TestSaveConfigSuccessNoError(t *testing.T) {
 	}
 }
 
+func TestQuitActivationIsRecordedWithoutConfirmation(t *testing.T) {
+	database, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Display.ConfirmQuit = false
+	m := NewModel(database, cfg, "dev", false)
+	next, cmd := m.handleMainKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+
+	if !next.(Model).QuitActivated() {
+		t.Fatal("expected direct quit to record normal quit activation")
+	}
+	if cmd == nil {
+		t.Fatal("expected direct quit command")
+	}
+}
+
+func TestConfirmedQuitActivationIsRecorded(t *testing.T) {
+	database, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	m.overlay = overlayQuitConfirm
+	next, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+
+	if !next.(Model).QuitActivated() {
+		t.Fatal("expected confirmed quit to record normal quit activation")
+	}
+	if cmd == nil {
+		t.Fatal("expected confirmed quit command")
+	}
+}
+
 func TestShiftArrowsPersistPaneResize(t *testing.T) {
 	database, err := db.Open()
 	if err != nil {

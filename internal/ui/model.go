@@ -138,6 +138,7 @@ type Model struct {
 	searchMode       bool
 	searchEditing    bool
 	showUnreadOnly   bool
+	starredFirst     bool
 	selectedMessages map[int64]bool
 
 	viewport               viewport.Model
@@ -194,7 +195,10 @@ type Model struct {
 	statusErr bool
 
 	syncing map[int64]bool
-	spinner spinner.Model
+	// initialLoading is true from startup until the first message load completes,
+	// so the message pane can show a spinner while accounts/messages load async.
+	initialLoading bool
+	spinner        spinner.Model
 	// spinnerRunning tracks whether the spinner's self-rescheduling tick loop is
 	// currently live. The loop only runs while something is loading (see
 	// spinnerActive); this flag prevents starting a second parallel loop, which
@@ -233,6 +237,7 @@ type Model struct {
 	// settingsActionRestartAfterUpdate). Restarting from inside the running TUI
 	// would leave two processes fighting over the terminal.
 	restartExecPath string
+	quitActivated   bool
 
 	previewManualUpdateUI bool
 
@@ -255,6 +260,10 @@ func (m Model) CloseSessions() {
 // to complete an in-app update restart, or "" when no restart was requested.
 // Exec-ing only after exit guarantees the terminal is fully restored first.
 func (m Model) RestartExecPath() string { return m.restartExecPath }
+
+// QuitActivated reports whether the user requested a normal app exit. Update
+// restarts also use tea.Quit, but should hand off without showing quit status.
+func (m Model) QuitActivated() bool { return m.quitActivated }
 
 func NewModel(database *db.DB, cfg config.Config, currentVersion string, previewManualUpdate bool) Model {
 	merged, themeIdx := MergedThemeFromConfig(cfg)
@@ -305,6 +314,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		helpSearchInput:       hsi,
 		commandInput:          ci,
 		spinner:               sp,
+		initialLoading:        true,
 		syncing:               make(map[int64]bool),
 		lastFolderRefresh:     make(map[int64]time.Time),
 		idleWatchers:          make(map[int64]idleWatcherEntry),
@@ -314,6 +324,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		keys:                  DefaultKeys,
 		summarizer:            summarizer,
 		showUnreadOnly:        cfg.Display.DefaultUnreadOnly,
+		starredFirst:          cfg.Display.StarredFirst,
 		contentLinkIdx:        -1,
 		contentShowHeaders:    true,
 		contentSearchInput:    csi,
@@ -332,6 +343,9 @@ func (m Model) Init() tea.Cmd {
 	// state begins — not here. Kicking it at startup would re-render the idle TUI
 	// ~10×/sec forever (the spinner self-reschedules on every tick).
 	cmds := []tea.Cmd{m.loadAccountsCmd()}
+	if cmd := m.ensureSpinner(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 	if !m.previewManualUpdateUI {
 		if cmd := m.maybeCheckForUpdatesCmd(false); cmd != nil {
 			cmds = append(cmds, cmd)
@@ -370,6 +384,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.spinnerRunning = false
 			return m, nil
 		}
+		// Reconcile the guard: Init starts this loop but its value receiver
+		// discards the spinnerRunning write, so mark it here to keep ensureSpinner
+		// from starting a second parallel loop.
+		m.spinnerRunning = true
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
@@ -475,6 +493,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AccountsLoadedMsg:
 		if msg.Err != nil && len(msg.Accounts) == 0 && len(msg.Mailboxes) == 0 {
+			m.initialLoading = false
 			m.accounts = nil
 			m.mailboxes = nil
 			m.rebuildSidebar()
@@ -543,6 +562,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sidebarCursor = clamp(m.sidebarCursor, 0, max(0, len(m.sidebarRows)-1))
 		m.clampSidebarOffset()
 		if len(m.mailboxes) == 0 {
+			m.initialLoading = false
 			m.clearMessages()
 			if openAccountManagerOnEmptyFirstLoad {
 				m.overlay = overlayAccountManager
@@ -570,6 +590,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case MessagesLoadedMsg:
+		m.initialLoading = false
 		if msg.Search {
 			if strings.TrimSpace(m.searchQuery) != strings.TrimSpace(msg.Query) {
 				return m, nil
@@ -888,6 +909,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setViewportForCurrentRow()
 		return m, nil
 
+	case MessageStarredUpdatedMsg:
+		if msg.Err != nil {
+			m.setStatus(fmt.Sprintf("star failed: %v", msg.Err), true)
+			return m, m.clearStatusCmd()
+		}
+		for i := range m.messages {
+			if m.messages[i].ID == msg.MessageID {
+				m.messages[i].Starred = msg.Starred
+				break
+			}
+		}
+		var currentID int64
+		if cur := m.currentRowMessage(); cur != nil {
+			currentID = cur.ID
+		}
+		m.applyFilter()
+		if idx := m.indexOfFilteredMessage(currentID); idx >= 0 {
+			m.messageCursor = idx
+		} else {
+			m.messageCursor = clamp(m.messageCursor, 0, max(0, m.activeMessageRowCount()-1))
+		}
+		if m.activeMessageRowCount() > 0 {
+			m.setViewportForCurrentRow()
+		}
+		return m, nil
+
 	case FolderCreatedMsg:
 		if msg.Err != nil {
 			m.setStatus("create folder failed: "+msg.Err.Error(), true)
@@ -1155,6 +1202,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case keyMatches(msg, m.keys.Quit):
 		if !m.cfg.Display.ConfirmQuit {
+			m.quitActivated = true
 			return m, tea.Quit
 		}
 		m.overlay = overlayQuitConfirm
@@ -1225,6 +1273,36 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.setStatus("showing all messages", false)
 		}
+		if m.activeMessageRowCount() > 0 {
+			m.setViewportForCurrentRow()
+		} else {
+			m.clearViewportMessage()
+		}
+		return m, m.clearStatusCmd()
+
+	case keyMatches(msg, m.keys.StarredFirst):
+		if m.focused == paneAccounts {
+			return m, nil
+		}
+		m.starredFirst = !m.starredFirst
+		var currentID int64
+		if msg := m.currentRowMessage(); msg != nil {
+			currentID = msg.ID
+		}
+		m.applyFilter()
+		if idx := m.indexOfFilteredMessage(currentID); idx >= 0 {
+			m.messageCursor = idx
+		} else {
+			m.messageCursor = clamp(m.messageCursor, 0, max(0, m.activeMessageRowCount()-1))
+		}
+		if m.starredFirst {
+			m.setStatus("starred first", false)
+		} else {
+			m.setStatus("normal order", false)
+		}
+		// Persist so the sort survives restarts (mirrors the Settings toggle).
+		m.cfg.Display.StarredFirst = m.starredFirst
+		m.saveConfig()
 		if m.activeMessageRowCount() > 0 {
 			m.setViewportForCurrentRow()
 		} else {
@@ -1403,6 +1481,35 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				read := !msg2.Read
 				advance := false
 				cmds = append(cmds, m.setMessageReadCmd(msg2, read, advance))
+			}
+			m.clearSelection()
+			return m, tea.Batch(cmds...)
+		}
+		return m, nil
+
+	case keyMatches(msg, m.keys.ToggleStar):
+		if m.focused == paneMessages && m.activeMessageRowCount() > 0 {
+			msgs := m.selectedActionMessages()
+			if len(msgs) == 0 {
+				return m, nil
+			}
+			var cmds []tea.Cmd
+			if !m.hasSelection() {
+				// Toggle relative to the first message: if any is unstarred, star all.
+				starred := false
+				for _, msg2 := range msgs {
+					if !msg2.Starred {
+						starred = true
+						break
+					}
+				}
+				for _, msg2 := range msgs {
+					cmds = append(cmds, m.setMessageStarredCmd(msg2, starred))
+				}
+				return m, tea.Batch(cmds...)
+			}
+			for _, msg2 := range msgs {
+				cmds = append(cmds, m.setMessageStarredCmd(msg2, !msg2.Starred))
 			}
 			m.clearSelection()
 			return m, tea.Batch(cmds...)
@@ -1785,6 +1892,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayQuitConfirm:
 		switch {
 		case keyMatches(msg, m.keys.Yes), keyMatches(msg, m.keys.Confirm):
+			m.quitActivated = true
 			return m, tea.Quit
 		case keyMatches(msg, m.keys.No), keyMatches(msg, m.keys.Cancel):
 			m.overlay = overlayNone
@@ -2074,6 +2182,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.cfg = m.settings.ApplyTo(m.cfg)
 			m.showUnreadOnly = m.cfg.Display.DefaultUnreadOnly
+			m.starredFirst = m.cfg.Display.StarredFirst
 			// Apply the vim toggle to future compose editors (read in newEditorArea).
 			setEditorVimMode(m.cfg.Display.ComposeVim)
 			merged, _ := MergedThemeFromConfig(m.cfg)
@@ -2323,6 +2432,7 @@ func (m Model) renderPaneHint(p pane) string {
 		hint = m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " move  " +
 			m.keyHint(m.keys.Space) + " select  " +
 			m.keyHint(m.keys.MarkRead) + " read  " +
+			m.keyHint(m.keys.ToggleStar) + " star  " +
 			m.keyHint(m.keys.Archive) + " archive  " + m.keyHint(m.keys.Move) + " move  " + m.keyHint(m.keys.Delete) + " delete  " +
 			m.keyHint(m.keys.Command) + " command"
 	case paneContent:
@@ -2569,7 +2679,8 @@ func (m *Model) clearStatusCmd() tea.Cmd {
 // (sidebar sync indicator, status bar "syncing…", update check, AI summary) —
 // a state shown there but missing here leaves that spinner frozen.
 func (m Model) spinnerActive() bool {
-	return len(m.syncing) > 0 ||
+	return m.initialLoading ||
+		len(m.syncing) > 0 ||
 		m.updateState == updateStateChecking ||
 		m.summaryGenerating
 }

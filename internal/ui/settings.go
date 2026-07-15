@@ -38,6 +38,7 @@ const (
 	sfThreadedConversations
 	sfDefaultUnreadOnly
 	sfUnreadFirst
+	sfStarredFirst
 	sfActionableLinks
 	sfFilterLinks
 	sfReadingWidth
@@ -226,6 +227,7 @@ type Settings struct {
 	threadedConversations bool
 	defaultUnreadOnly     bool
 	unreadFirst           bool
+	starredFirst          bool
 	actionableLinks       bool
 	filterLinks           bool
 	confirmQuit           bool
@@ -319,6 +321,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		threadedConversations: cfg.Display.ThreadedConversations,
 		defaultUnreadOnly:     cfg.Display.DefaultUnreadOnly,
 		unreadFirst:           cfg.Display.UnreadFirst,
+		starredFirst:          cfg.Display.StarredFirst,
 		actionableLinks:       cfg.Display.ActionableLinks,
 		filterLinks:           cfg.Display.FilterLinks,
 		confirmQuit:           cfg.Display.ConfirmQuit,
@@ -387,6 +390,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.ThreadedConversations = s.threadedConversations
 	cfg.Display.DefaultUnreadOnly = s.defaultUnreadOnly
 	cfg.Display.UnreadFirst = s.unreadFirst
+	cfg.Display.StarredFirst = s.starredFirst
 	cfg.Display.ActionableLinks = s.actionableLinks
 	cfg.Display.FilterLinks = s.filterLinks
 	cfg.Display.ConfirmQuit = s.confirmQuit
@@ -611,7 +615,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		if config.IsRetroTerminalTheme(s.themeName) {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
-		fields = append(fields, sfShowSender, sfThreadedConversations, sfDefaultUnreadOnly, sfUnreadFirst)
+		fields = append(fields, sfShowSender, sfThreadedConversations, sfDefaultUnreadOnly, sfUnreadFirst, sfStarredFirst)
 		fields = append(fields, sfReadingWidth, sfShowHeaders, sfMarkReadOnOpen, sfMarkReadOnFocus, sfActionableLinks, sfFilterLinks)
 		return append(fields, sfBrowser, sfConfirmQuit, sfNotifications)
 	case ssEditor:
@@ -1097,6 +1101,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfStarredFirst:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.starredFirst = !s.starredFirst
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfActionableLinks:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.actionableLinks = !s.actionableLinks
@@ -1504,6 +1517,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addToggle("Threaded conversations", s.threadedConversations, sfThreadedConversations)
 		b.addToggle("Default to unread only", s.defaultUnreadOnly, sfDefaultUnreadOnly)
 		b.addToggle("Unread first", s.unreadFirst, sfUnreadFirst)
+		b.addToggle("Starred first", s.starredFirst, sfStarredFirst)
 		b.addGroup("Reading")
 		b.addInput("Reading width (columns)", s.readingWidthInput, sfReadingWidth)
 		b.addToggle("Show email headers", s.showHeaders, sfShowHeaders)

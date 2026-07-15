@@ -58,6 +58,13 @@ type MessageReadUpdatedMsg struct {
 	Err       error
 }
 
+type MessageStarredUpdatedMsg struct {
+	MessageID int64
+	MailboxID int64
+	Starred   bool
+	Err       error
+}
+
 type MessageMovedMsg struct {
 	MessageID     int64
 	FromMailboxID int64

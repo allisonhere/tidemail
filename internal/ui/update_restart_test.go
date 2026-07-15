@@ -40,6 +40,9 @@ func TestRestartAfterUpdateRecordsExecPathAndQuits(t *testing.T) {
 	if got := nm.RestartExecPath(); got != "/tmp/tide-new" {
 		t.Fatalf("expected restart exec path recorded, got %q", got)
 	}
+	if nm.QuitActivated() {
+		t.Fatal("update restart must not be reported as a normal quit")
+	}
 	if cmd == nil {
 		t.Fatal("expected a quit command, got nil")
 	}

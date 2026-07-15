@@ -93,6 +93,7 @@ func (db *DB) migrate() error {
 			summary        TEXT    NOT NULL DEFAULT '',
 			flags          TEXT    NOT NULL DEFAULT '[]',
 			read           INTEGER NOT NULL DEFAULT 0,
+			starred        INTEGER NOT NULL DEFAULT 0,
 			has_attachment INTEGER NOT NULL DEFAULT 0,
 			headers        TEXT    NOT NULL DEFAULT '',
 			UNIQUE(mailbox_id, uid)
@@ -204,6 +205,8 @@ func (db *DB) migrate() error {
 	db.Exec(`ALTER TABLE mailboxes ADD COLUMN uid_validity INTEGER NOT NULL DEFAULT 0`) //nolint:errcheck
 	db.Exec(`ALTER TABLE messages ADD COLUMN in_reply_to TEXT NOT NULL DEFAULT ''`)     //nolint:errcheck
 	db.Exec(`ALTER TABLE messages ADD COLUMN references_text TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
+	db.Exec(`ALTER TABLE messages ADD COLUMN starred INTEGER NOT NULL DEFAULT 0`)       //nolint:errcheck
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_starred ON messages(starred)`)     //nolint:errcheck
 	// Enforce one local mirror per remote draft. Drop any duplicates a previous
 	// build's check-then-insert race may have created before adding the index.
 	_, _ = db.Exec(`DELETE FROM drafts WHERE remote_uid != 0 AND id NOT IN (
@@ -219,7 +222,7 @@ func (db *DB) migrate() error {
 	if err := db.migrateDraftsBCC(); err != nil {
 		return err
 	}
-	if err := db.rebuildMessageFTS(); err != nil {
+	if err := db.migrateMessageFTS(); err != nil {
 		return err
 	}
 	if err := db.PruneDeletedMessageTombstones(); err != nil {
@@ -305,6 +308,40 @@ func (db *DB) migrateContactMetadataColumns() error {
 func (db *DB) migrateDraftsBCC() error {
 	db.Exec(`ALTER TABLE drafts ADD COLUMN bcc_addr TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
 	return nil
+}
+
+// ftsSchemaVersion is bumped whenever the messages_fts schema or the columns it
+// indexes change, to force a one-time rebuild on the next launch.
+const ftsSchemaVersion = "1"
+
+// migrateMessageFTS rebuilds the full-text index only when necessary, rather than
+// on every launch. A full rebuild over a large mailbox costs ~1s+ and is wasted
+// work: the index is kept current incrementally by upsertMessageFTS/deleteMessageFTS.
+// It rebuilds when the stored schema token is stale (first run after this change,
+// or a future schema bump) or when the row counts drift out of sync (self-heal).
+func (db *DB) migrateMessageFTS() error {
+	stored, err := db.GetSetting("fts_schema_version")
+	if err != nil {
+		return err
+	}
+	needRebuild := stored != ftsSchemaVersion
+	if !needRebuild {
+		var msgCount, ftsCount int64
+		if err := db.QueryRow(`SELECT COUNT(*) FROM messages`).Scan(&msgCount); err != nil {
+			return err
+		}
+		if err := db.QueryRow(`SELECT COUNT(*) FROM messages_fts`).Scan(&ftsCount); err != nil {
+			return err
+		}
+		needRebuild = msgCount != ftsCount
+	}
+	if !needRebuild {
+		return nil
+	}
+	if err := db.rebuildMessageFTS(); err != nil {
+		return err
+	}
+	return db.SetSetting("fts_schema_version", ftsSchemaVersion)
 }
 
 func (db *DB) rebuildMessageFTS() error {

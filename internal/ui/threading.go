@@ -120,10 +120,29 @@ func (m Model) threadedMessagesEnabled() bool {
 
 func (m *Model) rebuildMessageThreads() {
 	if m.threadedMessagesEnabled() {
-		m.messageThreads = buildMessageThreads(m.filteredMessages)
+		threads := buildMessageThreads(m.filteredMessages)
+		if m.starredFirst {
+			// buildMessageThreads orders by date; float threads containing a
+			// starred message to the top while preserving that date order among
+			// equals (mirrors sortFilteredStarred for the non-threaded list).
+			sort.SliceStable(threads, func(i, j int) bool {
+				return threadStarred(threads[i]) && !threadStarred(threads[j])
+			})
+		}
+		m.messageThreads = threads
 		return
 	}
 	m.messageThreads = nil
+}
+
+// threadStarred reports whether any message in the thread is starred.
+func threadStarred(t messageThread) bool {
+	for _, msg := range t.Messages {
+		if msg.Starred {
+			return true
+		}
+	}
+	return false
 }
 
 func (m Model) activeMessageRowCount() int {

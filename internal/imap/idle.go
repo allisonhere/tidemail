@@ -181,7 +181,9 @@ func (w *Watcher) connectAndIdle() error {
 	if err := client.Connect(setupCtx); err != nil {
 		return err
 	}
-	defer client.Close()
+	// Skip the graceful LOGOUT: IdleWait expires the socket on shutdown, so a
+	// round-trip here would only stall teardown on a wedged connection.
+	defer client.closeConn(false) //nolint:errcheck
 	if !client.SupportsIdle(setupCtx) {
 		return ErrIdleUnsupported
 	}

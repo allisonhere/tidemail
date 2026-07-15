@@ -20,11 +20,13 @@ type KeyMap struct {
 	SyncAll       key.Binding
 	MarkRead      key.Binding
 	MarkAllRead   key.Binding
+	ToggleStar    key.Binding
 	OpenBrowser   key.Binding
 	NextLink      key.Binding
 	PrevLink      key.Binding
 	Search        key.Binding
 	UnreadOnly    key.Binding
+	StarredFirst  key.Binding
 	ToggleThreads key.Binding
 	Compose       key.Binding
 	Reply         key.Binding
@@ -95,11 +97,13 @@ var DefaultKeys = KeyMap{
 	SyncAll:       key.NewBinding(key.WithKeys("F", "ctrl+s"), key.WithHelp("F/ctrl+s", "sync all")),
 	MarkRead:      key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "mark read")),
 	MarkAllRead:   key.NewBinding(key.WithKeys("R", "ctrl+x"), key.WithHelp("R/ctrl+x", "mark all read")),
+	ToggleStar:    key.NewBinding(key.WithKeys("*"), key.WithHelp("*", "star")),
 	OpenBrowser:   key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser")),
 	NextLink:      key.NewBinding(key.WithKeys("ctrl+n", "alt+n"), key.WithHelp("ctrl+n", "next link")),
 	PrevLink:      key.NewBinding(key.WithKeys("alt+p"), key.WithHelp("alt+p", "prev link")),
 	Search:        key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
 	UnreadOnly:    key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "toggle unread only")),
+	StarredFirst:  key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "starred first")),
 	ToggleThreads: key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "threads")),
 	Compose:       key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "compose")),
 	Reply:         key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reply")),

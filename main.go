@@ -87,6 +87,12 @@ func run() (code int, restartExec string) {
 		fmt.Print(setColors)
 		defer fmt.Print(resetColors)
 	}
+	var quitIndicator *shutdownIndicator
+	defer func() {
+		if quitIndicator != nil {
+			quitIndicator.Stop()
+		}
+	}()
 
 	var model tea.Model
 	if opts.prototypeForms {
@@ -124,6 +130,9 @@ func run() (code int, restartExec string) {
 	// update restart). main does the exec after this function's defers run.
 	if um, ok := finalModel.(ui.Model); ok {
 		restartExec = um.RestartExecPath()
+		if um.QuitActivated() && restartExec == "" {
+			quitIndicator = startShutdownIndicator()
+		}
 	}
 	return 0, restartExec
 }
