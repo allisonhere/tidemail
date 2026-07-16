@@ -134,6 +134,8 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 | `t` | Toggle starred-first sort (starred messages float to the top) |
 | `Ctrl+Z` | Undo the latest pending message delete, archive, or move within 6 seconds |
 | `o` | Open link on the focus line (falls back to the selected content link) |
+| `Ctrl+U` | Unsubscribe from the mailing list for the open message |
+| `Ctrl+U` in compose | Quickly cycle the sending account; focus From and press `Enter` for the account dropdown |
 | `Ctrl+N` / `Alt+N` | Next content link |
 | `Alt+P` | Previous content link |
 | `Ctrl+E` | Toggle email headers on/off |

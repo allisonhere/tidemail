@@ -87,6 +87,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.Up.Help().Key + "/" + keys.Down.Help().Key, "move focus line; scroll only when needed"},
 				{keys.Back.Help().Key, "return to message list"},
 				{keys.OpenBrowser.Help().Key, "open link on focus line, else selected link"},
+				{keys.Unsubscribe.Help().Key, "unsubscribe from this sender's list"},
 				{keys.NextLink.Help().Key, "next actionable link"},
 				{keys.PrevLink.Help().Key, "previous actionable link"},
 				{keys.ContentSearch.Help().Key + " or " + keys.Search.Help().Key, "find text in opened message"},
@@ -103,7 +104,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		{
 			name: "Compose Modal",
 			entries: []entry{
-				{keys.Tab.Help().Key, "next field; accept recipient suggestion when pending"},
+				{keys.Tab.Help().Key + "/shift+tab", "next/previous field; From opens the sender picker"},
 				{keys.Enter.Help().Key, "advance header fields"},
 				{"ctrl+s/ctrl+d", "send message"},
 				{keys.AttachFile.Help().Key, "attach file"},

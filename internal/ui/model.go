@@ -73,6 +73,7 @@ const (
 	overlayFilterManager
 	overlayDraftCloseConfirm
 	overlayBulkDeleteConfirm
+	overlayUnsubscribeConfirm
 )
 
 type commandPaletteContext int
@@ -143,6 +144,13 @@ type Model struct {
 
 	pendingDestructiveActions []pendingDestructiveAction
 	nextDestructiveActionID   uint64
+
+	pendingSends []pendingSend
+	nextSendID   uint64
+
+	// pendingUnsubscribe holds the message whose List-Unsubscribe action is
+	// awaiting the user's y/n in overlayUnsubscribeConfirm.
+	pendingUnsubscribe db.Message
 
 	viewport               viewport.Model
 	contentLinks           []string
@@ -1031,17 +1039,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case UnsubscribeResultMsg:
+		if msg.Err != nil {
+			// One-click failed; hand the confirmation page to the browser so
+			// the user can still finish the unsubscribe.
+			m.setStatus(fmt.Sprintf("one-click failed (%v) — opening in browser", msg.Err), true)
+			return m, tea.Batch(m.openBrowserCmd(msg.FallbackURL), m.clearStatusCmd())
+		}
+		m.setStatus("unsubscribed", false)
+		return m, m.clearStatusCmd()
+
+	case SendQueuedMsg:
+		return m.handleSendQueued(msg)
+
+	case CommitSendMsg:
+		return m, m.commitPendingSend(msg.ID)
+
 	case MessageSentMsg:
-		draftID := m.compose.draftID
-		m.compose = ComposeModel{}
-		m.overlay = overlayNone
+		m.removePendingSend(msg.PendingID)
 		if msg.Err != nil {
 			m.setStatus(fmt.Sprintf("send failed: %v", msg.Err), true)
 			return m, m.clearStatusCmd()
 		}
 		m.setStatus("message sent", false)
-		if draftID != 0 {
-			return m, tea.Batch(m.deleteDraftCmd(draftID), m.clearStatusCmd())
+		if msg.DraftID != 0 {
+			return m, tea.Batch(m.deleteDraftCmd(msg.DraftID), m.clearStatusCmd())
 		}
 		return m, m.clearStatusCmd()
 
@@ -1196,6 +1218,11 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch {
 	case keyMatches(msg, m.keys.Undo):
+		// A queued send is the most recent (and most urgent) thing to take
+		// back; fall through to message-action undo when none is pending.
+		if m.undoLatestPendingSend() {
+			return m, m.clearStatusCmd()
+		}
 		return m, m.undoLatestDestructive()
 
 	case keyMatches(msg, m.keys.Quit):
@@ -1570,7 +1597,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if cur != nil {
 			acfg := m.accountCfgForMailbox(cur.MailboxID)
-			m.compose = NewReply(*cur, acfg, m.cfg.Accounts)
+			m.compose = NewReply(*cur, acfg, m.cfg.Accounts, m.addressBook)
 			m.overlay = overlayCompose
 		}
 		return m, nil
@@ -1584,7 +1611,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if cur != nil {
 			acfg := m.accountCfgForMailbox(cur.MailboxID)
-			m.compose = NewForward(*cur, acfg, m.cfg.Accounts)
+			m.compose = NewForward(*cur, acfg, m.cfg.Accounts, m.addressBook)
 			m.overlay = overlayCompose
 		}
 		return m, nil
@@ -1614,6 +1641,14 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			if link, ok := m.currentContentLink(); ok {
 				return m, m.openBrowserCmd(link)
+			}
+		}
+		return m, nil
+
+	case keyMatches(msg, m.keys.Unsubscribe):
+		if m.focused == paneContent {
+			if cur := m.currentContentMessage(); cur != nil {
+				return m.handleUnsubscribe(*cur)
 			}
 		}
 		return m, nil
@@ -1890,6 +1925,17 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case keyMatches(msg, m.keys.No), keyMatches(msg, m.keys.Cancel):
 			m.overlay = overlayNone
+		}
+		return m, nil
+
+	case overlayUnsubscribeConfirm:
+		switch {
+		case keyMatches(msg, m.keys.Yes), keyMatches(msg, m.keys.Confirm):
+			m.overlay = overlayNone
+			return m.performUnsubscribe(m.pendingUnsubscribe)
+		case keyMatches(msg, m.keys.No), keyMatches(msg, m.keys.Cancel):
+			m.overlay = overlayNone
+			m.pendingUnsubscribe = db.Message{}
 		}
 		return m, nil
 

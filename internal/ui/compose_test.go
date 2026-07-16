@@ -84,7 +84,7 @@ func TestComposeTabAdvancesAfterAcceptingRecipientSuggestion(t *testing.T) {
 	}
 
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyTab}, DefaultKeys)
-	if got := c.toInput.Value(); got != "alice <alice@example.com>" {
+	if got := c.toInput.Value(); got != "Alice <alice@example.com>" {
 		t.Fatalf("expected tab to accept To suggestion, got %q", got)
 	}
 	if c.focusedField != composeFieldCC {
@@ -107,11 +107,284 @@ func TestComposeTabAdvancesAfterAcceptingCCSuggestion(t *testing.T) {
 	}
 
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyTab}, DefaultKeys)
-	if got := c.ccInput.Value(); got != "carol <carol@example.com>" {
+	if got := c.ccInput.Value(); got != "Carol <carol@example.com>" {
 		t.Fatalf("expected tab to accept CC suggestion, got %q", got)
 	}
 	if c.focusedField != composeFieldBCC {
 		t.Fatalf("tab should accept CC suggestion and advance to BCC, got focus %v", c.focusedField)
+	}
+}
+
+func TestComposeMultiRecipientSegmentCompletion(t *testing.T) {
+	c := NewCompose(config.AccountConfig{}, nil, []string{"Bob <bob@example.com>"})
+
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("alice@x.com, bo"), Paste: true}, DefaultKeys)
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyTab}, DefaultKeys)
+
+	if got := c.toInput.Value(); got != "alice@x.com, Bob <bob@example.com>" {
+		t.Fatalf("expected tab to complete only the last segment, got %q", got)
+	}
+	if c.focusedField != composeFieldCC {
+		t.Fatalf("tab should advance to CC after accepting, got focus %v", c.focusedField)
+	}
+}
+
+func TestComposeDropdownNavigationEnterSelectsAndStays(t *testing.T) {
+	book := []string{"Alice <alice@example.com>", "Alicia <alicia@example.com>"}
+	c := NewCompose(config.AccountConfig{}, nil, book)
+
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ali"), Paste: true}, DefaultKeys)
+	if len(c.suggestions) != 2 {
+		t.Fatalf("expected 2 suggestions for %q, got %v", "ali", c.suggestions)
+	}
+
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyDown}, DefaultKeys)
+	if c.suggestCursor != 1 {
+		t.Fatalf("expected down to move dropdown cursor to 1, got %d", c.suggestCursor)
+	}
+
+	view := c.View(90, 30, BuildStyles(CatppuccinMocha, "compact"))
+	if !strings.Contains(view, "alicia@example.com") {
+		t.Fatal("expected the open dropdown to render its candidates")
+	}
+
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyEnter}, DefaultKeys)
+	if got := c.toInput.Value(); got != "Alicia <alicia@example.com>" {
+		t.Fatalf("expected enter to insert the highlighted candidate, got %q", got)
+	}
+	if c.focusedField != composeFieldTo {
+		t.Fatalf("enter should keep focus in the To field, got %v", c.focusedField)
+	}
+}
+
+func TestComposeEscDismissesDropdownWithoutClosing(t *testing.T) {
+	c := NewCompose(config.AccountConfig{}, nil, []string{"Alice <alice@example.com>"})
+
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ali"), Paste: true}, DefaultKeys)
+	if !c.suggestionsVisible() {
+		t.Fatal("expected dropdown to open after typing a partial match")
+	}
+
+	var exit bool
+	c, _, exit = c.Update(tea.KeyMsg{Type: tea.KeyEsc}, DefaultKeys)
+	if exit {
+		t.Fatal("esc with the dropdown open must dismiss it, not close compose")
+	}
+	if c.suggestionsVisible() {
+		t.Fatal("expected esc to dismiss the dropdown")
+	}
+
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c"), Paste: true}, DefaultKeys)
+	if !c.suggestionsVisible() {
+		t.Fatal("expected typing after esc to reopen the dropdown")
+	}
+}
+
+func TestComposeNoSuggestionsForEmptySegmentOrExactMatch(t *testing.T) {
+	c := NewCompose(config.AccountConfig{}, nil, []string{"Alice <alice@example.com>"})
+	if c.suggestionsVisible() {
+		t.Fatal("expected no dropdown before typing")
+	}
+
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("Alice <alice@example.com>"), Paste: true}, DefaultKeys)
+	if c.suggestionsVisible() {
+		t.Fatalf("expected no dropdown for an exact match, got %v", c.suggestions)
+	}
+}
+
+func composeSenderAccounts() []config.AccountConfig {
+	return []config.AccountConfig{
+		{Name: "Personal", User: "allie@personal.example", From: "Allie <allie@personal.example>", Signature: "Personal sig"},
+		{Name: "Work", User: "allie@work.example", From: "Allie at Work <allie@work.example>", Signature: "Work sig"},
+	}
+}
+
+func TestComposeSenderDropdownSelectsAndCancels(t *testing.T) {
+	accounts := composeSenderAccounts()
+	c := NewCompose(accounts[0], accounts, nil)
+
+	// From is immediately before To, so reverse-tab reaches it without making
+	// new-message compose start anywhere other than the recipient field.
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyShiftTab}, DefaultKeys)
+	if c.focusedField != composeFieldFrom {
+		t.Fatalf("expected shift+tab from To to focus From, got %v", c.focusedField)
+	}
+
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyEnter}, DefaultKeys)
+	if !c.senderPickerOpen || c.senderCursor != 0 {
+		t.Fatalf("expected sender picker at current account, open=%v cursor=%d", c.senderPickerOpen, c.senderCursor)
+	}
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyDown}, DefaultKeys)
+	if c.senderCursor != 1 || c.accountIndex != 0 {
+		t.Fatalf("highlight must not commit sender, cursor=%d account=%d", c.senderCursor, c.accountIndex)
+	}
+
+	view := ansi.Strip(c.View(74, 30, BuildStyles(CatppuccinMocha, "compact")))
+	for _, want := range []string{"Personal", "Work", "allie@work.example"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("expected sender dropdown to show %q, got %q", want, view)
+		}
+	}
+
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyEsc}, DefaultKeys)
+	if c.senderPickerOpen || c.accountIndex != 0 {
+		t.Fatalf("expected escape to cancel sender choice, open=%v account=%d", c.senderPickerOpen, c.accountIndex)
+	}
+
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeySpace}, DefaultKeys)
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyDown}, DefaultKeys)
+	before := c
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyEnter}, DefaultKeys)
+	if c.senderPickerOpen || c.accountIndex != 1 {
+		t.Fatalf("expected enter to choose Work, open=%v account=%d", c.senderPickerOpen, c.accountIndex)
+	}
+	if !composeChanged(before, c) {
+		t.Fatal("expected confirmed sender choice to participate in draft autosave")
+	}
+	draft := c.toDraftRecord()
+	if draft.AccountIndex != 1 || draft.AccountName != "Work" || draft.AccountUser != "allie@work.example" {
+		t.Fatalf("expected draft to retain selected sender, got %+v", draft)
+	}
+}
+
+func TestComposeSenderDropdownUsesSelectedAccountWhenSending(t *testing.T) {
+	accounts := composeSenderAccounts()
+	c := NewForward(db.Message{From: "source@example.com", Subject: "News", BodyText: "Original"}, accounts[0], accounts, nil)
+	c.focusedField = composeFieldFrom
+	c.openSenderPicker()
+	c.senderCursor = 1
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyEnter}, DefaultKeys)
+	c.toInput.SetValue("reader@example.com")
+	c.bodyInput.SetValue("Forwarding this")
+
+	_, cmd, _ := c.send()
+	queued := cmd().(SendQueuedMsg)
+	if queued.Account.Name != "Work" || queued.Account.User != "allie@work.example" {
+		t.Fatalf("expected Work SMTP account, got %+v", queued.Account)
+	}
+	if !strings.Contains(queued.Msg.Body, "-- \nWork sig") {
+		t.Fatalf("expected Work signature, got %q", queued.Msg.Body)
+	}
+}
+
+func TestComposeSenderDropdownCapsVisibleRows(t *testing.T) {
+	accounts := make([]config.AccountConfig, 7)
+	for i := range accounts {
+		accounts[i] = config.AccountConfig{Name: fmt.Sprintf("Account %d", i+1), User: fmt.Sprintf("user%d@example.com", i+1)}
+	}
+	c := NewCompose(accounts[0], accounts, nil)
+	c.focusedField = composeFieldFrom
+	c.openSenderPicker()
+	c.senderCursor = len(accounts) - 1
+
+	rows := c.renderSenderRows(74, 10, newManagerChrome(74, CatppuccinMocha, false))
+	if len(rows) != maxSenderOptions {
+		t.Fatalf("expected at most %d sender rows, got %d", maxSenderOptions, len(rows))
+	}
+	view := ansi.Strip(strings.Join(rows, "\n"))
+	if !strings.Contains(view, "Account 7") || strings.Contains(view, "Account 1") {
+		t.Fatalf("expected sender window to scroll to final account, got %q", view)
+	}
+}
+
+func TestComposeSenderFieldSkippedForSingleAccount(t *testing.T) {
+	account := config.AccountConfig{Name: "Only", User: "only@example.com"}
+	c := NewCompose(account, []config.AccountConfig{account}, nil)
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyShiftTab}, DefaultKeys)
+	if c.focusedField != composeFieldBody {
+		t.Fatalf("expected single-account compose to skip From, got %v", c.focusedField)
+	}
+}
+
+func TestComposeCtrlUStillQuickCyclesSender(t *testing.T) {
+	accounts := composeSenderAccounts()
+	c := NewCompose(accounts[0], accounts, nil)
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyCtrlU}, DefaultKeys)
+	if c.accountIndex != 1 || c.senderPickerOpen {
+		t.Fatalf("expected ctrl+u to quick-cycle without opening picker, account=%d open=%v", c.accountIndex, c.senderPickerOpen)
+	}
+}
+
+func TestSenderPickerIsAvailableAcrossComposeModes(t *testing.T) {
+	accounts := composeSenderAccounts()
+	message := db.Message{From: "source@example.com", Subject: "Update", BodyText: "Original", MessageID: "<original@example.com>"}
+	draft := db.Draft{AccountName: "Work", AccountUser: "allie@work.example", AccountIndex: 1}
+
+	models := []ComposeModel{
+		NewCompose(accounts[1], accounts, nil),
+		NewReply(message, accounts[1], accounts, nil),
+		NewForward(message, accounts[1], accounts, nil),
+		NewComposeFromDraft(draft, accounts, nil),
+	}
+	for i, c := range models {
+		if c.accountIndex != 1 {
+			t.Fatalf("compose mode %d did not preserve its initial sender: %d", i, c.accountIndex)
+		}
+		c.focusedField = composeFieldFrom
+		c.openSenderPicker()
+		if !c.senderPickerOpen || c.senderCursor != 1 {
+			t.Fatalf("compose mode %d did not open sender picker at current account", i)
+		}
+	}
+}
+
+func TestComposeLayoutBudgetsSenderDropdownRows(t *testing.T) {
+	accounts := composeSenderAccounts()
+	c := NewCompose(accounts[0], accounts, nil)
+	_, _, closedH := c.composeLayout(74, 32, BuildStyles(CatppuccinMocha, "compact"))
+	c.focusedField = composeFieldFrom
+	c.openSenderPicker()
+	_, _, openH := c.composeLayout(74, 32, BuildStyles(CatppuccinMocha, "compact"))
+	if closedH-openH != len(accounts) {
+		t.Fatalf("expected dropdown to reserve %d rows, closed=%d open=%d", len(accounts), closedH, openH)
+	}
+}
+
+func TestReplyRecipientAutocomplete(t *testing.T) {
+	c := NewReply(db.Message{From: "alice@example.com", MessageID: "<x>", Subject: "S"},
+		config.AccountConfig{}, nil, []string{"Bob <bob@example.com>"})
+
+	// Reply lands in the body; wrap around to the prefilled To field and add a
+	// second recipient.
+	c.advanceField(1)
+	if c.focusedField != composeFieldTo {
+		t.Fatalf("expected focus on To after advancing from body, got %v", c.focusedField)
+	}
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(", bo"), Paste: true}, DefaultKeys)
+	if len(c.suggestions) != 1 || c.suggestions[0] != "Bob <bob@example.com>" {
+		t.Fatalf("expected reply compose to suggest Bob, got %v", c.suggestions)
+	}
+}
+
+func TestSendAppendsAccountSignature(t *testing.T) {
+	acfg := config.AccountConfig{Signature: "Allie\nTideMail"}
+	c := NewCompose(acfg, nil, nil)
+	c.toInput.SetValue("bob@example.com")
+	c.bodyInput.SetValue("hi bob")
+
+	_, cmd, _ := c.send()
+	if cmd == nil {
+		t.Fatal("expected send to produce a command")
+	}
+	queued, ok := cmd().(SendQueuedMsg)
+	if !ok {
+		t.Fatalf("expected SendQueuedMsg, got %T", cmd())
+	}
+	want := "hi bob\n\n-- \nAllie\nTideMail\n"
+	if queued.Msg.Body != want {
+		t.Fatalf("expected signature appended, got %q", queued.Msg.Body)
+	}
+}
+
+func TestSendWithoutSignatureLeavesBodyAlone(t *testing.T) {
+	c := NewCompose(config.AccountConfig{}, nil, nil)
+	c.toInput.SetValue("bob@example.com")
+	c.bodyInput.SetValue("hi bob")
+
+	_, cmd, _ := c.send()
+	queued := cmd().(SendQueuedMsg)
+	if queued.Msg.Body != "hi bob" {
+		t.Fatalf("expected untouched body, got %q", queued.Msg.Body)
 	}
 }
 
@@ -121,7 +394,7 @@ func TestReplyTypingStartsAboveQuotedMessage(t *testing.T) {
 		Subject:   "Plans",
 		MessageID: "<plans@example.com>",
 		BodyText:  "quoted line",
-	}, config.AccountConfig{}, nil)
+	}, config.AccountConfig{}, nil, nil)
 	c.focusedField = composeFieldBody
 	c.bodyInput.Focus()
 
@@ -228,7 +501,7 @@ func TestComposeBodyEditorSyncedToRenderWidth(t *testing.T) {
 	m = next.(Model)
 	m.overlay = overlayCompose
 	m.compose = NewReply(db.Message{From: "A", MessageID: "<x>", Subject: "S", BodyText: "hello"},
-		config.AccountConfig{}, nil)
+		config.AccountConfig{}, nil, nil)
 	m.compose.focusedField = composeFieldBody
 
 	// Any key routed through handleCompose should size the stored editor.
@@ -354,7 +627,7 @@ func TestForwardTypingStartsAboveQuotedMessage(t *testing.T) {
 		Subject:   "Plans",
 		MessageID: "<plans@example.com>",
 		BodyText:  "forwarded line",
-	}, config.AccountConfig{}, nil)
+	}, config.AccountConfig{}, nil, nil)
 	c.focusedField = composeFieldBody
 	c.bodyInput.Focus()
 

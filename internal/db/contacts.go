@@ -159,6 +159,28 @@ func (db *DB) ContactAddresses() ([]string, error) {
 	return out, nil
 }
 
+// AutocompleteAddresses returns the recipient-autocomplete candidates: curated
+// contacts first, then addresses seen in synced mail that aren't contacts yet.
+// Each entry is formatted "Display Name <addr>" (or the bare addr).
+func (db *DB) AutocompleteAddresses() ([]string, error) {
+	out, err := db.ContactAddresses()
+	if err != nil {
+		return nil, err
+	}
+	seen, err := db.SeenAddresses()
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range seen {
+		if c.DisplayName != "" {
+			out = append(out, c.DisplayName+" <"+c.Addr+">")
+		} else {
+			out = append(out, c.Addr)
+		}
+	}
+	return out, nil
+}
+
 func (db *DB) SeenAddresses() ([]Contact, error) {
 	knownContacts, err := db.ListContacts()
 	if err != nil {

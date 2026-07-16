@@ -24,7 +24,8 @@ import (
 type composeField int
 
 const (
-	composeFieldTo composeField = iota
+	composeFieldFrom composeField = iota
+	composeFieldTo
 	composeFieldCC
 	composeFieldBCC
 	composeFieldSubject
@@ -68,6 +69,19 @@ type ComposeModel struct {
 
 	accounts     []config.AccountConfig
 	accountIndex int
+
+	// senderPickerOpen exposes the account choice behind the From row without
+	// changing accountIndex until the highlighted option is confirmed.
+	senderPickerOpen bool
+	senderCursor     int
+
+	// Recipient autocomplete: addressBook holds "Name <addr>" candidates;
+	// suggestions is the dropdown for the segment being typed in the focused
+	// To/CC/BCC field. Esc dismisses the dropdown until the value changes.
+	addressBook      []string
+	suggestions      []string
+	suggestCursor    int
+	suggestDismissed bool
 
 	attachments    []attachmentFile
 	picker         filePicker
@@ -141,22 +155,14 @@ func NewComposeFromDraft(draft db.Draft, accounts []config.AccountConfig, addres
 	return c
 }
 
-// SetAddressBook populates autocomplete suggestions for To and CC fields.
+// SetAddressBook populates autocomplete candidates for the To/CC/BCC fields.
 func (c *ComposeModel) SetAddressBook(addrs []string) {
-	if len(addrs) == 0 {
-		return
-	}
-	c.toInput.ShowSuggestions = true
-	c.toInput.SetSuggestions(addrs)
-	c.ccInput.ShowSuggestions = true
-	c.ccInput.SetSuggestions(addrs)
-	c.bccInput.ShowSuggestions = true
-	c.bccInput.SetSuggestions(addrs)
+	c.addressBook = addrs
 }
 
 // NewReply creates a compose model pre-filled for replying to a message.
-func NewReply(original db.Message, acfg config.AccountConfig, accounts []config.AccountConfig) ComposeModel {
-	c := NewCompose(acfg, accounts, nil)
+func NewReply(original db.Message, acfg config.AccountConfig, accounts []config.AccountConfig, addressBook []string) ComposeModel {
+	c := NewCompose(acfg, accounts, addressBook)
 	c.quoteCollapsed = true
 	replyTo := original.ReplyTo
 	if replyTo == "" {
@@ -187,8 +193,8 @@ func NewReply(original db.Message, acfg config.AccountConfig, accounts []config.
 // NewForward creates a compose model for forwarding a message.
 // To field is left empty for the user to fill in. Subject is prefixed with "Fwd:".
 // The original body is quoted with a "Forwarded message" header and original attachments are included.
-func NewForward(original db.Message, acfg config.AccountConfig, accounts []config.AccountConfig) ComposeModel {
-	c := NewCompose(acfg, accounts, nil)
+func NewForward(original db.Message, acfg config.AccountConfig, accounts []config.AccountConfig, addressBook []string) ComposeModel {
+	c := NewCompose(acfg, accounts, addressBook)
 	c.quoteCollapsed = true
 	c.isForward = true
 
@@ -501,10 +507,19 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 	if c.picker.active {
 		return c.updatePicker(km, keys)
 	}
+	if c.senderPickerOpen {
+		return c.updateSenderPicker(km, keys)
+	}
 
 	// Normal compose mode
 	switch {
 	case keyMatches(km, keys.Cancel):
+		// With the autocomplete dropdown open, Esc dismisses it (until the
+		// field value changes again) rather than closing compose.
+		if c.suggestionsVisible() {
+			c.suggestDismissed = true
+			return c, nil, false
+		}
 		// In vim mode the body editor owns Esc (Insert→Normal; a second Esc in
 		// Normal or :q emits ripple.CancelMsg, handled above). Route it to the
 		// editor instead of closing compose outright.
@@ -519,24 +534,30 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 		return c.send()
 
 	case keyMatches(km, keys.Tab):
-		// If the focused input has matched suggestions, let it accept one.
-		// Otherwise Tab advances to the next field.
-		if c.focusedField == composeFieldTo && hasPendingComposeSuggestion(c.toInput) {
-			c.toInput, _ = c.toInput.Update(msg)
-			c.advanceField(1)
-			return c, nil, false
-		}
-		if c.focusedField == composeFieldCC && hasPendingComposeSuggestion(c.ccInput) {
-			c.ccInput, _ = c.ccInput.Update(msg)
-			c.advanceField(1)
-			return c, nil, false
-		}
-		if c.focusedField == composeFieldBCC && hasPendingComposeSuggestion(c.bccInput) {
-			c.bccInput, _ = c.bccInput.Update(msg)
-			c.advanceField(1)
-			return c, nil, false
+		// With the dropdown open, Tab accepts the selected suggestion, then
+		// advances to the next field either way.
+		if c.suggestionsVisible() {
+			c.acceptSuggestion()
 		}
 		c.advanceField(1)
+		return c, nil, false
+
+	case km.String() == "shift+tab":
+		c.advanceField(-1)
+		return c, nil, false
+
+	case c.focusedField == composeFieldFrom && (keyMatches(km, keys.Confirm) || keyMatches(km, keys.Space)):
+		c.openSenderPicker()
+		return c, nil, false
+
+	// Dropdown navigation. Only the raw arrow/emacs keys — keys.Up/Down also
+	// bind j/k, which must keep inserting into the address field.
+	case c.suggestionsVisible() && (km.String() == "down" || km.String() == "ctrl+n"):
+		c.suggestCursor = (c.suggestCursor + 1) % len(c.suggestions)
+		return c, nil, false
+
+	case c.suggestionsVisible() && (km.String() == "up" || km.String() == "ctrl+p"):
+		c.suggestCursor = (c.suggestCursor - 1 + len(c.suggestions)) % len(c.suggestions)
 		return c, nil, false
 
 	case keyMatches(km, keys.AttachFile):
@@ -571,22 +592,42 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 		switch c.focusedField {
 		case composeFieldTo:
 			if keyMatches(km, keys.Confirm) {
+				// Enter picks the highlighted suggestion and stays in the
+				// field so another recipient can follow after a comma.
+				if c.suggestionsVisible() {
+					c.acceptSuggestion()
+					return c, nil, false
+				}
 				c.advanceField(1)
 				return c, nil, false
 			}
+			before := c.toInput.Value()
 			c.toInput, cmd = c.toInput.Update(msg)
+			c.refreshSuggestions(c.toInput.Value(), before)
 		case composeFieldCC:
 			if keyMatches(km, keys.Confirm) {
+				if c.suggestionsVisible() {
+					c.acceptSuggestion()
+					return c, nil, false
+				}
 				c.advanceField(1)
 				return c, nil, false
 			}
+			before := c.ccInput.Value()
 			c.ccInput, cmd = c.ccInput.Update(msg)
+			c.refreshSuggestions(c.ccInput.Value(), before)
 		case composeFieldBCC:
 			if keyMatches(km, keys.Confirm) {
+				if c.suggestionsVisible() {
+					c.acceptSuggestion()
+					return c, nil, false
+				}
 				c.advanceField(1)
 				return c, nil, false
 			}
+			before := c.bccInput.Value()
 			c.bccInput, cmd = c.bccInput.Update(msg)
+			c.refreshSuggestions(c.bccInput.Value(), before)
 		case composeFieldSubject:
 			if keyMatches(km, keys.Confirm) {
 				c.advanceField(1)
@@ -602,18 +643,95 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 	}
 }
 
-func hasPendingComposeSuggestion(input textinput.Model) bool {
-	matches := input.MatchedSuggestions()
-	if len(matches) == 0 {
+// maxRecipientSuggestions caps the autocomplete dropdown height.
+const maxRecipientSuggestions = 5
+
+// suggestionsVisible reports whether the autocomplete dropdown should render
+// and own its navigation keys.
+func (c ComposeModel) suggestionsVisible() bool {
+	if c.suggestDismissed || len(c.suggestions) == 0 {
 		return false
 	}
-	value := strings.TrimSpace(input.Value())
-	for _, match := range matches {
-		if strings.EqualFold(value, strings.TrimSpace(match)) {
-			return false
+	switch c.focusedField {
+	case composeFieldTo, composeFieldCC, composeFieldBCC:
+		return true
+	default:
+		return false
+	}
+}
+
+// splitActiveSegment splits a comma-separated recipient list into the part
+// already committed (through the last comma and any following spaces) and the
+// segment still being typed.
+func splitActiveSegment(value string) (prefix, seg string) {
+	i := strings.LastIndex(value, ",") + 1
+	prefix, seg = value[:i], value[i:]
+	trimmed := strings.TrimLeft(seg, " ")
+	prefix += seg[:len(seg)-len(trimmed)]
+	return prefix, trimmed
+}
+
+// matchAddresses returns address-book entries whose "Name <addr>" form
+// contains seg (case-insensitive), skipping an already-complete match.
+func matchAddresses(book []string, seg string) []string {
+	if seg == "" {
+		return nil
+	}
+	needle := strings.ToLower(seg)
+	var out []string
+	for _, cand := range book {
+		if strings.EqualFold(strings.TrimSpace(cand), seg) {
+			continue
+		}
+		if strings.Contains(strings.ToLower(cand), needle) {
+			out = append(out, cand)
+			if len(out) == maxRecipientSuggestions {
+				break
+			}
 		}
 	}
-	return true
+	return out
+}
+
+// refreshSuggestions recomputes the dropdown after a keystroke moved the
+// focused recipient field from oldValue to newValue. Unchanged values (cursor
+// movement) leave the dropdown — and an Esc dismissal — as they were.
+func (c *ComposeModel) refreshSuggestions(newValue, oldValue string) {
+	if newValue == oldValue {
+		return
+	}
+	c.suggestDismissed = false
+	c.suggestCursor = 0
+	_, seg := splitActiveSegment(newValue)
+	c.suggestions = matchAddresses(c.addressBook, seg)
+}
+
+// acceptSuggestion replaces the segment being typed with the highlighted
+// candidate, leaving earlier comma-separated recipients intact.
+func (c *ComposeModel) acceptSuggestion() {
+	input := c.focusedRecipientInput()
+	if input == nil || c.suggestCursor >= len(c.suggestions) {
+		return
+	}
+	prefix, _ := splitActiveSegment(input.Value())
+	input.SetValue(prefix + c.suggestions[c.suggestCursor])
+	input.CursorEnd()
+	c.suggestions = nil
+	c.suggestCursor = 0
+	c.dirty = true
+}
+
+func (c *ComposeModel) focusedRecipientInput() *textinput.Model {
+	switch c.focusedField {
+	case composeFieldTo:
+		return &c.toInput
+	case composeFieldCC:
+		return &c.ccInput
+	case composeFieldBCC:
+		return &c.bccInput
+	default:
+		return nil
+	}
 }
 
 // updatePicker handles key events in the file picker overlay.
@@ -660,7 +778,17 @@ func (c ComposeModel) updatePicker(km tea.KeyMsg, keys KeyMap) (ComposeModel, te
 }
 
 func (c *ComposeModel) advanceField(delta int) {
-	next := (int(c.focusedField) + delta + int(composeFieldCount)) % int(composeFieldCount)
+	c.senderPickerOpen = false
+	c.suggestions = nil
+	c.suggestCursor = 0
+	c.suggestDismissed = false
+	next := int(c.focusedField)
+	for {
+		next = (next + delta + int(composeFieldCount)) % int(composeFieldCount)
+		if composeField(next) != composeFieldFrom || len(c.accounts) > 1 {
+			break
+		}
+	}
 	c.focusedField = composeField(next)
 	c.toInput.Blur()
 	c.ccInput.Blur()
@@ -683,6 +811,42 @@ func (c *ComposeModel) advanceField(delta int) {
 		// Without this the body sits in Normal and the first Esc closes outright.
 		c.bodyInput.EnterInsert()
 	}
+}
+
+const maxSenderOptions = 5
+
+func (c *ComposeModel) openSenderPicker() {
+	if len(c.accounts) < 2 {
+		return
+	}
+	c.senderCursor = clamp(c.accountIndex, 0, len(c.accounts)-1)
+	c.senderPickerOpen = true
+}
+
+func (c ComposeModel) updateSenderPicker(km tea.KeyMsg, keys KeyMap) (ComposeModel, tea.Cmd, bool) {
+	switch {
+	case keyMatches(km, keys.Cancel):
+		c.senderPickerOpen = false
+	case keyMatches(km, keys.Up):
+		c.senderCursor = (c.senderCursor - 1 + len(c.accounts)) % len(c.accounts)
+	case keyMatches(km, keys.Down):
+		c.senderCursor = (c.senderCursor + 1) % len(c.accounts)
+	case keyMatches(km, keys.Confirm):
+		c.accountIndex = clamp(c.senderCursor, 0, len(c.accounts)-1)
+		c.senderPickerOpen = false
+		c.statusMsg = fmt.Sprintf("sender: %s", c.selectedAccountLabel())
+		c.isErr = false
+	}
+	return c, nil, false
+}
+
+func (c ComposeModel) visibleSenderRange() (start, end int) {
+	count := min(maxSenderOptions, len(c.accounts))
+	if count == 0 {
+		return 0, 0
+	}
+	start = clamp(c.senderCursor-count/2, 0, len(c.accounts)-count)
+	return start, start + count
 }
 
 func (c ComposeModel) selectedAccount() config.AccountConfig {
@@ -769,6 +933,9 @@ func (c ComposeModel) send() (ComposeModel, tea.Cmd, bool) {
 	}
 
 	body := c.bodyInput.Value()
+	if sig := strings.TrimSpace(acfg.Signature); sig != "" {
+		body = strings.TrimRight(body, "\n") + "\n\n-- \n" + sig + "\n"
+	}
 	msg := smtp.OutgoingMessage{
 		To:          parseAddressList(to),
 		CC:          parseAddressList(c.ccInput.Value()),
@@ -783,18 +950,17 @@ func (c ComposeModel) send() (ComposeModel, tea.Cmd, bool) {
 	c.busy = true
 	c.statusMsg = "Sending..."
 	c.isErr = false
-	return c, sendMessageCmd(acfg, msg), false
+	// The model owns dispatch: it either sends immediately or holds the
+	// message for the send-delay undo window (see handleSendQueued).
+	return c, func() tea.Msg { return SendQueuedMsg{Account: acfg, Msg: msg} }, false
 }
 
-func sendMessageCmd(acfg config.AccountConfig, msg smtp.OutgoingMessage) tea.Cmd {
+func sendMessageCmd(acfg config.AccountConfig, msg smtp.OutgoingMessage, draftID int64, pendingID uint64) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		err := smtp.Send(ctx, acfg, msg)
-		if err != nil {
-			return MessageSentMsg{Err: err}
-		}
-		return MessageSentMsg{}
+		return MessageSentMsg{Err: err, DraftID: draftID, PendingID: pendingID}
 	}
 }
 
@@ -854,6 +1020,28 @@ func fileIcon(name string) string {
 	}
 }
 
+// renderSuggestionRows renders the autocomplete dropdown rows shown under the
+// focused recipient field: a rail marks the highlighted candidate, indented to
+// line up with the field's control column.
+func (c ComposeModel) renderSuggestionRows(width, labelW int, chrome managerChrome) []string {
+	rows := make([]string, 0, len(c.suggestions))
+	rowW := max(1, width-2) // minus the 2-cell rail
+	indent := strings.Repeat(" ", max(0, labelW))
+	for i, s := range c.suggestions {
+		selected := i == c.suggestCursor
+		bg := chrome.baseBg
+		fg := chrome.muted
+		if selected {
+			bg = chrome.fieldBg
+			fg = chrome.text
+		}
+		label := lipgloss.NewStyle().Background(bg).Foreground(fg).
+			Render(indent + " " + truncate(s, max(1, rowW-labelW-2)))
+		rows = append(rows, softRail(chrome, selected, bg)+padStyled(label, rowW, bg))
+	}
+	return rows
+}
+
 func (c ComposeModel) selectedAccountLabel() string {
 	acfg := c.selectedAccount()
 	s := acfg.From
@@ -864,6 +1052,40 @@ func (c ComposeModel) selectedAccountLabel() string {
 		s = acfg.Name
 	}
 	return s
+}
+
+func senderOptionLabel(acfg config.AccountConfig) string {
+	identity := acfg.From
+	if identity == "" {
+		identity = acfg.User
+	}
+	if acfg.Name == "" || acfg.Name == identity {
+		return identity
+	}
+	if identity == "" {
+		return acfg.Name
+	}
+	return acfg.Name + " — " + identity
+}
+
+func (c ComposeModel) renderSenderRows(width, labelW int, chrome managerChrome) []string {
+	start, end := c.visibleSenderRange()
+	rows := make([]string, 0, end-start)
+	rowW := max(1, width-2)
+	indent := strings.Repeat(" ", max(0, labelW))
+	for i := start; i < end; i++ {
+		selected := i == c.senderCursor
+		bg := chrome.baseBg
+		fg := chrome.muted
+		if selected {
+			bg = chrome.fieldBg
+			fg = chrome.text
+		}
+		label := lipgloss.NewStyle().Background(bg).Foreground(fg).
+			Render(indent + " " + truncate(senderOptionLabel(c.accounts[i]), max(1, rowW-labelW-2)))
+		rows = append(rows, softRail(chrome, selected, bg)+padStyled(label, rowW, bg))
+	}
+	return rows
 }
 
 // composeOverlayWidth is the width of the compose overlay box for a given
@@ -903,6 +1125,13 @@ func (c ComposeModel) composeLayout(width, height int, styles Styles) (hints str
 	fixedLines += 2 // message group title + blank
 	fixedLines++    // Subject
 	fixedLines++    // spacer before body
+	if c.suggestionsVisible() {
+		fixedLines += len(c.suggestions) // autocomplete dropdown rows
+	}
+	if c.senderPickerOpen {
+		start, end := c.visibleSenderRange()
+		fixedLines += end - start
+	}
 	if c.inReplyTo != "" {
 		fixedLines++ // quote toggle line
 	}
@@ -945,14 +1174,21 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 	}
 
 	pairs := []string{"^s", "send", "^g", "grammar", "^u", "sender", "alt+f", "attach", "tab", "next"}
-	if len(c.attachments) > 0 {
-		pairs = append(pairs, "^r", "remove")
+	if c.senderPickerOpen {
+		pairs = []string{"↑↓", "choose sender", "enter", "select", "esc", "cancel"}
+	} else {
+		if c.focusedField == composeFieldFrom {
+			pairs = append(pairs, "enter", "pick sender")
+		}
+		if len(c.attachments) > 0 {
+			pairs = append(pairs, "^r", "remove")
+		}
+		if c.focusedField == composeFieldBody {
+			// Copy/cut act on the editor selection, so only show them in the body.
+			pairs = append(pairs, "^c", "copy", "^x", "cut")
+		}
+		pairs = append(pairs, "esc", "cancel")
 	}
-	if c.focusedField == composeFieldBody {
-		// Copy/cut act on the editor selection, so only show them in the body.
-		pairs = append(pairs, "^c", "copy", "^x", "cut")
-	}
-	pairs = append(pairs, "esc", "cancel")
 	for i := 0; i+1 < len(pairs); i += 2 {
 		parts = append(parts, keyStyle.Render(pairs[i])+lblStyle.Render(" "+pairs[i+1]))
 	}
@@ -1090,11 +1326,31 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	// recipients
 	rows = append(rows, renderSoftGroupTitle("recipients", width, chrome))
 	rows = append(rows, blankRow(chrome.baseBg))
-	fromText := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render(c.selectedAccountLabel())
-	rows = append(rows, renderSoftRow("From", false, renderInsetControl(fromText, max(1, width-2-labelW), 2, chrome), width, labelW, chrome))
+	fromFocused := c.focusedField == composeFieldFrom
+	fromW := max(1, width-2-labelW)
+	fromLabel := senderOptionLabel(c.selectedAccount())
+	fromControl := renderSoftPicker(fromW, fromLabel, fromFocused, chrome)
+	if len(c.accounts) < 2 {
+		fromText := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render(fromLabel)
+		fromControl = renderInsetControl(fromText, fromW, 2, chrome)
+	}
+	rows = append(rows, renderSoftRow("From", fromFocused, fromControl, width, labelW, chrome))
+	if c.senderPickerOpen {
+		rows = append(rows, c.renderSenderRows(width, labelW, chrome)...)
+	}
+	// Each recipient row is followed by the autocomplete dropdown when it is
+	// the focused field; composeLayout budgets the extra lines.
+	suggestionRows := func(field composeField) {
+		if c.suggestionsVisible() && c.focusedField == field {
+			rows = append(rows, c.renderSuggestionRows(width, labelW, chrome)...)
+		}
+	}
 	rows = append(rows, softInput("To", c.toInput, composeFieldTo))
+	suggestionRows(composeFieldTo)
 	rows = append(rows, softInput("CC", c.ccInput, composeFieldCC))
+	suggestionRows(composeFieldCC)
 	rows = append(rows, softInput("BCC", c.bccInput, composeFieldBCC))
+	suggestionRows(composeFieldBCC)
 
 	// message
 	rows = append(rows, blankRow(chrome.baseBg)) // gap between groups

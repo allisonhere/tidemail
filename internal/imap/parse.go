@@ -204,8 +204,9 @@ func normalizeHeaderWhitespace(s string) string {
 	return strings.Join(strings.Fields(strings.TrimSpace(s)), " ")
 }
 
-// parseAuthHeaders extracts SPF, DKIM, DMARC, Return-Path, and Received
-// headers from raw MIME header text. Returns a compact display string.
+// parseAuthHeaders extracts SPF, DKIM, DMARC, Return-Path, Received, and
+// List-Unsubscribe headers from raw MIME header text. Returns a compact
+// display string of "Label\nvalue\n" pairs.
 func parseAuthHeaders(raw []byte) string {
 	// Parse headers using net/textproto
 	tr := textproto.NewReader(bufio.NewReader(bytes.NewReader(raw)))
@@ -256,6 +257,15 @@ func parseAuthHeaders(raw []byte) string {
 	}
 	if v := hdr.Get("X-Spam-Score"); v != "" {
 		lines = append(lines, authLine{"X-Spam-Score", v})
+	}
+	// List-Unsubscribe: kept so the UI can offer one-key unsubscribe. The
+	// -Post companion marks RFC 8058 one-click support (unsubscribe via a
+	// single background POST instead of a browser round-trip).
+	if v := hdr.Get("List-Unsubscribe"); v != "" {
+		lines = append(lines, authLine{"List-Unsubscribe", v})
+		if p := hdr.Get("List-Unsubscribe-Post"); p != "" {
+			lines = append(lines, authLine{"List-Unsubscribe-Post", p})
+		}
 	}
 
 	if len(lines) == 0 {

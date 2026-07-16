@@ -215,6 +215,7 @@ const (
 	amFieldUser
 	amFieldPass
 	amFieldFrom
+	amFieldSignature
 	amFieldSyncInterval
 	amFieldCount
 )
@@ -274,6 +275,7 @@ type AccountManager struct {
 	passInput     textinput.Model
 	fromInput     textinput.Model
 	syncInput     textinput.Model
+	sigInput      textinput.Model
 
 	provider      string
 	focusedField  amField
@@ -296,6 +298,7 @@ func NewAccountManager(database *db.DB) AccountManager {
 	am.passInput = newAMInput("password", true)
 	am.fromInput = newAMInput("Your Name <you@example.com>", false)
 	am.syncInput = newAMInput("0 (disabled)", false)
+	am.sigInput = newAMInput(`signature (\n for a new line)`, false)
 	return am
 }
 
@@ -327,6 +330,7 @@ func (am *AccountManager) focusField(f amField) {
 	am.passInput.Blur()
 	am.fromInput.Blur()
 	am.syncInput.Blur()
+	am.sigInput.Blur()
 	switch f {
 	case amFieldName:
 		am.nameInput.Focus()
@@ -348,6 +352,8 @@ func (am *AccountManager) focusField(f amField) {
 		am.fromInput.Focus()
 	case amFieldSyncInterval:
 		am.syncInput.Focus()
+	case amFieldSignature:
+		am.sigInput.Focus()
 	}
 }
 
@@ -369,6 +375,8 @@ func (am *AccountManager) populateFormFrom(acfg config.AccountConfig) {
 	am.passInput.SetValue(acfg.Password)
 	am.fromInput.SetValue(acfg.From)
 	am.syncInput.SetValue(strconv.Itoa(acfg.SyncMinutes))
+	// The form is single-line; real newlines round-trip as literal \n escapes.
+	am.sigInput.SetValue(strings.ReplaceAll(acfg.Signature, "\n", `\n`))
 }
 
 func (am AccountManager) buildCfg() config.AccountConfig {
@@ -393,6 +401,7 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 		Password:    am.passInput.Value(),
 		From:        strings.TrimSpace(am.fromInput.Value()),
 		SyncMinutes: func() int { n, _ := strconv.Atoi(am.syncInput.Value()); return n }(),
+		Signature:   strings.ReplaceAll(strings.TrimSpace(am.sigInput.Value()), `\n`, "\n"),
 	}
 	if preset, ok := providerPresets[am.provider]; ok {
 		cfg.IMAPHost = preset.IMAPHost
@@ -529,6 +538,8 @@ func (am *AccountManager) updateFocusedInput(msg tea.Msg) tea.Cmd {
 		am.fromInput, cmd = am.fromInput.Update(msg)
 	case amFieldSyncInterval:
 		am.syncInput, cmd = am.syncInput.Update(msg)
+	case amFieldSignature:
+		am.sigInput, cmd = am.sigInput.Update(msg)
 	}
 	return cmd
 }
@@ -588,7 +599,7 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 			}
 		}
 		if keyMatches(km, keys.Confirm) {
-			if am.focusedField == amFieldFrom {
+			if am.focusedField == amFieldSyncInterval {
 				// submit
 				return am.submitForm()
 			}
@@ -967,26 +978,32 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 		anchors[field] = viewLineCount(rows)
 		addLine(line)
 	}
+	addSection := func(title string) {
+		if len(rows) > 1 {
+			addBlank()
+		}
+		heading := rail(false) + lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Foreground(chrome.accent).
+			Bold(true).
+			Padding(0, 1).
+			Render(title)
+		addLine(padStyled(heading, width, chrome.baseBg))
+	}
 
+	addSection("Account")
 	addControl(amFieldProvider, providerRow(am.focusedField == amFieldProvider))
-	addBlank()
 	addControl(amFieldName, row("Name", am.nameInput, am.focusedField == amFieldName))
-	addBlank()
 	addControl(amFieldColor, colorRow(am.focusedField == amFieldColor))
-	addBlank()
 	if am.provider == "Custom" {
+		addSection("Incoming mail")
 		addControl(amFieldIMAPHost, row("IMAP Host", am.imapHostInput, am.focusedField == amFieldIMAPHost))
-		addBlank()
 		addControl(amFieldIMAPPort, row("IMAP Port", am.imapPortInput, am.focusedField == amFieldIMAPPort))
-		addBlank()
 		addControl(amFieldIMAPTLS, tlsRow("IMAP TLS", am.imapTLS, am.focusedField == amFieldIMAPTLS))
-		addBlank()
+		addSection("Outgoing mail")
 		addControl(amFieldSMTPHost, row("SMTP Host", am.smtpHostInput, am.focusedField == amFieldSMTPHost))
-		addBlank()
 		addControl(amFieldSMTPPort, row("SMTP Port", am.smtpPortInput, am.focusedField == amFieldSMTPPort))
-		addBlank()
 		addControl(amFieldSMTPTLS, tlsRow("SMTP TLS", am.smtpTLS, am.focusedField == amFieldSMTPTLS))
-		addBlank()
 	}
 	userLabel := "Username"
 	passInput := am.passInput
@@ -994,11 +1011,10 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 		userLabel = "Email"
 		passInput.Placeholder = preset.PassHint
 	}
+	addSection("Credentials")
 	addControl(amFieldUser, row(userLabel, am.userInput, am.focusedField == amFieldUser))
-	addBlank()
 	// Auth method toggle (Gmail only)
 	addControl(amFieldPass, row("Password", passInput, am.focusedField == amFieldPass))
-	addBlank()
 	if am.provider == "Gmail" {
 		for _, hint := range []string{
 			"Gmail needs an App Password (not your normal password):",
@@ -1010,10 +1026,12 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 			hintRight := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, fieldW-2)).Padding(0, 1).Render(hint)
 			addLine(lipgloss.JoinHorizontal(lipgloss.Left, hintLeft, hintRight))
 		}
-		addBlank()
 	}
-	addControl(amFieldFrom, row("From", am.fromInput, am.focusedField == amFieldFrom))
-	addControl(amFieldSyncInterval, row("Sync (min)", am.syncInput, am.focusedField == amFieldSyncInterval))
+	addSection("Sending identity")
+	addControl(amFieldFrom, row("From name/address", am.fromInput, am.focusedField == amFieldFrom))
+	addControl(amFieldSignature, row("Signature", am.sigInput, am.focusedField == amFieldSignature))
+	addSection("Sync")
+	addControl(amFieldSyncInterval, row("Every (min)", am.syncInput, am.focusedField == amFieldSyncInterval))
 
 	statusLine := ""
 	if am.statusMsg != "" {

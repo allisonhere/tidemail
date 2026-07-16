@@ -6,6 +6,7 @@ import (
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
 	"github.com/allisonhere/tide/internal/filter"
+	"github.com/allisonhere/tide/internal/smtp"
 	"github.com/allisonhere/tide/internal/update"
 )
 
@@ -112,7 +113,22 @@ type MailboxReadUpdatedMsg struct {
 }
 
 type MessageSentMsg struct {
-	Err error
+	Err       error
+	DraftID   int64  // draft to delete on success (0 = none)
+	PendingID uint64 // pending-send entry to clear (0 = immediate send)
+}
+
+// SendQueuedMsg is emitted by the compose overlay when the user hits send;
+// the model decides whether to dispatch immediately or hold the message for
+// the configured undo grace period.
+type SendQueuedMsg struct {
+	Account config.AccountConfig
+	Msg     smtp.OutgoingMessage
+}
+
+// CommitSendMsg fires when a pending send's grace period elapses.
+type CommitSendMsg struct {
+	ID uint64
 }
 
 type DraftSavedMsg struct {

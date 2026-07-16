@@ -197,6 +197,33 @@ func TestSeenAddressesDedupesAndExcludesContacts(t *testing.T) {
 	}
 }
 
+func TestAutocompleteAddressesContactsFirstThenSeenNoDupes(t *testing.T) {
+	d := newTestDB(t)
+	accountID, _ := d.AddAccount("Acct", "")
+	mailboxID, _ := d.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
+	_ = d.UpsertMessage(Message{
+		MailboxID: mailboxID,
+		UID:       1,
+		From:      "Carol <carol@example.com>",
+		To:        "Alice <alice@example.com>",
+	})
+	_, _ = d.AddContact("alice@example.com", "Alice", "manual")
+
+	got, err := d.AutocompleteAddresses()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"Alice <alice@example.com>", "Carol <carol@example.com>"}
+	if len(got) != len(want) {
+		t.Fatalf("expected %v, got %v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("expected %v, got %v", want, got)
+		}
+	}
+}
+
 func TestInitMigratesLegacyAutoContactsToCuratedSchema(t *testing.T) {
 	database, err := openSQLite(filepath.Join(t.TempDir(), "mail.db"))
 	if err != nil {

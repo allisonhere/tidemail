@@ -298,3 +298,17 @@ func TestSanitizeControl(t *testing.T) {
 		}
 	}
 }
+
+func TestParseAuthHeadersKeepsListUnsubscribe(t *testing.T) {
+	raw := []byte("Return-Path: <news@list.example.com>\r\n" +
+		"List-Unsubscribe: <mailto:leave@list.example.com>, <https://list.example.com/leave>\r\n" +
+		"List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n" +
+		"Subject: hi\r\n\r\n")
+	got := parseAuthHeaders(raw)
+	want := "Return-Path\n<news@list.example.com>\n" +
+		"List-Unsubscribe\n<mailto:leave@list.example.com>, <https://list.example.com/leave>\n" +
+		"List-Unsubscribe-Post\nList-Unsubscribe=One-Click\n"
+	if got != want {
+		t.Fatalf("parseAuthHeaders = %q, want %q", got, want)
+	}
+}

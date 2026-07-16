@@ -12,6 +12,7 @@ SyncAll,"F,ctrl+s",F/ctrl+s,sync all,main
 MarkRead,x,x,mark read,main
 MarkAllRead,"R,ctrl+x",R/ctrl+x,mark all read,main
 OpenBrowser,o,o,open in browser,main
+Unsubscribe,ctrl+u,ctrl+u,unsubscribe,content
 NextLink,"ctrl+n,alt+n",ctrl+n,next link,content
 PrevLink,alt+p,alt+p,prev link,content
 Search,/,/,search,main

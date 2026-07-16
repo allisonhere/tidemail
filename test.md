@@ -142,6 +142,8 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 | `Shift+Up` / `Shift+Down` | Resize the messages/content split |
 | `u` | Toggle unread-only view |
 | `o` | Open the link on the focus line, or the selected content link |
+| `Ctrl+U` | Unsubscribe from the mailing list for the open message |
+| `Ctrl+U` in compose | Quickly cycle the sending account; focus From and press `Enter` for the account dropdown |
 | `Ctrl+N` / `Alt+N` | Next content link |
 | `Alt+P` | Previous content link |
 | `Ctrl+E` | Toggle email headers |

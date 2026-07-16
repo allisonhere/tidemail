@@ -130,7 +130,7 @@ func run() (code int, restartExec string) {
 	// update restart). main does the exec after this function's defers run.
 	if um, ok := finalModel.(ui.Model); ok {
 		restartExec = um.RestartExecPath()
-		if restartExec == "" && (um.QuitActivated() || um.HasPendingDestructiveActions()) {
+		if restartExec == "" && (um.QuitActivated() || um.HasPendingDestructiveActions() || um.HasPendingSends()) {
 			quitIndicator = startShutdownIndicator()
 		}
 		if err := um.FlushPendingDestructiveActions(); err != nil {
@@ -139,6 +139,13 @@ func run() (code int, restartExec string) {
 				quitIndicator = nil
 			}
 			fmt.Fprintln(os.Stderr, "pending message action failed:", config.RedactSecrets(err.Error(), cfg))
+		}
+		if err := um.FlushPendingSends(); err != nil {
+			if quitIndicator != nil {
+				quitIndicator.Stop()
+				quitIndicator = nil
+			}
+			fmt.Fprintln(os.Stderr, "pending send failed:", config.RedactSecrets(err.Error(), cfg))
 		}
 	}
 	return 0, restartExec

@@ -52,6 +52,7 @@ type DisplayConfig struct {
 	Browser               string             `toml:"browser"`
 	Density               string             `toml:"density"`
 	ComposeVim            bool               `toml:"compose_vim"`
+	SendDelaySeconds      int                `toml:"send_delay_seconds"` // undo grace period; 0 = send immediately
 	VT52                  RetroTerminalTweak `toml:"vt52"`
 	VT100                 RetroTerminalTweak `toml:"vt100"`
 }
@@ -97,6 +98,10 @@ type AccountConfig struct {
 	Password    string `toml:"password"`
 	From        string `toml:"from"`
 	SyncMinutes int    `toml:"sync_minutes"` // 0 = no auto-sync
+	// Signature is appended to outgoing mail after a standard "-- " delimiter.
+	// The account form accepts literal \n escapes for multi-line signatures;
+	// TOML multi-line strings work too when editing the file directly.
+	Signature string `toml:"signature"`
 
 	// OAuth2 — if RefreshToken is set, OAuth2 is used instead of password.
 	// ClientID and ClientSecret are auto-filled from the app-level [oauth] config at load time.
@@ -136,6 +141,7 @@ func DefaultConfig() Config {
 			ConfirmQuit:           true,
 			ShowHeaders:           true,
 			Notifications:         true,
+			SendDelaySeconds:      5,
 		},
 		Updates: UpdatesConfig{
 			CheckOnStartup:     true,

@@ -151,7 +151,7 @@ func (m *Model) visibleMessagesCmd() tea.Cmd {
 func (m *Model) loadAddressBookCmd() tea.Cmd {
 	database := m.db
 	return func() tea.Msg {
-		addrs, err := database.ContactAddresses()
+		addrs, err := database.AutocompleteAddresses()
 		return AddressBookLoadedMsg{Addresses: addrs, Err: err}
 	}
 }

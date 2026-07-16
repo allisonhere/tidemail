@@ -27,6 +27,25 @@ func (m Model) renderOverlay(base string) string {
 		inner = clampView(inner, quitW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderSoftPanelBox(inner, quitW, "tidemail", "quit tide?", chrome)
 
+	case overlayUnsubscribeConfirm:
+		winW := 52
+		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
+		method := "opens the list's page in your browser"
+		if supportsOneClickUnsubscribe(m.pendingUnsubscribe.Headers) {
+			method = "one-click, handled by tidemail"
+		}
+		text := fmt.Sprintf("Unsubscribe via %s?\n(%s)", unsubscribeHost(m.pendingUnsubscribe), method)
+		body := lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Foreground(chrome.text).
+			Width(winW).
+			Padding(1, 2).
+			Render(text)
+		hints := renderSoftHints(winW, chrome, "y/enter", "unsubscribe", "esc", "cancel")
+		inner := lipgloss.JoinVertical(lipgloss.Left, body, hints)
+		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
+		box = renderSoftPanelBox(inner, winW, "tidemail", "unsubscribe?", chrome)
+
 	case overlayDraftCloseConfirm:
 		winW := 48
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)

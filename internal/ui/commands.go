@@ -164,7 +164,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		acfg := m.accountCfgForMailbox(msg.MailboxID)
-		m.compose = NewReply(*msg, acfg, m.cfg.Accounts)
+		m.compose = NewReply(*msg, acfg, m.cfg.Accounts, m.addressBook)
 		m.overlay = overlayCompose
 		return m, nil
 	case "forward":
@@ -173,7 +173,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		acfg := m.accountCfgForMailbox(msg.MailboxID)
-		m.compose = NewForward(*msg, acfg, m.cfg.Accounts)
+		m.compose = NewForward(*msg, acfg, m.cfg.Accounts, m.addressBook)
 		m.overlay = overlayCompose
 		return m, nil
 	case "archive":

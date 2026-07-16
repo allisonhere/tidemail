@@ -8,6 +8,7 @@ import (
 )
 
 var httpURLPattern = regexp.MustCompile(`https?://[^\s<>"']+`)
+var unsubscribeURIPattern = regexp.MustCompile(`(?i)(?:https?://|mailto:)[^\s<>"']+`)
 
 func extractActionableLinks(content, articleURL string) []string {
 	seen := map[string]struct{}{}

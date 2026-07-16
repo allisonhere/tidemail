@@ -22,6 +22,7 @@ type KeyMap struct {
 	MarkAllRead   key.Binding
 	ToggleStar    key.Binding
 	OpenBrowser   key.Binding
+	Unsubscribe   key.Binding
 	NextLink      key.Binding
 	PrevLink      key.Binding
 	Search        key.Binding
@@ -100,6 +101,7 @@ var DefaultKeys = KeyMap{
 	MarkAllRead:   key.NewBinding(key.WithKeys("R", "ctrl+x"), key.WithHelp("R/ctrl+x", "mark all read")),
 	ToggleStar:    key.NewBinding(key.WithKeys("*"), key.WithHelp("*", "star")),
 	OpenBrowser:   key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser")),
+	Unsubscribe:   key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "unsubscribe")),
 	NextLink:      key.NewBinding(key.WithKeys("ctrl+n", "alt+n"), key.WithHelp("ctrl+n", "next link")),
 	PrevLink:      key.NewBinding(key.WithKeys("alt+p"), key.WithHelp("alt+p", "prev link")),
 	Search:        key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),

@@ -244,7 +244,7 @@ func TestAccountManagerFormStaysCompactInShortView(t *testing.T) {
 
 	view := am.View(74, 28, BuildStyles(CatppuccinMocha, "compact"))
 
-	for _, want := range []string{"Name", "Color", "IMAP Host", "SMTP Host", "Username", "From", "test", "cancel"} {
+	for _, want := range []string{"Account", "Incoming mail", "Outgoing mail", "Credentials", "Sending identity", "Name", "Color", "IMAP Host", "SMTP Host", "Username", "From", "test", "cancel"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expected compact account form to keep %q visible, got %q", want, view)
 		}
@@ -265,11 +265,26 @@ func TestAccountManagerFormScrollsFocusedFieldIntoShortView(t *testing.T) {
 
 	view := ansi.Strip(am.View(74, 12, BuildStyles(CatppuccinMocha, "compact")))
 
-	if !strings.Contains(view, "Sync (min)") {
+	if !strings.Contains(view, "Every (min)") {
 		t.Fatalf("expected short account form to scroll sync field into view, got %q", view)
 	}
 	if strings.Contains(view, "Provider") {
 		t.Fatalf("expected top form rows to scroll out of short view, got %q", view)
+	}
+}
+
+func TestAccountManagerFormNavigationMatchesVisualOrder(t *testing.T) {
+	am := NewAccountManager(nil)
+	am.mode = amEdit
+	am.focusField(amFieldFrom)
+
+	am.advanceField(1)
+	if am.focusedField != amFieldSignature {
+		t.Fatalf("expected signature after sender identity, got field %v", am.focusedField)
+	}
+	am.advanceField(1)
+	if am.focusedField != amFieldSyncInterval {
+		t.Fatalf("expected sync after signature, got field %v", am.focusedField)
 	}
 }
 
