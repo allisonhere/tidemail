@@ -2,7 +2,10 @@
 
 All notable changes to TideMail are documented in this file.
 
-## Unreleased
+## v0.9.2
+
+**Release highlights:** undo for destructive message actions, more faithful
+HTML email rendering, and a living violet Pride DNA signature in About.
 
 ### Added
 
