@@ -2,6 +2,33 @@
 
 All notable changes to TideMail are documented in this file.
 
+## v0.9.3
+
+**Release highlights:** send cancellation, per-account signatures, sender
+selection, one-key unsubscribe, and contact suggestions in compose.
+
+### Added
+
+- **Cancel a send with `ctrl+z`.** TideMail holds outgoing mail for five seconds
+  by default. Press `ctrl+z` during that window to reopen the message. Change
+  the delay in Settings → Editor, or set it to `0` for immediate sending.
+- **Each account can use its own signature.** Set a signature in the account
+  manager. TideMail adds it when you send from that account.
+- **Choose the sender from the From row.** New messages, replies, forwards, and
+  reopened drafts share the account picker. `ctrl+u` still cycles accounts.
+- **Unsubscribe from the content pane with `ctrl+u`.** TideMail uses the standard
+  unsubscribe header when available and can fall back to a labeled unsubscribe
+  link in the message.
+- **Compose suggests more addresses.** To, CC, and BCC search saved contacts
+  first, then addresses found in synced mail.
+
+### Changed
+
+- **The account editor now groups related fields.** Account identity, incoming
+  mail, outgoing mail, credentials, sending identity, and sync settings have
+  their own sections.
+- **README and in-app help cover the new compose and message actions.**
+
 ## v0.9.2
 
 **Release highlights:** undo for destructive message actions, more faithful

@@ -29,6 +29,15 @@ func TestRenderHelpDocumentsContactsAndNotifications(t *testing.T) {
 	}
 }
 
+func TestRenderHelpDocumentsComposeAndMessageActionUpdates(t *testing.T) {
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys, ""))
+	for _, want := range []string{"cancel queued send", "sender picker", "Signature", "send delay", "unsubscribe"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("expected help to document %q, got %q", want, view)
+		}
+	}
+}
+
 func TestRenderHelpDocumentsAccountManagerShortcutAsUppercaseM(t *testing.T) {
 	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys, ""))
 	if !strings.Contains(view, "M accounts") {

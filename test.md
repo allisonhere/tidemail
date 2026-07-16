@@ -38,10 +38,13 @@ go build -o tidemail .
 - Optional vim editing in compose, enabled in Settings -> Editor or `[display] compose_vim`
 - IMAP and SMTP accounts with passwords or app passwords stored in the system keychain
 - Account manager for adding, editing, deleting, and discovering mailboxes
-- Contacts manager with autocomplete, manual entries, seen-sender import, selected-contact compose, and vCard import/export
+- Compose suggestions from saved contacts and addresses found in synced mail
+- Per-account From addresses, signatures, and a sender picker in compose
 - vCard import/export for email, display name, phone, organization, title, and notes
 - Server-backed sync, read and unread state, archive, move, delete, compose, and reply
-- Local drafts that autosave to each account's Drafts mailbox while you type
+- Local drafts that save to the selected sender account while you type
+- A configurable send delay that lets `Ctrl+Z` cancel and reopen queued mail
+- One-key unsubscribe from the content pane with `Ctrl+U`
 - Local-first delete that hides messages at once, moves remote mail to Trash when available, and keeps deleted mail from returning on later syncs
 - Archive detection for `\Archive`, `Archive`, `Archives`, and `All Mail`
 - Trash detection for `\Trash`, `Trash`, `Deleted Items`, `Deleted Messages`, and Gmail's Trash label
@@ -73,7 +76,7 @@ Press `M` to open account management, add an IMAP/SMTP account, then press `s` t
 
 Compose autosaves your message to the sending account's Drafts mailbox while you type. If you close compose with content, TideMail prompts you to save or discard. Open the Drafts mailbox to see saved drafts, press `Enter` to reopen a draft, and press `d` to delete it. Sending a draft removes it from Drafts.
 
-Press `C` to open Contacts. Contacts power compose autocomplete. Press `n` to add a contact, `f` to add addresses seen in mail, `i` to import a vCard file, `x` to export `contacts.vcf`, `Space` to select contacts, `c` to compose to selected contacts, and `d` to delete selected contacts. vCard import and export keep email, display name, phone, organization, title, and note fields.
+Press `C` to open Contacts. Compose lists saved contacts before addresses found in your mail. Press `n` to add a contact, `f` to browse seen addresses, `i` to import a vCard file, or `x` to export `contacts.vcf`.
 
 ## Credential Safety
 
@@ -103,6 +106,9 @@ Example account config:
 ```toml
 theme = "catppuccin-mocha"
 
+[display]
+send_delay_seconds = 5
+
 [[account]]
 name = "Personal"
 imap_host = "imap.example.com"
@@ -114,6 +120,7 @@ smtp_tls = true
 user = "alice@example.com"
 password = "app-password"
 from = "Alice <alice@example.com>"
+signature = "Alice\nSent with TideMail"
 sync_minutes = 5  # auto-sync every 5 min (0 = off)
 ```
 
@@ -141,9 +148,10 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 | `Shift+Left` / `Shift+Right` | Resize the accounts pane |
 | `Shift+Up` / `Shift+Down` | Resize the messages/content split |
 | `u` | Toggle unread-only view |
+| `Ctrl+Z` | Cancel a queued send, or undo the latest pending delete, archive, or move |
 | `o` | Open the link on the focus line, or the selected content link |
 | `Ctrl+U` | Unsubscribe from the mailing list for the open message |
-| `Ctrl+U` in compose | Quickly cycle the sending account; focus From and press `Enter` for the account dropdown |
+| `Ctrl+U` in compose | Cycle the sending account; focus From and press `Enter` to open the account picker |
 | `Ctrl+N` / `Alt+N` | Next content link |
 | `Alt+P` | Previous content link |
 | `Ctrl+E` | Toggle email headers |
@@ -163,7 +171,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 Press `S` to open Settings.
 
 - Display: icons, date format, mark-read behavior, focus line, sender display, unread-first ordering, actionable links, reading width, browser command, density, email headers, desktop notifications, and quit confirmation
-- Editor: vim keys in the compose body, off by default
+- Editor: vim keys and the delay that lets you cancel a send with `Ctrl+Z`
 - Updates: check, install, restart, or copy a manual install command
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings
 - Advanced: logs and feed max body size
