@@ -9,6 +9,15 @@ All notable changes to TideMail are documented in this file.
 - **Delete, archive, and move actions can be undone.** Message actions disappear
   immediately but wait six seconds before syncing to the server; press `ctrl+z`
   to restore the latest pending single or bulk action.
+- **The About screen now carries a living Pride DNA signature.** A responsive
+  violet double helix hides a cinematic six-color message for curious
+  visitors to discover.
+
+### Changed
+
+- **HTML email rendering is more readable and predictable.** Newsletters,
+  semantic tables, reply quotes, calls to action, image descriptions, and wide
+  preformatted blocks retain useful structure without loading remote content.
 
 ## v0.9.1
 

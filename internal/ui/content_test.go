@@ -270,6 +270,126 @@ func TestRenderHTMLBodyRendersEmailQuoteBlocks(t *testing.T) {
 	}
 }
 
+func TestRenderHTMLBodyNormalizesProviderQuoteContainers(t *testing.T) {
+	for _, marker := range []string{"yahoo_quoted", "protonmail_quote", "divRplyFwdMsg", "appendonsend"} {
+		t.Run(marker, func(t *testing.T) {
+			got := ansi.Strip(renderHTMLBody(`<div>New reply</div><div class="`+marker+`">Earlier message</div>`, 80, CatppuccinMocha, true))
+			if !strings.Contains(got, "New reply") || !strings.Contains(got, "| Earlier message") {
+				t.Fatalf("expected %s container rendered as a quote, got %q", marker, got)
+			}
+		})
+	}
+}
+
+func TestRenderHTMLBodyRemovesHiddenContentAndTrackingPixels(t *testing.T) {
+	html := `<p>Visible introduction.</p>` +
+		`<p style=" DISPLAY : NONE !important ">display secret</p>` +
+		`<p style="visibility: collapse">visibility secret</p>` +
+		`<p style="opacity: 0.0">opacity secret</p>` +
+		`<p style="font-size: 0rem">font secret</p>` +
+		`<p aria-hidden=" TRUE ">aria secret</p>` +
+		`<img width="1" height="1" src="https://tracker.example/open.gif" alt="tracking pixel">` +
+		`<img src="https://cdn.example/chart.png" alt="Quarterly chart">`
+
+	got := ansi.Strip(renderHTMLBody(html, 80, CatppuccinMocha, true))
+	for _, hidden := range []string{"display secret", "visibility secret", "opacity secret", "font secret", "aria secret", "tracking pixel", "tracker.example"} {
+		if strings.Contains(got, hidden) {
+			t.Fatalf("expected hidden or tracking content %q removed from %q", hidden, got)
+		}
+	}
+	if !strings.Contains(got, "Visible introduction.") || !strings.Contains(got, "[image: Quarterly chart]") {
+		t.Fatalf("expected visible content and useful image alt text, got %q", got)
+	}
+}
+
+func TestRenderHTMLBodyKeepsImageDescriptionInsideDataTable(t *testing.T) {
+	html := `<table><tr><th>Metric</th><th>Chart</th></tr><tr><td>Revenue</td><td><img src="https://cdn.example/chart.png" alt="Revenue by quarter"></td></tr></table>`
+	got := ansi.Strip(renderHTMLBody(html, 56, CatppuccinMocha, true))
+
+	if !strings.Contains(got, "[image: Revenue by quarter]") || strings.Contains(got, "cdn.example") {
+		t.Fatalf("expected data-table image description without remote URL, got %q", got)
+	}
+}
+
+func TestRenderHTMLBodyTreatsCaptionAndRoleTablesAsData(t *testing.T) {
+	for name, html := range map[string]string{
+		"caption": `<table><caption>Builds</caption><tr><td>Main</td><td>Passing</td></tr></table>`,
+		"role":    `<table role="table"><tr><td>API</td><td>Healthy</td></tr></table>`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := ansi.Strip(renderHTMLBody(html, 40, CatppuccinMocha, true))
+			if !strings.Contains(got, " | ") {
+				t.Fatalf("expected semantic table rendered in columns, got %q", got)
+			}
+			if name == "caption" && !strings.Contains(got, "Builds") {
+				t.Fatalf("expected table caption preserved, got %q", got)
+			}
+		})
+	}
+}
+
+func TestRenderHTMLBodyPreservesDataTableInsideLayoutTable(t *testing.T) {
+	html := `<table><tr><td><p>Report details</p><table><tr><th>Name</th><th>Status</th></tr><tr><td>API</td><td>Healthy</td></tr></table></td></tr></table>`
+	got := ansi.Strip(renderHTMLBody(html, 48, CatppuccinMocha, true))
+
+	if strings.Count(got, "Report details") != 1 || !strings.Contains(got, "Name | Status") || !strings.Contains(got, "API  | Healthy") {
+		t.Fatalf("expected nested data table preserved inside flattened layout, got %q", got)
+	}
+}
+
+func TestRenderHTMLBodyKeepsNewsletterSemanticsInLayoutTables(t *testing.T) {
+	html := `<table><tr><td><h2>Weekly report</h2><p>Everything important.</p>` +
+		`<ul><li>First item</li><li>Second item</li></ul>` +
+		`<a role="button" href="https://example.com/report">View report</a></td></tr></table>`
+	got := ansi.Strip(renderHTMLBody(html, 48, CatppuccinMocha, true))
+
+	for _, want := range []string{"Weekly report", "Everything important.", "First item", "Second item", "[View report]"} {
+		if count := strings.Count(got, want); count != 1 {
+			t.Fatalf("expected %q exactly once, got %d occurrences in %q", want, count, got)
+		}
+	}
+	if strings.Contains(got, "https://example.com/report") {
+		t.Fatalf("expected CTA destination kept out of body text, got %q", got)
+	}
+}
+
+func TestRenderHTMLBodyConstrainsWideSemanticBlocks(t *testing.T) {
+	longCell := strings.Repeat("quarterly-results-", 8)
+	longCode := "    " + strings.Repeat("configuration-value-", 8)
+	html := `<table><tr><th>Item</th><th>Value</th></tr><tr><td>Report</td><td>` + longCell + `</td></tr></table>` +
+		`<pre>` + longCode + `</pre>`
+
+	for _, plainUI := range []bool{true, false} {
+		got := renderHTMLBody(html, 36, CatppuccinMocha, plainUI)
+		for _, line := range strings.Split(got, "\n") {
+			if gotWidth := ansi.StringWidth(line); gotWidth > 36 {
+				t.Fatalf("plainUI=%t: expected width <= 36, got %d in %q", plainUI, gotWidth, ansi.Strip(line))
+			}
+		}
+	}
+}
+
+func TestRenderMessageBodyFallsBackWhenHTMLHasNoVisibleContent(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	got := ansi.Strip(m.renderMessageBody(db.Message{
+		BodyHTML: `<script>alert("no")</script><p style="display:none">hidden</p>`,
+		BodyText: "Readable fallback body.",
+	}, 48))
+
+	if !strings.Contains(got, "Readable fallback body.") || strings.Contains(got, "alert") || strings.Contains(got, "hidden") {
+		t.Fatalf("expected plain-text fallback for empty HTML rendering, got %q", got)
+	}
+}
+
+func TestRenderHTMLBodyHandlesMalformedMarkup(t *testing.T) {
+	got := ansi.Strip(renderHTMLBody(`<div><h2>Update<p>Still readable<table><tr><td>One<td>Two`, 40, CatppuccinMocha, true))
+	for _, want := range []string{"Update", "Still readable", "One", "Two"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected malformed HTML content %q preserved in %q", want, got)
+		}
+	}
+}
+
 func TestWrapWordsBreaksLongURLsWithoutEllipsis(t *testing.T) {
 	url := "https://example.com/" + strings.Repeat("really-long-path-segment-", 5)
 	got := wrapWords("Open "+url+" today", 32)

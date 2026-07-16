@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -803,6 +804,64 @@ func TestSettingsAboutActions(t *testing.T) {
 	}
 }
 
+func TestSettingsAboutHeartActivatesReveal(t *testing.T) {
+	for _, key := range []tea.KeyMsg{{Type: tea.KeyEnter}, {Type: tea.KeySpace}} {
+		s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+		s.setActiveSection(ssAbout)
+		s.setFocusedPane(settingsPaneDetail)
+		s.setFocusedField(sfAboutHeart)
+
+		next, _, _ := s.Update(key, DefaultKeys)
+		if !next.aboutRevealActive || next.aboutRevealFrame != 0 {
+			t.Fatalf("expected heart activation to start reveal at frame 0, got active=%t frame=%d", next.aboutRevealActive, next.aboutRevealFrame)
+		}
+	}
+}
+
+func TestModelRoutesAboutHeartActivationThroughSettingsOverlay(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.overlay = overlaySettings
+	m.settings.setActiveSection(ssAbout)
+	m.settings.setFocusedPane(settingsPaneDetail)
+	m.settings.setFocusedField(sfAboutHeart)
+
+	nextModel, _ := m.handleSettings(tea.KeyMsg{Type: tea.KeyEnter})
+	next := nextModel.(Model)
+	if !next.settings.aboutRevealActive || next.settings.aboutRevealFrame != 0 {
+		t.Fatalf("expected overlay-routed Enter to activate heart, got active=%t frame=%d", next.settings.aboutRevealActive, next.settings.aboutRevealFrame)
+	}
+	for range settingsAboutRevealStart {
+		nextModel, _ = next.handleSettings(settingsAboutPulseMsg{})
+		next = nextModel.(Model)
+	}
+	view := ansi.Strip(next.settings.View(80, 24, newManagerChrome(80, CatppuccinMocha, false)))
+	if !strings.Contains(view, "LOVE IS LOVE") || !strings.Contains(view, "✦ ❤ ✦") {
+		t.Fatalf("expected routed reveal and active heart halo, got %q", view)
+	}
+}
+
+func TestSettingsAboutHeartRestartsReveal(t *testing.T) {
+	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	s.setActiveSection(ssAbout)
+	s.setFocusedPane(settingsPaneDetail)
+	s.setFocusedField(sfAboutHeart)
+	s.aboutRevealActive = true
+	s.aboutRevealFrame = 19
+
+	next, _, _ := s.Update(tea.KeyMsg{Type: tea.KeyEnter}, DefaultKeys)
+	if !next.aboutRevealActive || next.aboutRevealFrame != 0 {
+		t.Fatalf("expected repeated heart activation to restart reveal, got active=%t frame=%d", next.aboutRevealActive, next.aboutRevealFrame)
+	}
+}
+
+func TestSettingsAboutHeartFocusOrder(t *testing.T) {
+	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	want := []settingsField{sfBackToSections, sfAboutHeart, sfAboutRepo, sfAboutIssues}
+	if got := s.sectionFields(ssAbout); !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected About focus order %#v, got %#v", want, got)
+	}
+}
+
 func TestSettingsAboutAnimationTicksOnlyWhenVisible(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	s.setActiveSection(ssAbout)
@@ -819,6 +878,9 @@ func TestSettingsAboutAnimationTicksOnlyWhenVisible(t *testing.T) {
 	after, cmd, _ := next.Update(settingsAboutPulseMsg{}, DefaultKeys)
 	if after.aboutGradientFrame != 0 {
 		t.Fatalf("expected about gradient frame to reset outside ABOUT, got %d", after.aboutGradientFrame)
+	}
+	if after.aboutRevealActive || after.aboutRevealFrame != 0 {
+		t.Fatalf("expected reveal state reset outside ABOUT, got active=%t frame=%d", after.aboutRevealActive, after.aboutRevealFrame)
 	}
 	if cmd != nil {
 		t.Fatal("expected no follow-up tick when ABOUT is not visible")
@@ -865,16 +927,6 @@ func TestSettingsSectionDetailBgUsesBlackForAbout(t *testing.T) {
 	}
 }
 
-func TestAboutHeroSpacerRowsAreBlank(t *testing.T) {
-	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
-	for _, row := range []int{1, 3} {
-		line := ansi.Strip(s.renderAboutHeroTextLine("", 28, row, false))
-		if strings.TrimSpace(line) != "" {
-			t.Fatalf("expected blank spacer row %d, got %q", row, line)
-		}
-	}
-}
-
 func TestSettingsAboutTaglineStaysOnOneLine(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	s.setActiveSection(ssAbout)
@@ -885,7 +937,7 @@ func TestSettingsAboutTaglineStaysOnOneLine(t *testing.T) {
 	}
 }
 
-func TestSettingsAboutHeroSpacesTitleFromDNABar(t *testing.T) {
+func TestSettingsAboutHeroPlacesTitleAboveDNA(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	s.setActiveSection(ssAbout)
 	view := ansi.Strip(s.renderAboutHero(56, newManagerChrome(84, CatppuccinMocha, false)))
@@ -895,23 +947,30 @@ func TestSettingsAboutHeroSpacesTitleFromDNABar(t *testing.T) {
 		if !strings.Contains(line, "TIDEMAIL") {
 			continue
 		}
-		if i+1 >= len(lines) {
-			t.Fatalf("expected spacer row after title, got end of hero in %q", view)
-		}
-		if strings.Trim(lines[i+1], " │") != "" {
-			t.Fatalf("expected blank spacer row after title, got %q in %q", lines[i+1], view)
+		if i+1 >= len(lines) || !strings.ContainsAny(lines[i+1], "╱╲●◆│") {
+			t.Fatalf("expected animated DNA immediately below title, got %q", view)
 		}
 		return
 	}
 	t.Fatalf("expected about hero title in %q", view)
 }
 
-func TestSettingsAboutHeroKeepsPreviousHeight(t *testing.T) {
+func TestSettingsAboutHeroUsesFullHelixHeight(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	s.setActiveSection(ssAbout)
 	view := s.renderAboutHero(56, newManagerChrome(84, CatppuccinMocha, false))
+	if got := lipgloss.Height(view); got != 9 {
+		t.Fatalf("expected full about hero height 9, got %d", got)
+	}
+}
+
+func TestSettingsAboutHeroUsesCompactHelixInShortPane(t *testing.T) {
+	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	s.setActiveSection(ssAbout)
+	s.detailHeight = 22
+	view := s.renderAboutHero(56, newManagerChrome(84, CatppuccinMocha, false))
 	if got := lipgloss.Height(view); got != 7 {
-		t.Fatalf("expected about hero height 7, got %d", got)
+		t.Fatalf("expected compact about hero height 7, got %d", got)
 	}
 }
 
@@ -936,37 +995,146 @@ func TestSettingsAboutGradientDoesNotShiftHeroLayout(t *testing.T) {
 	}
 }
 
-func TestRenderDNASignalBarUsesStaticBrailleHelixGlyphs(t *testing.T) {
-	bar := renderDNASignalBar(24, 0)
-	stripped := ansi.Strip(bar)
-	if got := lipgloss.Width(stripped); got != 24 {
-		t.Fatalf("expected DNA signal bar width 24, got %d in %q", got, stripped)
+func TestRenderPrideDNAUsesTwoMovingStrandsAndRungs(t *testing.T) {
+	first := renderPrideDNA(40, 5, 0, false, 0, false)
+	next := renderPrideDNA(40, 5, 1, false, 0, false)
+	if len(first) != 5 || len(next) != 5 {
+		t.Fatalf("expected five helix rows, got %d and %d", len(first), len(next))
 	}
-	if strings.Contains(stripped, "─") {
-		t.Fatalf("expected DNA signal bar to replace solid line glyphs, got %q", stripped)
+	for i, line := range first {
+		if got := lipgloss.Width(line); got != 40 {
+			t.Fatalf("expected row %d width 40, got %d", i, got)
+		}
 	}
-	if !strings.ContainsAny(stripped, "⠋⠙⠚⠒⠂") {
-		t.Fatalf("expected DNA signal bar to contain braille glyphs, got %q", stripped)
+	firstText := ansi.Strip(strings.Join(first, "\n"))
+	if !strings.ContainsAny(firstText, "╱╲") || !strings.Contains(firstText, "●") || !strings.Contains(firstText, "│") {
+		t.Fatalf("expected curves, bases, and rungs in helix, got %q", firstText)
 	}
-	for _, ch := range stripped {
-		if !strings.ContainsRune("⠋⠙⠚⠒⠂", ch) {
-			t.Fatalf("expected DNA signal bar to use only braille helix glyphs, got %q in %q", ch, stripped)
+	if firstText == ansi.Strip(strings.Join(next, "\n")) {
+		t.Fatalf("expected helix geometry to move between frames, got %q", firstText)
+	}
+	if strings.Contains(firstText, "◆◆") {
+		t.Fatalf("expected compact strand crossings not to form diamond clusters, got %q", firstText)
+	}
+}
+
+func TestRenderPrideDNAHasPlainASCIIFallback(t *testing.T) {
+	lines := renderPrideDNA(24, 3, 3, false, 0, true)
+	if len(lines) != 3 {
+		t.Fatalf("expected three plain helix rows, got %d", len(lines))
+	}
+	text := strings.Join(lines, "\n")
+	if !strings.ContainsAny(text, "/\\") || !strings.Contains(text, "o") || !strings.Contains(text, "|") {
+		t.Fatalf("expected ASCII curves, bases, and rungs, got %q", text)
+	}
+	if strings.Contains(text, "\x1b[") {
+		t.Fatalf("expected plain helix without ANSI styling, got %q", text)
+	}
+}
+
+func TestRenderPrideDNAPlainRevealKeepsPhraseReadable(t *testing.T) {
+	lines := renderPrideDNA(24, 3, 8, true, settingsAboutRevealStart, true)
+	if got := strings.Join(lines, "\n"); !strings.Contains(got, "LOVE IS LOVE") {
+		t.Fatalf("expected readable plain reveal phrase, got %q", got)
+	}
+}
+
+func TestAboutPridePaletteUsesClassicSixColors(t *testing.T) {
+	want := []lipgloss.Color{"#E40303", "#FF8C00", "#FFED00", "#008026", "#004DFF", "#750787"}
+	if got := aboutPrideColors[:]; !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected classic Pride palette %#v, got %#v", want, got)
+	}
+}
+
+func TestAboutRestingDNAUsesVioletPalette(t *testing.T) {
+	want := []lipgloss.Color{"#24163A", "#6D4AA2", "#B79AF4", "#E2D6FF"}
+	if got := aboutDNARestColors[:]; !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected resting DNA palette %#v, got %#v", want, got)
+	}
+	for role, wantColor := range want {
+		if got := aboutDNAColor(aboutDNAColorRole(role), 60, 10, 0, false, 0); got != wantColor {
+			t.Fatalf("expected resting role %d color %q, got %q", role, wantColor, got)
+		}
+	}
+	if aboutDNAPulseColor != lipgloss.Color("#F7F1FF") {
+		t.Fatalf("expected pale-violet pulse, got %q", aboutDNAPulseColor)
+	}
+}
+
+func TestAboutDNAUsesPrideColorOnlyDuringReveal(t *testing.T) {
+	resting := aboutDNAColor(aboutDNAColorStrandA, 60, 10, 0, false, 1)
+	for _, pride := range aboutPrideColors {
+		if resting == pride {
+			t.Fatalf("expected resting DNA color outside Pride palette, got %q", resting)
+		}
+	}
+	want := prideDNAColor(60, 10, 0)
+	if got := aboutDNAColor(aboutDNAColorStrandA, 60, 10, 0, true, 1); got != want {
+		t.Fatalf("expected reveal DNA color %q, got %q", want, got)
+	}
+}
+
+func TestSettingsAboutRevealFramesLoveIsLoveInsideHelix(t *testing.T) {
+	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	s.setActiveSection(ssAbout)
+	s.aboutRevealActive = true
+	chrome := newManagerChrome(84, CatppuccinMocha, false)
+
+	for _, frame := range []int{0, 7, 28, 39} {
+		s.aboutRevealFrame = frame
+		if got := ansi.Strip(s.renderAboutHero(56, chrome)); strings.Contains(got, "LOVE IS LOVE") {
+			t.Fatalf("expected phrase hidden at reveal frame %d, got %q", frame, got)
+		}
+	}
+	for _, frame := range []int{8, 17, 27} {
+		s.aboutRevealFrame = frame
+		if got := ansi.Strip(s.renderAboutHero(56, chrome)); !strings.Contains(got, "LOVE IS LOVE") {
+			t.Fatalf("expected phrase visible at reveal frame %d, got %q", frame, got)
 		}
 	}
 }
 
-func TestRenderDNASignalBarCyclesGradientAcrossStaticGlyphs(t *testing.T) {
-	first := renderDNASignalBar(24, 0)
-	next := renderDNASignalBar(24, 1)
-	firstGlyphs := ansi.Strip(first)
-	nextGlyphs := ansi.Strip(next)
-	if firstGlyphs != nextGlyphs {
-		t.Fatalf("expected DNA signal bar glyphs to stay static across frames, got %q then %q", firstGlyphs, nextGlyphs)
+func TestSettingsAboutRevealCompletesAfterFortyTicks(t *testing.T) {
+	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	s.setActiveSection(ssAbout)
+	s.aboutRevealActive = true
+	for range settingsAboutRevealTotal {
+		next, _, _ := s.Update(settingsAboutPulseMsg{}, DefaultKeys)
+		s = next
 	}
-	firstColor := dnaSignalColor(24, 0, 0)
-	nextColor := dnaSignalColor(24, 0, 1)
-	if firstColor == nextColor {
-		t.Fatalf("expected DNA signal bar gradient to cycle horizontally, got %q for both frames", firstColor)
+	if s.aboutRevealActive || s.aboutRevealFrame != 0 {
+		t.Fatalf("expected reveal to finish and reset, got active=%t frame=%d", s.aboutRevealActive, s.aboutRevealFrame)
+	}
+}
+
+func TestSettingsAboutHeartHaloKeepsWidthStable(t *testing.T) {
+	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	chrome := newManagerChrome(84, CatppuccinMocha, false)
+	before := s.renderAboutClosingNote(52, chrome)
+	s.focusedField = sfAboutHeart
+	after := s.renderAboutClosingNote(52, chrome)
+	beforeLines := strings.Split(before, "\n")
+	afterLines := strings.Split(after, "\n")
+	if len(beforeLines) != len(afterLines) {
+		t.Fatalf("expected stable heart block height, got %d and %d", len(beforeLines), len(afterLines))
+	}
+	for i := range beforeLines {
+		if lipgloss.Width(beforeLines[i]) != lipgloss.Width(afterLines[i]) {
+			t.Fatalf("expected stable heart row %d width, got %d and %d", i, lipgloss.Width(beforeLines[i]), lipgloss.Width(afterLines[i]))
+		}
+	}
+	if !strings.Contains(ansi.Strip(after), "· ❤ ·") {
+		t.Fatalf("expected focused heart halo, got %q", ansi.Strip(after))
+	}
+}
+
+func TestSettingsAboutActiveHeartShowsCelebrationHalo(t *testing.T) {
+	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	s.focusedField = sfAboutHeart
+	s.aboutRevealActive = true
+	view := ansi.Strip(s.renderAboutClosingNote(52, newManagerChrome(84, CatppuccinMocha, false)))
+	if !strings.Contains(view, "✦ ❤ ✦") {
+		t.Fatalf("expected active heart celebration halo, got %q", view)
 	}
 }
 

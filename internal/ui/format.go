@@ -4,17 +4,22 @@ import (
 	"fmt"
 	htmlstd "html"
 	"regexp"
+	"strconv"
 	"strings"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+	xhtml "golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 )
 
 var (
 	urlRe          = regexp.MustCompile(`https?://[^\s<>"']+`)
 	emailRe        = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
 	imageIDLabelRe = regexp.MustCompile(`^[a-fA-F0-9]{8}(-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}$`)
+	dimensionRe    = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)(?:px|pt|pc|in|cm|mm|q|em|rem|ex|ch|%|vw|vh|vmin|vmax)?$`)
 )
 
 func formatArticleBody(content string, width int, th Theme, plainUI bool) string {
@@ -335,13 +340,18 @@ func renderHTMLBody(html string, width int, th Theme, plainUI bool) string {
 	converter.AddRules(spanStyleRule())
 	converter.AddRules(buttonLinkRule())
 	converter.AddRules(imagePlaceholderRule())
-	converter.AddRules(tableTextRule())
+	converter.AddRules(preformattedRule(width))
+	converter.AddRules(tableTextRule(width))
 	markdown, err := converter.ConvertString(html)
 	if err != nil || strings.TrimSpace(markdown) == "" {
 		return ""
 	}
 	markdown = stripEmailInvisibles(markdown)
-	return renderMarkdown(markdown, width, th, plainUI)
+	rendered := renderMarkdown(markdown, width, th, plainUI)
+	if width > 0 {
+		rendered = ansi.Hardwrap(rendered, width, false)
+	}
+	return rendered
 }
 
 func messageHeadingColor(th Theme) lipgloss.Color {
@@ -377,21 +387,24 @@ func normalizeHTMLForRendering(raw string) string {
 		return raw
 	}
 	doc.Find("script,style,noscript,template,head,meta,link,input,textarea,select").Remove()
-	doc.Find("[hidden], [aria-hidden='true']").Remove()
-	doc.Find("[style]").Each(func(_ int, s *goquery.Selection) {
-		style, _ := s.Attr("style")
-		style = strings.ToLower(style)
-		if strings.Contains(style, "display:none") ||
-			strings.Contains(style, "display: none") ||
-			strings.Contains(style, "visibility:hidden") ||
-			strings.Contains(style, "visibility: hidden") ||
-			strings.Contains(style, "font-size:0") ||
-			strings.Contains(style, "font-size: 0") ||
-			strings.Contains(style, "opacity:0") ||
-			strings.Contains(style, "opacity: 0") {
+	doc.Find("[hidden]").Remove()
+	doc.Find("[aria-hidden]").Each(func(_ int, s *goquery.Selection) {
+		if strings.EqualFold(strings.TrimSpace(attrFirst(s, "aria-hidden")), "true") {
 			s.Remove()
 		}
 	})
+	doc.Find("[style]").Each(func(_ int, s *goquery.Selection) {
+		if hiddenByInlineStyle(parseInlineStyle(attrFirst(s, "style"))) {
+			s.Remove()
+		}
+	})
+	doc.Find("img").Each(func(_ int, s *goquery.Selection) {
+		if isTrackingImage(s) {
+			s.Remove()
+		}
+	})
+	normalizeEmailQuotes(doc)
+	normalizeEmailTables(doc)
 	body := doc.Find("body")
 	if body.Length() > 0 {
 		if out, err := body.Html(); err == nil {
@@ -404,19 +417,157 @@ func normalizeHTMLForRendering(raw string) string {
 	return raw
 }
 
-func tableTextRule() md.Rule {
+func parseInlineStyle(raw string) map[string]string {
+	declarations := make(map[string]string)
+	for _, declaration := range strings.Split(raw, ";") {
+		name, value, ok := strings.Cut(declaration, ":")
+		if !ok {
+			continue
+		}
+		name = strings.ToLower(strings.TrimSpace(name))
+		value = strings.ToLower(strings.TrimSpace(value))
+		value = strings.TrimSpace(strings.TrimSuffix(value, "!important"))
+		if name != "" {
+			declarations[name] = value
+		}
+	}
+	return declarations
+}
+
+func hiddenByInlineStyle(style map[string]string) bool {
+	if style["display"] == "none" {
+		return true
+	}
+	if visibility := style["visibility"]; visibility == "hidden" || visibility == "collapse" {
+		return true
+	}
+	return isZeroDimension(style["opacity"]) || isZeroDimension(style["font-size"])
+}
+
+func isTrackingImage(selec *goquery.Selection) bool {
+	style := parseInlineStyle(attrFirst(selec, "style"))
+	width, widthOK := cssDimension(attrFirst(selec, "width"))
+	if styled, ok := cssDimension(style["width"]); ok {
+		width, widthOK = styled, true
+	}
+	height, heightOK := cssDimension(attrFirst(selec, "height"))
+	if styled, ok := cssDimension(style["height"]); ok {
+		height, heightOK = styled, true
+	}
+	return widthOK && heightOK && width <= 1 && height <= 1
+}
+
+func isZeroDimension(value string) bool {
+	dimension, ok := cssDimension(value)
+	return ok && dimension == 0
+}
+
+func cssDimension(value string) (float64, bool) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	match := dimensionRe.FindStringSubmatch(value)
+	if len(match) != 2 {
+		return 0, false
+	}
+	dimension, err := strconv.ParseFloat(match[1], 64)
+	return dimension, err == nil
+}
+
+func normalizeEmailQuotes(doc *goquery.Document) {
+	doc.Find("div,section").Each(func(_ int, selec *goquery.Selection) {
+		if selec.ParentsFiltered("blockquote").Length() > 0 || selec.Find("blockquote").Length() > 0 {
+			return
+		}
+		identity := strings.ToLower(attrFirst(selec, "class") + " " + attrFirst(selec, "id"))
+		quoted := false
+		for _, marker := range []string{
+			"gmail_quote", "yahoo_quoted", "protonmail_quote", "moz-cite-prefix",
+			"divrplyfwdmsg", "appendonsend", "replyforwardmessage",
+		} {
+			if strings.Contains(identity, marker) {
+				quoted = true
+				break
+			}
+		}
+		if !quoted {
+			return
+		}
+		for _, node := range selec.Nodes {
+			node.Data = "blockquote"
+			node.DataAtom = atom.Blockquote
+		}
+	})
+}
+
+func normalizeEmailTables(doc *goquery.Document) {
+	var tables []*goquery.Selection
+	doc.Find("table").Each(func(_ int, table *goquery.Selection) {
+		tables = append(tables, table)
+	})
+	for i := len(tables) - 1; i >= 0; i-- {
+		if isDataTable(tables[i]) {
+			continue
+		}
+		flattenLayoutTable(tables[i])
+	}
+}
+
+func isDataTable(table *goquery.Selection) bool {
+	if strings.EqualFold(strings.TrimSpace(attrFirst(table, "role")), "table") {
+		return true
+	}
+	if strings.TrimSpace(table.ChildrenFiltered("caption").Text()) != "" {
+		return true
+	}
+	foundHeader := false
+	table.Find("th").EachWithBreak(func(_ int, header *goquery.Selection) bool {
+		foundHeader = selectionBelongsToTable(header, table)
+		return !foundHeader
+	})
+	return foundHeader
+}
+
+func flattenLayoutTable(table *goquery.Selection) {
+	_ = table.SetAttr("data-tidemail-layout-table", "true")
+	table.Find("td,th").Each(func(_ int, cell *goquery.Selection) {
+		if selectionBelongsToTable(cell, table) {
+			_ = cell.SetAttr("data-tidemail-layout-cell", "true")
+		}
+	})
+	table.Find("thead,tbody,tfoot,tr,td,th").AddSelection(table).Each(func(_ int, selec *goquery.Selection) {
+		if !selectionBelongsToTable(selec, table) {
+			return
+		}
+		for _, node := range selec.Nodes {
+			if node.DataAtom == atom.Td || node.DataAtom == atom.Th {
+				node.AppendChild(&xhtml.Node{Type: xhtml.ElementNode, Data: "br", DataAtom: atom.Br})
+			}
+			node.Data = "div"
+			node.DataAtom = atom.Div
+		}
+	})
+}
+
+func selectionBelongsToTable(selec, table *goquery.Selection) bool {
+	owner := selec.Closest("table")
+	return owner.Length() > 0 && table.Length() > 0 && owner.Get(0) == table.Get(0)
+}
+
+func tableTextRule(width int) md.Rule {
 	return md.Rule{
 		Filter: []string{"table"},
 		Replacement: func(content string, selec *goquery.Selection, _ *md.Options) *string {
-			if selec.Find("table").Length() > 0 || selec.Find("th").Length() == 0 {
+			if selec.Find("table").Length() > 0 || !isDataTable(selec) {
 				return &content
 			}
 
 			var rows [][]string
 			selec.Find("tr").Each(func(_ int, tr *goquery.Selection) {
+				if !selectionBelongsToTable(tr, selec) {
+					return
+				}
 				var row []string
-				tr.Find("th,td").Each(func(_ int, cell *goquery.Selection) {
-					row = append(row, normalizeInlineSpacing(cell.Text()))
+				tr.ChildrenFiltered("th,td").Each(func(_ int, cell *goquery.Selection) {
+					row = append(row, tableCellText(cell))
 				})
 				if len(row) > 0 {
 					rows = append(rows, row)
@@ -426,36 +577,135 @@ func tableTextRule() md.Rule {
 				return md.String("")
 			}
 
-			cols := 0
-			for _, row := range rows {
-				if len(row) > cols {
-					cols = len(row)
-				}
-			}
-			widths := make([]int, cols)
-			for _, row := range rows {
-				for i, cell := range row {
-					if l := lipgloss.Width(cell); l > widths[i] {
-						widths[i] = l
-					}
-				}
-			}
-
-			lines := make([]string, 0, len(rows)+2)
+			tableWidth := max(1, width-4)
+			firstRow := selec.Find("tr").FilterFunction(func(_ int, row *goquery.Selection) bool {
+				return selectionBelongsToTable(row, selec)
+			}).First()
+			lines := renderTextTable(rows, tableWidth, firstRow.ChildrenFiltered("th").Length() > 0)
+			lines = append([]string{"```"}, lines...)
 			lines = append(lines, "```")
-			for _, row := range rows {
-				cells := make([]string, cols)
-				for i := 0; i < cols; i++ {
-					cell := ""
-					if i < len(row) {
-						cell = row[i]
-					}
-					cells[i] = cell + strings.Repeat(" ", widths[i]-lipgloss.Width(cell))
-				}
-				lines = append(lines, strings.Join(cells, " | "))
+			caption := normalizeInlineSpacing(selec.ChildrenFiltered("caption").Text())
+			if caption != "" {
+				lines = append([]string{"**" + caption + "**", ""}, lines...)
 			}
-			lines = append(lines, "```")
 			return md.String("\n\n" + strings.Join(lines, "\n") + "\n\n")
+		},
+	}
+}
+
+func tableCellText(cell *goquery.Selection) string {
+	parts := []string{normalizeInlineSpacing(cell.Text())}
+	cell.Find("img").Each(func(_ int, image *goquery.Selection) {
+		label := normalizeInlineSpacing(attrFirst(image, "alt", "title", "aria-label"))
+		if label != "" && !isDecorativeImageLabel(label) {
+			parts = append(parts, "[image: "+label+"]")
+		}
+	})
+	return normalizeInlineSpacing(strings.Join(parts, " "))
+}
+
+func renderTextTable(rows [][]string, width int, header bool) []string {
+	cols := 0
+	for _, row := range rows {
+		cols = max(cols, len(row))
+	}
+	if cols == 0 {
+		return nil
+	}
+
+	separatorWidth := 3 * (cols - 1)
+	if width <= separatorWidth+cols {
+		var lines []string
+		for _, row := range rows {
+			lines = append(lines, strings.Split(wrapWords(strings.Join(row, " | "), width), "\n")...)
+		}
+		return lines
+	}
+
+	desired := make([]int, cols)
+	for _, row := range rows {
+		for col, cell := range row {
+			desired[col] = max(desired[col], lipgloss.Width(cell))
+		}
+	}
+	columnWidths := allocateColumnWidths(desired, width-separatorWidth)
+	var lines []string
+	for rowIdx, row := range rows {
+		wrapped := make([][]string, cols)
+		rowHeight := 1
+		for col := 0; col < cols; col++ {
+			cell := ""
+			if col < len(row) {
+				cell = row[col]
+			}
+			wrapped[col] = strings.Split(wrapWords(cell, columnWidths[col]), "\n")
+			rowHeight = max(rowHeight, len(wrapped[col]))
+		}
+		for lineIdx := 0; lineIdx < rowHeight; lineIdx++ {
+			cells := make([]string, cols)
+			for col := 0; col < cols; col++ {
+				cell := ""
+				if lineIdx < len(wrapped[col]) {
+					cell = wrapped[col][lineIdx]
+				}
+				cells[col] = cell + strings.Repeat(" ", columnWidths[col]-lipgloss.Width(cell))
+			}
+			lines = append(lines, strings.TrimRight(strings.Join(cells, " | "), " "))
+		}
+		if header && rowIdx == 0 {
+			separators := make([]string, cols)
+			for col := range separators {
+				separators[col] = strings.Repeat("-", columnWidths[col])
+			}
+			lines = append(lines, strings.Join(separators, "-+-"))
+		}
+	}
+	return lines
+}
+
+func allocateColumnWidths(desired []int, available int) []int {
+	widths := make([]int, len(desired))
+	for i := range widths {
+		widths[i] = 1
+		desired[i] = max(1, desired[i])
+	}
+	remaining := max(0, available-len(widths))
+	for remaining > 0 {
+		grew := false
+		for i := range widths {
+			if widths[i] >= desired[i] || remaining == 0 {
+				continue
+			}
+			widths[i]++
+			remaining--
+			grew = true
+		}
+		if !grew {
+			break
+		}
+	}
+	return widths
+}
+
+func preformattedRule(width int) md.Rule {
+	return md.Rule{
+		Filter: []string{"pre"},
+		Replacement: func(_ string, selec *goquery.Selection, _ *md.Options) *string {
+			text := stripEmailInvisibles(strings.ReplaceAll(selec.Text(), "\r\n", "\n"))
+			text = strings.Trim(text, "\n")
+			if text == "" {
+				return md.String("")
+			}
+			codeWidth := max(1, width-4)
+			lines := strings.Split(text, "\n")
+			for i, line := range lines {
+				lines[i] = ansi.Hardwrap(line, codeWidth, true)
+			}
+			fence := "```"
+			if strings.Contains(text, fence) {
+				fence = "````"
+			}
+			return md.String("\n\n" + fence + "\n" + strings.Join(lines, "\n") + "\n" + fence + "\n\n")
 		},
 	}
 }
@@ -518,7 +768,7 @@ func buttonLinkRule() md.Rule {
 			if href == "" {
 				return md.String(" ")
 			}
-			if selec.Find("table").Length() > 0 {
+			if selec.Find("table,[data-tidemail-layout-table]").Length() > 0 {
 				text = layoutCellText(selec)
 				if text == "" {
 					return md.String(" ")
@@ -547,8 +797,8 @@ func buttonLinkRule() md.Rule {
 
 func layoutCellText(selec *goquery.Selection) string {
 	var parts []string
-	selec.Find("td,th").Each(func(_ int, cell *goquery.Selection) {
-		if cell.Find("td,th").Length() > 0 {
+	selec.Find("td,th,[data-tidemail-layout-cell]").Each(func(_ int, cell *goquery.Selection) {
+		if cell.Find("td,th,[data-tidemail-layout-cell]").Length() > 0 {
 			return
 		}
 		text := normalizeInlineSpacing(htmlstd.UnescapeString(cell.Text()))

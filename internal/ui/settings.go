@@ -50,6 +50,7 @@ const (
 	sfUpdateInstallNow
 	sfUpdateDismissVersion
 	sfUpdateRestartNow
+	sfAboutHeart
 	sfAboutRepo
 	sfAboutIssues
 	sfViewLogs
@@ -117,6 +118,9 @@ const (
 	settingsAboutTwoColMinW  = 56
 	settingsAboutCardGap     = 2
 	settingsAboutFrameReset  = 4096
+	settingsAboutRevealStart = 8
+	settingsAboutRevealEnd   = 28
+	settingsAboutRevealTotal = 40
 )
 
 type settingsAboutPulseMsg struct{}
@@ -265,6 +269,8 @@ type Settings struct {
 	sectionField       [settingsSectionCount]settingsField
 	focusedField       settingsField
 	aboutGradientFrame int
+	aboutRevealFrame   int
+	aboutRevealActive  bool
 	aiValidatePending  bool
 	aiTestError        string
 	aiTestOk           bool
@@ -501,6 +507,8 @@ func (s *Settings) setActiveSection(section settingsSection) {
 	s.activeSection = section
 	if section != ssAbout {
 		s.aboutGradientFrame = 0
+		s.aboutRevealFrame = 0
+		s.aboutRevealActive = false
 	}
 	s.ensureSectionFieldVisible(section)
 	s.focusedField = s.sectionField[section]
@@ -653,7 +661,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		return []settingsField{sfBackToSections, sfViewLogs, sfFeedMaxBody}
 
 	case ssAbout:
-		return []settingsField{sfBackToSections, sfAboutRepo, sfAboutIssues}
+		return []settingsField{sfBackToSections, sfAboutHeart, sfAboutRepo, sfAboutIssues}
 	default:
 		return nil
 	}
@@ -872,6 +880,13 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 		s.aboutGradientFrame++
 		if s.aboutGradientFrame >= settingsAboutFrameReset {
 			s.aboutGradientFrame = 0
+		}
+		if s.aboutRevealActive {
+			s.aboutRevealFrame++
+			if s.aboutRevealFrame >= settingsAboutRevealTotal {
+				s.aboutRevealFrame = 0
+				s.aboutRevealActive = false
+			}
 		}
 		return s, settingsAboutPulseCmd(), false
 	}
@@ -1236,6 +1251,17 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 		switch {
 		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter):
 			s.action = settingsActionOpenRepo
+		case keyMatches(key, keys.Down):
+			s.setFocusedField(s.nextField())
+		case keyMatches(key, keys.Up):
+			s.setFocusedField(s.prevField())
+		}
+
+	case sfAboutHeart:
+		switch {
+		case key.Type == tea.KeySpace || key.Type == tea.KeyEnter || keyMatches(key, keys.Space) || keyMatches(key, keys.Enter):
+			s.aboutRevealActive = true
+			s.aboutRevealFrame = 0
 		case keyMatches(key, keys.Down):
 			s.setFocusedField(s.nextField())
 		case keyMatches(key, keys.Up):
@@ -2380,7 +2406,9 @@ func (s Settings) renderAboutSection(width int, chrome managerChrome) settingsSe
 	// Version info
 	verLine := lipgloss.NewStyle().Background(lipgloss.Color("#000000")).Foreground(chrome.muted).Width(bodyW).Align(lipgloss.Center).Render(s.update.currentVersion)
 	lines = append(lines, verLine, blank)
-	addBlock(ind.Render(s.renderAboutClosingNote(bodyW, chrome)))
+	closingBlock := s.renderAboutClosingNote(bodyW, chrome)
+	closingStart := addBlock(ind.Render(closingBlock))
+	heartLine := closingStart + max(0, lipgloss.Height(closingBlock)-1)
 	lines = append(lines, blank)
 	linksBlock := ind.Render(s.renderAboutLinks(bodyW, chrome))
 	linksLines := strings.Split(linksBlock, "\n")
@@ -2396,6 +2424,7 @@ func (s Settings) renderAboutSection(width int, chrome managerChrome) settingsSe
 	return settingsSectionBody{
 		lines: lines,
 		anchors: map[settingsField]int{
+			sfAboutHeart:  heartLine,
 			sfAboutRepo:   linksStart,
 			sfAboutIssues: linksStart,
 		},
@@ -2409,18 +2438,16 @@ func (s Settings) renderAboutHero(width int, chrome managerChrome) string {
 	titleTxt := "TIDEMAIL"
 	tagline := "your mail, your rules"
 
-	// Centered title on row 0
 	titleCentered := aboutCenterText(titleTxt, contentW)
-	// Centered tagline on row 1
 	taglineCentered := aboutCenterText(tagline, contentW)
 
-	lines := []string{
-		s.renderAboutHeroTextLine(titleCentered, contentW, 0, true),
-		s.renderAboutHeroTextLine("", contentW, 1, false),
-		renderDNASignalBar(contentW, s.aboutGradientFrame),
-		s.renderAboutHeroTextLine("", contentW, 2, false),
-		s.renderAboutHeroTextLine(taglineCentered, contentW, 1, false),
+	helixRows := 5
+	if contentW < 32 || (s.detailHeight > 0 && s.detailHeight <= 22) {
+		helixRows = 3
 	}
+	lines := []string{s.renderAboutHeroTextLine(titleCentered, contentW, 0, true)}
+	lines = append(lines, renderPrideDNA(contentW, helixRows, s.aboutGradientFrame, s.aboutRevealActive, s.aboutRevealFrame, chrome.plainUI)...)
+	lines = append(lines, s.renderAboutHeroTextLine(taglineCentered, contentW, 1, false))
 
 	panelBg := lipgloss.Color("#000000")
 	panel := lipgloss.NewStyle().
@@ -2435,63 +2462,214 @@ func (s Settings) renderAboutHero(width int, chrome managerChrome) string {
 	return lipgloss.NewStyle().Width(width).Background(lipgloss.Color("#000000")).Align(lipgloss.Center).Render(panel)
 }
 
-const aboutDNAPattern = "⠋⠙⠚⠒⠂"
-
-func renderDNASignalBar(w int, frame int) string {
-	if w <= 0 {
-		return ""
-	}
-	pattern := []rune(aboutDNAPattern)
-	bg := lipgloss.Color("#000000")
-
-	var b strings.Builder
-	for i := 0; i < w; i++ {
-		ch := pattern[i%len(pattern)]
-		fg := dnaSignalColor(w, i, frame)
-		b.WriteString(lipgloss.NewStyle().Background(bg).Foreground(fg).Render(string(ch)))
-	}
-	return b.String()
+var aboutPrideColors = [...]lipgloss.Color{
+	"#E40303", "#FF8C00", "#FFED00", "#008026", "#004DFF", "#750787",
 }
 
-func dnaSignalColor(width, col, frame int) lipgloss.Color {
-	if width <= 1 {
-		return cylonGlowColor(0)
-	}
-	pos := float64((col + frame) % width)
-	return cylonGlowColor(pos / float64(width-1))
+var aboutDNARestColors = [...]lipgloss.Color{
+	"#24163A", // rungs
+	"#6D4AA2", // strand A
+	"#B79AF4", // strand B
+	"#E2D6FF", // crossings
 }
 
-// cylonGlowColor maps an intensity (0..1) to a color along a rainbow spectrum:
-// purple → blue → cyan → green → yellow → orange → red → white.
-func cylonGlowColor(t float64) lipgloss.Color {
-	t = clamp01(t)
-	type stop struct{ pos, r, g, b float64 }
-	ramp := []stop{
-		{0.00, 0x40, 0x00, 0x60}, // deep purple
-		{0.10, 0x20, 0x20, 0xcc}, // blue
-		{0.24, 0x00, 0x80, 0xcc}, // cyan
-		{0.38, 0x00, 0xaa, 0x44}, // green
-		{0.52, 0x88, 0xcc, 0x00}, // yellow-green
-		{0.66, 0xee, 0xaa, 0x00}, // yellow
-		{0.80, 0xff, 0x55, 0x00}, // orange
-		{0.92, 0xff, 0x22, 0x22}, // red
-		{1.00, 0xff, 0xff, 0xff}, // white
+const aboutDNAPulseColor lipgloss.Color = "#F7F1FF"
+
+type aboutDNAColorRole int
+
+const (
+	aboutDNAColorRung aboutDNAColorRole = iota
+	aboutDNAColorStrandA
+	aboutDNAColorStrandB
+	aboutDNAColorCross
+)
+
+type aboutHelixCell struct {
+	ch       rune
+	fg       lipgloss.Color
+	priority int
+}
+
+func renderPrideDNA(width, rows, frame int, revealActive bool, revealFrame int, plainUI bool) []string {
+	width = max(1, width)
+	if rows != 3 {
+		rows = 5
 	}
-	for i := 1; i < len(ramp); i++ {
-		if t <= ramp[i].pos {
-			prev := ramp[i-1]
-			next := ramp[i]
-			frac := (t - prev.pos) / (next.pos - prev.pos)
-			r := prev.r + (next.r-prev.r)*frac
-			g := prev.g + (next.g-prev.g)*frac
-			b := prev.b + (next.b-prev.b)*frac
-			return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x",
-				uint8(math.Round(r)),
-				uint8(math.Round(g)),
-				uint8(math.Round(b))))
+	grid := make([][]aboutHelixCell, rows)
+	for row := range grid {
+		grid[row] = make([]aboutHelixCell, width)
+	}
+
+	intensity := aboutRevealIntensity(revealActive, revealFrame)
+	hold := revealActive && revealFrame >= settingsAboutRevealStart && revealFrame < settingsAboutRevealEnd
+	center := float64(rows-1) / 2
+	amplitude := center
+	for col := 0; col < width; col++ {
+		theta := 2 * math.Pi * float64((col+frame)%16) / 16
+		normalA := center + math.Sin(theta)*amplitude
+		normalB := center - math.Sin(theta)*amplitude
+		yA := clamp(int(math.Round(lerp(normalA, 0, intensity))), 0, rows-1)
+		yB := clamp(int(math.Round(lerp(normalB, float64(rows-1), intensity))), 0, rows-1)
+		rungColor := aboutDNAColor(aboutDNAColorRung, width, col, frame, hold, intensity)
+		strandAColor := aboutDNAColor(aboutDNAColorStrandA, width, col, frame, hold, intensity)
+		strandBColor := aboutDNAColor(aboutDNAColorStrandB, width, col, frame, hold, intensity)
+		crossColor := aboutDNAColor(aboutDNAColorCross, width, col, frame, hold, intensity)
+		rung := (col+frame/2)%4 == 0
+		if rung && !hold {
+			for row := min(yA, yB) + 1; row < max(yA, yB); row++ {
+				setAboutHelixCell(grid, row, col, aboutDNAChars(plainUI).rung, rungColor, 1)
+			}
+		}
+		chars := aboutDNAChars(plainUI)
+		strandA := chars.rise
+		strandB := chars.fall
+		if math.Cos(theta) >= 0 {
+			strandA, strandB = chars.fall, chars.rise
+		}
+		if rung {
+			strandA, strandB = chars.base, chars.base
+		}
+		if hold {
+			strandA, strandB = chars.hold, chars.hold
+		}
+		if yA == yB {
+			crossing := (col+frame)%8 == 0
+			if crossing {
+				setAboutHelixCell(grid, yA, col, chars.cross, crossColor, 3)
+			} else {
+				setAboutHelixCell(grid, yA, col, strandA, strandAColor, 2)
+			}
+		} else {
+			setAboutHelixCell(grid, yA, col, strandA, strandAColor, 2)
+			setAboutHelixCell(grid, yB, col, strandB, strandBColor, 2)
 		}
 	}
-	return "#ffffff"
+	if hold {
+		overlayAboutReveal(grid, "LOVE IS LOVE")
+	}
+
+	bg := lipgloss.Color("#000000")
+	lines := make([]string, rows)
+	for row := range grid {
+		var line strings.Builder
+		for _, cell := range grid[row] {
+			ch := cell.ch
+			if ch == 0 {
+				ch = ' '
+			}
+			if plainUI {
+				line.WriteRune(ch)
+				continue
+			}
+			fg := cell.fg
+			if fg == "" {
+				fg = bg
+			}
+			line.WriteString(lipgloss.NewStyle().Background(bg).Foreground(fg).Bold(cell.priority >= 3).Render(string(ch)))
+		}
+		lines[row] = line.String()
+	}
+	return lines
+}
+
+type aboutHelixChars struct {
+	rise, fall, rung, base, cross, hold rune
+}
+
+func aboutDNAChars(plainUI bool) aboutHelixChars {
+	if plainUI {
+		return aboutHelixChars{rise: '/', fall: '\\', rung: '|', base: 'o', cross: 'X', hold: '-'}
+	}
+	return aboutHelixChars{rise: '╱', fall: '╲', rung: '│', base: '●', cross: '◆', hold: '━'}
+}
+
+func setAboutHelixCell(grid [][]aboutHelixCell, row, col int, ch rune, fg lipgloss.Color, priority int) {
+	if row < 0 || row >= len(grid) || col < 0 || col >= len(grid[row]) || priority < grid[row][col].priority {
+		return
+	}
+	grid[row][col] = aboutHelixCell{ch: ch, fg: fg, priority: priority}
+}
+
+func overlayAboutReveal(grid [][]aboutHelixCell, message string) {
+	if len(grid) == 0 || len(grid[0]) == 0 {
+		return
+	}
+	width := len(grid[0])
+	runes := []rune(message)
+	if len(runes) > width {
+		runes = runes[:width]
+	}
+	start := max(0, (width-len(runes))/2)
+	row := len(grid) / 2
+	colorIdx := 0
+	for i, ch := range runes {
+		color := lipgloss.Color("#ffffff")
+		if ch != ' ' {
+			color = aboutPrideColors[colorIdx%len(aboutPrideColors)]
+			colorIdx++
+		}
+		setAboutHelixCell(grid, row, start+i, ch, color, 4)
+	}
+}
+
+func aboutRevealIntensity(active bool, frame int) float64 {
+	if !active {
+		return 0
+	}
+	switch {
+	case frame < settingsAboutRevealStart:
+		return clamp01(float64(frame+1) / settingsAboutRevealStart)
+	case frame < settingsAboutRevealEnd:
+		return 1
+	default:
+		return clamp01(float64(settingsAboutRevealTotal-frame) / (settingsAboutRevealTotal - settingsAboutRevealEnd))
+	}
+}
+
+func prideDNAColor(width, col, frame int) lipgloss.Color {
+	if width <= 0 {
+		return aboutPrideColors[0]
+	}
+	bandWidth := max(1, (width+len(aboutPrideColors)-1)/len(aboutPrideColors))
+	base := aboutPrideColors[((col+frame/2)/bandWidth)%len(aboutPrideColors)]
+	pulse := (frame * 2) % width
+	distance := col - pulse
+	if distance < 0 {
+		distance = -distance
+	}
+	distance = min(distance, width-distance)
+	if distance <= 3 {
+		return adjustLightness(base, 0.24*(1-float64(distance)/4))
+	}
+	return base
+}
+
+func aboutDNAColor(role aboutDNAColorRole, width, col, frame int, prideReveal bool, revealIntensity float64) lipgloss.Color {
+	if prideReveal {
+		return prideDNAColor(width, col, frame)
+	}
+	role = aboutDNAColorRole(clamp(int(role), 0, len(aboutDNARestColors)-1))
+	base := aboutDNARestColors[role]
+	if width <= 0 {
+		return base
+	}
+	pulse := (frame * 2) % width
+	distance := col - pulse
+	if distance < 0 {
+		distance = -distance
+	}
+	distance = min(distance, width-distance)
+	if distance == 0 || revealIntensity > 0.7 && distance <= 1 {
+		return aboutDNAPulseColor
+	}
+	if distance <= 3 {
+		return adjustLightness(base, (0.18+0.12*revealIntensity)*(1-float64(distance)/4))
+	}
+	return base
+}
+
+func lerp(from, to, amount float64) float64 {
+	return from + (to-from)*clamp01(amount)
 }
 
 func (s Settings) renderAboutLinks(width int, chrome managerChrome) string {
@@ -2547,12 +2725,34 @@ func (s Settings) renderAboutClosingNote(width int, chrome managerChrome) string
 		Align(lipgloss.Center).
 		Render("Thanks for taking a look -allie")
 
-	heart := lipgloss.NewStyle().
-		Background(aboutBg).
-		Foreground(lipgloss.Color("#e64553")).
-		Width(max(1, width)).
-		Align(lipgloss.Center).
-		Render("❤")
+	focused := s.focusedField == sfAboutHeart
+	heartText := "  ❤  "
+	if chrome.plainUI {
+		heartText = " <3 "
+	}
+	if focused {
+		if chrome.plainUI {
+			heartText = ".<3."
+		} else {
+			heartText = "· ❤ ·"
+		}
+	}
+	if s.aboutRevealActive {
+		if chrome.plainUI {
+			heartText = "*<3*"
+		} else {
+			heartText = "✦ ❤ ✦"
+		}
+	}
+	heartColor := lipgloss.Color("#e64553")
+	if s.aboutRevealActive && s.aboutRevealFrame >= settingsAboutRevealStart && s.aboutRevealFrame < settingsAboutRevealEnd {
+		heartColor = prideDNAColor(max(1, width), width/2, s.aboutGradientFrame)
+	} else if focused || s.aboutRevealActive {
+		heartColor = aboutDNAColor(aboutDNAColorCross, max(1, width), width/2, s.aboutGradientFrame, false,
+			aboutRevealIntensity(s.aboutRevealActive, s.aboutRevealFrame))
+	}
+	heart := lipgloss.NewStyle().Background(aboutBg).Foreground(heartColor).Bold(focused).
+		Width(max(1, width)).Align(lipgloss.Center).Render(heartText)
 
 	heartBlock := lipgloss.NewStyle().
 		Background(aboutBg).
