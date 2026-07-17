@@ -72,7 +72,11 @@ TideMail waits five seconds before sending by default. Press `Ctrl+Z` during
 that window to cancel delivery and reopen the draft. Change the delay under
 Settings → Editor, or set it to `0` to send at once.
 
-Enable Vim keys under Settings → Editor if you want modes, motions, counts,
+The standard editor is on by default. Use Shift with the arrow keys to select
+text, `Ctrl+C`/`Ctrl+X`/`Ctrl+V` for the system clipboard, `Ctrl+Z`/`Ctrl+Y` for
+undo and redo, and Ctrl with the arrow keys to move by word.
+
+Enable Vim keys under Settings → Editor if you prefer modes, motions, counts,
 operators such as `dw`, `cw`, and `dd`, and a command line. `:w` sends the
 message, while `:q` cancels it.
 
@@ -176,6 +180,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 | `T` | Theme picker |
 | `Ctrl+D` | Save attachments to folder |
 | `Ctrl+G` | AI grammar & spell check (compose) |
+| Standard compose editor | Selection, system clipboard, undo/redo, word movement, and Home/End |
 | Vim keys in compose | Enable in Settings → Editor. `:w`/`:wq` send; `:q` or double `Esc` cancels |
 | `?` | Help |
 | `q` | Quit |
@@ -185,7 +190,7 @@ sync_minutes = 5  # auto-sync every 5 min (0 = off)
 Press `S` to open Settings.
 
 - Display: icons, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, and quit confirmation
-- Editor: vim keys and the delay that lets you cancel a send with `Ctrl+Z`
+- Editor: standard or Vim compose keys and the delay that lets you cancel a send with `Ctrl+Z`
 - Accounts: connection details, From address, signature, color, and sync interval
 - Updates: check, install, restart, or copy a manual install command
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings

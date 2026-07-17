@@ -26,9 +26,10 @@ _One inbox, several built-in themes. All mail shown here is fictional._
   undo a pending delete, archive, or move.
 - **Unsubscribe without hunting for a footer.** Press `Ctrl+U` while reading to
   use the message's unsubscribe header or labeled unsubscribe link.
-- **Compose your way.** Use regular terminal editing or turn on Vim motions and
-  commands. Optional AI tools can summarize mail, proofread a draft, and build
-  local filters from plain English.
+- **Compose your way.** The standard editor supports text selection, the system
+  clipboard, undo and redo, and word movement. You can switch on Vim motions
+  and commands instead. Optional AI tools can summarize mail, proofread a
+  draft, and build local filters from plain English.
 
 ## Install
 
@@ -78,8 +79,9 @@ TideMail saves the draft while you type. A sent message waits five seconds by
 default, which gives `Ctrl+Z` time to reopen it. Set the delay to `0` if you want
 mail to leave at once.
 
-The compose body supports ordinary terminal editing or Vim motions. Turn Vim
-mode on in Settings, then use commands such as `dw`, `dd`, `:w`, and `:q`.
+The standard compose editor supports Shift-selection, clipboard shortcuts,
+undo and redo, word movement, and Home/End. Turn Vim mode on in Settings if you
+prefer commands such as `dw`, `dd`, `:w`, and `:q`.
 
 ## Mail state belongs to the server
 
