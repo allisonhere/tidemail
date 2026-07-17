@@ -1,21 +1,23 @@
-# TideMail
+# TideMail Setup and Usage Guide
 
-![TideMail screenshot](../screen.png)
+This guide covers installation, account setup, everyday mail tasks, settings,
+and keyboard shortcuts. For an overview of TideMail, see the
+[main README](../README.md).
 
-A keyboard-first terminal mail client built with [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lipgloss](https://github.com/charmbracelet/lipgloss).
-[ripple](https://github.com/allisonhere/ripple), TideMail's standalone Go editor library, powers compose editing.
+## Installation
 
-## Install
+### Install a release
 
-**Quick install** (Linux/macOS, amd64/arm64):
+On Linux or macOS (amd64 or arm64), run:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/allisonhere/tidemail/main/install.sh | sh
 ```
 
-Or download a binary from the [latest release](https://github.com/allisonhere/tidemail/releases/latest).
+You can also download a binary from the
+[latest release](https://github.com/allisonhere/tidemail/releases/latest).
 
-**From source:**
+### Build from source
 
 ```bash
 git clone https://github.com/allisonhere/tidemail
@@ -24,65 +26,75 @@ go build -o tidemail .
 ./tidemail
 ```
 
-## Features
+## First run
 
-- Three-pane mail layout: accounts, messages, content
-- Unified Inbox across all configured accounts
-- Select messages with `Space`, then delete, archive, move, or mark the group as read
-- Toggle full email headers with `Ctrl+E`, or keep them open from Settings
-- See color-coded SPF, DKIM, and DMARC results in the header view
-- Copy message text from the content pane with Vim-style `v`/`V` selection, then `y` or `Ctrl+C`
-- Select all messages in the current view with `A`
-- Turn on Vim keys in Settings → Editor for modes, motions, counts, operators such as `dw`, `cw`, and `dd`, and a `:` command line. `:w` sends and `:q` cancels.
-- IMAP/SMTP accounts using passwords or app passwords (stored in system keychain)
-- Account manager for adding, editing, deleting, and discovering mailboxes
-- Compose suggests saved contacts first, followed by addresses from mail you have received
-- Manage contacts by hand, import or export vCards, and start a message from selected contacts
-- vCard import/export preserves email, display name, phone, organization, title, and notes
-- Server-backed sync, read/unread, archive, move, delete, compose, and reply
-- TideMail saves drafts to the sending account while you type. Reopen one with `Enter` or delete it with `d`.
-- Choose the sending account from the From row. Each account can have its own From address and signature.
-- Sent mail waits five seconds before delivery by default. Press `Ctrl+Z` during that window to reopen the message.
-- Delete hides a message at once, moves server mail to Trash when available, and keeps it from returning on the next sync
-- Archive auto-detection via `\Archive`, `Archive`, `Archives`, or `All Mail`
-- Trash auto-detection via `\Trash`, `Trash`, `Deleted Items`, `Deleted Messages`, or Gmail's Trash label
-- Command palette for main mail actions, plus contextual commands in compose, AI summary, and save-attachments overlays
-- Global message search (`/` enters persistent search mode; type to filter, esc to exit) and unread-only filtering
-- Optional actionable links in the message content pane
-- File browsers for attaching and saving attachments hide dotfiles by default; press `.` to toggle hidden files and folders
-- AI summaries with copy and save-to-Markdown actions
-- AI grammar & spell check in compose with preview overlay
-- Describe a mail rule in plain English, such as "move newsletters from substack to Reading." TideMail turns it into a local filter that can move, archive, delete, mark read, or mark spam. Open filters from the command palette.
-- Theme-aware dialogs, overlays, and terminal background sync
-- Collapsible account folders (System, Labels) in sidebar
-- Desktop notifications show the sender and subject for new unread mail
-- Accounts with `sync_minutes > 0` use IMAP IDLE for push delivery and keep interval polling as a fallback
-- Press `Ctrl+U` in the content pane to use a message's unsubscribe header or labeled unsubscribe link
-
-## Usage
+Start TideMail with:
 
 ```bash
-go build -o tidemail .
-./tidemail
+tidemail
 ```
 
-TideMail keeps config in `~/.config/tidemail/config.toml` and its SQLite cache in `~/.local/share/tidemail/mail.db`. `XDG_DATA_HOME` can change the cache location.
+Press `M` to open the account manager, then add your IMAP and SMTP details.
+TideMail can discover common server settings from your email address. If your
+provider requires an app password, create one before saving the account.
 
-Open account management with `M`, add an IMAP/SMTP account, then sync the selected mailbox with `s`. Press `s` on the Unified Inbox to sync every account's inbox at once. Use `F` to sync all mailboxes. Configure a per-account `sync_minutes` interval for automatic background refresh.
+After you add an account, press `s` to sync the selected mailbox. Press `s` on
+the Unified Inbox to sync every account's inbox, or `F` to sync all mailboxes.
+Set `sync_minutes` on an account if you want background refresh. Accounts with
+a sync interval also use IMAP IDLE when the server supports it.
 
-TideMail saves a compose draft to the sending account as you type. Closing a message with content asks whether to save or discard it. Open Drafts and press `Enter` to keep writing, or `d` to delete the draft. TideMail removes the draft after a successful send.
+## Reading and organizing mail
 
-The From row becomes a picker when you have more than one account. Focus it with `Shift+Tab` from To, then press `Enter` or `Space` to choose an account. `Ctrl+U` still cycles accounts. TideMail uses the chosen account's SMTP settings, From address, and signature.
+Use the three panes to choose an account or folder, select a message, and read
+its contents. Press `Tab` or `Shift+Tab` to move between panes.
 
-By default, TideMail holds sent mail for five seconds. Press `Ctrl+Z` before the timer ends to cancel the send and reopen your draft. Change the delay in Settings → Editor, or set it to `0` for immediate sending.
+In the message list, press `Space` to select several messages. You can then
+archive them with `a`, delete them with `d`, move them with `m`, or mark them as
+read. Press `A` to select every message in the current view.
 
-Open Contacts with `C`. Compose lists saved contacts before addresses found in your mail. Press `n` to add a contact, `f` to browse seen addresses, `i` to import a vCard, or `x` to export `contacts.vcf`. Select contacts with `Space` and press `c` to write to them. TideMail keeps names, email addresses, phone numbers, organizations, titles, and notes in vCard files.
+Press `/` to search, `u` to show unread mail, and `t` to place starred messages
+first. In the content pane, `Ctrl+E` shows the full headers and authentication
+results. `Ctrl+U` opens the mailing list's unsubscribe option when the message
+provides one.
 
-## Credential safety
+## Writing mail
 
-TideMail stores IMAP/SMTP passwords and AI API keys in the system keychain through `secret-tool` on Linux and Keychain on macOS. At startup, TideMail reads empty password and API-key fields from the keychain. Saving Settings moves loaded secrets into the keychain and clears them from the config file.
+Press `c` to compose a message or `r` from the content pane to reply. TideMail
+saves your work to the sending account's Drafts folder as you type. Open Drafts
+and press `Enter` to continue writing, or `d` to delete a draft.
 
-Without `secret-tool`, TideMail writes passwords and API keys to `~/.config/tidemail/config.toml`. Treat that file as a secret.
+If you have more than one account, the From row works as an account picker.
+Focus it with `Shift+Tab` from the To row, then press `Enter` or `Space` and
+choose the account. `Ctrl+U` cycles through the same list. TideMail uses that
+account's SMTP settings, From address, and signature.
+
+TideMail waits five seconds before sending by default. Press `Ctrl+Z` during
+that window to cancel delivery and reopen the draft. Change the delay under
+Settings → Editor, or set it to `0` to send at once.
+
+Enable Vim keys under Settings → Editor if you want modes, motions, counts,
+operators such as `dw`, `cw`, and `dd`, and a command line. `:w` sends the
+message, while `:q` cancels it.
+
+## Contacts
+
+Press `C` to open Contacts. Press `n` to add someone, `f` to browse addresses
+found in your mail, `i` to import a vCard, or `x` to export `contacts.vcf`.
+Select contacts with `Space`, then press `c` to write to them.
+
+Compose suggestions show saved contacts before addresses gathered from your
+mail. vCard imports and exports include names, email addresses, phone numbers,
+organizations, titles, and notes.
+
+## Passwords and API keys
+
+TideMail stores IMAP and SMTP passwords and AI API keys in the system keychain.
+It uses `secret-tool` on Linux and Keychain on macOS. When TideMail starts, it
+loads any blank password or API key from the keychain. Saving Settings moves
+loaded secrets into the keychain and clears them from the config file.
+
+If `secret-tool` is unavailable on Linux, TideMail writes passwords and API
+keys to `~/.config/tidemail/config.toml`. Keep that file private.
 
 - Gmail: Google Account → Security → App passwords (requires 2-Step Verification)
 - Yahoo: Account Security → Generate app password
@@ -90,12 +102,18 @@ Without `secret-tool`, TideMail writes passwords and API keys to `~/.config/tide
 
 If you expose an app password, revoke it and create a new one.
 
-Gmail needs an app password. TideMail removed "Sign in with Google" in
-v0.5.0. Turn on 2-Step Verification, generate a password at
-[myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords), then paste
-it into the password field in the account manager (`M`) and save with `Ctrl+S`.
+Gmail requires an app password. Turn on 2-Step Verification, generate a password
+at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords),
+then paste it into the password field in the account manager (`M`) and save with
+`Ctrl+S`.
 
-Example account config:
+## Configuration files
+
+TideMail stores its config in `~/.config/tidemail/config.toml` and its SQLite
+cache in `~/.local/share/tidemail/mail.db`. Set `XDG_DATA_HOME` to use a
+different cache location.
+
+Example configuration:
 
 ```toml
 theme = "catppuccin-mocha"
@@ -118,7 +136,7 @@ signature = "Alice\nSent with TideMail"
 sync_minutes = 5  # auto-sync every 5 min (0 = off)
 ```
 
-## Keyboard Shortcuts
+## Keyboard shortcuts
 
 | Key | Action |
 |-----|--------|
@@ -173,20 +191,3 @@ Press `S` to open Settings.
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings
 - Advanced: logs and feed max body size
 - About: repository and issue links
-
-## Related projects
-
-Two libraries came out of this one:
-
-- [ripple](https://github.com/allisonhere/ripple) powers the compose editor as a standalone dependency.
-- [tideui](https://github.com/allisonhere/tideui) is a themeable multi-pane toolkit for Bubble Tea. Its layout and theming still live in `internal/ui`.
-
-## Development
-
-Run the full suite:
-
-```bash
-go test ./...
-```
-
-The mail refactor removed RSS, GReader, and OPML behavior. A few internal style names still use the old terminology.
