@@ -11,7 +11,7 @@ Need the full settings and shortcut reference? Open the
 
 ![TideMail running in several terminal themes](banner.png)
 
-_One inbox, several built-in themes. All mail shown here is fictional._
+_One inbox, several built-in themes. 
 
 ## Highlights
 
