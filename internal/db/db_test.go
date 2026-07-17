@@ -334,8 +334,8 @@ func TestDBMarkStarredRoundTrip(t *testing.T) {
 		t.Fatalf("expected message to be starred after MarkStarred(true)")
 	}
 
-	// A re-sync (UpsertMessage on the same mailbox/uid) must not clobber the
-	// locally-set star: the ON CONFLICT update intentionally omits starred.
+	// A re-sync adopts the server's current flag state. This represents removing
+	// the star in another client after the local cache had it set.
 	if err := database.UpsertMessage(Message{MailboxID: mailboxID, UID: 1, Subject: "Hello", Date: time.Unix(1710000000, 0)}); err != nil {
 		t.Fatal(err)
 	}
@@ -343,19 +343,19 @@ func TestDBMarkStarredRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.Starred {
-		t.Fatalf("expected star to survive a re-sync upsert")
+	if got.Starred {
+		t.Fatalf("expected re-sync upsert to adopt server unstar")
 	}
 
-	if err := database.MarkStarred(msgs[0].ID, false); err != nil {
+	if err := database.UpsertMessage(Message{MailboxID: mailboxID, UID: 1, Subject: "Hello", Starred: true, Date: time.Unix(1710000000, 0)}); err != nil {
 		t.Fatal(err)
 	}
 	got, err = database.GetMessage(msgs[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Starred {
-		t.Fatalf("expected message to be unstarred after MarkStarred(false)")
+	if !got.Starred {
+		t.Fatalf("expected re-sync upsert to adopt server star")
 	}
 }
 

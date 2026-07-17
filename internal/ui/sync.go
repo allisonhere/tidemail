@@ -480,9 +480,11 @@ func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
 				// the snapshot and the fetch isn't mistaken for a removal.
 				reconcileSet := make([]uint32, 0, len(serverMsgs)+len(msgs))
 				seenByUID := make(map[uint32]bool, len(serverMsgs))
+				flaggedByUID := make(map[uint32]bool, len(serverMsgs))
 				for _, sm := range serverMsgs {
 					reconcileSet = append(reconcileSet, sm.UID)
 					seenByUID[sm.UID] = sm.Seen
+					flaggedByUID[sm.UID] = sm.Flagged
 				}
 				for _, fm := range msgs {
 					reconcileSet = append(reconcileSet, fm.UID)
@@ -491,6 +493,9 @@ func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
 				// Adopt server read/unread state for messages we still hold, before
 				// the unread count is recomputed below.
 				_, _ = database.ApplyServerReadStates(mailboxID, seenByUID) //nolint:errcheck
+				// Adopt stars added or removed in another client. The full state
+				// snapshot is needed because SINCE does not revisit older mail.
+				_, _ = database.ApplyServerStarredStates(mailboxID, flaggedByUID) //nolint:errcheck
 			}
 			// Auto-apply saved filter rules to newly-arrived mail while the connection
 			// is live. Filter failures must not abort the sync, so they are not fatal.

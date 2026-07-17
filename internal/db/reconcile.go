@@ -103,6 +103,41 @@ func (db *DB) ApplyServerReadStates(mailboxID int64, seenByUID map[uint32]bool) 
 	return changed, nil
 }
 
+// ApplyServerStarredStates adopts the server's starred state for locally-stored
+// messages, keyed by UID. This propagates \Flagged changes made in another
+// client, including removing a star in Gmail web. The server is authoritative:
+// local star changes are pushed to IMAP before the database is updated.
+func (db *DB) ApplyServerStarredStates(mailboxID int64, flaggedByUID map[uint32]bool) (int, error) {
+	if len(flaggedByUID) == 0 {
+		return 0, nil
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	changed := 0
+	for uid, flagged := range flaggedByUID {
+		starred := 0
+		if flagged {
+			starred = 1
+		}
+		res, err := tx.Exec(
+			`UPDATE messages SET starred = ? WHERE mailbox_id = ? AND uid != 0 AND uid = ? AND starred != ?`,
+			starred, mailboxID, uid, starred)
+		if err != nil {
+			return 0, err
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			changed += int(n)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return changed, nil
+}
+
 // MailboxUIDValidity returns the stored UIDVALIDITY for a mailbox (0 if never
 // recorded).
 func (db *DB) MailboxUIDValidity(mailboxID int64) (uint32, error) {

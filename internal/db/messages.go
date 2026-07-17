@@ -233,6 +233,7 @@ func (db *DB) UpsertMessage(m Message) error {
 			body_text      = CASE WHEN excluded.body_text != '' THEN excluded.body_text ELSE body_text END,
 			body_html      = CASE WHEN excluded.body_html != '' THEN excluded.body_html ELSE body_html END,
 			flags          = excluded.flags,
+			starred        = excluded.starred,
 			has_attachment = excluded.has_attachment,
 			headers        = CASE WHEN excluded.headers != '' THEN excluded.headers ELSE headers END
 	`, m.MailboxID, m.UID, m.MessageID, m.InReplyTo, m.References, m.Subject, m.From, m.To, m.CC,

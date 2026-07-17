@@ -172,18 +172,20 @@ func (c *Client) Noop(ctx context.Context) error {
 }
 
 // ServerMessage is the lightweight per-message state used by sync reconciliation:
-// the UID and whether the server considers the message read (\Seen).
+// the UID and whether the server considers the message read (\Seen) or starred
+// (\Flagged).
 type ServerMessage struct {
-	UID  uint32
-	Seen bool
+	UID     uint32
+	Seen    bool
+	Flagged bool
 }
 
 // ServerState returns the state of every message currently in the mailbox plus
 // the mailbox's UIDVALIDITY, via one FETCH 1:* (UID FLAGS). Sync uses it for two
 // things the additive SINCE fetch can't: reconciling away messages removed
-// server-side, and adopting read/unread changes made in another client. An empty
-// (non-nil-error) result for a non-empty mailbox is impossible: NumMessages==0
-// short-circuits, otherwise 1:* yields every message.
+// server-side, and adopting read/unread and starred changes made in another
+// client. An empty (non-nil-error) result for a non-empty mailbox is impossible:
+// NumMessages==0 short-circuits, otherwise 1:* yields every message.
 func (c *Client) ServerState(ctx context.Context, mailboxName string) (msgs []ServerMessage, uidValidity uint32, err error) {
 	if c.conn == nil {
 		return nil, 0, fmt.Errorf("not connected")
@@ -209,7 +211,9 @@ func (c *Client) ServerState(ctx context.Context, mailboxName string) (msgs []Se
 		for _, f := range m.Flags {
 			if f == imap.FlagSeen {
 				sm.Seen = true
-				break
+			}
+			if f == imap.FlagFlagged {
+				sm.Flagged = true
 			}
 		}
 		msgs = append(msgs, sm)

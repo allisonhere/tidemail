@@ -315,6 +315,66 @@ func TestMarkSeen(t *testing.T) {
 	}
 }
 
+func TestServerStateReportsSeenAndFlagged(t *testing.T) {
+	port, cleanup := startTestServer(t)
+	defer cleanup()
+
+	seenUID := appendTestMessage(t, port, "INBOX", true)
+	flaggedUID := appendTestMessage(t, port, "INBOX", false)
+
+	client := New(config.AccountConfig{
+		IMAPHost: "127.0.0.1",
+		IMAPPort: port,
+		User:     "testuser",
+		Password: "testpass",
+	})
+	if err := client.Connect(context.Background()); err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+	defer client.Close()
+
+	if err := client.MarkFlagged(context.Background(), "INBOX", flaggedUID, true); err != nil {
+		t.Fatalf("MarkFlagged failed: %v", err)
+	}
+	state, _, err := client.ServerState(context.Background(), "INBOX")
+	if err != nil {
+		t.Fatalf("ServerState failed: %v", err)
+	}
+	byUID := make(map[uint32]ServerMessage, len(state))
+	for _, msg := range state {
+		byUID[msg.UID] = msg
+	}
+	if !byUID[seenUID].Seen {
+		t.Fatal("expected server state to report seen flag")
+	}
+	if byUID[seenUID].Flagged {
+		t.Fatal("expected seen-only message not to be flagged")
+	}
+	if !byUID[flaggedUID].Flagged {
+		t.Fatal("expected server state to report flagged state")
+	}
+
+	if err := client.MarkFlagged(context.Background(), "INBOX", flaggedUID, false); err != nil {
+		t.Fatalf("unflag failed: %v", err)
+	}
+	state, _, err = client.ServerState(context.Background(), "INBOX")
+	if err != nil {
+		t.Fatalf("ServerState after unflag failed: %v", err)
+	}
+	found := false
+	for _, msg := range state {
+		if msg.UID == flaggedUID {
+			found = true
+			if msg.Flagged {
+				t.Fatal("expected server state to report removed flag")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected unflagged message in server state")
+	}
+}
+
 func TestMoveMessage(t *testing.T) {
 	port, cleanup := startTestServer(t)
 	defer cleanup()

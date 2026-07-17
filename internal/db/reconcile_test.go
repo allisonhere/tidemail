@@ -163,6 +163,62 @@ func TestApplyServerReadStatesAdoptsServerFlags(t *testing.T) {
 	}
 }
 
+func TestApplyServerStarredStatesAdoptsServerFlags(t *testing.T) {
+	database := openReconcileTestDB(t)
+	accountID, _ := database.AddAccount("Acct", "")
+	mailboxID, _ := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
+
+	if err := database.UpsertMessage(Message{MailboxID: mailboxID, UID: 1, Subject: "add star"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertMessage(Message{MailboxID: mailboxID, UID: 2, Subject: "remove star", Starred: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertMessage(Message{MailboxID: mailboxID, UID: 3, Subject: "keep star", Starred: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertMessage(Message{MailboxID: mailboxID, UID: 0, MessageID: "<local@x>", Starred: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	changed, err := database.ApplyServerStarredStates(mailboxID, map[uint32]bool{1: true, 2: false, 3: true, 0: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed != 2 {
+		t.Fatalf("expected 2 rows changed (uid1, uid2), got %d", changed)
+	}
+
+	starred := map[uint32]bool{}
+	msgs, err := database.ListMessages(mailboxID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, msg := range msgs {
+		starred[msg.UID] = msg.Starred
+	}
+	if !starred[1] {
+		t.Fatal("expected uid1 to become starred")
+	}
+	if starred[2] {
+		t.Fatal("expected uid2 to become unstarred")
+	}
+	if !starred[3] {
+		t.Fatal("expected uid3 to stay starred")
+	}
+	if !starred[0] {
+		t.Fatal("expected local-only row to remain starred")
+	}
+
+	changed, err = database.ApplyServerStarredStates(mailboxID, map[uint32]bool{1: true, 2: false, 3: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed != 0 {
+		t.Fatalf("expected no changes on a second apply, got %d", changed)
+	}
+}
+
 func TestUIDValidityRoundTripAndResetMailboxCache(t *testing.T) {
 	database := openReconcileTestDB(t)
 	accountID, _ := database.AddAccount("Acct", "")
