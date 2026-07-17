@@ -13,6 +13,23 @@ Need the full settings and shortcut reference? Open the
 
 _One inbox, several built-in themes. All mail shown here is fictional._
 
+## Highlights
+
+- **One view for every account.** Read a unified inbox or open any account,
+  folder, or label from the same three-pane screen.
+- **Send from the right address.** Pick an account from the compose From row.
+  TideMail switches its SMTP settings, Drafts folder, From address, and
+  signature with it.
+- **Mail state stays in sync.** Read state, stars, archive, move, and delete use
+  IMAP. Changes made in Gmail or another client return to TideMail on sync.
+- **A few seconds to change your mind.** Press `Ctrl+Z` to stop a queued send or
+  undo a pending delete, archive, or move.
+- **Unsubscribe without hunting for a footer.** Press `Ctrl+U` while reading to
+  use the message's unsubscribe header or labeled unsubscribe link.
+- **Compose your way.** Use regular terminal editing or turn on Vim motions and
+  commands. Optional AI tools can summarize mail, proofread a draft, and build
+  local filters from plain English.
+
 ## Install
 
 Linux and macOS builds are available for Intel and ARM machines.
