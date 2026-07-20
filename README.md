@@ -15,7 +15,7 @@ _One inbox, several built-in themes.
 
 ## Highlights
 
-- **NO configfile editing, all in the GUI.**
+- **NO configf ile editing, all in the GUI.**
 - **One view for every account.** Read a unified inbox or open any account,
   folder, or label from the same three-pane screen.
 - **Send from the right address.** Pick an account from the compose From row.
