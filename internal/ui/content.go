@@ -90,7 +90,11 @@ func (m Model) renderMessageContent(msg db.Message) string {
 		body += "\n\n" + m.renderAttachmentList(bodyWidth)
 	}
 
-	return fillViewWidth(title+"\n"+meta+"\n\n"+fullHeaders+body, paneWidth, m.styles.Theme.Bg)
+	content := title + "\n" + meta + "\n\n" + fullHeaders + body
+	if m.focused != paneContent {
+		content = stripEmojiGraphemes(content)
+	}
+	return fillViewWidth(content, paneWidth, m.styles.Theme.Bg)
 }
 
 func (m Model) renderMessageBody(msg db.Message, bodyWidth int) string {
@@ -301,7 +305,11 @@ func (m Model) renderThreadContent(thread messageThread) string {
 	if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
 		body += "\n\n" + m.renderContentLinks(contentWidth)
 	}
-	return fillViewWidth(title+"\n\n"+body, paneWidth, m.styles.Theme.Bg)
+	content := title + "\n\n" + body
+	if m.focused != paneContent {
+		content = stripEmojiGraphemes(content)
+	}
+	return fillViewWidth(content, paneWidth, m.styles.Theme.Bg)
 }
 
 func (m Model) threadMessageHeader(msg db.Message, width int) string {

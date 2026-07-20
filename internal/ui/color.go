@@ -24,6 +24,20 @@ func hexToRGB(c lipgloss.Color) (r, g, b float64, ok bool) {
 	return float64(ri) / 255, float64(gi) / 255, float64(bi) / 255, true
 }
 
+// mixColors blends tint into base by amount in sRGB space.
+func mixColors(base, tint lipgloss.Color, amount float64) lipgloss.Color {
+	br, bg, bb, baseOK := hexToRGB(base)
+	tr, tg, tb, tintOK := hexToRGB(tint)
+	if !baseOK || !tintOK {
+		return base
+	}
+	amount = math.Max(0, math.Min(1, amount))
+	mix := func(a, b float64) int {
+		return int(math.Round((a*(1-amount) + b*amount) * 255))
+	}
+	return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", mix(br, tr), mix(bg, tg), mix(bb, tb)))
+}
+
 func srgbLinearize(v float64) float64 {
 	if v <= 0.04045 {
 		return v / 12.92

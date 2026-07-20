@@ -16,6 +16,7 @@ require (
 	github.com/emersion/go-message v0.18.2
 	github.com/emersion/go-vcard v0.0.0-20241024213814-c9703dde27ff
 	github.com/muesli/termenv v0.16.0
+	github.com/rivo/uniseg v0.4.7
 	github.com/yuin/goldmark v1.7.13
 	modernc.org/sqlite v1.48.0
 )
@@ -50,7 +51,6 @@ require (
 	github.com/muesli/reflow v0.3.0 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yuin/goldmark-emoji v1.0.6 // indirect
 	golang.org/x/net v0.38.0 // indirect

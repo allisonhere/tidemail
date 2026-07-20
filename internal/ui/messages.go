@@ -74,25 +74,17 @@ func (m Model) renderMessagesPane() string {
 					style = style.Foreground(selFg)
 				}
 			}
-			if i == m.messageCursor {
-				style = msgSelected
-			}
 			subject := m.messageRowTitle(msg2)
 			if threadCount > 1 {
 				subject = fmt.Sprintf("%s (%d)", subject, threadCount)
 			}
-			if msg2.Starred {
-				subject = m.messageStarPrefix() + subject
-			}
+			style = applyMessageRowState(style, msgSelected, msg2.Starred, i == m.messageCursor, m.styles.Theme)
 			var line string
 			if m.cfg.Display.ShowSender {
 				senderW := min(22, max(0, w/3))
 				line = style.Width(w).Render(renderArticleRowWithSender(dot, senderDisplay(msg2.From), subject, age, w, senderW))
 			} else {
 				line = style.Width(w).Render(renderArticleRow(dot, subject, age, w))
-			}
-			if msg2.Starred && !m.styles.PlainUI {
-				line = recolorGlyph(line, strings.TrimSpace(m.messageStarPrefix()), starColor(m.styles.Theme))
 			}
 			rows = append(rows, line)
 		}
@@ -254,7 +246,7 @@ func (m *Model) sortFilteredStarred() {
 }
 
 func (m Model) messageRowTitle(msg db.Message) string {
-	subject := unescapeDisplayText(msg.Subject)
+	subject := messageListDisplayText(unescapeDisplayText(msg.Subject))
 	if !m.searchActive() {
 		return subject
 	}
@@ -414,46 +406,23 @@ func renderArticleRowWithSender(prefix, sender, title, age string, width, sender
 	return padRight(row, width)
 }
 
-// starColor returns a readable gold/yellow for the star glyph on the current theme.
+// starColor is the warm accent used to derive the subtle starred-row tint.
 func starColor(t Theme) lipgloss.Color {
 	return accentReadableOn(lipgloss.Color("#f9c74f"), t.Bg, 3)
 }
 
-// recolorGlyph recolors the first occurrence of glyph in an already-styled row
-// with fg, keeping the row's background and restoring the row's original styling
-// for everything after the glyph. It injects only the foreground SGR (no reset)
-// so the row background carries through, then re-opens the row's leading SGR.
-func recolorGlyph(line, glyph string, fg lipgloss.Color) string {
-	idx := strings.Index(line, glyph)
-	if idx < 0 {
-		return line
-	}
-	reopen := leadingSGR(line)
-	if reopen == "" {
-		return line
-	}
-	fgOpen := leadingSGR(lipgloss.NewStyle().Foreground(fg).Render("x"))
-	return line[:idx] + fgOpen + glyph + reopen + line[idx+len(glyph):]
+func starredRowBackground(t Theme) lipgloss.Color {
+	return mixColors(t.Bg, starColor(t), 0.12)
 }
 
-// leadingSGR returns the ANSI SGR (\x1b[...m) sequence a string opens with, if any.
-func leadingSGR(s string) string {
-	if !strings.HasPrefix(s, "\x1b[") {
-		return ""
+func applyMessageRowState(style, selected lipgloss.Style, starred, cursor bool, t Theme) lipgloss.Style {
+	if starred {
+		style = style.Background(starredRowBackground(t))
 	}
-	if i := strings.IndexByte(s, 'm'); i >= 0 {
-		return s[:i+1]
+	if cursor {
+		return selected
 	}
-	return ""
-}
-
-// messageStarPrefix returns a compact star marker prepended to a starred
-// message's subject, respecting the plain-UI / icons display tiers.
-func (m Model) messageStarPrefix() string {
-	if m.styles.PlainUI || !m.iconsEnabled() {
-		return "* "
-	}
-	return "★ "
+	return style
 }
 
 func (m Model) messageRowPrefix(read bool) string {

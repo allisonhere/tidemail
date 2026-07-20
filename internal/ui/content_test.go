@@ -59,6 +59,69 @@ func TestRenderMessageTitleSpansPaneWhenReadingWidthIsCapped(t *testing.T) {
 	}
 }
 
+func TestContentPreviewRemovesEmojiUntilContentIsFocused(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.width = 100
+	m.height = 30
+	m.focused = paneMessages
+	m.viewport.Width = m.contentBodyWidth()
+	m.viewport.Height = m.contentBodyHeight()
+	msg := db.Message{
+		ID:       1,
+		Subject:  "LEVEL UP 🥇 ",
+		From:     "Friendly 🙌 Sender <sender@example.com>",
+		BodyText: "Save money 💰 and move fast 💨. Victory ✌️",
+		Date:     time.Date(2026, 7, 19, 19, 0, 28, 0, time.Local),
+	}
+	m.messages = []db.Message{msg}
+	m.filteredMessages = []db.Message{msg}
+	m.setViewportForCurrentRow()
+
+	preview := ansi.Strip(m.viewport.View())
+	for _, emoji := range []string{"🥇", "🙌", "💰", "💨", "✌️"} {
+		if strings.Contains(preview, emoji) {
+			t.Fatalf("list-focused preview retained emoji %q: %q", emoji, preview)
+		}
+	}
+	if !strings.Contains(preview, "LEVEL UP") || !strings.Contains(preview, "Save money") {
+		t.Fatalf("preview lost ordinary content: %q", preview)
+	}
+
+	next, _ := m.focusPane(paneContent)
+	m = next.(Model)
+	content := ansi.Strip(m.viewport.View())
+	for _, emoji := range []string{"🥇", "🙌", "💰", "💨", "✌️"} {
+		if !strings.Contains(content, emoji) {
+			t.Fatalf("content-focused message did not restore emoji %q: %q", emoji, content)
+		}
+	}
+
+	next, _ = m.focusPane(paneMessages)
+	m = next.(Model)
+	preview = ansi.Strip(m.viewport.View())
+	if strings.ContainsAny(preview, "🥇🙌💰💨✌️") {
+		t.Fatalf("returning to messages did not sanitize the preview: %q", preview)
+	}
+}
+
+func TestHTMLContentPreviewRemovesEmoji(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.width = 100
+	m.height = 30
+	m.focused = paneMessages
+
+	view := ansi.Strip(m.renderMessageContent(db.Message{
+		Subject:  "Sale ✅",
+		BodyHTML: "<p>Celebrate 🙌 and save 💰</p>",
+	}))
+	if strings.ContainsAny(view, "✅🙌💰") {
+		t.Fatalf("HTML preview retained emoji: %q", view)
+	}
+	if !strings.Contains(view, "Celebrate") || !strings.Contains(view, "save") {
+		t.Fatalf("HTML preview lost ordinary content: %q", view)
+	}
+}
+
 func TestRenderHTMLBodyPreservesTablesAsReadableRows(t *testing.T) {
 	got := ansi.Strip(renderHTMLBody(`<table><tr><th>Name</th><th>Status</th></tr><tr><td>Ada</td><td>Done</td></tr></table>`, 80, CatppuccinMocha, true))
 

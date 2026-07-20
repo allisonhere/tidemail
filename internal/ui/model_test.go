@@ -691,6 +691,83 @@ func TestMessagesPaneComfortableDensityDoesNotExceedPaneHeight(t *testing.T) {
 	}
 }
 
+func TestMessagesPaneMedalSubjectDoesNotShiftLayout(t *testing.T) {
+	for _, density := range []string{"compact", "comfortable"} {
+		for _, showSender := range []bool{false, true} {
+			for _, medalStarred := range []bool{false, true} {
+				for _, cursor := range []int{0, 1} { // medal row focused and unfocused
+					name := fmt.Sprintf("density=%s/sender=%v/starred=%v/cursor=%d", density, showSender, medalStarred, cursor)
+					t.Run(name, func(t *testing.T) {
+						cfg := config.DefaultConfig()
+						cfg.Display.Density = density
+						cfg.Display.ShowSender = showSender
+						m := NewModel(nil, cfg, "dev", false)
+						m.width = 120
+						m.height = 30
+						m.focused = paneMessages
+						m.selectedMessages = make(map[int64]bool)
+						m.accounts = []db.Account{{ID: 1, Name: "Work"}}
+						m.mailboxes = []db.Mailbox{{ID: 1, AccountID: 1, Name: "INBOX"}}
+
+						for i := 0; i < 20; i++ {
+							subject := fmt.Sprintf("Message %02d subject text with extra words", i)
+							from := "sender@example.com"
+							starred := i%3 == 0
+							if i == 0 {
+								subject = "LEVEL UP 🥇 "
+								from = "Just Between Friends - Lee's Summit <leessummit@jbfsale.com>"
+								starred = medalStarred
+							}
+							msg := db.Message{
+								ID:        int64(i + 1),
+								MailboxID: 1,
+								Subject:   subject,
+								From:      from,
+								Date:      time.Unix(int64(i), 0),
+								Starred:   starred,
+							}
+							m.messages = append(m.messages, msg)
+							m.filteredMessages = append(m.filteredMessages, msg)
+						}
+						m.rebuildSidebar()
+						m.messageCursor = cursor
+						m.listOffset = 0
+
+						pane := m.renderMessagesPane()
+						if !strings.Contains(ansi.Strip(pane), "LEVEL UP") || strings.Contains(ansi.Strip(pane), "🥇") {
+							t.Fatal("expected the message list to omit the medal emoji")
+						}
+						if got := m.filteredMessages[0].Subject; got != "LEVEL UP 🥇 " {
+							t.Fatalf("stored subject changed during rendering: %q", got)
+						}
+						if strings.Contains(ansi.Strip(pane), "✦ LEVEL") || strings.Contains(ansi.Strip(pane), "★ LEVEL") {
+							t.Fatal("starred state must not consume subject space with a marker")
+						}
+						if got, want := strings.Count(ansi.Strip(pane), "\n")+1, m.articlesPaneOuterHeight(); got > want {
+							t.Fatalf("message pane height %d > allocated height %d", got, want)
+						}
+
+						view := m.View()
+						plain := ansi.Strip(view)
+						if got := strings.Count(plain, "\n") + 1; got != m.height {
+							t.Fatalf("full view height %d != terminal height %d", got, m.height)
+						}
+						for i, line := range strings.Split(view, "\n") {
+							if got := lipgloss.Width(line); got > m.width {
+								t.Fatalf("rendered line %d width %d > terminal width %d", i, got, m.width)
+							}
+						}
+						first := strings.SplitN(plain, "\n", 2)[0]
+						if !strings.Contains(first, "Accounts") || !strings.Contains(first, "Unified Inbox") {
+							t.Fatalf("expected pane headers on the first line, got %q", first)
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
 func TestScrollingMessageListKeepsPaneHeadersVisible(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Display.Density = "comfortable"

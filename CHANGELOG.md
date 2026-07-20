@@ -2,6 +2,23 @@
 
 All notable changes to TideMail are documented in this file.
 
+## v0.9.4
+
+**Release highlights:** stable message previews in terminals with color emoji,
+plus quieter starred-message styling.
+
+### Fixed
+
+- **Scrolling across emoji-heavy messages no longer leaves ghost rows or shifts
+  the message pane.** TideMail removes emoji from list-focused previews to keep
+  terminal cell widths stable, then restores the original message when you
+  enter the content pane.
+
+### Changed
+
+- **Starred messages use a subtle warm row tint instead of a star glyph.** The
+  subject column stays aligned and the cursor highlight still takes priority.
+
 ## v0.9.3
 
 **Release highlights:** send cancellation, per-account signatures, sender

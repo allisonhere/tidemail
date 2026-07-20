@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -11,32 +10,23 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// recolorGlyph must inject a foreground before the star and re-open the row's
-// original styling after it, so the rest of the row keeps its color.
-func TestRecolorGlyphReopensRowStyle(t *testing.T) {
-	lipgloss.SetColorProfile(2) // force ANSI so SGR codes are emitted
-	defer lipgloss.SetColorProfile(lipgloss.ColorProfile())
-
-	row := lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("0"))
-	line := row.Render("★ Subject")
-	reopen := leadingSGR(line)
-	if reopen == "" {
-		t.Fatal("expected styled line to open with an SGR sequence")
+func TestStarredRowBackgroundIsSubtleTint(t *testing.T) {
+	theme := CatppuccinMocha
+	got := starredRowBackground(theme)
+	if got == theme.Bg {
+		t.Fatal("expected starred row background to differ from the base background")
+	}
+	if want := mixColors(theme.Bg, starColor(theme), 0.12); got != want {
+		t.Fatalf("starred row background = %q, want %q", got, want)
 	}
 
-	out := recolorGlyph(line, "★", lipgloss.Color("11"))
-	star := strings.Index(out, "★")
-	if star < 0 {
-		t.Fatal("star glyph missing after recolor")
+	base := lipgloss.NewStyle().Background(theme.Bg)
+	selected := lipgloss.NewStyle().Background(theme.Selected)
+	if got := applyMessageRowState(base, selected, true, false, theme).GetBackground(); got != starredRowBackground(theme) {
+		t.Fatalf("starred row did not receive tint: %q", got)
 	}
-	// The row's SGR must be re-opened immediately after the star so "Subject"
-	// keeps the row color rather than the star's foreground.
-	if !strings.HasPrefix(out[star+len("★"):], reopen) {
-		t.Fatalf("expected row SGR re-opened after star; got %q", out[star:])
-	}
-	// A foreground override must appear right before the star.
-	if !strings.Contains(out[:star], "\x1b[") || strings.LastIndex(out[:star], "\x1b[") == 0 {
-		t.Fatalf("expected a foreground SGR injected before the star; got %q", out[:star])
+	if got := applyMessageRowState(base, selected, true, true, theme).GetBackground(); got != theme.Selected {
+		t.Fatalf("cursor background must override starred tint: %q", got)
 	}
 }
 

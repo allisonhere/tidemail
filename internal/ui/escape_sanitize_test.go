@@ -43,3 +43,29 @@ func TestSubjectStripsTerminalEscapes(t *testing.T) {
 		}
 	}
 }
+
+func TestMessageListRemovesEmoji(t *testing.T) {
+	tests := map[string]string{
+		"LEVEL UP 🥇 ":          "LEVEL UP",
+		"Family 👨‍👩‍👧‍👦 plans": "Family plans",
+		"Flag 🇺🇸 update":       "Flag update",
+		"Key 1️⃣ choice":       "Key choice",
+		"Keep café — π":        "Keep café — π",
+	}
+	for in, want := range tests {
+		if got := messageListDisplayText(in); got != want {
+			t.Errorf("messageListDisplayText(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestStripEmojiGraphemesPreservesLayoutAndANSI(t *testing.T) {
+	const in = "\x1b[31mWin 🙌 now\x1b[0m\nNext line"
+	got := stripEmojiGraphemes(in)
+	if strings.Contains(got, "🙌") {
+		t.Fatalf("emoji remained in sanitized preview: %q", got)
+	}
+	if !strings.Contains(got, "\x1b[31m") || !strings.Contains(got, "\x1b[0m") || !strings.Contains(got, "\n") {
+		t.Fatalf("preview sanitization damaged ANSI or line breaks: %q", got)
+	}
+}

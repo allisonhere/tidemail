@@ -1448,6 +1448,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.focused = paneMessages
+			m.setViewportForCurrentRow()
 			return m, nil
 		}
 		if m.focused == paneMessages && m.hasSelection() {
@@ -1780,11 +1781,17 @@ func (m Model) focusPane(next pane) (tea.Model, tea.Cmd) {
 	}
 	if wasMessages && next == paneContent {
 		if msg := m.currentRowMessage(); msg != nil {
+			// Rebuild the viewport with the original emoji once the user
+			// explicitly enters the content pane.
+			m.setViewportForCurrentRow()
 			return m, m.openedMessageCmd(*msg)
 		}
 	}
 	if !wasMessages && next == paneMessages {
 		if msg := m.currentRowMessage(); msg != nil {
+			// The list-focused preview omits emoji to keep cursor repainting
+			// stable in terminals with color-emoji width quirks.
+			m.setViewportForCurrentRow()
 			return m, m.focusedMessageChangedCmd(*msg)
 		}
 	}
