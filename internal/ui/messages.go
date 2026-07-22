@@ -68,9 +68,11 @@ func (m Model) renderMessagesPane() string {
 			dot := m.messageRowPrefix(threadUnread == 0)
 			if m.messageRowSelected(msg2, thread) {
 				dot = "✓ "
-				// When selected but not the cursor, use green checkmark + text
+				// When selected but not the cursor, tint the row with the theme's
+				// accent (kept readable on the pane background) rather than a fixed
+				// green that clashes on light themes.
 				if i != m.messageCursor {
-					selFg := lipgloss.Color("#a6e3a1")
+					selFg := accentReadableOn(m.styles.Theme.Unread, m.styles.Theme.Bg, 4.5)
 					style = style.Foreground(selFg)
 				}
 			}
@@ -127,10 +129,13 @@ func (m Model) renderMessagesPane() string {
 
 	var headerLine string
 	if m.searchMode {
-		// Dark badge fills from text through the gap to the hint area.
+		// Badge fills from text through the gap to the hint area, using the
+		// theme's focus accent so it stays on-palette (not a black block on
+		// light themes). Mirrors the PaneHeaderActive treatment.
+		badgeBg := m.styles.Theme.BorderFocus
 		badgeStyle := lipgloss.NewStyle().
-			Background(lipgloss.Color("#2a2a2a")).
-			Foreground(lipgloss.Color("#ffffff")).
+			Background(badgeBg).
+			Foreground(accentReadableOn(m.styles.Theme.Fg, badgeBg, 4.5)).
 			Bold(true)
 		badgeText := "> " + m.headerLabel(title)
 		badgeW := lipgloss.Width(badgeText)
