@@ -21,6 +21,31 @@ func unescapeDisplayText(s string) string {
 	return strings.Join(strings.Fields(cleaned), " ")
 }
 
+// normalizeHardBreaks converts Unicode line/paragraph separators to a plain
+// newline so the line-based viewport layout can account for them. Terminals
+// disagree with the width libraries here: x/ansi measures U+2028 as a zero/one
+// width rune, but many terminals honor it as an actual line break. Left intact,
+// a single content line carrying U+2028 renders as two terminal lines, overflows
+// the pane, and shifts the whole frame. Converting to "\n" up front lets
+// clampView split, measure, and pad each real line correctly.
+//
+// It runs on the fully assembled, ANSI-styled content, so it must not touch ESC
+// (U+001B) or any byte an SGR sequence uses; only the separator runes below are
+// remapped.
+func normalizeHardBreaks(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case 0x2028, // LINE SEPARATOR
+			0x2029, // PARAGRAPH SEPARATOR
+			'\v',   // VERTICAL TAB
+			'\f',   // FORM FEED
+			0x0085: // NEXT LINE (NEL)
+			return '\n'
+		}
+		return r
+	}, s)
+}
+
 // messageListDisplayText removes emoji grapheme clusters from list subjects.
 // The original subject used by storage, search, and the opened message is never
 // changed. Keeping emoji out of the frequently repainted list avoids terminal
@@ -46,7 +71,7 @@ func stripEmojiGraphemes(s string) string {
 func isEmojiGrapheme(runes []rune, width int) bool {
 	for _, r := range runes {
 		switch {
-		case r == '\ufe0f', r == '\u200d', r == '\u20e3':
+		case r == 0xfe0f, r == 0x200d, r == 0x20e3:
 			return true
 		case r >= 0x1f1e6 && r <= 0x1f1ff: // regional-indicator flags
 			return true

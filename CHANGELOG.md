@@ -2,6 +2,20 @@
 
 All notable changes to TideMail are documented in this file.
 
+## v0.9.5
+
+**Release highlights:** fixes a layout glitch where certain emails pushed the
+interface out of alignment.
+
+### Fixed
+
+- **Some messages no longer break the layout by wrapping or shifting the UI up a
+  line.** Emails carrying a Unicode line separator (U+2028) and related hard-break
+  characters used to render an extra line the width model couldn't see,
+  overflowing the message pane. TideMail now normalizes these to real line breaks
+  before layout, so the frame stays aligned. Reported against a newsletter from
+  ecobee.
+
 ## v0.9.4
 
 **Release highlights:** stable message previews in terminals with color emoji,

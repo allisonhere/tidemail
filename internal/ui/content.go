@@ -94,6 +94,7 @@ func (m Model) renderMessageContent(msg db.Message) string {
 	if m.focused != paneContent {
 		content = stripEmojiGraphemes(content)
 	}
+	content = normalizeHardBreaks(content)
 	return fillViewWidth(content, paneWidth, m.styles.Theme.Bg)
 }
 
@@ -309,6 +310,7 @@ func (m Model) renderThreadContent(thread messageThread) string {
 	if m.focused != paneContent {
 		content = stripEmojiGraphemes(content)
 	}
+	content = normalizeHardBreaks(content)
 	return fillViewWidth(content, paneWidth, m.styles.Theme.Bg)
 }
 
