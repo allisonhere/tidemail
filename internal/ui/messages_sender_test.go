@@ -11,7 +11,7 @@ import (
 )
 
 func TestRenderArticleRowWithSenderShowsBothColumns(t *testing.T) {
-	row := renderArticleRowWithSender("● ", "Jane Doe", "Lunch tomorrow?", "2h", 50, 12)
+	row := renderArticleRowWithSender("● ", "  ", "Jane Doe", "Lunch tomorrow?", "2h", 50, 12)
 	if !strings.Contains(row, "Jane Doe") {
 		t.Fatalf("expected sender in row: %q", row)
 	}

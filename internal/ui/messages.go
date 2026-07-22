@@ -39,7 +39,7 @@ func (m Model) renderMessagesPane() string {
 			if !m.iconsEnabled() {
 				prefix = "d "
 			}
-			rows = append(rows, style.Width(w).Render(renderArticleRow(prefix, unescapeDisplayText(draftSubject(draft)), age, w)))
+			rows = append(rows, style.Width(w).Render(renderArticleRow(prefix, m.messageRowStar(false), unescapeDisplayText(draftSubject(draft)), age, w)))
 		}
 		if len(m.drafts) == 0 {
 			rows = append(rows, msgRead.Render("  no drafts"))
@@ -81,12 +81,13 @@ func (m Model) renderMessagesPane() string {
 				subject = fmt.Sprintf("%s (%d)", subject, threadCount)
 			}
 			style = applyMessageRowState(style, msgSelected, msg2.Starred, i == m.messageCursor, m.styles.Theme)
+			star := m.messageRowStar(msg2.Starred)
 			var line string
 			if m.cfg.Display.ShowSender {
 				senderW := min(22, max(0, w/3))
-				line = style.Width(w).Render(renderArticleRowWithSender(dot, senderDisplay(msg2.From), subject, age, w, senderW))
+				line = style.Width(w).Render(renderArticleRowWithSender(dot, star, senderDisplay(msg2.From), subject, age, w, senderW))
 			} else {
-				line = style.Width(w).Render(renderArticleRow(dot, subject, age, w))
+				line = style.Width(w).Render(renderArticleRow(dot, star, subject, age, w))
 			}
 			rows = append(rows, line)
 		}
@@ -377,8 +378,9 @@ func (m *Model) markAccountReadCmd(accountID int64) tea.Cmd {
 	}
 }
 
-func renderArticleRow(prefix, title, age string, width int) string {
+func renderArticleRow(prefix, star, title, age string, width int) string {
 	prefixW := lipgloss.Width(prefix)
+	starW := lipgloss.Width(star)
 	ageW := lipgloss.Width(age)
 	gapW := 2
 	trailingW := 2
@@ -386,15 +388,16 @@ func renderArticleRow(prefix, title, age string, width int) string {
 		gapW = 0
 		trailingW = 0
 	}
-	titleW := max(0, width-prefixW-ageW-gapW-trailingW)
-	row := prefix + padRight(truncate(title, titleW), titleW) + strings.Repeat(" ", gapW) + age + strings.Repeat(" ", trailingW)
+	titleW := max(0, width-prefixW-starW-ageW-gapW-trailingW)
+	row := prefix + star + padRight(truncate(title, titleW), titleW) + strings.Repeat(" ", gapW) + age + strings.Repeat(" ", trailingW)
 	return padRight(row, width)
 }
 
 // renderArticleRowWithSender lays out a message row with a fixed-width sender
 // column before the subject, keeping subjects vertically aligned across rows.
-func renderArticleRowWithSender(prefix, sender, title, age string, width, senderW int) string {
+func renderArticleRowWithSender(prefix, star, sender, title, age string, width, senderW int) string {
 	prefixW := lipgloss.Width(prefix)
+	starW := lipgloss.Width(star)
 	ageW := lipgloss.Width(age)
 	gapW := 2
 	trailingW := 2
@@ -403,8 +406,8 @@ func renderArticleRowWithSender(prefix, sender, title, age string, width, sender
 		trailingW = 0
 	}
 	senderGap := 1
-	titleW := max(0, width-prefixW-senderW-senderGap-ageW-gapW-trailingW)
-	row := prefix +
+	titleW := max(0, width-prefixW-starW-senderW-senderGap-ageW-gapW-trailingW)
+	row := prefix + star +
 		padRight(truncate(sender, senderW), senderW) + strings.Repeat(" ", senderGap) +
 		padRight(truncate(title, titleW), titleW) + strings.Repeat(" ", gapW) +
 		age + strings.Repeat(" ", trailingW)
@@ -447,4 +450,18 @@ func (m Model) messageRowPrefix(read bool) string {
 		return "· "
 	}
 	return "⬤ "
+}
+
+// messageRowStar renders the fixed-width star column that precedes the sender.
+// It always occupies 2 cells so rows stay aligned whether or not a row is starred.
+func (m Model) messageRowStar(starred bool) string {
+	if !starred {
+		return "  "
+	}
+	if m.styles.PlainUI {
+		return "* " // vt52 ASCII fallback
+	}
+	// truncate/padRight are ANSI-aware (both use lipgloss.Width), so an inline
+	// colored glyph does not throw off the row width math.
+	return lipgloss.NewStyle().Foreground(starColor(m.styles.Theme)).Render("★") + " "
 }

@@ -474,18 +474,19 @@ func TestRightFromMessageListRespectsMarkReadOnOpenDisabled(t *testing.T) {
 func TestMessageRowCollapsesFoldedHeadersToOneLine(t *testing.T) {
 	row := renderArticleRowWithSender(
 		"⬤ ",
+		"  ",
 		senderDisplay("Alice\r\n Bob <alice@example.com>"),
 		unescapeDisplayText("this &amp; that\r\n folded	 subject"),
 		"now",
-		42,
+		44,
 		12,
 	)
 
 	if strings.ContainsAny(row, "\r\n	") {
 		t.Fatalf("expected row text to be single-line, got %q", row)
 	}
-	if got := lipgloss.Width(row); got != 42 {
-		t.Fatalf("expected row width 42, got %d: %q", got, row)
+	if got := lipgloss.Width(row); got != 44 {
+		t.Fatalf("expected row width 44, got %d: %q", got, row)
 	}
 	if !strings.Contains(row, "this & that folded") {
 		t.Fatalf("expected folded subject collapsed and unescaped, got %q", row)
@@ -691,6 +692,17 @@ func TestMessagesPaneComfortableDensityDoesNotExceedPaneHeight(t *testing.T) {
 	}
 }
 
+// subjectStartColumn returns the display column where needle begins on the first
+// rendered line that contains it, or -1 if no line contains it.
+func subjectStartColumn(pane, needle string) int {
+	for _, line := range strings.Split(ansi.Strip(pane), "\n") {
+		if idx := strings.Index(line, needle); idx >= 0 {
+			return lipgloss.Width(line[:idx])
+		}
+	}
+	return -1
+}
+
 func TestMessagesPaneMedalSubjectDoesNotShiftLayout(t *testing.T) {
 	for _, density := range []string{"compact", "comfortable"} {
 		for _, showSender := range []bool{false, true} {
@@ -740,8 +752,16 @@ func TestMessagesPaneMedalSubjectDoesNotShiftLayout(t *testing.T) {
 						if got := m.filteredMessages[0].Subject; got != "LEVEL UP 🥇 " {
 							t.Fatalf("stored subject changed during rendering: %q", got)
 						}
-						if strings.Contains(ansi.Strip(pane), "✦ LEVEL") || strings.Contains(ansi.Strip(pane), "★ LEVEL") {
-							t.Fatal("starred state must not consume subject space with a marker")
+						// The star lives in a fixed-width reserved column, so a
+						// starred subject must start at the same visual column as a
+						// non-starred one — the marker must not shift the subject.
+						medalCol := subjectStartColumn(pane, "LEVEL UP")
+						plainCol := subjectStartColumn(pane, "Message 01")
+						if medalCol < 0 || plainCol < 0 {
+							t.Fatalf("expected both the medal and a plain row to render, got medal=%d plain=%d", medalCol, plainCol)
+						}
+						if medalCol != plainCol {
+							t.Fatalf("starred state shifted the subject column: medal starts at %d, plain at %d", medalCol, plainCol)
 						}
 						if got, want := strings.Count(ansi.Strip(pane), "\n")+1, m.articlesPaneOuterHeight(); got > want {
 							t.Fatalf("message pane height %d > allocated height %d", got, want)
