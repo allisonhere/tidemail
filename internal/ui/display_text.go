@@ -21,17 +21,22 @@ func unescapeDisplayText(s string) string {
 	return strings.Join(strings.Fields(cleaned), " ")
 }
 
-// normalizeHardBreaks converts Unicode line/paragraph separators to a plain
-// newline so the line-based viewport layout can account for them. Terminals
-// disagree with the width libraries here: x/ansi measures U+2028 as a zero/one
-// width rune, but many terminals honor it as an actual line break. Left intact,
-// a single content line carrying U+2028 renders as two terminal lines, overflows
-// the pane, and shifts the whole frame. Converting to "\n" up front lets
-// clampView split, measure, and pad each real line correctly.
+// normalizeHardBreaks neutralizes runes the line-based viewport layout can't
+// measure the way a terminal renders them. Terminals disagree with the width
+// libraries here on two fronts:
+//
+//   - Line/paragraph separators (U+2028, U+2029, VT, FF, NEL) measure as a
+//     zero/one-width rune, but many terminals honor them as an actual line break.
+//     Left intact, a single content line carrying one renders as two terminal
+//     lines, overflows the pane, and shifts the whole frame. They become "\n" so
+//     clampView can split, measure, and pad each real line correctly.
+//   - The replacement char U+FFFD (from undecodable bytes) measures as width 0 in
+//     x/ansi but occupies one cell in the terminal, so each one shifts its line a
+//     cell right. It becomes "?" — width 1 everywhere, and an honest stand-in for
+//     a byte that already failed to decode.
 //
 // It runs on the fully assembled, ANSI-styled content, so it must not touch ESC
-// (U+001B) or any byte an SGR sequence uses; only the separator runes below are
-// remapped.
+// (U+001B) or any byte an SGR sequence uses; only the runes below are remapped.
 func normalizeHardBreaks(s string) string {
 	return strings.Map(func(r rune) rune {
 		switch r {
@@ -41,6 +46,8 @@ func normalizeHardBreaks(s string) string {
 			'\f',   // FORM FEED
 			0x0085: // NEXT LINE (NEL)
 			return '\n'
+		case 0xFFFD: // REPLACEMENT CHARACTER (x/ansi measures width 0)
+			return '?'
 		}
 		return r
 	}, s)

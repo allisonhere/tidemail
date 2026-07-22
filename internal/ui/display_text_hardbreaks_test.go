@@ -20,6 +20,12 @@ func TestNormalizeHardBreaks(t *testing.T) {
 			t.Errorf("normalizeHardBreaks(%q) = %q, want %q", in, got, "left\nright")
 		}
 	}
+	// The replacement char (width 0 in x/ansi, one cell in the terminal) becomes
+	// a width-1 '?' so it can't shift a line right.
+	if got := normalizeHardBreaks("a" + string(rune(0xFFFD)) + "b"); got != "a?b" {
+		t.Errorf("normalizeHardBreaks did not neutralize U+FFFD: %q", got)
+	}
+
 	// ESC and ordinary runes must be untouched so ANSI styling survives.
 	styled := "\x1b[31mred\x1b[0m x"
 	if got := normalizeHardBreaks(styled); got != styled {

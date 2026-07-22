@@ -15,6 +15,9 @@ interface out of alignment.
   overflowing the message pane. TideMail now normalizes these to real line breaks
   before layout, so the frame stays aligned. Reported against a newsletter from
   ecobee.
+- **Undecodable characters no longer nudge a line out of alignment.** The
+  replacement glyph shown for bytes that fail to decode occupies a terminal cell
+  the width model counted as zero; it's now measured correctly.
 
 ## v0.9.4
 
