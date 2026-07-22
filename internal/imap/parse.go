@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -14,6 +15,12 @@ import (
 	"github.com/allisonhere/tide/internal/db"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/emersion/go-message"
+	// Registers the global message.CharsetReader so non-UTF-8 parts
+	// (ISO-8859-1, Windows-1252, Shift_JIS, …) decode to UTF-8 instead of
+	// producing U+FFFD replacement chars — and so an unknown charset no longer
+	// aborts NextPart and drops the rest of the message.
+	_ "github.com/emersion/go-message/charset"
 	"github.com/emersion/go-message/mail"
 )
 
@@ -290,7 +297,12 @@ func parseBody(raw []byte) (text, html string, attachments []bodyAttachment) {
 
 	for {
 		part, err := r.NextPart()
-		if err != nil {
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		// An unknown charset still yields a usable part whose body reads as raw
+		// bytes, so keep going; only a genuine error aborts the message.
+		if err != nil && !message.IsUnknownCharset(err) {
 			break
 		}
 		ct, params, _ := mime.ParseMediaType(part.Header.Get("Content-Type"))

@@ -125,8 +125,9 @@ func (m Model) renderAttachmentList(width int) string {
 	dimmed := lipgloss.NewStyle().Foreground(messageMutedColor(th))
 	body := m.styles.ContentBody.Width(width)
 
+	header := accent.Render("── " + strings.ToUpper("Attachments") + " ──")
 	lines := []string{
-		accent.Render("── "+strings.ToUpper("Attachments")+" ──") + dimmed.Render(strings.Repeat("─", width-ansi.StringWidth(accent.Render("── "+strings.ToUpper("Attachments")+" ──")))),
+		header + dimmed.Render(strings.Repeat("─", max(0, width-ansi.StringWidth(header)))),
 	}
 	maxSizeLen := 0
 	for _, a := range m.contentAttachments {
@@ -138,7 +139,10 @@ func (m Model) renderAttachmentList(width int) string {
 		icon := fileTypeIcon(a.Filename, a.ContentType)
 		sizeStr := formatFileSize(a.Size)
 		iconStyled := accent.Render(" " + icon + " ")
-		line := iconStyled + a.Filename
+		// Truncate the filename so a long name can't overflow the pane and shove
+		// the size column off-screen; leave room for the icon, size, and gap.
+		nameW := max(1, width-ansi.StringWidth(iconStyled)-maxSizeLen-3)
+		line := iconStyled + truncate(a.Filename, nameW)
 		paddedSize := fmt.Sprintf("%*s", maxSizeLen, sizeStr)
 		// Right-align size by padding to column end
 		used := ansi.StringWidth(line)

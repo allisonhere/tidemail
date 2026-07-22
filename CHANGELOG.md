@@ -2,6 +2,28 @@
 
 All notable changes to TideMail are documented in this file.
 
+## v0.9.6
+
+**Release highlights:** correct display of non-English/legacy-encoded email, plus
+a few layout hardening fixes.
+
+### Fixed
+
+- **Emails in non-UTF-8 encodings now display correctly.** Messages in
+  ISO-8859-1, Windows-1252, Shift_JIS, and similar legacy charsets used to show
+  garbled `�` characters, and an unrecognized encoding could silently drop the
+  rest of the message. TideMail now decodes these to proper text. (Messages
+  already synced keep their earlier garbling until re-synced.)
+- **A message with attachments no longer crashes the content pane on a very
+  narrow terminal.**
+- **Long attachment filenames are truncated instead of overflowing** and pushing
+  the file-size column off-screen.
+
+### Changed
+
+- AI summary and grammar requests no longer clip a multi-byte character in half
+  when trimming long content before sending.
+
 ## v0.9.5
 
 **Release highlights:** fixes a layout glitch where certain emails pushed the

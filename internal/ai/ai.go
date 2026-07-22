@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/allisonhere/tide/internal/config"
 )
@@ -61,6 +62,11 @@ const grammarPrompt = "Fix grammar, spelling, and punctuation in the following t
 func truncateContent(s string, n int) string {
 	if len(s) <= n {
 		return s
+	}
+	// Back off to a rune boundary so we never send half a multibyte character
+	// (invalid UTF-8) to the provider.
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
 	}
 	return s[:n]
 }
