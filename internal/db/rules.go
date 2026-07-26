@@ -84,3 +84,21 @@ func (db *DB) SetRulePriority(id int64, priority int) error {
 	_, err := db.Exec(`UPDATE rules SET priority = ? WHERE id = ?`, priority, id)
 	return err
 }
+
+// SwapRulePriorities changes two rules' evaluation order atomically. If either
+// update fails, neither priority is changed.
+func (db *DB) SwapRulePriorities(firstID int64, firstPriority int, secondID int64, secondPriority int) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.Exec(`UPDATE rules SET priority = ? WHERE id = ?`, firstPriority, firstID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE rules SET priority = ? WHERE id = ?`, secondPriority, secondID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}

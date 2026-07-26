@@ -40,11 +40,14 @@ func (m *Model) newFilterManager() filterManager {
 	return fmgr
 }
 
-func (m *Model) reloadFilterRules() {
-	if rules, err := m.db.ListRules(); err == nil {
-		m.filterManager.rules = rules
+func (m *Model) reloadFilterRules() error {
+	rules, err := m.db.ListRules()
+	if err != nil {
+		return err
 	}
+	m.filterManager.rules = rules
 	m.filterManager.cursor = clamp(m.filterManager.cursor, 0, max(0, len(m.filterManager.rules)-1))
+	return nil
 }
 
 func (m Model) handleFilterManager(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -88,14 +91,28 @@ func (m Model) handleFilterList(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case keyMatches(key, m.keys.Space):
 		if r := m.selectedRule(); r != nil {
-			_ = m.db.SetRuleEnabled(r.ID, !r.Enabled)
-			m.reloadFilterRules()
+			if err := m.db.SetRuleEnabled(r.ID, !r.Enabled); err != nil {
+				m.filterManager.status = "update failed: " + err.Error()
+				return m, nil
+			}
+			if err := m.reloadFilterRules(); err != nil {
+				m.filterManager.status = "reload failed: " + err.Error()
+				return m, nil
+			}
+			m.filterManager.status = ""
 		}
 		return m, nil
 	case keyMatches(key, m.keys.Delete):
 		if r := m.selectedRule(); r != nil {
-			_ = m.db.DeleteRule(r.ID)
-			m.reloadFilterRules()
+			if err := m.db.DeleteRule(r.ID); err != nil {
+				m.filterManager.status = "delete failed: " + err.Error()
+				return m, nil
+			}
+			if err := m.reloadFilterRules(); err != nil {
+				m.filterManager.status = "reload failed: " + err.Error()
+				return m, nil
+			}
+			m.filterManager.status = ""
 		}
 		return m, nil
 	case key.String() == "K":
@@ -258,7 +275,10 @@ func (m *Model) saveDraftRule() error {
 		m.filterManager.status = "save failed: " + err.Error()
 		return err
 	}
-	m.reloadFilterRules()
+	if err := m.reloadFilterRules(); err != nil {
+		m.filterManager.status = "reload failed: " + err.Error()
+		return err
+	}
 	return nil
 }
 
@@ -270,10 +290,16 @@ func (m Model) reorderRule(delta int) Model {
 	}
 	a := m.filterManager.rules[i]
 	b := m.filterManager.rules[j]
-	_ = m.db.SetRulePriority(a.ID, b.Priority)
-	_ = m.db.SetRulePriority(b.ID, a.Priority)
-	m.reloadFilterRules()
+	if err := m.db.SwapRulePriorities(a.ID, b.Priority, b.ID, a.Priority); err != nil {
+		m.filterManager.status = "reorder failed: " + err.Error()
+		return m
+	}
+	if err := m.reloadFilterRules(); err != nil {
+		m.filterManager.status = "reload failed: " + err.Error()
+		return m
+	}
 	m.filterManager.cursor = j
+	m.filterManager.status = ""
 	return m
 }
 
