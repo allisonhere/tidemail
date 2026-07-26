@@ -80,8 +80,16 @@ func (m Model) renderMessagesPane() string {
 			if threadCount > 1 {
 				subject = fmt.Sprintf("%s (%d)", subject, threadCount)
 			}
-			style = applyMessageRowState(style, msgSelected, msg2.Starred, i == m.messageCursor, m.styles.Theme)
+			cursor := i == m.messageCursor
+			style = applyMessageRowState(style, msgSelected, msg2.Starred, cursor, m.styles.Theme)
 			star := m.messageRowStar(msg2.Starred)
+			if cursor && msg2.Starred {
+				// A separately styled star ends with an ANSI reset, which also
+				// clears the selected row's background for every cell after it.
+				// Let the star inherit the cursor style so the highlight remains
+				// continuous across the full row.
+				star = "★ "
+			}
 			var line string
 			if m.cfg.Display.ShowSender {
 				senderW := min(22, max(0, w/3))
@@ -140,7 +148,13 @@ func (m Model) renderMessagesPane() string {
 			Bold(true)
 		badgeText := "> " + m.headerLabel(title)
 		badgeW := lipgloss.Width(badgeText)
+		if badgeW >= w {
+			badgeText = truncate(badgeText, w)
+			badgeW = lipgloss.Width(badgeText)
+		}
 		hint := m.renderPaneHint(paneMessages)
+		hintMax := max(0, w-badgeW)
+		hint = truncate(hint, hintMax)
 		hintW := lipgloss.Width(hint)
 		gap := max(0, w-badgeW-hintW)
 		left := badgeStyle.Width(badgeW + gap).Render(badgeText)
