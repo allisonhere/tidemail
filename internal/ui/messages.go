@@ -83,13 +83,6 @@ func (m Model) renderMessagesPane() string {
 			cursor := i == m.messageCursor
 			style = applyMessageRowState(style, msgSelected, msg2.Starred, cursor, m.styles.Theme)
 			star := m.messageRowStar(msg2.Starred)
-			if cursor && msg2.Starred {
-				// A separately styled star ends with an ANSI reset, which also
-				// clears the selected row's background for every cell after it.
-				// Let the star inherit the cursor style so the highlight remains
-				// continuous across the full row.
-				star = "★ "
-			}
 			var line string
 			if m.cfg.Display.ShowSender {
 				senderW := min(22, max(0, w/3))
@@ -466,8 +459,10 @@ func (m Model) messageRowPrefix(read bool) string {
 	return "⬤ "
 }
 
-// messageRowStar renders the fixed-width star column that precedes the sender.
-// It always occupies 2 cells so rows stay aligned whether or not a row is starred.
+// messageRowStar returns the fixed-width star column that precedes the sender.
+// It deliberately contains no ANSI styling: an inline reset would interrupt the
+// enclosing row background, leaving the star cells (and sometimes the remainder
+// of the row) with the terminal's default background.
 func (m Model) messageRowStar(starred bool) string {
 	if !starred {
 		return "  "
@@ -475,7 +470,5 @@ func (m Model) messageRowStar(starred bool) string {
 	if m.styles.PlainUI {
 		return "* " // vt52 ASCII fallback
 	}
-	// truncate/padRight are ANSI-aware (both use lipgloss.Width), so an inline
-	// colored glyph does not throw off the row width math.
-	return lipgloss.NewStyle().Foreground(starColor(m.styles.Theme)).Render("★") + " "
+	return "★ "
 }

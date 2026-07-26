@@ -37,6 +37,18 @@ func TestRenderArticleRowStarColumnKeepsWidth(t *testing.T) {
 	}
 }
 
+func TestMessageRowStarInheritsWholeRowBackground(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	star := m.messageRowStar(true)
+
+	if strings.Contains(star, "\x1b[") {
+		t.Fatalf("star column must not contain ANSI styling that resets the row background: %q", star)
+	}
+	if got := lipgloss.Width(star); got != 2 {
+		t.Fatalf("expected star column width 2, got %d", got)
+	}
+}
+
 func TestSelectedStarredMessageKeepsHighlightAcrossEntireRow(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
