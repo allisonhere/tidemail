@@ -2,7 +2,7 @@
 
 All notable changes to TideMail are documented in this file.
 
-## v0.9.8
+## v1.0.1
 
 **Release highlights:** cleaner newsletter rendering and a polished in-app log
 viewer.
