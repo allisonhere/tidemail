@@ -322,7 +322,9 @@ func parseBody(raw []byte) (text, html string, attachments []bodyAttachment) {
 			if html == "" {
 				html = string(data)
 				if text == "" {
-					text = stripHTML(string(data))
+					if stripped := stripHTML(string(data)); meaningfulBodyText(stripped) {
+						text = stripped
+					}
 				}
 			}
 		default:
@@ -430,4 +432,34 @@ func stripHTML(s string) string {
 		}
 	}
 	return strings.Join(out, "\n")
+}
+
+func meaningfulBodyText(s string) bool {
+	text := strings.Join(strings.Fields(strings.TrimSpace(s)), " ")
+	if text == "" {
+		return false
+	}
+	phrase := strings.ToLower(text)
+	switch phrase {
+	case "view in browser", "open in browser", "view this email in your browser", "unsubscribe", "manage preferences":
+		return false
+	}
+	words := strings.Fields(strings.NewReplacer(
+		"[", " ",
+		"]", " ",
+		":", " ",
+		"|", " ",
+		"-", " ",
+		"_", " ",
+	).Replace(phrase))
+	contentWords := 0
+	for _, word := range words {
+		switch word {
+		case "image", "logo", "icon", "spacer", "pixel", "tracking", "open", "view", "browser":
+			continue
+		default:
+			contentWords++
+		}
+	}
+	return contentWords > 0
 }

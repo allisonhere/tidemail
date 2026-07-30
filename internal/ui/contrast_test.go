@@ -180,6 +180,7 @@ func TestAllThemesMessageInlineRenderingColorsAreReadable(t *testing.T) {
 			}{
 				{name: "heading", fg: messageHeadingColor(theme), bg: theme.Bg, minRatio: 4.5},
 				{name: "link", fg: messageLinkColor(theme), bg: theme.Bg, minRatio: 4.5},
+				{name: "image", fg: messageImageColor(theme), bg: theme.Bg, minRatio: 3.0},
 				{name: "quote", fg: messageMutedColor(theme), bg: theme.Bg, minRatio: 3.0},
 				{name: "code", fg: messageCodeFg(theme), bg: messageCodeBg(theme), minRatio: 4.5},
 			}

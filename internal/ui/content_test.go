@@ -8,7 +8,9 @@ import (
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 )
 
 func TestRenderMessageContentAddsBlankLineAfterMessageID(t *testing.T) {
@@ -239,6 +241,31 @@ func TestRenderHTMLBodyShowsSafeImagePlaceholders(t *testing.T) {
 	}
 }
 
+func TestRenderHTMLBodyStylesImagePlaceholders(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+
+	got := renderHTMLBody(`<p>Chart below</p><img src="https://cdn.example.com/chart.png" alt="Quarterly chart">`, 80, CatppuccinMocha, false)
+
+	if !strings.Contains(ansi.Strip(got), "[image: Quarterly chart]") {
+		t.Fatalf("expected visible image placeholder, got %q", ansi.Strip(got))
+	}
+	if got == ansi.Strip(got) {
+		t.Fatalf("expected styled image placeholder to emit ANSI, got %q", got)
+	}
+}
+
+func TestRenderHTMLBodyLeavesImagePlaceholdersPlainInPlainUI(t *testing.T) {
+	got := renderHTMLBody(`<img src="https://cdn.example.com/chart.png" alt="Quarterly chart">`, 80, CatppuccinMocha, true)
+
+	if got != ansi.Strip(got) {
+		t.Fatalf("expected plain UI image placeholder without ANSI, got %q", got)
+	}
+	if !strings.Contains(got, "[image: Quarterly chart]") {
+		t.Fatalf("expected visible image placeholder, got %q", got)
+	}
+}
+
 func TestRenderHTMLBodyDropsDecorativeInlineImages(t *testing.T) {
 	got := ansi.Strip(renderHTMLBody(`<p>Hello<img src="https://cdn.example.com/pic.png" alt="Profile photo">World</p>`, 80, CatppuccinMocha, true))
 
@@ -416,6 +443,40 @@ func TestRenderHTMLBodyKeepsNewsletterSemanticsInLayoutTables(t *testing.T) {
 	}
 }
 
+func TestRenderHTMLBodyRemovesNewsletterPreheaderAndSpacers(t *testing.T) {
+	html := `<div class="preheader">Hidden preview copy that should not render</div>` +
+		`<table role="presentation"><tr><td width="1">&nbsp;</td><td><h2>Product update</h2></td></tr>` +
+		`<tr><td style="height:1px;line-height:1px">&nbsp;</td><td>Useful details.</td></tr></table>`
+
+	got := ansi.Strip(renderHTMLBody(html, 48, CatppuccinMocha, true))
+
+	if strings.Contains(got, "Hidden preview") {
+		t.Fatalf("expected preheader hidden, got %q", got)
+	}
+	for _, want := range []string{"Product update", "Useful details."} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected newsletter content %q in %q", want, got)
+		}
+	}
+	if strings.Contains(got, "\u00a0") {
+		t.Fatalf("expected spacer nbsp removed from %q", got)
+	}
+}
+
+func TestRenderHTMLBodyKeepsImageOnlyCTALabel(t *testing.T) {
+	html := `<a class="primary-cta" href="https://example.com/read" aria-label="Read the full story">` +
+		`<img src="https://cdn.example.com/button.png" alt="Read now"></a>`
+
+	got := ansi.Strip(renderHTMLBody(html, 48, CatppuccinMocha, true))
+
+	if !strings.Contains(got, "[Read now]") {
+		t.Fatalf("expected image-only CTA label, got %q", got)
+	}
+	if strings.Contains(got, "https://example.com/read") || strings.Contains(got, "cdn.example.com") {
+		t.Fatalf("expected CTA URLs hidden from body text, got %q", got)
+	}
+}
+
 func TestRenderHTMLBodyConstrainsWideSemanticBlocks(t *testing.T) {
 	longCell := strings.Repeat("quarterly-results-", 8)
 	longCode := "    " + strings.Repeat("configuration-value-", 8)
@@ -429,6 +490,18 @@ func TestRenderHTMLBodyConstrainsWideSemanticBlocks(t *testing.T) {
 				t.Fatalf("plainUI=%t: expected width <= 36, got %d in %q", plainUI, gotWidth, ansi.Strip(line))
 			}
 		}
+	}
+}
+
+func TestRenderMessageBodyFallsBackWhenHTMLIsOnlyBoilerplate(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	got := ansi.Strip(m.renderMessageBody(db.Message{
+		BodyHTML: `<p><a href="https://example.com/browser">View in browser</a></p>`,
+		BodyText: "Plain text has the actual message.",
+	}, 48))
+
+	if !strings.Contains(got, "Plain text has the actual message.") || strings.Contains(got, "View in browser") {
+		t.Fatalf("expected plain-text fallback for boilerplate HTML, got %q", got)
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 var (
 	urlRe          = regexp.MustCompile(`https?://[^\s<>"']+`)
 	emailRe        = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
+	imageLabelRe   = regexp.MustCompile(`\[image: [^\]\n]+\]`)
 	imageIDLabelRe = regexp.MustCompile(`^[a-fA-F0-9]{8}(-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}$`)
 	dimensionRe    = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)(?:px|pt|pc|in|cm|mm|q|em|rem|ex|ch|%|vw|vh|vmin|vmax)?$`)
 )
@@ -514,8 +515,12 @@ func renderHTMLBodyOpts(html string, width int, th Theme, plainUI, filterLinks b
 		markdown = filterLinksFromMarkdown(markdown)
 	}
 	rendered := renderMarkdown(markdown, width, th, plainUI)
+	rendered = styleImagePlaceholders(rendered, th, plainUI)
 	if width > 0 {
 		rendered = ansi.Hardwrap(rendered, width, false)
+	}
+	if !hasMeaningfulRenderedHTML(rendered) {
+		return ""
 	}
 	return rendered
 }
@@ -529,6 +534,14 @@ func messageLinkColor(th Theme) lipgloss.Color {
 }
 
 func messageMutedColor(th Theme) lipgloss.Color {
+	return readableText(th.Dimmed, th.Bg, 3.0)
+}
+
+func messageImageColor(th Theme) lipgloss.Color {
+	accent := accentReadableOn(th.BorderFocus, th.Bg, 3.0)
+	if contrastRatio(accent, th.Bg) >= 3 {
+		return accent
+	}
 	return readableText(th.Dimmed, th.Bg, 3.0)
 }
 
@@ -547,12 +560,30 @@ func messageCodeFg(th Theme) lipgloss.Color {
 	return readableText(th.Fg, messageCodeBg(th), 4.5)
 }
 
+func styleImagePlaceholders(rendered string, th Theme, plainUI bool) string {
+	if plainUI || rendered == "" {
+		return rendered
+	}
+	style := lipgloss.NewStyle().
+		Background(th.Bg).
+		Foreground(messageImageColor(th)).
+		Italic(true)
+	return imageLabelRe.ReplaceAllStringFunc(rendered, func(match string) string {
+		return style.Render(match)
+	})
+}
+
 func normalizeHTMLForRendering(raw string) string {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(raw))
 	if err != nil {
 		return raw
 	}
 	doc.Find("script,style,noscript,template,head,meta,link,input,textarea,select").Remove()
+	doc.Find("[class],[id]").Each(func(_ int, s *goquery.Selection) {
+		if hiddenByEmailIdentity(attrFirst(s, "class") + " " + attrFirst(s, "id")) {
+			s.Remove()
+		}
+	})
 	doc.Find("[hidden]").Remove()
 	doc.Find("[aria-hidden]").Each(func(_ int, s *goquery.Selection) {
 		if strings.EqualFold(strings.TrimSpace(attrFirst(s, "aria-hidden")), "true") {
@@ -569,6 +600,7 @@ func normalizeHTMLForRendering(raw string) string {
 			s.Remove()
 		}
 	})
+	removeEmailSpacerElements(doc)
 	normalizeEmailQuotes(doc)
 	normalizeEmailTables(doc)
 	body := doc.Find("body")
@@ -581,6 +613,43 @@ func normalizeHTMLForRendering(raw string) string {
 		return out
 	}
 	return raw
+}
+
+func hasMeaningfulRenderedHTML(rendered string) bool {
+	text := normalizeInlineSpacing(ansi.Strip(rendered))
+	if text == "" {
+		return false
+	}
+	lower := strings.ToLower(text)
+	phrase := strings.TrimSpace(strings.NewReplacer("[", "", "]", "").Replace(lower))
+	switch phrase {
+	case "view in browser", "open in browser", "view this email in your browser", "unsubscribe", "manage preferences":
+		return false
+	}
+	boilerplate := strings.NewReplacer(
+		"[", " ",
+		"]", " ",
+		":", " ",
+		"|", " ",
+		"•", " ",
+		"*", " ",
+		"-", " ",
+		"_", " ",
+	).Replace(lower)
+	words := strings.Fields(boilerplate)
+	if len(words) == 0 {
+		return false
+	}
+	contentWords := 0
+	for _, word := range words {
+		switch word {
+		case "image", "logo", "icon", "spacer", "pixel", "tracking", "open", "view", "browser":
+			continue
+		default:
+			contentWords++
+		}
+	}
+	return contentWords > 0
 }
 
 func parseInlineStyle(raw string) map[string]string {
@@ -607,7 +676,23 @@ func hiddenByInlineStyle(style map[string]string) bool {
 	if visibility := style["visibility"]; visibility == "hidden" || visibility == "collapse" {
 		return true
 	}
+	if strings.Contains(style["mso-hide"], "all") {
+		return true
+	}
 	return isZeroDimension(style["opacity"]) || isZeroDimension(style["font-size"])
+}
+
+func hiddenByEmailIdentity(identity string) bool {
+	identity = strings.ToLower(identity)
+	for _, token := range []string{
+		"preheader", "preview-text", "preview_text", "hidden-preheader",
+		"email-hidden", "gmail-fix",
+	} {
+		if strings.Contains(identity, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func isTrackingImage(selec *goquery.Selection) bool {
@@ -636,6 +721,55 @@ func cssDimension(value string) (float64, bool) {
 	}
 	dimension, err := strconv.ParseFloat(match[1], 64)
 	return dimension, err == nil
+}
+
+func removeEmailSpacerElements(doc *goquery.Document) {
+	doc.Find("td,th,div,p,span").Each(func(_ int, selec *goquery.Selection) {
+		if !isEmailSpacerElement(selec) {
+			return
+		}
+		selec.Remove()
+	})
+}
+
+func isEmailSpacerElement(selec *goquery.Selection) bool {
+	if selec.Children().Length() > 0 {
+		onlySpacerImages := true
+		selec.Children().EachWithBreak(func(_ int, child *goquery.Selection) bool {
+			if child.Is("img") && isTrackingImage(child) {
+				return true
+			}
+			onlySpacerImages = false
+			return false
+		})
+		if !onlySpacerImages {
+			return false
+		}
+	}
+	text := strings.TrimSpace(strings.ReplaceAll(selec.Text(), "\u00a0", " "))
+	if text != "" {
+		return false
+	}
+	style := parseInlineStyle(attrFirst(selec, "style"))
+	width, widthOK := cssDimension(attrFirst(selec, "width"))
+	if styled, ok := cssDimension(style["width"]); ok {
+		width, widthOK = styled, true
+	}
+	height, heightOK := cssDimension(attrFirst(selec, "height"))
+	if styled, ok := cssDimension(style["height"]); ok {
+		height, heightOK = styled, true
+	}
+	lineHeight, lineHeightOK := cssDimension(style["line-height"])
+	if widthOK && width <= 1 {
+		return true
+	}
+	if heightOK && height <= 1 {
+		return true
+	}
+	if lineHeightOK && lineHeight <= 1 {
+		return true
+	}
+	return false
 }
 
 func normalizeEmailQuotes(doc *goquery.Document) {
@@ -928,8 +1062,15 @@ func buttonLinkRule() md.Rule {
 		Replacement: func(content string, selec *goquery.Selection, _ *md.Options) *string {
 			href := strings.TrimSpace(attrFirst(selec, "href"))
 			text := normalizeInlineSpacing(htmlstd.UnescapeString(selec.Text()))
+			imageLabel := firstUsefulImageLabel(selec)
+			if text == "" {
+				text = imageLabel
+			}
 			if text == "" {
 				text = normalizeInlineSpacing(content)
+			}
+			if text == "" {
+				text = normalizeInlineSpacing(attrFirst(selec, "aria-label", "title"))
 			}
 			if href == "" {
 				return md.String(" ")
@@ -939,11 +1080,17 @@ func buttonLinkRule() md.Rule {
 				if text == "" {
 					return md.String(" ")
 				}
+				if label := firstUsefulImageLabel(selec); label != "" && text == label {
+					text = "[image: " + label + "]"
+				}
 				return md.String("\n\n" + text + "\n\n")
 			}
 			if !looksLikeButtonLink(selec) {
 				if text == "" {
 					return md.String(" ")
+				}
+				if imageLabel != "" && text == imageLabel {
+					return md.String("\n\n[image: " + imageLabel + "]\n\n")
 				}
 				if isVisualOnlyLinkText(text, selec) {
 					return md.String(" ")
@@ -961,6 +1108,19 @@ func buttonLinkRule() md.Rule {
 	}
 }
 
+func firstUsefulImageLabel(selec *goquery.Selection) string {
+	label := ""
+	selec.Find("img").EachWithBreak(func(_ int, image *goquery.Selection) bool {
+		candidate := normalizeInlineSpacing(attrFirst(image, "alt", "title", "aria-label"))
+		if candidate == "" || isDecorativeImageLabel(candidate) {
+			return true
+		}
+		label = candidate
+		return false
+	})
+	return label
+}
+
 func layoutCellText(selec *goquery.Selection) string {
 	var parts []string
 	selec.Find("td,th,[data-tidemail-layout-cell]").Each(func(_ int, cell *goquery.Selection) {
@@ -971,6 +1131,12 @@ func layoutCellText(selec *goquery.Selection) string {
 		if text != "" {
 			parts = append(parts, text)
 		}
+		cell.Find("img").Each(func(_ int, image *goquery.Selection) {
+			label := normalizeInlineSpacing(attrFirst(image, "alt", "title", "aria-label"))
+			if label != "" && !isDecorativeImageLabel(label) {
+				parts = append(parts, "[image: "+label+"]")
+			}
+		})
 	})
 	if len(parts) == 0 {
 		return normalizeInlineSpacing(htmlstd.UnescapeString(selec.Text()))
@@ -1003,6 +1169,7 @@ func looksLikeButtonLink(selec *goquery.Selection) bool {
 	role := strings.ToLower(attrFirst(selec, "role"))
 	return strings.Contains(className, "button") ||
 		strings.Contains(className, "btn") ||
+		strings.Contains(className, "cta") ||
 		role == "button" ||
 		strings.Contains(style, "display:inline-block") ||
 		strings.Contains(style, "display: inline-block") ||

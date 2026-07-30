@@ -150,6 +150,45 @@ func TestParseBody_HTMLOnlyMultipart(t *testing.T) {
 	}
 }
 
+func TestParseBody_HTMLOnlyBoilerplateDoesNotBecomePlainText(t *testing.T) {
+	raw := []byte("Content-Type: multipart/alternative; boundary=xyz\r\n\r\n" +
+		"--xyz\r\n" +
+		"Content-Type: text/html\r\n\r\n" +
+		`<p><a href="https://example.com/browser">View in browser</a></p>` + "\r\n" +
+		"--xyz--")
+	text, html, atts := parseBody(raw)
+	if text != "" {
+		t.Errorf("text = %q, want empty boilerplate fallback", text)
+	}
+	if html == "" {
+		t.Error("expected HTML to remain stored")
+	}
+	if len(atts) != 0 {
+		t.Error("expected no attachments")
+	}
+}
+
+func TestParseBody_PlainTextBeatsBoilerplateHTML(t *testing.T) {
+	raw := []byte("Content-Type: multipart/alternative; boundary=xyz\r\n\r\n" +
+		"--xyz\r\n" +
+		"Content-Type: text/plain\r\n\r\n" +
+		"plain body with useful details\r\n" +
+		"--xyz\r\n" +
+		"Content-Type: text/html\r\n\r\n" +
+		`<p><a href="https://example.com/browser">View in browser</a></p>` + "\r\n" +
+		"--xyz--")
+	text, html, atts := parseBody(raw)
+	if text != "plain body with useful details" {
+		t.Errorf("text = %q, want useful plain text", text)
+	}
+	if html == "" {
+		t.Error("expected HTML to remain stored")
+	}
+	if len(atts) != 0 {
+		t.Error("expected no attachments")
+	}
+}
+
 func TestParseIMAPMessage_Basic(t *testing.T) {
 	now := time.Date(2025, 1, 15, 10, 30, 0, 0, time.UTC)
 	msg := &imapclient.FetchMessageBuffer{
