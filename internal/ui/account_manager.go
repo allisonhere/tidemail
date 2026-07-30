@@ -899,7 +899,14 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 		left := rail(focused) + lipgloss.NewStyle().Background(chrome.baseBg).Foreground(labelFg).Width(max(1, labelW-2)).Padding(0, 1).Render(label)
 		var fieldView string
 		if focused {
-			fieldView = inputViewWithCursor(ti, true)
+			cursorTi := ti
+			if cursorTi.Value() == "" {
+				// bubbles' placeholderView pads to Width with unstyled spaces when
+				// Width is set, leaking the terminal's default background. Leave
+				// padding to our own Width(fieldW) wrap below, which styles it.
+				cursorTi.Width = 0
+			}
+			fieldView = inputViewWithCursor(cursorTi, true)
 		} else {
 			val := ti.Value()
 			if val == "" {
@@ -910,7 +917,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 				fieldView = lipgloss.NewStyle().Background(bg).Foreground(chrome.text).Render(val)
 			}
 		}
-		right := lipgloss.NewStyle().Background(bg).Render(fieldView)
+		right := lipgloss.NewStyle().Background(bg).Width(fieldW).Render(truncateStyled(fieldView, fieldW, bg))
 		return lipgloss.JoinHorizontal(lipgloss.Left, left, right)
 	}
 	labelCell := func(label string, focused bool) string {
@@ -932,7 +939,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 			valueFg = chrome.text
 			chevronFg = chrome.accent
 		}
-		val := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(valueFg).Render(" "+value) + swatch +
+		val := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(valueFg).Render(value) + swatch +
 			lipgloss.NewStyle().Background(chrome.baseBg).Render("  ") +
 			lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chevronFg).Bold(focused).Render(chrome.softChevrons())
 		return val
@@ -1028,7 +1035,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 		}
 	}
 	addSection("Sending identity")
-	addControl(amFieldFrom, row("From name/address", am.fromInput, am.focusedField == amFieldFrom))
+	addControl(amFieldFrom, row("From", am.fromInput, am.focusedField == amFieldFrom))
 	addControl(amFieldSignature, row("Signature", am.sigInput, am.focusedField == amFieldSignature))
 	addSection("Sync")
 	addControl(amFieldSyncInterval, row("Every (min)", am.syncInput, am.focusedField == amFieldSyncInterval))

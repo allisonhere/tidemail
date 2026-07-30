@@ -793,8 +793,18 @@ func (cm ContactManager) viewConfirmDelete(width int, chrome managerChrome) stri
 
 func (cm ContactManager) viewPicker(width, height int, chrome managerChrome, styles Styles) string {
 	filterW := max(8, width-2)
+	filter := cm.filter
+	filter.PromptStyle = lipgloss.NewStyle().Background(chrome.fieldBg).Foreground(chrome.accent)
+	filter.TextStyle = lipgloss.NewStyle().Background(chrome.fieldBg).Foreground(chrome.text)
+	filter.PlaceholderStyle = lipgloss.NewStyle().Background(chrome.fieldBg).Foreground(chrome.muted)
+	if filter.Value() == "" {
+		// bubbles' placeholderView pads to Width with unstyled spaces when Width
+		// is set, leaking the terminal's default background. Leave padding to
+		// the Width(filterW) wrap below, which styles it.
+		filter.Width = 0
+	}
 	filterLine := lipgloss.NewStyle().Background(chrome.fieldBg).Foreground(chrome.text).Width(filterW).Padding(0, 1).
-		Render(truncateStyled(inputViewWithCursor(cm.filter, true), max(1, filterW-2), chrome.fieldBg))
+		Render(truncateStyled(inputViewWithCursor(filter, true), max(1, filterW-2), chrome.fieldBg))
 	filtered := cm.filteredSeen()
 	anchor := cm.pickCursor
 	lines := make([]string, 0, max(1, len(filtered)))

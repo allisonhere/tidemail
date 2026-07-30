@@ -152,7 +152,14 @@ func (m Model) renderOverlay(base string) string {
 		switch {
 		case m.helpSearchActive:
 			input := m.helpSearchInput
-			input.Width = max(1, winW-6)
+			if input.Value() == "" {
+				// bubbles' placeholderView pads to Width with unstyled spaces
+				// when Width is set, leaking the terminal's default background.
+				// Leave padding to padStyled below, which styles it.
+				input.Width = 0
+			} else {
+				input.Width = max(1, winW-6)
+			}
 			input.Prompt = "/ "
 			input.PromptStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.accent).Bold(true)
 			input.TextStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text)
@@ -204,8 +211,14 @@ func (m Model) renderOverlay(base string) string {
 
 func (m Model) renderCommandPalette(width int, chrome managerChrome) string {
 	input := m.commandInput
-	inputW := max(1, width-4)
-	input.Width = inputW
+	if input.Value() == "" {
+		// bubbles' placeholderView pads to Width with unstyled spaces when
+		// Width is set, leaking the terminal's default background. Leave
+		// padding to the outer Width(width) wrap below, which styles it.
+		input.Width = 0
+	} else {
+		input.Width = max(1, width-4)
+	}
 	input.PromptStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.accent).Bold(true)
 	input.TextStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text)
 	input.PlaceholderStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted)

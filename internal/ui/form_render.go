@@ -101,15 +101,29 @@ func renderTextInput(input textinput.Model, width int, focused, masked bool, chr
 		return ""
 	}
 	input.Width = width
+	bg := chrome.surfaceBg
+	if focused {
+		bg = chrome.fieldBg
+	}
+	// bubbles' textinput.View() only backgrounds the padding it adds past the
+	// cursor via TextStyle — left at its zero value, that padding (and the
+	// prompt) render with no SGR codes at all and fall back to the terminal's
+	// default background as soon as anything upstream (e.g. the cursor block)
+	// emits a reset.
+	input.PromptStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.accent)
+	input.TextStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.text)
+	input.PlaceholderStyle = lipgloss.NewStyle().Background(bg).Foreground(chrome.muted)
 	if focused {
 		input.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(accentReadableOn(chrome.text, chrome.accent, 4.5))
 	}
 	if masked {
 		input.EchoMode = textinput.EchoPassword
 	}
-	bg := chrome.surfaceBg
-	if focused {
-		bg = chrome.fieldBg
+	if focused && input.Value() == "" {
+		// bubbles' placeholderView pads to Width with unstyled spaces when Width
+		// is set, leaking the terminal's default background. Leave padding to
+		// the Width(width) wrap below, which styles it.
+		input.Width = 0
 	}
 	view := truncateStyled(inputViewWithCursor(input, focused), width, bg)
 	return lipgloss.NewStyle().

@@ -313,12 +313,16 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 	listH := max(1, height-6)
 
 	if m.movePicker.creating {
+		nameInput := m.movePicker.nameInput
+		nameInput.PromptStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.accent)
+		nameInput.TextStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text)
+		nameInput.PlaceholderStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted)
 		prompt := lipgloss.NewStyle().
 			Background(chrome.baseBg).
 			Foreground(chrome.text).
 			Width(width).
 			Padding(0, 2).
-			Render(clampView("new folder: "+m.movePicker.nameInput.View(), max(1, width-4), 1, chrome.baseBg))
+			Render(clampView("new folder: "+nameInput.View(), max(1, width-4), 1, chrome.baseBg))
 		rows := []string{prompt}
 		for len(rows) < listH {
 			rows = append(rows, lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(""))
