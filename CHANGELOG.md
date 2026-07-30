@@ -2,6 +2,29 @@
 
 All notable changes to TideMail are documented in this file.
 
+## v0.9.8
+
+**Release highlights:** cleaner newsletter rendering and a polished in-app log
+viewer.
+
+### Fixed
+
+- **HTML newsletters render with less noise.** TideMail now hides common email
+  preheaders, spacer cells, tracking-only elements, and boilerplate-only HTML
+  before converting messages for the terminal.
+- **Image placeholders stand apart from normal message text.** Useful image alt
+  text still appears as `[image: ...]`, now with its own readable theme color in
+  rich terminal mode.
+- **The Settings log viewer no longer leaks the terminal background at the right
+  edge of log rows.** Log lines now fill the same modal width as the title and
+  command rows.
+
+### Changed
+
+- **Plain text beats boilerplate HTML.** When an HTML part only says things like
+  "View in browser," TideMail falls back to the real plain-text body while still
+  storing the original HTML.
+
 ## v0.9.6
 
 **Release highlights:** correct display of non-English/legacy-encoded email, plus

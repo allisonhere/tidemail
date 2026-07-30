@@ -69,20 +69,6 @@ jobs:
               /^## / && flag { flag = 0 }
               flag { print }
             ' CHANGELOG.md
-            echo
-            echo "### Quick install"
-            echo '```bash'
-            echo 'curl -fsSL https://raw.githubusercontent.com/allisonhere/tidemail/main/install.sh | sh'
-            echo '```'
-            echo
-            echo "### Manual install"
-            echo
-            echo "Download a binary below for your platform and add it to your PATH, or build from source:"
-            echo '```bash'
-            echo 'git clone https://github.com/allisonhere/tidemail'
-            echo 'cd tidemail'
-            echo 'go build -o tidemail .'
-            echo '```'
           } > release-notes.md
           echo "----- release-notes.md -----"
           cat release-notes.md
