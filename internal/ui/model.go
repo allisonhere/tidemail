@@ -337,7 +337,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		showUnreadOnly:        cfg.Display.DefaultUnreadOnly,
 		starredFirst:          cfg.Display.StarredFirst,
 		contentLinkIdx:        -1,
-		contentShowHeaders:    true,
+		contentShowHeaders:    cfg.Display.ShowHeaders,
 		contentSearchInput:    csi,
 		contentSearchIdx:      -1,
 		selectedMessages:      make(map[int64]bool),
@@ -1707,6 +1707,13 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case keyMatches(msg, m.keys.ToggleQuote):
+		if m.focused == paneContent && m.contentMessageID != 0 {
+			m.contentQuotesCollapsed = !m.contentQuotesCollapsed
+			m.setViewportForCurrentRow()
+		}
+		return m, nil
+
 	case keyMatches(msg, m.keys.Settings):
 		m.settings = newSettings(m.cfg, m.settingsUpdateState())
 		m.overlay = overlaySettings
@@ -1781,16 +1788,14 @@ func (m Model) focusPane(next pane) (tea.Model, tea.Cmd) {
 	}
 	if wasMessages && next == paneContent {
 		if msg := m.currentRowMessage(); msg != nil {
-			// Rebuild the viewport with the original emoji once the user
-			// explicitly enters the content pane.
+			// Re-render so focus-dependent chrome (rails, focus line) updates.
+			// The body itself renders identically in both focus states.
 			m.setViewportForCurrentRow()
 			return m, m.openedMessageCmd(*msg)
 		}
 	}
 	if !wasMessages && next == paneMessages {
 		if msg := m.currentRowMessage(); msg != nil {
-			// The list-focused preview omits emoji to keep cursor repainting
-			// stable in terminals with color-emoji width quirks.
 			m.setViewportForCurrentRow()
 			return m, m.focusedMessageChangedCmd(*msg)
 		}
@@ -2230,6 +2235,9 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cfg = m.settings.ApplyTo(m.cfg)
 			m.showUnreadOnly = m.cfg.Display.DefaultUnreadOnly
 			m.starredFirst = m.cfg.Display.StarredFirst
+			// ctrl+e is a session-scoped override; a settings save is the
+			// authoritative point to re-sync it from config.
+			m.contentShowHeaders = m.cfg.Display.ShowHeaders
 			// Apply the vim toggle to future compose editors (read in newEditorArea).
 			setEditorVimMode(m.cfg.Display.ComposeVim)
 			merged, _ := MergedThemeFromConfig(m.cfg)
@@ -2281,10 +2289,6 @@ func (m Model) handleSummaryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.SaveMD):
 		if !m.summaryGenerating && m.summaryErr == "" && m.summaryMessage.Summary != "" {
 			return m, saveSummaryMDCmd(m.summaryMessage, m.summaryMessage.Summary, m.cfg.AI.SavePath)
-		}
-	case keyMatches(msg, m.keys.ToggleQuote):
-		if m.focused == paneContent && m.contentMessageID != 0 {
-			m.contentQuotesCollapsed = !m.contentQuotesCollapsed
 		}
 	}
 	return m, nil

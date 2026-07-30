@@ -63,8 +63,10 @@ func splitArticleParagraphs(content string) []string {
 	raw := strings.Split(content, "\n\n")
 	out := make([]string, 0, len(raw))
 	for _, part := range raw {
-		part = strings.TrimSpace(part)
-		if part == "" {
+		// Trim only blank lines, not leading whitespace: the first line's
+		// indentation is the primary signal for code and hanging layout.
+		part = strings.Trim(part, "\n")
+		if strings.TrimSpace(part) == "" {
 			continue
 		}
 		out = append(out, part)
@@ -72,41 +74,189 @@ func splitArticleParagraphs(content string) []string {
 	return out
 }
 
+// paragraphLines normalizes a paragraph into lines, trimming trailing
+// whitespace per line and dropping leading/trailing blank lines while
+// preserving each line's leading indentation.
+func paragraphLines(p string) []string {
+	lines := strings.Split(p, "\n")
+	for i := range lines {
+		lines[i] = strings.TrimRight(lines[i], " \t\r")
+	}
+	for len(lines) > 0 && lines[0] == "" {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
+}
+
+// formatArticleParagraph renders one paragraph of a plain-text body.
+//
+// It scans runs of like-shaped lines, consuming every line exactly once. The
+// previous implementation switched on lines[0] and, in the quote and heading
+// branches, rendered only that line — silently discarding the rest of the
+// paragraph.
 func formatArticleParagraph(p string, width int, th Theme, plainUI bool) string {
-	lines := strings.Split(strings.TrimSpace(p), "\n")
+	lines := paragraphLines(p)
 	if len(lines) == 0 {
 		return ""
 	}
-
-	quoteBar := "│ "
-	if plainUI {
-		quoteBar = "| "
+	if looksPreformatted(lines, width) {
+		return renderPreformattedBlock(lines, width, th, plainUI)
 	}
-	trimmed := strings.TrimSpace(lines[0])
-	switch {
-	case strings.HasPrefix(trimmed, "#"):
-		text := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
-		style := lipgloss.NewStyle().Background(th.Bg).Bold(true).Foreground(messageHeadingColor(th))
-		return style.Render(wrapWords(text, width))
-	case strings.HasPrefix(trimmed, ">"):
-		quote := normalizeInlineSpacing(strings.TrimSpace(strings.TrimLeft(trimmed, ">")))
-		style := lipgloss.NewStyle().Background(th.Bg).Foreground(messageMutedColor(th))
-		return style.Render(wrapWords(quoteBar+quote, width))
-	case strings.HasPrefix(trimmed, "- "), strings.HasPrefix(trimmed, "* "):
-		items := make([]string, 0, len(lines))
-		for _, line := range lines {
-			line = strings.TrimSpace(strings.TrimLeft(strings.TrimLeft(line, "-"), "*"))
-			if line == "" {
+
+	var out []string
+	for i := 0; i < len(lines); {
+		switch {
+		case strings.TrimSpace(lines[i]) == "":
+			i++
+		case isQuoteLine(lines[i]):
+			j := i
+			for j < len(lines) && isQuoteLine(lines[j]) {
+				j++
+			}
+			out = append(out, renderQuoteRun(lines[i:j], width, th, plainUI))
+			i = j
+		case isHeadingLine(lines[i]):
+			out = append(out, renderHeadingLine(lines[i], width, th, plainUI))
+			i++
+		case isListLine(lines[i]):
+			j := i + 1
+			for j < len(lines) && (isListLine(lines[j]) || isListContinuation(lines[j])) {
+				j++
+			}
+			out = append(out, renderListRun(lines[i:j], width, th, plainUI))
+			i = j
+		default:
+			j := i
+			for j < len(lines) && isProseLine(lines[j]) {
+				j++
+			}
+			out = append(out, renderProseRun(lines[i:j], width, th, plainUI))
+			i = j
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+func renderProseRun(lines []string, width int, th Theme, plainUI bool) string {
+	base := lipgloss.NewStyle().Background(th.Bg)
+	text := normalizeInlineSpacing(strings.Join(lines, " "))
+	return styleBlockWithLinks(wrapWords(text, width), base, th, plainUI)
+}
+
+func renderHeadingLine(line string, width int, th Theme, plainUI bool) string {
+	text, _, ok := splitATXHeading(line)
+	if !ok {
+		return renderProseRun([]string{line}, width, th, plainUI)
+	}
+	base := lipgloss.NewStyle().Background(th.Bg).Bold(true).Foreground(messageHeadingColor(th))
+	return styleBlockWithLinks(wrapWords(text, width), base, th, plainUI)
+}
+
+// maxQuoteDepth caps how many quote bars are drawn, so a deeply nested thread
+// cannot consume the whole pane width with indentation.
+const maxQuoteDepth = 5
+
+// renderQuoteRun groups consecutive quoted lines by nesting depth and applies
+// the quote bar AFTER wrapping, so every continuation line stays barred and
+// indented rather than merging into the surrounding body text.
+func renderQuoteRun(lines []string, width int, th Theme, plainUI bool) string {
+	bar := "│ "
+	if plainUI {
+		bar = "| "
+	}
+	base := lipgloss.NewStyle().Background(th.Bg).Foreground(messageMutedColor(th))
+
+	var out []string
+	for i := 0; i < len(lines); {
+		depth, _, _ := splitQuotePrefix(lines[i])
+		j := i
+		var bodies []string
+		for j < len(lines) {
+			d, b, ok := splitQuotePrefix(lines[j])
+			if !ok || d != depth {
+				break
+			}
+			bodies = append(bodies, b)
+			j++
+		}
+		i = j
+
+		prefix := strings.Repeat(bar, min(depth, maxQuoteDepth))
+		avail := max(4, width-lipgloss.Width(prefix))
+
+		var wrapped string
+		if looksPreformatted(bodies, avail) {
+			// A forwarded table or address block inside a reply keeps its shape.
+			var kept []string
+			for _, b := range bodies {
+				kept = append(kept, ansi.Hardwrap(expandTabs(b, 8), avail, true))
+			}
+			wrapped = strings.Join(kept, "\n")
+		} else {
+			wrapped = wrapWords(strings.Join(bodies, " "), avail)
+		}
+		for _, ln := range strings.Split(wrapped, "\n") {
+			out = append(out, base.Render(prefix)+styleWithLinks(ln, base, th, plainUI))
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// renderListRun renders a run of list items, folding each item's wrapped
+// continuation lines back into the item they belong to.
+func renderListRun(lines []string, width int, th Theme, plainUI bool) string {
+	var items []string
+	var cur string
+	flush := func() {
+		if cur == "" {
+			return
+		}
+		items = append(items, cur)
+		cur = ""
+	}
+	for _, line := range lines {
+		switch {
+		case isListContinuation(line) && cur != "":
+			cur += " " + strings.TrimSpace(line)
+		default:
+			flush()
+			if body, ok := splitBulletMarker(line); ok {
+				cur = body
 				continue
 			}
-			items = append(items, wrapBullet(line, width, plainUI))
+			if _, body, ok := splitNumberedListItem(strings.TrimLeft(line, " \t")); ok {
+				cur = body
+				continue
+			}
+			// Routed here but parses as neither: render verbatim, never drop.
+			cur = strings.TrimSpace(line)
 		}
-		return strings.Join(items, "\n")
-	default:
-		text := normalizeInlineSpacing(strings.Join(lines, " "))
-		text = highlightInlineLinks(text, th, plainUI)
-		return wrapWords(text, width)
 	}
+	flush()
+
+	base := lipgloss.NewStyle().Background(th.Bg)
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		out = append(out, styleBlockWithLinks(wrapBullet(item, width, plainUI), base, th, plainUI))
+	}
+	return strings.Join(out, "\n")
+}
+
+// renderPreformattedBlock preserves the sender's line breaks, expanding tabs so
+// column alignment survives and hard-wrapping only lines that overflow.
+func renderPreformattedBlock(lines []string, width int, th Theme, plainUI bool) string {
+	base := lipgloss.NewStyle().Background(th.Bg)
+	out := make([]string, 0, len(lines))
+	for _, ln := range lines {
+		ln = expandTabs(ln, 8)
+		for _, seg := range strings.Split(ansi.Hardwrap(ln, max(1, width), true), "\n") {
+			out = append(out, styleWithLinks(seg, base, th, plainUI))
+		}
+	}
+	return strings.Join(out, "\n")
 }
 
 func formatSummaryParagraph(p string, width int, plainUI bool) string {
@@ -120,11 +270,16 @@ func formatSummaryParagraph(p string, width int, plainUI bool) string {
 	case strings.HasPrefix(trimmed, "- "), strings.HasPrefix(trimmed, "* "):
 		items := make([]string, 0, len(lines))
 		for _, line := range lines {
-			line = strings.TrimSpace(strings.TrimLeft(strings.TrimLeft(line, "-"), "*"))
-			if line == "" {
+			// splitBulletMarker, not a greedy TrimLeft: "- -5 degrees" must
+			// keep its minus sign and "--- separator" must not become empty.
+			body, ok := splitBulletMarker(line)
+			if !ok {
+				body = strings.TrimSpace(line)
+			}
+			if body == "" {
 				continue
 			}
-			items = append(items, wrapBullet(line, width, plainUI))
+			items = append(items, wrapBullet(body, width, plainUI))
 		}
 		return strings.Join(items, "\n")
 	case isNumberedListItem(trimmed):
@@ -335,6 +490,14 @@ func splitSentences(s string) []string {
 }
 
 func renderHTMLBody(html string, width int, th Theme, plainUI bool) string {
+	return renderHTMLBodyOpts(html, width, th, plainUI, false)
+}
+
+// renderHTMLBodyOpts renders an HTML body, optionally stripping link targets.
+// Filtering happens on the intermediate markdown — plain text, before glamour
+// styling and before any OSC 8 hyperlink is emitted. Running a URL regex over
+// the finished output would gut the URI out of its own escape sequence.
+func renderHTMLBodyOpts(html string, width int, th Theme, plainUI, filterLinks bool) string {
 	html = normalizeHTMLForRendering(html)
 	converter := md.NewConverter("", true, nil)
 	converter.AddRules(spanStyleRule())
@@ -347,6 +510,9 @@ func renderHTMLBody(html string, width int, th Theme, plainUI bool) string {
 		return ""
 	}
 	markdown = stripEmailInvisibles(markdown)
+	if filterLinks {
+		markdown = filterLinksFromMarkdown(markdown)
+	}
 	rendered := renderMarkdown(markdown, width, th, plainUI)
 	if width > 0 {
 		rendered = ansi.Hardwrap(rendered, width, false)
@@ -891,21 +1057,6 @@ func spanStyleRule() md.Rule {
 			return &content
 		},
 	}
-}
-
-// highlightInlineLinks finds URLs and email addresses in text and wraps them
-// in accent-color + underline styling. Only applies when not in plainUI mode.
-func highlightInlineLinks(text string, th Theme, plainUI bool) string {
-	if plainUI {
-		return text
-	}
-	linkStyle := lipgloss.NewStyle().Background(th.Bg).Foreground(messageLinkColor(th)).Underline(true)
-	replace := func(match string) string {
-		return linkStyle.Render(match)
-	}
-	text = urlRe.ReplaceAllStringFunc(text, replace)
-	text = emailRe.ReplaceAllStringFunc(text, replace)
-	return text
 }
 
 func isNumberedListItem(s string) bool {

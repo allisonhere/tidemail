@@ -90,5 +90,16 @@ func isEmojiGrapheme(runes []rune, width int) bool {
 		return false
 	}
 	first := runes[0]
-	return first >= 0x1f000 || (width == 2 && unicode.Is(unicode.So, first))
+	switch {
+	case first >= 0x1f300 && first <= 0x1faff:
+		// Misc pictographs, emoticons, transport, supplemental & extended-A symbols.
+		return true
+	case first >= 0x1f000 && first <= 0x1f0ff:
+		// Mahjong tiles, dominoes, playing cards — width-2 and repaint like emoji.
+		return true
+	}
+	// Deliberately not a blanket `first >= 0x1f000`: that swallowed enclosed
+	// alphanumerics (U+1F100–1F1DF) and the legacy-computing block (U+1FB00+),
+	// whose sextants and box characters are used in ASCII-art mail.
+	return width == 2 && unicode.Is(unicode.So, first)
 }

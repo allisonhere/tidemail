@@ -41,6 +41,10 @@ func (m Model) renderContentPane() string {
 			matchInfo = "  [no matches]"
 		}
 		input := m.contentSearchInput
+		searchBg := m.styles.ContentBody.GetBackground()
+		input.PromptStyle = lipgloss.NewStyle().Background(searchBg).Foreground(m.styles.Theme.BorderFocus)
+		input.TextStyle = lipgloss.NewStyle().Background(searchBg).Foreground(m.styles.Theme.Fg)
+		input.PlaceholderStyle = lipgloss.NewStyle().Background(searchBg).Foreground(m.styles.Theme.Fg)
 		input.Cursor.Style = lipgloss.NewStyle().Background(m.styles.Theme.BorderFocus).Foreground(accentReadableOn(m.styles.Theme.Fg, m.styles.Theme.BorderFocus, 4.5))
 		searchBar := m.styles.ContentBody.Width(w).Render(inputViewWithCursor(input, true) + matchInfo)
 		content = header + "\n" + searchBar + "\n" + body
@@ -91,24 +95,22 @@ func (m Model) renderMessageContent(msg db.Message) string {
 	}
 
 	content := title + "\n" + meta + "\n\n" + fullHeaders + body
-	if m.focused != paneContent {
-		content = stripEmojiGraphemes(content)
-	}
 	content = normalizeHardBreaks(content)
 	return fillViewWidth(content, paneWidth, m.styles.Theme.Bg)
 }
 
 func (m Model) renderMessageBody(msg db.Message, bodyWidth int) string {
 	var body string
+	filterLinks := m.cfg.Display.FilterLinks
 	if msg.BodyHTML != "" {
-		body = renderHTMLBody(msg.BodyHTML, bodyWidth, m.styles.Theme, m.styles.PlainUI)
+		body = renderHTMLBodyOpts(msg.BodyHTML, bodyWidth, m.styles.Theme, m.styles.PlainUI, filterLinks)
 	}
 	if body == "" {
 		content := msg.BodyText
 		if content == "" {
 			content = "No message body."
 		}
-		if m.cfg.Display.FilterLinks {
+		if filterLinks {
 			content = filterLinksFromContent(content)
 		}
 		body = indentBlock(m.styles.ContentBody.Width(bodyWidth).Render(formatArticleBody(content, bodyWidth, m.styles.Theme, m.styles.PlainUI)), 1)
@@ -177,7 +179,8 @@ func (m Model) renderContentLinks(width int) string {
 		} else {
 			line = linkStyle.Render(line)
 		}
-		lines = append(lines, line)
+		// The click target is the full URL even when the visible text is cut.
+		lines = append(lines, osc8Link(link, line, m.styles.PlainUI))
 	}
 	return indentBlock(m.styles.ContentBody.Width(width).Render(strings.Join(lines, "\n")), 1)
 }
@@ -207,10 +210,11 @@ func (m *Model) setViewportMessage(msg db.Message) {
 	sameMsg := m.contentMessageID == msg.ID && m.contentLineCount > 0
 	m.syncContentLinks(msg)
 	m.contentAttachments = nil
-	m.contentQuotesCollapsed = false
 	m.clearContentSelection()
 	if !sameMsg {
-		m.contentShowHeaders = true
+		// Quote collapse is per-message. It must NOT reset on a same-message
+		// re-render, or the z toggle would immediately undo itself.
+		m.contentQuotesCollapsed = false
 	}
 	if msg.HasAttachment {
 		if atts, err := m.db.GetAttachments(msg.ID); err == nil {
@@ -237,10 +241,9 @@ func (m *Model) setViewportThread(thread messageThread) {
 	sameMsg := m.contentMessageID == rep.ID && m.contentLineCount > 0
 	m.syncThreadContentLinks(thread)
 	m.contentAttachments = nil
-	m.contentQuotesCollapsed = false
 	m.clearContentSelection()
 	if !sameMsg {
-		m.contentShowHeaders = true
+		m.contentQuotesCollapsed = false
 	}
 	content := m.renderThreadContent(thread)
 	m.contentSearchMatches = collectSearchMatches(content, m.contentSearchQuery)
@@ -311,9 +314,6 @@ func (m Model) renderThreadContent(thread messageThread) string {
 		body += "\n\n" + m.renderContentLinks(contentWidth)
 	}
 	content := title + "\n\n" + body
-	if m.focused != paneContent {
-		content = stripEmojiGraphemes(content)
-	}
 	content = normalizeHardBreaks(content)
 	return fillViewWidth(content, paneWidth, m.styles.Theme.Bg)
 }

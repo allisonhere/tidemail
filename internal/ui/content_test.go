@@ -59,13 +59,10 @@ func TestRenderMessageTitleSpansPaneWhenReadingWidthIsCapped(t *testing.T) {
 	}
 }
 
-func TestContentPreviewRemovesEmojiUntilContentIsFocused(t *testing.T) {
-	m := NewModel(nil, config.DefaultConfig(), "dev", false)
-	m.width = 100
-	m.height = 30
-	m.focused = paneMessages
-	m.viewport.Width = m.contentBodyWidth()
-	m.viewport.Height = m.contentBodyHeight()
+// The content pane must render the same bytes regardless of which pane holds
+// focus. It previously stripped emoji while unfocused, so body text visibly
+// reflowed as the user tabbed between panes.
+func TestContentRenderIsFocusIndependent(t *testing.T) {
 	msg := db.Message{
 		ID:       1,
 		Subject:  "LEVEL UP 🥇 ",
@@ -73,38 +70,27 @@ func TestContentPreviewRemovesEmojiUntilContentIsFocused(t *testing.T) {
 		BodyText: "Save money 💰 and move fast 💨. Victory ✌️",
 		Date:     time.Date(2026, 7, 19, 19, 0, 28, 0, time.Local),
 	}
-	m.messages = []db.Message{msg}
-	m.filteredMessages = []db.Message{msg}
-	m.setViewportForCurrentRow()
 
-	preview := ansi.Strip(m.viewport.View())
+	render := func(focus pane) string {
+		m := NewModel(nil, config.DefaultConfig(), "dev", false)
+		m.width = 100
+		m.height = 30
+		m.focused = focus
+		return m.renderMessageContent(msg)
+	}
+
+	unfocused, focused := render(paneMessages), render(paneContent)
+	if unfocused != focused {
+		t.Fatalf("content render differs by focus:\nunfocused: %q\nfocused:   %q", unfocused, focused)
+	}
 	for _, emoji := range []string{"🥇", "🙌", "💰", "💨", "✌️"} {
-		if strings.Contains(preview, emoji) {
-			t.Fatalf("list-focused preview retained emoji %q: %q", emoji, preview)
+		if !strings.Contains(focused, emoji) {
+			t.Fatalf("content dropped emoji %q: %q", emoji, ansi.Strip(focused))
 		}
-	}
-	if !strings.Contains(preview, "LEVEL UP") || !strings.Contains(preview, "Save money") {
-		t.Fatalf("preview lost ordinary content: %q", preview)
-	}
-
-	next, _ := m.focusPane(paneContent)
-	m = next.(Model)
-	content := ansi.Strip(m.viewport.View())
-	for _, emoji := range []string{"🥇", "🙌", "💰", "💨", "✌️"} {
-		if !strings.Contains(content, emoji) {
-			t.Fatalf("content-focused message did not restore emoji %q: %q", emoji, content)
-		}
-	}
-
-	next, _ = m.focusPane(paneMessages)
-	m = next.(Model)
-	preview = ansi.Strip(m.viewport.View())
-	if strings.ContainsAny(preview, "🥇🙌💰💨✌️") {
-		t.Fatalf("returning to messages did not sanitize the preview: %q", preview)
 	}
 }
 
-func TestHTMLContentPreviewRemovesEmoji(t *testing.T) {
+func TestHTMLContentKeepsEmojiRegardlessOfFocus(t *testing.T) {
 	m := NewModel(nil, config.DefaultConfig(), "dev", false)
 	m.width = 100
 	m.height = 30
@@ -114,11 +100,25 @@ func TestHTMLContentPreviewRemovesEmoji(t *testing.T) {
 		Subject:  "Sale ✅",
 		BodyHTML: "<p>Celebrate 🙌 and save 💰</p>",
 	}))
-	if strings.ContainsAny(view, "✅🙌💰") {
-		t.Fatalf("HTML preview retained emoji: %q", view)
+	for _, emoji := range []string{"✅", "🙌", "💰"} {
+		if !strings.Contains(view, emoji) {
+			t.Fatalf("HTML content dropped emoji %q: %q", emoji, view)
+		}
 	}
 	if !strings.Contains(view, "Celebrate") || !strings.Contains(view, "save") {
-		t.Fatalf("HTML preview lost ordinary content: %q", view)
+		t.Fatalf("HTML content lost ordinary content: %q", view)
+	}
+}
+
+// Emoji stripping in the message list is intentional and stays: the list
+// repaints on every cursor move, where color-emoji width quirks cause tearing.
+func TestMessageListStillStripsEmoji(t *testing.T) {
+	got := messageListDisplayText("LEVEL UP 🥇 now")
+	if strings.ContainsAny(got, "🥇") {
+		t.Fatalf("message list retained emoji: %q", got)
+	}
+	if !strings.Contains(got, "LEVEL UP") || !strings.Contains(got, "now") {
+		t.Fatalf("message list lost ordinary content: %q", got)
 	}
 }
 

@@ -462,29 +462,46 @@ func collapseQuoteBlocks(body string, collapsed bool) string {
 	if !collapsed {
 		return body
 	}
-	// Blockquote lines are rendered with ANSI dimmed styling, so │
-	// is preceded by escape codes, not at position 0. Use Contains.
-	quoteRune := "│"
-	if !strings.Contains(body, quoteRune) {
-		return body
-	}
 	lines := strings.Split(body, "\n")
 	var result []string
 	i := 0
 	for i < len(lines) {
-		if strings.Contains(lines[i], quoteRune) {
-			start := i
-			for i < len(lines) && strings.Contains(lines[i], quoteRune) {
-				i++
-			}
-			count := i - start
-			result = append(result, fmt.Sprintf("│  [+%d quoted lines — press z to expand]", count))
-		} else {
+		if !isCollapsibleQuoteLine(lines[i]) {
 			result = append(result, lines[i])
 			i++
+			continue
 		}
+		start := i
+		for i < len(lines) && isCollapsibleQuoteLine(lines[i]) {
+			i++
+		}
+		bar := "│"
+		if !strings.Contains(ansi.Strip(lines[start]), "│") {
+			bar = "|"
+		}
+		// The count is of rendered (i.e. actually hidden) lines, not source lines.
+		result = append(result, fmt.Sprintf("%s  [+%d lines of quoted text — press z to expand]", bar, i-start))
 	}
 	return strings.Join(result, "\n")
+}
+
+// isCollapsibleQuoteLine reports whether a rendered line is a quote bar rather
+// than glamour table/box chrome. Both use │, but a table row or border always
+// closes with a box-drawing character while a quote line closes with prose.
+func isCollapsibleQuoteLine(line string) bool {
+	s := strings.TrimSpace(ansi.Strip(line))
+	if s == "" {
+		return false
+	}
+	if !strings.HasPrefix(s, "│") && !strings.HasPrefix(s, "|") {
+		return false
+	}
+	last, _ := utf8.DecodeLastRuneInString(s)
+	switch last {
+	case '│', '|', '┤', '┐', '┘', '╮', '╯', '─', '━', '┴', '┬', '┼':
+		return false
+	}
+	return true
 }
 
 func indentBlock(view string, pad int) string {
