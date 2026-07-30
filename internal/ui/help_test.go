@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
@@ -114,6 +115,30 @@ func TestRenderHelpDocumentsPaneResizeShortcuts(t *testing.T) {
 	for _, want := range []string{"shift+←", "shift+→", "resize accounts pane", "shift+↑", "shift+↓", "resize messages/content split"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expected help to document pane resize term %q, got %q", want, view)
+		}
+	}
+}
+
+func TestRenderLogViewerRowsFillModalWidth(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.styles = BuildStyles(CatppuccinMocha, "comfortable")
+	m.logBuffer = []logEntry{{
+		Time:    time.Date(2026, 7, 30, 12, 34, 56, 0, time.UTC),
+		Message: "short log message",
+	}}
+
+	view := ansi.Strip(m.renderLogViewer(50, 8))
+	lines := strings.Split(view, "\n")
+	if len(lines) == 0 {
+		t.Fatal("expected log viewer output")
+	}
+	want := ansi.StringWidth(lines[0])
+	if want == 0 {
+		t.Fatalf("expected non-empty log viewer line, got %q", view)
+	}
+	for i, line := range lines {
+		if got := ansi.StringWidth(line); got != want {
+			t.Fatalf("line %d width = %d, want %d: %q\nfull view:\n%s", i, got, want, line, view)
 		}
 	}
 }

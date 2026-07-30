@@ -379,7 +379,7 @@ func (m Model) renderLogViewer(width, height int) string {
 
 	// Build log lines
 	var logLines []string
-	vpWidth := max(1, width-4)
+	vpWidth := max(1, width)
 	for _, entry := range m.logBuffer {
 		timeStr := entry.Time.Format("15:04:05")
 		fg := readableText(t.Dimmed, bg, 3.0)
