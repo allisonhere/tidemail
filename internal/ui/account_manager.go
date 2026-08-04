@@ -297,7 +297,7 @@ func NewAccountManager(database *db.DB) AccountManager {
 	am.userInput = newAMInput("you@example.com", false)
 	am.passInput = newAMInput("password", true)
 	am.fromInput = newAMInput("Your Name <you@example.com>", false)
-	am.syncInput = newAMInput("0 (disabled)", false)
+	am.syncInput = newAMInput("0 = push", false)
 	am.sigInput = newAMInput(`signature (\n for a new line)`, false)
 	return am
 }
@@ -400,7 +400,7 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 		User:        strings.TrimSpace(am.userInput.Value()),
 		Password:    am.passInput.Value(),
 		From:        strings.TrimSpace(am.fromInput.Value()),
-		SyncMinutes: func() int { n, _ := strconv.Atoi(am.syncInput.Value()); return n }(),
+		SyncMinutes: func() int { n, _ := parseSyncMinutes(am.syncInput.Value()); return n }(),
 		Signature:   strings.ReplaceAll(strings.TrimSpace(am.sigInput.Value()), `\n`, "\n"),
 	}
 	if preset, ok := providerPresets[am.provider]; ok {
@@ -614,7 +614,7 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 func (am AccountManager) submitForm() (AccountManager, tea.Cmd, bool) {
 	acfg := am.buildCfg()
 	color := accountColorList[am.colorIdx].Hex
-	if status := validateAccountForConnect(acfg); status != "" {
+	if status := am.validateForm(acfg); status != "" {
 		am.statusMsg = status
 		return am, nil, false
 	}
@@ -626,7 +626,7 @@ func (am AccountManager) submitForm() (AccountManager, tea.Cmd, bool) {
 
 func (am AccountManager) testForm() (AccountManager, tea.Cmd, bool) {
 	acfg := am.buildCfg()
-	if status := validateAccountForConnect(acfg); status != "" {
+	if status := am.validateForm(acfg); status != "" {
 		am.statusMsg = status
 		return am, nil, false
 	}
@@ -634,6 +634,34 @@ func (am AccountManager) testForm() (AccountManager, tea.Cmd, bool) {
 	am.busyMsg = "TESTING ACCOUNT..."
 	am.statusMsg = ""
 	return am, testAccountCmd(acfg), false
+}
+
+// parseSyncMinutes reads the refresh field, reporting whether the text was a
+// value the user could have meant. The port fields above can quietly fall back
+// to a default because a bad port fails loudly on connect, but sync_minutes
+// cannot: every out-of-range string parses to 0, which now means push rather
+// than off, so a typo would silently opt an account into a persistent
+// connection. An empty field is the exception — that is a new account taking
+// the push default, not a mistake.
+func parseSyncMinutes(raw string) (int, bool) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return 0, true
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < -1 {
+		return 0, false
+	}
+	return n, true
+}
+
+// validateForm checks the raw form text that buildCfg has to collapse into
+// typed fields, then defers to the connection-level checks.
+func (am AccountManager) validateForm(acfg config.AccountConfig) string {
+	if _, ok := parseSyncMinutes(am.syncInput.Value()); !ok {
+		return "REFRESH MUST BE -1 (MANUAL), 0 (PUSH), OR MINUTES"
+	}
+	return validateAccountForConnect(acfg)
 }
 
 func validateAccountForConnect(acfg config.AccountConfig) string {
@@ -1022,6 +1050,12 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	addControl(amFieldUser, row(userLabel, am.userInput, am.focusedField == amFieldUser))
 	// Auth method toggle (Gmail only)
 	addControl(amFieldPass, row("Password", passInput, am.focusedField == amFieldPass))
+	// A muted continuation line under a field, aligned to the field column.
+	addHint := func(hint string) {
+		hintLeft := lipgloss.NewStyle().Background(chrome.baseBg).Width(max(1, labelW)).Render("")
+		hintRight := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, fieldW-2)).Padding(0, 1).Render(hint)
+		addLine(lipgloss.JoinHorizontal(lipgloss.Left, hintLeft, hintRight))
+	}
 	if am.provider == "Gmail" {
 		for _, hint := range []string{
 			"Gmail needs an App Password (not your normal password):",
@@ -1029,16 +1063,16 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 			"2. myaccount.google.com/apppasswords → create one",
 			"3. Paste the 16-character code above",
 		} {
-			hintLeft := lipgloss.NewStyle().Background(chrome.baseBg).Width(max(1, labelW)).Render("")
-			hintRight := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, fieldW-2)).Padding(0, 1).Render(hint)
-			addLine(lipgloss.JoinHorizontal(lipgloss.Left, hintLeft, hintRight))
+			addHint(hint)
 		}
 	}
 	addSection("Sending identity")
 	addControl(amFieldFrom, row("From", am.fromInput, am.focusedField == amFieldFrom))
 	addControl(amFieldSignature, row("Signature", am.sigInput, am.focusedField == amFieldSignature))
 	addSection("Sync")
-	addControl(amFieldSyncInterval, row("Every (min)", am.syncInput, am.focusedField == amFieldSyncInterval))
+	addControl(amFieldSyncInterval, row("Refresh", am.syncInput, am.focusedField == amFieldSyncInterval))
+	addHint("0 = push (IMAP IDLE) · -1 = manual only")
+	addHint("N = poll every N minutes")
 
 	statusLine := ""
 	if am.statusMsg != "" {

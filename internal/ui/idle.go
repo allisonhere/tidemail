@@ -33,11 +33,15 @@ type idleWatcherEntry struct {
 
 // startIdleWatchers reconciles the running IMAP IDLE watchers against the
 // current accounts so new mail syncs the moment the server announces it,
-// instead of waiting for the next polling tick. Only accounts that opted into
-// background refresh (sync_minutes > 0) get a watcher — sync_minutes = 0 means
-// manual-only sync, and a persistent push connection would override that
-// intent. Polling timers keep running regardless; IDLE is an accelerator, not
-// a replacement.
+// instead of waiting for the next polling tick.
+//
+// Every account that opted into background refresh gets a watcher, which means
+// sync_minutes >= 0. The two modes differ in what the watcher is for: at
+// sync_minutes > 0 it accelerates a poll that would have happened anyway, while
+// at sync_minutes = 0 (push) it is the primary mechanism and the only frequent
+// one — polling drops to pushSafetyPollInterval. Only sync_minutes < 0
+// (manual-only) is skipped, since a persistent push connection would override
+// the intent of asking for no background work at all.
 //
 // This MUST reconcile, not blindly restart: it runs on every AccountsLoadedMsg,
 // and every sync completion reloads accounts. Restarting watchers each time
@@ -55,7 +59,7 @@ func (m *Model) startIdleWatchers() tea.Cmd {
 				break
 			}
 		}
-		if acfg.IMAPHost == "" || acfg.SyncMinutes <= 0 {
+		if acfg.IMAPHost == "" || acfg.SyncMinutes < 0 {
 			continue
 		}
 		var inbox *db.Mailbox

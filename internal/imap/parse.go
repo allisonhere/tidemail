@@ -76,6 +76,54 @@ func (c *Client) fetchMessages(ctx context.Context, mailboxName string, limit in
 		numSet = seqSet
 	}
 
+	return c.fetchNumSet(numSet)
+}
+
+// FetchOlderThan fetches up to limit messages immediately below beforeUID, used
+// to page further back into a mailbox than the initial sync reached. Callers
+// pass the oldest UID they already hold, so the result is the next page of
+// history rather than anything already cached.
+//
+// The mailbox must already be selected by the caller's connection or this
+// selects it read-only itself.
+func (c *Client) FetchOlderThan(ctx context.Context, mailboxName string, beforeUID uint32, limit int) ([]db.Message, error) {
+	if c.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	if beforeUID <= 1 || limit <= 0 {
+		return nil, nil
+	}
+	defer c.applyDeadline(ctx)()
+
+	if _, err := c.conn.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
+		return nil, fmt.Errorf("select %s: %w", mailboxName, err)
+	}
+
+	// Ask which UIDs actually exist below the cutoff rather than assuming a
+	// contiguous range — UIDs are sparse wherever mail has been deleted or
+	// moved, so a blind 1:beforeUID-1 fetch would mostly request nothing.
+	searchData, err := c.conn.UIDSearch(&imap.SearchCriteria{
+		UID: []imap.UIDSet{{imap.UIDRange{Start: 1, Stop: imap.UID(beforeUID - 1)}}},
+	}, nil).Wait()
+	if err != nil {
+		return nil, fmt.Errorf("uid search: %w", err)
+	}
+	uids := searchData.AllUIDs()
+	if len(uids) == 0 {
+		return nil, nil
+	}
+	// AllUIDs is ascending; the newest of the older messages are the ones the
+	// user is about to scroll into, so take from the tail.
+	if len(uids) > limit {
+		uids = uids[len(uids)-limit:]
+	}
+	return c.fetchNumSet(imap.UIDSetNum(uids...))
+}
+
+// fetchNumSet fetches and parses a set of messages. Parse failures skip the
+// individual message rather than failing the batch — one malformed message
+// must not cost the user the whole page.
+func (c *Client) fetchNumSet(numSet imap.NumSet) ([]db.Message, error) {
 	bodySection := &imap.FetchItemBodySection{}
 	headerSection := &imap.FetchItemBodySection{Specifier: imap.PartSpecifierHeader}
 	fetchOptions := &imap.FetchOptions{

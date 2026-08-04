@@ -40,8 +40,18 @@ provider requires an app password, create one before saving the account.
 
 After you add an account, press `s` to sync the selected mailbox. Press `s` on
 the Unified Inbox to sync every account's inbox, or `F` to sync all mailboxes.
-Set `sync_minutes` on an account if you want background refresh. Accounts with
-a sync interval also use IMAP IDLE when the server supports it.
+`sync_minutes` controls how an account refreshes on its own:
+
+| Value | Meaning |
+| --- | --- |
+| `0` | Push — IMAP IDLE delivers mail as it arrives, plus a 30-minute safety poll |
+| `N` | Poll every N minutes, with IDLE accelerating it |
+| `-1` | Manual only — no polling and no background connection |
+
+Push (`0`) is the default and the best choice for servers that support IDLE,
+including Gmail. The safety poll exists because IDLE goes silent on a connection
+that wedges without dropping, so push alone can stall with nothing to show for
+it. Use `-1` if you want an account to refresh only when you press `s`.
 
 ## Reading and organizing mail
 
@@ -53,9 +63,15 @@ archive them with `a`, delete them with `d`, move them with `m`, or mark them as
 read. Press `A` to select every message in the current view.
 
 Press `/` to search, `u` to show unread mail, and `t` to place starred messages
-first. In the content pane, `Ctrl+E` shows the full headers and authentication
-results. `Ctrl+U` opens the mailing list's unsubscribe option when the message
-provides one.
+first. Search covers subject, sender, recipients, and message body across every
+account and folder, and matches as you type. In the content pane, `Ctrl+E` shows
+the full headers and authentication results. `Ctrl+U` opens the mailing list's
+unsubscribe option when the message provides one.
+
+Search only reaches mail TideMail has cached. The first sync of a mailbox
+fetches the 100 most recent messages; moving down past the last message in the
+list pulls the next 100 from the server, so you can page back as far as the
+mailbox goes.
 
 ## Writing mail
 
@@ -137,7 +153,7 @@ user = "alice@example.com"
 password = "app-password"
 from = "Alice <alice@example.com>"
 signature = "Alice\nSent with TideMail"
-sync_minutes = 5  # auto-sync every 5 min (0 = off)
+sync_minutes = 0  # 0 = push (IDLE), N = poll every N min, -1 = manual only
 ```
 
 ## Keyboard shortcuts

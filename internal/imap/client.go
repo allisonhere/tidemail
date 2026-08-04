@@ -247,12 +247,18 @@ func (c *Client) ListMailboxes(ctx context.Context) ([]MailboxInfo, error) {
 	return infos, nil
 }
 
+// MessagesPerInitialSync bounds the first sync of a mailbox: it fetches this
+// many of the most recent messages rather than the entire history, which on a
+// large mailbox would mean downloading every body before the UI showed
+// anything. Older mail is paged in on demand — see Client.FetchOlderThan.
+const MessagesPerInitialSync = 100
+
 func (c *Client) FetchMessages(ctx context.Context, mailboxName string, limit int) ([]db.Message, error) {
 	return c.fetchMessages(ctx, mailboxName, limit, time.Time{})
 }
 
 func (c *Client) FetchSince(ctx context.Context, mailboxName string, since time.Time) ([]db.Message, error) {
-	return c.fetchMessages(ctx, mailboxName, 100, since)
+	return c.fetchMessages(ctx, mailboxName, MessagesPerInitialSync, since)
 }
 
 func (c *Client) MarkSeen(ctx context.Context, mailboxName string, uid uint32, seen bool) error {

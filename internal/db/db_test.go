@@ -261,7 +261,7 @@ func TestMigrateMessageFTSRebuildsOnceThenSkips(t *testing.T) {
 	if err := database.migrateMessageFTS(); err != nil {
 		t.Fatal(err)
 	}
-	found, err := database.SearchMessages(mailboxID, "searchable")
+	found, err := database.SearchAllMessages("searchable", false)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -66,6 +66,21 @@ func (db *DB) CountMessages(mailboxID int64) (int64, error) {
 	return n, err
 }
 
+// OldestMessageUID returns the lowest UID cached for a mailbox, which is the
+// cursor for paging further back into server history. Returns 0 when nothing is
+// cached yet — there is no history to page past until the first sync lands.
+func (db *DB) OldestMessageUID(mailboxID int64) (uint32, error) {
+	var uid sql.NullInt64
+	err := db.QueryRow(`SELECT MIN(uid) FROM messages WHERE mailbox_id = ?`, mailboxID).Scan(&uid)
+	if err != nil {
+		return 0, err
+	}
+	if !uid.Valid || uid.Int64 < 0 {
+		return 0, nil
+	}
+	return uint32(uid.Int64), nil
+}
+
 func (db *DB) ListUnreadMessages(mailboxID int64) ([]Message, error) {
 	rows, err := db.Query(`
 		SELECT id, mailbox_id, uid, message_id, in_reply_to, references_text, subject, from_addr, to_addr, cc_addr,
@@ -122,20 +137,6 @@ func (db *DB) ListUnifiedInboxUnreadFirst(unreadOnly bool) ([]Message, error) {
 			OR instr(lower(mailboxes.flags), '\inbox') > 0
 		)` + readClause + `
 		ORDER BY messages.read ASC, messages.date DESC, messages.id DESC`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	return scanMessages(rows)
-}
-
-func (db *DB) SearchMessages(mailboxID int64, query string) ([]Message, error) {
-	q := "%" + query + "%"
-	rows, err := db.Query(`
-		SELECT id, mailbox_id, uid, message_id, in_reply_to, references_text, subject, from_addr, to_addr, cc_addr,
-		       reply_to, date, body_text, body_html, summary,		flags, read, starred, has_attachment, headers
-		FROM messages WHERE mailbox_id = ? AND (subject LIKE ? OR from_addr LIKE ? OR body_text LIKE ?)
-		ORDER BY date DESC, id DESC`, mailboxID, q, q, q)
 	if err != nil {
 		return nil, err
 	}
@@ -408,6 +409,15 @@ func scanMessagesWithContext(rows interface {
 	return msgs, rows.Err()
 }
 
+// ftsQuery turns what the user typed into an FTS5 MATCH expression. Terms are
+// quoted (so punctuation in an address can't be read as FTS operators) and
+// ANDed together.
+//
+// The final term also gets the prefix operator, because search runs on every
+// keystroke: without it a half-typed word matches no token at all, so results
+// vanish mid-word and only reappear once the word is finished. Only the last
+// term is treated this way — earlier terms are complete words the user has
+// already moved past.
 func ftsQuery(query string) string {
 	parts := strings.Fields(strings.TrimSpace(query))
 	if len(parts) == 0 {
@@ -421,6 +431,10 @@ func ftsQuery(query string) string {
 		}
 		quoted = append(quoted, `"`+part+`"`)
 	}
+	if len(quoted) == 0 {
+		return ""
+	}
+	quoted[len(quoted)-1] += "*"
 	return strings.Join(quoted, " AND ")
 }
 

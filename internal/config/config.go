@@ -86,18 +86,26 @@ type AIConfig struct {
 }
 
 type AccountConfig struct {
-	Name        string `toml:"name"`
-	Provider    string `toml:"provider"`
-	IMAPHost    string `toml:"imap_host"`
-	IMAPPort    int    `toml:"imap_port"`
-	IMAPTLS     bool   `toml:"imap_tls"`
-	SMTPHost    string `toml:"smtp_host"`
-	SMTPPort    int    `toml:"smtp_port"`
-	SMTPTLS     bool   `toml:"smtp_tls"`
-	User        string `toml:"user"`
-	Password    string `toml:"password"`
-	From        string `toml:"from"`
-	SyncMinutes int    `toml:"sync_minutes"` // 0 = no auto-sync
+	Name     string `toml:"name"`
+	Provider string `toml:"provider"`
+	IMAPHost string `toml:"imap_host"`
+	IMAPPort int    `toml:"imap_port"`
+	IMAPTLS  bool   `toml:"imap_tls"`
+	SMTPHost string `toml:"smtp_host"`
+	SMTPPort int    `toml:"smtp_port"`
+	SMTPTLS  bool   `toml:"smtp_tls"`
+	User     string `toml:"user"`
+	Password string `toml:"password"`
+	From     string `toml:"from"`
+	// SyncMinutes selects how the account refreshes in the background:
+	//
+	//	< 0  manual only — no polling and no push connection
+	//	  0  push — IMAP IDLE, plus an infrequent safety poll
+	//	> 0  poll every N minutes, with IDLE accelerating it
+	//
+	// Note that 0 is the "some background work" case, not the "none" case; use
+	// -1 for none.
+	SyncMinutes int `toml:"sync_minutes"`
 	// Signature is appended to outgoing mail after a standard "-- " delimiter.
 	// The account form accepts literal \n escapes for multi-line signatures;
 	// TOML multi-line strings work too when editing the file directly.

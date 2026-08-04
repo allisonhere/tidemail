@@ -33,6 +33,16 @@ type MailboxSyncedMsg struct {
 	Total       time.Duration
 }
 
+// OlderMessagesLoadedMsg reports the result of paging further back into a
+// mailbox's server history. Exhausted means the server holds nothing older, so
+// the UI can stop offering to load more.
+type OlderMessagesLoadedMsg struct {
+	MailboxID int64
+	Count     int
+	Exhausted bool
+	Err       error
+}
+
 type AccountSavedMsg struct {
 	Account    db.Account
 	Mailboxes  []db.Mailbox

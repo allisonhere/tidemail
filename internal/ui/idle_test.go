@@ -75,6 +75,9 @@ func TestIdleEventFromStaleWatcherIsIgnored(t *testing.T) {
 	}
 }
 
+// TestStartIdleWatchersRespectsSyncMinutesGate pins the three-way meaning of
+// sync_minutes: only manual-only (< 0) opts out of push. 0 is the push mode and
+// needs a watcher most of all — it has no frequent poll to fall back on.
 func TestStartIdleWatchersRespectsSyncMinutesGate(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -87,27 +90,32 @@ func TestStartIdleWatchersRespectsSyncMinutesGate(t *testing.T) {
 
 	cfg := config.DefaultConfig()
 	cfg.Accounts = []config.AccountConfig{
-		{Name: "Push", IMAPHost: "127.0.0.1", IMAPPort: 1, SyncMinutes: 5},
-		{Name: "ManualOnly", IMAPHost: "127.0.0.1", IMAPPort: 1, SyncMinutes: 0},
+		{Name: "Poll", IMAPHost: "127.0.0.1", IMAPPort: 1, SyncMinutes: 5},
+		{Name: "Push", IMAPHost: "127.0.0.1", IMAPPort: 1, SyncMinutes: 0},
+		{Name: "ManualOnly", IMAPHost: "127.0.0.1", IMAPPort: 1, SyncMinutes: -1},
 	}
 	m := NewModel(database, cfg, "dev", false)
-	m.accounts = []db.Account{{ID: 1, Name: "Push"}, {ID: 2, Name: "ManualOnly"}}
+	m.accounts = []db.Account{{ID: 1, Name: "Poll"}, {ID: 2, Name: "Push"}, {ID: 3, Name: "ManualOnly"}}
 	m.mailboxes = []db.Mailbox{
 		{ID: 10, AccountID: 1, Name: "INBOX"},
 		{ID: 20, AccountID: 2, Name: "INBOX"},
+		{ID: 30, AccountID: 3, Name: "INBOX"},
 	}
 
 	cmd := m.startIdleWatchers()
 	defer m.stopIdleWatchers()
 
 	if cmd == nil {
-		t.Fatal("expected a wait command for the push-enabled account")
+		t.Fatal("expected a wait command for the accounts that opted into background refresh")
 	}
 	if m.idleWatchers[1].watcher == nil {
-		t.Fatal("expected a watcher for the account with sync_minutes > 0")
+		t.Fatal("expected a watcher for the polling account (sync_minutes > 0)")
 	}
-	if m.idleWatchers[2].watcher != nil {
-		t.Fatal("expected no watcher for a manual-only (sync_minutes = 0) account")
+	if m.idleWatchers[2].watcher == nil {
+		t.Fatal("expected a watcher for the push account (sync_minutes = 0)")
+	}
+	if m.idleWatchers[3].watcher != nil {
+		t.Fatal("expected no watcher for a manual-only (sync_minutes = -1) account")
 	}
 }
 

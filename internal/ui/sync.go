@@ -232,6 +232,27 @@ func notifyEscape(s string) string {
 	return s
 }
 
+// syncPollInterval maps sync_minutes to a polling cadence, following its
+// three-way meaning (see config.AccountConfig):
+//
+//	< 0  manual only — ok is false, no timer at all
+//	  0  push — IDLE drives refreshes, so this is only the safety net
+//	> 0  poll every N minutes (IDLE additionally accelerates it)
+//
+// Split out from scheduleNextSync so the mapping is testable without waiting on
+// a live tea.Every timer.
+func syncPollInterval(syncMinutes int) (time.Duration, bool) {
+	switch {
+	case syncMinutes < 0:
+		return 0, false
+	case syncMinutes == 0:
+		return pushSafetyPollInterval, true
+	default:
+		return time.Duration(syncMinutes) * time.Minute, true
+	}
+}
+
+// scheduleNextSync arms the next background refresh for an account.
 func (m *Model) scheduleNextSync(accountID int64) tea.Cmd {
 	for _, acc := range m.accounts {
 		if acc.ID != accountID {
@@ -241,16 +262,25 @@ func (m *Model) scheduleNextSync(accountID int64) tea.Cmd {
 			if acfg.Name != acc.Name {
 				continue
 			}
-			if acfg.SyncMinutes <= 0 {
+			interval, ok := syncPollInterval(acfg.SyncMinutes)
+			if !ok {
 				return nil
 			}
-			return tea.Every(time.Duration(acfg.SyncMinutes)*time.Minute, func(t time.Time) tea.Msg {
+			return tea.Every(interval, func(t time.Time) tea.Msg {
 				return AutoSyncMsg{AccountID: accountID}
 			})
 		}
 	}
 	return nil
 }
+
+// pushSafetyPollInterval is how often a push-only account (sync_minutes = 0)
+// polls anyway. IDLE is silent across a connection that has wedged without
+// dropping — the server never announces anything and the watcher never sees an
+// error to reconnect on — so push with no fallback can stall indefinitely with
+// nothing to show the user. This poll bounds that staleness without
+// reintroducing the per-minute chatter push exists to avoid.
+const pushSafetyPollInterval = 30 * time.Minute
 
 func (m *Model) startSyncTimers() tea.Cmd {
 	var cmds []tea.Cmd
@@ -407,7 +437,106 @@ func prunableMailboxIDs(existing []db.Mailbox, server map[string]bool) []int64 {
 	return ids
 }
 
+// backfillPageSize is how many older messages one "load more" step pulls. Sized
+// to match the initial sync's window so paging back feels like one more screenful
+// of the same, and small enough that the fetch stays interactive.
+const backfillPageSize = imapClient.MessagesPerInitialSync
+
+// loadOlderMessagesCmd pages further back into a mailbox's server history,
+// starting just below the oldest UID already cached. The initial sync only
+// reaches the most recent MessagesPerInitialSync messages, so without this the
+// archive simply ends there — and since search only covers what is cached, the
+// ceiling silently limits search too.
+//
+// Shares the m.syncing gate with syncMailboxCmd: both fetch and store into the
+// same mailbox, so letting them overlap would reintroduce the write collisions
+// the gate exists to prevent.
+func (m *Model) loadOlderMessagesCmd(mailboxID int64) tea.Cmd {
+	if m.syncing[mailboxID] || m.olderExhausted[mailboxID] {
+		return nil
+	}
+	database := m.db
+	mailbox, err := database.GetMailbox(mailboxID)
+	if err != nil {
+		return func() tea.Msg {
+			return OlderMessagesLoadedMsg{MailboxID: mailboxID, Err: fmt.Errorf("load mailbox: %w", err)}
+		}
+	}
+	oldestUID, err := database.OldestMessageUID(mailboxID)
+	if err != nil {
+		return func() tea.Msg {
+			return OlderMessagesLoadedMsg{MailboxID: mailboxID, Err: fmt.Errorf("oldest message: %w", err)}
+		}
+	}
+	if oldestUID <= 1 {
+		// Nothing cached yet, or the cache already reaches UID 1 — either way
+		// there is no older history to ask for.
+		return func() tea.Msg {
+			return OlderMessagesLoadedMsg{MailboxID: mailboxID, Exhausted: true}
+		}
+	}
+	acc, err := database.GetAccount(mailbox.AccountID)
+	if err != nil {
+		return func() tea.Msg {
+			return OlderMessagesLoadedMsg{MailboxID: mailboxID, Err: fmt.Errorf("load account: %w", err)}
+		}
+	}
+	var acfg config.AccountConfig
+	for _, a := range m.cfg.Accounts {
+		if a.Name == acc.Name {
+			acfg = a
+			break
+		}
+	}
+	m.syncing[mailboxID] = true
+	sessions := m.sessions
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		var result tea.Msg
+		err := sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
+			msgs, fetchErr := client.FetchOlderThan(ctx, mailbox.Name, oldestUID, backfillPageSize)
+			if fetchErr != nil {
+				result = OlderMessagesLoadedMsg{MailboxID: mailboxID, Err: fetchErr}
+				return nil
+			}
+			if _, storeErr := storeFetchedMessages(database, mailboxID, msgs); storeErr != nil {
+				result = OlderMessagesLoadedMsg{MailboxID: mailboxID, Err: storeErr}
+				return nil
+			}
+			// A short page means the server had less than we asked for, so this
+			// was the last one. An empty page means we were already at the end.
+			result = OlderMessagesLoadedMsg{
+				MailboxID: mailboxID,
+				Count:     len(msgs),
+				Exhausted: len(msgs) < backfillPageSize,
+			}
+			return nil
+		})
+		if err != nil {
+			return OlderMessagesLoadedMsg{MailboxID: mailboxID, Err: err}
+		}
+		return result
+	}
+}
+
 func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
+	// One sync per mailbox at a time. Launch timers, the startup sweep, and IDLE
+	// nudges all target the inbox and can otherwise stack up on it, which costs a
+	// redundant full fetch and — because the concurrent writers collide — throws
+	// SQLITE_BUSY out of storeFetchedMessages. That aborts one sync partway
+	// through storing while its sibling still advances last_synced, so the
+	// dropped messages fall outside the next sync window. Returning nil is safe
+	// at every call site: tea.Batch discards nil commands.
+	if m.syncing[mailboxID] {
+		if manual {
+			// Manual syncs get feedback — a keypress that silently does nothing
+			// reads as the app being broken. Auto and IDLE syncs stay quiet.
+			m.setStatus("sync already in progress", false)
+			return m.clearStatusCmd()
+		}
+		return nil
+	}
 	m.syncing[mailboxID] = true
 	database := m.db
 	mailbox, err := database.GetMailbox(mailboxID)

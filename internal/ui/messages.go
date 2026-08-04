@@ -208,28 +208,19 @@ func (m *Model) applyFilter() {
 			visible = append(visible, msg)
 		}
 	}
-	if m.searchActive() && !m.showUnreadOnly {
-		m.filteredMessages = visible
-		m.sortFilteredStarred()
-		m.rebuildMessageThreads()
-		return
-	}
-	q := strings.ToLower(m.searchQuery)
-	if q == "" && !m.showUnreadOnly {
-		m.filteredMessages = visible
-		m.sortFilteredStarred()
-		m.rebuildMessageThreads()
-		return
-	}
-	filtered := make([]db.Message, 0, len(visible))
-	for _, msg := range visible {
-		if m.showUnreadOnly && msg.Read {
-			continue
+	// m.messages is already the match set when a search is running — the FTS
+	// index covers subject, sender, recipients, and body. Narrowing it again
+	// here would have to re-implement that matching locally, and the subject-only
+	// substring test this used to do silently dropped every message that matched
+	// on sender or body. The unread toggle is the only filter left to apply.
+	filtered := visible
+	if m.showUnreadOnly {
+		filtered = make([]db.Message, 0, len(visible))
+		for _, msg := range visible {
+			if !msg.Read {
+				filtered = append(filtered, msg)
+			}
 		}
-		if q != "" && !strings.Contains(strings.ToLower(msg.Subject), q) {
-			continue
-		}
-		filtered = append(filtered, msg)
 	}
 	m.filteredMessages = filtered
 	m.sortFilteredStarred()

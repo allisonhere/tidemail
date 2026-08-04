@@ -265,7 +265,7 @@ func TestAccountManagerFormScrollsFocusedFieldIntoShortView(t *testing.T) {
 
 	view := ansi.Strip(am.View(74, 12, BuildStyles(CatppuccinMocha, "compact")))
 
-	if !strings.Contains(view, "Every (min)") {
+	if !strings.Contains(view, "Refresh") {
 		t.Fatalf("expected short account form to scroll sync field into view, got %q", view)
 	}
 	if strings.Contains(view, "Provider") {

@@ -67,6 +67,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 			name: "Message List",
 			entries: []entry{
 				{keys.Enter.Help().Key, "open selected message; in Drafts, reopen draft compose"},
+				{"auto", "moving down past the last message loads older mail from the server"},
 				{keys.Space.Help().Key, "select message and advance"},
 				{keys.SelectAll.Help().Key, "select all messages in current view"},
 				{keys.MarkRead.Help().Key, "toggle selected message(s) read/unread"},

@@ -206,6 +206,9 @@ type Model struct {
 	statusErr bool
 
 	syncing map[int64]bool
+	// olderExhausted records mailboxes whose server history has been paged all
+	// the way back, so scrolling to the bottom stops asking for more.
+	olderExhausted map[int64]bool
 	// initialLoading is true from startup until the first message load completes,
 	// so the message pane can show a spinner while accounts/messages load async.
 	initialLoading bool
@@ -327,6 +330,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		spinner:               sp,
 		initialLoading:        true,
 		syncing:               make(map[int64]bool),
+		olderExhausted:        make(map[int64]bool),
 		lastFolderRefresh:     make(map[int64]time.Time),
 		idleWatchers:          make(map[int64]idleWatcherEntry),
 		collapsedAccounts:     map[int64]bool{},
@@ -717,6 +721,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.notifyCmd(msg.MailboxID, msg.NewMessages))
 		}
 		cmds = append(cmds, m.loadAddressBookCmd())
+		return m, tea.Batch(cmds...)
+
+	case OlderMessagesLoadedMsg:
+		delete(m.syncing, msg.MailboxID)
+		if msg.Err != nil {
+			m.setStatus(fmt.Sprintf("could not load older mail: %v", msg.Err), true)
+			return m, m.clearStatusCmd()
+		}
+		if msg.Exhausted {
+			m.olderExhausted[msg.MailboxID] = true
+		}
+		if msg.Count == 0 {
+			m.setStatus("no older mail on the server", false)
+			return m, m.clearStatusCmd()
+		}
+		m.setStatus(fmt.Sprintf("loaded %d older", msg.Count), false)
+		cmds := []tea.Cmd{m.clearStatusCmd()}
+		// Reload so the newly-cached page appears below the current row. The
+		// cursor is left where it is: the user was at the bottom, and the new
+		// messages land underneath them.
+		if selected := m.selectedMailbox(); selected != nil && selected.ID == msg.MailboxID {
+			cmds = append(cmds, m.loadMailboxMessagesCmd(msg.MailboxID))
+		}
 		return m, tea.Batch(cmds...)
 
 	case AccountSavedMsg:
@@ -1886,6 +1913,16 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 			if msg2 := m.currentRowMessage(); msg2 != nil {
 				m.setViewportForCurrentRow()
 				return m, m.focusedMessageChangedCmd(*msg2)
+			}
+			return m, nil
+		}
+		// At the last row: page further back into server history. The initial
+		// sync only caches the most recent window, so without this the archive
+		// just stops. Search results and the unified inbox span mailboxes and
+		// have no single paging cursor, so they are left alone.
+		if !m.searchActive() && !m.selectedUnifiedInbox() && !m.selectedDraftsMailbox() {
+			if selected := m.selectedMailbox(); selected != nil {
+				return m, m.loadOlderMessagesCmd(selected.ID)
 			}
 		}
 	case paneContent:

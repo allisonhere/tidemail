@@ -2,6 +2,54 @@
 
 All notable changes to TideMail are documented in this file.
 
+## Unreleased
+
+**Release highlights:** mail history goes back further than the first 100
+messages, search matches as you type, and `sync_minutes = 0` now means push
+instead of nothing.
+
+### Added
+
+- **Older mail loads on demand.** The first sync of a mailbox only caches the
+  100 most recent messages, and nothing ever reached past that — the archive
+  simply ended, and because search only covers cached mail, it quietly limited
+  search too. Moving down past the last message now pulls the next 100 from the
+  server, repeatedly, until the mailbox is fully paged back.
+
+### Fixed
+
+- **Search matches partial words.** Search runs on every keystroke, but only
+  whole tokens matched, so results vanished mid-word and reappeared once the
+  word was finished. The final term is now a prefix match.
+- **Search combined with the unread-only toggle no longer hides results.**
+  Together they fell through to a subject-only substring filter applied on top
+  of the full-text results, dropping every message that matched on sender or
+  body.
+
+### Changed
+
+- **`sync_minutes = 0` is now push, not off.** An account set to `0` previously
+  got neither polling nor IMAP IDLE, so it refreshed only on launch or a manual
+  `s` — with nothing in the UI to say so. It now runs IDLE, delivering mail as
+  the server announces it, backed by a 30-minute safety poll for connections
+  that wedge without dropping. **Existing accounts set to `0` change behavior**
+  and will start refreshing in the background; set `-1` for the old
+  manual-only behavior.
+- **The account form's sync field is now `Refresh`**, with an inline hint for
+  all three modes, and it rejects values it cannot parse. Previously any
+  unparseable entry silently became `0`, which was harmless when `0` meant
+  "off" but now would opt an account into a persistent connection.
+
+### Fixed
+
+- **Overlapping syncs of the same mailbox are no longer started.** Launch
+  timers, the startup sweep, and IDLE nudges all target the inbox and could
+  stack up on it. The concurrent DB writes collided (`SQLITE_BUSY`), aborting
+  one sync partway through storing messages while another advanced the
+  last-synced timestamp past them — so those messages fell outside the next
+  sync window and never arrived. A manual sync of an already-syncing mailbox
+  now reports "sync already in progress" instead of doing nothing.
+
 ## v1.0.1
 
 **Release highlights:** cleaner newsletter rendering and a polished in-app log

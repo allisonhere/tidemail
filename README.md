@@ -88,8 +88,9 @@ prefer commands such as `dw`, `dd`, `:w`, and `:q`.
 
 Read state, stars, archive, move, and delete sync through IMAP. TideMail keeps a
 local SQLite cache for speed and search, then reconciles it with the server on
-sync. IMAP IDLE can nudge an inbox when new mail arrives; interval polling stays
-available for servers that need it.
+sync. By default an account uses IMAP IDLE, so mail lands as the server
+announces it (`sync_minutes = 0`); interval polling stays available for servers
+that need it, and `-1` keeps an account manual-only.
 
 Drafts live under the selected sender account. Sent messages use that account's
 SMTP settings. TideMail detects common Archive and Trash folder names, including
@@ -162,7 +163,7 @@ smtp_tls = true
 user = "mira@example.com"
 from = "Mira Chen <mira@example.com>"
 signature = "Mira\nSent with TideMail"
-sync_minutes = 5
+sync_minutes = 0  # push via IMAP IDLE; N polls every N min, -1 is manual only
 ```
 
 Config lives at `~/.config/tidemail/config.toml`. TideMail puts its SQLite cache
