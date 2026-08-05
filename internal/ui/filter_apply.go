@@ -15,15 +15,9 @@ import (
 // It resolves — and for move/spam creates — the destination folder as needed.
 // client may be nil for local-only accounts (no IMAPHost) and dry tests.
 //
-// allowCreate controls whether a "move" may create a missing target folder.
-// Account-scoped rules pass true (the target was validated against that account).
-// "All accounts" rules pass false, so a move into a folder that does not exist in
-// the source account is skipped rather than creating it on an unintended account.
-//
 // It returns acted=true when the message was actually changed (moved, deleted,
-// marked, ...). acted=false with a nil error means the action was a no-op (e.g.
-// a skipped move), so callers should keep treating the message as present.
-func applyFilterAction(ctx context.Context, database *db.DB, client *imapClient.Client, source db.Mailbox, msg db.Message, action filter.Action, allowCreate bool) (bool, error) {
+// marked, ...). acted=false with a nil error means the action was a no-op.
+func applyFilterAction(ctx context.Context, database *db.DB, client *imapClient.Client, source db.Mailbox, msg db.Message, action filter.Action) (bool, error) {
 	switch action.Type {
 	case filter.ActionMarkRead:
 		if client != nil && msg.UID != 0 {
@@ -54,21 +48,9 @@ func applyFilterAction(ctx context.Context, database *db.DB, client *imapClient.
 		return moveMessage(ctx, database, client, source, msg, target)
 
 	case filter.ActionMove:
-		if allowCreate {
-			target, err := resolveOrCreateFolder(ctx, database, client, source.AccountID, action.Target)
-			if err != nil {
-				return false, err
-			}
-			return moveMessage(ctx, database, client, source, msg, target)
-		}
-		target, found, err := resolveFolder(database, source.AccountID, action.Target)
+		target, err := resolveOrCreateFolder(ctx, database, client, source.AccountID, action.Target)
 		if err != nil {
 			return false, err
-		}
-		if !found {
-			// "All accounts" move into a folder this account lacks: skip rather
-			// than create it on an account the rule was never validated for.
-			return false, nil
 		}
 		return moveMessage(ctx, database, client, source, msg, target)
 

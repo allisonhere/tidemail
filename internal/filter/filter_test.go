@@ -1,8 +1,11 @@
 package filter
 
-import "testing"
+import (
+	"strings"
+	"testing"
 
-import "github.com/allisonhere/tide/internal/db"
+	"github.com/allisonhere/tide/internal/db"
+)
 
 func TestRuleMatches(t *testing.T) {
 	msg := db.Message{
@@ -51,13 +54,33 @@ func TestParseStripsCodeFences(t *testing.T) {
 	}
 }
 
+func TestParseAllowsNewMoveTarget(t *testing.T) {
+	resp := `{"match":"all","conditions":[{"field":"from","op":"contains","value":"agentmail"}],"action":{"type":"move","target":" SystemStats "}}`
+	r, err := Parse(resp, []string{"INBOX"})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if r.Action.Target != "SystemStats" {
+		t.Fatalf("target = %q, want SystemStats", r.Action.Target)
+	}
+}
+
+func TestPromptAllowsExplicitNewFolder(t *testing.T) {
+	prompt := Prompt("move all AgentMail to a new folder named SystemStats", []string{"INBOX"})
+	for _, want := range []string{"Existing folders: INBOX", "new folder", "SystemStats"} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt missing %q:\n%s", want, prompt)
+		}
+	}
+}
+
 func TestValidateRejectsBadInput(t *testing.T) {
 	bad := []Rule{
 		{Match: "sometimes", Conditions: []Condition{{FieldFrom, OpContains, "x"}}, Action: Action{Type: ActionDelete}},
 		{Match: MatchAll, Conditions: []Condition{{"sender", OpContains, "x"}}, Action: Action{Type: ActionDelete}},
 		{Match: MatchAll, Conditions: []Condition{{FieldFrom, "matches", "x"}}, Action: Action{Type: ActionDelete}},
 		{Match: MatchAll, Conditions: []Condition{{FieldFrom, OpContains, "x"}}, Action: Action{Type: "forward"}},
-		{Match: MatchAll, Conditions: []Condition{{FieldFrom, OpContains, "x"}}, Action: Action{Type: ActionMove, Target: "Nope"}},
+		{Match: MatchAll, Conditions: []Condition{{FieldFrom, OpContains, "x"}}, Action: Action{Type: ActionMove}},
 		{Match: MatchAll, Conditions: nil, Action: Action{Type: ActionDelete}},
 	}
 	for i, r := range bad {

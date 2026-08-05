@@ -23,7 +23,9 @@ func pickAccountModel(t *testing.T) (Model, int64, int64) {
 	accB, _ := database.AddAccount("B", "")
 	database.UpsertMailbox(db.Mailbox{AccountID: accA, Name: "INBOX", Delimiter: "/"})
 	database.UpsertMailbox(db.Mailbox{AccountID: accB, Name: "INBOX", Delimiter: "/"})
-	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	cfg := config.DefaultConfig()
+	cfg.Accounts = []config.AccountConfig{{Name: "A"}, {Name: "B"}}
+	m := NewModel(database, cfg, "dev", false)
 	next, _ := m.Update(AccountsLoadedMsg{
 		Accounts:  []db.Account{{ID: accA, Name: "A"}, {ID: accB, Name: "B"}},
 		Mailboxes: append(mustListMailboxes(t, database, accA), mustListMailboxes(t, database, accB)...),
@@ -77,9 +79,8 @@ func TestPickAllAccountsSetsZeroScope(t *testing.T) {
 	}
 }
 
-// An All-accounts move must not create the target folder on an account that
-// lacks it — the message is skipped (left in place).
-func TestAllAccountsMoveSkipsWhenFolderMissing(t *testing.T) {
+// A move rule may recreate its destination in any account covered by its scope.
+func TestMoveCreatesFolderWhenMissing(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	database, err := db.Open()
 	if err != nil {
@@ -94,26 +95,29 @@ func TestAllAccountsMoveSkipsWhenFolderMissing(t *testing.T) {
 
 	action := filter.Action{Type: filter.ActionMove, Target: "Reading"} // B has no Reading
 	mailbox, _ := database.GetMailbox(bInbox)
-	acted, err := applyFilterAction(context.Background(), database, nil, mailbox, stored[0], action, false /* allowCreate */)
+	acted, err := applyFilterAction(context.Background(), database, nil, mailbox, stored[0], action)
 	if err != nil {
 		t.Fatalf("applyFilterAction: %v", err)
 	}
-	if acted {
-		t.Fatalf("expected the move to be skipped (acted=false) when folder is missing")
+	if !acted {
+		t.Fatalf("expected the move to create its folder and act")
 	}
+	found := false
 	mbs, _ := database.ListMailboxes(accB)
 	for _, mb := range mbs {
 		if mb.Name == "Reading" {
-			t.Fatalf("Reading should not have been created on account B")
+			found = true
 		}
 	}
-	// And the message stays in INBOX.
-	if msgs, _ := database.ListMessages(bInbox); len(msgs) != 1 {
-		t.Fatalf("message should remain in INBOX, got %d", len(msgs))
+	if !found {
+		t.Fatalf("Reading should have been created on account B")
+	}
+	if msgs, _ := database.ListMessages(bInbox); len(msgs) != 0 {
+		t.Fatalf("message should have left INBOX, got %d", len(msgs))
 	}
 }
 
-// With allowCreate true (account-scoped), the same move creates the folder.
+// An account-scoped move also creates a missing folder.
 func TestScopedMoveCreatesFolder(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	database, err := db.Open()
@@ -127,7 +131,7 @@ func TestScopedMoveCreatesFolder(t *testing.T) {
 	stored, _ := database.ListMessages(inbox)
 	mailbox, _ := database.GetMailbox(inbox)
 
-	acted, err := applyFilterAction(context.Background(), database, nil, mailbox, stored[0], filter.Action{Type: filter.ActionMove, Target: "Reading"}, true)
+	acted, err := applyFilterAction(context.Background(), database, nil, mailbox, stored[0], filter.Action{Type: filter.ActionMove, Target: "Reading"})
 	if err != nil {
 		t.Fatalf("applyFilterAction: %v", err)
 	}

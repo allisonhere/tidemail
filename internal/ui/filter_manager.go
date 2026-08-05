@@ -20,6 +20,14 @@ const (
 	fmReview                 // reviewing an AI-generated rule before saving
 )
 
+type filterSaveIntent int
+
+const (
+	filterSaveOnly filterSaveIntent = iota
+	filterSaveRunMailbox
+	filterSaveRunAll
+)
+
 type filterManager struct {
 	mode       filterMode
 	rules      []db.RuleRecord
@@ -30,6 +38,7 @@ type filterManager struct {
 	draftAcct  int64       // account the draft was generated/validated against (0 = all)
 	acctCursor int         // cursor within the account picker (0 = All accounts)
 	status     string
+	saving     bool // waiting for move-target folders to be prepared
 }
 
 func (m *Model) newFilterManager() filterManager {
@@ -200,6 +209,9 @@ func (m Model) handleFilterInput(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleFilterReview(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.filterManager.saving {
+		return m, nil
+	}
 	switch {
 	case keyMatches(key, m.keys.Cancel):
 		m.filterManager.mode = fmList
@@ -210,30 +222,43 @@ func (m Model) handleFilterReview(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.filterManager.mode = fmInput
 		return m, nil
 	case keyMatches(key, m.keys.Confirm), key.String() == "s":
-		if err := m.saveDraftRule(); err != nil {
-			return m, nil // stay in review; saveDraftRule set the failure status
-		}
-		m.filterManager.mode = fmList
-		m.filterManager.status = "saved"
-		return m, nil
+		return m.beginSaveDraftRule(filterSaveOnly)
 	case key.String() == "r":
-		if err := m.saveDraftRule(); err != nil {
-			return m, nil
-		}
-		m.filterManager.mode = fmList
+		return m.beginSaveDraftRule(filterSaveRunMailbox)
+	case key.String() == "R":
+		return m.beginSaveDraftRule(filterSaveRunAll)
+	}
+	return m, nil
+}
+
+// beginSaveDraftRule prepares a move rule's destination folders before the
+// rule is persisted. Other action types retain the existing synchronous save.
+func (m Model) beginSaveDraftRule(intent filterSaveIntent) (tea.Model, tea.Cmd) {
+	if m.filterManager.draft.Action.Type == filter.ActionMove {
+		m.filterManager.saving = true
+		m.filterManager.status = "creating destination folder…"
+		return m, m.prepareFilterFoldersCmd(intent)
+	}
+	return m.finishSaveDraftRule(intent)
+}
+
+func (m Model) finishSaveDraftRule(intent filterSaveIntent) (tea.Model, tea.Cmd) {
+	if err := m.saveDraftRule(); err != nil {
+		return m, nil
+	}
+	m.filterManager.mode = fmList
+	switch intent {
+	case filterSaveRunMailbox:
 		if mb := m.selectedMailbox(); mb != nil {
 			m.filterManager.status = "saved, running…"
 			return m, m.applyRulesCmd([]int64{mb.ID}, false)
 		}
 		m.filterManager.status = "saved"
-		return m, nil
-	case key.String() == "R":
-		if err := m.saveDraftRule(); err != nil {
-			return m, nil
-		}
-		m.filterManager.mode = fmList
+	case filterSaveRunAll:
 		m.filterManager.status = "saved, running on all mail…"
 		return m, m.applyRulesCmd(m.allMailboxIDs(), false)
+	default:
+		m.filterManager.status = "saved"
 	}
 	return m, nil
 }
@@ -290,6 +315,40 @@ func (m Model) allMailboxIDs() []int64 {
 		ids = append(ids, mb.ID)
 	}
 	return ids
+}
+
+func (m Model) filterFolderCreationNotice() string {
+	if m.filterManager.draft.Action.Type != filter.ActionMove {
+		return ""
+	}
+	target := strings.TrimSpace(m.filterManager.draft.Action.Target)
+	if target == "" {
+		return ""
+	}
+	missing := false
+	for _, account := range m.accounts {
+		if m.filterManager.draftAcct != 0 && account.ID != m.filterManager.draftAcct {
+			continue
+		}
+		found := false
+		for _, mailbox := range m.mailboxes {
+			if mailbox.AccountID == account.ID && (strings.EqualFold(mailbox.Name, target) || strings.EqualFold(mailbox.DisplayName, target)) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			missing = true
+			break
+		}
+	}
+	if !missing {
+		return ""
+	}
+	if m.filterManager.draftAcct == 0 {
+		return "Saving will create folder " + target + " in all accounts."
+	}
+	return "Saving will create folder " + target + " in " + m.accountName(m.filterManager.draftAcct) + "."
 }
 
 // filterScopeAccountID picks the account whose folders are offered to the AI for
@@ -352,7 +411,12 @@ func (m Model) renderFilterManager(width, height int, chrome managerChrome) stri
 		in.Cursor.TextStyle = bg.Foreground(chrome.text)
 		bodyLines = wrapBodyBlock("Describe a filter in plain English:\n\n"+in.View(), width, chrome)
 	case fmReview:
-		bodyLines = wrapBodyBlock("Generated rule:\n\n"+m.filterManager.draft.Summary()+"\n\nFrom: "+m.filterManager.draftEn, width, chrome)
+		review := "Generated rule:\n\n" + m.filterManager.draft.Summary()
+		if notice := m.filterFolderCreationNotice(); notice != "" {
+			review += "\n\n" + notice
+		}
+		review += "\n\nFrom: " + m.filterManager.draftEn
+		bodyLines = wrapBodyBlock(review, width, chrome)
 	default:
 		bodyLines = m.filterListRows(width, chrome)
 	}

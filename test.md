@@ -61,7 +61,7 @@ go build -o tidemail .
 
 Optional vim editing in compose adds Normal, Insert, and Visual modes; motions such as `hjkl`, `w`, `b`, `e`, `0`, `^`, `$`, `gg`, and `G`; counts; edits such as `x`, `dd`, `yy`, `p`, `dw`, and `cw`; visual `v` and `V`; undo and redo with `u` and `Ctrl+R`; and a `:` command line where `:w` and `:wq` send and `:q` cancels. TideMail keeps it off by default.
 
-AI mail filters let you describe a rule, such as "move newsletters from substack to Reading." TideMail turns it into a local rule with no per-message AI cost. You choose one account or all accounts, review the generated rule, then save it, run it once on a mailbox, or run it across existing mail. Filters support move, mark read, archive, delete, and spam actions. Open filters from the command palette with `p`, then choose "filters."
+AI mail filters let you describe a rule, such as "move newsletters from substack to Reading." TideMail turns it into a local rule with no per-message AI cost. You choose one account or all accounts, review the generated rule, then save it, run it once on a mailbox, or run it across existing mail. A move rule can name a new destination folder; TideMail creates it in the selected account scope when you save. Filters support move, mark read, archive, delete, and spam actions. Open filters from the command palette with `p`, then choose "filters."
 
 ## Usage
 

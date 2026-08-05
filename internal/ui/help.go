@@ -185,6 +185,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.Delete.Help().Key, "delete selected rule"},
 				{"t", "test rules on selected mailbox without changing mail"},
 				{"r/R", "run rules on selected mailbox / all mail"},
+				{"move", "new destination folders are created when the rule is saved"},
 				{"J/K", "move selected rule down/up in priority"},
 				{"Review: s/enter", "save generated rule"},
 				{"Review: r/R/e", "save+run, save+run all, or edit text"},

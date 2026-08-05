@@ -35,6 +35,9 @@ func Parse(text string, folders []string) (Rule, error) {
 	if r.Match == "" {
 		r.Match = MatchAll
 	}
+	if r.Action.Type == ActionMove {
+		r.Action.Target = strings.TrimSpace(r.Action.Target)
+	}
 	if err := Validate(r, folders); err != nil {
 		return Rule{}, err
 	}
@@ -53,8 +56,9 @@ func extractJSON(text string) string {
 }
 
 // Validate checks that a rule uses known fields/operators/actions and that a
-// "move" action targets a folder that exists (when folders is non-nil).
-func Validate(r Rule, folders []string) error {
+// "move" action has a destination. Move targets may name new folders; TideMail
+// creates them in the rule's account scope when the rule is saved.
+func Validate(r Rule, _ []string) error {
 	switch r.Match {
 	case MatchAll, MatchAny:
 	default:
@@ -84,20 +88,8 @@ func Validate(r Rule, folders []string) error {
 		if strings.TrimSpace(r.Action.Target) == "" {
 			return fmt.Errorf("move action requires a target folder")
 		}
-		if folders != nil && !folderExists(folders, r.Action.Target) {
-			return fmt.Errorf("target folder %q does not exist", r.Action.Target)
-		}
 	}
 	return nil
-}
-
-func folderExists(folders []string, target string) bool {
-	for _, f := range folders {
-		if strings.EqualFold(f, target) {
-			return true
-		}
-	}
-	return false
 }
 
 // Summary renders a short human-readable description of the rule for the UI.

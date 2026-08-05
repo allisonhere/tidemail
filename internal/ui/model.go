@@ -1011,6 +1011,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case FilterFoldersPreparedMsg:
+		m.filterManager.saving = false
+		for _, mailbox := range msg.Mailboxes {
+			if m.mailboxByID(mailbox.ID) == nil {
+				m.mailboxes = append(m.mailboxes, mailbox)
+			}
+		}
+		if len(msg.Mailboxes) > 0 {
+			m.rebuildSidebar()
+		}
+		if msg.Err != nil {
+			m.filterManager.status = "save failed: " + msg.Err.Error()
+			return m, nil
+		}
+		return m.finishSaveDraftRule(msg.Intent)
+
 	case FilterRunMsg:
 		if msg.Err != nil {
 			m.filterManager.status = "error: " + msg.Err.Error()

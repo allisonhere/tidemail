@@ -90,6 +90,12 @@ type FilterGeneratedMsg struct {
 	Err     error
 }
 
+type FilterFoldersPreparedMsg struct {
+	Intent    filterSaveIntent
+	Mailboxes []db.Mailbox
+	Err       error
+}
+
 type FilterRunMsg struct {
 	Matched int
 	Applied int

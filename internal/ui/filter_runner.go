@@ -114,6 +114,79 @@ type mailboxTarget struct {
 	acfg    config.AccountConfig
 }
 
+type filterFolderTarget struct {
+	account    db.Account
+	acfg       config.AccountConfig
+	configured bool
+}
+
+// prepareFilterFoldersCmd resolves or creates a move rule's target folder in
+// every account covered by the scope selected during rule creation.
+func (m *Model) prepareFilterFoldersCmd(intent filterSaveIntent) tea.Cmd {
+	database := m.db
+	sessions := m.sessions
+	name := strings.TrimSpace(m.filterManager.draft.Action.Target)
+	targets := make([]filterFolderTarget, 0, len(m.accounts))
+	for _, account := range m.accounts {
+		if m.filterManager.draftAcct != 0 && account.ID != m.filterManager.draftAcct {
+			continue
+		}
+		var acfg config.AccountConfig
+		configured := false
+		for _, candidate := range m.cfg.Accounts {
+			if candidate.Name == account.Name {
+				acfg = candidate
+				configured = true
+				break
+			}
+		}
+		targets = append(targets, filterFolderTarget{account: account, acfg: acfg, configured: configured})
+	}
+	return func() tea.Msg {
+		result := FilterFoldersPreparedMsg{Intent: intent}
+		if name == "" {
+			result.Err = fmt.Errorf("move action requires a target folder")
+			return result
+		}
+		if len(targets) == 0 {
+			result.Err = fmt.Errorf("no accounts are available for this rule")
+			return result
+		}
+		for _, target := range targets {
+			if mb, found, err := resolveFolder(database, target.account.ID, name); err != nil {
+				result.Err = fmt.Errorf("prepare folder for %s: %w", target.account.Name, err)
+				return result
+			} else if found {
+				result.Mailboxes = append(result.Mailboxes, mb)
+				continue
+			}
+			if !target.configured {
+				result.Err = fmt.Errorf("create folder for %s: account configuration not found", target.account.Name)
+				return result
+			}
+
+			var mailbox db.Mailbox
+			var err error
+			if target.acfg.IMAPHost == "" {
+				mailbox, err = resolveOrCreateFolder(context.Background(), database, nil, target.account.ID, name)
+			} else {
+				ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+				err = sessions.Do(ctx, target.acfg, func(client *imapClient.Client) error {
+					mailbox, err = resolveOrCreateFolder(ctx, database, client, target.account.ID, name)
+					return err
+				})
+				cancel()
+			}
+			if err != nil {
+				result.Err = fmt.Errorf("create folder for %s: %w", target.account.Name, err)
+				return result
+			}
+			result.Mailboxes = append(result.Mailboxes, mailbox)
+		}
+		return result
+	}
+}
+
 // applyRulesCmd applies all enabled rules to the messages in the given mailboxes.
 // When dryRun is true it only counts matches without changing anything.
 func (m *Model) applyRulesCmd(mailboxIDs []int64, dryRun bool) tea.Cmd {
@@ -168,7 +241,7 @@ func (m *Model) applyRulesCmd(mailboxIDs []int64, dryRun bool) tea.Cmd {
 			apply := func(client *imapClient.Client) error {
 				for _, p := range pending {
 					ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-					acted, err := applyFilterAction(ctx, database, client, t.mailbox, p.msg, p.cr.rule.Action, p.cr.rec.AccountID != 0)
+					acted, err := applyFilterAction(ctx, database, client, t.mailbox, p.msg, p.cr.rule.Action)
 					cancel()
 					recordErr(err)
 					if err == nil && acted {
@@ -231,11 +304,10 @@ func applyRulesOnArrival(ctx context.Context, database *db.DB, client *imapClien
 			survivors = append(survivors, nm)
 			continue
 		}
-		acted, err := applyFilterAction(ctx, database, client, mailbox, sm, cr.rule.Action, cr.rec.AccountID != 0)
+		acted, err := applyFilterAction(ctx, database, client, mailbox, sm, cr.rule.Action)
 		if err != nil || !acted {
-			// The action failed or was skipped (e.g. an All-accounts move into a
-			// folder this account lacks), so the message is still in the mailbox —
-			// keep reporting it as new.
+			// The action failed or was a no-op, so the message is still in the
+			// mailbox — keep reporting it as new.
 			if err != nil && firstErr == nil {
 				firstErr = err
 			}
