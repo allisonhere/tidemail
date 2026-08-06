@@ -62,7 +62,7 @@ type KeyMap struct {
 	Add         key.Binding
 	Edit        key.Binding
 	Delete      key.Binding
-	SaveAccount key.Binding
+	Save        key.Binding
 	TestAccount key.Binding
 
 	AttachFile   key.Binding
@@ -139,7 +139,7 @@ var DefaultKeys = KeyMap{
 	Add:         key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
 	Edit:        key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
 	Delete:      key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
-	SaveAccount: key.NewBinding(key.WithKeys("ctrl+s", "f2"), key.WithHelp("ctrl+s", "save")),
+	Save:        key.NewBinding(key.WithKeys("ctrl+s", "f2"), key.WithHelp("ctrl+s", "save")),
 	TestAccount: key.NewBinding(key.WithKeys("ctrl+t", "f5"), key.WithHelp("ctrl+t", "test")),
 
 	AttachFile: key.NewBinding(key.WithKeys("alt+f"), key.WithHelp("alt+f", "attach file")),

@@ -51,14 +51,14 @@ func TestApplyRulesMovesMatchingMail(t *testing.T) {
 	m = next.(Model)
 
 	// Dry run first: should match exactly one, change nothing.
-	cmd := m.applyRulesCmd([]int64{inboxID}, true)
+	cmd := m.applyRulesCmd([]int64{inboxID}, true, 0)
 	dry := cmd().(FilterRunMsg)
 	if dry.Matched != 1 || dry.Applied != 0 {
 		t.Fatalf("dry run: matched=%d applied=%d, want 1/0", dry.Matched, dry.Applied)
 	}
 
 	// Real run: should move the substack message to Reading.
-	cmd = m.applyRulesCmd([]int64{inboxID}, false)
+	cmd = m.applyRulesCmd([]int64{inboxID}, false, 0)
 	run := cmd().(FilterRunMsg)
 	if run.Err != nil {
 		t.Fatalf("run error: %v", run.Err)

@@ -43,7 +43,7 @@ func TestSavingMoveFilterCreatesFolderInSelectedAccount(t *testing.T) {
 	m.overlay = overlayFilterManager
 	m.filterManager = moveFilterDraft(accA)
 
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
 	m = next.(Model)
 	if cmd == nil || !m.filterManager.saving {
 		t.Fatal("expected save to wait for destination-folder preparation")
@@ -75,7 +75,7 @@ func TestSavingAllAccountsMoveCreatesFolderEverywhere(t *testing.T) {
 	m.overlay = overlayFilterManager
 	m.filterManager = moveFilterDraft(0)
 
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
 	m = next.(Model)
 	prepared := cmd().(FilterFoldersPreparedMsg)
 	next, _ = m.Update(prepared)
@@ -101,7 +101,7 @@ func TestSavingMoveFilterReusesFolderCaseInsensitively(t *testing.T) {
 	m.overlay = overlayFilterManager
 	m.filterManager = moveFilterDraft(accA)
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
 	prepared := cmd().(FilterFoldersPreparedMsg)
 	if prepared.Err != nil {
 		t.Fatalf("prepare folders: %v", prepared.Err)
@@ -121,7 +121,7 @@ func TestMoveFilterFolderFailureLeavesRuleInReview(t *testing.T) {
 	m.overlay = overlayFilterManager
 	m.filterManager = moveFilterDraft(0)
 
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
 	m = next.(Model)
 	prepared := cmd().(FilterFoldersPreparedMsg)
 	next, _ = m.Update(prepared)
@@ -146,7 +146,7 @@ func TestAllAccountsFolderPartialFailureIsRetryable(t *testing.T) {
 	m.overlay = overlayFilterManager
 	m.filterManager = moveFilterDraft(0)
 
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
 	m = next.(Model)
 	prepared := cmd().(FilterFoldersPreparedMsg)
 	if prepared.Err == nil || len(prepared.Mailboxes) != 1 {
@@ -174,7 +174,7 @@ func TestSaveAndRunAllWaitsForFolderPreparation(t *testing.T) {
 	m.overlay = overlayFilterManager
 	m.filterManager = moveFilterDraft(0)
 
-	next, prepareCmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}})
+	next, prepareCmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 	m = next.(Model)
 	if rules, _ := m.db.ListRules(); len(rules) != 0 {
 		t.Fatalf("rule saved before preparation: %d rules", len(rules))

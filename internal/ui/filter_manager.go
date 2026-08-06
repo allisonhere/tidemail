@@ -24,7 +24,7 @@ type filterSaveIntent int
 
 const (
 	filterSaveOnly filterSaveIntent = iota
-	filterSaveRunMailbox
+	filterSaveRunScope
 	filterSaveRunAll
 )
 
@@ -112,22 +112,12 @@ func (m Model) handleFilterList(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.String() == "J":
 		return m.reorderRule(1), nil
 	case key.String() == "t":
-		if mb := m.selectedMailbox(); mb != nil {
-			m.filterManager.status = "testing…"
-			return m, m.applyRulesCmd([]int64{mb.ID}, true)
-		}
-		m.filterManager.status = "select a mailbox first"
-		return m, nil
+		return m.runSelectedRule(true)
 	case key.String() == "r":
-		if mb := m.selectedMailbox(); mb != nil {
-			m.filterManager.status = "running…"
-			return m, m.applyRulesCmd([]int64{mb.ID}, false)
-		}
-		m.filterManager.status = "select a mailbox first"
-		return m, nil
-	case key.String() == "R":
-		m.filterManager.status = "running on all mail…"
-		return m, m.applyRulesCmd(m.allMailboxIDs(), false)
+		return m.runSelectedRule(false)
+	case key.String() == "a":
+		m.filterManager.status = "running all rules on all mail…"
+		return m, m.applyRulesCmd(m.allMailboxIDs(), false, 0)
 	}
 	return m, nil
 }
@@ -221,11 +211,13 @@ func (m Model) handleFilterReview(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.filterManager.input.Focus()
 		m.filterManager.mode = fmInput
 		return m, nil
-	case keyMatches(key, m.keys.Confirm), key.String() == "s":
+	// ctrl+s saves here as it does in settings and the account manager; enter
+	// stays as the plain confirm.
+	case keyMatches(key, m.keys.Confirm), keyMatches(key, m.keys.Save):
 		return m.beginSaveDraftRule(filterSaveOnly)
 	case key.String() == "r":
-		return m.beginSaveDraftRule(filterSaveRunMailbox)
-	case key.String() == "R":
+		return m.beginSaveDraftRule(filterSaveRunScope)
+	case key.String() == "a":
 		return m.beginSaveDraftRule(filterSaveRunAll)
 	}
 	return m, nil
@@ -243,48 +235,54 @@ func (m Model) beginSaveDraftRule(intent filterSaveIntent) (tea.Model, tea.Cmd) 
 }
 
 func (m Model) finishSaveDraftRule(intent filterSaveIntent) (tea.Model, tea.Cmd) {
-	if err := m.saveDraftRule(); err != nil {
+	id, err := m.saveDraftRule()
+	if err != nil {
 		return m, nil
 	}
 	m.filterManager.mode = fmList
 	switch intent {
-	case filterSaveRunMailbox:
-		if mb := m.selectedMailbox(); mb != nil {
-			m.filterManager.status = "saved, running…"
-			return m, m.applyRulesCmd([]int64{mb.ID}, false)
+	case filterSaveRunScope:
+		// Run the rule we just saved over the scope it was saved with, not
+		// whatever the sidebar is pointing at.
+		if saved := m.ruleByID(id); saved != nil {
+			if ids := m.filterRunMailboxIDs(saved); len(ids) > 0 {
+				m.filterManager.status = "saved, running…"
+				return m, m.applyRulesCmd(ids, false, id)
+			}
 		}
 		m.filterManager.status = "saved"
 	case filterSaveRunAll:
 		m.filterManager.status = "saved, running on all mail…"
-		return m, m.applyRulesCmd(m.allMailboxIDs(), false)
+		return m, m.applyRulesCmd(m.allMailboxIDs(), false, 0)
 	default:
 		m.filterManager.status = "saved"
 	}
 	return m, nil
 }
 
-// saveDraftRule persists the rule under review. On failure it sets an error
-// status and returns the error so callers do not falsely report "saved" or run a
-// rule that was never stored.
-func (m *Model) saveDraftRule() error {
+// saveDraftRule persists the rule under review and returns its id. On failure it
+// sets an error status and returns the error so callers do not falsely report
+// "saved" or run a rule that was never stored.
+func (m *Model) saveDraftRule() (int64, error) {
 	blob, err := json.Marshal(m.filterManager.draft)
 	if err != nil {
 		m.filterManager.status = "save failed: " + err.Error()
-		return err
+		return 0, err
 	}
 	priority := len(m.filterManager.rules)
-	if _, err := m.db.UpsertRule(db.RuleRecord{
+	id, err := m.db.UpsertRule(db.RuleRecord{
 		AccountID: m.filterManager.draftAcct,
 		Priority:  priority,
 		Enabled:   true,
 		Name:      m.filterManager.draftEn,
 		JSON:      string(blob),
-	}); err != nil {
+	})
+	if err != nil {
 		m.filterManager.status = "save failed: " + err.Error()
-		return err
+		return 0, err
 	}
 	m.reloadFilterRules()
-	return nil
+	return id, nil
 }
 
 func (m Model) reorderRule(delta int) Model {
@@ -302,11 +300,72 @@ func (m Model) reorderRule(delta int) Model {
 	return m
 }
 
+func (m Model) ruleByID(id int64) *db.RuleRecord {
+	for i := range m.filterManager.rules {
+		if m.filterManager.rules[i].ID == id {
+			return &m.filterManager.rules[i]
+		}
+	}
+	return nil
+}
+
 func (m Model) selectedRule() *db.RuleRecord {
 	if m.filterManager.cursor < 0 || m.filterManager.cursor >= len(m.filterManager.rules) {
 		return nil
 	}
 	return &m.filterManager.rules[m.filterManager.cursor]
+}
+
+// runSelectedRule tests or applies the highlighted rule over its own account
+// scope. Only that rule runs, so the reported match count answers the question
+// the user asked ("what does *this* rule do?") rather than folding in every
+// other enabled rule.
+func (m Model) runSelectedRule(dryRun bool) (tea.Model, tea.Cmd) {
+	rule := m.selectedRule()
+	if rule == nil {
+		m.filterManager.status = "no rule selected"
+		return m, nil
+	}
+	if !rule.Enabled {
+		m.filterManager.status = "rule is disabled — press space to enable"
+		return m, nil
+	}
+	ids := m.filterRunMailboxIDs(rule)
+	if len(ids) == 0 {
+		m.filterManager.status = "no inbox found for this rule's accounts"
+		return m, nil
+	}
+	if dryRun {
+		m.filterManager.status = "testing…"
+	} else {
+		m.filterManager.status = "running…"
+	}
+	return m, m.applyRulesCmd(ids, dryRun, rule.ID)
+}
+
+// filterRunMailboxIDs returns the mailboxes a rule-triggered run ("t"/"r")
+// covers. The scope comes from the rule itself — the account picked when it was
+// created, or every account for an "All accounts" rule — not from whatever the
+// sidebar happens to be pointing at.
+//
+// Within each in-scope account we run the inboxes only. That is what a filter
+// means: it processes arriving mail. Sweeping every folder would drag messages
+// back out of Sent, Archive, and Trash into the rule's target. "a" remains the
+// deliberate run-over-all-mail escape hatch.
+func (m Model) filterRunMailboxIDs(rule *db.RuleRecord) []int64 {
+	if rule == nil {
+		return nil
+	}
+	ids := make([]int64, 0, len(m.accounts))
+	for _, mb := range m.mailboxes {
+		if rule.AccountID != 0 && mb.AccountID != rule.AccountID {
+			continue
+		}
+		if strings.EqualFold(mb.Name, "INBOX") {
+			ids = append(ids, mb.ID)
+		}
+	}
+	return ids
 }
 
 func (m Model) allMailboxIDs() []int64 {
@@ -375,12 +434,12 @@ func (m Model) renderFilterManager(width, height int, chrome managerChrome) stri
 		actions = renderSoftHints(width, chrome, "enter", "generate", "esc", "back")
 	case fmReview:
 		actions = lipgloss.JoinVertical(lipgloss.Left,
-			renderSoftHints(width, chrome, "s/enter", "save", "r", "save+run", "esc", "discard"),
-			renderSoftHints(width, chrome, "R", "save+run all", "e", "edit text"))
+			renderSoftHints(width, chrome, "^s/enter", "save", "r", "run", "esc", "discard"),
+			renderSoftHints(width, chrome, "a", "run all", "e", "edit text"))
 	default:
 		actions = lipgloss.JoinVertical(lipgloss.Left,
 			renderSoftHints(width, chrome, "n", "new", "space", "on/off", "t", "test", "esc", "close"),
-			renderSoftHints(width, chrome, "r", "run", "R", "run all", "J/K", "reorder", "d", "delete"))
+			renderSoftHints(width, chrome, "r", "run", "a", "run all", "J/K", "reorder", "d", "delete"))
 	}
 
 	// Reserve exactly one status line (blank when empty) so the modal never

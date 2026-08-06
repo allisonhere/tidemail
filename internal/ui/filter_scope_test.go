@@ -31,7 +31,7 @@ func TestSaveDraftRuleScopesToGenerationAccount(t *testing.T) {
 	m.filterManager.draftEn = "move x to Reading"
 	m.filterManager.draftAcct = accountID
 
-	m.saveDraftRule()
+	m.saveDraftRule() //nolint:errcheck
 
 	rules, _ := database.ListRules()
 	if len(rules) != 1 {
@@ -78,7 +78,7 @@ func TestScopedRuleDoesNotTouchOtherAccount(t *testing.T) {
 	})
 	m = next.(Model)
 
-	run := m.applyRulesCmd([]int64{bInbox}, false)().(FilterRunMsg)
+	run := m.applyRulesCmd([]int64{bInbox}, false, 0)().(FilterRunMsg)
 	if run.Matched != 0 || run.Applied != 0 {
 		t.Fatalf("account-A rule should not act on account-B mail: matched=%d applied=%d", run.Matched, run.Applied)
 	}

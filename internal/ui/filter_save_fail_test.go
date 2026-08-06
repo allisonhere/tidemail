@@ -43,7 +43,7 @@ func TestFilterSaveFailureStaysInReview(t *testing.T) {
 	// Force UpsertRule to fail.
 	database.Close()
 
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
 	m = next.(Model)
 
 	if m.filterManager.mode != fmReview {

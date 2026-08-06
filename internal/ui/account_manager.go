@@ -558,7 +558,7 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 		am.statusMsg = ""
 	case keyMatches(km, keys.TestAccount):
 		return am.testForm()
-	case keyMatches(km, keys.SaveAccount):
+	case keyMatches(km, keys.Save):
 		return am.submitForm()
 	case keyMatches(km, keys.Tab):
 		am.advanceField(1)

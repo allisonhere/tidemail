@@ -187,11 +187,22 @@ func (m *Model) prepareFilterFoldersCmd(intent filterSaveIntent) tea.Cmd {
 	}
 }
 
-// applyRulesCmd applies all enabled rules to the messages in the given mailboxes.
-// When dryRun is true it only counts matches without changing anything.
-func (m *Model) applyRulesCmd(mailboxIDs []int64, dryRun bool) tea.Cmd {
+// applyRulesCmd applies enabled rules to the messages in the given mailboxes.
+// When dryRun is true it only counts matches without changing anything. A
+// non-zero onlyRuleID narrows the run to that single rule, so a per-rule
+// test/run reports what that rule does rather than what the whole set does.
+func (m *Model) applyRulesCmd(mailboxIDs []int64, dryRun bool, onlyRuleID int64) tea.Cmd {
 	database := m.db
 	records, _ := database.ListRules()
+	if onlyRuleID != 0 {
+		kept := records[:0]
+		for _, rec := range records {
+			if rec.ID == onlyRuleID {
+				kept = append(kept, rec)
+			}
+		}
+		records = kept
+	}
 	rules := compileRules(records)
 	targets := make([]mailboxTarget, 0, len(mailboxIDs))
 	for _, id := range mailboxIDs {
