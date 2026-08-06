@@ -122,21 +122,24 @@ func resolveOrCreateFolder(ctx context.Context, database *db.DB, client *imapCli
 	if err != nil {
 		return db.Mailbox{}, err
 	}
-	delimiter := "/"
-	for _, mb := range mbs {
-		if mb.Delimiter != "" {
-			delimiter = mb.Delimiter
-			break
-		}
-	}
+	// Servers with an "INBOX." personal namespace (Dovecot, Courier) reject a
+	// bare top-level CREATE, so qualify the name before asking for it.
+	fullName, delimiter := qualifyFolderName(name, mbs)
 	if client != nil {
-		if err := client.CreateMailbox(ctx, name); err != nil {
+		if err := client.CreateMailbox(ctx, fullName); err != nil {
 			return db.Mailbox{}, err
 		}
 	}
-	id, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: name, Delimiter: delimiter})
+	mailbox := db.Mailbox{
+		AccountID:   accountID,
+		Name:        fullName,
+		DisplayName: cleanDisplayName(fullName),
+		Delimiter:   delimiter,
+	}
+	id, err := database.UpsertMailbox(mailbox)
 	if err != nil {
 		return db.Mailbox{}, err
 	}
-	return db.Mailbox{ID: id, AccountID: accountID, Name: name, Delimiter: delimiter}, nil
+	mailbox.ID = id
+	return mailbox, nil
 }

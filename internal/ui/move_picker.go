@@ -369,9 +369,13 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 
 func (m *Model) createFolderCmd(accountID int64, parentPath, name string) tea.Cmd {
 	delimiter := moveDelimiter(m.mailboxes, accountID, parentPath)
-	fullName := name
+	var fullName string
 	if parentPath != "" {
 		fullName = parentPath + delimiter + name
+	} else {
+		// At the root, the account's personal namespace decides where the
+		// folder may live — "INBOX." on Dovecot/Courier, empty on Gmail.
+		fullName, delimiter = qualifyFolderName(name, accountMailboxes(m.mailboxes, accountID))
 	}
 	var acfg config.AccountConfig
 	if len(m.movePicker.messages) > 0 {
@@ -389,7 +393,12 @@ func (m *Model) createFolderCmd(accountID int64, parentPath, name string) tea.Cm
 				return FolderCreatedMsg{AccountID: accountID, Name: fullName, Err: err}
 			}
 		}
-		id, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: fullName, Delimiter: delimiter})
+		id, err := database.UpsertMailbox(db.Mailbox{
+			AccountID:   accountID,
+			Name:        fullName,
+			DisplayName: cleanDisplayName(fullName),
+			Delimiter:   delimiter,
+		})
 		if err != nil {
 			return FolderCreatedMsg{AccountID: accountID, Name: fullName, Err: err}
 		}

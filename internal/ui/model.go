@@ -985,7 +985,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.clearStatusCmd()
 		}
 		if m.mailboxByID(msg.MailboxID) == nil {
-			m.mailboxes = append(m.mailboxes, db.Mailbox{ID: msg.MailboxID, AccountID: msg.AccountID, Name: msg.Name, Delimiter: msg.Delimiter})
+			m.mailboxes = append(m.mailboxes, db.Mailbox{
+				ID:          msg.MailboxID,
+				AccountID:   msg.AccountID,
+				Name:        msg.Name,
+				DisplayName: cleanDisplayName(msg.Name),
+				Delimiter:   msg.Delimiter,
+			})
 		}
 		m.rebuildSidebar()
 		if m.overlay == overlayMoveMessage {
