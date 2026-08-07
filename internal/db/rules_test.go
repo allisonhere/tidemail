@@ -1,6 +1,9 @@
 package db
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestRulesCRUD(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
@@ -47,5 +50,43 @@ func TestRulesCRUD(t *testing.T) {
 	rules, _ = database.ListRules()
 	if len(rules) != 1 {
 		t.Fatalf("expected 1 rule after delete, got %d", len(rules))
+	}
+}
+
+func TestSwapRulePrioritiesRollsBackOnFailure(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	database, err := Open()
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer database.Close()
+
+	firstID, err := database.UpsertRule(RuleRecord{Priority: 1, Enabled: true, Name: "first", JSON: "{}"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondID, err := database.UpsertRule(RuleRecord{Priority: 2, Enabled: true, Name: "second", JSON: "{}"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`
+		CREATE TRIGGER fail_second_rule_priority
+		BEFORE UPDATE OF priority ON rules
+		WHEN OLD.id = ` + fmt.Sprint(secondID) + `
+		BEGIN
+			SELECT RAISE(ABORT, 'forced priority failure');
+		END`); err != nil {
+		t.Fatalf("create trigger: %v", err)
+	}
+
+	if err := database.SwapRulePriorities(firstID, 2, secondID, 1); err == nil {
+		t.Fatal("expected priority swap to fail")
+	}
+	rules, err := database.ListRules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rules) != 2 || rules[0].ID != firstID || rules[0].Priority != 1 || rules[1].ID != secondID || rules[1].Priority != 2 {
+		t.Fatalf("expected both original priorities after rollback, got %+v", rules)
 	}
 }

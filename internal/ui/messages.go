@@ -80,7 +80,8 @@ func (m Model) renderMessagesPane() string {
 			if threadCount > 1 {
 				subject = fmt.Sprintf("%s (%d)", subject, threadCount)
 			}
-			style = applyMessageRowState(style, msgSelected, msg2.Starred, i == m.messageCursor, m.styles.Theme)
+			cursor := i == m.messageCursor
+			style = applyMessageRowState(style, msgSelected, msg2.Starred, cursor, m.styles.Theme)
 			star := m.messageRowStar(msg2.Starred)
 			var line string
 			if m.cfg.Display.ShowSender {
@@ -140,7 +141,13 @@ func (m Model) renderMessagesPane() string {
 			Bold(true)
 		badgeText := "> " + m.headerLabel(title)
 		badgeW := lipgloss.Width(badgeText)
+		if badgeW >= w {
+			badgeText = truncate(badgeText, w)
+			badgeW = lipgloss.Width(badgeText)
+		}
 		hint := m.renderPaneHint(paneMessages)
+		hintMax := max(0, w-badgeW)
+		hint = truncate(hint, hintMax)
 		hintW := lipgloss.Width(hint)
 		gap := max(0, w-badgeW-hintW)
 		left := badgeStyle.Width(badgeW + gap).Render(badgeText)
@@ -443,8 +450,10 @@ func (m Model) messageRowPrefix(read bool) string {
 	return "⬤ "
 }
 
-// messageRowStar renders the fixed-width star column that precedes the sender.
-// It always occupies 2 cells so rows stay aligned whether or not a row is starred.
+// messageRowStar returns the fixed-width star column that precedes the sender.
+// It deliberately contains no ANSI styling: an inline reset would interrupt the
+// enclosing row background, leaving the star cells (and sometimes the remainder
+// of the row) with the terminal's default background.
 func (m Model) messageRowStar(starred bool) string {
 	if !starred {
 		return "  "
@@ -452,7 +461,5 @@ func (m Model) messageRowStar(starred bool) string {
 	if m.styles.PlainUI {
 		return "* " // vt52 ASCII fallback
 	}
-	// truncate/padRight are ANSI-aware (both use lipgloss.Width), so an inline
-	// colored glyph does not throw off the row width math.
-	return lipgloss.NewStyle().Foreground(starColor(m.styles.Theme)).Render("★") + " "
+	return "★ "
 }
