@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/allisonhere/tide/internal/config"
+	"github.com/allisonhere/tidemail/internal/config"
 )
 
 func idleTestConfig(port int) config.AccountConfig {

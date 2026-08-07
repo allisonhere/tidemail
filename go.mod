@@ -1,4 +1,4 @@
-module github.com/allisonhere/tide
+module github.com/allisonhere/tidemail
 
 go 1.26.1
 

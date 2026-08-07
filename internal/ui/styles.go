@@ -3,7 +3,7 @@ package ui
 import (
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/allisonhere/tide/internal/config"
+	"github.com/allisonhere/tidemail/internal/config"
 )
 
 type Styles struct {

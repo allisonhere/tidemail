@@ -3,7 +3,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/allisonhere/tide/internal/db"
+	"github.com/allisonhere/tidemail/internal/db"
 )
 
 func TestQualifyFolderName(t *testing.T) {

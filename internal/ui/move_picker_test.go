@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/allisonhere/tide/internal/db"
+	"github.com/allisonhere/tidemail/internal/db"
 )
 
 func TestBuildMoveEntriesUsesSameAccountAndExcludesSource(t *testing.T) {

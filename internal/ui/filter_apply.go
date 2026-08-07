@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/allisonhere/tide/internal/db"
-	"github.com/allisonhere/tide/internal/filter"
-	imapClient "github.com/allisonhere/tide/internal/imap"
+	"github.com/allisonhere/tidemail/internal/db"
+	"github.com/allisonhere/tidemail/internal/filter"
+	imapClient "github.com/allisonhere/tidemail/internal/imap"
 )
 
 // applyFilterAction performs a rule's action on msg, mutating both the IMAP

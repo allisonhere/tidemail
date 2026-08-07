@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/allisonhere/tide/internal/clipboard"
-	"github.com/allisonhere/tide/internal/db"
+	"github.com/allisonhere/tidemail/internal/clipboard"
+	"github.com/allisonhere/tidemail/internal/db"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

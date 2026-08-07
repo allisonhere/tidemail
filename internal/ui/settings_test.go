@@ -11,7 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 
-	"github.com/allisonhere/tide/internal/config"
+	"github.com/allisonhere/tidemail/internal/config"
 )
 
 func TestSettingsFieldNavigationClampsAtEnds(t *testing.T) {

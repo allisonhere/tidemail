@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/allisonhere/tide/internal/config"
-	"github.com/allisonhere/tide/internal/db"
+	"github.com/allisonhere/tidemail/internal/config"
+	"github.com/allisonhere/tidemail/internal/db"
 )
 
 func TestImportRemoteDraftsCmdMirrorsAndDedupes(t *testing.T) {

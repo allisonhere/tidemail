@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/allisonhere/tide/internal/db"
+	"github.com/allisonhere/tidemail/internal/db"
 )
 
 func TestRuleMatches(t *testing.T) {

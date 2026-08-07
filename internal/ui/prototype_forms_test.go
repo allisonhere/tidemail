@@ -7,7 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/allisonhere/tide/internal/config"
+	"github.com/allisonhere/tidemail/internal/config"
 )
 
 func TestPrototypeFormsInitialViewShowsSettings(t *testing.T) {

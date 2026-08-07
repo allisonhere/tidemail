@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/allisonhere/tide/internal/db"
+	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )

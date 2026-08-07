@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/allisonhere/tide/internal/config"
+	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/emersion/go-imap/v2"
 	imapclient "github.com/emersion/go-imap/v2/imapclient"
 	"github.com/emersion/go-imap/v2/imapserver"

@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/allisonhere/tide/internal/ai"
-	"github.com/allisonhere/tide/internal/config"
+	"github.com/allisonhere/tidemail/internal/ai"
+	"github.com/allisonhere/tidemail/internal/config"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

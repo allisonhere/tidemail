@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/allisonhere/tide/internal/db"
-	"github.com/allisonhere/tide/internal/filter"
+	"github.com/allisonhere/tidemail/internal/db"
+	"github.com/allisonhere/tidemail/internal/filter"
 )
 
 // Mail that a rule moves/deletes/etc. on arrival must be dropped from the

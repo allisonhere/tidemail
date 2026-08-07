@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/allisonhere/tide/internal/config"
+	"github.com/allisonhere/tidemail/internal/config"
 )
 
 func TestSendMail(t *testing.T) {

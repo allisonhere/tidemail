@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/allisonhere/tide/internal/db"
-	"github.com/allisonhere/tide/internal/filter"
+	"github.com/allisonhere/tidemail/internal/db"
+	"github.com/allisonhere/tidemail/internal/filter"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

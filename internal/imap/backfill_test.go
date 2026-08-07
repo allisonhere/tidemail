@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/allisonhere/tide/internal/config"
+	"github.com/allisonhere/tidemail/internal/config"
 )
 
 func backfillTestClient(t *testing.T, port int) *Client {
