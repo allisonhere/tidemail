@@ -3,9 +3,9 @@ package ui
 import (
 	"testing"
 
-	"github.com/allisonhere/tide/internal/config"
-	"github.com/allisonhere/tide/internal/db"
-	imapClient "github.com/allisonhere/tide/internal/imap"
+	"github.com/allisonhere/tidemail/internal/config"
+	"github.com/allisonhere/tidemail/internal/db"
+	imapClient "github.com/allisonhere/tidemail/internal/imap"
 )
 
 func TestIdleEventTriggersInboxSyncAndRearms(t *testing.T) {

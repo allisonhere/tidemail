@@ -1,3 +1,12 @@
+> **ARCHIVED — historical, not current.** Five of the six prioritized roadmap items
+> have shipped: the drafts-sync fixes and unique index (1–2), the per-account IMAP
+> session pool (3, `internal/imap/pool.go`, now used by every UI operation), and
+> UIDVALIDITY tracking with deletion reconciliation (4, `internal/db/reconcile.go`).
+> Update checksums (6) landed too. **Item 5 — `internal/ui` file growth — is the one
+> still open**, and is the only part of this document that still describes the present.
+> The OAuth discussion throughout is obsolete; that code was removed. Kept for the
+> reasoning, not the status. See `STATUS.md` for where the project actually stands.
+
 # TideMail — Whole-App Design Review
 
 **Date:** 2026-06-09

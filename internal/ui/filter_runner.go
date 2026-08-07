@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/allisonhere/tide/internal/ai"
-	"github.com/allisonhere/tide/internal/config"
-	"github.com/allisonhere/tide/internal/db"
-	"github.com/allisonhere/tide/internal/filter"
-	imapClient "github.com/allisonhere/tide/internal/imap"
+	"github.com/allisonhere/tidemail/internal/ai"
+	"github.com/allisonhere/tidemail/internal/config"
+	"github.com/allisonhere/tidemail/internal/db"
+	"github.com/allisonhere/tidemail/internal/filter"
+	imapClient "github.com/allisonhere/tidemail/internal/imap"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

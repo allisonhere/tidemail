@@ -7,7 +7,7 @@ package filter
 import (
 	"strings"
 
-	"github.com/allisonhere/tide/internal/db"
+	"github.com/allisonhere/tidemail/internal/db"
 )
 
 // Match modes.

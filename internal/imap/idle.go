@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/allisonhere/tide/internal/config"
+	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/emersion/go-imap/v2"
 )
 

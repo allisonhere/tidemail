@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/allisonhere/tide/internal/config"
-	"github.com/allisonhere/tide/internal/db"
-	imapClient "github.com/allisonhere/tide/internal/imap"
+	"github.com/allisonhere/tidemail/internal/config"
+	"github.com/allisonhere/tidemail/internal/db"
+	imapClient "github.com/allisonhere/tidemail/internal/imap"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

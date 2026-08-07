@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/allisonhere/tide/internal/config"
-	"github.com/allisonhere/tide/internal/db"
+	"github.com/allisonhere/tidemail/internal/config"
+	"github.com/allisonhere/tidemail/internal/db"
 )
 
 // TestSyncPollIntervalModes pins the three-way meaning of sync_minutes. The

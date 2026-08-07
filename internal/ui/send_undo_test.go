@@ -5,9 +5,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/allisonhere/tide/internal/config"
-	"github.com/allisonhere/tide/internal/db"
-	"github.com/allisonhere/tide/internal/smtp"
+	"github.com/allisonhere/tidemail/internal/config"
+	"github.com/allisonhere/tidemail/internal/db"
+	"github.com/allisonhere/tidemail/internal/smtp"
 )
 
 func newSendTestModel(t *testing.T, delaySeconds int) Model {

@@ -17,7 +17,7 @@ import (
 	"os"
 
 	"github.com/allisonhere/ripple"
-	"github.com/allisonhere/tide/internal/clipboard"
+	"github.com/allisonhere/tidemail/internal/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )

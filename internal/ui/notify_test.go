@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/allisonhere/tide/internal/db"
+	"github.com/allisonhere/tidemail/internal/db"
 )
 
 // A re-fetch of an already-stored UID (IMAP SINCE is date-granular) must not be

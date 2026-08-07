@@ -11,7 +11,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/allisonhere/tide/internal/db"
+	"github.com/allisonhere/tidemail/internal/db"
 )
 
 // storedHeaderValue finds a header in a message's stored headers

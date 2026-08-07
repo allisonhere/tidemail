@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/allisonhere/tide/internal/db"
-	"github.com/allisonhere/tide/internal/filter"
+	"github.com/allisonhere/tidemail/internal/db"
+	"github.com/allisonhere/tidemail/internal/filter"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

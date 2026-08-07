@@ -21,6 +21,9 @@ nvim.log
 greader-browse-plan.md
 kitty-graphics-plan.md
 tidemail
+# Dev tool build output; the source (cmd/kittytest/main.go) stays tracked. -allie
+cmd/kittytest/kittytest
+cmd/editortest/editortest
 # Release tarballs. Built by deploy.sh and rebuilt by CI on the tag; GitHub
 # Releases hosts them. Committing them here only bloats the repo. -allie
 dist/

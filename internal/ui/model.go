@@ -14,12 +14,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/allisonhere/tide/internal/ai"
-	"github.com/allisonhere/tide/internal/auth"
-	"github.com/allisonhere/tide/internal/config"
-	"github.com/allisonhere/tide/internal/db"
-	imapClient "github.com/allisonhere/tide/internal/imap"
-	"github.com/allisonhere/tide/internal/update"
+	"github.com/allisonhere/tidemail/internal/ai"
+	"github.com/allisonhere/tidemail/internal/auth"
+	"github.com/allisonhere/tidemail/internal/config"
+	"github.com/allisonhere/tidemail/internal/db"
+	imapClient "github.com/allisonhere/tidemail/internal/imap"
+	"github.com/allisonhere/tidemail/internal/update"
 )
 
 // ── Enums ────────────────────────────────────────────────────────────────────

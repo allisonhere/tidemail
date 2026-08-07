@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/allisonhere/tide/internal/update"
+	"github.com/allisonhere/tidemail/internal/update"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
