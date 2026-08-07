@@ -1,3 +1,11 @@
+> **ARCHIVED — historical, not current.** All five findings below were fixed, and
+> the schema hardening it recommended shipped: `drafts` now carries a partial unique
+> index on `(mailbox_id, remote_uid)` and the import is a single
+> `INSERT OR IGNORE … WHERE NOT EXISTS` (`internal/db/drafts.go`). Note also that the
+> XOAUTH2 work referenced in the scope line has since been removed entirely —
+> TideMail authenticates with app passwords only. Kept for the reasoning, not the
+> status. See `STATUS.md` for where the project actually stands.
+
 # TideMail — Design & Code Review
 
 **Date:** 2026-06-09
