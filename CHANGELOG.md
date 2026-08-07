@@ -4,6 +4,35 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- **Folders are created for AI move filters.** A rule that moves mail to a folder
+  that does not exist yet now creates it, inside the account's own personal
+  namespace rather than at the server root.
+
+### Fixed
+
+- **Filter rules run against their own scope**, not whatever the sidebar happened
+  to have selected, so running a rule from the manager no longer depends on the
+  current view.
+- **Filter operation failures are handled atomically** — a failed toggle, delete,
+  or reorder surfaces its error and leaves the rule list untouched instead of
+  half-applied.
+- **Full-row message selection highlight** now covers the whole row.
+- **Starred rows keep their background continuity** when selected.
+
+### Changed
+
+- **The Go module path is now `github.com/allisonhere/tidemail`.** It previously
+  declared `github.com/allisonhere/tide`, which belongs to a separate published
+  project, so `go install github.com/allisonhere/tide@latest` fetched the wrong
+  program. Internal-only change; no effect on the binary or on installs via
+  `install.sh` or GitHub Releases.
+- `STATUS.md` rewritten to describe the current system; the June 2026 review docs
+  moved to `docs/archive/`.
+
+## v1.0.2
+
 **Release highlights:** mail history goes back further than the first 100
 messages, search matches as you type, and `sync_minutes = 0` now means push
 instead of nothing.
