@@ -9,6 +9,19 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// paneFocusMinContrast is the contrast floor for the focused-pane border —
+// deliberately higher than the app's general 4.5 text-readability bar so the
+// focus highlight remains the strongest-contrast element in the UI.
+const paneFocusMinContrast = 7.0
+
+// selectedBgMinContrast/selectedBgSoftMinContrast are the contrast floors a
+// selected row's background must clear against the pane background, so the
+// current selection reads as visually distinct rather than a faint tint.
+// selectedBgSoftMinContrast (secondary/unfocused selection) targets a lower
+// floor so it still reads as one step down from the primary highlight.
+const selectedBgMinContrast = 3.0
+const selectedBgSoftMinContrast = 2.0
+
 // hexToRGB parses a #rrggbb color into [0,1] float components.
 func hexToRGB(c lipgloss.Color) (r, g, b float64, ok bool) {
 	s := strings.TrimPrefix(string(c), "#")
@@ -112,14 +125,30 @@ func accentReadableOn(accent, bg lipgloss.Color, minRatio float64) lipgloss.Colo
 	return readableText(accent, bg, minRatio)
 }
 
-// selectionLightnessDelta returns the HSL lightness delta for selection highlights.
-// Most dark themes get 0.12, but themes with extremely dark backgrounds (vt100, vt52)
-// need a bigger jump for the highlight to be visible at all.
-func selectionLightnessDelta(bg lipgloss.Color) float64 {
-	if luminance(bg) < 0.01 {
-		return 0.24
+// selectionBgForRatio nudges bg's lightness until it reaches minRatio
+// contrast against bg itself, so the selected-row highlight actually stands
+// out instead of relying on a fixed delta that goes unnoticeable on some
+// themes (a plain lightness bump on an already-light or already-dark
+// background can land well under 2:1).
+func selectionBgForRatio(bg lipgloss.Color, minRatio float64) lipgloss.Color {
+	const step = 0.03
+	const maxSteps = 30
+	dir := step
+	if !isDark(bg) {
+		dir = -step
 	}
-	return 0.12
+	cur := bg
+	for range maxSteps {
+		next := adjustLightness(cur, dir)
+		if next == cur {
+			break
+		}
+		cur = next
+		if contrastRatio(cur, bg) >= minRatio {
+			return cur
+		}
+	}
+	return cur
 }
 
 // selectionSoftDelta is the lighter version used for unfocused / secondary highlights.

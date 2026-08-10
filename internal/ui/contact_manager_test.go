@@ -100,7 +100,7 @@ func TestContactManagerFormScrollsFocusedFieldIntoView(t *testing.T) {
 	cm.beginAdd()
 	cm.setFormFocus(5)
 
-	view := ansi.Strip(cm.View(60, 8, BuildStyles(CatppuccinMocha, "compact")))
+	view := ansi.Strip(cm.View(60, 8, BuildStyles(CatppuccinMocha, "compact", "square")))
 	if !strings.Contains(view, "Note") {
 		t.Fatalf("focused Note field should be visible in short form:\n%s", view)
 	}
@@ -122,7 +122,7 @@ func TestContactManagerListScrolls(t *testing.T) {
 	}
 
 	const w, h = 60, 12
-	top := ansi.Strip(cm.View(w, h, BuildStyles(CatppuccinMocha, "compact")))
+	top := ansi.Strip(cm.View(w, h, BuildStyles(CatppuccinMocha, "compact", "square")))
 	last := cm.contacts[len(cm.contacts)-1].Addr
 	if strings.Contains(top, last) {
 		t.Fatalf("last contact should not be visible before scrolling:\n%s", top)
@@ -131,7 +131,7 @@ func TestContactManagerListScrolls(t *testing.T) {
 	for i := 0; i < len(cm.contacts)-1; i++ {
 		cm, _, _ = cm.Update(tea.KeyMsg{Type: tea.KeyDown}, DefaultKeys)
 	}
-	bottom := ansi.Strip(cm.View(w, h, BuildStyles(CatppuccinMocha, "compact")))
+	bottom := ansi.Strip(cm.View(w, h, BuildStyles(CatppuccinMocha, "compact", "square")))
 	if !strings.Contains(bottom, last) {
 		t.Fatalf("selected last contact not visible after scrolling:\n%s", bottom)
 	}

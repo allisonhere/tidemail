@@ -21,7 +21,7 @@ const (
 )
 
 func (m Model) renderMessagesPane() string {
-	w := m.articlesPaneWidth()
+	w := m.messagesPaneContentWidth()
 	h := m.articlesPaneContentHeight()
 	msgUnread, msgRead, msgSelected, headerActive, borderColor, borderFocus := m.messageRowStyles()
 
@@ -165,7 +165,7 @@ func (m Model) renderMessagesPane() string {
 	content := clampView(strings.Join(contentRows, "\n"), w, h, bg)
 	return lipgloss.NewStyle().
 		Background(bg).
-		Border(lipPaneBorder(m.styles.PlainUI), false, false, true, false).
+		Border(paneFrameBorder(m.styles.PlainUI, m.styles.RoundedCorners)).
 		BorderForeground(lipgloss.Color(func() string {
 			if focused || m.searchMode {
 				return string(borderFocus)
@@ -197,6 +197,7 @@ func (m Model) messageRowStyles() (lipgloss.Style, lipgloss.Style, lipgloss.Styl
 			Foreground(accentReadableOn(m.styles.Theme.Fg, accent, 4.5))
 		borderFocus = accent
 	}
+	borderFocus = accentReadableOn(borderFocus, m.styles.Theme.Bg, paneFocusMinContrast)
 	return unread, read, selected, headerActive, border, borderFocus
 }
 

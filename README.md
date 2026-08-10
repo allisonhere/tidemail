@@ -31,6 +31,10 @@ _One inbox, several built-in themes.
   clipboard, undo and redo, and word movement. You can switch on Vim motions
   and commands instead. Optional AI tools can summarize mail, proofread a
   draft, and build local filters from plain English.
+- **Readable by design, in every theme.** Text, selection highlights, and the
+  focused-pane border are all checked against WCAG-style contrast minimums
+  (4.5:1 for text, 3:1+ for large text and UI elements like borders) across
+  every built-in theme, enforced by automated tests.
 
 ## Install
 

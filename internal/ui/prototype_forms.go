@@ -30,7 +30,7 @@ func NewPrototypeFormsModel(cfg config.Config) PrototypeFormsModel {
 	return PrototypeFormsModel{
 		width:  96,
 		height: 28,
-		styles: BuildStyles(theme, cfg.Display.Density),
+		styles: BuildStyles(theme, cfg.Display.Density, cfg.Display.PaneCorners),
 		screen: prototypeSettings,
 	}
 }

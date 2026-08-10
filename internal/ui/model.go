@@ -322,7 +322,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		focused:               paneAccounts,
 		confirmedTheme:        themeIdx,
 		activeTheme:           themeIdx,
-		styles:                BuildStyles(merged, cfg.Display.Density),
+		styles:                BuildStyles(merged, cfg.Display.Density, cfg.Display.PaneCorners),
 		accountManager:        NewAccountManager(database),
 		searchInput:           si,
 		helpSearchInput:       hsi,
@@ -2047,7 +2047,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.themeCursor > 0 {
 				m.themeCursor--
 				m.activeTheme = m.themeCursor
-				m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density)
+				m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners)
 				if m.activeMessageRowCount() > 0 {
 					m.setViewportForCurrentRow()
 				}
@@ -2056,7 +2056,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.themeCursor < len(BuiltinThemes)-1 {
 				m.themeCursor++
 				m.activeTheme = m.themeCursor
-				m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density)
+				m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners)
 				if m.activeMessageRowCount() > 0 {
 					m.setViewportForCurrentRow()
 				}
@@ -2071,7 +2071,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case keyMatches(msg, m.keys.Cancel):
 			m.activeTheme = m.confirmedTheme
-			m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density)
+			m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners)
 			m.overlay = overlayNone
 			if m.activeMessageRowCount() > 0 {
 				m.setViewportForCurrentRow()
@@ -2232,7 +2232,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, cfgThemeIdx := ThemeByName(m.cfg.Theme)
 	previewingTheme := m.settings.themeIdx != cfgThemeIdx
 	if tickChanged && !done {
-		m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.settings.themeIdx), m.cfg.Display.Density)
+		m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.settings.themeIdx), m.cfg.Display.Density, m.cfg.Display.PaneCorners)
 		if m.activeMessageRowCount() > 0 {
 			m.setViewportForCurrentRow()
 		}
@@ -2300,7 +2300,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Apply the vim toggle to future compose editors (read in newEditorArea).
 			setEditorVimMode(m.cfg.Display.ComposeVim)
 			merged, _ := MergedThemeFromConfig(m.cfg)
-			m.styles = BuildStyles(merged, m.cfg.Display.Density)
+			m.styles = BuildStyles(merged, m.cfg.Display.Density, m.cfg.Display.PaneCorners)
 			if ThemeUsesASCII(merged.Name) {
 				m.spinner.Spinner = spinner.Line
 			} else {
@@ -2321,7 +2321,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.overlay = overlayNone
 		if previewingTheme {
 			merged, _ := MergedThemeFromConfig(m.cfg)
-			m.styles = BuildStyles(merged, m.cfg.Display.Density)
+			m.styles = BuildStyles(merged, m.cfg.Display.Density, m.cfg.Display.PaneCorners)
 			if m.activeMessageRowCount() > 0 {
 				m.setViewportForCurrentRow()
 			}
@@ -2829,7 +2829,7 @@ func (m *Model) rebuildSidebar() {
 }
 
 func (m Model) sidebarVisibleRows() int {
-	bodyLines := max(0, m.mainHeight()-1-m.styles.ListItemLineStride())
+	bodyLines := max(0, m.accountsPaneContentHeight()-1-m.styles.ListItemLineStride())
 	return max(1, bodyLines/m.styles.ListItemLineStride())
 }
 
@@ -3126,6 +3126,12 @@ func (m Model) feedsPaneWidth() int {
 
 func (m Model) articlesPaneWidth() int { return m.width - m.feedsPaneWidth() }
 func (m Model) mainHeight() int        { return m.height - 1 }
+
+// accountsPaneContentWidth/Height are the accounts pane's inner content area
+// once its full 4-sided focus border is subtracted.
+func (m Model) accountsPaneContentWidth() int  { return max(1, m.feedsPaneWidth()-2) }
+func (m Model) accountsPaneContentHeight() int { return max(1, m.mainHeight()-2) }
+
 func (m Model) articlesPaneOuterHeight() int {
 	h := m.mainHeight() * m.messagesHeightPercent() / 100
 	if m.mainHeight() <= 6 {
@@ -3133,8 +3139,12 @@ func (m Model) articlesPaneOuterHeight() int {
 	}
 	return clamp(h, 3, m.mainHeight()-3)
 }
+
+// messagesPaneContentWidth is the messages pane's inner content width once
+// its full 4-sided focus border is subtracted.
+func (m Model) messagesPaneContentWidth() int { return max(1, m.articlesPaneWidth()-2) }
 func (m Model) articlesPaneContentHeight() int {
-	return max(2, m.articlesPaneOuterHeight()-1)
+	return max(2, m.articlesPaneOuterHeight()-2)
 }
 func (m Model) articleRowsVisible() int {
 	stride := m.styles.ListItemLineStride()
@@ -3144,11 +3154,15 @@ func (m Model) articleRowsVisible() int {
 func (m Model) contentPaneOuterHeight() int {
 	return max(3, m.mainHeight()-m.articlesPaneOuterHeight())
 }
+
+// contentPaneContentWidth is the content pane's inner content width once its
+// full 4-sided focus border is subtracted.
+func (m Model) contentPaneContentWidth() int { return max(1, m.articlesPaneWidth()-2) }
 func (m Model) contentBodyHeight() int {
-	return max(1, m.contentPaneOuterHeight()-1)
+	return max(1, m.contentPaneOuterHeight()-3)
 }
 func (m Model) contentBodyWidth() int {
-	w := max(1, m.articlesPaneWidth()-2)
+	w := m.contentPaneContentWidth()
 	if cap := m.cfg.Display.ReadingWidth; cap > 0 && cap < w {
 		return cap
 	}

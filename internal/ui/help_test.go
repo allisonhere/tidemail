@@ -13,7 +13,7 @@ import (
 )
 
 func TestRenderHelpDocumentsCredentialSafety(t *testing.T) {
-	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys, ""))
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable", "square"), DefaultKeys, ""))
 	for _, want := range []string{"App Password", "keychain", "redacted"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expected help to document credential safety term %q, got %q", want, view)
@@ -22,7 +22,7 @@ func TestRenderHelpDocumentsCredentialSafety(t *testing.T) {
 }
 
 func TestRenderHelpDocumentsContactsAndNotifications(t *testing.T) {
-	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys, ""))
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable", "square"), DefaultKeys, ""))
 	for _, want := range []string{"contacts", "autocomplete", "vCard", "desktop notifications", "compose to selected contact"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expected help to document contacts/notifications term %q, got %q", want, view)
@@ -31,7 +31,7 @@ func TestRenderHelpDocumentsContactsAndNotifications(t *testing.T) {
 }
 
 func TestRenderHelpDocumentsComposeAndMessageActionUpdates(t *testing.T) {
-	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys, ""))
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable", "square"), DefaultKeys, ""))
 	for _, want := range []string{"cancel queued send", "sender picker", "Signature", "send delay", "unsubscribe"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expected help to document %q, got %q", want, view)
@@ -40,7 +40,7 @@ func TestRenderHelpDocumentsComposeAndMessageActionUpdates(t *testing.T) {
 }
 
 func TestRenderHelpDocumentsAccountManagerShortcutAsUppercaseM(t *testing.T) {
-	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys, ""))
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable", "square"), DefaultKeys, ""))
 	if !strings.Contains(view, "M accounts") {
 		t.Fatalf("expected help to document uppercase account shortcut, got %q", view)
 	}
@@ -50,7 +50,7 @@ func TestRenderHelpDocumentsAccountManagerShortcutAsUppercaseM(t *testing.T) {
 }
 
 func TestRenderHelpDocumentsContactManagerShortcutAsUppercaseC(t *testing.T) {
-	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys, ""))
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable", "square"), DefaultKeys, ""))
 	if !strings.Contains(view, "C contacts") {
 		t.Fatalf("expected help to document uppercase contact shortcut, got %q", view)
 	}
@@ -60,7 +60,7 @@ func TestRenderHelpDocumentsContactManagerShortcutAsUppercaseC(t *testing.T) {
 }
 
 func TestRenderHelpScopesModalShortcuts(t *testing.T) {
-	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys, ""))
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable", "square"), DefaultKeys, ""))
 	for _, want := range []string{"Compose Modal", "ctrl+g", "Account Manager Modal", "Contact Manager Modal", "Filters Modal"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expected help to include scoped shortcut term %q, got %q", want, view)
@@ -72,7 +72,7 @@ func TestRenderHelpScopesModalShortcuts(t *testing.T) {
 }
 
 func TestRenderHelpDocumentsSettingsCtrlSSave(t *testing.T) {
-	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys, ""))
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable", "square"), DefaultKeys, ""))
 	settingsStart := strings.Index(view, "Settings Modal")
 	if settingsStart < 0 {
 		t.Fatalf("expected Settings Modal section, got %q", view)
@@ -92,7 +92,7 @@ func TestRenderHelpDocumentsSettingsCtrlSSave(t *testing.T) {
 }
 
 func TestRenderHelpDocumentsNativeMessageSelection(t *testing.T) {
-	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys, ""))
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable", "square"), DefaultKeys, ""))
 	for _, want := range []string{"v/V", "visual select", "y/ctrl+c", "copy selected message text", "`"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expected help to document native message copy term %q, got %q", want, view)
@@ -104,14 +104,14 @@ func TestRenderHelpDocumentsNativeMessageSelection(t *testing.T) {
 }
 
 func TestRenderHelpDocumentsThreadToggle(t *testing.T) {
-	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys, ""))
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable", "square"), DefaultKeys, ""))
 	if !strings.Contains(view, "g") || !strings.Contains(view, "toggle threaded conversations") {
 		t.Fatalf("expected help to document threaded conversation toggle, got %q", view)
 	}
 }
 
 func TestRenderHelpDocumentsPaneResizeShortcuts(t *testing.T) {
-	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys, ""))
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable", "square"), DefaultKeys, ""))
 	for _, want := range []string{"shift+←", "shift+→", "resize accounts pane", "shift+↑", "shift+↓", "resize messages/content split"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expected help to document pane resize term %q, got %q", want, view)
@@ -121,7 +121,7 @@ func TestRenderHelpDocumentsPaneResizeShortcuts(t *testing.T) {
 
 func TestRenderLogViewerRowsFillModalWidth(t *testing.T) {
 	m := NewModel(nil, config.DefaultConfig(), "dev", false)
-	m.styles = BuildStyles(CatppuccinMocha, "comfortable")
+	m.styles = BuildStyles(CatppuccinMocha, "comfortable", "square")
 	m.logBuffer = []logEntry{{
 		Time:    time.Date(2026, 7, 30, 12, 34, 56, 0, time.UTC),
 		Message: "short log message",
@@ -144,7 +144,7 @@ func TestRenderLogViewerRowsFillModalWidth(t *testing.T) {
 }
 
 func TestRenderHelpFiltersByQuery(t *testing.T) {
-	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys, "vim"))
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable", "square"), DefaultKeys, "vim"))
 
 	if !strings.Contains(view, "Vim Mode") {
 		t.Fatalf("expected vim filter to keep the vim section, got %q", view)
@@ -158,7 +158,7 @@ func TestRenderHelpFiltersByQuery(t *testing.T) {
 }
 
 func TestRenderHelpFilterMatchingSectionKeepsAllEntries(t *testing.T) {
-	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys, "filters modal"))
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable", "square"), DefaultKeys, "filters modal"))
 
 	for _, want := range []string{"Filters Modal", "new rule", "enable or disable selected rule"} {
 		if !strings.Contains(view, want) {
@@ -168,7 +168,7 @@ func TestRenderHelpFilterMatchingSectionKeepsAllEntries(t *testing.T) {
 }
 
 func TestRenderHelpFilterNoMatches(t *testing.T) {
-	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable"), DefaultKeys, "xyzzy"))
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable", "square"), DefaultKeys, "xyzzy"))
 
 	if !strings.Contains(view, `No shortcuts match "xyzzy"`) {
 		t.Fatalf("expected empty-result message, got %q", view)

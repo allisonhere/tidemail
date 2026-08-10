@@ -26,7 +26,7 @@ func TestComposePickerFooterShowsHiddenHint(t *testing.T) {
 
 	// A constrained height is where the footer used to get clipped: the file list
 	// must reserve the footer's true height so the "." hidden hint stays visible.
-	view := ansi.Strip(c.View(74, 14, BuildStyles(CatppuccinMocha, "compact")))
+	view := ansi.Strip(c.View(74, 14, BuildStyles(CatppuccinMocha, "compact", "square")))
 	if !strings.Contains(view, "hidden") {
 		t.Fatalf("expected attach picker footer to show the hidden hint, got:\n%s", view)
 	}

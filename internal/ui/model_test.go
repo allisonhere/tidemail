@@ -521,7 +521,7 @@ func TestRemoteDeletePlanExpungesWhenAlreadyInTrash(t *testing.T) {
 }
 
 func TestMessageRowStylesKeepReverseVideoSelectedColorWithAccountAccent(t *testing.T) {
-	styles := BuildStyles(BuiltinThemes[0], "compact")
+	styles := BuildStyles(BuiltinThemes[0], "compact", "square")
 	m := Model{
 		styles: styles,
 		accounts: []db.Account{
@@ -543,8 +543,18 @@ func TestMessageRowStylesKeepReverseVideoSelectedColorWithAccountAccent(t *testi
 	if headerActive.GetBackground() != lipgloss.Color("#c41e3a") {
 		t.Fatalf("header should still use account accent, got %q", headerActive.GetBackground())
 	}
-	if borderFocus != lipgloss.Color("#c41e3a") {
-		t.Fatalf("border focus should still use account accent, got %q", borderFocus)
+	// The raw account accent (#c41e3a) only has ~2.8:1 contrast against this
+	// theme's background, below the pane-focus contrast floor, so it should
+	// come back nudged rather than passed through untouched — but it must
+	// still be account-specific, not the theme's generic BorderFocus.
+	if borderFocus == lipgloss.Color("#c41e3a") {
+		t.Fatalf("expected account accent to be nudged for contrast, got it unchanged: %q", borderFocus)
+	}
+	if borderFocus == styles.Theme.BorderFocus {
+		t.Fatalf("expected border focus to still be derived from the account accent, got the theme default %q", borderFocus)
+	}
+	if got := contrastRatio(borderFocus, styles.Theme.Bg); got < paneFocusMinContrast {
+		t.Fatalf("expected nudged border focus to meet the %.1f contrast floor, got %.2f (%q)", paneFocusMinContrast, got, borderFocus)
 	}
 }
 
@@ -777,9 +787,9 @@ func TestMessagesPaneMedalSubjectDoesNotShiftLayout(t *testing.T) {
 								t.Fatalf("rendered line %d width %d > terminal width %d", i, got, m.width)
 							}
 						}
-						first := strings.SplitN(plain, "\n", 2)[0]
-						if !strings.Contains(first, "Accounts") || !strings.Contains(first, "Unified Inbox") {
-							t.Fatalf("expected pane headers on the first line, got %q", first)
+						headerLine := strings.Split(plain, "\n")[1]
+						if !strings.Contains(headerLine, "Accounts") || !strings.Contains(headerLine, "Unified Inbox") {
+							t.Fatalf("expected pane headers on the second line (below the top border), got %q", headerLine)
 						}
 					})
 				}
@@ -827,8 +837,8 @@ func TestScrollingMessageListKeepsPaneHeadersVisible(t *testing.T) {
 			t.Fatalf("expected rendered line %d width <= %d columns, got %d: %q", i, want, got, ansi.Strip(line))
 		}
 	}
-	if len(lines) == 0 || !strings.Contains(lines[0], "Accounts") || !strings.Contains(lines[0], "Unified Inbox") {
-		t.Fatalf("expected pane headers to remain visible on top line, got:\n%s", view)
+	if len(lines) < 2 || !strings.Contains(lines[1], "Accounts") || !strings.Contains(lines[1], "Unified Inbox") {
+		t.Fatalf("expected pane headers to remain visible below the top border, got:\n%s", view)
 	}
 }
 
@@ -860,7 +870,7 @@ func TestValidateAccountForConnect(t *testing.T) {
 func TestSearchResultsReplaceCurrentMailboxListAndRenderContext(t *testing.T) {
 	cfg := config.DefaultConfig()
 	m := NewModel(nil, cfg, "dev", false)
-	m.width = 100
+	m.width = 102
 	m.height = 20
 	m.focused = paneMessages
 	m.accounts = []db.Account{{ID: 1, Name: "Personal"}, {ID: 2, Name: "Work"}}

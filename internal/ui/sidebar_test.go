@@ -23,7 +23,7 @@ func TestEmptyAccountsHintUsesUppercaseAccountManagerShortcut(t *testing.T) {
 			name: "icons",
 			model: Model{
 				cfg:    config.DefaultConfig(),
-				styles: BuildStyles(CatppuccinMocha, "comfortable"),
+				styles: BuildStyles(CatppuccinMocha, "comfortable", "square"),
 			},
 		},
 		{
@@ -34,7 +34,7 @@ func TestEmptyAccountsHintUsesUppercaseAccountManagerShortcut(t *testing.T) {
 					cfg.Display.Icons = false
 					return cfg
 				}(),
-				styles: BuildStyles(CatppuccinMocha, "comfortable"),
+				styles: BuildStyles(CatppuccinMocha, "comfortable", "square"),
 			},
 		},
 	} {

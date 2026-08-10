@@ -51,6 +51,7 @@ type DisplayConfig struct {
 	Notifications         bool               `toml:"notifications"`
 	Browser               string             `toml:"browser"`
 	Density               string             `toml:"density"`
+	PaneCorners           string             `toml:"pane_corners"` // "square" or "round"
 	ComposeVim            bool               `toml:"compose_vim"`
 	SendDelaySeconds      int                `toml:"send_delay_seconds"` // undo grace period; 0 = send immediately
 	VT52                  RetroTerminalTweak `toml:"vt52"`
@@ -146,6 +147,7 @@ func DefaultConfig() Config {
 			AccountsWidthPercent:  28,
 			MessagesHeightPercent: 40,
 			Density:               "compact",
+			PaneCorners:           "square",
 			ConfirmQuit:           true,
 			ShowHeaders:           true,
 			Notifications:         true,
@@ -194,6 +196,7 @@ func Load() (Config, error) {
 		cfg.Updates.CheckIntervalHours = DefaultConfig().Updates.CheckIntervalHours
 	}
 	cfg.Display.Density = NormalizeDisplayDensity(cfg.Display.Density)
+	cfg.Display.PaneCorners = NormalizePaneCorners(cfg.Display.PaneCorners)
 	fillSecrets(&cfg)
 	return cfg, nil
 }
@@ -204,6 +207,15 @@ func NormalizeDisplayDensity(s string) string {
 		return "comfortable"
 	default:
 		return "compact"
+	}
+}
+
+func NormalizePaneCorners(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "round":
+		return "round"
+	default:
+		return "square"
 	}
 }
 

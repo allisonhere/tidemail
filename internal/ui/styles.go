@@ -12,11 +12,11 @@ type Styles struct {
 	PlainUI bool
 	// Density is normalized ("comfortable" | "compact") and matches config.Display.Density.
 	Density string
+	// RoundedCorners is true when pane borders should use rounded corners
+	// instead of square ones, per config.Display.PaneCorners.
+	RoundedCorners bool
 
 	// Pane containers
-	FeedsPane          lipgloss.Style
-	ArticlesPane       lipgloss.Style
-	ContentPane        lipgloss.Style
 	PaneHeaderActive   lipgloss.Style
 	PaneHeaderInactive lipgloss.Style
 
@@ -93,9 +93,33 @@ func lipOverlayBorder(plain bool) lipgloss.Border {
 	return lipgloss.RoundedBorder()
 }
 
-func BuildStyles(t Theme, density string) Styles {
+// paneFrameBorder picks the pane border glyph set: rounded corners when
+// requested, falling back to ASCII for the plain vt52 theme either way.
+func paneFrameBorder(plainUI, rounded bool) lipgloss.Border {
+	if rounded {
+		return lipOverlayBorder(plainUI)
+	}
+	return lipPaneBorder(plainUI)
+}
+
+// PaneFrame returns a full 4-sided border box for a pane, colored to signal
+// whether that pane currently has focus.
+func (s Styles) PaneFrame(focused bool) lipgloss.Style {
+	style := lipgloss.NewStyle().
+		Background(s.Theme.Bg).
+		BorderBackground(s.Theme.Bg).
+		Border(paneFrameBorder(s.PlainUI, s.RoundedCorners)).
+		AlignVertical(lipgloss.Top)
+	if focused {
+		return style.BorderForeground(accentReadableOn(s.Theme.BorderFocus, s.Theme.Bg, paneFocusMinContrast))
+	}
+	return style.BorderForeground(s.Theme.Border)
+}
+
+func BuildStyles(t Theme, density string, paneCorners string) Styles {
 	plainUI := t.Name == ThemeNameVT52
 	d := config.NormalizeDisplayDensity(density)
+	roundedCorners := config.NormalizePaneCorners(paneCorners) == "round"
 	listPad := func(s lipgloss.Style) lipgloss.Style {
 		if d == "compact" {
 			return s
@@ -133,26 +157,8 @@ func BuildStyles(t Theme, density string) Styles {
 	helpSectionText := readableText(t.Fg, helpSectionBg, 4.5)
 	helpSectionMuted := mutedText(helpSectionText, helpSectionBg)
 
-	paneBase := lipgloss.NewStyle().
-		Background(t.Bg).
-		BorderForeground(t.Border)
-
-	focusedPane := lipgloss.NewStyle().
-		Background(t.Bg).
-		BorderForeground(t.BorderFocus)
-
-	selectedBg := func() lipgloss.Color {
-		if isDark(t.Bg) {
-			return adjustLightness(t.Bg, selectionLightnessDelta(t.Bg))
-		}
-		return adjustLightness(t.Bg, -selectionLightnessDelta(t.Bg))
-	}()
-	selectedBgSoft := func() lipgloss.Color {
-		if isDark(t.Bg) {
-			return adjustLightness(t.Bg, selectionSoftDelta(t.Bg))
-		}
-		return adjustLightness(t.Bg, -selectionSoftDelta(t.Bg))
-	}()
+	selectedBg := selectionBgForRatio(t.Bg, selectedBgMinContrast)
+	selectedBgSoft := selectionBgForRatio(t.Bg, selectedBgSoftMinContrast)
 	contentFocusBg := focusLineBg(t)
 
 	unreadBg := func() lipgloss.Color {
@@ -163,20 +169,11 @@ func BuildStyles(t Theme, density string) Styles {
 	}()
 
 	return Styles{
-		Theme:   t,
-		PlainUI: plainUI,
-		Density: d,
+		Theme:          t,
+		PlainUI:        plainUI,
+		Density:        d,
+		RoundedCorners: roundedCorners,
 
-		FeedsPane: paneBase.
-			Border(lipPaneBorder(plainUI), false, true, false, false).
-			BorderBackground(t.Bg).
-			AlignVertical(lipgloss.Top),
-		ArticlesPane: focusedPane.
-			Border(lipPaneBorder(plainUI), false, false, true, false).
-			BorderBackground(t.Bg).
-			AlignVertical(lipgloss.Top),
-		ContentPane: lipgloss.NewStyle().
-			Background(t.Bg),
 		PaneHeaderActive: lipgloss.NewStyle().
 			Background(t.BorderFocus).
 			Foreground(accentReadableOn(t.Fg, t.BorderFocus, 4.5)).

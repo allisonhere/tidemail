@@ -206,7 +206,7 @@ func TestAccountManagerFormShowsTestAction(t *testing.T) {
 	am := NewAccountManager(nil)
 	am.mode = amAdd
 
-	view := am.View(80, 30, BuildStyles(CatppuccinMocha, "compact"))
+	view := am.View(80, 30, BuildStyles(CatppuccinMocha, "compact", "square"))
 
 	if !strings.Contains(view, "^t test") {
 		t.Fatalf("expected add account form actions to include ^t test, got %q", view)
@@ -242,7 +242,7 @@ func TestAccountManagerFormStaysCompactInShortView(t *testing.T) {
 	am.imapHostInput.SetValue("imap.example.com")
 	am.smtpHostInput.SetValue("smtp.example.com")
 
-	view := am.View(74, 28, BuildStyles(CatppuccinMocha, "compact"))
+	view := am.View(74, 28, BuildStyles(CatppuccinMocha, "compact", "square"))
 
 	for _, want := range []string{"Account", "Incoming mail", "Outgoing mail", "Credentials", "Sending identity", "Name", "Color", "IMAP Host", "SMTP Host", "Username", "From", "test", "cancel"} {
 		if !strings.Contains(view, want) {
@@ -263,7 +263,7 @@ func TestAccountManagerFormScrollsFocusedFieldIntoShortView(t *testing.T) {
 	am.smtpHostInput.SetValue("smtp.example.com")
 	am.userInput.SetValue("alice@example.com")
 
-	view := ansi.Strip(am.View(74, 12, BuildStyles(CatppuccinMocha, "compact")))
+	view := ansi.Strip(am.View(74, 12, BuildStyles(CatppuccinMocha, "compact", "square")))
 
 	if !strings.Contains(view, "Refresh") {
 		t.Fatalf("expected short account form to scroll sync field into view, got %q", view)
@@ -305,7 +305,7 @@ func TestAccountManagerListShowsCompactAccountCards(t *testing.T) {
 		}},
 	)
 
-	view := am.View(80, 24, BuildStyles(CatppuccinMocha, "compact"))
+	view := am.View(80, 24, BuildStyles(CatppuccinMocha, "compact", "square"))
 
 	for _, want := range []string{"Personal", "alice@example.com", "imap.example.com:993", "smtp.example.com:587", "2 mailboxes"} {
 		if !strings.Contains(view, want) {

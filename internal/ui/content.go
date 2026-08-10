@@ -10,8 +10,8 @@ import (
 )
 
 func (m Model) renderContentPane() string {
-	w := m.articlesPaneWidth()
-	paneH := m.contentPaneOuterHeight()
+	w := m.contentPaneContentWidth()
+	paneH := m.contentBodyHeight() + 1
 	bodyH := m.contentBodyHeight()
 	bg := m.styles.Theme.Bg
 
@@ -50,19 +50,14 @@ func (m Model) renderContentPane() string {
 		content = header + "\n" + searchBar + "\n" + body
 	}
 
-	inner := m.styles.ContentPane.
+	return m.styles.PaneFrame(focused).
 		Width(w).
 		Height(paneH).
 		Render(content)
-
-	return lipgloss.NewStyle().
-		Background(bg).
-		Width(w).Height(paneH).
-		Render(inner)
 }
 
 func (m Model) renderMessageContent(msg db.Message) string {
-	paneWidth := m.articlesPaneWidth()
+	paneWidth := m.contentPaneContentWidth()
 	contentWidth := m.contentBodyWidth()
 	bodyWidth := m.contentBodyWidth()
 	titleWidth := max(1, paneWidth-m.styles.ContentTitle.GetHorizontalFrameSize())
@@ -291,7 +286,7 @@ func (m Model) renderThreadContent(thread messageThread) string {
 	if len(thread.Messages) == 0 {
 		return ""
 	}
-	paneWidth := m.articlesPaneWidth()
+	paneWidth := m.contentPaneContentWidth()
 	contentWidth := m.contentBodyWidth()
 	titleWidth := max(1, paneWidth-m.styles.ContentTitle.GetHorizontalFrameSize())
 	titleText := unescapeDisplayText(thread.Representative.Subject)

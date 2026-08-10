@@ -28,7 +28,7 @@ func TestComposeActionsStayVisibleInShortView(t *testing.T) {
 	c.bodyInput.Focus()
 	c.bodyInput.SetValue(strings.Repeat("this is a long compose line that wraps inside the body editor ", 20))
 
-	view := c.View(60, 13, BuildStyles(CatppuccinMocha, "compact"))
+	view := c.View(60, 13, BuildStyles(CatppuccinMocha, "compact", "square"))
 	stripped := ansi.Strip(view)
 
 	if !strings.Contains(stripped, "send") {
@@ -64,7 +64,7 @@ func TestComposeActionsStayVisibleInOverlay(t *testing.T) {
 
 func TestComposeActionsWrapInNarrowView(t *testing.T) {
 	c := NewCompose(config.AccountConfig{}, nil, nil)
-	view := c.View(32, 16, BuildStyles(CatppuccinMocha, "compact"))
+	view := c.View(32, 16, BuildStyles(CatppuccinMocha, "compact", "square"))
 	stripped := ansi.Strip(view)
 
 	for _, want := range []string{"send", "grammar"} {
@@ -90,7 +90,7 @@ func TestComposeTabAdvancesAfterAcceptingRecipientSuggestion(t *testing.T) {
 	if c.focusedField != composeFieldCC {
 		t.Fatalf("tab should accept To suggestion and advance to CC, got focus %v", c.focusedField)
 	}
-	toLine := composeFieldLine(c.View(90, 24, BuildStyles(CatppuccinMocha, "compact")), "To")
+	toLine := composeFieldLine(c.View(90, 24, BuildStyles(CatppuccinMocha, "compact", "square")), "To")
 	if strings.Contains(toLine, " >") {
 		t.Fatalf("expected To row not to show focus marker after advancing to CC, got %q", toLine)
 	}
@@ -143,7 +143,7 @@ func TestComposeDropdownNavigationEnterSelectsAndStays(t *testing.T) {
 		t.Fatalf("expected down to move dropdown cursor to 1, got %d", c.suggestCursor)
 	}
 
-	view := c.View(90, 30, BuildStyles(CatppuccinMocha, "compact"))
+	view := c.View(90, 30, BuildStyles(CatppuccinMocha, "compact", "square"))
 	if !strings.Contains(view, "alicia@example.com") {
 		t.Fatal("expected the open dropdown to render its candidates")
 	}
@@ -219,7 +219,7 @@ func TestComposeSenderDropdownSelectsAndCancels(t *testing.T) {
 		t.Fatalf("highlight must not commit sender, cursor=%d account=%d", c.senderCursor, c.accountIndex)
 	}
 
-	view := ansi.Strip(c.View(74, 30, BuildStyles(CatppuccinMocha, "compact")))
+	view := ansi.Strip(c.View(74, 30, BuildStyles(CatppuccinMocha, "compact", "square")))
 	for _, want := range []string{"Personal", "Work", "allie@work.example"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expected sender dropdown to show %q, got %q", want, view)
@@ -331,10 +331,10 @@ func TestSenderPickerIsAvailableAcrossComposeModes(t *testing.T) {
 func TestComposeLayoutBudgetsSenderDropdownRows(t *testing.T) {
 	accounts := composeSenderAccounts()
 	c := NewCompose(accounts[0], accounts, nil)
-	_, _, closedH := c.composeLayout(74, 32, BuildStyles(CatppuccinMocha, "compact"))
+	_, _, closedH := c.composeLayout(74, 32, BuildStyles(CatppuccinMocha, "compact", "square"))
 	c.focusedField = composeFieldFrom
 	c.openSenderPicker()
-	_, _, openH := c.composeLayout(74, 32, BuildStyles(CatppuccinMocha, "compact"))
+	_, _, openH := c.composeLayout(74, 32, BuildStyles(CatppuccinMocha, "compact", "square"))
 	if closedH-openH != len(accounts) {
 		t.Fatalf("expected dropdown to reserve %d rows, closed=%d open=%d", len(accounts), closedH, openH)
 	}
@@ -410,7 +410,7 @@ func TestComposeBodyNeverEscapesWidth(t *testing.T) {
 	// The editor wraps with go-runewidth while lipgloss measures with x/ansi;
 	// for emoji/flags they disagree. Compose must frame (clip+pad), not re-wrap,
 	// the editor output — otherwise overflow escapes to the app's left edge.
-	styles := BuildStyles(BuiltinThemes[0], "compact")
+	styles := BuildStyles(BuiltinThemes[0], "compact", "square")
 	contents := []string{
 		strings.Repeat("🇺🇸", 40), // regional-indicator flags (worst offender)
 		strings.Repeat("👍", 60),  // emoji

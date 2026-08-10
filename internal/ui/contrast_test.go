@@ -135,7 +135,7 @@ func TestAllThemesPassContrastChecks(t *testing.T) {
 	for _, theme := range BuiltinThemes {
 		theme := theme
 		t.Run(theme.Name, func(t *testing.T) {
-			styles := BuildStyles(theme, "comfortable")
+			styles := BuildStyles(theme, "comfortable", "square")
 			for _, check := range contrastChecks {
 				fg := check.fg(styles)
 				bg := check.bg(styles)
@@ -157,7 +157,7 @@ func TestAllThemesContentFocusLineBackgroundIsVisible(t *testing.T) {
 	for _, theme := range BuiltinThemes {
 		theme := theme
 		t.Run(theme.Name, func(t *testing.T) {
-			styles := BuildStyles(theme, "comfortable")
+			styles := BuildStyles(theme, "comfortable", "square")
 			focusBg := styleColor(styles.ContentFocusLine.GetBackground())
 			if focusBg == "" {
 				t.Fatal("content focus line background is unset")
@@ -210,6 +210,38 @@ func TestAccountPickerColorsAreReadableOnAllThemeBackgrounds(t *testing.T) {
 	}
 }
 
+func TestAllThemesFocusedPaneBorderMeetsContrastFloor(t *testing.T) {
+	for _, theme := range BuiltinThemes {
+		theme := theme
+		t.Run(theme.Name, func(t *testing.T) {
+			styles := BuildStyles(theme, "comfortable", "square")
+			border := styleColor(styles.PaneFrame(true).GetBorderTopForeground())
+			if border == "" {
+				t.Fatal("focused pane border color is unset")
+			}
+			if ratio := contrastRatio(border, theme.Bg); ratio < paneFocusMinContrast {
+				t.Errorf("focused pane border contrast %.2f:1 < %.1f:1 (border=%s bg=%s)", ratio, paneFocusMinContrast, border, theme.Bg)
+			}
+		})
+	}
+}
+
+func TestAllThemesSelectedRowBackgroundStandsOut(t *testing.T) {
+	for _, theme := range BuiltinThemes {
+		theme := theme
+		t.Run(theme.Name, func(t *testing.T) {
+			styles := BuildStyles(theme, "comfortable", "square")
+			selectedBg := styleColor(styles.ArticleSelected.GetBackground())
+			if selectedBg == "" {
+				t.Fatal("selected row background is unset")
+			}
+			if ratio := contrastRatio(selectedBg, theme.Bg); ratio < selectedBgMinContrast {
+				t.Errorf("selected row background contrast %.2f:1 < %.1f:1 (selected=%s bg=%s)", ratio, selectedBgMinContrast, selectedBg, theme.Bg)
+			}
+		})
+	}
+}
+
 // TestAllThemesContrastReport prints a human-readable table for all themes.
 // Run with: go test -v -run TestAllThemesContrastReport
 func TestAllThemesContrastReport(t *testing.T) {
@@ -217,7 +249,7 @@ func TestAllThemesContrastReport(t *testing.T) {
 		t.Skip("only runs with -v")
 	}
 	for _, theme := range BuiltinThemes {
-		styles := BuildStyles(theme, "comfortable")
+		styles := BuildStyles(theme, "comfortable", "square")
 		t.Logf("── %s ──", theme.Name)
 		for _, check := range contrastChecks {
 			fg := check.fg(styles)

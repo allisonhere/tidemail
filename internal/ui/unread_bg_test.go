@@ -16,7 +16,7 @@ func TestUnreadBackgroundIsDifferent(t *testing.T) {
 	t.Logf("Width+Padding: %q [has bg: %v]", s2[:min(80, len(s2))], strings.Contains(s2, "48;"))
 
 	// Now check ArticleUnread rendering in context — how it's used in the message list
-	styles := BuildStyles(LavenderFieldsForever, "compact")
+	styles := BuildStyles(LavenderFieldsForever, "compact", "square")
 	unread := styles.ArticleUnread.Width(40)
 	rendered := unread.Render("test subject  2m")
 	t.Logf("ArticleUnread Width(40): %q", rendered[:min(80, len(rendered))])

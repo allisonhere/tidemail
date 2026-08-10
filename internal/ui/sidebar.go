@@ -13,8 +13,7 @@ import (
 )
 
 func (m Model) renderAccountsPane() string {
-	w := m.feedsPaneWidth()
-	innerW := w - 1
+	innerW := m.accountsPaneContentWidth()
 	focused := m.focused == paneAccounts
 	title := m.renderPaneHeader(paneAccounts, "Accounts", focused, innerW)
 	rows := []string{title}
@@ -46,19 +45,16 @@ func (m Model) renderAccountsPane() string {
 	}
 	footer := fmt.Sprintf("  %d accounts", len(m.accounts))
 	footer = m.styles.ArticleRead.Width(innerW).Render(footer)
-	bodyHeight := max(0, m.mainHeight()-m.styles.ListItemLineStride())
+	bodyHeight := max(0, m.accountsPaneContentHeight()-m.styles.ListItemLineStride())
 	for viewLineCount(rows) < bodyHeight {
 		rows = append(rows, m.styles.FeedItem.Width(innerW).Render(""))
 	}
 	rows = append(rows, footer)
 
-	border := m.styles.FeedsPane
-	if focused {
-		border = border.BorderForeground(m.styles.Theme.BorderFocus)
-	}
+	border := m.styles.PaneFrame(focused)
 
-	content := clampView(strings.Join(rows, "\n"), innerW, m.mainHeight(), m.styles.Theme.Bg)
-	return border.Width(innerW).Height(m.mainHeight()).Render(content)
+	content := clampView(strings.Join(rows, "\n"), innerW, m.accountsPaneContentHeight(), m.styles.Theme.Bg)
+	return border.Width(innerW).Height(m.accountsPaneContentHeight()).Render(content)
 }
 
 func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed map[int64]bool, collapsedSections map[string]bool) []sidebarRow {

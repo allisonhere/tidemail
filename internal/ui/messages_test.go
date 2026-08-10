@@ -67,7 +67,7 @@ func TestSelectedStarredMessageKeepsHighlightAcrossEntireRow(t *testing.T) {
 	}}
 	m.messageCursor = 0
 
-	line := strings.Split(m.renderMessagesPane(), "\n")[1]
+	line := strings.Split(m.renderMessagesPane(), "\n")[2]
 	starAt := strings.Index(line, "★")
 	subjectAt := strings.Index(line, "Selected subject")
 	if starAt < 0 || subjectAt <= starAt {

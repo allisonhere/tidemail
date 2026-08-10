@@ -43,6 +43,7 @@ const (
 	sfFilterLinks
 	sfReadingWidth
 	sfDisplayDensity
+	sfPaneCorners
 	sfBrowser
 	sfFeedMaxBody
 	sfUpdateCheckOnStartup
@@ -148,6 +149,7 @@ type settingsSectionBody struct {
 
 var (
 	layoutDensityLabels   = []string{"Comfortable", "Compact"}
+	paneCornersLabels     = []string{"Square", "Round"}
 	dateFormatLabels      = []string{"Relative", "Absolute", "None"}
 	aiProviderLabels      = []string{"none", "OpenAI", "Claude", "Gemini", "Ollama"}
 	aiProviderIDs         = []string{"", "openai", "claude", "gemini", "ollama"}
@@ -240,6 +242,7 @@ type Settings struct {
 	notifications         bool
 	composeVim            bool
 	layoutDensityIdx      int // 0 = comfortable, 1 = compact
+	paneCornersIdx        int // 0 = square, 1 = round
 	readingWidthInput     textinput.Model
 	sendDelayInput        textinput.Model
 	browserInput          textinput.Model
@@ -306,6 +309,10 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 	if config.NormalizeDisplayDensity(cfg.Display.Density) == "compact" {
 		layoutIdx = 1
 	}
+	paneCornersIdx := 0
+	if config.NormalizePaneCorners(cfg.Display.PaneCorners) == "round" {
+		paneCornersIdx = 1
+	}
 	var retroTweak config.RetroTerminalTweak
 	switch cfg.Theme {
 	case ThemeNameVT52:
@@ -337,6 +344,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		notifications:         cfg.Display.Notifications,
 		composeVim:            cfg.Display.ComposeVim,
 		layoutDensityIdx:      layoutIdx,
+		paneCornersIdx:        paneCornersIdx,
 		readingWidthInput:     mkInput(strconv.Itoa(cfg.Display.ReadingWidth), "0 (no limit)", false),
 		sendDelayInput:        mkInput(strconv.Itoa(cfg.Display.SendDelaySeconds), "5 (0 = immediate)", false),
 		browserInput:          mkInput(cfg.Display.Browser, "xdg-open", false),
@@ -416,6 +424,11 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 		cfg.Display.Density = "compact"
 	} else {
 		cfg.Display.Density = "comfortable"
+	}
+	if s.paneCornersIdx == 1 {
+		cfg.Display.PaneCorners = "round"
+	} else {
+		cfg.Display.PaneCorners = "square"
 	}
 	cfg.Display.Browser = strings.TrimSpace(s.browserInput.Value())
 	bg := strings.TrimSpace(s.retroBgInput.Value())
@@ -628,7 +641,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 	case ssDisplay:
 		// Keep this order in lockstep with the ssDisplay case in viewSectionBody:
 		// Appearance, Terminal colors (retro themes), Message list, Reading, Behavior.
-		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfIcons, sfDateFormat, sfFocusLine}
+		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfPaneCorners, sfIcons, sfDateFormat, sfFocusLine}
 		if config.IsRetroTerminalTheme(s.themeName) {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
@@ -875,7 +888,7 @@ func (s Settings) focusedTextInputCursorPosition() int {
 
 func (s Settings) isPickerField() bool {
 	switch s.focusedField {
-	case sfProvider, sfDisplayDensity, sfTheme, sfDateFormat,
+	case sfProvider, sfDisplayDensity, sfPaneCorners, sfTheme, sfDateFormat,
 		sfOpenAIModel, sfClaudeModel, sfGeminiModel, sfOllamaModel:
 		return true
 	}
@@ -1040,6 +1053,20 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) || keyMatches(key, keys.Right):
 			s.layoutDensityIdx = (s.layoutDensityIdx + 1) % len(layoutDensityLabels)
 			s.setFocusedField(sfDisplayDensity)
+		case keyMatches(key, keys.Down):
+			s.setFocusedField(s.nextField())
+		case keyMatches(key, keys.Up):
+			s.setFocusedField(s.prevField())
+		}
+
+	case sfPaneCorners:
+		switch {
+		case keyMatches(key, keys.Left):
+			s.paneCornersIdx = (s.paneCornersIdx + len(paneCornersLabels) - 1) % len(paneCornersLabels)
+			s.setFocusedField(sfPaneCorners)
+		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) || keyMatches(key, keys.Right):
+			s.paneCornersIdx = (s.paneCornersIdx + 1) % len(paneCornersLabels)
+			s.setFocusedField(sfPaneCorners)
 		case keyMatches(key, keys.Down):
 			s.setFocusedField(s.nextField())
 		case keyMatches(key, keys.Up):
@@ -1542,6 +1569,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addGroup("Appearance")
 		b.addThemeSelector()
 		b.addDensitySelector()
+		b.addPaneCornersSelector()
 		b.addToggle("Icons", s.icons, sfIcons)
 		b.addDateFormatSelector()
 		b.addToggle("Focus line", s.focusLine, sfFocusLine)
@@ -1755,6 +1783,15 @@ func (b *settingsFormBuilder) addDensitySelector() {
 	b.markAnchor(sfDisplayDensity)
 	b.addLine(b.s.renderDensitySelector(b.width, b.chrome))
 	if hint := b.s.fieldHint(sfDisplayDensity); hint != "" {
+		b.addHint(hint)
+	}
+	b.addBlank()
+}
+
+func (b *settingsFormBuilder) addPaneCornersSelector() {
+	b.markAnchor(sfPaneCorners)
+	b.addLine(b.s.renderPaneCornersSelector(b.width, b.chrome))
+	if hint := b.s.fieldHint(sfPaneCorners); hint != "" {
 		b.addHint(hint)
 	}
 	b.addBlank()
@@ -2327,6 +2364,14 @@ func (s Settings) renderDensitySelector(width int, chrome managerChrome) string 
 	return renderSoftRow("Layout density", focused, renderSettingsPicker(pickerW, name, focused, chrome), width, labelW, chrome)
 }
 
+func (s Settings) renderPaneCornersSelector(width int, chrome managerChrome) string {
+	focused := s.focusedField == sfPaneCorners
+	name := paneCornersLabels[s.paneCornersIdx]
+	labelW := formLabelWidth(width)
+	pickerW := max(1, width-labelW-2)
+	return renderSoftRow("Pane corners", focused, renderSettingsPicker(pickerW, name, focused, chrome), width, labelW, chrome)
+}
+
 func (s Settings) renderThemeSelector(width int, chrome managerChrome) string {
 	focused := s.focusedField == sfTheme
 	name := BuiltinThemes[s.themeIdx].Name
@@ -2385,6 +2430,8 @@ func (s Settings) fieldHint(field settingsField) string {
 		return "leave blank to use the built-in palette for this theme"
 	case sfDisplayDensity:
 		return "comfortable adds vertical spacing in lists; compact fits more rows on small terminals"
+	case sfPaneCorners:
+		return "square or round corners for the pane borders"
 	case sfActionableLinks:
 		return "enable ctrl+n / ctrl+p to select links in article content; o opens selected link"
 	case sfFilterLinks:

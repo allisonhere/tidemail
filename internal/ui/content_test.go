@@ -56,7 +56,7 @@ func TestRenderMessageTitleSpansPaneWhenReadingWidthIsCapped(t *testing.T) {
 	})
 	firstLine := strings.Split(view, "\n")[0]
 
-	if got, want := ansi.StringWidth(firstLine), m.articlesPaneWidth(); got != want {
+	if got, want := ansi.StringWidth(firstLine), m.contentPaneContentWidth(); got != want {
 		t.Fatalf("expected title line to span content pane width %d, got %d in %q", want, got, ansi.Strip(firstLine))
 	}
 }
