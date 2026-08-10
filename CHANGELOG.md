@@ -4,11 +4,19 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.0.3
+
+**Release highlights:** you can always tell which pane you're in now — a full
+colored border wraps the active pane, the current row actually stands out
+instead of a faint tint, and pane corners are yours to round off in Settings.
+
 ### Added
 
 - **Folders are created for AI move filters.** A rule that moves mail to a folder
   that does not exist yet now creates it, inside the account's own personal
   namespace rather than at the server root.
+- **Pane corners are a Display setting.** Pick square (the original look) or
+  round, right below Layout density in Settings → Display.
 
 ### Fixed
 
@@ -23,6 +31,16 @@ All notable changes to TideMail are documented in this file.
 
 ### Changed
 
+- **Every pane always shows a full 4-sided border**, not just a single dim
+  edge — or none at all, for the Content pane. The focused pane now lights up
+  in the theme's accent color on all four sides while the other two stay
+  dim, the same treatment you'd get from a tmux or Vim split, and nothing
+  resizes as you `Tab` between panes.
+- **The focused-pane border and the current selection highlight now guarantee
+  real contrast** instead of a fixed color shift that went nearly invisible
+  on several themes. Both are checked against a contrast floor (7:1 for the
+  pane border, 3:1 for the selection background) and verified automatically
+  across all 19 built-in themes.
 - **The Go module path is now `github.com/allisonhere/tidemail`.** It previously
   declared `github.com/allisonhere/tide`, which belongs to a separate published
   project, so `go install github.com/allisonhere/tide@latest` fetched the wrong
