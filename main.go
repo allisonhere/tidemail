@@ -18,8 +18,9 @@ import (
 var version = "dev"
 
 type startupOptions struct {
-	previewManualUpdate bool
-	prototypeForms      bool
+	previewManualUpdate   bool
+	previewUpdateProgress bool
+	prototypeForms        bool
 }
 
 func parseStartupOptions(args []string) startupOptions {
@@ -28,6 +29,8 @@ func parseStartupOptions(args []string) startupOptions {
 		switch strings.TrimSpace(a) {
 		case "--preview-manual-update":
 			opts.previewManualUpdate = true
+		case "--preview-update-progress":
+			opts.previewUpdateProgress = true
 		case "--prototype-forms":
 			opts.prototypeForms = true
 		}
@@ -105,8 +108,12 @@ func run() (code int, restartExec string) {
 		}
 		defer database.Close()
 
-		// --preview-manual-update: open Settings on Updates with a demo manual-install command (dev UI).
-		model = ui.NewModel(database, cfg, resolvedVersion(), opts.previewManualUpdate)
+		// --preview-manual-update / --preview-update-progress are dev UI entry points.
+		m := ui.NewModel(database, cfg, resolvedVersion(), opts.previewManualUpdate || opts.previewUpdateProgress)
+		if opts.previewUpdateProgress {
+			m.ApplyUpdateProgressPreview()
+		}
+		model = m
 	}
 	if uiModel, ok := model.(ui.Model); ok {
 		defer uiModel.CloseSessions()

@@ -47,6 +47,14 @@ func TestParseStartupOptionsPrototypeForms(t *testing.T) {
 	}
 }
 
+func TestParseStartupOptionsUpdateProgressPreview(t *testing.T) {
+	opts := parseStartupOptions([]string{"--preview-update-progress"})
+
+	if !opts.previewUpdateProgress {
+		t.Fatal("expected --preview-update-progress to enable update progress preview")
+	}
+}
+
 func TestProgramOptionsKeepTerminalMouseSelectionAvailable(t *testing.T) {
 	opts := programOptions()
 	if len(opts) != 1 {

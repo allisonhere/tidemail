@@ -4,6 +4,39 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.0.5
+
+**Release highlights:** installs now land in the user-local bin path by default,
+the in-app updater has a progress popup with restart handoff, and link cleanup
+handles another bit of Reddit tracking noise.
+
+### Added
+
+- **The in-app updater now shows install progress.** Update installs keep the
+  popup open with a progress bar, then offer a restart action once the new binary
+  is ready.
+
+### Changed
+
+- **The release installer now defaults to `~/.local/bin`.** It no longer asks for
+  `sudo` just because `/usr/local/bin` is not writable.
+- **The self-updater falls back to the user-local install path.** When the
+  current binary directory is not writable, TideMail installs the update at
+  `~/.local/bin/tidemail` and shows the manual command if automatic replacement
+  is not possible.
+
+### Fixed
+
+- **The installer verifies staged binaries before replacing an existing
+  install.** Failed downloads, bad archives, or broken staged binaries leave the
+  current `tidemail` binary untouched and remove temporary install files.
+- **SMTP reconnects no longer hang on stale post-suspend sessions.** SMTP
+  commands now use deadlines so dead connections fail and reconnect instead of
+  blocking indefinitely.
+- **Reddit links drop trailing tracking fragments like `[Read/` and `V`.** The
+  Links view no longer opens malformed Reddit URLs caused by leftover email CTA
+  text at the end of the extracted URL.
+
 ## v1.0.4
 
 **Release highlights:** noisy HTML emails are easier to read in the terminal:

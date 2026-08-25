@@ -3,7 +3,13 @@ set -e
 
 REPO="allisonhere/tidemail"
 BINARY="tidemail"
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+if [ -z "${INSTALL_DIR:-}" ]; then
+  if [ -z "${HOME:-}" ]; then
+    INSTALL_DIR=""
+  else
+    INSTALL_DIR="${HOME}/.local/bin"
+  fi
+fi
 
 # Colors
 RED='\033[0;31m'
@@ -15,6 +21,7 @@ NC='\033[0m'
 
 info()    { printf "  ${CYAN}→${NC} %s\n" "$1"; }
 success() { printf "  ${GREEN}✓${NC} %s\n" "$1"; }
+warn()    { printf "  ${DIM}!${NC} %s\n" "$1"; }
 error()   { printf "  ${RED}✗${NC} %s\n" "$1" >&2; exit 1; }
 
 # Detect OS
@@ -42,7 +49,16 @@ info "Platform: ${OS}/${ARCH}"
 # rate limiting and no fragile grep/sed parsing of the releases JSON.
 URL="https://github.com/${REPO}/releases/latest/download/${ASSET}.tar.gz"
 TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
+INSTALL_TMP=""
+cleanup() {
+  rm -rf "$TMP"
+  if [ -n "$INSTALL_TMP" ]; then
+    rm -f "$INSTALL_TMP"
+  fi
+}
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
 
 info "Downloading latest release..."
 if ! curl -fsSL -o "${TMP}/${ASSET}.tar.gz" "$URL"; then
@@ -65,21 +81,49 @@ fi
 
 if [ ! -f "${TMP}/${ASSET}" ]; then
   contents=$(ls -A "$TMP" 2>/dev/null | tr '\n' ' ')
-  rm -rf "$TMP"
   error "Archive does not contain expected binary '${ASSET}'.\n         Found instead: ${contents}"
 fi
 
 chmod +x "${TMP}/${ASSET}"
 
-# ── Install ───────────────────────────────────────────────────────────────
-if [ -w "$INSTALL_DIR" ]; then
-  mv "${TMP}/${ASSET}" "${INSTALL_DIR}/${BINARY}"
-else
-  info "Need sudo to install to ${INSTALL_DIR}"
-  sudo mv "${TMP}/${ASSET}" "${INSTALL_DIR}/${BINARY}"
+# Verify the staged binary before touching any existing installation.
+if ! "${TMP}/${ASSET}" --version >/dev/null 2>&1; then
+  error "Downloaded binary failed its version check; existing installation left untouched."
 fi
 
+# ── Install ───────────────────────────────────────────────────────────────
+if [ -z "$INSTALL_DIR" ]; then
+  error "No install directory selected. Set INSTALL_DIR to a writable directory."
+fi
+
+if [ ! -d "$INSTALL_DIR" ]; then
+  info "Creating ${INSTALL_DIR}"
+  if ! mkdir -p "$INSTALL_DIR"; then
+    error "Could not create ${INSTALL_DIR}. Set INSTALL_DIR to a writable directory."
+  fi
+fi
+
+if [ ! -w "$INSTALL_DIR" ]; then
+  error "${INSTALL_DIR} is not writable. Existing installation left untouched.\n         Try: INSTALL_DIR=\"\$HOME/.local/bin\" sh install.sh"
+fi
+
+INSTALL_TMP="${INSTALL_DIR}/.${BINARY}.tmp.$$"
+info "Installing to ${INSTALL_DIR}/${BINARY}"
+if ! install -m 0755 "${TMP}/${ASSET}" "$INSTALL_TMP"; then
+  error "Could not stage binary in ${INSTALL_DIR}. Existing installation left untouched."
+fi
+
+if ! VERSION=$("$INSTALL_TMP" --version 2>/dev/null); then
+  error "Staged binary failed its version check; existing installation left untouched."
+fi
+
+mv -f "$INSTALL_TMP" "${INSTALL_DIR}/${BINARY}"
+INSTALL_TMP=""
+
 # ── Verify ────────────────────────────────────────────────────────────────
-VERSION=$("${INSTALL_DIR}/${BINARY}" --version 2>/dev/null || echo "unknown")
 success "Installed ${VERSION} to ${INSTALL_DIR}/${BINARY}"
+case ":$PATH:" in
+  *":$INSTALL_DIR:"*) ;;
+  *) warn "${INSTALL_DIR} is not on PATH; add it before running ${BINARY} by name." ;;
+esac
 printf "\n  Run ${BOLD}tidemail${NC} to get started.\n\n"

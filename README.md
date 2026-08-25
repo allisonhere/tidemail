@@ -44,6 +44,10 @@ Linux and macOS builds are available for Intel and ARM machines.
 curl -fsSL https://raw.githubusercontent.com/allisonhere/tidemail/main/install.sh | sh
 ```
 
+The installer writes to `~/.local/bin` by default, so it should not ask for a
+system password. Set `INSTALL_DIR=/path/to/bin` on the `sh` command if you want
+a different writable destination.
+
 You can also grab an archive from the
 [latest release](https://github.com/allisonhere/tidemail/releases/latest).
 

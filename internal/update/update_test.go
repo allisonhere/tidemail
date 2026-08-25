@@ -232,6 +232,15 @@ func TestInstallReturnsManualCommandWhenTargetDirNotWritable(t *testing.T) {
 		t.Fatalf("write new binary: %v", err)
 	}
 
+	oldHome := userHomeDir
+	oldWritable := dirWritable
+	defer func() {
+		userHomeDir = oldHome
+		dirWritable = oldWritable
+	}()
+	userHomeDir = func() (string, error) { return "", os.ErrNotExist }
+	dirWritable = func(string) error { return os.ErrPermission }
+
 	target := filepath.Join(protectedDir, "tide")
 	result, err := New().Install(DownloadedAsset{
 		Release:    ReleaseInfo{Version: "v1.2.3"},
@@ -245,6 +254,105 @@ func TestInstallReturnsManualCommandWhenTargetDirNotWritable(t *testing.T) {
 	}
 	if !strings.Contains(result.ManualCommand, "sudo install -m 0755") {
 		t.Fatalf("unexpected manual command: %q", result.ManualCommand)
+	}
+}
+
+func TestInstallFallsBackToUserLocalBinWhenCurrentDirNotWritable(t *testing.T) {
+	dir := t.TempDir()
+	home := filepath.Join(dir, "home")
+	currentDir := filepath.Join(dir, "system-bin")
+	if err := os.MkdirAll(currentDir, 0o755); err != nil {
+		t.Fatalf("create current dir: %v", err)
+	}
+	current := filepath.Join(currentDir, "tidemail")
+	if err := os.WriteFile(current, []byte("old"), 0o755); err != nil {
+		t.Fatalf("write current binary: %v", err)
+	}
+	newBinary := filepath.Join(dir, "downloaded")
+	if err := os.WriteFile(newBinary, []byte("new"), 0o755); err != nil {
+		t.Fatalf("write new binary: %v", err)
+	}
+
+	oldHome := userHomeDir
+	oldWritable := dirWritable
+	defer func() {
+		userHomeDir = oldHome
+		dirWritable = oldWritable
+	}()
+	userHomeDir = func() (string, error) { return home, nil }
+	dirWritable = func(path string) error {
+		if path == currentDir {
+			return os.ErrPermission
+		}
+		return ensureDirWritable(path)
+	}
+
+	result, err := New().Install(DownloadedAsset{
+		Release:    ReleaseInfo{Version: "v1.2.3"},
+		BinaryPath: newBinary,
+	}, current)
+	if err != nil {
+		t.Fatalf("Install returned error: %v", err)
+	}
+
+	target := filepath.Join(home, ".local", "bin", "tidemail")
+	if result.RequiresManual {
+		t.Fatal("expected writable user-local fallback instead of manual install")
+	}
+	if result.ExecutablePath != target {
+		t.Fatalf("ExecutablePath = %q, want %q", result.ExecutablePath, target)
+	}
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read fallback binary: %v", err)
+	}
+	if string(data) != "new" {
+		t.Fatalf("fallback binary = %q, want new", string(data))
+	}
+	oldData, err := os.ReadFile(current)
+	if err != nil {
+		t.Fatalf("read original binary: %v", err)
+	}
+	if string(oldData) != "old" {
+		t.Fatalf("original binary changed: %q", string(oldData))
+	}
+}
+
+func TestInstallTargetCheckDoesNotCreateUserLocalBin(t *testing.T) {
+	dir := t.TempDir()
+	home := filepath.Join(dir, "home")
+	currentDir := filepath.Join(dir, "system-bin")
+	if err := os.MkdirAll(currentDir, 0o755); err != nil {
+		t.Fatalf("create current dir: %v", err)
+	}
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatalf("create home dir: %v", err)
+	}
+
+	oldHome := userHomeDir
+	oldWritable := dirWritable
+	defer func() {
+		userHomeDir = oldHome
+		dirWritable = oldWritable
+	}()
+	userHomeDir = func() (string, error) { return home, nil }
+	dirWritable = func(path string) error {
+		if path == currentDir {
+			return os.ErrPermission
+		}
+		return ensureDirWritable(path)
+	}
+
+	target, err := installTarget(filepath.Join(currentDir, "tidemail"), false)
+	if err != nil {
+		t.Fatalf("installTarget returned error: %v", err)
+	}
+	want := filepath.Join(home, ".local", "bin", "tidemail")
+	if target != want {
+		t.Fatalf("target = %q, want %q", target, want)
+	}
+	if _, err := os.Stat(filepath.Dir(want)); !os.IsNotExist(err) {
+		t.Fatalf("expected install target check not to create %s, stat err=%v", filepath.Dir(want), err)
 	}
 }
 

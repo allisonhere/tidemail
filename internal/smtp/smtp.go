@@ -87,6 +87,13 @@ func sendSTARTTLS(ctx context.Context, addr string, cfg config.AccountConfig, fr
 	if err != nil {
 		return fmt.Errorf("dial smtp: %w", err)
 	}
+	// ctx only bounds the dial by default (net/smtp doesn't take a context for
+	// the session that follows); set the deadline on the raw socket too so a
+	// connection left stale by e.g. a laptop suspend/resume can't block Auth/
+	// Mail/Rcpt/Data forever instead of erroring out.
+	if dl, ok := ctx.Deadline(); ok {
+		conn.SetDeadline(dl) //nolint:errcheck
+	}
 
 	host, _, _ := net.SplitHostPort(addr)
 	client, err := smtpNewClient(conn, host)
@@ -121,6 +128,12 @@ func sendTLS(ctx context.Context, addr string, cfg config.AccountConfig, from st
 	conn, err := tlsDial(ctx, "tcp", addr, tlsCfg)
 	if err != nil {
 		return fmt.Errorf("dial smtp tls: %w", err)
+	}
+	// See the matching comment in sendSTARTTLS: bound the whole session, not
+	// just the dial, so a stale post-suspend socket errors out instead of
+	// hanging Auth/Mail/Rcpt/Data indefinitely.
+	if dl, ok := ctx.Deadline(); ok {
+		conn.SetDeadline(dl) //nolint:errcheck
 	}
 
 	client, err := smtpNewClient(conn, host)

@@ -190,6 +190,8 @@ type UpdateInstalledMsg struct {
 	Err    error
 }
 
+type UpdateProgressTickMsg struct{}
+
 type SummarySavedMsg struct {
 	Path string
 	Err  error

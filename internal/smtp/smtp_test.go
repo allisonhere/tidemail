@@ -8,6 +8,7 @@ import (
 	"net/smtp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/allisonhere/tidemail/internal/config"
 )
@@ -141,6 +142,55 @@ func TestSendSTARTTLS_NoTLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-done
+}
+
+// TestSendSTARTTLS_StaleConnectionTimesOut guards against a regression where a
+// socket left stale (e.g. by a laptop suspend/resume) hangs the SMTP session
+// forever instead of erroring out once ctx's deadline passes. The fake server
+// answers the initial greeting and then goes silent, simulating a connection
+// that "dialed" fine but died before the conversation finished.
+func TestSendSTARTTLS_StaleConnectionTimesOut(t *testing.T) {
+	server, clientConn := net.Pipe()
+	defer server.Close()
+
+	go func() {
+		server.Write([]byte("220 localhost ESMTP\r\n")) //nolint:errcheck
+		buf := make([]byte, 1024)
+		server.Read(buf) //nolint:errcheck // read EHLO, then go silent forever
+	}()
+
+	oldDial := smtpDial
+	oldClient := smtpNewClient
+	defer func() {
+		smtpDial = oldDial
+		smtpNewClient = oldClient
+	}()
+	smtpDial = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		return clientConn, nil
+	}
+	smtpNewClient = func(conn net.Conn, host string) (*smtp.Client, error) {
+		return smtp.NewClient(conn, host)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- sendSTARTTLS(ctx, "localhost:587", config.AccountConfig{
+			User:     "user",
+			Password: "pass",
+		}, "alice@x", []string{"bob@x"}, []byte("Subject: Hello\r\n\r\nBody"))
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected an error from a stale connection, got nil")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("sendSTARTTLS hung on a stale connection instead of respecting ctx's deadline")
+	}
 }
 
 func TestSendSTARTTLS_NoRecipients(t *testing.T) {

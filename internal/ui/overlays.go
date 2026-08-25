@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/allisonhere/tidemail/internal/update"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -188,7 +189,7 @@ func (m Model) renderOverlay(base string) string {
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		inner := m.renderUpdateConfirmOverlay(winW, chrome)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderSoftPanelBox(inner, winW, "tidemail", "install update?", chrome)
+		box = renderSoftPanelBox(inner, winW, "tidemail", m.updateOverlayTitle(), chrome)
 
 	case overlaySummary:
 		winW := min(m.width-8, 76)
@@ -207,6 +208,19 @@ func (m Model) renderOverlay(base string) string {
 	}
 
 	return overlayOnBase(base, box, m.width, m.height, m.styles.Theme.Bg)
+}
+
+func (m Model) updateOverlayTitle() string {
+	switch {
+	case m.updateState == updateStateInstalled:
+		return "update installed"
+	case m.updateState == updateStateNeedsElevation:
+		return "manual update"
+	case m.updateInProgress():
+		return "installing update"
+	default:
+		return "install update?"
+	}
 }
 
 func (m Model) renderCommandPalette(width int, chrome managerChrome) string {
@@ -308,8 +322,57 @@ func (m Model) renderSummaryOverlay(width, height int, chrome managerChrome) str
 
 func (m Model) renderUpdateConfirmOverlay(width int, chrome managerChrome) string {
 	target, _ := os.Executable()
+	contentW := max(1, width-4)
+	if m.updateState == updateStateInstalled {
+		body := lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Foreground(chrome.text).
+			Width(width).
+			Padding(1, 2, 0, 2).
+			Render("Updated TideMail to " + m.updateInstall.Version + ".")
+		hints := renderSoftHints(width, chrome, "enter", "restart", "esc", "close")
+		return lipgloss.JoinVertical(lipgloss.Left, body, hints)
+	}
+	if m.updateState == updateStateNeedsElevation {
+		cmd := strings.TrimSpace(m.updateInstall.ManualCommand)
+		if cmd == "" {
+			cmd = update.SuggestedManualInstallScript
+		}
+		bodyText := strings.Join([]string{
+			"Update downloaded, but the install target is not writable.",
+			"",
+			"Run this command outside TideMail:",
+			cmd,
+		}, "\n")
+		body := lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Foreground(chrome.text).
+			Width(width).
+			Padding(1, 2, 0, 2).
+			Render(bodyText)
+		hints := renderSoftHints(width, chrome, "enter/esc", "close")
+		return lipgloss.JoinVertical(lipgloss.Left, body, hints)
+	}
+	if m.updateInProgress() {
+		verb := "Downloading"
+		if m.updateState == updateStateInstalling {
+			verb = "Installing"
+		}
+		label := fmt.Sprintf("%s TideMail %s... %d%%", verb, m.updateInfo.Version, m.updateProgress)
+		body := lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Foreground(chrome.text).
+			Width(width).
+			Padding(1, 2).
+			Render(strings.Join([]string{
+				label,
+				"",
+				updateProgressBar(m.updateProgress, contentW, chrome),
+			}, "\n"))
+		return body
+	}
 	bodyLines := []string{
-		"Install Tide " + m.updateInfo.Version + "?",
+		"Install TideMail " + m.updateInfo.Version + "?",
 	}
 	if summary := strings.TrimSpace(m.updateInfo.Summary); summary != "" {
 		bodyLines = append(bodyLines, "", "What's new: "+summary)
@@ -339,6 +402,21 @@ func (m Model) renderUpdateConfirmOverlay(width int, chrome managerChrome) strin
 
 	hints := renderSoftHints(width, chrome, "enter", "install", "esc", "cancel")
 	return lipgloss.JoinVertical(lipgloss.Left, body, note, hints)
+}
+
+func updateProgressBar(pct int, width int, chrome managerChrome) string {
+	width = max(1, width)
+	pct = clamp(pct, 0, 100)
+	filled := clamp(width*pct/100, 0, width)
+	full := lipgloss.NewStyle().
+		Background(chrome.baseBg).
+		Foreground(chrome.accent).
+		Render(strings.Repeat("█", filled))
+	empty := lipgloss.NewStyle().
+		Background(chrome.baseBg).
+		Foreground(chrome.muted).
+		Render(strings.Repeat("░", width-filled))
+	return full + empty
 }
 
 func (m Model) renderGrammarPreview(width, height int) string {

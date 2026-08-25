@@ -11,6 +11,15 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+const (
+	updateProgressStep     = 5
+	updateProgressInterval = 120 * time.Millisecond
+)
+
+func tickUpdateProgress() tea.Cmd {
+	return tea.Tick(updateProgressInterval, func(time.Time) tea.Msg { return UpdateProgressTickMsg{} })
+}
+
 func (m *Model) maybeCheckForUpdatesCmd(manual bool) tea.Cmd {
 	if manual {
 		return m.checkForUpdatesCmd(true)
@@ -51,6 +60,56 @@ func (m *Model) installUpdateCmd(asset update.DownloadedAsset) tea.Cmd {
 		result, err := updater.Install(asset, currentExec)
 		return UpdateInstalledMsg{Result: result, Err: err}
 	}
+}
+
+func (m *Model) beginUpdateInstall() tea.Cmd {
+	m.overlay = overlayUpdateConfirm
+	m.updateState = updateStateDownloading
+	m.updateErr = ""
+	m.updateProgress = 0
+	m.updateInstallReady = false
+	m.updateInstallErr = nil
+	m.updateInstall = update.InstallResult{}
+	m.syncSettingsUpdateState()
+	return tea.Batch(m.downloadUpdateCmd(m.updateInfo), tickUpdateProgress())
+}
+
+func (m Model) updateInProgress() bool {
+	return m.updateState == updateStateDownloading || m.updateState == updateStateInstalling
+}
+
+func (m Model) finalizeUpdateInstall() (Model, tea.Cmd) {
+	installErr := m.updateInstallErr
+	m.updateInstallReady = false
+	m.updateInstallErr = nil
+	m.downloadedUpdate = nil
+
+	if installErr != nil {
+		m.updateState = updateStateError
+		m.updateErr = installErr.Error()
+		m.overlay = overlayNone
+		m.syncSettingsUpdateState()
+		m.setStatus("update failed: "+installErr.Error(), true)
+		return m, m.clearStatusCmd()
+	}
+	if m.updateInstall.RequiresManual {
+		m.updateState = updateStateNeedsElevation
+		m.syncSettingsUpdateState()
+		m.updateDismissed = false
+		m.cfg.Updates.DismissedVersion = ""
+		m.saveConfig()
+		return m, nil
+	}
+	m.updateState = updateStateInstalled
+	m.updateDismissed = false
+	m.cfg.Updates.DismissedVersion = ""
+	m.clearCachedAvailableUpdate()
+	m.saveConfig()
+	m.syncSettingsUpdateState()
+	if m.updateInstall.Restartable && m.updateInstall.ExecutablePath != "" {
+		m.restartExecPath = m.updateInstall.ExecutablePath
+	}
+	return m, nil
 }
 
 func (m Model) openBrowserCmd(url string) tea.Cmd {
@@ -143,6 +202,26 @@ func (m *Model) applyManualUpdatePreview() {
 	m.settings.setActiveSection(ssUpdates)
 	m.settings.setFocusedField(sfUpdateManualCommand)
 	m.overlay = overlaySettings
+}
+
+func (m *Model) ApplyUpdateProgressPreview() {
+	m.currentVersion = "v0.0.38"
+	m.updateState = updateStateInstalling
+	m.updateInfo = update.ReleaseInfo{
+		Version:   "v0.0.39",
+		Summary:   "Preview update flow.",
+		AssetName: "tidemail-linux-x86_64",
+	}
+	m.updateInfoFresh = true
+	m.updateErr = ""
+	m.updateDismissed = false
+	m.pendingUpdateInstall = false
+	m.downloadedUpdate = nil
+	m.updateInstall = update.InstallResult{}
+	m.updateProgress = 25
+	m.updateInstallReady = false
+	m.updateInstallErr = nil
+	m.overlay = overlayUpdateConfirm
 }
 
 func (m *Model) dismissAvailableUpdate() tea.Cmd {

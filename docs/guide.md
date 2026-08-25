@@ -14,6 +14,14 @@ On Linux or macOS (amd64 or arm64), run:
 curl -fsSL https://raw.githubusercontent.com/allisonhere/tidemail/main/install.sh | sh
 ```
 
+The installer writes to `~/.local/bin` by default, so it should not ask for a
+system password. If you prefer another writable directory, set `INSTALL_DIR`
+before running it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/allisonhere/tidemail/main/install.sh | INSTALL_DIR="$HOME/bin" sh
+```
+
 You can also download a binary from the
 [latest release](https://github.com/allisonhere/tidemail/releases/latest).
 

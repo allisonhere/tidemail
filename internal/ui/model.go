@@ -245,6 +245,9 @@ type Model struct {
 	updateErr            string
 	updateDismissed      bool
 	pendingUpdateInstall bool
+	updateProgress       int
+	updateInstallReady   bool
+	updateInstallErr     error
 	// restartExecPath, when non-empty, asks main to replace this process with
 	// the binary at that path AFTER the program exits — so BubbleTea has fully
 	// restored the terminal before the new version takes over (see
@@ -366,6 +369,9 @@ func (m Model) Init() tea.Cmd {
 			cmds = append(cmds, cmd)
 		}
 	}
+	if m.updateInProgress() {
+		cmds = append(cmds, tickUpdateProgress())
+	}
 	return tea.Batch(cmds...)
 }
 
@@ -447,9 +453,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.pendingUpdateInstall {
 				m.pendingUpdateInstall = false
 				// A manual check from Settings overrides any previous dismiss.
-				m.updateState = updateStateDownloading
-				m.syncSettingsUpdateState()
-				return m, m.downloadUpdateCmd(m.updateInfo)
+				return m, m.beginUpdateInstall()
 			}
 			if !m.updateDismissed && (msg.Manual || update.IsStableVersion(m.currentVersion)) {
 				return m, nil
@@ -472,11 +476,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case UpdateDownloadedMsg:
 		if msg.Err != nil {
-			m.updateState = updateStateError
-			m.updateErr = msg.Err.Error()
-			m.syncSettingsUpdateState()
-			m.setStatus("update download failed: "+msg.Err.Error(), true)
-			return m, m.clearStatusCmd()
+			m.updateInstallReady = true
+			m.updateInstallErr = fmt.Errorf("download failed: %w", msg.Err)
+			return m.finalizeUpdateInstall()
 		}
 		m.downloadedUpdate = &msg.Asset
 		m.updateState = updateStateInstalling
@@ -485,32 +487,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case UpdateInstalledMsg:
 		if msg.Err != nil {
-			m.updateState = updateStateError
-			m.updateErr = msg.Err.Error()
-			m.syncSettingsUpdateState()
-			m.setStatus("update failed: "+msg.Err.Error(), true)
-			return m, m.clearStatusCmd()
+			m.updateInstallReady = true
+			m.updateInstallErr = msg.Err
+			return m.finalizeUpdateInstall()
 		}
 		m.updateInstall = msg.Result
-		m.downloadedUpdate = nil
-		if msg.Result.RequiresManual {
-			m.updateState = updateStateNeedsElevation
-			m.syncSettingsUpdateState()
-			// Clear dismiss — the user clearly wants this update.
-			m.updateDismissed = false
-			m.cfg.Updates.DismissedVersion = ""
-			m.saveConfig()
-			m.setStatus("update downloaded; admin permission required", true)
-			return m, m.clearStatusCmd()
+		m.updateInstallReady = true
+		if m.updateProgress >= 100 {
+			return m.finalizeUpdateInstall()
 		}
-		m.updateState = updateStateInstalled
-		m.updateDismissed = false
-		m.cfg.Updates.DismissedVersion = ""
-		m.clearCachedAvailableUpdate()
-		m.saveConfig()
 		m.syncSettingsUpdateState()
-		m.setStatus("Tide updated to "+msg.Result.Version+m.styles.InlineMidDot()+"restart when ready", false)
-		return m, m.clearStatusCmd()
+		return m, nil
+
+	case UpdateProgressTickMsg:
+		if !m.updateInProgress() {
+			return m, nil
+		}
+		m.updateProgress = min(100, m.updateProgress+updateProgressStep)
+		if m.updateProgress < 100 {
+			return m, tickUpdateProgress()
+		}
+		if m.updateInstallReady {
+			return m.finalizeUpdateInstall()
+		}
+		return m, nil
 
 	case AccountsLoadedMsg:
 		if msg.Err != nil && len(msg.Accounts) == 0 && len(msg.Mailboxes) == 0 {
@@ -2174,18 +2174,37 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleSettings(msg)
 
 	case overlayUpdateConfirm:
+		if m.updateState == updateStateInstalled {
+			if keyMatches(msg, m.keys.Confirm) {
+				return m, tea.Quit
+			}
+			if keyMatches(msg, m.keys.Cancel) {
+				m.overlay = overlayNone
+			}
+			return m, nil
+		}
+		if m.updateState == updateStateNeedsElevation {
+			if keyMatches(msg, m.keys.Confirm, m.keys.Cancel) {
+				m.overlay = overlayNone
+			}
+			return m, nil
+		}
+		if m.updateInProgress() {
+			if m.previewManualUpdateUI && keyMatches(msg, m.keys.Cancel, m.keys.Quit) {
+				m.overlay = overlayNone
+				m.updateState = updateStateIdle
+			}
+			return m, nil
+		}
 		switch {
 		case keyMatches(msg, m.keys.Confirm):
-			m.overlay = overlayNone
 			if m.updateInfo.DownloadURL == "" {
 				m.pendingUpdateInstall = true
 				m.updateState = updateStateChecking
 				m.syncSettingsUpdateState()
 				return m, m.checkForUpdatesCmd(true)
 			}
-			m.updateState = updateStateDownloading
-			m.syncSettingsUpdateState()
-			return m, m.downloadUpdateCmd(m.updateInfo)
+			return m, m.beginUpdateInstall()
 		case keyMatches(msg, m.keys.Cancel):
 			m.overlay = overlayNone
 			return m, nil
@@ -2254,6 +2273,10 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.previewManualUpdateUI {
 			m.setStatus("preview: install disabled", false)
 			return m, m.clearStatusCmd()
+		}
+		if m.updateInfo.DownloadURL != "" && update.IsNewerVersion(m.updateInfo.Version, m.currentVersion) {
+			m.pendingUpdateInstall = false
+			return m, m.beginUpdateInstall()
 		}
 		m.pendingUpdateInstall = true
 		m.updateState = updateStateChecking

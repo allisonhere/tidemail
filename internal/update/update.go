@@ -26,6 +26,7 @@ import (
 const checksumsAssetName = "SHA256SUMS"
 
 const defaultReleasesURL = "https://api.github.com/repos/allisonhere/tidemail/releases/latest"
+const binaryName = "tidemail"
 
 // SuggestedManualInstallScript is shown when an update is available but the running binary's install directory is not writable (before any download/install attempt).
 const SuggestedManualInstallScript = "curl -fsSL https://raw.githubusercontent.com/allisonhere/tidemail/main/install.sh | sh"
@@ -311,14 +312,16 @@ func (u *Updater) Install(asset DownloadedAsset, currentExec string) (InstallRes
 		return result, fmt.Errorf("current executable path is empty")
 	}
 
-	if err := ensureDirWritable(filepath.Dir(currentExec)); err != nil {
+	targetExec, err := installTarget(currentExec, true)
+	if err != nil {
 		result.RequiresManual = true
 		result.ManualCommand = manualInstallCommand(asset.BinaryPath, currentExec)
 		return result, nil
 	}
+	result.ExecutablePath = targetExec
 
-	nextPath := currentExec + ".new"
-	backupPath := currentExec + ".bak"
+	nextPath := targetExec + ".new"
+	backupPath := targetExec + ".bak"
 	_ = os.Remove(nextPath)
 	_ = os.Remove(backupPath)
 
@@ -326,21 +329,21 @@ func (u *Updater) Install(asset DownloadedAsset, currentExec string) (InstallRes
 		return result, fmt.Errorf("stage update binary: %w", err)
 	}
 
-	_, statErr := os.Stat(currentExec)
+	_, statErr := os.Stat(targetExec)
 	targetExists := statErr == nil
 	if statErr != nil && !os.IsNotExist(statErr) {
 		return result, fmt.Errorf("stat current executable: %w", statErr)
 	}
 
 	if targetExists {
-		if err := os.Rename(currentExec, backupPath); err != nil {
+		if err := os.Rename(targetExec, backupPath); err != nil {
 			return result, fmt.Errorf("backup current executable: %w", err)
 		}
 	}
 
-	if err := os.Rename(nextPath, currentExec); err != nil {
+	if err := os.Rename(nextPath, targetExec); err != nil {
 		if targetExists {
-			_ = os.Rename(backupPath, currentExec)
+			_ = os.Rename(backupPath, targetExec)
 		}
 		return result, fmt.Errorf("replace executable: %w", err)
 	}
@@ -535,11 +538,61 @@ func InstallDestinationWritable() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	dir := filepath.Dir(exe)
-	if err := ensureDirWritable(dir); err != nil {
+	if _, err := installTarget(exe, false); err != nil {
 		return false, nil
 	}
 	return true, nil
+}
+
+var (
+	userHomeDir = os.UserHomeDir
+	dirWritable = ensureDirWritable
+)
+
+func installTarget(currentExec string, createFallbackDir bool) (string, error) {
+	currentExec = strings.TrimSpace(currentExec)
+	if currentExec == "" {
+		return "", fmt.Errorf("current executable path is empty")
+	}
+	currentExec, err := filepath.Abs(currentExec)
+	if err != nil {
+		return "", err
+	}
+	if err := dirWritable(filepath.Dir(currentExec)); err == nil {
+		return currentExec, nil
+	}
+
+	fallback, err := defaultUserInstallPath()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Dir(fallback)
+	if createFallbackDir {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return "", err
+		}
+	} else if _, err := os.Stat(dir); err != nil {
+		if statErr := dirWritable(filepath.Dir(filepath.Dir(dir))); statErr != nil {
+			return "", err
+		}
+		return fallback, nil
+	}
+	if err := dirWritable(dir); err != nil {
+		return "", err
+	}
+	return fallback, nil
+}
+
+func defaultUserInstallPath() (string, error) {
+	home, err := userHomeDir()
+	if err != nil {
+		return "", err
+	}
+	home = strings.TrimSpace(home)
+	if home == "" {
+		return "", fmt.Errorf("home directory is empty")
+	}
+	return filepath.Join(home, ".local", "bin", binaryName), nil
 }
 
 func ensureDirWritable(dir string) error {
