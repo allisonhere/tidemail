@@ -8,8 +8,8 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-var httpURLPattern = regexp.MustCompile(`https?://[^\s<>"']+`)
-var unsubscribeURIPattern = regexp.MustCompile(`(?i)(?:https?://|mailto:)[^\s<>"']+`)
+var httpURLPattern = regexp.MustCompile(`https?://[^\s<>"'\[]+`)
+var unsubscribeURIPattern = regexp.MustCompile(`(?i)(?:https?://|mailto:)[^\s<>"'\[]+`)
 var redirectParamNames = []string{"url", "u", "target", "redirect", "redirect_url"}
 
 func extractActionableLinks(content, articleURL string) []string {
@@ -207,16 +207,45 @@ func cleanRedditURL(raw string) string {
 		return raw
 	}
 	host := strings.ToLower(u.Hostname())
-	if host != "reddit.com" && host != "www.reddit.com" {
+	if host != "reddit.com" && host != "www.reddit.com" && host != "old.reddit.com" {
 		return raw
 	}
 	path := u.EscapedPath()
 	if strings.HasPrefix(path, "/mail/notification_off/") || strings.HasPrefix(path, "/mail/unsubscribe/") {
 		return ""
 	}
+	if cleanedPath := cleanRedditPostPath(path); cleanedPath != "" {
+		u.Path = cleanedPath
+		u.RawPath = ""
+	}
 	u.Scheme = "https"
 	u.Host = "www.reddit.com"
 	u.RawQuery = ""
 	u.Fragment = ""
 	return u.String()
+}
+
+func cleanRedditPostPath(path string) string {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) < 5 || parts[0] != "r" || parts[2] != "comments" {
+		return ""
+	}
+	keep := parts[:5]
+	if len(parts) > 5 && isLikelyRedditCommentID(parts[5]) {
+		keep = parts[:6]
+	}
+	return "/" + strings.Join(keep, "/") + "/"
+}
+
+func isLikelyRedditCommentID(s string) bool {
+	if len(s) < 5 {
+		return false
+	}
+	for _, r := range s {
+		if (r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') {
+			continue
+		}
+		return false
+	}
+	return true
 }

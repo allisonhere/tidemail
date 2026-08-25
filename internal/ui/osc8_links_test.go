@@ -122,6 +122,30 @@ func TestCleanDetectedURLDropsRedditNotificationManagementLinks(t *testing.T) {
 	}
 }
 
+func TestExtractActionableLinksStopsBeforeMarkdownLabel(t *testing.T) {
+	got := extractActionableLinks("https://www.reddit.com/r/omarchy/comments/1vxc6xv/free_ai_in_omarchy/[Read/", "")
+	want := "https://www.reddit.com/r/omarchy/comments/1vxc6xv/free_ai_in_omarchy/"
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("expected URL to stop before Markdown label %q, got %#v", want, got)
+	}
+}
+
+func TestCleanDetectedURLDropsStrayRedditCTASegment(t *testing.T) {
+	raw := "https://www.reddit.com/r/omarchy/comments/1vxc6xv/free_ai_in_omarchy/V"
+	want := "https://www.reddit.com/r/omarchy/comments/1vxc6xv/free_ai_in_omarchy/"
+	if got := cleanDetectedURL(raw); got != want {
+		t.Fatalf("expected stray Reddit CTA segment removed, got %q want %q", got, want)
+	}
+}
+
+func TestCleanDetectedURLKeepsLikelyRedditCommentPermalink(t *testing.T) {
+	raw := "https://old.reddit.com/r/omarchy/comments/1vxc6xv/free_ai_in_omarchy/n2abcde/?context=3"
+	want := "https://www.reddit.com/r/omarchy/comments/1vxc6xv/free_ai_in_omarchy/n2abcde/"
+	if got := cleanDetectedURL(raw); got != want {
+		t.Fatalf("expected Reddit comment permalink preserved, got %q want %q", got, want)
+	}
+}
+
 func TestContentLinkListIsHyperlinked(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
