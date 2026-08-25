@@ -15,8 +15,9 @@ curl -fsSL https://raw.githubusercontent.com/allisonhere/tidemail/main/install.s
 ```
 
 The installer writes to `~/.local/bin` by default, so it should not ask for a
-system password. If you prefer another writable directory, set `INSTALL_DIR`
-before running it:
+system password. If an older `tidemail` earlier on `PATH` would still run first,
+the installer removes it when possible or prints the exact cleanup command. If
+you prefer another writable directory, set `INSTALL_DIR` before running it:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/allisonhere/tidemail/main/install.sh | INSTALL_DIR="$HOME/bin" sh

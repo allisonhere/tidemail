@@ -21,7 +21,7 @@ func TestInstallScriptDefaultsToUserLocalBinWithoutSudo(t *testing.T) {
 	cmd := exec.Command("sh", "install.sh")
 	cmd.Env = append(os.Environ(),
 		"HOME="+tmp,
-		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"PATH="+installTestPath(bin),
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -34,6 +34,38 @@ func TestInstallScriptDefaultsToUserLocalBinWithoutSudo(t *testing.T) {
 	}
 	if strings.Contains(string(out), "sudo") || strings.Contains(string(out), "/usr/local/bin") {
 		t.Fatalf("expected user-local install without sudo, got output:\n%s", out)
+	}
+}
+
+func TestInstallScriptRemovesWritableStaleBinaryEarlierOnPath(t *testing.T) {
+	tmp := t.TempDir()
+	archive := writeInstallTestArchive(t, tmp, "tidemail test-version", 0)
+	fakeBin := filepath.Join(tmp, "fakebin")
+	staleBin := filepath.Join(tmp, "oldbin")
+	writeInstallTestTools(t, fakeBin, archive, "")
+	if err := os.MkdirAll(staleBin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(staleBin, "tidemail")
+	if err := os.WriteFile(stale, []byte("#!/bin/sh\necho stale\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("sh", "install.sh")
+	cmd.Env = append(os.Environ(),
+		"HOME="+tmp,
+		"PATH="+installTestPath(fakeBin, staleBin, filepath.Join(tmp, ".local", "bin")),
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("install.sh failed: %v\n%s", err, out)
+	}
+
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("expected stale binary removed, stat err=%v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "Removed stale "+stale) {
+		t.Fatalf("expected stale binary removal message, got:\n%s", out)
 	}
 }
 
@@ -56,7 +88,7 @@ func TestInstallScriptLeavesExistingBinaryWhenDownloadedBinaryFailsVersionCheck(
 	cmd.Env = append(os.Environ(),
 		"HOME="+tmp,
 		"INSTALL_DIR="+installDir,
-		"PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"PATH="+installTestPath(fakeBin),
 	)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -111,7 +143,7 @@ func TestInstallScriptCleansStagedBinaryWhenInstallVerificationFails(t *testing.
 	cmd.Env = append(os.Environ(),
 		"HOME="+tmp,
 		"INSTALL_DIR="+installDir,
-		"PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"PATH="+installTestPath(fakeBin),
 	)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -181,6 +213,12 @@ func assertNoInstallTemps(t *testing.T, dir string) {
 	if len(matches) > 0 {
 		t.Fatalf("expected no staged install files left behind, found %v", matches)
 	}
+}
+
+func installTestPath(dirs ...string) string {
+	parts := append([]string{}, dirs...)
+	parts = append(parts, "/usr/bin", "/bin")
+	return strings.Join(parts, string(os.PathListSeparator))
 }
 
 func shellQuote(s string) string {

@@ -324,12 +324,26 @@ func (m Model) renderUpdateConfirmOverlay(width int, chrome managerChrome) strin
 	target, _ := os.Executable()
 	contentW := max(1, width-4)
 	if m.updateState == updateStateInstalled {
+		bodyText := "Updated TideMail to " + m.updateInstall.Version + "."
+		if shadowed := strings.TrimSpace(m.updateInstall.ShadowedPath); shadowed != "" {
+			cmd := strings.TrimSpace(m.updateInstall.ShadowedCommand)
+			if cmd == "" {
+				cmd = "rm -f " + shadowed
+			}
+			bodyText = strings.Join([]string{
+				bodyText,
+				"",
+				shadowed + " is still earlier on PATH.",
+				"Remove it so tidemail starts this version:",
+				cmd,
+			}, "\n")
+		}
 		body := lipgloss.NewStyle().
 			Background(chrome.baseBg).
 			Foreground(chrome.text).
 			Width(width).
 			Padding(1, 2, 0, 2).
-			Render("Updated TideMail to " + m.updateInstall.Version + ".")
+			Render(bodyText)
 		hints := renderSoftHints(width, chrome, "enter", "restart", "esc", "close")
 		return lipgloss.JoinVertical(lipgloss.Left, body, hints)
 	}

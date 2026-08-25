@@ -46,7 +46,9 @@ curl -fsSL https://raw.githubusercontent.com/allisonhere/tidemail/main/install.s
 
 The installer writes to `~/.local/bin` by default, so it should not ask for a
 system password. Set `INSTALL_DIR=/path/to/bin` on the `sh` command if you want
-a different writable destination.
+a different writable destination. If an older `tidemail` earlier on `PATH`
+would still run first, the installer removes it when possible or prints the
+exact cleanup command.
 
 You can also grab an archive from the
 [latest release](https://github.com/allisonhere/tidemail/releases/latest).

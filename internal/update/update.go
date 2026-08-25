@@ -66,11 +66,13 @@ type DownloadedAsset struct {
 
 // InstallResult tells the UI whether Tide was replaced directly or needs a manual command. -allie
 type InstallResult struct {
-	Version        string
-	ExecutablePath string
-	RequiresManual bool
-	ManualCommand  string
-	Restartable    bool
+	Version         string
+	ExecutablePath  string
+	RequiresManual  bool
+	ManualCommand   string
+	Restartable     bool
+	ShadowedPath    string
+	ShadowedCommand string
 }
 
 type githubRelease struct {
@@ -352,6 +354,10 @@ func (u *Updater) Install(asset DownloadedAsset, currentExec string) (InstallRes
 		_ = os.Remove(backupPath)
 	}
 	result.Restartable = true
+	if shadowedBy(currentExec, targetExec) {
+		result.ShadowedPath = currentExec
+		result.ShadowedCommand = removeCommand(currentExec)
+	}
 	return result, nil
 }
 
@@ -595,6 +601,42 @@ func defaultUserInstallPath() (string, error) {
 	return filepath.Join(home, ".local", "bin", binaryName), nil
 }
 
+func shadowedBy(candidate, target string) bool {
+	candidate = strings.TrimSpace(candidate)
+	target = strings.TrimSpace(target)
+	if candidate == "" || target == "" {
+		return false
+	}
+	candidateAbs, err := filepath.Abs(candidate)
+	if err != nil {
+		return false
+	}
+	targetAbs, err := filepath.Abs(target)
+	if err != nil {
+		return false
+	}
+	if candidateAbs == targetAbs {
+		return false
+	}
+	seenCandidate := false
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if dir == "" {
+			dir = "."
+		}
+		path, err := filepath.Abs(filepath.Join(dir, binaryName))
+		if err != nil {
+			continue
+		}
+		switch path {
+		case targetAbs:
+			return seenCandidate
+		case candidateAbs:
+			seenCandidate = true
+		}
+	}
+	return false
+}
+
 func ensureDirWritable(dir string) error {
 	f, err := os.CreateTemp(dir, ".tide-update-write-*")
 	if err != nil {
@@ -631,4 +673,8 @@ func copyExecutable(src, dst string) error {
 
 func manualInstallCommand(binaryPath, target string) string {
 	return fmt.Sprintf("sudo install -m 0755 %q %q", binaryPath, target)
+}
+
+func removeCommand(path string) string {
+	return fmt.Sprintf("sudo rm -f %q", path)
 }

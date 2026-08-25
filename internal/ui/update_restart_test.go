@@ -206,6 +206,25 @@ func TestUpdateOverlayRendersProgressBar(t *testing.T) {
 	}
 }
 
+func TestUpdateOverlayRendersShadowedBinaryCleanup(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "v1.2.2", false)
+	m.updateState = updateStateInstalled
+	m.updateInstall = update.InstallResult{
+		Version:         "v1.2.3",
+		ShadowedPath:    "/usr/local/bin/tidemail",
+		ShadowedCommand: `rm -f "/usr/local/bin/tidemail"`,
+	}
+	chrome := newManagerChrome(72, CatppuccinMocha, true)
+
+	got := ansi.Strip(m.renderUpdateConfirmOverlay(72, chrome))
+	if !strings.Contains(got, "/usr/local/bin/tidemail is still earlier on PATH") {
+		t.Fatalf("expected shadowed binary warning, got %q", got)
+	}
+	if !strings.Contains(got, `rm -f "/usr/local/bin/tidemail"`) {
+		t.Fatalf("expected cleanup command, got %q", got)
+	}
+}
+
 func TestApplyUpdateProgressPreviewOpensProgressOverlay(t *testing.T) {
 	m := NewModel(nil, config.DefaultConfig(), "dev", true)
 	m.ApplyUpdateProgressPreview()

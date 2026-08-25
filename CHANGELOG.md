@@ -4,6 +4,13 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- **Installing to `~/.local/bin` now handles stale earlier binaries.** The
+  installer removes writable older `tidemail` binaries that appear earlier on
+  `PATH`, and both the installer and in-app updater show the cleanup command
+  when a privileged old binary would still run first.
+
 ## v1.0.5
 
 **Release highlights:** installs now land in the user-local bin path by default,

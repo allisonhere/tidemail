@@ -286,6 +286,7 @@ func TestInstallFallsBackToUserLocalBinWhenCurrentDirNotWritable(t *testing.T) {
 		}
 		return ensureDirWritable(path)
 	}
+	t.Setenv("PATH", currentDir+string(os.PathListSeparator)+filepath.Join(home, ".local", "bin"))
 
 	result, err := New().Install(DownloadedAsset{
 		Release:    ReleaseInfo{Version: "v1.2.3"},
@@ -315,6 +316,12 @@ func TestInstallFallsBackToUserLocalBinWhenCurrentDirNotWritable(t *testing.T) {
 	}
 	if string(oldData) != "old" {
 		t.Fatalf("original binary changed: %q", string(oldData))
+	}
+	if result.ShadowedPath != current {
+		t.Fatalf("ShadowedPath = %q, want %q", result.ShadowedPath, current)
+	}
+	if result.ShadowedCommand == "" || !strings.Contains(result.ShadowedCommand, current) {
+		t.Fatalf("ShadowedCommand = %q, want command for %q", result.ShadowedCommand, current)
 	}
 }
 

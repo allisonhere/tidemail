@@ -24,6 +24,10 @@ success() { printf "  ${GREEN}✓${NC} %s\n" "$1"; }
 warn()    { printf "  ${DIM}!${NC} %s\n" "$1"; }
 error()   { printf "  ${RED}✗${NC} %s\n" "$1" >&2; exit 1; }
 
+quote_path() {
+  printf "'%s'" "$(printf "%s" "$1" | sed "s/'/'\\\\''/g")"
+}
+
 # Detect OS
 case "$(uname -s)" in
   Linux*)  OS="linux" ;;
@@ -122,8 +126,46 @@ INSTALL_TMP=""
 
 # ── Verify ────────────────────────────────────────────────────────────────
 success "Installed ${VERSION} to ${INSTALL_DIR}/${BINARY}"
+SHADOWED=""
+FOUND_INSTALLED=""
+OLD_IFS=$IFS
+IFS=:
+for dir in $PATH; do
+  [ -n "$dir" ] || dir="."
+  candidate="${dir}/${BINARY}"
+  if [ "$candidate" = "${INSTALL_DIR}/${BINARY}" ]; then
+    FOUND_INSTALLED=1
+    break
+  fi
+  if [ ! -f "$candidate" ] || [ ! -x "$candidate" ]; then
+    continue
+  fi
+
+  if [ -w "$dir" ]; then
+    if rm -f "$candidate"; then
+      success "Removed stale ${candidate} that appeared earlier on PATH"
+      continue
+    fi
+  fi
+
+  if [ -w "$dir" ]; then
+    SHADOWED_CMD="rm -f $(quote_path "$candidate")"
+  else
+    SHADOWED_CMD="sudo rm -f $(quote_path "$candidate")"
+  fi
+  SHADOWED="$candidate"
+  break
+done
+IFS=$OLD_IFS
+
 case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;
   *) warn "${INSTALL_DIR} is not on PATH; add it before running ${BINARY} by name." ;;
 esac
+if [ -n "$SHADOWED" ]; then
+  warn "${SHADOWED} appears before ${INSTALL_DIR}/${BINARY} on PATH, so it may still run first."
+  warn "Remove it with: ${SHADOWED_CMD}"
+elif [ -z "$FOUND_INSTALLED" ]; then
+  warn "${INSTALL_DIR}/${BINARY} is not before other ${BINARY} entries on PATH."
+fi
 printf "\n  Run ${BOLD}tidemail${NC} to get started.\n\n"
