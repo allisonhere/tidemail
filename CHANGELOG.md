@@ -4,6 +4,25 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.0.4
+
+**Release highlights:** noisy HTML emails are easier to read in the terminal:
+Reddit digests render as compact post summaries, newsletter-style templates shed
+more boilerplate, and tracking redirects resolve to cleaner actionable links.
+
+### Fixed
+
+- **Reddit digest emails now render as compact terminal-native post summaries.**
+  TideMail extracts the subreddit, author, age, post title, excerpt, vote/comment
+  counts, and read action instead of showing the raw email-template scaffolding.
+- **Noisy newsletter-style HTML gets a cleaner fallback view.** Bulky table-heavy
+  templates with preheaders, spacer cells, and footer boilerplate now prefer
+  meaningful article text and CTA labels when the extractor can do so
+  confidently.
+- **Actionable links are cleaner for tracked email links.** Reddit click wrappers
+  and common redirect parameters such as `url=`, `u=`, `target=`, and `redirect=`
+  are normalized so the Links list points at the real destination when possible.
+
 ## v1.0.3
 
 **Release highlights:** you can always tell which pane you're in now — a full
