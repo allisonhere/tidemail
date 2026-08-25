@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"net/url"
 	"strings"
 	"testing"
 
@@ -96,6 +97,28 @@ func TestPlainUIBodyEmitsNoHyperlinks(t *testing.T) {
 	got := formatArticleBody("See https://example.com/docs for details.", 80, CatppuccinMocha, true)
 	if strings.Contains(got, "\x1b]8") {
 		t.Fatalf("plainUI body emitted OSC 8: %q", got)
+	}
+}
+
+func TestCleanDetectedURLUnwrapsGenericRedirectTargets(t *testing.T) {
+	cases := map[string]string{
+		"url":      "https://example.com/article?utm_source=mail",
+		"u":        "https://example.com/article",
+		"target":   "https://example.com/article",
+		"redirect": "https://example.com/article",
+	}
+	for param, want := range cases {
+		raw := "https://tracker.example/click?" + param + "=" + url.QueryEscape(want)
+		if got := cleanDetectedURL(raw); got != want {
+			t.Fatalf("%s redirect cleaned to %q, want %q", param, got, want)
+		}
+	}
+}
+
+func TestCleanDetectedURLDropsRedditNotificationManagementLinks(t *testing.T) {
+	raw := "https://click.redditmail.com/CL0/https:%2F%2Fwww.reddit.com%2Fmail%2Funsubscribe%2Fabc%3Ftoken%3D1/1/token"
+	if got := cleanDetectedURL(raw); got != "" {
+		t.Fatalf("expected Reddit management link dropped, got %q", got)
 	}
 }
 

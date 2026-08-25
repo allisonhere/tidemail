@@ -342,6 +342,65 @@ func TestHTMLNamedLinkStillPopulatesActionableLinks(t *testing.T) {
 	}
 }
 
+func TestMessageRenderResultKeepsBodyAndLinksTogether(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Display.ActionableLinks = true
+	m := NewModel(nil, cfg, "dev", false)
+	m.width = 90
+
+	msg := db.Message{
+		ID: 1,
+		BodyHTML: `<table role="presentation"><tr><td><h2>Weekly report</h2>` +
+			`<p>Everything important.</p>` +
+			`<a href="https://track.example/click?url=https%3A%2F%2Fexample.com%2Freport%3Futm_source%3Dmail">View report</a>` +
+			`</td></tr></table>`,
+	}
+	result := m.renderMessageForDisplay(msg, 60)
+	body := ansi.Strip(result.body)
+
+	if !strings.Contains(body, "Weekly report") || !strings.Contains(body, "Everything important.") || !strings.Contains(body, "View report") {
+		t.Fatalf("expected generic noisy newsletter body, got %q", body)
+	}
+	if len(result.links) != 1 || result.links[0] != "https://example.com/report?utm_source=mail" {
+		t.Fatalf("expected cleaned redirect target in render result links, got %#v", result.links)
+	}
+
+	m.setViewportMessage(msg)
+	if len(m.contentLinks) != 1 || m.contentLinks[0] != result.links[0] {
+		t.Fatalf("expected synced content links to use render result links, got %#v want %#v", m.contentLinks, result.links)
+	}
+}
+
+func TestNoisyHTMLArticleExtractorCleansGenericTemplate(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	noisyPadding := strings.Repeat(`<table role="presentation"><tr><td>&nbsp;</td></tr></table>`, 90)
+	msg := db.Message{BodyHTML: `<html><body>` +
+		`<div class="preheader">Hidden preview text</div>` +
+		noisyPadding +
+		`<h2>Product update</h2>` +
+		`<p>The release is ready for review and includes the changes people asked for.</p>` +
+		`<p>You can test it today and reply with anything that feels off.</p>` +
+		`<a class="primary-cta" href="https://tracker.example/click?target=https%3A%2F%2Fexample.com%2Frelease">Read now</a>` +
+		`<p>You are receiving this email because you subscribed.</p>` +
+		`</body></html>`}
+
+	result := m.renderMessageForDisplay(msg, 52)
+	body := ansi.Strip(result.body)
+	for _, want := range []string{"Product update", "The release is ready", "You can test it today", "[Read now]"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expected noisy template body to contain %q, got %q", want, body)
+		}
+	}
+	for _, bad := range []string{"Hidden preview text", "receiving this email", "tracker.example"} {
+		if strings.Contains(body, bad) {
+			t.Fatalf("expected noisy template body to omit %q, got %q", bad, body)
+		}
+	}
+	if len(result.links) != 1 || result.links[0] != "https://example.com/release" {
+		t.Fatalf("expected cleaned CTA link, got %#v", result.links)
+	}
+}
+
 func TestRenderHTMLBodyPreservesPreformattedSpacing(t *testing.T) {
 	got := ansi.Strip(renderHTMLBody(`<pre>alpha
   beta
@@ -443,6 +502,94 @@ func TestRenderHTMLBodyKeepsNewsletterSemanticsInLayoutTables(t *testing.T) {
 	}
 }
 
+func TestRenderRedditDigestHTMLCompactsPostNotification(t *testing.T) {
+	html := redditDigestFixture()
+	got, ok := renderRedditDigestHTML(html, 44, CatppuccinMocha, true)
+	if !ok {
+		t.Fatal("expected Reddit digest fixture to render")
+	}
+	stripped := ansi.Strip(got)
+	for _, want := range []string{
+		"r/omarchy - u/Borbit85 - 8h ago",
+		"Free ai in Omarchy?",
+		"I've installed this thing",
+		"of like it.",
+		"12 upvotes - 14 comments",
+		"[Read post]",
+	} {
+		if !strings.Contains(stripped, want) {
+			t.Fatalf("expected %q in rendered Reddit digest, got %q", want, stripped)
+		}
+	}
+	for _, bad := range []string{
+		"Hidden preview",
+		"Read More",
+		"Hide r/omarchy",
+		"click.redditmail.com",
+		"redditstatic.com",
+		"[image:",
+	} {
+		if strings.Contains(stripped, bad) {
+			t.Fatalf("expected Reddit digest to omit %q, got %q", bad, stripped)
+		}
+	}
+	for i, line := range strings.Split(stripped, "\n") {
+		if width := ansi.StringWidth(line); width > 44 {
+			t.Fatalf("line %d width = %d, want <= 44: %q", i, width, line)
+		}
+	}
+}
+
+func TestRenderRedditDigestHTMLFallsBackWhenNoPostsFound(t *testing.T) {
+	if got, ok := renderRedditDigestHTML(`<p>Reddit notification settings changed.</p>`, 44, CatppuccinMocha, true); ok || got != "" {
+		t.Fatalf("expected non-digest Reddit HTML to fall back, got ok=%v body=%q", ok, got)
+	}
+}
+
+func TestRenderRedditDigestHTMLReadsRawLayoutBeforeGenericCleanup(t *testing.T) {
+	html := `<table><tr><th style="font-size:0pt;line-height:0pt">` + redditDigestFixture() + `</th></tr></table>`
+	normalized := normalizeHTMLForRendering(html)
+	if strings.Contains(normalized, "post_title") {
+		t.Fatalf("test fixture should exercise links dropped by generic cleanup, got %q", normalized)
+	}
+	got, ok := renderRedditDigestHTML(html, 44, CatppuccinMocha, true)
+	if !ok || !strings.Contains(ansi.Strip(got), "Free ai in Omarchy?") {
+		t.Fatalf("expected raw Reddit extractor to run before generic cleanup, ok=%v body=%q", ok, ansi.Strip(got))
+	}
+}
+
+func TestRenderMessageBodyUsesRedditDigestForRedditMail(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	got := ansi.Strip(m.renderMessageBody(db.Message{
+		From:     "Reddit <noreply@redditmail.com>",
+		BodyHTML: redditDigestFixture(),
+	}, 44))
+
+	if !strings.Contains(got, "Free ai in Omarchy?") || !strings.Contains(got, "[Read post]") {
+		t.Fatalf("expected compact Reddit body, got %q", got)
+	}
+	if strings.Contains(got, "Hide r/omarchy") || strings.Contains(got, "click.redditmail.com") {
+		t.Fatalf("expected Reddit mail clutter removed, got %q", got)
+	}
+}
+
+func TestRedditClickLinksBecomeActionablePostLinks(t *testing.T) {
+	links := extractActionableLinksFromHTML(redditDigestFixture(), "")
+	want := "https://www.reddit.com/r/omarchy/comments/1vxc6xv/free_ai_in_omarchy/"
+	if len(links) != 1 || links[0] != want {
+		t.Fatalf("expected only the decoded Reddit post link %q, got %#v", want, links)
+	}
+}
+
+func TestRedditClickLinksSurviveGenericLayoutCleanup(t *testing.T) {
+	html := `<table><tr><th style="font-size:0pt;line-height:0pt">` + redditDigestFixture() + `</th></tr></table>`
+	links := extractActionableLinksFromHTML(html, "")
+	want := "https://www.reddit.com/r/omarchy/comments/1vxc6xv/free_ai_in_omarchy/"
+	if len(links) != 1 || links[0] != want {
+		t.Fatalf("expected decoded Reddit post link from raw layout HTML %q, got %#v", want, links)
+	}
+}
+
 func TestRenderHTMLBodyRemovesNewsletterPreheaderAndSpacers(t *testing.T) {
 	html := `<div class="preheader">Hidden preview copy that should not render</div>` +
 		`<table role="presentation"><tr><td width="1">&nbsp;</td><td><h2>Product update</h2></td></tr>` +
@@ -461,6 +608,25 @@ func TestRenderHTMLBodyRemovesNewsletterPreheaderAndSpacers(t *testing.T) {
 	if strings.Contains(got, "\u00a0") {
 		t.Fatalf("expected spacer nbsp removed from %q", got)
 	}
+}
+
+func redditDigestFixture() string {
+	post := "https:%2F%2Fwww.reddit.com%2Fr%2Fomarchy%2Fcomments%2F1vxc6xv%2Ffree_ai_in_omarchy%2F%3Futm_content="
+	click := func(marker string) string {
+		return "https://click.redditmail.com/CL0/" + post + marker + "/1/token"
+	}
+	return `<html><body>` +
+		`<span class="mcnPreviewText" style="display:none">Hidden preview</span>` +
+		`<table role="presentation"><tr><td>` +
+		`<a href="` + click("post_subreddit") + `"><strong>r/omarchy</strong></a>` +
+		`<a href="` + click("post_author") + `">u/Borbit85</a>` +
+		`<a href="` + click("post_timestamp") + `">8h ago</a>` +
+		`<a href="` + click("post_title") + `"><strong>Free ai in Omarchy?</strong></a>` +
+		`<a href="` + click("post_body") + `">I've installed this thing and I think I kind of like it. <span>Read More</span></a>` +
+		`<a href="` + click("post_karma") + `"><img src="https://www.redditstatic.com/emaildigest/upvote.png" alt="">12 upvotes</a>` +
+		`<a href="` + click("post_comments") + `"><img src="https://www.redditstatic.com/emaildigest/reddit_comment.png" alt="">14 comments</a>` +
+		`<a href="https://click.redditmail.com/CL0/https:%2F%2Fwww.reddit.com%2Fmail%2Fnotification_off%2Fabc%3Futm_content=post_hide_subreddit/1/token">Hide r/omarchy</a>` +
+		`</td></tr></table></body></html>`
 }
 
 func TestRenderHTMLBodyKeepsImageOnlyCTALabel(t *testing.T) {

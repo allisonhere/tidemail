@@ -95,22 +95,12 @@ func (m Model) renderMessageContent(msg db.Message) string {
 }
 
 func (m Model) renderMessageBody(msg db.Message, bodyWidth int) string {
-	var body string
-	filterLinks := m.cfg.Display.FilterLinks
-	if msg.BodyHTML != "" {
-		body = renderHTMLBodyOpts(msg.BodyHTML, bodyWidth, m.styles.Theme, m.styles.PlainUI, filterLinks)
-	}
-	if body == "" {
-		content := msg.BodyText
-		if content == "" {
-			content = "No message body."
-		}
-		if filterLinks {
-			content = filterLinksFromContent(content)
-		}
-		body = indentBlock(m.styles.ContentBody.Width(bodyWidth).Render(formatArticleBody(content, bodyWidth, m.styles.Theme, m.styles.PlainUI)), 1)
-	}
-	return body
+	return m.renderMessageForDisplay(msg, bodyWidth).body
+}
+
+func isRedditMessage(msg db.Message) bool {
+	from := strings.ToLower(msg.From)
+	return strings.Contains(from, "redditmail.com") || strings.Contains(from, "reddit <")
 }
 
 func (m Model) renderAttachmentList(width int) string {
@@ -550,10 +540,7 @@ func (m *Model) syncContentLinks(msg db.Message) {
 		return
 	}
 
-	links := extractActionableLinks(msg.BodyText, "")
-	if msg.BodyHTML != "" {
-		links = mergeActionableLinks(links, extractActionableLinksFromHTML(msg.BodyHTML, ""))
-	}
+	links := m.renderMessageForDisplay(msg, m.contentBodyWidth()).links
 	if len(links) == 0 {
 		m.contentLinks = nil
 		m.contentLinkIdx = -1
@@ -582,11 +569,7 @@ func (m *Model) syncThreadContentLinks(thread messageThread) {
 	}
 	var links []string
 	for _, msg := range thread.Messages {
-		msgLinks := extractActionableLinks(msg.BodyText, "")
-		if msg.BodyHTML != "" {
-			msgLinks = mergeActionableLinks(msgLinks, extractActionableLinksFromHTML(msg.BodyHTML, ""))
-		}
-		links = mergeActionableLinks(links, msgLinks)
+		links = mergeActionableLinks(links, m.renderMessageForDisplay(msg, m.contentBodyWidth()).links)
 	}
 	if len(links) == 0 {
 		m.contentLinks = nil

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -9,6 +10,7 @@ import (
 
 var httpURLPattern = regexp.MustCompile(`https?://[^\s<>"']+`)
 var unsubscribeURIPattern = regexp.MustCompile(`(?i)(?:https?://|mailto:)[^\s<>"']+`)
+var redirectParamNames = []string{"url", "u", "target", "redirect", "redirect_url"}
 
 func extractActionableLinks(content, articleURL string) []string {
 	seen := map[string]struct{}{}
@@ -50,6 +52,9 @@ func extractActionableLinksFromHTML(content, articleURL string) []string {
 	}
 
 	appendLink(articleURL)
+	for _, link := range extractRedditPostLinks(content) {
+		appendLink(link)
+	}
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(normalizeHTMLForRendering(content)))
 	if err == nil {
 		doc.Find("a[href], img[src], img[data-src]").Each(func(_ int, s *goquery.Selection) {
@@ -116,8 +121,102 @@ func osc8Link(uri, label string, plainUI bool) string {
 func cleanDetectedURL(raw string) string {
 	clean := strings.TrimSpace(raw)
 	clean = strings.TrimRight(clean, ".,;:!?)]}\"'")
+	if target, ok := unwrapRedditClickURL(clean); ok {
+		return target
+	}
+	if target, ok := unwrapGenericRedirectURL(clean); ok {
+		return target
+	}
+	if isRedditTrackingURL(clean) {
+		return ""
+	}
 	if strings.HasPrefix(clean, "http://") || strings.HasPrefix(clean, "https://") {
-		return clean
+		return cleanRedditURL(clean)
 	}
 	return ""
+}
+
+func unwrapRedditClickURL(raw string) (string, bool) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", false
+	}
+	if !strings.EqualFold(u.Hostname(), "click.redditmail.com") {
+		return "", false
+	}
+	parts := strings.Split(strings.TrimLeft(u.EscapedPath(), "/"), "/")
+	if len(parts) < 2 || !strings.EqualFold(parts[0], "CL0") {
+		return "", false
+	}
+	target, err := url.PathUnescape(parts[1])
+	if err != nil || target == "" {
+		return "", false
+	}
+	return cleanRedditURL(target), true
+}
+
+func unwrapGenericRedirectURL(raw string) (string, bool) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", false
+	}
+	values := u.Query()
+	for _, name := range redirectParamNames {
+		for _, value := range values[name] {
+			if cleaned := cleanRedirectTarget(value); cleaned != "" {
+				return cleaned, true
+			}
+		}
+	}
+	return "", false
+}
+
+func cleanRedirectTarget(raw string) string {
+	target := strings.TrimSpace(raw)
+	if target == "" {
+		return ""
+	}
+	if unescaped, err := url.QueryUnescape(target); err == nil {
+		target = strings.TrimSpace(unescaped)
+	}
+	if unescaped, err := url.PathUnescape(target); err == nil {
+		target = strings.TrimSpace(unescaped)
+	}
+	if !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
+		return ""
+	}
+	target = strings.TrimRight(target, ".,;:!?)]}\"'")
+	if reddit := cleanRedditURL(target); reddit != target {
+		return reddit
+	}
+	return target
+}
+
+func isRedditTrackingURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "click.redditmail.com" || host == "www.redditstatic.com"
+}
+
+func cleanRedditURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	host := strings.ToLower(u.Hostname())
+	if host != "reddit.com" && host != "www.reddit.com" {
+		return raw
+	}
+	path := u.EscapedPath()
+	if strings.HasPrefix(path, "/mail/notification_off/") || strings.HasPrefix(path, "/mail/unsubscribe/") {
+		return ""
+	}
+	u.Scheme = "https"
+	u.Host = "www.reddit.com"
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
 }
