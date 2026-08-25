@@ -157,7 +157,7 @@ func TestUpdateInstalledWaitsForProgressBeforeRestartPrompt(t *testing.T) {
 	}
 
 	for got.updateProgress < 100 {
-		next, cmd = got.Update(UpdateProgressTickMsg{})
+		next, _ = got.Update(UpdateProgressTickMsg{})
 		got = next.(Model)
 	}
 	if got.updateState != updateStateInstalled {
