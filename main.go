@@ -12,6 +12,7 @@ import (
 
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
+	"github.com/allisonhere/tide/internal/profilelock"
 	"github.com/allisonhere/tide/internal/ui"
 )
 
@@ -69,6 +70,17 @@ func run() (code int, restartExec string) {
 			return 0, ""
 		}
 	}
+	lockPath, err := config.ProfileLockPath()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error locating profile lock:", err)
+		return 1, ""
+	}
+	profile, err := profilelock.Acquire(lockPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1, ""
+	}
+	defer profile.Close() //nolint:errcheck
 
 	cfg, err := config.Load()
 	if err != nil {

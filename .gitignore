@@ -24,3 +24,8 @@ tidemail
 # Release tarballs. Built by deploy.sh and rebuilt by CI on the tag; GitHub
 # Releases hosts them. Committing them here only bloats the repo. -allie
 dist/
+cmd/tidemail-gui/build/
+cmd/tidemail-gui/frontend/node_modules/
+cmd/tidemail-gui/frontend/wailsjs/
+cmd/tidemail-gui/frontend/package.json.md5
+cmd/tidemail-gui/tidemail-gui

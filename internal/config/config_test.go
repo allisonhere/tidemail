@@ -35,6 +35,48 @@ func TestNormalizeDisplayDensity(t *testing.T) {
 	}
 }
 
+func TestDesktopLayoutDefaultsAndNormalization(t *testing.T) {
+	if got := DefaultConfig().Display.DesktopLayout; got != "native" {
+		t.Fatalf("fresh profile layout = %q, want native", got)
+	}
+	for input, want := range map[string]string{"modern": "modern", " MODERN ": "modern", "native": "native", "unknown": "native", "": "native"} {
+		if got := NormalizeDesktopLayout(input); got != want {
+			t.Errorf("NormalizeDesktopLayout(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestLoadMigratesExistingDesktopLayout(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "missing field keeps modern", body: "[display]\ndensity = \"compact\"\n", want: "modern"},
+		{name: "explicit native", body: "[display]\ndesktop_layout = \"native\"\n", want: "native"},
+		{name: "explicit modern", body: "[display]\ndesktop_layout = \"modern\"\n", want: "modern"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Setenv("XDG_CONFIG_HOME", dir)
+			path := filepath.Join(dir, "tidemail", "config.toml")
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(tc.body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Display.DesktopLayout != tc.want {
+				t.Fatalf("layout = %q, want %q", cfg.Display.DesktopLayout, tc.want)
+			}
+		})
+	}
+}
+
 func TestDefaultConfigIncludesUpdateDefaults(t *testing.T) {
 	cfg := DefaultConfig()
 	if !cfg.Updates.CheckOnStartup {

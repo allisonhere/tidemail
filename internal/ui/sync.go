@@ -17,120 +17,48 @@ import (
 )
 
 func (m *Model) loadAccountsCmd() tea.Cmd {
-	database := m.db
-	configuredAccounts := append([]config.AccountConfig(nil), m.cfg.Accounts...)
+	service := m.appService
 	return func() tea.Msg {
-		accounts, err := database.ListAccounts()
+		state, err := service.Bootstrap()
 		if err != nil {
 			return AccountsLoadedMsg{Err: err}
 		}
-		if len(configuredAccounts) > 0 {
-			accounts, err = ensureConfiguredAccounts(database, accounts, configuredAccounts)
-			if err != nil {
-				return AccountsLoadedMsg{Err: err}
-			}
-		}
-		var mailboxes []db.Mailbox
-		for _, a := range accounts {
-			mbs, err2 := database.ListMailboxes(a.ID)
-			if err2 != nil {
-				return AccountsLoadedMsg{Err: err2}
-			}
-			mailboxes = append(mailboxes, mbs...)
-		}
-		return AccountsLoadedMsg{Accounts: accounts, Mailboxes: mailboxes}
+		return AccountsLoadedMsg{Accounts: state.Accounts, Mailboxes: state.Mailboxes}
 	}
-}
-
-func ensureConfiguredAccounts(database *db.DB, accounts []db.Account, configs []config.AccountConfig) ([]db.Account, error) {
-	existing := make(map[string]db.Account, len(accounts))
-	for _, account := range accounts {
-		existing[strings.TrimSpace(account.Name)] = account
-	}
-	changed := false
-	for _, accountCfg := range configs {
-		name := strings.TrimSpace(accountCfg.Name)
-		if name == "" {
-			continue
-		}
-		account, ok := existing[name]
-		if !ok {
-			accountID, err := database.AddAccount(name, "")
-			if err != nil {
-				return accounts, fmt.Errorf("import configured account %s: %w", name, err)
-			}
-			account = db.Account{ID: accountID, Name: name}
-			existing[name] = account
-			changed = true
-		}
-		mailboxes, err := database.ListMailboxes(account.ID)
-		if err != nil {
-			return accounts, fmt.Errorf("list imported account mailboxes %s: %w", name, err)
-		}
-		if len(mailboxes) == 0 {
-			if _, err := database.UpsertMailbox(db.Mailbox{AccountID: account.ID, Name: "INBOX", DisplayName: cleanDisplayName("INBOX"), Delimiter: "/"}); err != nil {
-				return accounts, fmt.Errorf("create starter inbox for %s: %w", name, err)
-			}
-			changed = true
-		}
-	}
-	if !changed {
-		return accounts, nil
-	}
-	return database.ListAccounts()
 }
 
 func (m *Model) loadMailboxMessagesCmd(mailboxID int64) tea.Cmd {
-	database := m.db
-	unreadFirst := m.cfg.Display.UnreadFirst
+	service := m.appService
 	return func() tea.Msg {
-		var (
-			msgs []db.Message
-			err  error
-		)
-		if unreadFirst {
-			msgs, err = database.ListMessagesUnreadFirst(mailboxID)
-		} else {
-			msgs, err = database.ListMessages(mailboxID)
-		}
+		page, err := service.ListMessages(mailboxID, false, false)
 		if err != nil {
 			return MessagesLoadedMsg{MailboxID: mailboxID, Err: err}
 		}
-		return MessagesLoadedMsg{MailboxID: mailboxID, Messages: msgs}
+		return MessagesLoadedMsg{MailboxID: mailboxID, Messages: page.Messages}
 	}
 }
 
 func (m *Model) loadUnifiedInboxCmd() tea.Cmd {
-	database := m.db
+	service := m.appService
 	unreadOnly := m.showUnreadOnly
-	unreadFirst := m.cfg.Display.UnreadFirst
 	return func() tea.Msg {
-		var (
-			msgs []db.Message
-			err  error
-		)
-		if unreadFirst {
-			msgs, err = database.ListUnifiedInboxUnreadFirst(unreadOnly)
-		} else {
-			msgs, err = database.ListUnifiedInbox(unreadOnly)
-		}
+		page, err := service.ListMessages(0, true, unreadOnly)
 		if err != nil {
 			return MessagesLoadedMsg{Err: err}
 		}
-		return MessagesLoadedMsg{MailboxID: 0, Messages: msgs}
+		return MessagesLoadedMsg{MailboxID: 0, Messages: page.Messages}
 	}
 }
 
 func (m *Model) searchAllMessagesCmd(query string) tea.Cmd {
-	database := m.db
-	unreadFirst := m.cfg.Display.UnreadFirst
+	service := m.appService
 	query = strings.TrimSpace(query)
 	return func() tea.Msg {
-		msgs, err := database.SearchAllMessages(query, unreadFirst)
+		page, err := service.Search(query)
 		if err != nil {
 			return MessagesLoadedMsg{Search: true, Query: query, Err: err}
 		}
-		return MessagesLoadedMsg{Search: true, Query: query, Messages: msgs}
+		return MessagesLoadedMsg{Search: true, Query: query, Messages: page.Messages}
 	}
 }
 

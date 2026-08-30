@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "targets": {
+    "desktop-native-shell": {
+      "targetKind": "new-ui",
+      "projectId": "dfc0bcfe-559e-4623-a935-223b1c778a94",
+      "activeDraftId": "6b7221b5-8fe8-49e1-8abf-2f241a6dabe7",
+      "designSystemPath": ".superdesign/design-system.md",
+      "contextFiles": [
+        ".superdesign/design-system.md",
+        "cmd/tidemail-gui/frontend/src/App.tsx",
+        "cmd/tidemail-gui/frontend/src/styles.css"
+      ],
+      "fingerprints": {
+        ".superdesign/design-system.md": "4f29704d057fe1198cd62350ffa1c727a8f043d2ccdf7ab0eef02ee1b6f8f665",
+        "cmd/tidemail-gui/frontend/src/App.tsx": "57f7290641013b31270b3b91d60ad8ddf03c082480c2e8f8323949fda2ebaa0d",
+        "cmd/tidemail-gui/frontend/src/styles.css": "96b148e71c28a7156a426eb24309853e5fe5147e72668c259983b5a26303e02a"
+      },
+      "drafts": {
+        "6b7221b5-8fe8-49e1-8abf-2f241a6dabe7": {
+          "title": "TideMail Native Desktop",
+          "visualDirection": "compact Tide-native desktop mail client",
+          "currentVersion": 1
+        }
+      },
+      "updatedAt": "2026-08-28T15:31:34-05:00"
+    }
+  }
+}

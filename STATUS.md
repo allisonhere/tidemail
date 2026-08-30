@@ -17,6 +17,24 @@ and incremental sync. See `CLAUDE.md` for the architecture map.
 - **Search**, unread-only filtering, command palette, desktop notifications.
 - **Settings**: theme, display density, AI provider config, update checks.
 - **Update checker**: GitHub-releases check with in-place self-update.
+- **Desktop developer preview**: Wails v2 + React three-pane frontend with the
+  shared config/cache, profile locking, folder navigation, local/global search,
+  message reading, manual sync, read/star/archive/delete, compose/send, reader
+  attachments, and AI summaries. The original Modern layout is preserved beside
+  a compact Native layout with persisted live switching, resizable panes,
+  desktop menus, shortcuts, context actions, and docked compose. Linux and macOS
+  source builds are the current target; packaged releases are not published yet.
+
+## Desktop parity remaining
+
+- Delayed-send and destructive-action undo queues, background IDLE/timers, and
+  automatic arrival filters still run only through the TUI orchestration.
+- Contact/filter/theme/log/update management screens, draft
+  browsing/autosave, OAuth UI, grammar preview,
+  command palette, and Vim compose remain to be connected to the desktop UI.
+- The profile-neutral application service is now the boundary for desktop mail
+  operations. The remaining TUI orchestration will move into it incrementally so
+  both frontends share behavior rather than duplicate it.
 
 ## Quality gates
 

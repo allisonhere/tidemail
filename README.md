@@ -185,11 +185,43 @@ Run the test suite with:
 go test ./...
 ```
 
+## Desktop developer preview
+
+TideMail also has an early Linux/macOS desktop frontend. It uses the same local
+config, keyring, SQLite cache, IMAP/SMTP implementation, and core mail service as
+the terminal app. A per-profile lock prevents the two frontends from running at
+the same time and racing over mail state.
+
+The desktop app currently provides the three-pane inbox, folder navigation,
+global search, message reading, sync, read/star/archive/delete actions, compose,
+attachments in the reader, and AI summaries. It includes two live-switchable
+layouts: compact **Native** and the original spacious **Modern** design. Switch
+with the columns button, Settings → Desktop layout, or `Ctrl+Shift+L`. Native
+also provides resizable panes, desktop menus, row context actions, and keyboard
+mail commands. It is a developer preview; the TUI remains the supported release
+while the remaining management and parity screens move across.
+
+Install Node.js and the Wails v2 platform dependencies, then run:
+
+```bash
+cd cmd/tidemail-gui
+go run github.com/wailsapp/wails/v2/cmd/wails@v2.14.0 dev -tags webkit2_41
+```
+
+On Linux, `webkit2_41` targets current WebKitGTK 4.1 distributions. Omit that
+tag on macOS. To create a local production build, replace `dev` with `build
+-clean`.
+
 ## Under the hood
 
 [Bubble Tea](https://github.com/charmbracelet/bubbletea) runs the application
 loop. [Lipgloss](https://github.com/charmbracelet/lipgloss) handles terminal
 layout and color.
+
+The desktop preview uses Wails v2 with React, TypeScript, and Vite. Frontends
+call the shared Go application service. Credentials cross only the trusted local
+Wails bridge while the account editor is open and are persisted through the
+existing keyring-backed configuration flow.
 
 You can reuse two parts as standalone Go libraries:
 

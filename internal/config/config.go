@@ -53,6 +53,9 @@ type DisplayConfig struct {
 	Density               string             `toml:"density"`
 	ComposeVim            bool               `toml:"compose_vim"`
 	SendDelaySeconds      int                `toml:"send_delay_seconds"` // undo grace period; 0 = send immediately
+	DesktopLayout         string             `toml:"desktop_layout" json:"desktopLayout"`
+	DesktopFolderWidth    int                `toml:"desktop_folder_width" json:"desktopFolderWidth"`
+	DesktopMessageWidth   int                `toml:"desktop_message_width" json:"desktopMessageWidth"`
 	VT52                  RetroTerminalTweak `toml:"vt52"`
 	VT100                 RetroTerminalTweak `toml:"vt100"`
 }
@@ -86,30 +89,30 @@ type AIConfig struct {
 }
 
 type AccountConfig struct {
-	Name        string `toml:"name"`
-	Provider    string `toml:"provider"`
-	IMAPHost    string `toml:"imap_host"`
-	IMAPPort    int    `toml:"imap_port"`
-	IMAPTLS     bool   `toml:"imap_tls"`
-	SMTPHost    string `toml:"smtp_host"`
-	SMTPPort    int    `toml:"smtp_port"`
-	SMTPTLS     bool   `toml:"smtp_tls"`
-	User        string `toml:"user"`
-	Password    string `toml:"password"`
-	From        string `toml:"from"`
-	SyncMinutes int    `toml:"sync_minutes"` // 0 = no auto-sync
+	Name        string `toml:"name" json:"name"`
+	Provider    string `toml:"provider" json:"provider"`
+	IMAPHost    string `toml:"imap_host" json:"imap_host"`
+	IMAPPort    int    `toml:"imap_port" json:"imap_port"`
+	IMAPTLS     bool   `toml:"imap_tls" json:"imap_tls"`
+	SMTPHost    string `toml:"smtp_host" json:"smtp_host"`
+	SMTPPort    int    `toml:"smtp_port" json:"smtp_port"`
+	SMTPTLS     bool   `toml:"smtp_tls" json:"smtp_tls"`
+	User        string `toml:"user" json:"user"`
+	Password    string `toml:"password" json:"password"`
+	From        string `toml:"from" json:"from"`
+	SyncMinutes int    `toml:"sync_minutes" json:"sync_minutes"` // 0 = no auto-sync
 	// Signature is appended to outgoing mail after a standard "-- " delimiter.
 	// The account form accepts literal \n escapes for multi-line signatures;
 	// TOML multi-line strings work too when editing the file directly.
-	Signature string `toml:"signature"`
+	Signature string `toml:"signature" json:"signature"`
 
 	// OAuth2 — if RefreshToken is set, OAuth2 is used instead of password.
 	// ClientID and ClientSecret are auto-filled from the app-level [oauth] config at load time.
-	RefreshToken string `toml:"refresh_token"`
+	RefreshToken string `toml:"refresh_token" json:"refresh_token"`
 
 	// Filled at load time from OAuthConfig — never written to TOML.
-	ClientID     string `toml:"-"`
-	ClientSecret string `toml:"-"`
+	ClientID     string `toml:"-" json:"-"`
+	ClientSecret string `toml:"-" json:"-"`
 }
 
 // UsesOAuth2 returns true if this account is configured for OAuth2 auth.
@@ -142,6 +145,9 @@ func DefaultConfig() Config {
 			ShowHeaders:           true,
 			Notifications:         true,
 			SendDelaySeconds:      5,
+			DesktopLayout:         "native",
+			DesktopFolderWidth:    236,
+			DesktopMessageWidth:   390,
 		},
 		Updates: UpdatesConfig{
 			CheckOnStartup:     true,
@@ -179,15 +185,56 @@ func Load() (Config, error) {
 	}
 
 	cfg := DefaultConfig()
-	if _, err := toml.Decode(string(data), &cfg); err != nil {
+	meta, err := toml.Decode(string(data), &cfg)
+	if err != nil {
 		return DefaultConfig(), err
+	}
+	// Existing desktop-preview users keep the original Modern layout until
+	// they explicitly switch. Fresh profiles start in Native mode.
+	if !meta.IsDefined("display", "desktop_layout") {
+		cfg.Display.DesktopLayout = "modern"
 	}
 	if cfg.Updates.CheckIntervalHours <= 0 {
 		cfg.Updates.CheckIntervalHours = DefaultConfig().Updates.CheckIntervalHours
 	}
 	cfg.Display.Density = NormalizeDisplayDensity(cfg.Display.Density)
+	cfg.Display.DesktopLayout = NormalizeDesktopLayout(cfg.Display.DesktopLayout)
+	cfg.Display.DesktopFolderWidth = clampInt(cfg.Display.DesktopFolderWidth, 180, 360, 236)
+	cfg.Display.DesktopMessageWidth = clampInt(cfg.Display.DesktopMessageWidth, 300, 560, 390)
 	fillSecrets(&cfg)
 	return cfg, nil
+}
+
+func NormalizeDesktopLayout(s string) string {
+	if strings.EqualFold(strings.TrimSpace(s), "modern") {
+		return "modern"
+	}
+	return "native"
+}
+
+func clampInt(value, low, high, fallback int) int {
+	if value == 0 {
+		return fallback
+	}
+	if value < low {
+		return low
+	}
+	if value > high {
+		return high
+	}
+	return value
+}
+
+// ProfileLockPath returns the per-profile process lock path used by every
+// TideMail frontend. Keeping the lock beside config.toml means XDG_CONFIG_HOME
+// naturally selects an independent profile without coupling the lock to a
+// particular UI or database implementation.
+func ProfileLockPath() (string, error) {
+	path, err := configPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(path), "profile.lock"), nil
 }
 
 func NormalizeDisplayDensity(s string) string {

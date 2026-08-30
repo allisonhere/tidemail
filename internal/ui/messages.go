@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/allisonhere/tide/internal/db"
-	imapClient "github.com/allisonhere/tide/internal/imap"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -278,21 +276,9 @@ func (m Model) messageRowTitle(msg db.Message) string {
 }
 
 func (m *Model) setMessageReadCmd(msg db.Message, read, advance bool) tea.Cmd {
-	database := m.db
-	sessions := m.sessions
-	mailbox := m.mailboxByID(msg.MailboxID)
-	acfg := m.accountCfgForMailbox(msg.MailboxID)
+	service := m.appService
 	return func() tea.Msg {
-		if mailbox != nil && acfg.IMAPHost != "" && msg.UID != 0 {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			if err := sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
-				return client.MarkSeen(ctx, mailbox.Name, msg.UID, read)
-			}); err != nil {
-				return MessageReadUpdatedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, WasRead: msg.Read, Read: read, Advance: advance, Err: err}
-			}
-		}
-		if err := database.MarkRead(msg.ID, read); err != nil {
+		if err := service.SetRead(context.Background(), msg.ID, read); err != nil {
 			return MessageReadUpdatedMsg{
 				MessageID: msg.ID,
 				MailboxID: msg.MailboxID,
@@ -313,21 +299,9 @@ func (m *Model) setMessageReadCmd(msg db.Message, read, advance bool) tea.Cmd {
 }
 
 func (m *Model) setMessageStarredCmd(msg db.Message, starred bool) tea.Cmd {
-	database := m.db
-	sessions := m.sessions
-	mailbox := m.mailboxByID(msg.MailboxID)
-	acfg := m.accountCfgForMailbox(msg.MailboxID)
+	service := m.appService
 	return func() tea.Msg {
-		if mailbox != nil && acfg.IMAPHost != "" && msg.UID != 0 {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			if err := sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
-				return client.MarkFlagged(ctx, mailbox.Name, msg.UID, starred)
-			}); err != nil {
-				return MessageStarredUpdatedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Starred: starred, Err: err}
-			}
-		}
-		if err := database.MarkStarred(msg.ID, starred); err != nil {
+		if err := service.SetStarred(context.Background(), msg.ID, starred); err != nil {
 			return MessageStarredUpdatedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Starred: starred, Err: err}
 		}
 		return MessageStarredUpdatedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Starred: starred}

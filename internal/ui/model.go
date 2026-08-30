@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/allisonhere/tide/internal/ai"
+	appcore "github.com/allisonhere/tide/internal/app"
 	"github.com/allisonhere/tide/internal/auth"
 	"github.com/allisonhere/tide/internal/config"
 	"github.com/allisonhere/tide/internal/db"
@@ -107,7 +108,8 @@ const (
 // ── Model ────────────────────────────────────────────────────────────────────
 
 type Model struct {
-	db *db.DB
+	db         *db.DB
+	appService *appcore.Service
 	// sessions pools one live IMAP connection per account; all background
 	// commands go through it instead of dialing, so bursts of operations
 	// can't exceed per-user server connection caps. Pointer-typed: shared
@@ -309,9 +311,11 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 
 	summarizer, _ := ai.New(cfg.AI)
 
+	sessions := imapClient.NewSessionPool()
 	m := Model{
 		db:                    database,
-		sessions:              imapClient.NewSessionPool(),
+		sessions:              sessions,
+		appService:            appcore.NewWithSessions(database, cfg, sessions, nil),
 		cfg:                   cfg,
 		currentVersion:        currentVersion,
 		previewManualUpdateUI: previewManualUpdate,
