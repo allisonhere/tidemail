@@ -2,11 +2,14 @@ package ui
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
@@ -16,6 +19,17 @@ func composeFieldLine(view, label string) string {
 	stripped := ansi.Strip(view)
 	for _, line := range strings.Split(stripped, "\n") {
 		if strings.Contains(line, label) {
+			return line
+		}
+	}
+	return ""
+}
+
+// composeRawLine finds a view line by its visible text but returns it with SGR
+// sequences intact, for assertions about colour rather than layout.
+func composeRawLine(view, label string) string {
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(ansi.Strip(line), label) {
 			return line
 		}
 	}
@@ -331,10 +345,10 @@ func TestSenderPickerIsAvailableAcrossComposeModes(t *testing.T) {
 func TestComposeLayoutBudgetsSenderDropdownRows(t *testing.T) {
 	accounts := composeSenderAccounts()
 	c := NewCompose(accounts[0], accounts, nil)
-	_, _, closedH := c.composeLayout(74, 32, BuildStyles(CatppuccinMocha, "compact", "square"))
+	_, _, closedH, _ := c.composeLayout(74, 32, BuildStyles(CatppuccinMocha, "compact", "square"))
 	c.focusedField = composeFieldFrom
 	c.openSenderPicker()
-	_, _, openH := c.composeLayout(74, 32, BuildStyles(CatppuccinMocha, "compact", "square"))
+	_, _, openH, _ := c.composeLayout(74, 32, BuildStyles(CatppuccinMocha, "compact", "square"))
 	if closedH-openH != len(accounts) {
 		t.Fatalf("expected dropdown to reserve %d rows, closed=%d open=%d", len(accounts), closedH, openH)
 	}
@@ -868,5 +882,120 @@ func TestSplitReplyAndQuote(t *testing.T) {
 	rf, qf := splitReplyAndQuote(fb)
 	if rf != "see below" || rf+qf != fb {
 		t.Fatalf("forward split = (%q,%q)", rf, qf)
+	}
+}
+
+func TestComposeFromRowUsesDropdownAffordance(t *testing.T) {
+	accounts := composeSenderAccounts()
+	c := NewCompose(accounts[0], accounts, nil)
+	c.focusedField = composeFieldFrom
+	styles := BuildStyles(CatppuccinMocha, "compact", "square")
+
+	closed := composeFieldLine(c.View(74, 32, styles), "From")
+	if !strings.Contains(closed, "▾") {
+		t.Fatalf("expected closed From row to advertise a dropdown with ▾, got %q", closed)
+	}
+
+	c.openSenderPicker()
+	open := composeFieldLine(c.View(74, 32, styles), "From")
+	if !strings.Contains(open, "▴") {
+		t.Fatalf("expected open From row to flip the chevron to ▴, got %q", open)
+	}
+}
+
+func TestComposeSenderSpacerYieldsToHintsWhenShort(t *testing.T) {
+	accounts := composeSenderAccounts()
+	c := NewCompose(accounts[0], accounts, nil)
+	styles := BuildStyles(CatppuccinMocha, "compact", "square")
+
+	if _, _, _, spacer := c.composeLayout(74, 32, styles); !spacer {
+		t.Fatal("expected the From spacer row in a tall compose overlay")
+	}
+	if _, _, _, spacer := c.composeLayout(60, 13, styles); spacer {
+		t.Fatal("expected the From spacer to be dropped in a short compose overlay")
+	}
+}
+
+// valueStartColumn returns the column where a soft row's control text begins,
+// i.e. past the focus rail and the label column.
+func valueStartColumn(t *testing.T, view, label string) int {
+	t.Helper()
+	line := composeFieldLine(view, label)
+	if line == "" {
+		t.Fatalf("no %s row in view", label)
+	}
+	// Measure display columns, not bytes: the focus rail glyph is multibyte, so
+	// a byte offset reports focused and unfocused rows as differently aligned
+	// when they line up on screen.
+	idx := strings.Index(line, label) + len(label)
+	rest := line[idx:]
+	pad := len(rest) - len(strings.TrimLeft(rest, " "))
+	return lipgloss.Width(line[:idx+pad])
+}
+
+func TestComposeFromValueAlignsWithAddressFields(t *testing.T) {
+	accounts := composeSenderAccounts()
+	c := NewCompose(accounts[0], accounts, nil)
+	c.focusedField = composeFieldFrom
+	view := ansi.Strip(c.View(74, 32, BuildStyles(CatppuccinMocha, "compact", "square")))
+
+	want := valueStartColumn(t, view, "To")
+	for _, label := range []string{"From", "CC", "BCC"} {
+		if got := valueStartColumn(t, view, label); got != want {
+			t.Fatalf("%s value starts at column %d, want %d to match the address fields", label, got, want)
+		}
+	}
+}
+
+func TestComposeFromRowMatchesAddressFieldWidth(t *testing.T) {
+	accounts := composeSenderAccounts()
+	c := NewCompose(accounts[0], accounts, nil)
+	view := ansi.Strip(c.View(74, 32, BuildStyles(CatppuccinMocha, "compact", "square")))
+	want := lipgloss.Width(composeFieldLine(view, "To"))
+	if got := lipgloss.Width(composeFieldLine(view, "From")); got != want {
+		t.Fatalf("From row width %d, want %d to match the address rows", got, want)
+	}
+}
+
+// sgrBackground returns just the background parameters lipgloss emits for bg
+// (e.g. "48;2;50;50;77"). The full sequence is no good to match on: a styled
+// line folds foreground and background into a single SGR run.
+func sgrBackground(t *testing.T, bg lipgloss.Color) string {
+	t.Helper()
+	probe := lipgloss.NewStyle().Background(bg).Render("x")
+	m := regexp.MustCompile(`48;2;\d+;\d+;\d+`).FindString(probe)
+	if m == "" {
+		t.Fatalf("no truecolor background emitted for %v: %q", bg, probe)
+	}
+	return m
+}
+
+func TestComposeBodyBackgroundMatchesFormFields(t *testing.T) {
+	// Colour assertions need a profile that actually emits SGR; the suite runs
+	// under Ascii by default. Same pattern as messages_theme_test.go.
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+
+	styles := BuildStyles(CatppuccinMocha, "compact", "square")
+	chrome := newManagerChrome(74, styles.Theme, styles.PlainUI)
+
+	c := NewCompose(config.AccountConfig{}, nil, nil)
+	c.bodyInput.SetValue("body text here")
+
+	c.focusedField = composeFieldTo
+	rest := c.View(74, 32, styles)
+	restLine := composeRawLine(rest, "body text here")
+	if restLine == "" {
+		t.Fatal("no body line in unfocused view")
+	}
+	if want := sgrBackground(t, chrome.surfaceBg); !strings.Contains(restLine, want) {
+		t.Fatalf("unfocused body should use surfaceBg like the other fields at rest, got %q", restLine)
+	}
+
+	c.focusedField = composeFieldBody
+	c.bodyInput.Focus()
+	focusedLine := composeRawLine(c.View(74, 32, styles), "body text here")
+	if want := sgrBackground(t, chrome.fieldBg); !strings.Contains(focusedLine, want) {
+		t.Fatalf("focused body should use fieldBg like a focused input, got %q", focusedLine)
 	}
 }

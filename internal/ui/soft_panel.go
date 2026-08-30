@@ -20,6 +20,22 @@ func (c managerChrome) softChevrons() string {
 	return "‹›"
 }
 
+// softDropdownGlyph is the affordance for a control that expands into a list of
+// rows below it: ▾ while closed, ▴ while the list is open. Distinct from
+// softChevrons, which means "cycle this value in place".
+func (c managerChrome) softDropdownGlyph(open bool) string {
+	if c.plainUI {
+		if open {
+			return "^"
+		}
+		return "v"
+	}
+	if open {
+		return "▴"
+	}
+	return "▾"
+}
+
 func (c managerChrome) softToggleGlyph(on bool) string {
 	if c.plainUI {
 		if on {
@@ -138,6 +154,32 @@ func renderSoftPicker(width int, value string, focused bool, chrome managerChrom
 		lipgloss.NewStyle().Background(chrome.baseBg).Render(strings.Repeat(" ", gap)) +
 		lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chevronFg).Bold(focused).Render(chevrons) +
 		lipgloss.NewStyle().Background(chrome.baseBg).Render(" ")
+}
+
+// renderSoftDropdown renders a value with a vertical chevron — ▾ closed, ▴ while
+// the list is open — pinned to the right edge of width, for controls that expand
+// into a list of rows below them instead of cycling in place.
+//
+// Unlike renderSoftPicker it adds no padding of its own: the value is flush left
+// so the caller can wrap it in renderInsetControl at the same inset as the
+// neighbouring text inputs and have the two line up in the same columns.
+func renderSoftDropdown(width int, value string, focused, open bool, chrome managerChrome) string {
+	glyph := chrome.softDropdownGlyph(open)
+	glyphW := lipgloss.Width(glyph)
+	valueFg := chrome.muted
+	valueBg := chrome.baseBg
+	glyphFg := chrome.muted
+	if focused {
+		valueFg = chrome.text
+		valueBg = chrome.fieldBg
+		glyphFg = chrome.accent
+	}
+	left := lipgloss.NewStyle().Background(valueBg).Foreground(valueFg).
+		Render(truncate(value, max(1, width-glyphW-1)))
+	gap := max(1, width-lipgloss.Width(left)-glyphW)
+	return left +
+		lipgloss.NewStyle().Background(chrome.baseBg).Render(strings.Repeat(" ", gap)) +
+		lipgloss.NewStyle().Background(chrome.baseBg).Foreground(glyphFg).Bold(focused).Render(glyph)
 }
 
 // renderSoftGroupTitle renders a group heading as a plain accent word — no rule.

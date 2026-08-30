@@ -1082,7 +1082,7 @@ func (c ComposeModel) renderSenderRows(width, labelW int, chrome managerChrome) 
 			fg = chrome.text
 		}
 		label := lipgloss.NewStyle().Background(bg).Foreground(fg).
-			Render(indent + " " + truncate(senderOptionLabel(c.accounts[i]), max(1, rowW-labelW-2)))
+			Render(indent + "  " + truncate(senderOptionLabel(c.accounts[i]), max(1, rowW-labelW-4)))
 		rows = append(rows, softRail(chrome, selected, bg)+padStyled(label, rowW, bg))
 	}
 	return rows
@@ -1114,7 +1114,7 @@ func composeBodyWidth(termWidth int) int {
 // the sender lives in the From row. fixedLines below must match, one-for-one, the
 // non-body lines View appends — if they drift, clampView clips the footer or the
 // caret desyncs from the viewport.
-func (c ComposeModel) composeLayout(width, height int, styles Styles) (hints string, bodyW, bodyH int) {
+func (c ComposeModel) composeLayout(width, height int, styles Styles) (hints string, bodyW, bodyH int, senderSpacer bool) {
 	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
 	hints = c.composeHints(width, chrome)
 
@@ -1143,10 +1143,20 @@ func (c ComposeModel) composeLayout(width, height int, styles Styles) (hints str
 	}
 	fixedLines += lipgloss.Height(hints)
 
+	// The blank row below the From block is cosmetic, so it is the first thing
+	// dropped when the overlay is short — the send/attach hints matter more than
+	// the breathing room. It is only drawn when a body line survives paying for
+	// it; View must honour senderSpacer or the two line counts drift and
+	// clampView clips the footer.
+	senderSpacer = height-fixedLines >= 2
+	if senderSpacer {
+		fixedLines++
+	}
+
 	bodyH = max(1, height-fixedLines)
 	// Body editor content width = overlay width minus internal padding.
 	bodyW = max(1, width-4)
-	return hints, bodyW, bodyH
+	return hints, bodyW, bodyH, senderSpacer
 }
 
 // composeHints renders the quiet lowercase soft-panel footer. When the body is
@@ -1226,7 +1236,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 		return c.pickerView(width, height, chrome)
 	}
 
-	hints, bodyInputW, bodyH := c.composeLayout(width, height, styles)
+	hints, bodyInputW, bodyH, senderSpacer := c.composeLayout(width, height, styles)
 
 	// Soft-panel rows share a short label column; the input text is inset 2 cells
 	// to match the settings / account-manager forms.
@@ -1247,7 +1257,10 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 
 	c.bodyInput.SetSize(bodyInputW, bodyH)
 
-	bodyBg := chrome.baseBg
+	// The body is a form field like the rest: surfaceBg at rest, fieldBg when
+	// focused, matching renderTextInput. Its 2-cell frame stays baseBg so the
+	// field block is inset exactly like the To/CC/BCC/Subject controls.
+	bodyBg := chrome.surfaceBg
 	if c.focusedField == composeFieldBody {
 		bodyBg = chrome.fieldBg
 	}
@@ -1278,7 +1291,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	// each line to the content width using the terminal's own width measure, so
 	// nothing can overflow, then frame with bodyBg padding.
 	bgWrap := lipgloss.NewStyle().Background(bodyBg).Foreground(chrome.text)
-	pad := bgWrap.Render("  ")
+	pad := lipgloss.NewStyle().Background(chrome.baseBg).Render("  ")
 	var lines []string
 	for _, line := range strings.Split(raw, "\n") {
 		line = ansi.Truncate(line, bodyInputW, "")
@@ -1329,7 +1342,11 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	fromFocused := c.focusedField == composeFieldFrom
 	fromW := max(1, width-2-labelW)
 	fromLabel := senderOptionLabel(c.selectedAccount())
-	fromControl := renderSoftPicker(fromW, fromLabel, fromFocused, chrome)
+	// Inset by 2 exactly like the To/CC/BCC controls below, so the sender value
+	// starts in the same column as the recipient text and stops at the same
+	// right edge instead of sitting one cell out from the rest of the block.
+	fromInner := renderSoftDropdown(max(1, fromW-4), fromLabel, fromFocused, c.senderPickerOpen, chrome)
+	fromControl := renderInsetControl(fromInner, fromW, 2, chrome)
 	if len(c.accounts) < 2 {
 		fromText := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render(fromLabel)
 		fromControl = renderInsetControl(fromText, fromW, 2, chrome)
@@ -1337,6 +1354,11 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	rows = append(rows, renderSoftRow("From", fromFocused, fromControl, width, labelW, chrome))
 	if c.senderPickerOpen {
 		rows = append(rows, c.renderSenderRows(width, labelW, chrome)...)
+	}
+	// Spacer below the From block so the sender control reads as its own
+	// control rather than the first of four stacked recipient fields.
+	if senderSpacer {
+		rows = append(rows, blankRow(chrome.baseBg))
 	}
 	// Each recipient row is followed by the autocomplete dropdown when it is
 	// the focused field; composeLayout budgets the extra lines.

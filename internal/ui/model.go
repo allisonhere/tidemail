@@ -2417,7 +2417,7 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// sizes only a copy (it's a value receiver), so the stored editor must be
 	// synced here. The overlay dimensions mirror renderOverlay (overlays.go).
 	if m.width > 0 && m.height > 0 {
-		_, bw, bh := m.compose.composeLayout(composeOverlayWidth(m.width), min(m.height-4, 36), m.styles)
+		_, bw, bh, _ := m.compose.composeLayout(composeOverlayWidth(m.width), min(m.height-4, 36), m.styles)
 		m.compose.bodyInput.SetSize(bw, bh)
 	}
 	// Intercept grammar check key before compose gets it
