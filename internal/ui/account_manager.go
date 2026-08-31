@@ -303,6 +303,7 @@ type AccountManager struct {
 	oauthAwaitingCode bool // paste-back flow: waiting for the pasted code/URL
 	oauthFlow         authCodeExchanger
 	oauthFlowURL      string
+	oauthURLCopied    bool // the sign-in URL made it to the clipboard
 	oauthCodeInput    textinput.Model
 	oauthCtx          context.Context
 	oauthCancel       context.CancelFunc
@@ -493,7 +494,7 @@ func (am AccountManager) statusForeground(chrome managerChrome) lipgloss.Color {
 	msg := strings.ToUpper(strings.TrimSpace(am.statusMsg))
 	switch {
 	case strings.HasPrefix(msg, "CONNECTED:"), strings.HasPrefix(msg, "SAVED:"), strings.HasPrefix(msg, "DELETED"),
-		strings.HasPrefix(msg, "SIGNED IN"), strings.HasPrefix(msg, "SIGN-IN PAGE"):
+		strings.HasPrefix(msg, "SIGNED IN"), strings.HasPrefix(msg, "SIGN-IN URL"):
 		return chrome.successFg
 	default:
 		return chrome.errorFg
@@ -916,11 +917,12 @@ func (am AccountManager) startAuthCodeFlow() (AccountManager, tea.Cmd, bool) {
 	am.busyMsg = ""
 	am.oauthCodeInput.Reset()
 	am.focusField(amFieldOAuthCode)
-	note := "SIGN-IN PAGE: OPEN THE URL BELOW, APPROVE, PASTE THE RESULT"
-	if err := clipboardCopy(am.oauthFlowURL); err == nil {
-		note = "SIGN-IN PAGE URL COPIED TO CLIPBOARD — OPEN IT, APPROVE, PASTE THE RESULT"
+	am.oauthURLCopied = clipboardCopy(am.oauthFlowURL) == nil
+	if am.oauthURLCopied {
+		am.statusMsg = "SIGN-IN URL COPIED TO CLIPBOARD — SEE THE STEPS BELOW"
+	} else {
+		am.statusMsg = "SIGN-IN URL SHOWN BELOW — SEE THE STEPS"
 	}
-	am.statusMsg = note
 	return am, nil, false
 }
 
@@ -963,6 +965,7 @@ func (am *AccountManager) cancelOAuth() {
 	am.oauthAwaitingCode = false
 	am.oauthFlow = nil
 	am.oauthFlowURL = ""
+	am.oauthURLCopied = false
 	am.oauthCodeInput.Reset()
 	am.busy = false
 	am.busyMsg = ""
@@ -1467,12 +1470,13 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 			addControl(amFieldPass, row("Password", passInput, am.focusedField == amFieldPass))
 			if authFocused {
 				if am.provider == "Outlook" {
-					addHint("Outlook.com no longer accepts passwords — use OAuth (‹ / ›).")
-					addHint("Only M365 tenants that still allow app passwords work here.")
+					addHint("Outlook.com dropped password login.")
+					addHint("Switch to OAuth with ‹ / ›.")
+					addHint("A password works only for some M365 tenants.")
 				} else {
-					addHint("Gmail needs an App Password, not your normal password:")
-					addHint("2-Step Verification → myaccount.google.com/apppasswords")
-					addHint("‹ / › switches to OAuth sign-in instead.")
+					addHint("Gmail: use an App Password, not your login.")
+					addHint("Create it under 2-Step Verification.")
+					addHint("‹ / › switches to OAuth sign-in.")
 				}
 			}
 		} else {
@@ -1497,31 +1501,34 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 				addControl(amFieldOAuthCode, row("Code", am.oauthCodeInput, am.focusedField == amFieldOAuthCode))
 			}
 			if authFocused {
-				var hints []string
 				switch {
 				case am.oauthAwaitingCode:
-					hints = []string{
-						"Approve TideMail in the browser; you'll land on an unreachable",
-						"localhost page — paste that page's URL (or the code= value",
-						"from it) below and press enter.",
+					step1 := "1. Open the sign-in URL from your clipboard"
+					if !am.oauthURLCopied {
+						step1 = "1. Open the sign-in URL shown below"
+					}
+					addHint("Finish signing in from your browser:")
+					addHint(step1)
+					addHint("2. Sign in and approve access")
+					addHint("3. Copy the URL it redirects you to")
+					addHint("4. Paste that here and press enter")
+					if !am.oauthURLCopied {
+						addHint("")
+						addHint("Sign-in URL:")
+						for _, ln := range hardWrapString(am.oauthFlowURL, max(8, fieldW-4)) {
+							addHint(ln)
+						}
 					}
 				case am.provider == "Outlook":
-					hints = []string{
-						"Press enter (or ctrl+o), sign in, and paste the localhost URL",
-						"the browser lands on. Uses Thunderbird's shared client unless",
-						"TIDEMAIL_MS_CLIENT_ID is set (which enables the device-code flow).",
-						"‹ / › switches back to an App Password.",
-					}
+					addHint("Enter or ctrl+o starts browser sign-in.")
+					addHint("You paste the result URL back.")
+					addHint("Set TIDEMAIL_MS_CLIENT_ID for a device code.")
+					addHint("‹ / › switches to an App Password.")
 				default:
-					hints = []string{
-						"Press enter (or ctrl+o) to sign in — a short code + URL appears;",
-						"open it on any device and approve.",
-						"Needs TIDEMAIL_GOOGLE_CLIENT_ID / _SECRET (your own OAuth client).",
-						"‹ / › switches back to an App Password.",
-					}
-				}
-				for _, hint := range hints {
-					addHint(hint)
+					addHint("Enter or ctrl+o starts sign-in.")
+					addHint("A code + URL appears to approve on any device.")
+					addHint("Needs your TIDEMAIL_GOOGLE_CLIENT_ID / _SECRET.")
+					addHint("‹ / › switches to an App Password.")
 				}
 			}
 		}

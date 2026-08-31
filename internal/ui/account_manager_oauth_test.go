@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/allisonhere/tidemail/internal/config"
 )
@@ -307,6 +308,42 @@ func TestOutlookRejectsSaveWithoutCredentials(t *testing.T) {
 	am := outlookFormManager(config.ThunderbirdMSClientID)
 	if got := validateAccountForConnect(am.buildCfg()); !strings.Contains(got, "SIGN IN WITH MICROSOFT") {
 		t.Fatalf("validation = %q", got)
+	}
+}
+
+func TestPasteBackHintsAreNumberedSteps(t *testing.T) {
+	am := outlookFormManager(config.ThunderbirdMSClientID)
+	am, _, _ = am.startOAuthSignIn() // -> paste-back, awaiting code
+	view := ansi.Strip(am.View(74, 40, BuildStyles(CatppuccinMocha, "compact", "square")))
+	for _, want := range []string{
+		"Finish signing in from your browser:",
+		"1. Open the sign-in URL",
+		"2. Sign in and approve",
+		"3. Copy the URL it redirects",
+		"4. Paste that here and press enter",
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("paste-back hint missing %q in:\n%s", want, view)
+		}
+	}
+}
+
+func TestPasteBackShowsURLWhenClipboardFails(t *testing.T) {
+	orig := clipboardCopy
+	clipboardCopy = func(string) error { return errStub("no clipboard") }
+	t.Cleanup(func() { clipboardCopy = orig })
+
+	am := outlookFormManager(config.ThunderbirdMSClientID)
+	am, _, _ = am.startOAuthSignIn()
+	if am.oauthURLCopied {
+		t.Fatal("oauthURLCopied should be false when the copy fails")
+	}
+	view := ansi.Strip(am.View(74, 44, BuildStyles(CatppuccinMocha, "compact", "square")))
+	if !strings.Contains(view, "shown below") || !strings.Contains(view, "Sign-in URL:") {
+		t.Fatalf("expected the URL to be shown inline, got:\n%s", view)
+	}
+	if !strings.Contains(view, "login.microsoftonline.com") {
+		t.Fatalf("the actual sign-in URL should be rendered, got:\n%s", view)
 	}
 }
 
