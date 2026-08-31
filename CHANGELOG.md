@@ -4,6 +4,18 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- **OAuth sign-in for Gmail and Outlook.** The account form's Gmail/Outlook
+  **Auth** row is a `‹ ›` selector (App password ⇄ OAuth); the guidance shows
+  only while that row or its sub-controls are focused. Gmail is bring-your-own
+  client (`TIDEMAIL_GOOGLE_CLIENT_ID` / `_SECRET`) with a device-code flow;
+  Outlook uses Thunderbird's shared public client by default (paste-back flow)
+  or a custom `TIDEMAIL_MS_CLIENT_ID` (device-code). Both authenticate IMAP and
+  SMTP with XOAUTH2; the refresh token is stored in the keychain and
+  rotation-persisted. Revoked tokens surface a "press M to re-authenticate"
+  hint.
+
 ### Fixed
 
 - **Installing to `~/.local/bin` now handles stale earlier binaries.** The

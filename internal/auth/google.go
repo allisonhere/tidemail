@@ -5,38 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"strings"
-	"sync"
-	"time"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
-
-// IsAuthFailure reports whether err looks like a credential failure that
-// requires the user to re-enter their account password — a rejected app
-// password, or an expired/revoked OAuth token. The status layer uses this to
-// surface a "re-authenticate" hint instead of a raw error.
-func IsAuthFailure(err error) bool {
-	if err == nil {
-		return false
-	}
-	m := strings.ToLower(err.Error())
-	for _, sig := range []string{
-		"authenticationfailed", // IMAP LOGIN rejected
-		"authenticate failed",  // IMAP AUTHENTICATE (XOAUTH2) rejected
-		"invalid credentials",  // common SMTP/IMAP wording
-		"username and password not accepted",
-		"invalid_grant", // OAuth token expired/revoked
-		"expired or revoked",
-	} {
-		if strings.Contains(m, sig) {
-			return true
-		}
-	}
-	return false
-}
 
 // IsTokenRevoked reports whether err is Google's "invalid_grant" response, which
 // means the refresh token has expired or been revoked and the account must be
@@ -143,26 +116,6 @@ func (f *GoogleAuthCodeFlow) Exchange(ctx context.Context, pasted string) (*oaut
 	return tok, nil
 }
 
-// ExtractAuthCode accepts either a bare authorization code or the full redirect
-// URL (query or fragment form) and returns the code.
-func ExtractAuthCode(pasted string) string {
-	s := strings.TrimSpace(pasted)
-	if u, err := url.Parse(s); err == nil {
-		if c := u.Query().Get("code"); c != "" {
-			return c
-		}
-		if q, err := url.ParseQuery(u.Fragment); err == nil {
-			if c := q.Get("code"); c != "" {
-				return c
-			}
-		}
-	}
-	if strings.ContainsAny(s, " \n?&=") {
-		return "" // looks like URL debris, not a bare code
-	}
-	return s
-}
-
 // RefreshGoogleToken exchanges a refresh token for a new access token. Google
 // may rotate the refresh token, so the returned token can carry a NEW refresh
 // token that must replace the stored one.
@@ -193,74 +146,16 @@ func TokenFromJSON(data string) (*oauth2.Token, error) {
 	return &tok, nil
 }
 
-// PersistRefreshToken is called with the rotated refresh token after every
-// successful refresh so it survives crashes. Wired to the keyring at startup
-// (kept as an injected func to avoid an auth→config import).
-var PersistRefreshToken = func(accountName, refreshToken string) {}
-
-type googleTokenState struct {
-	access  string
-	expiry  time.Time
-	refresh string
-}
-
-var (
-	googleTokensMu sync.Mutex
-	googleTokens   = map[string]*googleTokenState{}
-)
-
-// expiryMargin refreshes tokens slightly early so a token that's valid when
-// fetched doesn't expire mid-IMAP-session-setup.
-const expiryMargin = 2 * time.Minute
+// googleCache is the shared IMAP/SMTP access-token cache for Gmail accounts.
+var googleCache = newTokenCache(RefreshGoogleToken)
 
 // GoogleAccessToken returns a valid access token for the account, refreshing at
-// most once per expiry window. The cache is shared by IMAP and SMTP so a send
-// right after a sync reuses the token. cfgRefreshToken seeds the cache on first
-// use; after a refresh the cache's rotated token wins.
+// most once per expiry window. cfgRefreshToken seeds the cache on first use;
+// after a refresh the cache's rotated token wins.
 func GoogleAccessToken(ctx context.Context, clientID, clientSecret, accountName, cfgRefreshToken string) (string, error) {
-	googleTokensMu.Lock()
-	defer googleTokensMu.Unlock()
-
-	st := googleTokens[accountName]
-	if st == nil {
-		st = &googleTokenState{refresh: cfgRefreshToken}
-		googleTokens[accountName] = st
-	}
-	if st.access != "" && time.Now().Before(st.expiry.Add(-expiryMargin)) {
-		return st.access, nil
-	}
-	if st.refresh == "" {
-		return "", fmt.Errorf("auth: no refresh token for %s", accountName)
-	}
-	tok, err := RefreshGoogleToken(ctx, clientID, clientSecret, st.refresh)
-	if err != nil {
-		return "", err
-	}
-	st.access = tok.AccessToken
-	st.expiry = tok.Expiry
-	if tok.RefreshToken != "" && tok.RefreshToken != st.refresh {
-		st.refresh = tok.RefreshToken
-		PersistRefreshToken(accountName, tok.RefreshToken)
-	}
-	return st.access, nil
-}
-
-// LatestRefreshToken reports the account's current (possibly rotated) refresh
-// token, if the cache holds one.
-func LatestRefreshToken(accountName string) (string, bool) {
-	googleTokensMu.Lock()
-	defer googleTokensMu.Unlock()
-	st := googleTokens[accountName]
-	if st == nil || st.refresh == "" {
-		return "", false
-	}
-	return st.refresh, true
+	return googleCache.accessToken(ctx, clientID, clientSecret, accountName, cfgRefreshToken)
 }
 
 // ForgetGoogleToken drops the account's cached tokens — used after re-auth so
 // the next connection seeds from the freshly issued refresh token.
-func ForgetGoogleToken(accountName string) {
-	googleTokensMu.Lock()
-	defer googleTokensMu.Unlock()
-	delete(googleTokens, accountName)
-}
+func ForgetGoogleToken(accountName string) { googleCache.forget(accountName) }

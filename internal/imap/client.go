@@ -91,17 +91,15 @@ func (c *Client) Connect(ctx context.Context) error {
 	}
 	client := imapclient.New(conn, opts)
 
-	// Gmail accounts with a refresh token authenticate over SASL XOAUTH2;
-	// everything else uses an app password over IMAP LOGIN (Gmail requires an
-	// app password + 2FA).
+	// Gmail / Outlook accounts with a refresh token authenticate over SASL
+	// XOAUTH2; everything else uses an app password over IMAP LOGIN (Gmail
+	// requires an app password + 2FA).
 	var loginErr error
-	if c.cfg.UsesGoogleOAuth2() {
-		tok, err := auth.GoogleAccessToken(ctx, c.cfg.ClientID, c.cfg.ClientSecret, c.cfg.Name, c.cfg.RefreshToken)
-		if err != nil {
-			client.Close()
-			c.netConn = nil
-			return fmt.Errorf("oauth2: %w", err)
-		}
+	if tok, err := c.oauthAccessToken(ctx); err != nil {
+		client.Close()
+		c.netConn = nil
+		return fmt.Errorf("oauth2: %w", err)
+	} else if tok != "" {
 		clear := c.applyDeadline(ctx)
 		loginErr = client.Authenticate(&xoauth2Client{user: c.cfg.User, token: tok})
 		clear()
@@ -117,6 +115,19 @@ func (c *Client) Connect(ctx context.Context) error {
 	}
 	c.conn = client
 	return nil
+}
+
+// oauthAccessToken returns a fresh XOAUTH2 access token for an OAuth account, or
+// "" when the account authenticates with a password.
+func (c *Client) oauthAccessToken(ctx context.Context) (string, error) {
+	switch {
+	case c.cfg.UsesGoogleOAuth2():
+		return auth.GoogleAccessToken(ctx, c.cfg.ClientID, c.cfg.ClientSecret, c.cfg.Name, c.cfg.RefreshToken)
+	case c.cfg.UsesMicrosoftOAuth2():
+		return auth.MSAccessToken(ctx, c.cfg.ClientID, c.cfg.Name, c.cfg.RefreshToken)
+	default:
+		return "", nil
+	}
 }
 
 // applyDeadline bounds the IMAP commands that follow it by ctx's deadline and

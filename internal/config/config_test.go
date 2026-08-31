@@ -7,6 +7,32 @@ import (
 	"testing"
 )
 
+func TestDefaultConfigMSClientIDFallsBackToThunderbird(t *testing.T) {
+	t.Setenv("TIDEMAIL_MS_CLIENT_ID", "")
+	if got := DefaultConfig().OAuth.MSClientID; got != ThunderbirdMSClientID {
+		t.Fatalf("MSClientID = %q, want the Thunderbird default", got)
+	}
+	t.Setenv("TIDEMAIL_MS_CLIENT_ID", "my-azure-app")
+	if got := DefaultConfig().OAuth.MSClientID; got != "my-azure-app" {
+		t.Fatalf("MSClientID = %q, want the env override", got)
+	}
+}
+
+func TestUsesOAuth2ProviderGates(t *testing.T) {
+	gmail := AccountConfig{Provider: "Gmail", RefreshToken: "x"}
+	outlook := AccountConfig{Provider: "Outlook", RefreshToken: "x"}
+	other := AccountConfig{Provider: "Custom", RefreshToken: "x"}
+	if !gmail.UsesGoogleOAuth2() || gmail.UsesMicrosoftOAuth2() {
+		t.Fatal("Gmail account misclassified")
+	}
+	if !outlook.UsesMicrosoftOAuth2() || outlook.UsesGoogleOAuth2() {
+		t.Fatal("Outlook account misclassified")
+	}
+	if other.UsesGoogleOAuth2() || other.UsesMicrosoftOAuth2() {
+		t.Fatal("a stray refresh token on a non-OAuth provider must not trigger XOAUTH2")
+	}
+}
+
 func TestDefaultConfigDisplayDensityCompact(t *testing.T) {
 	cfg := DefaultConfig()
 	if cfg.Display.Density != "compact" {

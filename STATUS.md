@@ -38,11 +38,12 @@ Current release: **v1.0.5**.
   no per-message AI cost.
 - **Compose**: optional vim mode (`compose_vim`), backed by the extracted
   [`ripple`](https://github.com/allisonhere/ripple) editor library.
-- **Gmail OAuth** (optional): the account form's Gmail **Auth** row is a
-  `‹ ›` selector (App password ⇄ OAuth); the OAuth guidance shows only while
-  that cluster is focused. Bring-your-own OAuth client
-  (`TIDEMAIL_GOOGLE_CLIENT_ID` / `_SECRET`), device-code sign-in (`ctrl+o`) with
-  an authorization-code paste-back fallback. XOAUTH2 for IMAP and SMTP; refresh
+- **Gmail & Outlook OAuth** (optional): the account form's **Auth** row is a
+  `‹ ›` selector (App password ⇄ OAuth) for both providers; the OAuth guidance
+  shows only while that cluster is focused. Gmail is bring-your-own client
+  (`TIDEMAIL_GOOGLE_CLIENT_ID` / `_SECRET`) with a device-code flow; Outlook
+  defaults to Thunderbird's shared public client (paste-back flow) or a custom
+  `TIDEMAIL_MS_CLIENT_ID` (device-code). XOAUTH2 for IMAP and SMTP; refresh
   token stored in the keychain and rotation-persisted.
 - **Search**, unread-only filtering, command palette, desktop notifications.
 - **Settings**: theme, display density, AI provider config, editor, update checks.
@@ -50,13 +51,14 @@ Current release: **v1.0.5**.
   user-local install fallback, and an in-app progress popup.
 
 Authentication is app-password for every provider, plus optional OAuth2 (XOAUTH2)
-for Gmail. TideMail bundles no OAuth client — the user supplies their own via
-`[oauth]` / env vars, which keeps personal use free of Google's CASA
-verification. `internal/auth` holds the Google device-code and
-authorization-code flows, a shared access-token cache with refresh-token
-rotation, and the `IsAuthFailure` / `IsTokenRevoked` classifiers that drive the
-"press M to re-authenticate" hint. Microsoft/Outlook OAuth is built but parked on
-the `outlook-oauth` branch — reviving it is a follow-up.
+for Gmail and Outlook. Gmail bundles no client — the user brings their own via
+`[oauth]` / env vars, keeping personal use free of Google's CASA verification.
+Outlook falls back to Thunderbird's shared public client (no setup) and needs no
+verification on Microsoft's side. `internal/auth` holds per-provider
+device-code + authorization-code (paste-back) flows over a shared access-token
+cache with refresh-token rotation (`internal/auth/oauth.go`), and the
+`IsAuthFailure` / `IsTokenRevoked` classifiers that drive the "press M to
+re-authenticate" hint.
 
 ## Quality gates
 

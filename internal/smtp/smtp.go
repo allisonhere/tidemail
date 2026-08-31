@@ -99,18 +99,24 @@ func (a *xoauth2Auth) Next(fromServer []byte, more bool) ([]byte, error) {
 	return nil, nil
 }
 
-// smtpAuth returns the smtp.Auth for the given config: XOAUTH2 for Gmail
-// accounts with a refresh token, otherwise app password over PLAIN (Gmail
-// requires an app password + 2FA).
+// smtpAuth returns the smtp.Auth for the given config: XOAUTH2 for Gmail /
+// Outlook accounts with a refresh token, otherwise app password over PLAIN
+// (Gmail requires an app password + 2FA).
 func smtpAuth(ctx context.Context, cfg config.AccountConfig, host string) (smtp.Auth, error) {
-	if cfg.UsesGoogleOAuth2() {
-		tok, err := auth.GoogleAccessToken(ctx, cfg.ClientID, cfg.ClientSecret, cfg.Name, cfg.RefreshToken)
-		if err != nil {
-			return nil, fmt.Errorf("oauth2: %w", err)
-		}
-		return &xoauth2Auth{user: cfg.User, token: tok}, nil
+	var tok string
+	var err error
+	switch {
+	case cfg.UsesGoogleOAuth2():
+		tok, err = auth.GoogleAccessToken(ctx, cfg.ClientID, cfg.ClientSecret, cfg.Name, cfg.RefreshToken)
+	case cfg.UsesMicrosoftOAuth2():
+		tok, err = auth.MSAccessToken(ctx, cfg.ClientID, cfg.Name, cfg.RefreshToken)
+	default:
+		return smtp.PlainAuth("", cfg.User, cfg.Password, host), nil
 	}
-	return smtp.PlainAuth("", cfg.User, cfg.Password, host), nil
+	if err != nil {
+		return nil, fmt.Errorf("oauth2: %w", err)
+	}
+	return &xoauth2Auth{user: cfg.User, token: tok}, nil
 }
 
 func sendSTARTTLS(ctx context.Context, addr string, cfg config.AccountConfig, from string, to []string, raw []byte) error {

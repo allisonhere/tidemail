@@ -181,6 +181,31 @@ If the refresh token is revoked (or the consent screen was left in "Testing" and
 expired it), the next sync shows "sign-in expired — press M to re-authenticate";
 re-open the account and press `Ctrl+O` again.
 
+### Outlook OAuth sign-in
+
+Microsoft retired basic auth for Outlook.com, so an Outlook account signs in with
+OAuth. Unlike Gmail this works out of the box — TideMail uses Mozilla
+Thunderbird's shared public client ID, which is already consented for IMAP/SMTP
+and needs no verification.
+
+1. In the account manager, add an account with provider **Outlook**, leave the
+   **Auth** row on *OAuth*, and press `Ctrl+O`.
+2. Thunderbird's client can't use the device-code flow, so TideMail copies a
+   sign-in URL to your clipboard. Open it, sign in, and you'll land on an
+   unreachable `https://localhost` page. Paste that page's URL (or the `code=`
+   value from it) into the **Code** field and press Enter.
+3. Save with `Ctrl+S`. IMAP and SMTP authenticate with XOAUTH2.
+
+To use your own Azure app registration instead (which enables the device-code
+flow — a short code you approve at `microsoft.com/devicelogin`), register a
+"Mobile and desktop" app with the `offline_access`,
+`https://outlook.office.com/IMAP.AccessAsUser.All`, and
+`https://outlook.office.com/SMTP.Send` delegated permissions, then set
+`TIDEMAIL_MS_CLIENT_ID` (or `ms_client_id` under `[oauth]`).
+
+Microsoft 365 work/school tenants often disable IMAP entirely; an admin must run
+`Set-CASMailbox -ImapEnabled $true` for the mailbox.
+
 ## Configuration files
 
 TideMail stores its config in `~/.config/tidemail/config.toml` and its SQLite

@@ -187,6 +187,16 @@ The refresh token is kept in the keychain and used to mint short-lived access
 tokens for IMAP and SMTP. If it is ever revoked, TideMail shows a
 "sign-in expired — press M to re-authenticate" hint.
 
+### Outlook
+
+Provider **Outlook** signs in with OAuth too (Microsoft dropped basic auth), but
+needs no setup: TideMail uses Thunderbird's shared public client. Add the
+account, keep the **Auth** row on *OAuth*, press `Ctrl+O`, open the copied URL,
+approve, and paste the `https://localhost/?code=…` URL the browser lands on into
+the **Code** field. Set `TIDEMAIL_MS_CLIENT_ID` to your own Azure app to get the
+device-code flow instead. M365 work/school mailboxes need IMAP enabled by an
+admin (`Set-CASMailbox -ImapEnabled $true`).
+
 ```toml
 theme = "lavender-fields-forever"
 
