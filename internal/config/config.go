@@ -65,6 +65,7 @@ type DisplayConfig struct {
 	Browser               string             `toml:"browser"`
 	Density               string             `toml:"density"`
 	PaneCorners           string             `toml:"pane_corners"` // "square" or "round"
+	Shadow                bool               `toml:"shadow"`       // drop shadow behind modal overlays
 	ComposeVim            bool               `toml:"compose_vim"`
 	SendDelaySeconds      int                `toml:"send_delay_seconds"` // undo grace period; 0 = send immediately
 	VT52                  RetroTerminalTweak `toml:"vt52"`
@@ -216,6 +217,7 @@ func DefaultConfig() Config {
 			MessagesHeightPercent: 40,
 			Density:               "compact",
 			PaneCorners:           "square",
+			Shadow:                true,
 			ConfirmQuit:           true,
 			ShowHeaders:           true,
 			Notifications:         true,

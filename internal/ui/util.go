@@ -11,8 +11,11 @@ import (
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/cellbuf"
+	"github.com/muesli/termenv"
 )
 
 func formatFileSize(size int64) string {
@@ -145,7 +148,7 @@ func nextContentFocusLine(current, delta int, focusable []bool, lineCount int) i
 	return current
 }
 
-func overlayOnBase(base, box string, width, height int, bg lipgloss.Color) string {
+func overlayOnBase(base, box string, width, height int, bg lipgloss.Color, shadow bool) string {
 	base = clampView(base, width, height, bg)
 
 	boxLines := strings.Split(box, "\n")
@@ -168,6 +171,10 @@ func overlayOnBase(base, box string, width, height int, bg lipgloss.Color) strin
 	}
 	rightStart := overlayX + boxW
 
+	if shadow {
+		base = blendShadowRect(base, overlayX+shadowOffsetX, overlayY+shadowOffsetY, boxW, boxH, width, height, bg, shadowColor(bg))
+	}
+
 	baseLines := strings.Split(base, "\n")
 	for len(baseLines) < height {
 		baseLines = append(baseLines, "")
@@ -185,7 +192,125 @@ func overlayOnBase(base, box string, width, height int, bg lipgloss.Color) strin
 		right := ansi.Cut(baseLine, rightStart, width)
 		result[y] = left + boxLines[boxRow] + right
 	}
-	return strings.Join(result, "\n")
+	// Normalize every row to exactly width. ansi.Cut counts visual columns, and
+	// a wide rune in the (post-shadow) base straddling the cut boundary can make
+	// the trailing slice come back a column or two short — which would drop the
+	// box's right border and shift the shadow sliver on that one row. Re-clamp
+	// so the overlay is always width×height; a pathological row loses a cell or
+	// two of far-right base content rather than the whole line going ragged.
+	return clampView(strings.Join(result, "\n"), width, height, bg)
+}
+
+// shadowOffsetX and shadowOffsetY position the drop shadow relative to the
+// modal's own top-left corner. Both positive (down-and-right) is the classic
+// look: the modal covers all of the shadow rectangle except a bottom-and-right
+// sliver, which reads as the shadow. One cell on each side — a 2-wide vertical
+// band reads as a heavy black bar next to the modal rather than a shadow.
+const shadowOffsetX, shadowOffsetY = 1, 1
+
+// shadowAlpha is how strongly the shadow rectangle darkens whatever's actually
+// behind it (0 = invisible, 1 = the flat shadowBg color with nothing of the
+// original showing through). shadowColor's target is already near-black for
+// most dark themes, and a low alpha on top of an already-dark UI moves
+// brightness by only a few RGB points — real but invisible at normal viewing
+// distance. This needs to be strong enough to actually look like a shadow.
+const shadowAlpha = 0.925
+
+// shadowFgAlpha is deliberately much weaker than shadowAlpha. Blending a
+// cell's glyph foreground toward the same near-black target at full strength
+// collapses fg/bg contrast to near zero — the character disappears into its
+// own background instead of just dimming. 0.55 pushes text well into "dimmed"
+// without erasing it; the sliver is a single cell wide, so any glyph landing
+// in it is decorative rather than something the reader needs to parse.
+const shadowFgAlpha = 0.55
+
+// blendShadowRect darkens the rectangle of base behind the modal's shadow
+// offset by blending each cell's own already-resolved background toward
+// shadowBg, instead of painting an opaque rectangle over it — a real drop
+// shadow rather than a flat cutout. It round-trips only the affected rows
+// through a cellbuf grid: SetContent parses ANSI styling into per-cell
+// Style{Fg,Bg}, and Render serializes the mutated grid back to an ANSI string.
+// Render emits "\r\n" between lines (cellbuf's own convention); normalized back
+// to "\n" so the result still fits the plain strings.Split downstream.
+//
+// Scoped to rows y..y+h rather than the whole viewport: parsing/serializing
+// the entire base render every frame (most of which the shadow never touches)
+// is wasteful, so slice to just the rows the shadow can land on — clampView
+// already guarantees they are self-contained, uniformly width-padded lines
+// safe to split and splice back by index.
+func blendShadowRect(base string, x, y, w, h, totalWidth, totalHeight int, page, shadowBg lipgloss.Color) string {
+	base = clampView(base, totalWidth, totalHeight, page)
+	rowStart, rowEnd := max(0, y), min(totalHeight, y+h)
+	if rowStart >= rowEnd {
+		return base // shadow rectangle doesn't intersect the viewport at all
+	}
+	lines := strings.Split(base, "\n")
+	sliceHeight := rowEnd - rowStart
+	slice := strings.Join(lines[rowStart:rowEnd], "\n")
+
+	buf := cellbuf.NewBuffer(totalWidth, sliceHeight)
+	cellbuf.SetContent(buf, slice)
+	// blendBg always returns a raw 24-bit ansi.RGBColor, but cellbuf.Render has
+	// no color-profile awareness of its own — convert to the same profile every
+	// other Render call in this app downgrades through, or a non-truecolor
+	// terminal would just drop the shadow cells' unsupported SGR codes.
+	profile := activeColorProfile()
+	for row := 0; row < sliceHeight; row++ {
+		for col := max(0, x); col < min(totalWidth, x+w); col++ {
+			cell := buf.Cell(col, row)
+			if cell == nil {
+				continue
+			}
+			blended := *cell
+			blended.Style.Bg = profile.Convert(blendBg(cell.Style.Bg, page, shadowBg, shadowAlpha))
+			// A glyph inside the shadow rectangle needs darkening too, not just
+			// the space around it — otherwise text rendered right up to a
+			// pane's edge (exactly where the shadow's sliver sits) keeps its
+			// bright color. Uses the weaker shadowFgAlpha so it dims without
+			// becoming unreadable; skip a nil Fg rather than fabricating one.
+			if cell.Style.Fg != nil {
+				blended.Style.Fg = profile.Convert(blendBg(cell.Style.Fg, page, shadowBg, shadowFgAlpha))
+			}
+			buf.SetCell(col, row, &blended)
+		}
+	}
+	rendered := strings.Split(strings.ReplaceAll(cellbuf.Render(buf), "\r\n", "\n"), "\n")
+	if len(rendered) != sliceHeight {
+		// Defensive: if cellbuf's line count ever doesn't match what was asked
+		// for, fall back to the unshadowed rows rather than splice a corrupted
+		// line count into the full view.
+		return base
+	}
+	// Splice each re-rendered row back only if cellbuf reproduced it at exactly
+	// totalWidth. Its width model isn't identical to lipgloss/x-ansi's — a wide
+	// rune, an OSC-8 hyperlink, or a trimmed trailing run in the base content
+	// can come back a column or two short, and splicing that in would shift
+	// everything after it on that row (a missing shadow sliver and a visibly
+	// truncated line). Rows cellbuf mangled keep their original unshadowed
+	// content: a one-row gap in the shadow, never a corrupted line.
+	for i, r := range rendered {
+		if lipgloss.Width(r) == totalWidth {
+			lines[rowStart+i] = r
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// activeColorProfile bridges lipgloss's global color profile (a termenv.Profile
+// — the profile every other Render call in this app implicitly downgrades
+// through) to the distinct colorprofile.Profile type cellbuf's Profile.Convert
+// expects. These are two different Charm libraries' own profile enums.
+func activeColorProfile() colorprofile.Profile {
+	switch lipgloss.ColorProfile() {
+	case termenv.TrueColor:
+		return colorprofile.TrueColor
+	case termenv.ANSI256:
+		return colorprofile.ANSI256
+	case termenv.ANSI:
+		return colorprofile.ANSI
+	default:
+		return colorprofile.ASCII
+	}
 }
 
 func safeFilename(name string) string {

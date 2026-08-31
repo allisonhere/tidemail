@@ -92,7 +92,7 @@ func (m PrototypeFormsModel) render(chrome managerChrome) string {
 	}
 	inner := lipgloss.JoinVertical(lipgloss.Left, header, body, footer)
 	box := renderChromeOverlayBox(clampView(inner, outerW, outerH, chrome.baseBg), outerW, chrome, chrome.accent)
-	return overlayOnBase("", box, m.width, m.height, m.styles.Theme.Bg)
+	return overlayOnBase("", box, m.width, m.height, m.styles.Theme.Bg, false)
 }
 
 func (m PrototypeFormsModel) prototypePrimaryAction() string {

@@ -2,6 +2,17 @@
 
 All notable changes to TideMail are documented in this file.
 
+## v1.0.10
+
+### Added
+
+- **Modal overlays now cast a soft drop shadow.** Confirm dialogs, the compose
+  window, the theme and account pickers, and every other overlay get a
+  contrast-aware shadow blended into whatever is behind them — a real
+  alpha-blend of the underlying cells, not a flat cutout, so it reads on both
+  light and dark themes. On by default; toggle it at **Settings → Display →
+  Modal drop shadow** (`display.shadow` in `config.toml`).
+
 ## v1.0.9
 
 ### Fixed

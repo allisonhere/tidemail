@@ -207,7 +207,7 @@ func (m Model) renderOverlay(base string) string {
 		box = renderSoftPanelBox(inner, winW, "tidemail", "command", chrome)
 	}
 
-	return overlayOnBase(base, box, m.width, m.height, m.styles.Theme.Bg)
+	return overlayOnBase(base, box, m.width, m.height, m.styles.Theme.Bg, m.cfg.Display.Shadow)
 }
 
 func (m Model) updateOverlayTitle() string {

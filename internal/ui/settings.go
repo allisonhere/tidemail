@@ -44,6 +44,7 @@ const (
 	sfReadingWidth
 	sfDisplayDensity
 	sfPaneCorners
+	sfShadow
 	sfBrowser
 	sfFeedMaxBody
 	sfUpdateCheckOnStartup
@@ -230,6 +231,7 @@ type Settings struct {
 	markReadOnOpen        bool
 	markReadOnFocus       bool
 	focusLine             bool
+	shadow                bool
 	showSender            bool
 	threadedConversations bool
 	defaultUnreadOnly     bool
@@ -332,6 +334,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		markReadOnOpen:        cfg.Display.MarkReadOnOpen,
 		markReadOnFocus:       cfg.Display.MarkReadOnFocus,
 		focusLine:             cfg.Display.FocusLine,
+		shadow:                cfg.Display.Shadow,
 		showSender:            cfg.Display.ShowSender,
 		threadedConversations: cfg.Display.ThreadedConversations,
 		defaultUnreadOnly:     cfg.Display.DefaultUnreadOnly,
@@ -403,6 +406,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.MarkReadOnOpen = s.markReadOnOpen
 	cfg.Display.MarkReadOnFocus = s.markReadOnFocus
 	cfg.Display.FocusLine = s.focusLine
+	cfg.Display.Shadow = s.shadow
 	cfg.Display.ShowSender = s.showSender
 	cfg.Display.ThreadedConversations = s.threadedConversations
 	cfg.Display.DefaultUnreadOnly = s.defaultUnreadOnly
@@ -641,7 +645,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 	case ssDisplay:
 		// Keep this order in lockstep with the ssDisplay case in viewSectionBody:
 		// Appearance, Terminal colors (retro themes), Message list, Reading, Behavior.
-		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfPaneCorners, sfIcons, sfDateFormat, sfFocusLine}
+		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfPaneCorners, sfIcons, sfDateFormat, sfFocusLine, sfShadow}
 		if config.IsRetroTerminalTheme(s.themeName) {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
@@ -1120,6 +1124,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfShadow:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.shadow = !s.shadow
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfShowSender:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.showSender = !s.showSender
@@ -1573,6 +1586,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addToggle("Icons", s.icons, sfIcons)
 		b.addDateFormatSelector()
 		b.addToggle("Focus line", s.focusLine, sfFocusLine)
+		b.addToggle("Modal drop shadow", s.shadow, sfShadow)
 		if config.IsRetroTerminalTheme(s.themeName) {
 			b.addGroup("Terminal colors")
 			b.addInput("VT background (#rrggbb)", s.retroBgInput, sfRetroBg)
@@ -2438,6 +2452,8 @@ func (s Settings) fieldHint(field settingsField) string {
 		return "strip bare URLs from the article body text"
 	case sfFocusLine:
 		return "highlight the current readable line in the content pane"
+	case sfShadow:
+		return "draw a soft drop shadow behind modal overlays"
 	case sfShowSender:
 		return "show the sender's name in a column before the subject in the message list"
 	case sfThreadedConversations:

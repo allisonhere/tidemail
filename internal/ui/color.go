@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // paneFocusMinContrast is the contrast floor for the focused-pane border —
@@ -22,6 +23,11 @@ const paneFocusMinContrast = 7.0
 const selectedBgMinContrast = 3.0
 const selectedBgSoftMinContrast = 2.0
 
+// shadowBgMinContrast is the contrast floor a modal drop shadow's background
+// must clear against the page background it sits on, so the shadow reads as a
+// shadow instead of an invisible near-match.
+const shadowBgMinContrast = 1.6
+
 // hexToRGB parses a #rrggbb color into [0,1] float components.
 func hexToRGB(c lipgloss.Color) (r, g, b float64, ok bool) {
 	s := strings.TrimPrefix(string(c), "#")
@@ -35,6 +41,49 @@ func hexToRGB(c lipgloss.Color) (r, g, b float64, ok bool) {
 		return
 	}
 	return float64(ri) / 255, float64(gi) / 255, float64(bi) / 255, true
+}
+
+// shadowColor darkens bg until it clears shadowBgMinContrast against bg
+// itself, always in the darkening direction regardless of theme — a shadow
+// should always read as "darker," not "further away," on both light and dark
+// themes.
+func shadowColor(bg lipgloss.Color) lipgloss.Color {
+	const step = 0.03
+	const maxSteps = 30
+	cur := bg
+	for range maxSteps {
+		next := adjustLightness(cur, -step)
+		if next == cur {
+			break
+		}
+		cur = next
+		if contrastRatio(cur, bg) >= shadowBgMinContrast {
+			return cur
+		}
+	}
+	return cur
+}
+
+// blendBg lerps a cell's currently-resolved background color toward target by
+// alpha (0 = unchanged, 1 = fully target) — the per-cell color math a true
+// alpha-blended shadow needs, as opposed to shadowColor's flat rectangle.
+// existing is the ansi.Color already resolved for that cell by cellbuf (nil
+// means the cell never had an explicit background set, i.e. it's showing the
+// page's own default background — page fills in for it).
+func blendBg(existing ansi.Color, page, target lipgloss.Color, alpha float64) ansi.RGBColor {
+	var er, eg, eb float64
+	if existing == nil {
+		er, eg, eb, _ = hexToRGB(page)
+	} else {
+		r, g, b, _ := existing.RGBA()
+		er, eg, eb = float64(r>>8)/255, float64(g>>8)/255, float64(b>>8)/255
+	}
+	tr, tg, tb, _ := hexToRGB(target)
+	return ansi.RGBColor{
+		R: uint8(clamp01(er+(tr-er)*alpha)*255 + 0.5),
+		G: uint8(clamp01(eg+(tg-eg)*alpha)*255 + 0.5),
+		B: uint8(clamp01(eb+(tb-eb)*alpha)*255 + 0.5),
+	}
 }
 
 // mixColors blends tint into base by amount in sRGB space.
