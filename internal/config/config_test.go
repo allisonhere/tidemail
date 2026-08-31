@@ -59,9 +59,12 @@ func TestMigrateAuthMethod(t *testing.T) {
 		{"legacy gmail with app password", AccountConfig{Provider: "Gmail", Password: "pw"}, none, none, AuthPassword},
 		{"legacy gmail, password only in keychain", AccountConfig{Provider: "Gmail"}, pw, tok, AuthPassword},
 		{"legacy gmail, token only in keychain, no password anywhere", AccountConfig{Provider: "Gmail"}, none, tok, AuthOAuth2},
+		{"legacy gmail, token in TOML, no keychain", AccountConfig{Provider: "Gmail", RefreshToken: "1//from-toml"}, none, none, AuthOAuth2},
 		{"legacy outlook, token only", AccountConfig{Provider: "Outlook"}, none, tok, AuthOAuth2},
 		{"legacy custom provider", AccountConfig{Provider: "Custom"}, none, tok, AuthPassword},
-		{"already stamped is untouched", AccountConfig{Provider: "Gmail", AuthMethod: AuthPassword}, none, tok, AuthPassword},
+		{"password stamp with a real password stays put (v1.0.6 hazard)", AccountConfig{Provider: "Gmail", AuthMethod: AuthPassword, Password: "pw"}, none, tok, AuthPassword},
+		{"password stamp with NO password + a token is healed to oauth2", AccountConfig{Provider: "Gmail", AuthMethod: AuthPassword}, none, tok, AuthOAuth2},
+		{"oauth2 stamp is left alone even with no token yet", AccountConfig{Provider: "Gmail", AuthMethod: AuthOAuth2}, none, none, AuthOAuth2},
 	}
 	for _, tc := range cases {
 		cfg := &Config{Accounts: []AccountConfig{tc.acct}}

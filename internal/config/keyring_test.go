@@ -38,12 +38,15 @@ func TestFillSecretsFillsClientCredsForOAuthAccount(t *testing.T) {
 	}
 }
 
-func TestStripSecretsClearsTokenForPasswordAccount(t *testing.T) {
+func TestStripSecretsLeavesTokenOnPasswordAccountUntouched(t *testing.T) {
+	// A token on a "password" account is inert (fillSecrets / Uses*OAuth2 gate on
+	// AuthMethod). stripSecrets must not wipe it — a wrong auto-migration would
+	// otherwise be unrecoverable.
 	cfg := &Config{Accounts: []AccountConfig{
-		{Name: "Gmail", Provider: "Gmail", AuthMethod: AuthPassword, RefreshToken: "stale-token"},
+		{Name: "Gmail", Provider: "Gmail", AuthMethod: AuthPassword, RefreshToken: "keep-me"},
 	}}
 	stripSecrets(cfg)
-	if got := cfg.Accounts[0].RefreshToken; got != "" {
-		t.Fatalf("stripSecrets left a refresh token on an app-password account: %q", got)
+	if got := cfg.Accounts[0].RefreshToken; got != "keep-me" {
+		t.Fatalf("stripSecrets wiped a token off an app-password account: %q", got)
 	}
 }

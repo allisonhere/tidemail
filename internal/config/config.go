@@ -167,22 +167,28 @@ func isOAuthProvider(provider string) bool {
 	return provider == "Gmail" || provider == "Outlook"
 }
 
-// migrateAuthMethod stamps an explicit AuthMethod on every account that lacks
-// one (legacy configs written before the field existed). An account is migrated
-// to OAuth2 only when it is unambiguously an OAuth account: an OAuth-capable
-// provider, no password anywhere (TOML or keychain), and a refresh token in the
-// keychain. Everything else becomes "password". getPassword/getToken are
-// injected so this is testable without a real keychain.
+// migrateAuthMethod resolves each account's AuthMethod. It runs on every load —
+// not only for legacy (unset) configs — so it can also *heal* a wrong value: an
+// OAuth-capable account with a refresh token and no password anywhere is OAuth,
+// whatever it is currently stamped. (A prior migration could have stamped
+// "password" while the keychain was briefly unavailable.) A genuine app-password
+// account always has a password, so it is never promoted here — this keeps the
+// v1.0.6 hazard closed, where a stray keychain token would flip a password
+// account to OAuth. Anything still unset falls to "password".
+//
+// "has a token"/"has a password" look at both the decoded TOML (keyless systems
+// keep secrets there) and the keychain. getPassword/getToken are injected so
+// this is testable without a real keychain.
 func migrateAuthMethod(cfg *Config, getPassword, getToken func(string) string) {
 	for i := range cfg.Accounts {
 		a := &cfg.Accounts[i]
-		if a.AuthMethod != "" {
+		hasPassword := a.Password != "" || getPassword(a.Name) != ""
+		hasToken := a.RefreshToken != "" || getToken(a.Name) != ""
+		if isOAuthProvider(a.Provider) && !hasPassword && hasToken {
+			a.AuthMethod = AuthOAuth2
 			continue
 		}
-		if isOAuthProvider(a.Provider) && a.Password == "" &&
-			getPassword(a.Name) == "" && getToken(a.Name) != "" {
-			a.AuthMethod = AuthOAuth2
-		} else {
+		if a.AuthMethod == "" {
 			a.AuthMethod = AuthPassword
 		}
 	}

@@ -2,6 +2,21 @@
 
 All notable changes to TideMail are documented in this file.
 
+## v1.0.8
+
+### Fixed
+
+- **v1.0.7's auth-method migration could mis-stamp an OAuth account as
+  `password`** — e.g. if the keychain was momentarily unavailable during that
+  load, or the token was only in `config.toml`. The account then tried IMAP
+  LOGIN with an empty password ("NO Empty username or password"). The migration
+  now runs on every load and self-heals: an OAuth-capable account with a refresh
+  token (in the keychain *or* the config) and no password anywhere is treated as
+  OAuth regardless of a previous wrong stamp. A genuine app-password account
+  always has a password, so it is still never promoted. `stripSecrets` also no
+  longer wipes a token off an account it believes is password-only, so a wrong
+  classification is recoverable rather than destructive.
+
 ## v1.0.7
 
 **Release highlights:** fixes a v1.0.6 regression where an app-password account

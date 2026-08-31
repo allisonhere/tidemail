@@ -193,18 +193,15 @@ func stripSecrets(cfg *Config) int {
 				stored++
 			}
 		}
-		// OAuth2 refresh_token — per-user secret, store in keychain. When the
-		// account isn't OAuth, prune any stale token/secret so a later load
-		// can't resurrect it (makes "switch back to app password" self-healing).
-		if cfg.Accounts[i].AuthMethod == AuthOAuth2 {
-			if cfg.Accounts[i].RefreshToken != "" &&
-				StoreOAuth2RefreshToken(cfg.Accounts[i].Name, cfg.Accounts[i].RefreshToken) {
-				cfg.Accounts[i].RefreshToken = ""
-				stored++
-			}
-		} else {
-			DeleteOAuth2Secrets(cfg.Accounts[i].Name)
+		// OAuth2 refresh_token — per-user secret, store in keychain for OAuth
+		// accounts. A non-OAuth account's token (if any) is left untouched: it
+		// is already inert (fillSecrets and Uses*OAuth2 gate on AuthMethod), and
+		// wiping it here would destroy a token an auto-migration mis-classified.
+		// Real cleanup happens on account delete (deleteAccountCmd).
+		if cfg.Accounts[i].AuthMethod == AuthOAuth2 && cfg.Accounts[i].RefreshToken != "" &&
+			StoreOAuth2RefreshToken(cfg.Accounts[i].Name, cfg.Accounts[i].RefreshToken) {
 			cfg.Accounts[i].RefreshToken = ""
+			stored++
 		}
 	}
 	if cfg.AI.OpenAIKey != "" && StoreAIKey("openai", cfg.AI.OpenAIKey) {
