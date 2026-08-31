@@ -54,11 +54,14 @@ Authentication is app-password for every provider, plus optional OAuth2 (XOAUTH2
 for Gmail and Outlook. Gmail bundles no client — the user brings their own via
 `[oauth]` / env vars, keeping personal use free of Google's CASA verification.
 Outlook falls back to Thunderbird's shared public client (no setup) and needs no
-verification on Microsoft's side. `internal/auth` holds per-provider
-device-code + authorization-code (paste-back) flows over a shared access-token
-cache with refresh-token rotation (`internal/auth/oauth.go`), and the
-`IsAuthFailure` / `IsTokenRevoked` classifiers that drive the "press M to
-re-authenticate" hint.
+verification on Microsoft's side; the same path also covers Microsoft 365 /
+Exchange Online mailboxes. `internal/auth` holds per-provider device-code +
+authorization-code (paste-back) flows over a shared access-token cache with
+refresh-token rotation (`internal/auth/oauth.go`), and the `IsAuthFailure` /
+`IsTokenRevoked` classifiers that drive the "press M to re-authenticate" hint.
+SASL support is XOAUTH2 and PLAIN only — no NTLM/GSSAPI, so an on-prem Exchange
+server with basic auth disabled is out of reach (basic-auth on-prem works via the
+Custom provider).
 
 ## Quality gates
 

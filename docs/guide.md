@@ -126,9 +126,14 @@ clears them from the config file.
 If `secret-tool` is unavailable on Linux, TideMail writes these secrets to
 `~/.config/tidemail/config.toml`. Keep that file private.
 
-- Gmail: Google Account → Security → App passwords (requires 2-Step Verification)
+- Gmail: Google Account → Security → App passwords (requires 2-Step Verification),
+  or sign in with OAuth (below)
+- Outlook.com / Microsoft 365 / Exchange Online: OAuth only — pick the **Outlook**
+  provider and sign in (below); Microsoft no longer accepts passwords here
 - Yahoo: Account Security → Generate app password
 - iCloud: Apple ID → Sign-In and Security → App-Specific Passwords
+- On-premises Exchange or any other server: **Custom** provider with your normal
+  username and password (basic auth over TLS)
 
 If you expose an app password, revoke it and create a new one.
 
@@ -183,10 +188,11 @@ re-open the account and press `Ctrl+O` again.
 
 ### Outlook OAuth sign-in
 
-Microsoft retired basic auth for Outlook.com, so an Outlook account signs in with
-OAuth. Unlike Gmail this works out of the box — TideMail uses Mozilla
-Thunderbird's shared public client ID, which is already consented for IMAP/SMTP
-and needs no verification.
+The **Outlook** provider covers Outlook.com, Hotmail/Live, and Microsoft 365 /
+Exchange Online mailboxes. Microsoft retired basic auth for all of these, so the
+account signs in with OAuth. Unlike Gmail this works out of the box — TideMail
+uses Mozilla Thunderbird's shared public client ID, which is already consented
+for IMAP/SMTP and needs no verification.
 
 1. In the account manager, add an account with provider **Outlook**, leave the
    **Auth** row on *OAuth*, and press `Ctrl+O`.
@@ -205,6 +211,22 @@ flow — a short code you approve at `microsoft.com/devicelogin`), register a
 
 Microsoft 365 work/school tenants often disable IMAP entirely; an admin must run
 `Set-CASMailbox -ImapEnabled $true` for the mailbox.
+
+### On-premises Exchange Server
+
+A self-hosted Exchange server (2016/2019/Subscription Edition) is **not** the
+Outlook provider — it does not authenticate against Microsoft's cloud. Use the
+**Custom** provider:
+
+- IMAP host: your Exchange server's hostname, port 993, TLS
+- SMTP host: the same server, port 587 (STARTTLS) or 465
+- Username: your login (often `DOMAIN\user` or your UPN)
+- Password: your normal mailbox password
+
+On-premises Exchange still accepts basic auth over TLS — Microsoft only removed it
+from Exchange Online. TideMail speaks XOAUTH2 and PLAIN only, so it cannot connect
+to an on-prem server whose admin has disabled basic auth and requires NTLM or
+Kerberos (GSSAPI).
 
 ## Configuration files
 

@@ -149,8 +149,10 @@ AI stays off until you configure a provider.
 ## First account
 
 Press `M`, add your incoming and outgoing mail settings, then save with
-`Ctrl+S`. Gmail, Yahoo, and iCloud require an app password — or, for Gmail, an
-OAuth sign-in (see below).
+`Ctrl+S`. Gmail, Yahoo, and iCloud require an app password; Gmail and Outlook can
+sign in with OAuth instead (see below). Any other IMAP/SMTP server — including an
+on-premises Microsoft Exchange server — uses the **Custom** provider with a
+username and password.
 
 TideMail stores passwords, AI keys, and OAuth refresh tokens in libsecret on
 Linux or Keychain on macOS. If `secret-tool` is missing on Linux, TideMail falls
@@ -189,13 +191,22 @@ tokens for IMAP and SMTP. If it is ever revoked, TideMail shows a
 
 ### Outlook
 
-Provider **Outlook** signs in with OAuth too (Microsoft dropped basic auth), but
-needs no setup: TideMail uses Thunderbird's shared public client. Add the
-account, keep the **Auth** row on *OAuth*, press `Ctrl+O`, open the copied URL,
-approve, and paste the `https://localhost/?code=…` URL the browser lands on into
-the **Code** field. Set `TIDEMAIL_MS_CLIENT_ID` to your own Azure app to get the
-device-code flow instead. M365 work/school mailboxes need IMAP enabled by an
-admin (`Set-CASMailbox -ImapEnabled $true`).
+Provider **Outlook** covers **Outlook.com, Hotmail, and Microsoft 365 / Exchange
+Online**. Microsoft dropped basic auth for these, so the account signs in with
+OAuth — but it needs no setup: TideMail uses Thunderbird's shared public client.
+Add the account, keep the **Auth** row on *OAuth*, press `Ctrl+O`, open the
+copied URL, approve, and paste the `https://localhost/?code=…` URL the browser
+lands on into the **Code** field. Set `TIDEMAIL_MS_CLIENT_ID` to your own Azure
+app to get the device-code flow instead. M365 work/school mailboxes need IMAP
+enabled by an admin (`Set-CASMailbox -ImapEnabled $true`).
+
+### On-premises Exchange Server
+
+A self-hosted Exchange server (2016/2019/SE) is **not** the Outlook provider — it
+does not use Microsoft's cloud sign-in. Use the **Custom** provider with your
+server's IMAP/SMTP hostname and your normal username and password; on-prem
+Exchange still accepts basic auth over TLS. TideMail cannot connect to an on-prem
+server that has disabled basic auth and requires NTLM or Kerberos (GSSAPI).
 
 ```toml
 theme = "lavender-fields-forever"
