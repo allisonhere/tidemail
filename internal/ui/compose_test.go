@@ -999,3 +999,36 @@ func TestComposeBodyBackgroundMatchesFormFields(t *testing.T) {
 		t.Fatalf("focused body should use fieldBg like a focused input, got %q", focusedLine)
 	}
 }
+
+// TestComposeEmptyFieldsNoBackgroundBleed guards the To/CC/BCC/Subject rows
+// against the terminal-default background leaking through the placeholder
+// padding of an empty field at rest. renderTextInput left bubbles' own Width
+// padding (unstyled spaces) in place for unfocused empty fields, and the outer
+// wrap can't re-colour it because lipgloss won't re-apply a background after
+// bubbles' internal reset.
+func TestComposeEmptyFieldsNoBackgroundBleed(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+
+	styles := BuildStyles(CatppuccinMocha, "compact", "square")
+
+	// No account list so From is skipped; every recipient/subject field is empty.
+	c := NewCompose(config.AccountConfig{}, nil, nil)
+	c.focusedField = composeFieldSubject // leave To/CC/BCC unfocused and empty
+	c.subjectInput.Blur()
+	c.toInput.Blur()
+	view := c.View(74, 32, styles)
+
+	// A reset immediately followed by spaces and then another reset is the
+	// signature of bare padding with no background — the bleed.
+	bare := regexp.MustCompile(`\x1b\[0?m {2,}\x1b\[`)
+	for _, label := range []string{"To", "CC", "BCC", "Subject"} {
+		line := composeRawLine(view, label)
+		if line == "" {
+			t.Fatalf("no %s row in view", label)
+		}
+		if bare.MatchString(line) {
+			t.Errorf("%s row has unstyled padding (background bleed): %q", label, line)
+		}
+	}
+}

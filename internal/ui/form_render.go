@@ -119,10 +119,13 @@ func renderTextInput(input textinput.Model, width int, focused, masked bool, chr
 	if masked {
 		input.EchoMode = textinput.EchoPassword
 	}
-	if focused && input.Value() == "" {
+	if input.Value() == "" {
 		// bubbles' placeholderView pads to Width with unstyled spaces when Width
-		// is set, leaking the terminal's default background. Leave padding to
-		// the Width(width) wrap below, which styles it.
+		// is set, leaking the terminal's default background — the outer Width
+		// wrap can't fix it because lipgloss won't re-apply the background after
+		// bubbles' internal reset. Empty fields have nothing to scroll, so drop
+		// Width and let the Width(width) wrap below do the (styled) padding. This
+		// hits unfocused rows too: To/CC/BCC/Subject at rest with no value.
 		input.Width = 0
 	}
 	view := truncateStyled(inputViewWithCursor(input, focused), width, bg)
