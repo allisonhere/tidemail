@@ -27,9 +27,10 @@ func IsAuthFailure(err error) bool {
 		"username and password not accepted",
 		"invalid_grant", // OAuth token expired/revoked
 		"expired or revoked",
-		"aadsts70008",  // Microsoft: refresh token expired
-		"aadsts700082", // Microsoft: refresh token expired (inactivity)
-		"aadsts50173",  // Microsoft: token revoked (password change etc.)
+		"aadsts70008",      // Microsoft: refresh token expired
+		"aadsts700082",     // Microsoft: refresh token expired (inactivity)
+		"aadsts50173",      // Microsoft: token revoked (password change etc.)
+		"no refresh token", // account marked oauth2 but no token stored — needs sign-in
 	} {
 		if strings.Contains(m, sig) {
 			return true

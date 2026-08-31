@@ -251,11 +251,17 @@ smtp_host = "smtp.example.com"
 smtp_port = 587
 smtp_tls = true
 user = "alice@example.com"
+auth_method = "password"  # "password" (default) or "oauth2"
 password = "app-password"
 from = "Alice <alice@example.com>"
 signature = "Alice\nSent with TideMail"
 sync_minutes = 0  # 0 = push (IDLE), N = poll every N min, -1 = manual only
 ```
+
+`auth_method` is set for you: it becomes `"oauth2"` once you complete a `Ctrl+O`
+sign-in for a Gmail/Outlook account, otherwise `"password"`. The refresh token
+and password live in the system keychain, not this file. An account never
+switches to OAuth on its own — a leftover keychain token cannot promote it.
 
 ## Keyboard shortcuts
 

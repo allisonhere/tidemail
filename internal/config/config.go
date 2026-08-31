@@ -99,18 +99,28 @@ type AIConfig struct {
 	MarkReadOnSummarize bool   `toml:"mark_read_on_summarize"`
 }
 
+// Auth method values for AccountConfig.AuthMethod.
+const (
+	AuthPassword = "password" // IMAP LOGIN / SMTP PLAIN with an app password
+	AuthOAuth2   = "oauth2"   // SASL XOAUTH2 with a keychain refresh token
+)
+
 type AccountConfig struct {
 	Name     string `toml:"name"`
 	Provider string `toml:"provider"`
-	IMAPHost string `toml:"imap_host"`
-	IMAPPort int    `toml:"imap_port"`
-	IMAPTLS  bool   `toml:"imap_tls"`
-	SMTPHost string `toml:"smtp_host"`
-	SMTPPort int    `toml:"smtp_port"`
-	SMTPTLS  bool   `toml:"smtp_tls"`
-	User     string `toml:"user"`
-	Password string `toml:"password"`
-	From     string `toml:"from"`
+	// AuthMethod is the explicit, opt-in auth choice: "password" (default) or
+	// "oauth2". An empty value is treated as "password" — a stale keychain
+	// refresh token must never promote an account to OAuth on its own.
+	AuthMethod string `toml:"auth_method"`
+	IMAPHost   string `toml:"imap_host"`
+	IMAPPort   int    `toml:"imap_port"`
+	IMAPTLS    bool   `toml:"imap_tls"`
+	SMTPHost   string `toml:"smtp_host"`
+	SMTPPort   int    `toml:"smtp_port"`
+	SMTPTLS    bool   `toml:"smtp_tls"`
+	User       string `toml:"user"`
+	Password   string `toml:"password"`
+	From       string `toml:"from"`
 	// SyncMinutes selects how the account refreshes in the background:
 	//
 	//	< 0  manual only — no polling and no push connection
@@ -134,22 +144,48 @@ type AccountConfig struct {
 	ClientSecret string `toml:"-"`
 }
 
-// UsesOAuth2 returns true if this account is configured for OAuth2 auth.
+// UsesOAuth2 returns true if this account opted into OAuth2 auth.
 func (a AccountConfig) UsesOAuth2() bool {
-	return a.RefreshToken != ""
+	return a.AuthMethod == AuthOAuth2
 }
 
 // UsesGoogleOAuth2 reports whether the account authenticates with Gmail XOAUTH2.
-// The provider gate keeps an orphaned refresh token from silently changing
-// another account's auth path.
+// It keys off the explicit AuthMethod marker, not the presence of a refresh
+// token — a leftover keychain token must not change an account's auth path.
 func (a AccountConfig) UsesGoogleOAuth2() bool {
-	return a.RefreshToken != "" && a.Provider == "Gmail"
+	return a.AuthMethod == AuthOAuth2 && a.Provider == "Gmail"
 }
 
 // UsesMicrosoftOAuth2 reports whether the account authenticates with Outlook
 // XOAUTH2 (Microsoft retired basic auth for Outlook.com).
 func (a AccountConfig) UsesMicrosoftOAuth2() bool {
-	return a.RefreshToken != "" && a.Provider == "Outlook"
+	return a.AuthMethod == AuthOAuth2 && a.Provider == "Outlook"
+}
+
+// oauthProviders are the providers with an OAuth2 path.
+func isOAuthProvider(provider string) bool {
+	return provider == "Gmail" || provider == "Outlook"
+}
+
+// migrateAuthMethod stamps an explicit AuthMethod on every account that lacks
+// one (legacy configs written before the field existed). An account is migrated
+// to OAuth2 only when it is unambiguously an OAuth account: an OAuth-capable
+// provider, no password anywhere (TOML or keychain), and a refresh token in the
+// keychain. Everything else becomes "password". getPassword/getToken are
+// injected so this is testable without a real keychain.
+func migrateAuthMethod(cfg *Config, getPassword, getToken func(string) string) {
+	for i := range cfg.Accounts {
+		a := &cfg.Accounts[i]
+		if a.AuthMethod != "" {
+			continue
+		}
+		if isOAuthProvider(a.Provider) && a.Password == "" &&
+			getPassword(a.Name) == "" && getToken(a.Name) != "" {
+			a.AuthMethod = AuthOAuth2
+		} else {
+			a.AuthMethod = AuthPassword
+		}
+	}
 }
 
 func DefaultAccountConfig() AccountConfig {
@@ -226,6 +262,7 @@ func Load() (Config, error) {
 	}
 	cfg.Display.Density = NormalizeDisplayDensity(cfg.Display.Density)
 	cfg.Display.PaneCorners = NormalizePaneCorners(cfg.Display.PaneCorners)
+	migrateAuthMethod(&cfg, GetAccountPassword, GetOAuth2RefreshToken)
 	fillSecrets(&cfg)
 	return cfg, nil
 }

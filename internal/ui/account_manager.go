@@ -299,6 +299,12 @@ type AccountManager struct {
 	useOAuth          bool
 	oauthSignedIn     bool
 	oauthRefreshToken string
+	// Snapshot of the account as loaded, so a provider cycle that returns to the
+	// original provider restores the account's auth state instead of re-applying
+	// a default (a stray arrow key on the Provider row must be harmless).
+	origProvider      string
+	origAuthMethod    string
+	origRefreshToken  string
 	oauthActive       bool
 	oauthAwaitingCode bool // paste-back flow: waiting for the pasted code/URL
 	oauthFlow         authCodeExchanger
@@ -409,11 +415,16 @@ func (am *AccountManager) populateFormFrom(acfg config.AccountConfig) {
 	am.syncInput.SetValue(strconv.Itoa(acfg.SyncMinutes))
 	// The form is single-line; real newlines round-trip as literal \n escapes.
 	am.sigInput.SetValue(strings.ReplaceAll(acfg.Signature, "\n", `\n`))
+	// Auth method comes from the explicit marker, never from "a token exists".
+	am.useOAuth = acfg.AuthMethod == config.AuthOAuth2
 	// Carry the existing refresh token so buildCfg preserves OAuth on save.
 	am.oauthRefreshToken = acfg.RefreshToken
 	am.oauthSignedIn = acfg.RefreshToken != ""
-	am.useOAuth = (acfg.Provider == "Gmail" || acfg.Provider == "Outlook") && acfg.RefreshToken != ""
 	am.oauthAwaitingCode = false
+	// Snapshot for the provider-cycle restore (see the amFieldProvider handler).
+	am.origProvider = am.provider
+	am.origAuthMethod = acfg.AuthMethod
+	am.origRefreshToken = acfg.RefreshToken
 }
 
 func (am AccountManager) buildCfg() config.AccountConfig {
@@ -448,11 +459,14 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 		cfg.SMTPPort = preset.SMTPPort
 		cfg.SMTPTLS = preset.SMTPTLS
 	}
-	// A signed-in Gmail/Outlook account with the OAuth auth method authenticates
-	// with XOAUTH2: the refresh token replaces the password. ClientID/Secret are
-	// toml:"-" — they only feed the live connect on save/test; fillSecrets
-	// re-fills them on later loads from the app-level [oauth] config.
+	// Auth method is written explicitly. OAuth requires a provider that supports
+	// it, the selector set to OAuth, AND a completed sign-in (refresh token) —
+	// so a stray "OAuth mode" detour with no sign-in still saves as app-password
+	// (the password from am.passInput is kept). ClientID/Secret are toml:"-" —
+	// they only feed the live connect on save/test; fillSecrets re-fills them on
+	// later loads from the app-level [oauth] config.
 	if am.providerSupportsOAuth() && am.useOAuth && am.oauthRefreshToken != "" {
+		cfg.AuthMethod = config.AuthOAuth2
 		cfg.RefreshToken = am.oauthRefreshToken
 		cfg.Password = ""
 		if am.provider == "Outlook" {
@@ -461,6 +475,9 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 			cfg.ClientID = am.oauthCfg.GoogleClientID
 			cfg.ClientSecret = am.oauthCfg.GoogleClientSecret
 		}
+	} else {
+		cfg.AuthMethod = config.AuthPassword
+		cfg.RefreshToken = ""
 	}
 	return cfg
 }
@@ -698,12 +715,20 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 				break
 			}
 		}
-		// Reset the auth method to the new provider's default and drop any
-		// half-finished sign-in from the previous provider.
-		am.cancelOAuth()
-		am.oauthSignedIn = false
-		am.oauthRefreshToken = ""
-		am.useOAuth = am.defaultUseOAuth()
+		am.cancelOAuth() // abandon any in-flight sign-in
+		if am.provider == am.origProvider {
+			// Cycled back to the account's original provider — restore its
+			// loaded auth state so a stray arrow keypress leaves nothing changed.
+			am.useOAuth = am.origAuthMethod == config.AuthOAuth2
+			am.oauthRefreshToken = am.origRefreshToken
+			am.oauthSignedIn = am.origRefreshToken != ""
+		} else {
+			// A genuinely different provider: drop the previous provider's
+			// sign-in and take the new provider's default.
+			am.oauthSignedIn = false
+			am.oauthRefreshToken = ""
+			am.useOAuth = am.defaultUseOAuth()
+		}
 	case am.focusedField == amFieldColor && (keyMatches(km, keys.Left) || keyMatches(km, keys.Right)):
 		if keyMatches(km, keys.Right) {
 			am.colorIdx = (am.colorIdx + 1) % len(accountColorList)
@@ -804,11 +829,12 @@ func (am AccountManager) oauthClientID() (string, bool) {
 	}
 }
 
-// defaultUseOAuth picks the Auth-method default when the provider changes: OAuth
-// whenever a client is configured for it.
+// defaultUseOAuth picks the Auth-method default for a fresh account or a
+// provider change. Only Outlook defaults to OAuth (Microsoft dropped passwords);
+// Gmail defaults to App password so OAuth is a deliberate opt-in via the ‹ ›
+// selector.
 func (am AccountManager) defaultUseOAuth() bool {
-	_, ok := am.oauthClientID()
-	return ok
+	return am.provider == "Outlook" && am.oauthCfg.MSClientID != ""
 }
 
 // oauthDeviceCapable reports whether the current provider+client can use the
@@ -1052,7 +1078,7 @@ func (am AccountManager) updateConfirmDelete(msg tea.Msg, keys KeyMap) (AccountM
 		if acc := am.selectedAccount(); acc != nil {
 			am.busy = true
 			am.busyMsg = "DELETING..."
-			return am, deleteAccountCmd(am.db, acc.ID), false
+			return am, deleteAccountCmd(am.db, acc.ID, acc.Name), false
 		}
 		am.mode = amList
 	case keyMatches(km, keys.No), keyMatches(km, keys.Cancel):
@@ -1116,6 +1142,9 @@ func (am *AccountManager) resetForm() {
 	am.cancelOAuth()
 	am.oauthSignedIn = false
 	am.oauthRefreshToken = ""
+	am.origProvider = ""
+	am.origAuthMethod = ""
+	am.origRefreshToken = ""
 	// resetForm sets provider to Custom, which has no OAuth path; the provider
 	// cycle and populateFormFrom set the real default afterwards.
 	am.useOAuth = am.defaultUseOAuth()
@@ -1680,9 +1709,15 @@ func testAccountCmd(acfg config.AccountConfig) tea.Cmd {
 	}
 }
 
-func deleteAccountCmd(database *db.DB, accountID int64) tea.Cmd {
+func deleteAccountCmd(database *db.DB, accountID int64, accountName string) tea.Cmd {
 	return func() tea.Msg {
 		err := database.DeleteAccount(accountID)
+		if err == nil {
+			// Don't leave the account's secrets behind for a same-name re-add to
+			// resurrect (fillSecrets keys off the account name).
+			config.DeleteOAuth2Secrets(accountName)
+			config.DeleteAccountPassword(accountName)
+		}
 		return AccountDeletedMsg{AccountID: accountID, Err: err}
 	}
 }

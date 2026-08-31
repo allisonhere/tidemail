@@ -28,6 +28,7 @@ func TestBuildCfgPreservesGoogleOAuthOnEdit(t *testing.T) {
 	am.populateFormFrom(config.AccountConfig{
 		Name:         "Gmail",
 		Provider:     "Gmail",
+		AuthMethod:   config.AuthOAuth2,
 		IMAPHost:     "imap.gmail.com",
 		IMAPPort:     993,
 		SMTPPort:     587,
@@ -38,8 +39,8 @@ func TestBuildCfgPreservesGoogleOAuthOnEdit(t *testing.T) {
 	am.syncInput.SetValue("10") // change an unrelated field
 
 	cfg := am.buildCfg()
-	if !cfg.UsesGoogleOAuth2() {
-		t.Fatal("edited Gmail account lost its OAuth status")
+	if cfg.AuthMethod != config.AuthOAuth2 || !cfg.UsesGoogleOAuth2() {
+		t.Fatalf("edited Gmail account lost its OAuth status: auth_method=%q", cfg.AuthMethod)
 	}
 	if cfg.RefreshToken != "refresh-xyz" {
 		t.Fatalf("refresh token = %q, want refresh-xyz", cfg.RefreshToken)
@@ -204,6 +205,96 @@ func TestTypingRunesInFormFieldDoesNotNavigate(t *testing.T) {
 	am, _, _ = am.updateForm(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}, DefaultKeys)
 	if am.focusedField != before {
 		t.Fatalf("typing 'j' in a text field moved focus %v -> %v", before, am.focusedField)
+	}
+}
+
+// editFormManager mimics opening the Edit form for an existing account:
+// resetForm → focus Provider → populateFormFrom.
+func editFormManager(acfg config.AccountConfig, oauthCfg config.OAuthConfig) AccountManager {
+	am := NewAccountManager(nil)
+	am.oauthCfg = oauthCfg
+	am.mode = amEdit
+	am.resetForm()
+	am.focusField(amFieldProvider)
+	am.populateFormFrom(acfg)
+	return am
+}
+
+func cycleProvider(am AccountManager, presses int) AccountManager {
+	am.focusField(amFieldProvider)
+	dir := tea.KeyRight
+	if presses < 0 {
+		dir, presses = tea.KeyLeft, -presses
+	}
+	for i := 0; i < presses; i++ {
+		am, _, _ = am.updateForm(tea.KeyMsg{Type: dir}, DefaultKeys)
+	}
+	return am
+}
+
+func TestAppPasswordGmailSurvivesStrayProviderCycle(t *testing.T) {
+	am := editFormManager(config.AccountConfig{
+		Name: "Gmail", Provider: "Gmail", AuthMethod: config.AuthPassword,
+		IMAPHost: "imap.gmail.com", IMAPPort: 993, SMTPPort: 587,
+		User: "me@gmail.com", Password: "app-pw",
+	}, config.OAuthConfig{GoogleClientID: "cid", GoogleClientSecret: "sec"}) // client configured — the old bug vector
+
+	if am.useOAuth {
+		t.Fatal("an app-password Gmail account must not open in OAuth mode")
+	}
+	// Stray keystrokes on the Provider row, ending back on Gmail.
+	am = cycleProvider(am, 2)  // Gmail → Outlook → Yahoo
+	am = cycleProvider(am, -2) // Yahoo → Outlook → Gmail
+	if am.provider != "Gmail" {
+		t.Fatalf("provider = %q, want Gmail", am.provider)
+	}
+	if am.useOAuth {
+		t.Fatal("cycling back to Gmail must restore App password, not default to OAuth")
+	}
+	cfg := am.buildCfg()
+	if cfg.AuthMethod != config.AuthPassword {
+		t.Fatalf("auth_method = %q, want password", cfg.AuthMethod)
+	}
+	if cfg.Password != "app-pw" || cfg.RefreshToken != "" {
+		t.Fatalf("password lost / token gained: password=%q refresh=%q", cfg.Password, cfg.RefreshToken)
+	}
+	if cfg.UsesGoogleOAuth2() {
+		t.Fatal("saved account still routes to XOAUTH2")
+	}
+}
+
+func TestOAuthGmailRestoredAfterCyclingProviderAwayAndBack(t *testing.T) {
+	am := editFormManager(config.AccountConfig{
+		Name: "Gmail", Provider: "Gmail", AuthMethod: config.AuthOAuth2,
+		IMAPHost: "imap.gmail.com", IMAPPort: 993, SMTPPort: 587,
+		User: "me@gmail.com", RefreshToken: "refresh-1",
+	}, config.OAuthConfig{GoogleClientID: "cid", GoogleClientSecret: "sec"})
+
+	if !am.useOAuth {
+		t.Fatal("an oauth2 Gmail account must open in OAuth mode")
+	}
+	am = cycleProvider(am, 1)  // Gmail → Outlook (token dropped)
+	am = cycleProvider(am, -1) // Outlook → Gmail (should restore)
+	if !am.useOAuth || am.oauthRefreshToken != "refresh-1" {
+		t.Fatalf("cycling back to Gmail did not restore OAuth: useOAuth=%v token=%q", am.useOAuth, am.oauthRefreshToken)
+	}
+	if cfg := am.buildCfg(); cfg.AuthMethod != config.AuthOAuth2 || cfg.RefreshToken != "refresh-1" {
+		t.Fatalf("buildCfg after restore: auth_method=%q refresh=%q", cfg.AuthMethod, cfg.RefreshToken)
+	}
+}
+
+func TestNewGmailAccountDefaultsToAppPassword(t *testing.T) {
+	am := NewAccountManager(nil)
+	am.mode = amAdd
+	am.oauthCfg = config.OAuthConfig{GoogleClientID: "cid", GoogleClientSecret: "sec"} // configured
+	am.resetForm()
+	am.focusField(amFieldProvider)
+	am = cycleProvider(am, 1) // Custom → Gmail
+	if am.provider != "Gmail" {
+		t.Fatalf("provider = %q", am.provider)
+	}
+	if am.useOAuth {
+		t.Fatal("a new Gmail account must default to App password even when a client is configured")
 	}
 }
 

@@ -19,9 +19,9 @@ func TestDefaultConfigMSClientIDFallsBackToThunderbird(t *testing.T) {
 }
 
 func TestUsesOAuth2ProviderGates(t *testing.T) {
-	gmail := AccountConfig{Provider: "Gmail", RefreshToken: "x"}
-	outlook := AccountConfig{Provider: "Outlook", RefreshToken: "x"}
-	other := AccountConfig{Provider: "Custom", RefreshToken: "x"}
+	gmail := AccountConfig{Provider: "Gmail", AuthMethod: AuthOAuth2, RefreshToken: "x"}
+	outlook := AccountConfig{Provider: "Outlook", AuthMethod: AuthOAuth2, RefreshToken: "x"}
+	other := AccountConfig{Provider: "Custom", AuthMethod: AuthOAuth2, RefreshToken: "x"}
 	if !gmail.UsesGoogleOAuth2() || gmail.UsesMicrosoftOAuth2() {
 		t.Fatal("Gmail account misclassified")
 	}
@@ -29,7 +29,46 @@ func TestUsesOAuth2ProviderGates(t *testing.T) {
 		t.Fatal("Outlook account misclassified")
 	}
 	if other.UsesGoogleOAuth2() || other.UsesMicrosoftOAuth2() {
-		t.Fatal("a stray refresh token on a non-OAuth provider must not trigger XOAUTH2")
+		t.Fatal("oauth2 marker on a non-OAuth provider must not trigger XOAUTH2")
+	}
+
+	// The regression: a leftover refresh token with NO explicit marker must not
+	// route the account to XOAUTH2.
+	stale := AccountConfig{Provider: "Gmail", RefreshToken: "leftover"}
+	if stale.UsesGoogleOAuth2() || stale.UsesOAuth2() {
+		t.Fatal("a stale refresh token without auth_method=oauth2 must stay on app-password auth")
+	}
+	pw := AccountConfig{Provider: "Gmail", AuthMethod: AuthPassword, RefreshToken: "leftover"}
+	if pw.UsesGoogleOAuth2() {
+		t.Fatal("auth_method=password must stay on app-password auth even with a token present")
+	}
+}
+
+func TestMigrateAuthMethod(t *testing.T) {
+	none := func(string) string { return "" }
+	pw := func(string) string { return "pw" }
+	tok := func(string) string { return "1//refresh" }
+
+	cases := []struct {
+		name        string
+		acct        AccountConfig
+		getPassword func(string) string
+		getToken    func(string) string
+		want        string
+	}{
+		{"legacy gmail with app password", AccountConfig{Provider: "Gmail", Password: "pw"}, none, none, AuthPassword},
+		{"legacy gmail, password only in keychain", AccountConfig{Provider: "Gmail"}, pw, tok, AuthPassword},
+		{"legacy gmail, token only in keychain, no password anywhere", AccountConfig{Provider: "Gmail"}, none, tok, AuthOAuth2},
+		{"legacy outlook, token only", AccountConfig{Provider: "Outlook"}, none, tok, AuthOAuth2},
+		{"legacy custom provider", AccountConfig{Provider: "Custom"}, none, tok, AuthPassword},
+		{"already stamped is untouched", AccountConfig{Provider: "Gmail", AuthMethod: AuthPassword}, none, tok, AuthPassword},
+	}
+	for _, tc := range cases {
+		cfg := &Config{Accounts: []AccountConfig{tc.acct}}
+		migrateAuthMethod(cfg, tc.getPassword, tc.getToken)
+		if got := cfg.Accounts[0].AuthMethod; got != tc.want {
+			t.Errorf("%s: AuthMethod = %q, want %q", tc.name, got, tc.want)
+		}
 	}
 }
 

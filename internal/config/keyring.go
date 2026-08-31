@@ -193,12 +193,18 @@ func stripSecrets(cfg *Config) int {
 				stored++
 			}
 		}
-		// OAuth2 refresh_token — per-user secret, store in keychain
-		if cfg.Accounts[i].RefreshToken != "" {
-			if StoreOAuth2RefreshToken(cfg.Accounts[i].Name, cfg.Accounts[i].RefreshToken) {
+		// OAuth2 refresh_token — per-user secret, store in keychain. When the
+		// account isn't OAuth, prune any stale token/secret so a later load
+		// can't resurrect it (makes "switch back to app password" self-healing).
+		if cfg.Accounts[i].AuthMethod == AuthOAuth2 {
+			if cfg.Accounts[i].RefreshToken != "" &&
+				StoreOAuth2RefreshToken(cfg.Accounts[i].Name, cfg.Accounts[i].RefreshToken) {
 				cfg.Accounts[i].RefreshToken = ""
 				stored++
 			}
+		} else {
+			DeleteOAuth2Secrets(cfg.Accounts[i].Name)
+			cfg.Accounts[i].RefreshToken = ""
 		}
 	}
 	if cfg.AI.OpenAIKey != "" && StoreAIKey("openai", cfg.AI.OpenAIKey) {
@@ -226,27 +232,28 @@ func fillSecrets(cfg *Config) {
 				cfg.Accounts[i].Password = pw
 			}
 		}
-		// Restore refresh token from keychain FIRST, then fill credentials.
-		if cfg.Accounts[i].RefreshToken == "" {
-			if t := GetOAuth2RefreshToken(cfg.Accounts[i].Name); t != "" {
-				cfg.Accounts[i].RefreshToken = t
+		// OAuth secrets are restored only for accounts that explicitly opted in
+		// (AuthMethod == "oauth2"). This is set by the account form or by
+		// migrateAuthMethod at load — never inferred from a keychain entry
+		// alone, so an orphaned oauth2_refresh:<name> item stays inert.
+		if cfg.Accounts[i].AuthMethod == AuthOAuth2 {
+			if cfg.Accounts[i].RefreshToken == "" {
+				if t := GetOAuth2RefreshToken(cfg.Accounts[i].Name); t != "" {
+					cfg.Accounts[i].RefreshToken = t
+				}
 			}
-		}
-		// Fill OAuth2 client credentials from app-level config (must be after
-		// refresh token restoration so the condition detects the account uses OAuth2).
-		if cfg.Accounts[i].RefreshToken != "" || cfg.Accounts[i].ClientID != "" {
 			if cfg.Accounts[i].Provider == "Outlook" {
 				// Microsoft is a public client: client ID only, no secret.
 				if cfg.Accounts[i].ClientID == "" {
 					cfg.Accounts[i].ClientID = cfg.OAuth.MSClientID
 				}
-				continue
-			}
-			if cfg.Accounts[i].ClientID == "" {
-				cfg.Accounts[i].ClientID = cfg.OAuth.GoogleClientID
-			}
-			if cfg.Accounts[i].ClientSecret == "" {
-				cfg.Accounts[i].ClientSecret = cfg.OAuth.GoogleClientSecret
+			} else {
+				if cfg.Accounts[i].ClientID == "" {
+					cfg.Accounts[i].ClientID = cfg.OAuth.GoogleClientID
+				}
+				if cfg.Accounts[i].ClientSecret == "" {
+					cfg.Accounts[i].ClientSecret = cfg.OAuth.GoogleClientSecret
+				}
 			}
 		}
 	}

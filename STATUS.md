@@ -51,8 +51,11 @@ Current release: **v1.0.5**.
   user-local install fallback, and an in-app progress popup.
 
 Authentication is app-password for every provider, plus optional OAuth2 (XOAUTH2)
-for Gmail and Outlook. Gmail bundles no client — the user brings their own via
-`[oauth]` / env vars, keeping personal use free of Google's CASA verification.
+for Gmail and Outlook. The method is an explicit, persisted per-account setting
+(`auth_method` in `config.toml`, default `password`); OAuth never activates from
+an inferred signal such as a leftover keychain token. Gmail bundles no client —
+the user brings their own via `[oauth]` / env vars, keeping personal use free of
+Google's CASA verification.
 Outlook falls back to Thunderbird's shared public client (no setup) and needs no
 verification on Microsoft's side; the same path also covers Microsoft 365 /
 Exchange Online mailboxes. `internal/auth` holds per-provider device-code +

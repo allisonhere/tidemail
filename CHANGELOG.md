@@ -2,6 +2,26 @@
 
 All notable changes to TideMail are documented in this file.
 
+## v1.0.7
+
+**Release highlights:** fixes a v1.0.6 regression where an app-password account
+could be silently switched to OAuth.
+
+### Fixed
+
+- **An app-password account is no longer flipped onto OAuth.** v1.0.6 decided
+  "this account uses OAuth" from the presence of a refresh token alone, so a
+  leftover keychain entry (from an earlier build, an aborted sign-in, or a
+  deleted-then-re-added account), or a stray arrow key on the account form's
+  Provider row, could route a working app-password account through XOAUTH2 and
+  break sync. The auth method is now an explicit, persisted per-account setting
+  (`auth_method = "password" | "oauth2"` in `config.toml`); OAuth is opt-in via
+  the `‹ ›` selector or a completed `Ctrl+O` sign-in. Existing accounts are
+  migrated on load — an account keeps OAuth only if it has a keychain token and
+  no password anywhere. New Gmail accounts default to App password (Outlook,
+  which has no password option, still defaults to OAuth). Deleting an account
+  now also clears its keychain secrets.
+
 ## v1.0.6
 
 **Release highlights:** Gmail and Outlook can now sign in with OAuth instead of

@@ -453,6 +453,11 @@ func TestAccountManagerEditPreloadsConfigForSelectedAccount(t *testing.T) {
 	if next.passInput.Value() != "secret" {
 		t.Fatalf("expected password from config, got %q", next.passInput.Value())
 	}
+	// A password account round-trips as an explicit password account.
+	if cfg := next.buildCfg(); cfg.AuthMethod != config.AuthPassword || cfg.Password != "secret" || cfg.RefreshToken != "" {
+		t.Fatalf("password account did not round-trip: auth_method=%q password=%q refresh=%q",
+			cfg.AuthMethod, cfg.Password, cfg.RefreshToken)
+	}
 }
 
 func TestAccountTestResultUpdatesManagerStatus(t *testing.T) {
