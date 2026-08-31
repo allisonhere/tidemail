@@ -2,6 +2,23 @@
 
 All notable changes to TideMail are documented in this file.
 
+## v1.0.9
+
+### Fixed
+
+- **A locked or unreachable system keychain no longer silently breaks stored
+  accounts.** "Is `secret-tool` installed?" is not the same as "can it read a
+  secret" — a locked gnome-keyring `login` collection (common on a box that has
+  only had SSH sessions since boot) let every stored password/token come back
+  empty, and the account then failed with a cryptic *"NO Empty username or
+  password"* or a misleading *"sign-in expired"*. TideMail now probes the
+  keychain with a bounded round-trip at startup; when it isn't usable it falls
+  back to the plaintext `config.toml` (no secrets are moved into or blanked from
+  the file), and shows one clear message: *system keychain unavailable — saved
+  passwords couldn't be loaded; unlock your login keychain, or re-enter with M*.
+  Every `secret-tool` call is now time-limited so a hung prompter can't freeze
+  startup.
+
 ## v1.0.8
 
 ### Fixed

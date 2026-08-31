@@ -290,6 +290,35 @@ func (m *Model) removeMessageFromMemory(messageID int64) bool {
 	return wasUnread
 }
 
+// looksLikeMissingCredential matches connect errors that mean "we had no
+// password / token to send" — as opposed to a genuinely rejected one. Paired
+// with a failed keychain probe it points at a locked keychain, not the account.
+func looksLikeMissingCredential(err error) bool {
+	if err == nil {
+		return false
+	}
+	m := strings.ToLower(err.Error())
+	return strings.Contains(m, "empty username or password") ||
+		strings.Contains(m, "no refresh token")
+}
+
+// anyAccountNeedsKeychain reports whether some account is missing the secret it
+// needs to connect (empty in memory after fillSecrets) — the signal that a
+// keychain read came back empty rather than the account being credential-less
+// with everything in the plaintext config.
+func (m Model) anyAccountNeedsKeychain() bool {
+	for _, a := range m.cfg.Accounts {
+		if a.AuthMethod == config.AuthOAuth2 {
+			if a.RefreshToken == "" {
+				return true
+			}
+		} else if a.Password == "" {
+			return true
+		}
+	}
+	return false
+}
+
 func (m Model) accountName(accountID int64) string {
 	for _, acc := range m.accounts {
 		if acc.ID == accountID {

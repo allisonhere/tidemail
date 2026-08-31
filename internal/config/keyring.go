@@ -1,23 +1,77 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync"
+	"time"
 )
 
 const keyringApp = "tidemail"
 
-// keyringAvailable returns true if secret-tool is installed.
-func keyringAvailable() bool {
+// keyringOpTimeout bounds every secret-tool invocation. A locked collection with
+// an activatable-but-headless prompter (e.g. org.kde.secretprompter over SSH)
+// can otherwise hang the call — and startup with it.
+const keyringOpTimeout = 3 * time.Second
+
+// keyringInstalled reports whether the secret-tool binary is on PATH.
+func keyringInstalled() bool {
 	_, err := exec.LookPath("secret-tool")
 	return err == nil
 }
 
-// secretTool runs `secret-tool` with the given arguments and returns stdout.
+var (
+	keyringProbeOnce   sync.Once
+	keyringProbeResult bool
+	keyringProbeReason string
+)
+
+// keyringUsable reports whether the system keychain can actually store and
+// retrieve a secret right now — not merely whether secret-tool is installed. It
+// probes once per process with a sentinel round-trip; a locked login collection,
+// a missing session bus, or a hung prompter all fail the probe, and the caller
+// then falls back to the plaintext config file.
+func keyringUsable() bool {
+	keyringProbeOnce.Do(func() {
+		if !keyringInstalled() {
+			keyringProbeReason = "secret-tool is not installed"
+			return
+		}
+		const k = "selftest"
+		want := "ok-" + time.Now().Format("150405.000")
+		if err := storeSecret(k, want); err != nil {
+			keyringProbeReason = "keychain is locked or unreachable (store failed)"
+			return
+		}
+		got := lookupSecret(k)
+		_ = clearSecret(k)
+		if got != want {
+			keyringProbeReason = "keychain is locked or unreachable (readback failed)"
+			return
+		}
+		keyringProbeResult = true
+	})
+	return keyringProbeResult
+}
+
+// KeyringStatus reports whether the keychain is usable and, if not, a short
+// human-readable reason for the UI.
+func KeyringStatus() (usable bool, reason string) {
+	return keyringUsable(), keyringProbeReason
+}
+
+// keyringAvailable is kept for callers that gate a write attempt; it now means
+// "usable", so a locked keychain no longer looks writable.
+func keyringAvailable() bool { return keyringUsable() }
+
+// secretTool runs `secret-tool` with the given arguments and returns stdout,
+// bounded by keyringOpTimeout.
 func secretTool(args ...string) (string, error) {
-	cmd := exec.Command("secret-tool", args...)
-	out, err := cmd.Output()
+	ctx, cancel := context.WithTimeout(context.Background(), keyringOpTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "secret-tool", args...).Output()
 	if err != nil {
 		return "", fmt.Errorf("secret-tool %s: %w", strings.Join(args, " "), err)
 	}
@@ -30,7 +84,9 @@ func storeSecret(key, value string) error {
 	if value == "" {
 		return nil
 	}
-	cmd := exec.Command("secret-tool", "store", "--label="+keyringApp, "application", keyringApp, "key", key)
+	ctx, cancel := context.WithTimeout(context.Background(), keyringOpTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "secret-tool", "store", "--label="+keyringApp, "application", keyringApp, "key", key)
 	cmd.Stdin = strings.NewReader(value + "\n")
 	return cmd.Run()
 }

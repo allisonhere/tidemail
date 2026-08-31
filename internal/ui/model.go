@@ -543,6 +543,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loadCollapseState()
 			m.rebuildSidebar()
 			statusCmd = tea.Batch(statusCmd, m.startSyncTimers(), m.syncInboxesNowCmd(), m.loadAddressBookCmd())
+			// If the keychain isn't readable, stored passwords/tokens came back
+			// empty — warn once up front so the failed syncs that follow aren't a
+			// mystery.
+			if usable, reason := config.KeyringStatus(); !usable && m.anyAccountNeedsKeychain() {
+				m.setStatus("system keychain unavailable: "+reason+" — saved passwords couldn't be loaded (unlock your login keychain, or re-enter with M)", true)
+				statusCmd = nil // sticky
+			}
 		}
 		// (Re)start the push watchers on every account load: it runs at startup
 		// and again whenever accounts are added, edited, or deleted, so watcher
@@ -691,6 +698,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case MailboxSyncedMsg:
 		delete(m.syncing, msg.MailboxID)
 		if msg.Err != nil {
+			// A locked/unreadable keychain makes every stored secret come back
+			// empty, which surfaces as "empty username or password" / "no refresh
+			// token". Blaming the account's sign-in would be misleading.
+			if usable, reason := config.KeyringStatus(); !usable && looksLikeMissingCredential(msg.Err) {
+				m.setStatus("can't read saved passwords: "+reason+" — unlock your login keychain, or re-enter (M)", true)
+				return m, nil
+			}
 			if auth.IsAuthFailure(msg.Err) || auth.IsTokenRevoked(msg.Err) {
 				name := "account"
 				if mb := m.mailboxByID(msg.MailboxID); mb != nil {
