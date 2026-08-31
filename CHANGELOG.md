@@ -2,7 +2,10 @@
 
 All notable changes to TideMail are documented in this file.
 
-## Unreleased
+## v1.0.6
+
+**Release highlights:** Gmail and Outlook can now sign in with OAuth instead of
+an app password, plus two compose-form rendering fixes.
 
 ### Added
 
@@ -24,6 +27,12 @@ All notable changes to TideMail are documented in this file.
   installer removes writable older `tidemail` binaries that appear earlier on
   `PATH`, and both the installer and in-app updater show the cleanup command
   when a privileged old binary would still run first.
+- **Compose: the sender (From) row lines up with the recipient fields.** It now
+  reads as its own control — a vertical chevron, the shared value column, and a
+  spacer below it — instead of sitting a column out from To / CC / BCC.
+- **Compose: empty To / CC / BCC / Subject fields no longer leak the terminal
+  background.** The placeholder padding on an unfocused empty field is styled
+  like the rest of the row.
 
 ## v1.0.5
 
