@@ -117,13 +117,14 @@ organizations, titles, and notes.
 
 ## Passwords and API keys
 
-TideMail stores IMAP and SMTP passwords and AI API keys in the system keychain.
-It uses `secret-tool` on Linux and Keychain on macOS. When TideMail starts, it
-loads any blank password or API key from the keychain. Saving Settings moves
-loaded secrets into the keychain and clears them from the config file.
+TideMail stores IMAP and SMTP passwords, AI API keys, and OAuth refresh tokens
+in the system keychain. It uses `secret-tool` on Linux and Keychain on macOS.
+When TideMail starts, it loads any blank password, API key, or refresh token
+from the keychain. Saving Settings moves loaded secrets into the keychain and
+clears them from the config file.
 
-If `secret-tool` is unavailable on Linux, TideMail writes passwords and API
-keys to `~/.config/tidemail/config.toml`. Keep that file private.
+If `secret-tool` is unavailable on Linux, TideMail writes these secrets to
+`~/.config/tidemail/config.toml`. Keep that file private.
 
 - Gmail: Google Account → Security → App passwords (requires 2-Step Verification)
 - Yahoo: Account Security → Generate app password
@@ -131,10 +132,54 @@ keys to `~/.config/tidemail/config.toml`. Keep that file private.
 
 If you expose an app password, revoke it and create a new one.
 
-Gmail requires an app password. Turn on 2-Step Verification, generate a password
-at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords),
+Gmail requires either an app password or an OAuth sign-in. For a password, turn
+on 2-Step Verification, generate one at
+[myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords),
 then paste it into the password field in the account manager (`M`) and save with
 `Ctrl+S`.
+
+### Gmail OAuth sign-in
+
+TideMail ships no OAuth client — you supply your own, which keeps personal use
+free and outside Google's verification requirements:
+
+1. In the [Google Cloud Console](https://console.cloud.google.com/): create a
+   project, enable the **Gmail API**, and configure the **OAuth consent screen**
+   (External; add your address as a test user). Publish the app to Production so
+   the refresh token does not expire weekly — a one-user project needs no
+   security review; click past the "unverified app" notice.
+2. Create an **OAuth client ID** of type *TVs and Limited Input devices* (device
+   code) or *Desktop app* (paste-back).
+3. Provide the credentials to TideMail, either as environment variables:
+
+   ```sh
+   export TIDEMAIL_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
+   export TIDEMAIL_GOOGLE_CLIENT_SECRET=xxxx
+   ```
+
+   or in `config.toml`:
+
+   ```toml
+   [oauth]
+   google_client_id = "xxxx.apps.googleusercontent.com"
+   google_client_secret = "xxxx"
+   ```
+
+4. In the account manager, add an account with provider **Gmail**. A new
+   **Auth** row appears with a `‹ ›` selector — leave it on *OAuth* (or press
+   `‹`/`›` to switch to *App password*). With OAuth selected, press `Ctrl+O`
+   (or Enter on the sign-in row). TideMail shows a short code and a URL; open
+   the URL on any device,
+   sign in, and enter the code. When the device endpoint refuses the mail scope,
+   TideMail falls back to a paste-back flow: it copies a sign-in URL to your
+   clipboard; open it, approve, and paste the resulting `http://localhost/?code=…`
+   URL (or the bare code) into the **Code** field.
+5. Save with `Ctrl+S`. TideMail leaves the password field empty and authenticates
+   IMAP and SMTP with XOAUTH2.
+
+If the refresh token is revoked (or the consent screen was left in "Testing" and
+expired it), the next sync shows "sign-in expired — press M to re-authenticate";
+re-open the account and press `Ctrl+O` again.
 
 ## Configuration files
 

@@ -157,8 +157,10 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.Left.Help().Key + "/" + keys.Right.Help().Key, "change provider or color fields"},
 				{keys.Save.Help().Key, "save account form"},
 				{keys.TestAccount.Help().Key, "test account form"},
+				{keys.OAuthSignIn.Help().Key, "sign in with Google (Gmail provider) — device code"},
 				{"Signature", `use \n for a line break in the account form`},
-				{"Gmail", "use a Google App Password (2-Step Verification → App passwords)"},
+				{"Gmail OAuth", "needs TIDEMAIL_GOOGLE_CLIENT_ID / _SECRET; refresh token kept in the keychain"},
+				{"Gmail password", "or use a Google App Password (2-Step Verification → App passwords)"},
 				{"Delete confirm", "y/enter confirms; n/esc cancels"},
 			},
 		},
@@ -224,9 +226,9 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		{
 			name: "Security And Storage",
 			entries: []entry{
-				{"keychain", "passwords / API keys stored in system keychain"},
+				{"keychain", "passwords / API keys / OAuth refresh tokens stored in system keychain"},
 				{"config", "~/.config/tidemail/config.toml (no plain-text secrets after save)"},
-				{"secrets", "passwords and API keys are redacted from errors/status"},
+				{"secrets", "passwords, API keys, and OAuth tokens are redacted from errors/status"},
 				{"Settings", "display, AI, update, sync, and desktop notifications live in settings"},
 			},
 		},

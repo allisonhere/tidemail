@@ -303,6 +303,7 @@ func TestAccountManagerListShowsCompactAccountCards(t *testing.T) {
 			SMTPTLS:  true,
 			User:     "alice@example.com",
 		}},
+		config.OAuthConfig{},
 	)
 
 	view := am.View(80, 24, BuildStyles(CatppuccinMocha, "compact", "square"))
@@ -432,12 +433,16 @@ func TestAccountManagerEditPreloadsConfigForSelectedAccount(t *testing.T) {
 			Password: "secret",
 			From:     "Alice <alice@example.com>",
 		}},
+		config.OAuthConfig{},
 	)
 
 	next, _, _ := am.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}}, DefaultKeys)
 
 	if next.mode != amEdit {
 		t.Fatalf("expected edit mode, got %v", next.mode)
+	}
+	if next.focusedField != amFieldProvider {
+		t.Fatalf("opening the form should focus Provider, got %v", next.focusedField)
 	}
 	if next.imapHostInput.Value() != "imap.example.com" {
 		t.Fatalf("expected IMAP host from config, got %q", next.imapHostInput.Value())

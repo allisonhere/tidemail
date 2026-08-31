@@ -26,7 +26,8 @@ Current release: **v1.0.5**.
   cache when a server renumbers (`internal/db/reconcile.go`). Tombstones keep deleted
   mail from resurrecting through date-granular re-fetches.
 - **SMTP send**: plain, STARTTLS, and direct TLS (port 465). Auth is app-password over
-  PLAIN. Reply/forward threading headers; display name preserved in `From:`.
+  PLAIN, or XOAUTH2 for OAuth Gmail accounts. Reply/forward threading headers; display
+  name preserved in `From:`.
 - **Drafts**: local drafts plus a one-way mirror of server drafts, deduplicated by a
   partial unique index on `(mailbox_id, remote_uid)`.
 - **Three-pane UI**: accounts sidebar, message list, message content. Threaded view,
@@ -37,14 +38,25 @@ Current release: **v1.0.5**.
   no per-message AI cost.
 - **Compose**: optional vim mode (`compose_vim`), backed by the extracted
   [`ripple`](https://github.com/allisonhere/ripple) editor library.
+- **Gmail OAuth** (optional): the account form's Gmail **Auth** row is a
+  `‹ ›` selector (App password ⇄ OAuth); the OAuth guidance shows only while
+  that cluster is focused. Bring-your-own OAuth client
+  (`TIDEMAIL_GOOGLE_CLIENT_ID` / `_SECRET`), device-code sign-in (`ctrl+o`) with
+  an authorization-code paste-back fallback. XOAUTH2 for IMAP and SMTP; refresh
+  token stored in the keychain and rotation-persisted.
 - **Search**, unread-only filtering, command palette, desktop notifications.
 - **Settings**: theme, display density, AI provider config, editor, update checks.
 - **Update checker**: GitHub-releases check with checksum-verified self-update,
   user-local install fallback, and an in-app progress popup.
 
-Authentication is app-password only. The Gmail OAuth flow was removed; `internal/auth`
-is now a single `IsAuthFailure` classifier that lets the UI surface a re-authenticate
-hint when a password is rejected.
+Authentication is app-password for every provider, plus optional OAuth2 (XOAUTH2)
+for Gmail. TideMail bundles no OAuth client — the user supplies their own via
+`[oauth]` / env vars, which keeps personal use free of Google's CASA
+verification. `internal/auth` holds the Google device-code and
+authorization-code flows, a shared access-token cache with refresh-token
+rotation, and the `IsAuthFailure` / `IsTokenRevoked` classifiers that drive the
+"press M to re-authenticate" hint. Microsoft/Outlook OAuth is built but parked on
+the `outlook-oauth` branch — reviving it is a follow-up.
 
 ## Quality gates
 

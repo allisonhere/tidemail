@@ -8,10 +8,15 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/cursor"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"golang.org/x/oauth2"
+
+	"github.com/allisonhere/tidemail/internal/auth"
+	"github.com/allisonhere/tidemail/internal/clipboard"
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidemail/internal/imap"
@@ -213,7 +218,10 @@ const (
 	amFieldSMTPPort
 	amFieldSMTPTLS
 	amFieldUser
+	amFieldAuthMethod
 	amFieldPass
+	amFieldGoogleSignIn
+	amFieldGoogleCode
 	amFieldFrom
 	amFieldSignature
 	amFieldSyncInterval
@@ -282,6 +290,22 @@ type AccountManager struct {
 	editAccountID int64
 	colorIdx      int
 
+	// Gmail OAuth sign-in state. useGoogleOAuth is the Auth-method selector
+	// (App password ⇄ OAuth), shown only for the Gmail provider. Device-code
+	// flow is the default (SSH-safe: show a URL + short code, poll); the
+	// authorization-code paste-back flow is the fallback when the device
+	// endpoint rejects the mail scope.
+	oauthCfg           config.OAuthConfig
+	useGoogleOAuth     bool
+	googleSignedIn     bool
+	googleRefreshToken string
+	googleOAuthActive  bool
+	googleAwaitingCode bool // paste-back flow: waiting for the pasted code/URL
+	googleFlow         *auth.GoogleAuthCodeFlow
+	googleCodeInput    textinput.Model
+	oauthCtx           context.Context
+	oauthCancel        context.CancelFunc
+
 	busy      bool
 	busyMsg   string
 	statusMsg string
@@ -299,6 +323,8 @@ func NewAccountManager(database *db.DB) AccountManager {
 	am.fromInput = newAMInput("Your Name <you@example.com>", false)
 	am.syncInput = newAMInput("0 = push", false)
 	am.sigInput = newAMInput(`signature (\n for a new line)`, false)
+	am.googleCodeInput = newAMInput("code, or full http://localhost/?code=... URL", false)
+	am.googleCodeInput.CharLimit = 2048 // a pasted redirect URL is long
 	return am
 }
 
@@ -312,10 +338,11 @@ func newAMInput(placeholder string, password bool) textinput.Model {
 	return ti
 }
 
-func (am *AccountManager) setData(accounts []db.Account, mailboxes []db.Mailbox, configs []config.AccountConfig) {
+func (am *AccountManager) setData(accounts []db.Account, mailboxes []db.Mailbox, configs []config.AccountConfig, oauthCfg config.OAuthConfig) {
 	am.accounts = accounts
 	am.mailboxes = mailboxes
 	am.configs = configs
+	am.oauthCfg = oauthCfg
 	am.cursor = clamp(am.cursor, 0, max(0, len(accounts)-1))
 }
 
@@ -331,6 +358,7 @@ func (am *AccountManager) focusField(f amField) {
 	am.fromInput.Blur()
 	am.syncInput.Blur()
 	am.sigInput.Blur()
+	am.googleCodeInput.Blur()
 	switch f {
 	case amFieldName:
 		am.nameInput.Focus()
@@ -348,6 +376,8 @@ func (am *AccountManager) focusField(f amField) {
 		am.userInput.Focus()
 	case amFieldPass:
 		am.passInput.Focus()
+	case amFieldGoogleCode:
+		am.googleCodeInput.Focus()
 	case amFieldFrom:
 		am.fromInput.Focus()
 	case amFieldSyncInterval:
@@ -377,6 +407,11 @@ func (am *AccountManager) populateFormFrom(acfg config.AccountConfig) {
 	am.syncInput.SetValue(strconv.Itoa(acfg.SyncMinutes))
 	// The form is single-line; real newlines round-trip as literal \n escapes.
 	am.sigInput.SetValue(strings.ReplaceAll(acfg.Signature, "\n", `\n`))
+	// Carry the existing refresh token so buildCfg preserves OAuth on save.
+	am.googleRefreshToken = acfg.RefreshToken
+	am.googleSignedIn = acfg.RefreshToken != ""
+	am.useGoogleOAuth = acfg.Provider == "Gmail" && acfg.RefreshToken != ""
+	am.googleAwaitingCode = false
 }
 
 func (am AccountManager) buildCfg() config.AccountConfig {
@@ -411,6 +446,16 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 		cfg.SMTPPort = preset.SMTPPort
 		cfg.SMTPTLS = preset.SMTPTLS
 	}
+	// A signed-in Gmail account with the OAuth auth method authenticates with
+	// XOAUTH2: the refresh token replaces the password. ClientID/ClientSecret
+	// are toml:"-" — they only feed the live connect on save/test; fillSecrets
+	// re-fills them on later loads from the app-level [oauth] config.
+	if am.provider == "Gmail" && am.useGoogleOAuth && am.googleRefreshToken != "" {
+		cfg.RefreshToken = am.googleRefreshToken
+		cfg.ClientID = am.oauthCfg.GoogleClientID
+		cfg.ClientSecret = am.oauthCfg.GoogleClientSecret
+		cfg.Password = ""
+	}
 	return cfg
 }
 
@@ -442,7 +487,8 @@ func (am AccountManager) configForAccount(acc db.Account) (config.AccountConfig,
 func (am AccountManager) statusForeground(chrome managerChrome) lipgloss.Color {
 	msg := strings.ToUpper(strings.TrimSpace(am.statusMsg))
 	switch {
-	case strings.HasPrefix(msg, "CONNECTED:"), strings.HasPrefix(msg, "SAVED:"), strings.HasPrefix(msg, "DELETED"):
+	case strings.HasPrefix(msg, "CONNECTED:"), strings.HasPrefix(msg, "SAVED:"), strings.HasPrefix(msg, "DELETED"),
+		strings.HasPrefix(msg, "SIGNED IN"), strings.HasPrefix(msg, "SIGN-IN PAGE"):
 		return chrome.successFg
 	default:
 		return chrome.errorFg
@@ -459,6 +505,9 @@ func (am AccountManager) redactSensitiveWithAccounts(s string, extraAccounts []c
 	cfg.Accounts = append(cfg.Accounts, extraAccounts...)
 	if pass := am.passInput.Value(); strings.TrimSpace(pass) != "" {
 		cfg.Accounts = append(cfg.Accounts, config.AccountConfig{Password: pass})
+	}
+	if tok := strings.TrimSpace(am.googleRefreshToken); tok != "" {
+		cfg.Accounts = append(cfg.Accounts, config.AccountConfig{RefreshToken: tok})
 	}
 	return config.RedactSecrets(s, cfg)
 }
@@ -495,13 +544,13 @@ func (am AccountManager) updateList(msg tea.Msg, keys KeyMap) (AccountManager, t
 		am.mode = amAdd
 		am.editAccountID = 0
 		am.resetForm()
-		am.focusField(amFieldName)
+		am.focusField(amFieldProvider)
 	case keyMatches(km, keys.Edit):
 		if acc := am.selectedAccount(); acc != nil {
 			am.mode = amEdit
 			am.editAccountID = acc.ID
 			am.resetForm()
-			am.focusField(amFieldName)
+			am.focusField(amFieldProvider)
 			if acfg, ok := am.configForAccount(*acc); ok {
 				am.populateFormFrom(acfg)
 			} else {
@@ -534,6 +583,8 @@ func (am *AccountManager) updateFocusedInput(msg tea.Msg) tea.Cmd {
 		am.userInput, cmd = am.userInput.Update(msg)
 	case amFieldPass:
 		am.passInput, cmd = am.passInput.Update(msg)
+	case amFieldGoogleCode:
+		am.googleCodeInput, cmd = am.googleCodeInput.Update(msg)
 	case amFieldFrom:
 		am.fromInput, cmd = am.fromInput.Update(msg)
 	case amFieldSyncInterval:
@@ -545,7 +596,59 @@ func (am *AccountManager) updateFocusedInput(msg tea.Msg) tea.Cmd {
 }
 
 func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, tea.Cmd, bool) {
+	// Sign-in results arrive async while the form is busy — handle them before
+	// the busy guard.
+	switch dm := msg.(type) {
+	case DeviceCodeMsg:
+		if !am.googleOAuthActive {
+			return am, nil, false // stale result from a cancelled flow
+		}
+		if dm.Err != nil {
+			// The device endpoint rejected the request (commonly: the mail
+			// scope isn't allowed for device clients). Fall back to the
+			// authorization-code paste-back flow.
+			return am.startGoogleAuthCode()
+		}
+		am.busyMsg = fmt.Sprintf("GO TO %s AND ENTER CODE %s (ESC CANCELS)", dm.VerificationURL, dm.UserCode)
+		return am, pollGoogleTokenCmd(am.oauthCtx, am.oauthCfg.GoogleClientID, am.oauthCfg.GoogleClientSecret, dm.da), false
+	case OAuth2DoneMsg:
+		if !am.googleOAuthActive {
+			return am, nil, false // stale result from a cancelled flow
+		}
+		if dm.Err != nil && am.googleAwaitingCode {
+			// A bad paste doesn't consume the PKCE verifier — keep the flow
+			// alive so the user can paste again without restarting.
+			am.busy = false
+			am.busyMsg = ""
+			am.statusMsg = fmt.Sprintf("SIGN-IN FAILED: %v", dm.Err)
+			am.focusField(amFieldGoogleCode)
+			return am, nil, false
+		}
+		am.cancelGoogleOAuth()
+		if dm.Err != nil {
+			am.statusMsg = fmt.Sprintf("SIGN-IN FAILED: %v", dm.Err)
+			return am, nil, false
+		}
+		if dm.RefreshToken == "" {
+			am.statusMsg = "SIGN-IN FAILED: NO REFRESH TOKEN RETURNED (RE-CONSENT WITH prompt=consent)"
+			return am, nil, false
+		}
+		am.googleSignedIn = true
+		am.googleRefreshToken = dm.RefreshToken
+		// Drop any cached tokens for this account so the next connect seeds
+		// from the freshly issued refresh token.
+		auth.ForgetGoogleToken(strings.TrimSpace(am.nameInput.Value()))
+		am.statusMsg = "SIGNED IN: GOOGLE ACCOUNT LINKED"
+		am.focusField(amFieldFrom)
+		return am, nil, false
+	}
 	if am.busy {
+		// Allow bailing out of a pending device-code approval (it can take
+		// many minutes to expire on its own).
+		if km, ok := msg.(tea.KeyMsg); ok && am.googleOAuthActive && keyMatches(km, keys.Cancel) {
+			am.cancelGoogleOAuth()
+			am.statusMsg = "SIGN-IN CANCELLED"
+		}
 		return am, nil, false
 	}
 	km, ok := msg.(tea.KeyMsg)
@@ -554,17 +657,28 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 	}
 	switch {
 	case keyMatches(km, keys.Cancel):
+		if am.googleAwaitingCode {
+			// Esc during code entry abandons the sign-in, not the form.
+			am.cancelGoogleOAuth()
+			am.statusMsg = "SIGN-IN CANCELLED"
+			am.focusField(amFieldGoogleSignIn)
+			return am, nil, false
+		}
 		am.mode = amList
 		am.statusMsg = ""
 	case keyMatches(km, keys.TestAccount):
 		return am.testForm()
 	case keyMatches(km, keys.Save):
 		return am.submitForm()
+	case keyMatches(km, keys.OAuthSignIn):
+		if am.provider == "Gmail" {
+			return am.startGoogleOAuth()
+		}
 	case keyMatches(km, keys.Tab):
 		am.advanceField(1)
-	case keyMatches(km, keys.Down):
+	case am.formNavMatches(km, keys.Down):
 		am.advanceField(1)
-	case keyMatches(km, keys.Up):
+	case am.formNavMatches(km, keys.Up):
 		am.advanceField(-1)
 	case am.focusedField == amFieldProvider && (keyMatches(km, keys.Left) || keyMatches(km, keys.Right)):
 		for i, p := range providerList {
@@ -583,6 +697,11 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 		} else {
 			am.colorIdx = (am.colorIdx - 1 + len(accountColorList)) % len(accountColorList)
 		}
+	case am.focusedField == amFieldAuthMethod && (keyMatches(km, keys.Left) || keyMatches(km, keys.Right)):
+		am.useGoogleOAuth = !am.useGoogleOAuth
+		if !am.useGoogleOAuth {
+			am.cancelGoogleOAuth() // abandon any pending sign-in; a completed one is kept
+		}
 	case keyMatches(km, keys.Backspace):
 		// let input handle it
 		fallthrough
@@ -596,9 +715,17 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 			case amFieldSMTPTLS:
 				am.smtpTLS = !am.smtpTLS
 				return am, nil, false
+			case amFieldGoogleSignIn:
+				return am.startGoogleOAuth()
 			}
 		}
 		if keyMatches(km, keys.Confirm) {
+			if am.focusedField == amFieldGoogleSignIn {
+				return am.startGoogleOAuth()
+			}
+			if am.focusedField == amFieldGoogleCode {
+				return am.submitGoogleCode()
+			}
 			if am.focusedField == amFieldSyncInterval {
 				// submit
 				return am.submitForm()
@@ -634,6 +761,137 @@ func (am AccountManager) testForm() (AccountManager, tea.Cmd, bool) {
 	am.busyMsg = "TESTING ACCOUNT..."
 	am.statusMsg = ""
 	return am, testAccountCmd(acfg), false
+}
+
+// clipboardCopy is a seam so tests don't touch the real clipboard.
+var clipboardCopy = clipboard.Copy
+
+// startGoogleOAuth kicks off a Gmail sign-in with the device-code flow: request
+// a short code, show it with the verification URL, and poll until the user
+// approves. If the device endpoint rejects the request (e.g. the mail scope is
+// not permitted for device clients) updateForm falls back to startGoogleAuthCode.
+func (am AccountManager) startGoogleOAuth() (AccountManager, tea.Cmd, bool) {
+	clientID := am.oauthCfg.GoogleClientID
+	if clientID == "" {
+		am.statusMsg = "GMAIL OAUTH NOT CONFIGURED — SET TIDEMAIL_GOOGLE_CLIENT_ID / _SECRET"
+		return am, nil, false
+	}
+	am.cancelGoogleOAuth() // drop any previous attempt
+	am.statusMsg = ""
+	ctx, cancel := context.WithCancel(context.Background())
+	am.oauthCtx = ctx
+	am.oauthCancel = cancel
+	am.googleOAuthActive = true
+	am.busy = true
+	am.busyMsg = "REQUESTING SIGN-IN CODE..."
+	return am, startGoogleDeviceFlowCmd(ctx, clientID, am.oauthCfg.GoogleClientSecret), false
+}
+
+// startGoogleAuthCode is the paste-back fallback: open the consent URL in a
+// browser (also copied to the clipboard), the user approves and lands on an
+// unreachable http://localhost page, then pastes that URL (or the bare code)
+// back into the Code field.
+func (am AccountManager) startGoogleAuthCode() (AccountManager, tea.Cmd, bool) {
+	am.googleFlow = auth.NewGoogleAuthCodeFlow(am.oauthCfg.GoogleClientID, am.oauthCfg.GoogleClientSecret)
+	am.googleOAuthActive = true
+	am.googleAwaitingCode = true
+	am.busy = false
+	am.busyMsg = ""
+	am.googleCodeInput.Reset()
+	am.focusField(amFieldGoogleCode)
+	note := "SIGN-IN PAGE: OPEN THE URL BELOW, APPROVE, PASTE THE RESULT"
+	if err := clipboardCopy(am.googleFlow.AuthURL); err == nil {
+		note = "SIGN-IN PAGE URL COPIED TO CLIPBOARD — OPEN IT, APPROVE, PASTE THE RESULT"
+	}
+	am.statusMsg = note
+	return am, nil, false
+}
+
+// submitGoogleCode exchanges the pasted authorization code (or redirect URL)
+// for tokens.
+func (am AccountManager) submitGoogleCode() (AccountManager, tea.Cmd, bool) {
+	pasted := strings.TrimSpace(am.googleCodeInput.Value())
+	if pasted == "" {
+		am.statusMsg = "PASTE THE CODE OR REDIRECT URL FROM THE BROWSER FIRST"
+		return am, nil, false
+	}
+	if am.googleFlow == nil {
+		am.statusMsg = "SIGN-IN EXPIRED — PRESS CTRL+O TO START AGAIN"
+		return am, nil, false
+	}
+	am.busy = true
+	am.busyMsg = "EXCHANGING SIGN-IN CODE..."
+	am.statusMsg = ""
+	return am, exchangeGoogleCodeCmd(am.googleFlow, pasted), false
+}
+
+// cancelGoogleOAuth stops any in-flight sign-in (either flow) and clears its
+// state; safe to call when no flow is active.
+func (am *AccountManager) cancelGoogleOAuth() {
+	if am.oauthCancel != nil {
+		am.oauthCancel()
+	}
+	am.oauthCtx = nil
+	am.oauthCancel = nil
+	am.googleOAuthActive = false
+	am.googleAwaitingCode = false
+	am.googleFlow = nil
+	am.googleCodeInput.Reset()
+	am.busy = false
+	am.busyMsg = ""
+}
+
+func startGoogleDeviceFlowCmd(ctx context.Context, clientID, clientSecret string) tea.Cmd {
+	return func() tea.Msg {
+		da, err := auth.StartGoogleDeviceFlow(ctx, clientID, clientSecret)
+		if err != nil {
+			return DeviceCodeMsg{Err: err}
+		}
+		return DeviceCodeMsg{VerificationURL: da.VerificationURI, UserCode: da.UserCode, da: da}
+	}
+}
+
+func pollGoogleTokenCmd(ctx context.Context, clientID, clientSecret string, da *oauth2.DeviceAuthResponse) tea.Cmd {
+	return func() tea.Msg {
+		tok, err := auth.PollGoogleDeviceToken(ctx, clientID, clientSecret, da)
+		if err != nil {
+			return OAuth2DoneMsg{Err: err}
+		}
+		return OAuth2DoneMsg{RefreshToken: tok.RefreshToken}
+	}
+}
+
+func exchangeGoogleCodeCmd(flow *auth.GoogleAuthCodeFlow, pasted string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		tok, err := flow.Exchange(ctx, pasted)
+		if err != nil {
+			return OAuth2DoneMsg{Err: err}
+		}
+		return OAuth2DoneMsg{RefreshToken: tok.RefreshToken}
+	}
+}
+
+// formNavMatches treats the vim navigation runes (j/k on Up/Down) as navigation
+// only while a non-text row is focused. While a text input is focused only the
+// arrow keys navigate — typing "imap.gmail.com" must insert the runes, not jump
+// fields.
+func (am AccountManager) formNavMatches(km tea.KeyMsg, b key.Binding) bool {
+	if km.Type == tea.KeyRunes && am.focusedIsTextInput() {
+		return false
+	}
+	return keyMatches(km, b)
+}
+
+// focusedIsTextInput reports whether the focused form row is a free-text input
+// (as opposed to a picker/toggle/button row).
+func (am AccountManager) focusedIsTextInput() bool {
+	switch am.focusedField {
+	case amFieldProvider, amFieldColor, amFieldAuthMethod, amFieldIMAPTLS, amFieldSMTPTLS, amFieldGoogleSignIn:
+		return false
+	}
+	return true
 }
 
 // parseSyncMinutes reads the refresh field, reporting whether the text was a
@@ -680,6 +938,9 @@ func validateAccountForConnect(acfg config.AccountConfig) string {
 	if acfg.SMTPPort < 1 || acfg.SMTPPort > 65535 {
 		return "SMTP PORT MUST BE 1-65535"
 	}
+	if acfg.Provider == "Gmail" && acfg.Password == "" && acfg.RefreshToken == "" {
+		return "SIGN IN WITH GOOGLE (CTRL+O) OR ENTER AN APP PASSWORD"
+	}
 	return ""
 }
 
@@ -718,6 +979,26 @@ func (am *AccountManager) advanceField(delta int) {
 			f = amField(next)
 		}
 	}
+	// Gmail's Auth-method selector and its OAuth sub-rows only exist for the
+	// Gmail provider; within Gmail, the password row and the OAuth rows are
+	// mutually exclusive per the selector, and the paste-back Code row shows
+	// only while a sign-in awaits its code.
+	gmailOAuth := am.provider == "Gmail" && am.useGoogleOAuth
+	for {
+		f := amField(next)
+		skip := (f == amFieldAuthMethod && am.provider != "Gmail") ||
+			(f == amFieldPass && gmailOAuth) ||
+			(f == amFieldGoogleSignIn && !gmailOAuth) ||
+			(f == amFieldGoogleCode && (!gmailOAuth || !am.googleAwaitingCode))
+		if skip {
+			next += delta
+			if next < 0 || next >= int(amFieldCount) {
+				return
+			}
+			continue
+		}
+		break
+	}
 	am.focusField(amField(next))
 }
 
@@ -734,6 +1015,12 @@ func (am *AccountManager) resetForm() {
 	am.userInput.Reset()
 	am.passInput.Reset()
 	am.fromInput.Reset()
+	am.cancelGoogleOAuth()
+	am.googleSignedIn = false
+	am.googleRefreshToken = ""
+	// Default a new Gmail account to OAuth when a client is configured,
+	// otherwise to the app-password field.
+	am.useGoogleOAuth = am.oauthCfg.GoogleClientID != ""
 	am.statusMsg = ""
 	am.busy = false
 	am.busyMsg = ""
@@ -1028,6 +1315,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 
 	addSection("Account")
 	addControl(amFieldProvider, providerRow(am.focusedField == amFieldProvider))
+	addBlank()
 	addControl(amFieldName, row("Name", am.nameInput, am.focusedField == amFieldName))
 	addControl(amFieldColor, colorRow(am.focusedField == amFieldColor))
 	if am.provider == "Custom" {
@@ -1046,24 +1334,85 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 		userLabel = "Email"
 		passInput.Placeholder = preset.PassHint
 	}
-	addSection("Credentials")
-	addControl(amFieldUser, row(userLabel, am.userInput, am.focusedField == amFieldUser))
-	// Auth method toggle (Gmail only)
-	addControl(amFieldPass, row("Password", passInput, am.focusedField == amFieldPass))
 	// A muted continuation line under a field, aligned to the field column.
 	addHint := func(hint string) {
 		hintLeft := lipgloss.NewStyle().Background(chrome.baseBg).Width(max(1, labelW)).Render("")
 		hintRight := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, fieldW-2)).Padding(0, 1).Render(hint)
 		addLine(lipgloss.JoinHorizontal(lipgloss.Left, hintLeft, hintRight))
 	}
-	if am.provider == "Gmail" {
-		for _, hint := range []string{
-			"Gmail needs an App Password (not your normal password):",
-			"1. Turn on 2-Step Verification in your Google account",
-			"2. myaccount.google.com/apppasswords → create one",
-			"3. Paste the 16-character code above",
-		} {
-			addHint(hint)
+
+	addSection("Credentials")
+	addControl(amFieldUser, row(userLabel, am.userInput, am.focusedField == amFieldUser))
+
+	if am.provider != "Gmail" {
+		// Non-Gmail providers: app password only.
+		addControl(amFieldPass, row("Password", passInput, am.focusedField == amFieldPass))
+	} else {
+		// Gmail: a left/right selector chooses the auth method. The verbose
+		// guidance only appears while the selector or its sub-controls are
+		// focused, so the form stays quiet the rest of the time.
+		methodVal := "App password"
+		if am.useGoogleOAuth {
+			methodVal = "OAuth · sign in with Google"
+		}
+		authRow := padStyled(
+			labelCell("Auth", am.focusedField == amFieldAuthMethod)+
+				pickerVal(methodVal, "", am.focusedField == amFieldAuthMethod),
+			width, chrome.baseBg)
+		addControl(amFieldAuthMethod, authRow)
+		addBlank()
+
+		authFocused := am.focusedField == amFieldAuthMethod ||
+			am.focusedField == amFieldPass ||
+			am.focusedField == amFieldGoogleSignIn ||
+			am.focusedField == amFieldGoogleCode
+
+		if !am.useGoogleOAuth {
+			addControl(amFieldPass, row("Password", passInput, am.focusedField == amFieldPass))
+			if authFocused {
+				addHint("Gmail needs an App Password, not your normal password:")
+				addHint("2-Step Verification → myaccount.google.com/apppasswords")
+				addHint("‹ / › switches to OAuth sign-in instead.")
+			}
+		} else {
+			signFg := chrome.text
+			if am.focusedField == amFieldGoogleSignIn {
+				signFg = chrome.accent
+			}
+			signVal := "[ Sign in with Google ]  (ctrl+o)"
+			switch {
+			case am.googleAwaitingCode:
+				signVal = "… waiting for pasted code (esc cancels)"
+			case am.googleSignedIn:
+				signVal = "✓ signed in with Google"
+				signFg = chrome.successFg
+				if am.focusedField == amFieldGoogleSignIn {
+					signVal += "  (enter re-links)"
+				}
+			}
+			signRight := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(signFg).Width(max(1, fieldW-2)).Padding(0, 1).Render(signVal)
+			addControl(amFieldGoogleSignIn, padStyled(labelCell("", am.focusedField == amFieldGoogleSignIn)+signRight, width, chrome.baseBg))
+			if am.googleAwaitingCode {
+				addControl(amFieldGoogleCode, row("Code", am.googleCodeInput, am.focusedField == amFieldGoogleCode))
+			}
+			if authFocused {
+				hints := []string{
+					"Press enter (or ctrl+o) to sign in — a short code + URL appears;",
+					"open it on any device and approve.",
+					"Needs TIDEMAIL_GOOGLE_CLIENT_ID / _SECRET (your own OAuth client).",
+					"‹ / › switches back to an App Password.",
+				}
+				if am.googleAwaitingCode {
+					hints = []string{
+						"Approve TideMail in the browser; you'll land on an unreachable",
+						"http://localhost page — paste that page's URL (or the code=",
+						"value from it) below and press enter.",
+					}
+				}
+				for _, hint := range hints {
+					addHint(hint)
+				}
+			}
 		}
 	}
 	addSection("Sending identity")

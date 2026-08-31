@@ -149,11 +149,43 @@ AI stays off until you configure a provider.
 ## First account
 
 Press `M`, add your incoming and outgoing mail settings, then save with
-`Ctrl+S`. Gmail, Yahoo, and iCloud require an app password.
+`Ctrl+S`. Gmail, Yahoo, and iCloud require an app password — or, for Gmail, an
+OAuth sign-in (see below).
 
-TideMail stores passwords and AI keys in libsecret on Linux or Keychain on
-macOS. If `secret-tool` is missing on Linux, TideMail falls back to
-`~/.config/tidemail/config.toml`, so protect that file.
+TideMail stores passwords, AI keys, and OAuth refresh tokens in libsecret on
+Linux or Keychain on macOS. If `secret-tool` is missing on Linux, TideMail falls
+back to `~/.config/tidemail/config.toml`, so protect that file.
+
+### Gmail with OAuth (optional)
+
+Instead of an app password, a Gmail account can sign in with OAuth. TideMail
+ships no OAuth client, so you supply your own (free, no Google verification for
+personal use):
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → new project.
+2. **APIs & Services → Enable APIs → Gmail API** → enable.
+3. **OAuth consent screen** → External. Add your own address as a **test user**.
+   For a refresh token that doesn't expire every 7 days, also **Publish** the app
+   to Production (a single-user project needs no verification — click through the
+   "unverified" notice).
+4. **Credentials → Create OAuth client ID → "TVs and Limited Input devices"**
+   (or "Desktop app" if you prefer the paste-back flow).
+5. Export the credentials before launching TideMail (or put them under
+   `[oauth]` in `config.toml`):
+
+   ```sh
+   export TIDEMAIL_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
+   export TIDEMAIL_GOOGLE_CLIENT_SECRET=xxxx
+   ```
+
+6. In TideMail: `M` → add account → provider **Gmail**. The **Auth** row's
+   `‹ ›` selector picks App password or OAuth; with OAuth selected press
+   `Ctrl+O`. A short code and URL appear — open the URL on any device, approve,
+   and TideMail finishes signing in. Save with `Ctrl+S`.
+
+The refresh token is kept in the keychain and used to mint short-lived access
+tokens for IMAP and SMTP. If it is ever revoked, TideMail shows a
+"sign-in expired — press M to re-authenticate" hint.
 
 ```toml
 theme = "lavender-fields-forever"

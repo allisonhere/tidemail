@@ -18,10 +18,14 @@ require (
 	github.com/muesli/termenv v0.16.0
 	github.com/rivo/uniseg v0.4.7
 	github.com/yuin/goldmark v1.7.13
+	golang.org/x/oauth2 v0.36.0
 	modernc.org/sqlite v1.48.0
 )
 
-require github.com/mattn/go-runewidth v0.0.19 // indirect
+require (
+	cloud.google.com/go/compute/metadata v0.3.0 // indirect
+	github.com/mattn/go-runewidth v0.0.19 // indirect
+)
 
 require (
 	github.com/alecthomas/chroma/v2 v2.20.0 // indirect
@@ -38,7 +42,7 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.5.0 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect

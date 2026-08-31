@@ -126,6 +126,13 @@ func (a AccountConfig) UsesOAuth2() bool {
 	return a.RefreshToken != ""
 }
 
+// UsesGoogleOAuth2 reports whether the account authenticates with Gmail XOAUTH2.
+// The provider gate keeps an orphaned refresh token from silently changing
+// another account's auth path.
+func (a AccountConfig) UsesGoogleOAuth2() bool {
+	return a.RefreshToken != "" && a.Provider == "Gmail"
+}
+
 func DefaultAccountConfig() AccountConfig {
 	return AccountConfig{
 		IMAPPort: 993,
@@ -303,8 +310,11 @@ func secretValues(cfg Config) []string {
 	add(cfg.AI.OpenAIKey)
 	add(cfg.AI.ClaudeKey)
 	add(cfg.AI.GeminiKey)
+	add(cfg.OAuth.GoogleClientSecret)
 	for _, account := range cfg.Accounts {
 		add(account.Password)
+		add(account.RefreshToken)
+		add(account.ClientSecret)
 	}
 	return secrets
 }

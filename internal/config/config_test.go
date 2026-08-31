@@ -116,6 +116,24 @@ func TestRedactSecretsRemovesConfiguredSecrets(t *testing.T) {
 	}
 }
 
+func TestRedactSecretsRemovesOAuthTokens(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.OAuth.GoogleClientSecret = "app-client-secret"
+	cfg.Accounts = []AccountConfig{{
+		Name:         "Gmail",
+		RefreshToken: "1//0-refresh-token",
+		ClientSecret: "app-client-secret",
+	}}
+
+	got := RedactSecrets("refresh=1//0-refresh-token secret=app-client-secret ok=visible", cfg)
+	if strings.Contains(got, "1//0-refresh-token") || strings.Contains(got, "app-client-secret") {
+		t.Fatalf("expected OAuth secrets to be redacted, got %q", got)
+	}
+	if !strings.Contains(got, "ok=visible") {
+		t.Fatalf("expected harmless text to remain, got %q", got)
+	}
+}
+
 func TestLoadPreservesUpdateConfig(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)

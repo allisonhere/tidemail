@@ -353,6 +353,12 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 	if previewManualUpdate {
 		m.applyManualUpdatePreview()
 	}
+	// Google can rotate refresh tokens on refresh; persist the rotated token to
+	// the keyring immediately so it survives crashes. (Injected func —
+	// internal/auth can't import internal/config.)
+	auth.PersistRefreshToken = func(accountName, refreshToken string) {
+		config.StoreOAuth2RefreshToken(accountName, refreshToken)
+	}
 	return m
 }
 
@@ -531,7 +537,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			statusCmd = m.clearStatusCmd()
 		}
 		m.rebuildSidebar()
-		m.accountManager.setData(m.accounts, m.mailboxes, m.cfg.Accounts)
+		m.accountManager.setData(m.accounts, m.mailboxes, m.cfg.Accounts, m.cfg.OAuth)
 		openAccountManagerOnEmptyFirstLoad := m.firstLoad && msg.Err == nil && len(m.accounts) == 0
 		if m.firstLoad {
 			m.loadCollapseState()
@@ -685,7 +691,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case MailboxSyncedMsg:
 		delete(m.syncing, msg.MailboxID)
 		if msg.Err != nil {
-			if auth.IsAuthFailure(msg.Err) {
+			if auth.IsAuthFailure(msg.Err) || auth.IsTokenRevoked(msg.Err) {
 				name := "account"
 				if mb := m.mailboxByID(msg.MailboxID); mb != nil {
 					name = m.accountName(mb.AccountID)
@@ -2878,7 +2884,7 @@ func (m *Model) clampSidebarOffset() {
 func (m Model) newAccountManager() AccountManager {
 	am := NewAccountManager(m.db)
 	am.mode = amList
-	am.setData(m.accounts, m.mailboxes, m.cfg.Accounts)
+	am.setData(m.accounts, m.mailboxes, m.cfg.Accounts, m.cfg.OAuth)
 	return am
 }
 
@@ -3029,6 +3035,16 @@ var configSave = config.Save
 // failed write (read-only dir, full disk) no longer silently drops account/OAuth/setting
 // changes the way a fire-and-forget config.Save would.
 func (m *Model) saveConfig() {
+	// Reconcile rotated OAuth refresh tokens before writing: config.Save's
+	// stripSecrets pushes each account's in-memory RefreshToken to the keyring,
+	// and m.cfg still holds the token from load time — without this, any save
+	// (theme change, etc.) would clobber the rotated keyring token with a stale
+	// one the provider has already invalidated.
+	for i := range m.cfg.Accounts {
+		if tok, ok := auth.LatestRefreshToken(m.cfg.Accounts[i].Name); ok {
+			m.cfg.Accounts[i].RefreshToken = tok
+		}
+	}
 	if err := configSave(m.cfg); err != nil {
 		m.setStatus(fmt.Sprintf("couldn't save settings: %v", err), true)
 	}

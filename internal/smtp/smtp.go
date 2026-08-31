@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/allisonhere/tidemail/internal/auth"
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/yuin/goldmark"
 )
@@ -76,9 +77,39 @@ func Send(ctx context.Context, cfg config.AccountConfig, msg OutgoingMessage) er
 	return sendSTARTTLS(ctx, addr, cfg, envelopeFrom, allTo, raw)
 }
 
-// smtpAuth returns the smtp.Auth for the given config. TideMail authenticates
-// with an app password over PLAIN (Gmail requires an app password + 2FA).
-func smtpAuth(cfg config.AccountConfig, host string) (smtp.Auth, error) {
+// xoauth2Auth implements the smtp.Auth interface for XOAUTH2.
+type xoauth2Auth struct {
+	user, token string
+}
+
+func (a *xoauth2Auth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	// Return the RAW initial-response bytes. net/smtp's Client.Auth base64-encodes
+	// whatever Start returns before sending "AUTH XOAUTH2 <base64>"; encoding here
+	// too would double-encode and the server rejects it with "501 5.5.2 Cannot Decode".
+	resp := "user=" + a.user + "\x01auth=Bearer " + a.token + "\x01\x01"
+	return "XOAUTH2", []byte(resp), nil
+}
+
+func (a *xoauth2Auth) Next(fromServer []byte, more bool) ([]byte, error) {
+	if more {
+		// On auth failure the server sends a challenge whose body is a JSON
+		// error description (already base64-decoded by net/smtp) — surface it.
+		return nil, fmt.Errorf("xoauth2 rejected: %s", fromServer)
+	}
+	return nil, nil
+}
+
+// smtpAuth returns the smtp.Auth for the given config: XOAUTH2 for Gmail
+// accounts with a refresh token, otherwise app password over PLAIN (Gmail
+// requires an app password + 2FA).
+func smtpAuth(ctx context.Context, cfg config.AccountConfig, host string) (smtp.Auth, error) {
+	if cfg.UsesGoogleOAuth2() {
+		tok, err := auth.GoogleAccessToken(ctx, cfg.ClientID, cfg.ClientSecret, cfg.Name, cfg.RefreshToken)
+		if err != nil {
+			return nil, fmt.Errorf("oauth2: %w", err)
+		}
+		return &xoauth2Auth{user: cfg.User, token: tok}, nil
+	}
 	return smtp.PlainAuth("", cfg.User, cfg.Password, host), nil
 }
 
@@ -110,7 +141,7 @@ func sendSTARTTLS(ctx context.Context, addr string, cfg config.AccountConfig, fr
 		}
 	}
 
-	auth, err := smtpAuth(cfg, host)
+	auth, err := smtpAuth(ctx, cfg, host)
 	if err != nil {
 		return fmt.Errorf("smtp auth: %w", err)
 	}
@@ -143,7 +174,7 @@ func sendTLS(ctx context.Context, addr string, cfg config.AccountConfig, from st
 	}
 	defer client.Close()
 
-	auth, err := smtpAuth(cfg, host)
+	auth, err := smtpAuth(ctx, cfg, host)
 	if err != nil {
 		return fmt.Errorf("smtp auth: %w", err)
 	}
