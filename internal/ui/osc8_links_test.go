@@ -245,3 +245,41 @@ func TestFilterLinksStillAppliesToPlainTextBodies(t *testing.T) {
 		t.Fatalf("filter_links did not strip the plain-text URL: %q", got)
 	}
 }
+
+// The Reddit digest's [Read post] CTA must keep its OSC 8 wrapper *outside* the
+// SGR styling. actionStyle underlines, which makes lipgloss style the label per
+// rune; wrapping the hyperlink first splits its ESC from the "]8;;<url>" payload,
+// so the terminal prints the tracking URL as visible text. That inflates the
+// line from 11 columns to ~100, which then wraps and overflows the content pane.
+func TestRedditDigestReadPostHyperlinkSurvivesStyling(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+
+	got, ok := renderRedditDigestHTML(redditDigestFixture(), 44, CatppuccinMocha, false)
+	if !ok {
+		t.Fatal("expected Reddit digest fixture to render")
+	}
+
+	const post = "https://www.reddit.com/r/omarchy/comments/1vxc6xv/free_ai_in_omarchy/"
+	var cta string
+	for _, line := range strings.Split(got, "\n") {
+		if strings.Contains(ansi.Strip(line), "[Read post]") {
+			cta = line
+			break
+		}
+	}
+	if cta == "" {
+		t.Fatalf("no [Read post] line in rendered digest: %q", ansi.Strip(got))
+	}
+	if w := ansi.StringWidth(cta); w != len("[Read post]") {
+		t.Fatalf("CTA occupies %d columns, want %d — the hyperlink leaked into visible text: %q", w, len("[Read post]"), cta)
+	}
+
+	stripped := ansi.Strip(got)
+	if strings.Contains(stripped, "]8;;") || strings.Contains(stripped, post) {
+		t.Fatalf("OSC 8 sequence rendered as literal text: %q", stripped)
+	}
+	if strings.Count(got, osc8Open+post) != 1 || strings.Count(got, osc8Close) != 1 {
+		t.Fatalf("expected exactly one intact OSC 8 hyperlink to %q, got %q", post, got)
+	}
+}

@@ -198,8 +198,12 @@ func renderRedditDigestPosts(posts []*redditDigestPost, width int, th Theme, pla
 			lines = append(lines, renderBlock(metaStyle, strings.Join(metrics, " - ")))
 		}
 		if post.link != "" {
-			label := osc8Link(post.link, "[Read post]", plainUI)
-			lines = append(lines, render(actionStyle, label))
+			// The OSC 8 wrapper goes outside the SGR styling: actionStyle
+			// underlines, which makes lipgloss style the string per rune, and
+			// that splits an embedded escape into an orphaned ESC plus a
+			// literal "]8;;<url>" run — visible text that then wraps and
+			// overflows the pane.
+			lines = append(lines, osc8Link(post.link, render(actionStyle, "[Read post]"), plainUI))
 		}
 		blocks = append(blocks, strings.Join(lines, "\n"))
 	}
