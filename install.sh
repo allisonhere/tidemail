@@ -126,28 +126,55 @@ INSTALL_TMP=""
 
 # ── Verify ────────────────────────────────────────────────────────────────
 success "Installed ${VERSION} to ${INSTALL_DIR}/${BINARY}"
+
+# Resolve a directory to its canonical, symlink-free form so alternate
+# spellings of the same directory on PATH ("..", symlinks, trailing slashes)
+# are recognised as our install dir and never deleted as a "stale" copy.
+canon_dir() { ( CDPATH= cd -- "$1" 2>/dev/null && pwd -P ); }
+INSTALL_DIR_CANON=$(canon_dir "$INSTALL_DIR") || INSTALL_DIR_CANON=""
+[ -n "$INSTALL_DIR_CANON" ] || INSTALL_DIR_CANON="$INSTALL_DIR"
+
+# Walk *every* directory on PATH — not just the ones before our install dir.
+# Copies earlier on PATH would shadow the new build; copies later are already
+# shadowed by it but are still removed so `which -a ${BINARY}` stays clean.
 SHADOWED=""
+SHADOWED_CMD=""
 FOUND_INSTALLED=""
+PASSED_INSTALL_DIR=""
+LATER_LEFT=""
 OLD_IFS=$IFS
 IFS=:
 for dir in $PATH; do
   [ -n "$dir" ] || dir="."
-  candidate="${dir}/${BINARY}"
-  if [ "$candidate" = "${INSTALL_DIR}/${BINARY}" ]; then
+
+  dir_canon=$(canon_dir "$dir") || dir_canon=""
+  [ -n "$dir_canon" ] || dir_canon="$dir"
+  if [ "$dir_canon" = "$INSTALL_DIR_CANON" ]; then
     FOUND_INSTALLED=1
-    break
+    PASSED_INSTALL_DIR=1
+    continue
   fi
+
+  candidate="${dir}/${BINARY}"
   if [ ! -f "$candidate" ] || [ ! -x "$candidate" ]; then
     continue
   fi
 
-  if [ -w "$dir" ]; then
-    if rm -f "$candidate"; then
+  if [ -w "$dir" ] && rm -f "$candidate"; then
+    if [ -n "$PASSED_INSTALL_DIR" ]; then
+      success "Removed shadowed ${candidate} that appeared later on PATH"
+    else
       success "Removed stale ${candidate} that appeared earlier on PATH"
-      continue
     fi
+    continue
   fi
 
+  # Couldn't remove it. A later copy is harmless (ours wins); note it and
+  # move on. An earlier copy still shadows us — report it and stop.
+  if [ -n "$PASSED_INSTALL_DIR" ]; then
+    LATER_LEFT="$candidate"
+    continue
+  fi
   if [ -w "$dir" ]; then
     SHADOWED_CMD="rm -f $(quote_path "$candidate")"
   else
@@ -165,6 +192,8 @@ esac
 if [ -n "$SHADOWED" ]; then
   warn "${SHADOWED} appears before ${INSTALL_DIR}/${BINARY} on PATH, so it may still run first."
   warn "Remove it with: ${SHADOWED_CMD}"
+elif [ -n "$LATER_LEFT" ]; then
+  warn "${LATER_LEFT} is still on PATH but shadowed by ${INSTALL_DIR}/${BINARY}; remove it at your leisure."
 elif [ -z "$FOUND_INSTALLED" ]; then
   warn "${INSTALL_DIR}/${BINARY} is not before other ${BINARY} entries on PATH."
 fi
