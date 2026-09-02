@@ -28,6 +28,17 @@ quote_path() {
   printf "'%s'" "$(printf "%s" "$1" | sed "s/'/'\\\\''/g")"
 }
 
+# Delete a path we can't unlink ourselves, escalating with sudo. sudo reads
+# its prompt straight from the terminal, so this works even when the script
+# is piped into sh. Returns non-zero if the file is still there afterward.
+sudo_rm() {
+  command -v sudo >/dev/null 2>&1 || return 1
+  { : </dev/tty; } 2>/dev/null || return 1
+  info "Removing $1 (needs sudo)"
+  sudo rm -f -- "$1" </dev/tty >/dev/tty 2>&1 || true
+  [ ! -e "$1" ]
+}
+
 # Detect OS
 case "$(uname -s)" in
   Linux*)  OS="linux" ;;
@@ -160,7 +171,7 @@ for dir in $PATH; do
     continue
   fi
 
-  if [ -w "$dir" ] && rm -f "$candidate"; then
+  if { [ -w "$dir" ] && rm -f "$candidate"; } || sudo_rm "$candidate"; then
     if [ -n "$PASSED_INSTALL_DIR" ]; then
       success "Removed shadowed ${candidate} that appeared later on PATH"
     else
@@ -169,18 +180,15 @@ for dir in $PATH; do
     continue
   fi
 
-  # Couldn't remove it. A later copy is harmless (ours wins); note it and
-  # move on. An earlier copy still shadows us — report it and stop.
+  # Still there — no sudo, no terminal to prompt on, or the user declined.
+  # A later copy is harmless (ours already wins); just note it. An earlier
+  # copy still shadows us: print the command to finish the job and stop.
   if [ -n "$PASSED_INSTALL_DIR" ]; then
     LATER_LEFT="$candidate"
     continue
   fi
-  if [ -w "$dir" ]; then
-    SHADOWED_CMD="rm -f $(quote_path "$candidate")"
-  else
-    SHADOWED_CMD="sudo rm -f $(quote_path "$candidate")"
-  fi
   SHADOWED="$candidate"
+  SHADOWED_CMD="sudo rm -f $(quote_path "$candidate")"
   break
 done
 IFS=$OLD_IFS
