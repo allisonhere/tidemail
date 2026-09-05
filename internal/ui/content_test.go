@@ -61,9 +61,30 @@ func TestRenderMessageTitleSpansPaneWhenReadingWidthIsCapped(t *testing.T) {
 	}
 }
 
-// The content pane must render the same bytes regardless of which pane holds
-// focus. It previously stripped emoji while unfocused, so body text visibly
-// reflowed as the user tabbed between panes.
+func TestContentTitlesRemoveEmojiBeforePadding(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.width = 100
+	m.height = 30
+	for _, subject := range []string{"Make it a BOGO weekend ✌\u00a0‼", "Sale ✅", "LEVEL UP 🥇"} {
+		msg := db.Message{Subject: subject, BodyText: "Message body"}
+		thread := messageThread{Representative: msg, Messages: []db.Message{msg}, Count: 1}
+		for name, view := range map[string]string{
+			"message": m.renderMessageContent(msg),
+			"thread":  m.renderThreadContent(thread),
+		} {
+			title := strings.Split(view, "\n")[0]
+			want := messageListDisplayText(subject)
+			if got := strings.TrimSpace(ansi.Strip(title)); got != want {
+				t.Errorf("%s title = %q, want %q", name, got, want)
+			}
+			if got := ansi.StringWidth(title); got != m.contentPaneContentWidth() {
+				t.Errorf("%s title width = %d, want %d", name, got, m.contentPaneContentWidth())
+			}
+		}
+	}
+}
+
+// Body content must not reflow as focus moves between panes.
 func TestContentRenderIsFocusIndependent(t *testing.T) {
 	msg := db.Message{
 		ID:       1,
@@ -85,7 +106,7 @@ func TestContentRenderIsFocusIndependent(t *testing.T) {
 	if unfocused != focused {
 		t.Fatalf("content render differs by focus:\nunfocused: %q\nfocused:   %q", unfocused, focused)
 	}
-	for _, emoji := range []string{"🥇", "🙌", "💰", "💨", "✌️"} {
+	for _, emoji := range []string{"🙌", "💰", "💨", "✌️"} {
 		if !strings.Contains(focused, emoji) {
 			t.Fatalf("content dropped emoji %q: %q", emoji, ansi.Strip(focused))
 		}
@@ -102,7 +123,7 @@ func TestHTMLContentKeepsEmojiRegardlessOfFocus(t *testing.T) {
 		Subject:  "Sale ✅",
 		BodyHTML: "<p>Celebrate 🙌 and save 💰</p>",
 	}))
-	for _, emoji := range []string{"✅", "🙌", "💰"} {
+	for _, emoji := range []string{"🙌", "💰"} {
 		if !strings.Contains(view, emoji) {
 			t.Fatalf("HTML content dropped emoji %q: %q", emoji, view)
 		}

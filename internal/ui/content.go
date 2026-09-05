@@ -62,7 +62,7 @@ func (m Model) renderMessageContent(msg db.Message) string {
 	bodyWidth := m.contentBodyWidth()
 	titleWidth := max(1, paneWidth-m.styles.ContentTitle.GetHorizontalFrameSize())
 	metaWidth := max(1, contentWidth-m.styles.ContentMeta.GetHorizontalFrameSize())
-	title := m.styles.ContentTitle.Width(paneWidth).Render(truncate(unescapeDisplayText(msg.Subject), titleWidth))
+	title := m.styles.ContentTitle.Width(paneWidth).Render(truncate(messageListDisplayText(unescapeDisplayText(msg.Subject)), titleWidth))
 	metaStr := msg.Date.Format("Mon, 02 Jan 2006 15:04")
 	if msg.From != "" {
 		metaStr += "  From: " + msg.From
@@ -279,7 +279,7 @@ func (m Model) renderThreadContent(thread messageThread) string {
 	paneWidth := m.contentPaneContentWidth()
 	contentWidth := m.contentBodyWidth()
 	titleWidth := max(1, paneWidth-m.styles.ContentTitle.GetHorizontalFrameSize())
-	titleText := unescapeDisplayText(thread.Representative.Subject)
+	titleText := messageListDisplayText(unescapeDisplayText(thread.Representative.Subject))
 	if thread.Count > 1 {
 		titleText = fmt.Sprintf("%s (%d messages)", titleText, thread.Count)
 	}

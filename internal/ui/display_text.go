@@ -53,9 +53,9 @@ func normalizeHardBreaks(s string) string {
 	}, s)
 }
 
-// messageListDisplayText removes emoji grapheme clusters from list subjects.
-// The original subject used by storage, search, and the opened message is never
-// changed. Keeping emoji out of the frequently repainted list avoids terminal
+// messageListDisplayText removes emoji grapheme clusters from list subjects and
+// content titles. The original subject used by storage and search is never
+// changed. Keeping emoji out of these frequently repainted rows avoids terminal
 // width disagreements and color-emoji repaint artifacts.
 func messageListDisplayText(s string) string {
 	return strings.Join(strings.Fields(stripEmojiGraphemes(s)), " ")
@@ -91,6 +91,11 @@ func isEmojiGrapheme(runes []rune, width int) bool {
 	}
 	first := runes[0]
 	switch {
+	case first == '\u270c' || first == '\u203c':
+		// Some terminals render these bare text-default symbols as emoji even
+		// without VS16. Their reported width is one, so the width-based fallback
+		// misses them (for example, the Jimmy John's BOGO subject).
+		return true
 	case first >= 0x1f300 && first <= 0x1faff:
 		// Misc pictographs, emoticons, transport, supplemental & extended-A symbols.
 		return true

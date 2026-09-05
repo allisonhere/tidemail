@@ -46,11 +46,12 @@ func TestSubjectStripsTerminalEscapes(t *testing.T) {
 
 func TestMessageListRemovesEmoji(t *testing.T) {
 	tests := map[string]string{
-		"LEVEL UP 🥇 ":          "LEVEL UP",
-		"Family 👨‍👩‍👧‍👦 plans": "Family plans",
-		"Flag 🇺🇸 update":       "Flag update",
-		"Key 1️⃣ choice":       "Key choice",
-		"Keep café — π":        "Keep café — π",
+		"Make it a BOGO weekend ✌\u00a0‼": "Make it a BOGO weekend",
+		"LEVEL UP 🥇 ":                     "LEVEL UP",
+		"Family 👨‍👩‍👧‍👦 plans":            "Family plans",
+		"Flag 🇺🇸 update":                  "Flag update",
+		"Key 1️⃣ choice":                  "Key choice",
+		"Keep café — π":                   "Keep café — π",
 	}
 	for in, want := range tests {
 		if got := messageListDisplayText(in); got != want {
