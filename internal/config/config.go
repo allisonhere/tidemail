@@ -67,6 +67,7 @@ type DisplayConfig struct {
 	PaneCorners           string             `toml:"pane_corners"` // "square" or "round"
 	Shadow                bool               `toml:"shadow"`       // drop shadow behind modal overlays
 	ComposeVim            bool               `toml:"compose_vim"`
+	SendMaxAttempts       int                `toml:"send_max_attempts"`  // total tries, including the first
 	SendDelaySeconds      int                `toml:"send_delay_seconds"` // undo grace period; 0 = send immediately
 	VT52                  RetroTerminalTweak `toml:"vt52"`
 	VT100                 RetroTerminalTweak `toml:"vt100"`
@@ -222,6 +223,7 @@ func DefaultConfig() Config {
 			ShowHeaders:           true,
 			Notifications:         true,
 			SendDelaySeconds:      5,
+			SendMaxAttempts:       3,
 		},
 		Updates: UpdatesConfig{
 			CheckOnStartup:     true,
@@ -268,6 +270,7 @@ func Load() (Config, error) {
 	if cfg.Updates.CheckIntervalHours <= 0 {
 		cfg.Updates.CheckIntervalHours = DefaultConfig().Updates.CheckIntervalHours
 	}
+	cfg.Display.SendMaxAttempts = NormalizeSendMaxAttempts(cfg.Display.SendMaxAttempts)
 	cfg.Display.Density = NormalizeDisplayDensity(cfg.Display.Density)
 	cfg.Display.PaneCorners = NormalizePaneCorners(cfg.Display.PaneCorners)
 	migrateAuthMethod(&cfg, GetAccountPassword, GetOAuth2RefreshToken)
@@ -405,4 +408,15 @@ func LogPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(filepath.Dir(cfgPath), "fetch.log"), nil
+}
+
+// NormalizeSendMaxAttempts bounds automatic delivery attempts. One disables retries.
+func NormalizeSendMaxAttempts(n int) int {
+	if n < 1 {
+		return 1
+	}
+	if n > 10 {
+		return 10
+	}
+	return n
 }

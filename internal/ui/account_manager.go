@@ -1718,6 +1718,6 @@ func deleteAccountCmd(database *db.DB, accountID int64, accountName string) tea.
 			config.DeleteOAuth2Secrets(accountName)
 			config.DeleteAccountPassword(accountName)
 		}
-		return AccountDeletedMsg{AccountID: accountID, Err: err}
+		return AccountDeletedMsg{AccountID: accountID, AccountName: accountName, Err: err}
 	}
 }

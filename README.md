@@ -25,6 +25,8 @@ _One inbox, several built-in themes.
   IMAP. Changes made in Gmail or another client return to TideMail on sync.
 - **A few seconds to change your mind.** Press `Ctrl+Z` to stop a queued send or
   undo a pending delete, archive, or move.
+- **An outbox you can trust.** Press `O` to inspect queued, sending, failed, and
+  sent mail. Failed deliveries survive restarts and can be retried or edited.
 - **Unsubscribe without hunting for a footer.** Press `Ctrl+U` while reading to
   use the message's unsubscribe header or labeled unsubscribe link.
 - **Compose your way.** The standard editor supports text selection, the system
@@ -88,7 +90,8 @@ through vCard files.
 
 TideMail saves the draft while you type. A sent message waits five seconds by
 default, which gives `Ctrl+Z` time to reopen it. Set the delay to `0` if you want
-mail to leave at once.
+mail to leave at once. Failed sends retry up to three total attempts by default;
+change the limit under Settings → Editor. Set it to `1` to disable retries.
 
 The standard compose editor supports Shift-selection, clipboard shortcuts,
 undo and redo, word movement, and Home/End. Turn Vim mode on in Settings if you
@@ -139,6 +142,7 @@ AI stays off until you configure a provider.
 | `*` | Toggle the IMAP star |
 | `/` | Search messages |
 | `Ctrl+Z` | Cancel a queued send or undo a queued message action |
+| `O` | Open the Outbox |
 | `Ctrl+U` | Unsubscribe while reading; cycle sender while composing |
 | `Ctrl+E` | Show or hide full headers |
 | `M` / `S` / `T` | Accounts, settings, or themes |
@@ -213,6 +217,7 @@ theme = "lavender-fields-forever"
 
 [display]
 send_delay_seconds = 5
+send_max_attempts = 3  # total attempts; 1 disables automatic retries
 compose_vim = true
 
 [[account]]

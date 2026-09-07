@@ -214,6 +214,15 @@ func (m *Model) importRemoteDraftsCmd(mailboxID int64) tea.Cmd {
 				UpdatedAt:       msg.Date,
 				LastRemoteSync:  time.Now(),
 			}
+			attachments, err := database.GetAttachments(msg.ID)
+			if err != nil {
+				return DraftsLoadedMsg{MailboxID: mailboxID, Err: err}
+			}
+			for i, a := range attachments {
+				draft.Attachments = append(draft.Attachments, db.DraftAttachment{
+					Filename: a.Filename, ContentType: a.ContentType, Data: a.Data, Size: a.Size, Position: i,
+				})
+			}
 			// Idempotent: INSERT OR IGNORE on the unique mirror key, so a
 			// concurrent import can't double-insert.
 			if err := database.ImportRemoteDraft(draft); err != nil {

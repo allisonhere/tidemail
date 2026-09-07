@@ -74,8 +74,9 @@ type AccountTestedMsg struct {
 }
 
 type AccountDeletedMsg struct {
-	AccountID int64
-	Err       error
+	AccountID   int64
+	AccountName string
+	Err         error
 }
 
 type MessageReadUpdatedMsg struct {
@@ -147,9 +148,11 @@ type MailboxReadUpdatedMsg struct {
 }
 
 type MessageSentMsg struct {
-	Err       error
-	DraftID   int64  // draft to delete on success (0 = none)
-	PendingID uint64 // pending-send entry to clear (0 = immediate send)
+	Skipped    bool  // a stale command did not claim the queue entry
+	CleanupErr error // delivery succeeded, but removing the saved draft failed
+	Err        error
+	DraftID    int64  // draft to delete on success (0 = none)
+	PendingID  uint64 // pending-send entry to clear
 }
 
 // SendQueuedMsg is emitted by the compose overlay when the user hits send;

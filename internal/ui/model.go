@@ -71,6 +71,7 @@ const (
 	overlayGrammarPreview
 	overlayLogViewer
 	overlayFilterManager
+	overlayOutbox
 	overlayDraftCloseConfirm
 	overlayBulkDeleteConfirm
 	overlayUnsubscribeConfirm
@@ -146,7 +147,6 @@ type Model struct {
 	nextDestructiveActionID   uint64
 
 	pendingSends []pendingSend
-	nextSendID   uint64
 
 	// pendingUnsubscribe holds the message whose List-Unsubscribe action is
 	// awaiting the user's y/n in overlayUnsubscribeConfirm.
@@ -175,6 +175,10 @@ type Model struct {
 	saveAttachPicker filePicker
 	movePicker       movePicker
 	filterManager    filterManager
+	outboxItems      []db.OutboxItem
+	outboxCursor     int
+	outboxStatus     string
+	outboxConfirmID  int64
 
 	grammarOriginal    string
 	grammarCorrected   string
@@ -551,6 +555,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				statusCmd = nil // sticky
 			}
 		}
+		if m.firstLoad {
+			statusCmd = tea.Batch(statusCmd, m.resumeOutbox())
+		}
 		// (Re)start the push watchers on every account load: it runs at startup
 		// and again whenever accounts are added, edited, or deleted, so watcher
 		// credentials and inbox targets never go stale.
@@ -925,6 +932,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setStatus(fmt.Sprintf("delete failed: %v", msg.Err), true)
 			return m, m.clearStatusCmd()
 		}
+		// Drop the account from the config too, otherwise loadAccountsCmd's
+		// ensureConfiguredAccounts re-imports it straight back into the DB (and it
+		// would return again on the next launch).
+		if name := strings.TrimSpace(msg.AccountName); name != "" {
+			kept := m.cfg.Accounts[:0]
+			for _, a := range m.cfg.Accounts {
+				if strings.TrimSpace(a.Name) != name {
+					kept = append(kept, a)
+				}
+			}
+			m.cfg.Accounts = kept
+			m.saveConfig()
+		}
+		for i, a := range m.accounts {
+			if a.ID == msg.AccountID {
+				m.accounts = append(m.accounts[:i], m.accounts[i+1:]...)
+				break
+			}
+		}
 		m.sidebarCursor = 0
 		m.sidebarOffset = 0
 		m.messageCursor = 0
@@ -1125,16 +1151,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.commitPendingSend(msg.ID)
 
 	case MessageSentMsg:
-		m.removePendingSend(msg.PendingID)
-		if msg.Err != nil {
-			m.setStatus(fmt.Sprintf("send failed: %v", msg.Err), true)
-			return m, m.clearStatusCmd()
-		}
-		m.setStatus("message sent", false)
-		if msg.DraftID != 0 {
-			return m, tea.Batch(m.deleteDraftCmd(msg.DraftID), m.clearStatusCmd())
-		}
-		return m, m.clearStatusCmd()
+		return m.handleOutboxSent(msg)
 
 	case DraftSavedMsg:
 		if msg.Err != nil {
@@ -1307,6 +1324,9 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.resetHelpVP()
 		return m, nil
 
+	case keyMatches(msg, m.keys.Outbox):
+		m.openOutbox()
+		return m, nil
 	case keyMatches(msg, m.keys.AccountManager):
 		m.overlay = overlayAccountManager
 		m.accountManager = m.newAccountManager()
@@ -2117,6 +2137,8 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayMoveMessage:
 		return m.handleMovePicker(msg)
 
+	case overlayOutbox:
+		return m.handleOutboxKey(msg)
 	case overlayFilterManager:
 		return m.handleFilterManager(msg)
 

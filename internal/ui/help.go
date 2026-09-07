@@ -29,6 +29,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				bind(keys.AccountManager),
 				bind(keys.ContactManager),
 				bind(keys.Settings),
+				bind(keys.Outbox),
 				bind(keys.ThemePicker),
 				bind(keys.Quit),
 				bind(keys.UpdateInstall),

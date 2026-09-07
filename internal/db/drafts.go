@@ -44,6 +44,22 @@ type DraftAttachment struct {
 }
 
 func (db *DB) SaveDraft(d Draft) (int64, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	id, err := saveDraft(tx, d)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+func saveDraft(tx *sql.Tx, d Draft) (int64, error) {
 	now := time.Now()
 	if d.UpdatedAt.IsZero() {
 		d.UpdatedAt = now
@@ -61,12 +77,6 @@ func (db *DB) SaveDraft(d Draft) (int64, error) {
 	if !d.LastRemoteSync.IsZero() {
 		lastRemoteSync = d.LastRemoteSync.Unix()
 	}
-
-	tx, err := db.Begin()
-	if err != nil {
-		return 0, err
-	}
-	defer tx.Rollback() //nolint:errcheck
 
 	id := d.ID
 	if id == 0 {
@@ -142,9 +152,6 @@ func (db *DB) SaveDraft(d Draft) (int64, error) {
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return 0, err
-	}
 	return id, nil
 }
 
@@ -173,6 +180,7 @@ func (db *DB) ListDrafts(accountName, accountUser string) ([]Draft, error) {
 		       created_at, updated_at, last_remote_sync, dirty
 		FROM drafts
 		WHERE account_name = ? AND account_user = ?
+          AND NOT EXISTS (SELECT 1 FROM outbox o WHERE o.draft_id=drafts.id)
 		ORDER BY updated_at DESC, id DESC`, accountName, accountUser)
 	if err != nil {
 		return nil, err
@@ -238,15 +246,16 @@ func (db *DB) MarkDraftRemoteSynced(id int64, mailboxID int64, uid uint32, messa
 
 func (db *DB) DraftCount(accountName, accountUser string) (int64, error) {
 	var n int64
-	err := db.QueryRow(`SELECT COUNT(*) FROM drafts WHERE account_name = ? AND account_user = ?`, accountName, accountUser).Scan(&n)
+	err := db.QueryRow(`SELECT COUNT(*) FROM drafts WHERE account_name = ? AND account_user = ?
+  AND NOT EXISTS (SELECT 1 FROM outbox o WHERE o.draft_id=drafts.id)`, accountName, accountUser).Scan(&n)
 	return n, err
 }
 
 // ImportRemoteDraft inserts a server-side draft as a local mirror, keyed by
 // (mailbox_id, remote_uid). INSERT OR IGNORE + the unique index makes this a
 // no-op when the mirror already exists, so concurrent imports (e.g. an auto-sync
-// racing a manual sync) can't create duplicates. Mirrors carry no attachments at
-// import and are clean (dirty=0) since they match the server.
+// racing a manual sync) can't create duplicates. Attachments are imported in the
+// same transaction; existing mirrors and local edits are left untouched.
 func (db *DB) ImportRemoteDraft(d Draft) error {
 	if d.RemoteUID == 0 {
 		return fmt.Errorf("import remote draft: missing remote uid")
@@ -263,16 +272,45 @@ func (db *DB) ImportRemoteDraft(d Draft) error {
 	if !d.LastRemoteSync.IsZero() {
 		lastRemoteSync = d.LastRemoteSync.Unix()
 	}
-	_, err := db.Exec(`
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	res, err := tx.Exec(`
 		INSERT OR IGNORE INTO drafts
 			(account_name, account_user, account_index, mailbox_id, remote_uid, remote_message_id,
-			 to_addr, cc_addr, subject, body_text, in_reply_to, references_text,
+			 to_addr, cc_addr, bcc_addr, subject, body_text, in_reply_to, references_text,
 			 created_at, updated_at, last_remote_sync, dirty)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
 		d.AccountName, d.AccountUser, d.AccountIndex, d.MailboxID, d.RemoteUID, d.RemoteMessageID,
-		d.To, d.CC, d.Subject, d.BodyText, d.InReplyTo, d.References,
+		d.To, d.CC, d.BCC, d.Subject, d.BodyText, d.InReplyTo, d.References,
 		createdAt, updatedAt, lastRemoteSync)
-	return err
+	if err != nil {
+		return err
+	}
+	inserted, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if inserted > 0 {
+		id, err := res.LastInsertId()
+		if err != nil {
+			return err
+		}
+		for i, a := range d.Attachments {
+			size := a.Size
+			if size == 0 {
+				size = int64(len(a.Data))
+			}
+			if _, err := tx.Exec(`INSERT INTO draft_attachments
+                (draft_id, filename, path, content_type, data, size, position)
+                VALUES (?, ?, ?, ?, ?, ?, ?)`, id, a.Filename, a.Path, a.ContentType, a.Data, size, i); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit()
 }
 
 // UnmirroredDraftMessageCount counts messages in a drafts mailbox that have not

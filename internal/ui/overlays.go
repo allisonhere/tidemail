@@ -127,6 +127,11 @@ func (m Model) renderOverlay(base string) string {
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderSoftPanelBox(inner, winW, "tidemail", "move to", chrome)
 
+	case overlayOutbox:
+		winW := max(1, min(m.width-4, 90))
+		winH := max(1, min(m.height-4, 28))
+		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
+		box = renderSoftPanelBox(m.renderOutbox(winW, winH, chrome), winW, "tidemail", "outbox", chrome)
 	case overlayFilterManager:
 		winW := min(m.width-4, 78)
 		winH := min(m.height-4, 32)

@@ -12,6 +12,7 @@ import (
 
 func newSendTestModel(t *testing.T, delaySeconds int) Model {
 	t.Helper()
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	database, err := db.Open()
 	if err != nil {
 		t.Fatal(err)
@@ -57,8 +58,11 @@ func TestSendQueuedZeroDelayDispatchesImmediately(t *testing.T) {
 	m := newSendTestModel(t, 0)
 	m, cmd := queueTestSend(t, m)
 
-	if len(m.pendingSends) != 0 {
-		t.Fatal("zero delay must not park the message")
+	if len(m.pendingSends) != 1 || !m.pendingSends[0].Committing {
+		t.Fatal("zero delay must track the in-flight send for shutdown")
+	}
+	if m.undoLatestPendingSend() {
+		t.Fatal("immediate send must not be undoable")
 	}
 	if cmd == nil {
 		t.Fatal("expected an immediate send command")
@@ -68,6 +72,7 @@ func TestSendQueuedZeroDelayDispatchesImmediately(t *testing.T) {
 func TestUndoCancelsPendingSendAndRestoresCompose(t *testing.T) {
 	m := newSendTestModel(t, 5)
 	m, _ = queueTestSend(t, m)
+	id := m.pendingSends[0].ID
 
 	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlZ})
 	m = next.(Model)
@@ -83,7 +88,7 @@ func TestUndoCancelsPendingSendAndRestoresCompose(t *testing.T) {
 	}
 
 	// The original grace timer still fires; it must now be a no-op.
-	next, cmd := m.Update(CommitSendMsg{ID: 1})
+	next, cmd := m.Update(CommitSendMsg{ID: id})
 	m = next.(Model)
 	if cmd != nil {
 		t.Fatal("stale commit tick for an undone send must be a no-op")

@@ -86,6 +86,7 @@ func (m Model) mainCommandItems() []commandItem {
 	hasMessage := m.activeMessageRowCount() > 0 && m.focused != paneAccounts
 	hasMailbox := m.selectedMailbox() != nil
 	return []commandItem{
+		{id: "outbox", label: "Open Outbox (queued, failed, and sent mail)", enabled: true},
 		{id: "compose", label: "Compose new message", enabled: len(m.cfg.Accounts) > 0},
 		{id: "reply", label: "Reply to current message", enabled: m.contentMessageID != 0 || hasMessage},
 		{id: "forward", label: "Forward current message", enabled: m.contentMessageID != 0 || hasMessage},
@@ -150,6 +151,9 @@ func (m Model) filteredCommandItems() []commandItem {
 
 func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 	switch id {
+	case "outbox":
+		m.openOutbox()
+		return m, nil
 	case "compose":
 		var acfg config.AccountConfig
 		if len(m.cfg.Accounts) > 0 {

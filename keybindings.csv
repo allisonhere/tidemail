@@ -26,6 +26,7 @@ Command,":,ctrl+p",":/ctrl+p",command palette,global
 AccountManager,M,M,accounts,global
 ThemePicker,T,T,theme picker,global
 Settings,S,S,settings,global
+Outbox,O,O,outbox,global
 UpdateInstall,U,U,install update,main
 UpdateIgnore,i,i,ignore update,main
 Help,?,?,help,global

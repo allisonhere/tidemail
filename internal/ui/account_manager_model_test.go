@@ -202,6 +202,76 @@ func TestLoadAccountsCmdImportsConfiguredAccounts(t *testing.T) {
 	}
 }
 
+func TestDeleteAccountRemovesItFromConfig(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	database, err := db.Open()
+	if err != nil {
+		t.Fatalf("Open DB: %v", err)
+	}
+	defer database.Close()
+
+	orig := configSave
+	var saved config.Config
+	savedCalled := false
+	configSave = func(c config.Config) error { saved, savedCalled = c, true; return nil }
+	defer func() { configSave = orig }()
+
+	cfg := config.DefaultConfig()
+	cfg.Accounts = []config.AccountConfig{
+		{Name: "Personal", User: "person@example.com", IMAPHost: "imap.example.com", IMAPPort: 993, IMAPTLS: true},
+		{Name: "Work", User: "work@example.com", IMAPHost: "imap.work.example.com", IMAPPort: 993, IMAPTLS: true},
+	}
+	m := NewModel(database, cfg, "dev", false)
+
+	loaded := m.loadAccountsCmd()().(AccountsLoadedMsg)
+	if loaded.Err != nil {
+		t.Fatalf("loadAccountsCmd: %v", loaded.Err)
+	}
+	next, _ := m.Update(loaded)
+	m = next.(Model)
+
+	var workID int64
+	for _, a := range m.accounts {
+		if a.Name == "Work" {
+			workID = a.ID
+		}
+	}
+	if workID == 0 {
+		t.Fatalf("Work account not loaded: %#v", m.accounts)
+	}
+
+	delMsg := deleteAccountCmd(m.db, workID, "Work")().(AccountDeletedMsg)
+	if delMsg.Err != nil {
+		t.Fatalf("deleteAccountCmd: %v", delMsg.Err)
+	}
+	next, cmd := m.Update(delMsg)
+	m = next.(Model)
+
+	if !savedCalled {
+		t.Fatalf("expected config to be saved after account deletion")
+	}
+	if len(saved.Accounts) != 1 || saved.Accounts[0].Name != "Personal" {
+		t.Fatalf("expected saved config to drop Work, got %#v", saved.Accounts)
+	}
+	if len(m.cfg.Accounts) != 1 || m.cfg.Accounts[0].Name != "Personal" {
+		t.Fatalf("expected in-memory config to drop Work, got %#v", m.cfg.Accounts)
+	}
+
+	// The reload the delete handler kicks off must not resurrect the account.
+	if cmd == nil {
+		t.Fatalf("expected a reload command after deletion")
+	}
+	reloaded := m.loadAccountsCmd()().(AccountsLoadedMsg)
+	if reloaded.Err != nil {
+		t.Fatalf("reload after delete: %v", reloaded.Err)
+	}
+	if len(reloaded.Accounts) != 1 || reloaded.Accounts[0].Name != "Personal" {
+		t.Fatalf("deleted account came back on reload: %#v", reloaded.Accounts)
+	}
+}
+
 func TestAccountManagerFormShowsTestAction(t *testing.T) {
 	am := NewAccountManager(nil)
 	am.mode = amAdd

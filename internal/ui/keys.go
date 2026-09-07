@@ -39,6 +39,7 @@ type KeyMap struct {
 	AccountManager key.Binding
 	ContactManager key.Binding
 	ThemePicker    key.Binding
+	Outbox         key.Binding
 	Settings       key.Binding
 	UpdateInstall  key.Binding
 	UpdateIgnore   key.Binding
@@ -119,6 +120,7 @@ var DefaultKeys = KeyMap{
 	AccountManager: key.NewBinding(key.WithKeys("M"), key.WithHelp("M", "accounts")),
 	ContactManager: key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "contacts")),
 	ThemePicker:    key.NewBinding(key.WithKeys("T"), key.WithHelp("T", "theme picker")),
+	Outbox:         key.NewBinding(key.WithKeys("O"), key.WithHelp("O", "outbox")),
 	Settings:       key.NewBinding(key.WithKeys("S"), key.WithHelp("S", "settings")),
 	UpdateInstall:  key.NewBinding(key.WithKeys("U"), key.WithHelp("U", "install update")),
 	UpdateIgnore:   key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "ignore update")),

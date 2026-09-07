@@ -7,6 +7,14 @@ import (
 	"testing"
 )
 
+func TestNormalizeSendMaxAttempts(t *testing.T) {
+	for input, want := range map[int]int{-1: 1, 0: 1, 1: 1, 3: 3, 20: 10} {
+		if got := NormalizeSendMaxAttempts(input); got != want {
+			t.Errorf("NormalizeSendMaxAttempts(%d) = %d, want %d", input, got, want)
+		}
+	}
+}
+
 func TestDefaultConfigMSClientIDFallsBackToThunderbird(t *testing.T) {
 	t.Setenv("TIDEMAIL_MS_CLIENT_ID", "")
 	if got := DefaultConfig().OAuth.MSClientID; got != ThunderbirdMSClientID {

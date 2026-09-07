@@ -169,6 +169,25 @@ func (db *DB) migrate() error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_draft_attachments_draft_id ON draft_attachments(draft_id);
 
+        CREATE TABLE IF NOT EXISTS outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_name TEXT NOT NULL,
+            account_user TEXT NOT NULL,
+            draft_id INTEGER NOT NULL DEFAULT 0,
+            subject TEXT NOT NULL DEFAULT '',
+            recipients TEXT NOT NULL DEFAULT '',
+            message_json BLOB NOT NULL,
+            draft_json BLOB NOT NULL,
+            state TEXT NOT NULL DEFAULT 'queued',
+            attempts INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL DEFAULT 3,
+            next_attempt INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_outbox_state ON outbox(state, next_attempt);
+
 		CREATE TABLE IF NOT EXISTS settings (
 			key   TEXT PRIMARY KEY,
 			value TEXT NOT NULL DEFAULT ''

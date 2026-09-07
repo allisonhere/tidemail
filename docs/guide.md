@@ -95,7 +95,14 @@ account's SMTP settings, From address, and signature.
 
 TideMail waits five seconds before sending by default. Press `Ctrl+Z` during
 that window to cancel delivery and reopen the draft. Change the delay under
-Settings → Editor, or set it to `0` to send at once.
+Settings → Editor, or set it to `0` to send at once. Press `O` to open the
+Outbox. Use `r` to retry a failed message or `e` to move an unsent message back
+into compose.
+
+Failed deliveries retry after one minute. The maximum attempt setting includes
+the first try; it defaults to `3`, and `1` disables automatic retries. An
+interrupted delivery is marked uncertain because the server may have accepted
+it. Check Sent mail before manually retrying an uncertain message.
 
 The standard editor is on by default. Use Shift with the arrow keys to select
 text, `Ctrl+C`/`Ctrl+X`/`Ctrl+V` for the system clipboard, `Ctrl+Z`/`Ctrl+Y` for
@@ -241,6 +248,7 @@ theme = "catppuccin-mocha"
 
 [display]
 send_delay_seconds = 5
+send_max_attempts = 3
 
 [[account]]
 name = "Personal"
@@ -290,6 +298,7 @@ switches to OAuth on its own — a leftover keychain token cannot promote it.
 | `u` | Toggle unread-only view |
 | `t` | Toggle starred-first sort (starred messages float to the top) |
 | `Ctrl+Z` | Cancel a queued send, or undo the latest pending delete, archive, or move |
+| `O` | Open the Outbox |
 | `o` | Open link on the focus line (falls back to the selected content link) |
 | `Ctrl+U` | Unsubscribe from the mailing list for the open message |
 | `Ctrl+U` in compose | Cycle the sending account; focus From and press `Enter` to open the account picker |
@@ -313,7 +322,7 @@ switches to OAuth on its own — a leftover keychain token cannot promote it.
 Press `S` to open Settings.
 
 - Display: icons, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, and quit confirmation
-- Editor: standard or Vim compose keys and the delay that lets you cancel a send with `Ctrl+Z`
+- Editor: compose keys, send delay, and maximum delivery attempts
 - Accounts: connection details, From address, signature, color, and sync interval
 - Updates: check, install, restart, or copy a manual install command
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings

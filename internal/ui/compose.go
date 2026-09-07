@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"fmt"
 	"net/mail"
 	"os"
@@ -955,43 +954,21 @@ func (c ComposeModel) send() (ComposeModel, tea.Cmd, bool) {
 	return c, func() tea.Msg { return SendQueuedMsg{Account: acfg, Msg: msg} }, false
 }
 
-func sendMessageCmd(acfg config.AccountConfig, msg smtp.OutgoingMessage, draftID int64, pendingID uint64) tea.Cmd {
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		err := smtp.Send(ctx, acfg, msg)
-		return MessageSentMsg{Err: err, DraftID: draftID, PendingID: pendingID}
-	}
-}
-
 func parseAddressList(s string) []string {
-	if strings.TrimSpace(s) == "" {
+	addresses, err := mail.ParseAddressList(s)
+	if err != nil {
 		return nil
 	}
-	parts := strings.Split(s, ",")
-	var out []string
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		// Extract just the email address from formats like "Name <email>" or "email"
-		if addr, err := mail.ParseAddress(p); err == nil && addr.Address != "" {
-			out = append(out, addr.Address)
-		} else {
-			out = append(out, p)
-		}
+	out := make([]string, 0, len(addresses))
+	for _, address := range addresses {
+		out = append(out, address.Address)
 	}
 	return out
 }
 
 func validateAddressList(s string) string {
-	parts := parseAddressList(s)
-	for _, p := range parts {
-		addr, err := mail.ParseAddress(p)
-		if err != nil || addr.Address == "" {
-			return fmt.Sprintf("invalid email: %s", p)
-		}
+	if _, err := mail.ParseAddressList(s); err != nil {
+		return fmt.Sprintf("invalid email: %s", err)
 	}
 	return ""
 }

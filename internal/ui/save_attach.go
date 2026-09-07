@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -121,8 +122,7 @@ func saveAttachmentsCmdTo(atts []db.Attachment, dir string) tea.Cmd {
 		}
 		saved := 0
 		for _, a := range atts {
-			path := filepath.Join(dir, safeFilename(a.Filename))
-			if err := os.WriteFile(path, a.Data, 0o644); err != nil {
+			if err := saveAttachmentFile(dir, a); err != nil {
 				return AttachmentsSavedMsg{Err: fmt.Errorf("write %s: %w", a.Filename, err)}
 			}
 			saved++
@@ -215,17 +215,37 @@ func saveAttachmentsCmd(atts []db.Attachment) tea.Cmd {
 			return AttachmentsSavedMsg{Err: fmt.Errorf("home dir: %w", err)}
 		}
 		dir := filepath.Join(home, "Downloads", "tidemail-attachments")
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return AttachmentsSavedMsg{Err: fmt.Errorf("create dir: %w", err)}
+		return saveAttachmentsCmdTo(atts, dir)()
+	}
+}
+
+// Reserve the destination atomically so existing files and symlinks are never
+// overwritten, including when two saves run concurrently.
+func saveAttachmentFile(dir string, a db.Attachment) error {
+	name := safeFilename(a.Filename)
+	if name == "." || name == ".." {
+		name = "attachment"
+	}
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	for n := 0; ; n++ {
+		candidate := name
+		if n > 0 {
+			candidate = fmt.Sprintf("%s (%d)%s", stem, n, ext)
 		}
-		saved := 0
-		for _, a := range atts {
-			path := filepath.Join(dir, safeFilename(a.Filename))
-			if err := os.WriteFile(path, a.Data, 0o644); err != nil {
-				return AttachmentsSavedMsg{Err: fmt.Errorf("write %s: %w", a.Filename, err)}
-			}
-			saved++
+		path := filepath.Join(dir, candidate)
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if errors.Is(err, os.ErrExist) {
+			continue
 		}
-		return AttachmentsSavedMsg{Path: dir, Count: saved}
+		if err != nil {
+			return err
+		}
+		_, writeErr := f.Write(a.Data)
+		closeErr := f.Close()
+		if writeErr != nil {
+			return writeErr
+		}
+		return closeErr
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"mime/multipart"
 	"net"
@@ -48,7 +49,10 @@ type OutgoingMessage struct {
 }
 
 func Send(ctx context.Context, cfg config.AccountConfig, msg OutgoingMessage) error {
-	from := cfg.From
+	from := msg.From
+	if from == "" {
+		from = cfg.From
+	}
 	if from == "" {
 		from = cfg.User
 	}
@@ -207,7 +211,14 @@ func sendMail(client *smtp.Client, from string, to []string, raw []byte) error {
 	if _, err := w.Write(raw); err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
-	return w.Close()
+	err = w.Close()
+	if err != nil {
+		var response *textproto.Error
+		if !errors.As(err, &response) {
+			return fmt.Errorf("%w: %v", ErrDeliveryUncertain, err)
+		}
+	}
+	return err
 }
 
 func buildRaw(from string, msg OutgoingMessage) []byte {
@@ -327,4 +338,19 @@ func cleanEmail(s string) string {
 		return s
 	}
 	return ""
+}
+
+// ErrDeliveryUncertain means the connection failed while waiting for the final
+// acceptance response. Retrying automatically could deliver a duplicate.
+var ErrDeliveryUncertain = errors.New("delivery not confirmed; check Sent mail before retrying")
+
+func CanRetry(err error) bool {
+	if err == nil || errors.Is(err, ErrDeliveryUncertain) {
+		return false
+	}
+	var response *textproto.Error
+	if errors.As(err, &response) {
+		return response.Code >= 400 && response.Code < 500
+	}
+	return true
 }

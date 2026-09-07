@@ -76,6 +76,7 @@ const (
 	sfNotifications
 	sfComposeVim
 	sfSendDelay
+	sfSendMaxAttempts
 	// sfBackToSections is the first focusable target in the detail pane.
 	// Activating it restores focus to the sidebar so users never auto-land on a text input.
 	sfBackToSections
@@ -246,6 +247,7 @@ type Settings struct {
 	layoutDensityIdx      int // 0 = comfortable, 1 = compact
 	paneCornersIdx        int // 0 = square, 1 = round
 	readingWidthInput     textinput.Model
+	sendMaxAttemptsInput  textinput.Model
 	sendDelayInput        textinput.Model
 	browserInput          textinput.Model
 	feedMaxBodyInput      textinput.Model
@@ -349,6 +351,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		layoutDensityIdx:      layoutIdx,
 		paneCornersIdx:        paneCornersIdx,
 		readingWidthInput:     mkInput(strconv.Itoa(cfg.Display.ReadingWidth), "0 (no limit)", false),
+		sendMaxAttemptsInput:  mkInput(strconv.Itoa(config.NormalizeSendMaxAttempts(cfg.Display.SendMaxAttempts)), "3 (1 = no retries)", false),
 		sendDelayInput:        mkInput(strconv.Itoa(cfg.Display.SendDelaySeconds), "5 (0 = immediate)", false),
 		browserInput:          mkInput(cfg.Display.Browser, "xdg-open", false),
 		feedMaxBodyInput:      mkInput(strconv.Itoa(cfg.Feed.MaxBodyMiB), "10", false),
@@ -423,6 +426,9 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	}
 	if n, err := strconv.Atoi(strings.TrimSpace(s.sendDelayInput.Value())); err == nil {
 		cfg.Display.SendDelaySeconds = max(0, n)
+	}
+	if n, err := strconv.Atoi(strings.TrimSpace(s.sendMaxAttemptsInput.Value())); err == nil {
+		cfg.Display.SendMaxAttempts = config.NormalizeSendMaxAttempts(n)
 	}
 	if s.layoutDensityIdx == 1 {
 		cfg.Display.Density = "compact"
@@ -576,6 +582,7 @@ func (s *Settings) applyFocus() {
 	s.retroAccentInput.Blur()
 	s.readingWidthInput.Blur()
 	s.sendDelayInput.Blur()
+	s.sendMaxAttemptsInput.Blur()
 	s.feedMaxBodyInput.Blur()
 	s.openaiInput.Blur()
 	s.openaiModelInput.Blur()
@@ -596,6 +603,8 @@ func (s *Settings) applyFocus() {
 		s.browserInput.Focus()
 	case sfReadingWidth:
 		s.readingWidthInput.Focus()
+	case sfSendMaxAttempts:
+		s.sendMaxAttemptsInput.Focus()
 	case sfSendDelay:
 		s.sendDelayInput.Focus()
 	case sfFeedMaxBody:
@@ -653,7 +662,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		fields = append(fields, sfReadingWidth, sfShowHeaders, sfMarkReadOnOpen, sfMarkReadOnFocus, sfActionableLinks, sfFilterLinks)
 		return append(fields, sfBrowser, sfConfirmQuit, sfNotifications)
 	case ssEditor:
-		return []settingsField{sfBackToSections, sfComposeVim, sfSendDelay}
+		return []settingsField{sfBackToSections, sfComposeVim, sfSendDelay, sfSendMaxAttempts}
 	case ssUpdates:
 		fields := []settingsField{sfBackToSections, sfUpdateCheckOnStartup, sfUpdateCheckNow}
 		if s.updateNowActionVisible() {
@@ -754,7 +763,7 @@ func (s Settings) isTextInput() bool {
 		return false
 	}
 	switch s.focusedField {
-	case sfBrowser, sfFeedMaxBody, sfReadingWidth, sfSendDelay, sfAPIKey, sfOllamaURL, sfSavePath,
+	case sfBrowser, sfFeedMaxBody, sfReadingWidth, sfSendDelay, sfSendMaxAttempts, sfAPIKey, sfOllamaURL, sfSavePath,
 		sfRetroBg, sfRetroFg, sfRetroAccent:
 		return true
 	}
@@ -769,6 +778,8 @@ func (s Settings) updateFocusedTextInput(msg tea.Msg) (Settings, tea.Cmd, bool) 
 		s.browserInput, cmd = s.browserInput.Update(msg)
 	case sfReadingWidth:
 		s.readingWidthInput, cmd = s.readingWidthInput.Update(msg)
+	case sfSendMaxAttempts:
+		s.sendMaxAttemptsInput, cmd = s.sendMaxAttemptsInput.Update(msg)
 	case sfSendDelay:
 		s.sendDelayInput, cmd = s.sendDelayInput.Update(msg)
 	case sfFeedMaxBody:
@@ -863,6 +874,8 @@ func (s Settings) focusedTextInputCursorPosition() int {
 		return s.browserInput.Position()
 	case sfReadingWidth:
 		return s.readingWidthInput.Position()
+	case sfSendMaxAttempts:
+		return s.sendMaxAttemptsInput.Position()
 	case sfSendDelay:
 		return s.sendDelayInput.Position()
 	case sfFeedMaxBody:
@@ -1439,7 +1452,7 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 		}
 		return s, nil, false
 
-	case sfBrowser, sfFeedMaxBody, sfReadingWidth, sfSendDelay, sfAPIKey, sfOllamaURL, sfSavePath,
+	case sfBrowser, sfFeedMaxBody, sfReadingWidth, sfSendDelay, sfSendMaxAttempts, sfAPIKey, sfOllamaURL, sfSavePath,
 		sfRetroBg, sfRetroFg, sfRetroAccent:
 		// Enter advances to next field; everything else goes to the text input.
 		if keyMatches(key, keys.Enter) {
@@ -1615,6 +1628,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addGroup("Compose")
 		b.addToggle("Vim keys in compose", s.composeVim, sfComposeVim)
 		b.addInput("Send delay (seconds)", s.sendDelayInput, sfSendDelay)
+		b.addInput("Maximum send attempts", s.sendMaxAttemptsInput, sfSendMaxAttempts)
 
 	case ssUpdates:
 		b.addGroup("Updates")
@@ -1901,7 +1915,7 @@ func (s Settings) aiConnectionStatusLabel() string {
 
 func (s Settings) inputWidth(field settingsField, maxWidth int) int {
 	switch field {
-	case sfFeedMaxBody, sfReadingWidth, sfSendDelay:
+	case sfFeedMaxBody, sfReadingWidth, sfSendDelay, sfSendMaxAttempts:
 		return min(maxWidth, 12)
 	case sfRetroBg, sfRetroFg, sfRetroAccent:
 		return min(maxWidth, 44)
@@ -2406,6 +2420,8 @@ func (s Settings) fieldHint(field settingsField) string {
 		return "larger bodies need more memory; default is 10 MiB"
 	case sfReadingWidth:
 		return "max columns for article text; 0 = no limit (e.g. 80, 100)"
+	case sfSendMaxAttempts:
+		return "1–10 total tries, including the first; 1 disables retries; retries wait 1 minute"
 	case sfSendDelay:
 		return "grace period to take back a send with ctrl+z; 0 = send immediately"
 	case sfTestAIConnection:
