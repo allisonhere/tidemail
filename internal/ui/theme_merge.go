@@ -3,6 +3,8 @@ package ui
 import (
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/allisonhere/tideui"
+
 	"github.com/allisonhere/tidemail/internal/config"
 )
 
@@ -17,24 +19,16 @@ func ThemeUsesASCII(themeName string) bool {
 	return themeName == ThemeNameVT52
 }
 
-// MergeRetroTweak applies optional #rrggbb overrides from config onto a base retro theme.
+// MergeRetroTweak applies optional #rrggbb overrides from config onto a base
+// retro theme. tideui.ThemeOverrides.Apply has the identical field mapping
+// (Foreground → Fg+StatusFg, Accent → BorderFocus+Selected+OverlayBorder), so
+// this defers to it rather than keeping a parallel copy.
 func MergeRetroTweak(base Theme, tw config.RetroTerminalTweak) Theme {
-	out := base
-	if tw.Bg != "" {
-		out.Bg = lipgloss.Color(tw.Bg)
-	}
-	if tw.Fg != "" {
-		c := lipgloss.Color(tw.Fg)
-		out.Fg = c
-		out.StatusFg = c
-	}
-	if tw.Accent != "" {
-		c := lipgloss.Color(tw.Accent)
-		out.BorderFocus = c
-		out.Selected = c
-		out.OverlayBorder = c
-	}
-	return out
+	return tideui.ThemeOverrides{
+		Background: lipgloss.Color(tw.Bg),
+		Foreground: lipgloss.Color(tw.Fg),
+		Accent:     lipgloss.Color(tw.Accent),
+	}.Apply(base)
 }
 
 // ApplyDisplayOverrides returns the effective theme for cfg (merge vt52/vt100 tweaks).
