@@ -14,6 +14,8 @@ github.com/alecthomas/repr v0.5.1 h1:E3G4t2QbHTSNpPKBgMTln5KLkZHLOcU7r37J4pXBuIg
 github.com/alecthomas/repr v0.5.1/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
 github.com/allisonhere/ripple v0.2.0 h1:+ki77g240VxelEWAkajP6nhpPs4O4X/0aWWmIM52mzI=
 github.com/allisonhere/ripple v0.2.0/go.mod h1:tUOwwHoip07xZ2C+xDtwLFF5dkPCUliQ8OqL6FEbO+I=
+github.com/allisonhere/tideui v0.2.2 h1:+YLMA1ZsnlPDtvNyIhMxuqvXVgKYvJuxNOHYQdDYZPs=
+github.com/allisonhere/tideui v0.2.2/go.mod h1:5PuSjpG2GO1HN1yQZi1ZpEbJOqKYhaLY/Wkb+cj/mAQ=
 github.com/andybalholm/cascadia v1.3.2 h1:3Xi6Dw5lHF15JtdcmAHD3i1+T8plmv7BQ/nsViSLyss=
 github.com/andybalholm/cascadia v1.3.2/go.mod h1:7gtRlve5FxPPgIgX36uWBX58OdBsSS6lUvCFb+h7KvU=
 github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=

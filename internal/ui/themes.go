@@ -1,22 +1,14 @@
 package ui
 
-import "github.com/charmbracelet/lipgloss"
+import "github.com/allisonhere/tideui"
 
-type Theme struct {
-	Name          string
-	Bg            lipgloss.Color
-	Fg            lipgloss.Color
-	Border        lipgloss.Color
-	BorderFocus   lipgloss.Color
-	Selected      lipgloss.Color
-	Unread        lipgloss.Color
-	Dimmed        lipgloss.Color
-	StatusBar     lipgloss.Color
-	StatusFg      lipgloss.Color
-	Error         lipgloss.Color
-	Overlay       lipgloss.Color
-	OverlayBorder lipgloss.Color
-}
+// Theme is an alias for tideui.Theme. TideMail's UI is a fork of the shared
+// tideui toolkit; aliasing the type (rather than redeclaring an identical
+// struct) keeps the two from silently drifting and lets TideMail hand its
+// themes straight to any tideui API. The field set is identical:
+// Name, Bg, Fg, Border, BorderFocus, Selected, Unread, Dimmed, StatusBar,
+// StatusFg, Error, Overlay, OverlayBorder — all lipgloss.Color.
+type Theme = tideui.Theme
 
 var BuiltinThemes = []Theme{
 	CatppuccinMocha,
