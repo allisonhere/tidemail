@@ -41,12 +41,35 @@ var BuiltinThemes = []Theme{
 }
 
 func ThemeByName(name string) (Theme, int) {
+	if isMatchOmarchy(name) {
+		return omarchyPlaceholderTheme, omarchyIndex
+	}
 	for i, t := range BuiltinThemes {
 		if t.Name == name {
 			return t, i
 		}
 	}
 	return BuiltinThemes[0], 0
+}
+
+// PickableThemes is BuiltinThemes plus the runtime-resolved "match-omarchy"
+// pseudo-theme. The theme pickers (Settings screen and the T overlay) iterate
+// this; contrast tests keep iterating BuiltinThemes only.
+func PickableThemes() []Theme {
+	out := make([]Theme, 0, len(BuiltinThemes)+1)
+	out = append(out, BuiltinThemes...)
+	out = append(out, omarchyPlaceholderTheme)
+	return out
+}
+
+// pickableThemeNameAt returns the theme name at idx into PickableThemes(),
+// clamping an out-of-range index to the first theme.
+func pickableThemeNameAt(idx int) string {
+	pt := PickableThemes()
+	if idx < 0 || idx >= len(pt) {
+		idx = 0
+	}
+	return pt[idx].Name
 }
 
 // ── Catppuccin ──────────────────────────────────────────────────────────────

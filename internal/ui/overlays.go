@@ -518,8 +518,9 @@ func (m Model) renderLogViewer(width, height int) string {
 
 func (m Model) renderThemePicker(width int, chrome managerChrome) string {
 	labelW := max(1, width-2) // minus the 2-cell rail
-	rows := make([]string, 0, len(BuiltinThemes))
-	for i, t := range BuiltinThemes {
+	pt := PickableThemes()
+	rows := make([]string, 0, len(pt))
+	for i, t := range pt {
 		selected := i == m.themeCursor
 		label := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Render(" " + truncate(t.Name, max(1, labelW-1)))
 		rows = append(rows, softRail(chrome, selected, chrome.baseBg)+padStyled(label, labelW, chrome.baseBg))

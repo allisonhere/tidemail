@@ -200,6 +200,12 @@ type Model struct {
 	activeTheme    int
 	styles         Styles
 	themeCursor    int
+	// omarchySig is the last-seen Omarchy theme signature, used by the
+	// "match-omarchy" live-follow poll to detect desktop theme changes.
+	omarchySig string
+	// omarchyWatching guards against starting a second live-follow poll loop
+	// while one is already running.
+	omarchyWatching bool
 
 	accountManager AccountManager
 	contactManager ContactManager
@@ -329,6 +335,8 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		focused:               paneAccounts,
 		confirmedTheme:        themeIdx,
 		activeTheme:           themeIdx,
+		omarchySig:            omarchySignature(),
+		omarchyWatching:       isMatchOmarchy(cfg.Theme),
 		styles:                BuildStyles(merged, cfg.Display.Density, cfg.Display.PaneCorners),
 		accountManager:        NewAccountManager(database),
 		searchInput:           si,
@@ -373,6 +381,9 @@ func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{m.loadAccountsCmd()}
 	if cmd := m.ensureSpinner(); cmd != nil {
 		cmds = append(cmds, cmd)
+	}
+	if isMatchOmarchy(m.cfg.Theme) {
+		cmds = append(cmds, omarchyWatchCmd())
 	}
 	if !m.previewManualUpdateUI {
 		if cmd := m.maybeCheckForUpdatesCmd(false); cmd != nil {
@@ -422,6 +433,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
+
+	case omarchyThemeTickMsg:
+		return m.handleOmarchyThemeTick()
 
 	case StatusClearMsg:
 		m.statusMsg = ""
@@ -2082,6 +2096,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case overlayThemePicker:
 		prevTheme := m.activeTheme
+		var themeCmd tea.Cmd
 		switch {
 		case keyMatches(msg, m.keys.Up):
 			if m.themeCursor > 0 {
@@ -2093,7 +2108,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case keyMatches(msg, m.keys.Down):
-			if m.themeCursor < len(BuiltinThemes)-1 {
+			if m.themeCursor < len(PickableThemes())-1 {
 				m.themeCursor++
 				m.activeTheme = m.themeCursor
 				m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners)
@@ -2104,8 +2119,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case keyMatches(msg, m.keys.Confirm):
 			m.confirmedTheme = m.themeCursor
 			m.overlay = overlayNone
-			m.cfg.Theme = BuiltinThemes[m.confirmedTheme].Name
+			m.cfg.Theme = pickableThemeNameAt(m.confirmedTheme)
 			m.saveConfig()
+			themeCmd = m.startOmarchyWatchIfNeeded()
 			if m.activeMessageRowCount() > 0 {
 				m.setViewportForCurrentRow()
 			}
@@ -2118,9 +2134,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if m.activeTheme != prevTheme {
-			return m, setTermColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg)
+			return m, tea.Batch(themeCmd, setTermColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg))
 		}
-		return m, nil
+		return m, themeCmd
 
 	case overlayAccountManager:
 		return m.handleAccountManager(msg)
@@ -2372,6 +2388,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.spinner.Spinner = spinner.Dot
 			}
 			m.saveConfig()
+			omarchyCmd := m.startOmarchyWatchIfNeeded()
 			summarizer, _ := ai.New(m.cfg.AI)
 			m.summarizer = summarizer
 			if m.activeMessageRowCount() > 0 {
@@ -2381,7 +2398,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.overlay = overlayNone
 			m.clearMessages()
-			return m, tea.Batch(m.loadAccountsCmd())
+			return m, tea.Batch(m.loadAccountsCmd(), omarchyCmd)
 		}
 		m.overlay = overlayNone
 		if previewingTheme {

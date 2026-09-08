@@ -317,11 +317,25 @@ switches to OAuth on its own — a leftover keychain token cannot promote it.
 | `?` | Help |
 | `q` | Quit |
 
+## Themes
+
+Cycle the theme with `T`, or pick one under Settings → Display. Every built-in
+theme is checked against WCAG-style contrast minimums by automated tests.
+
+`match-omarchy` is a special entry for [Omarchy](https://omarchy.org) users: it
+follows your current Omarchy desktop theme, remapped and contrast-corrected so
+TideMail stays readable whatever palette Omarchy is on. It reads the palette
+from `omarchy-theme-color` (falling back to
+`~/.local/state/omarchy/current/theme/colors.toml`), works for both light and
+dark Omarchy themes, and repaints within a couple of seconds when you switch
+your desktop theme — no restart. If Omarchy isn't installed it falls back to
+`catppuccin-mocha`.
+
 ## Settings
 
 Press `S` to open Settings.
 
-- Display: icons, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, and quit confirmation
+- Display: theme, icons, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, and quit confirmation
 - Editor: compose keys, send delay, and maximum delivery attempts
 - Accounts: connection details, From address, signature, color, and sync interval
 - Updates: check, install, restart, or copy a manual install command

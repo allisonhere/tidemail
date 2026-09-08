@@ -37,6 +37,9 @@ _One inbox, several built-in themes.
   focused-pane border are all checked against WCAG-style contrast minimums
   (4.5:1 for text, 3:1+ for large text and UI elements like borders) across
   every built-in theme, enforced by automated tests.
+- **Match your desktop.** On [Omarchy](https://omarchy.org), the `match-omarchy`
+  theme follows your current desktop theme — contrast-corrected to the same
+  bar as the built-ins — and repaints live when you switch it.
 
 ## Install
 

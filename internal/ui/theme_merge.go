@@ -51,15 +51,31 @@ func ApplyDisplayOverrides(t Theme, cfg config.Config) Theme {
 
 // MergedThemeFromConfig resolves cfg.Theme to a builtin theme and applies retro overrides.
 func MergedThemeFromConfig(cfg config.Config) (Theme, int) {
+	if isMatchOmarchy(cfg.Theme) {
+		return ApplyDisplayOverrides(omarchyOrFallbackTheme(), cfg), omarchyIndex
+	}
 	base, idx := ThemeByName(cfg.Theme)
 	return ApplyDisplayOverrides(base, cfg), idx
 }
 
 // MergedBuiltinThemeAtIndex returns the theme at idx with cfg-based retro overrides applied.
 func MergedBuiltinThemeAtIndex(cfg config.Config, idx int) Theme {
+	if idx == omarchyIndex {
+		return ApplyDisplayOverrides(omarchyOrFallbackTheme(), cfg)
+	}
 	if idx < 0 || idx >= len(BuiltinThemes) {
 		idx = 0
 	}
 	t := BuiltinThemes[idx]
 	return ApplyDisplayOverrides(t, cfg)
+}
+
+// omarchyOrFallbackTheme resolves the live Omarchy palette, or falls back to
+// the default built-in theme when Omarchy isn't available.
+func omarchyOrFallbackTheme() Theme {
+	if t, ok := resolveOmarchyTheme(); ok {
+		return t
+	}
+	fallback, _ := ThemeByName(config.DefaultConfig().Theme)
+	return fallback
 }

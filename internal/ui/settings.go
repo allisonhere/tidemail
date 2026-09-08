@@ -401,8 +401,8 @@ func (s *Settings) syncMaskedEchoChars() {
 
 // ApplyTo merges the settings screen state back into a Config.
 func (s Settings) ApplyTo(cfg config.Config) config.Config {
-	if s.themeIdx >= 0 && s.themeIdx < len(BuiltinThemes) {
-		cfg.Theme = BuiltinThemes[s.themeIdx].Name
+	if pt := PickableThemes(); s.themeIdx >= 0 && s.themeIdx < len(pt) {
+		cfg.Theme = pt[s.themeIdx].Name
 	}
 	cfg.Display.Icons = s.icons
 	cfg.Display.DateFormat = strings.ToLower(dateFormatLabels[s.dateFormatIdx])
@@ -1091,16 +1091,17 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 		}
 
 	case sfTheme:
+		pt := PickableThemes()
 		switch {
 		case keyMatches(key, keys.Left):
-			s.themeIdx = (s.themeIdx + len(BuiltinThemes) - 1) % len(BuiltinThemes)
-			s.themeName = BuiltinThemes[s.themeIdx].Name
+			s.themeIdx = (s.themeIdx + len(pt) - 1) % len(pt)
+			s.themeName = pt[s.themeIdx].Name
 			s.syncMaskedEchoChars()
 			s.ensureSectionFieldVisible(ssDisplay)
 			s.setFocusedField(sfTheme)
 		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) || keyMatches(key, keys.Right):
-			s.themeIdx = (s.themeIdx + 1) % len(BuiltinThemes)
-			s.themeName = BuiltinThemes[s.themeIdx].Name
+			s.themeIdx = (s.themeIdx + 1) % len(pt)
+			s.themeName = pt[s.themeIdx].Name
 			s.syncMaskedEchoChars()
 			s.ensureSectionFieldVisible(ssDisplay)
 			s.setFocusedField(sfTheme)
@@ -1804,6 +1805,13 @@ func (b *settingsFormBuilder) addAction(label, hint string, field settingsField)
 func (b *settingsFormBuilder) addThemeSelector() {
 	b.markAnchor(sfTheme)
 	b.addLine(b.s.renderThemeSelector(b.width, b.chrome))
+	if isMatchOmarchy(pickableThemeNameAt(b.s.themeIdx)) {
+		if name := currentOmarchyThemeName(); name != "" {
+			b.addHint("following Omarchy: " + name + " (updates live, contrast-corrected)")
+		} else {
+			b.addHint("Omarchy theme not found — using " + config.DefaultConfig().Theme)
+		}
+	}
 	b.addBlank()
 }
 
@@ -2402,7 +2410,7 @@ func (s Settings) renderPaneCornersSelector(width int, chrome managerChrome) str
 
 func (s Settings) renderThemeSelector(width int, chrome managerChrome) string {
 	focused := s.focusedField == sfTheme
-	name := BuiltinThemes[s.themeIdx].Name
+	name := pickableThemeNameAt(s.themeIdx)
 	labelW := formLabelWidth(width)
 	pickerW := max(1, width-labelW-2)
 	return renderSoftRow("Theme", focused, renderSettingsPicker(pickerW, name, focused, chrome), width, labelW, chrome)

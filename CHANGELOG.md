@@ -2,6 +2,20 @@
 
 All notable changes to TideMail are documented in this file.
 
+## Unreleased
+
+### Added
+
+- **`match-omarchy` theme.** For [Omarchy](https://omarchy.org) users, a theme
+  that follows the current Omarchy desktop theme: it reads the live palette from
+  `omarchy-theme-color` (falling back to
+  `~/.local/state/omarchy/current/theme/colors.toml`), remaps it onto TideMail's
+  theme, and contrast-corrects every colour to the same WCAG-style bar as the
+  built-in themes. Works for light and dark Omarchy themes, and repaints within
+  a couple of seconds when you switch your desktop theme — no restart. Falls
+  back to `catppuccin-mocha` when Omarchy isn't present. Pick it with `T` or at
+  **Settings → Display → Theme**.
+
 ## v1.0.10
 
 ### Added
