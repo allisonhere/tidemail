@@ -6,6 +6,20 @@ and push or interval sync. See `CLAUDE.md` for the architecture map.
 
 Current release: **v1.0.5**.
 
+## Active handoff: inline image fixes
+
+On `feat/email-images`, commit `70f7987` added inline images. The next work is
+documented in [Inline Image Fixes Plan](docs/inline-image-fixes-plan.md) and is
+**approved but not implemented**. Reported issues are enlarged icons, flicker
+during loading, and needing to toggle `i` twice when images are already enabled.
+The causes and regression checks are recorded in the plan.
+
+The user selected automatic remote-image loading whenever the saved image
+setting is enabled; keep the default off. Finish sizing and redraw fixes alongside
+that behavior change, update user-facing help/docs, then commit and push the image
+branch. Current README/guide instructions still describe the implemented
+per-message approval behavior until those fixes land.
+
 ## Working
 
 - **Multi-account IMAP**: connect, list mailboxes, fetch, move, delete, archive,

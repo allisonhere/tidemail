@@ -346,6 +346,14 @@ Press `S` to open Settings.
 
 ## Images in email
 
+**Pending fixes:** small images can currently be enlarged, and loading multiple
+images can cause screen flicker. Enabling images in settings does not yet load
+remote images automatically; use **Load remote images in this message** in the
+command palette instead of toggling `i` twice. The approved
+[fix plan](inline-image-fixes-plan.md) will address sizing and flicker and make
+the enabled setting load remote images automatically. The instructions below
+describe the current implementation.
+
 Images are **off by default**. While reading a message, press **`i`** to show or
 hide images right in the content pane. They appear where the email references
 them, scroll with the text, and resize to fit the reading width. Unreferenced

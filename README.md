@@ -127,6 +127,11 @@ Images are off by default; the saved setting lives under
 **Settings → Display → Reading → Images in message**. Inline graphics require a
 terminal supporting Kitty Unicode image placeholders. **Preview images** remains
 available in the command palette for a full-screen view.
+
+Known image issues and the approved changes to sizing, loading flicker, and
+automatic remote loading are tracked in the
+[inline image fix plan](docs/inline-image-fixes-plan.md). These fixes are pending.
+
 Full headers are one `Ctrl+E` away, with SPF, DKIM, and DMARC results called out
 in color.
 
