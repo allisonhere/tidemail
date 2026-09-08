@@ -3,6 +3,7 @@ package ui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
@@ -148,6 +149,46 @@ func TestResolveOmarchyThemeReadsStagedPalette(t *testing.T) {
 	}
 	if currentOmarchyThemeName() != "retro-82" {
 		t.Errorf("currentOmarchyThemeName = %q, want retro-82", currentOmarchyThemeName())
+	}
+}
+
+// The T overlay theme picker must window its list so it stays inside the box
+// border on short terminals — the selected row and the footer hints must remain
+// visible instead of spilling past the frame.
+func TestThemePickerWindowsToFitTerminal(t *testing.T) {
+	last := len(PickableThemes()) - 1
+	for _, theme := range []string{"catppuccin-mocha", "vt52"} {
+		for _, h := range []int{12, 16, 20, 24, 40} {
+			m := NewModel(nil, config.Config{Theme: theme, Display: config.DefaultConfig().Display}, "dev", false)
+			m.width = 60
+			m.height = h
+			m.overlay = overlayThemePicker
+			m.themeCursor = last // cursor on the final row (match-omarchy)
+
+			out := m.View()
+			if !strings.Contains(out, ThemeNameMatchOmarchy) {
+				t.Errorf("theme=%s h=%d: selected row %q not visible in picker", theme, h, ThemeNameMatchOmarchy)
+			}
+			if !strings.Contains(out, "confirm") {
+				t.Errorf("theme=%s h=%d: picker footer hints clipped", theme, h)
+			}
+			if got := strings.Count(out, "\n") + 1; got != h {
+				t.Errorf("theme=%s h=%d: rendered %d lines, want exactly %d", theme, h, got, h)
+			}
+		}
+	}
+}
+
+func TestThemePickerKeepsMidListCursorVisible(t *testing.T) {
+	m := NewModel(nil, config.Config{Theme: "catppuccin-mocha", Display: config.DefaultConfig().Display}, "dev", false)
+	m.width = 60
+	m.height = 14
+	m.overlay = overlayThemePicker
+	m.themeCursor = 9 // a theme partway down the list
+	want := PickableThemes()[9].Name
+
+	if out := m.View(); !strings.Contains(out, want) {
+		t.Errorf("mid-list cursor theme %q not visible on a short terminal", want)
 	}
 }
 
