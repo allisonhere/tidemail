@@ -43,7 +43,6 @@ func (m Model) renderMessageForDisplay(msg db.Message, width int) messageRenderR
 func renderMessageWithContext(ctx messageRenderContext) messageRenderResult {
 	for _, renderer := range []messageRenderer{
 		renderRedditMessage,
-		renderNoisyHTMLArticleMessage,
 		renderHTMLMessage,
 		renderPlainTextMessage,
 	} {

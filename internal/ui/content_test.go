@@ -392,11 +392,11 @@ func TestMessageRenderResultKeepsBodyAndLinksTogether(t *testing.T) {
 	}
 }
 
-func TestNoisyHTMLArticleExtractorCleansGenericTemplate(t *testing.T) {
+func TestHTMLRendererPreservesGenericTemplate(t *testing.T) {
 	m := NewModel(nil, config.DefaultConfig(), "dev", false)
 	noisyPadding := strings.Repeat(`<table role="presentation"><tr><td>&nbsp;</td></tr></table>`, 90)
 	msg := db.Message{BodyHTML: `<html><body>` +
-		`<div class="preheader">Hidden preview text</div>` +
+		`<div class="preheader" style="display:none">Hidden preview text</div>` +
 		noisyPadding +
 		`<h2>Product update</h2>` +
 		`<p>The release is ready for review and includes the changes people asked for.</p>` +
@@ -407,12 +407,12 @@ func TestNoisyHTMLArticleExtractorCleansGenericTemplate(t *testing.T) {
 
 	result := m.renderMessageForDisplay(msg, 52)
 	body := ansi.Strip(result.body)
-	for _, want := range []string{"Product update", "The release is ready", "You can test it today", "[Read now]"} {
+	for _, want := range []string{"Product update", "The release is ready", "You can test it today", "[Read now]", "You are receiving this email"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected noisy template body to contain %q, got %q", want, body)
 		}
 	}
-	for _, bad := range []string{"Hidden preview text", "receiving this email", "tracker.example"} {
+	for _, bad := range []string{"Hidden preview text", "tracker.example"} {
 		if strings.Contains(body, bad) {
 			t.Fatalf("expected noisy template body to omit %q, got %q", bad, body)
 		}
@@ -570,8 +570,8 @@ func TestRenderRedditDigestHTMLFallsBackWhenNoPostsFound(t *testing.T) {
 func TestRenderRedditDigestHTMLReadsRawLayoutBeforeGenericCleanup(t *testing.T) {
 	html := `<table><tr><th style="font-size:0pt;line-height:0pt">` + redditDigestFixture() + `</th></tr></table>`
 	normalized := normalizeHTMLForRendering(html)
-	if strings.Contains(normalized, "post_title") {
-		t.Fatalf("test fixture should exercise links dropped by generic cleanup, got %q", normalized)
+	if strings.Contains(normalized, "Free ai in Omarchy?") {
+		t.Fatalf("test fixture should exercise zero-sized text removed by generic cleanup, got %q", normalized)
 	}
 	got, ok := renderRedditDigestHTML(html, 44, CatppuccinMocha, true)
 	if !ok || !strings.Contains(ansi.Strip(got), "Free ai in Omarchy?") {
@@ -612,7 +612,7 @@ func TestRedditClickLinksSurviveGenericLayoutCleanup(t *testing.T) {
 }
 
 func TestRenderHTMLBodyRemovesNewsletterPreheaderAndSpacers(t *testing.T) {
-	html := `<div class="preheader">Hidden preview copy that should not render</div>` +
+	html := `<div class="preheader" style="display:none">Hidden preview copy that should not render</div>` +
 		`<table role="presentation"><tr><td width="1">&nbsp;</td><td><h2>Product update</h2></td></tr>` +
 		`<tr><td style="height:1px;line-height:1px">&nbsp;</td><td>Useful details.</td></tr></table>`
 

@@ -573,48 +573,6 @@ func styleImagePlaceholders(rendered string, th Theme, plainUI bool) string {
 	})
 }
 
-func normalizeHTMLForRendering(raw string) string {
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(raw))
-	if err != nil {
-		return raw
-	}
-	doc.Find("script,style,noscript,template,head,meta,link,input,textarea,select").Remove()
-	doc.Find("[class],[id]").Each(func(_ int, s *goquery.Selection) {
-		if hiddenByEmailIdentity(attrFirst(s, "class") + " " + attrFirst(s, "id")) {
-			s.Remove()
-		}
-	})
-	doc.Find("[hidden]").Remove()
-	doc.Find("[aria-hidden]").Each(func(_ int, s *goquery.Selection) {
-		if strings.EqualFold(strings.TrimSpace(attrFirst(s, "aria-hidden")), "true") {
-			s.Remove()
-		}
-	})
-	doc.Find("[style]").Each(func(_ int, s *goquery.Selection) {
-		if hiddenByInlineStyle(parseInlineStyle(attrFirst(s, "style"))) {
-			s.Remove()
-		}
-	})
-	doc.Find("img").Each(func(_ int, s *goquery.Selection) {
-		if isTrackingImage(s) {
-			s.Remove()
-		}
-	})
-	removeEmailSpacerElements(doc)
-	normalizeEmailQuotes(doc)
-	normalizeEmailTables(doc)
-	body := doc.Find("body")
-	if body.Length() > 0 {
-		if out, err := body.Html(); err == nil {
-			return out
-		}
-	}
-	if out, err := doc.Html(); err == nil {
-		return out
-	}
-	return raw
-}
-
 func hasMeaningfulRenderedHTML(rendered string) bool {
 	text := normalizeInlineSpacing(ansi.Strip(rendered))
 	if text == "" {
@@ -679,20 +637,7 @@ func hiddenByInlineStyle(style map[string]string) bool {
 	if strings.Contains(style["mso-hide"], "all") {
 		return true
 	}
-	return isZeroDimension(style["opacity"]) || isZeroDimension(style["font-size"])
-}
-
-func hiddenByEmailIdentity(identity string) bool {
-	identity = strings.ToLower(identity)
-	for _, token := range []string{
-		"preheader", "preview-text", "preview_text", "hidden-preheader",
-		"email-hidden", "gmail-fix",
-	} {
-		if strings.Contains(identity, token) {
-			return true
-		}
-	}
-	return false
+	return isZeroDimension(style["opacity"])
 }
 
 func isTrackingImage(selec *goquery.Selection) bool {
@@ -804,7 +749,7 @@ func normalizeEmailTables(doc *goquery.Document) {
 		tables = append(tables, table)
 	})
 	for i := len(tables) - 1; i >= 0; i-- {
-		if isDataTable(tables[i]) {
+		if isDataTable(tables[i]) && tables[i].Find("[colspan],[rowspan]").Length() == 0 {
 			continue
 		}
 		flattenLayoutTable(tables[i])
@@ -893,15 +838,47 @@ func tableTextRule(width int) md.Rule {
 	}
 }
 
+// Keep block boundaries and image descriptions in their original cell order.
 func tableCellText(cell *goquery.Selection) string {
-	parts := []string{normalizeInlineSpacing(cell.Text())}
-	cell.Find("img").Each(func(_ int, image *goquery.Selection) {
-		label := normalizeInlineSpacing(attrFirst(image, "alt", "title", "aria-label"))
-		if label != "" && !isDecorativeImageLabel(label) {
-			parts = append(parts, "[image: "+label+"]")
+	var out strings.Builder
+	var walk func(*xhtml.Node)
+	walk = func(n *xhtml.Node) {
+		if n.Type == xhtml.TextNode {
+			out.WriteString(n.Data)
+			return
 		}
-	})
-	return normalizeInlineSpacing(strings.Join(parts, " "))
+		block := false
+		switch n.Data {
+		case "p", "div", "li", "ul", "ol", "br", "pre", "blockquote":
+			block = true
+		}
+		if block {
+			out.WriteByte('\n')
+		}
+		if n.Data == "img" {
+			image := goquery.NewDocumentFromNode(n).Selection
+			label := normalizeInlineSpacing(attrFirst(image, "alt", "title", "aria-label"))
+			if label != "" && !isDecorativeImageLabel(label) {
+				out.WriteString("[image: " + label + "]")
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+		if block {
+			out.WriteByte('\n')
+		}
+	}
+	for _, n := range cell.Nodes {
+		walk(n)
+	}
+	var lines []string
+	for _, line := range strings.Split(out.String(), "\n") {
+		if line = normalizeInlineSpacing(line); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func renderTextTable(rows [][]string, width int, header bool) []string {
@@ -938,7 +915,9 @@ func renderTextTable(rows [][]string, width int, header bool) []string {
 			if col < len(row) {
 				cell = row[col]
 			}
-			wrapped[col] = strings.Split(wrapWords(cell, columnWidths[col]), "\n")
+			for _, line := range strings.Split(cell, "\n") {
+				wrapped[col] = append(wrapped[col], strings.Split(ansi.Hardwrap(wrapWords(line, columnWidths[col]), columnWidths[col], true), "\n")...)
+			}
 			rowHeight = max(rowHeight, len(wrapped[col]))
 		}
 		for lineIdx := 0; lineIdx < rowHeight; lineIdx++ {
@@ -1073,17 +1052,10 @@ func buttonLinkRule() md.Rule {
 				text = normalizeInlineSpacing(attrFirst(selec, "aria-label", "title"))
 			}
 			if href == "" {
-				return md.String(" ")
+				return &content
 			}
-			if selec.Find("table,[data-tidemail-layout-table]").Length() > 0 {
-				text = layoutCellText(selec)
-				if text == "" {
-					return md.String(" ")
-				}
-				if label := firstUsefulImageLabel(selec); label != "" && text == label {
-					text = "[image: " + label + "]"
-				}
-				return md.String("\n\n" + text + "\n\n")
+			if selec.Find("table,[data-tidemail-layout-table],div,p,ul,ol,blockquote,h1,h2,h3,h4,h5,h6").Length() > 0 {
+				return md.String("\n\n" + content + "\n\n")
 			}
 			if !looksLikeButtonLink(selec) {
 				if text == "" {
@@ -1119,29 +1091,6 @@ func firstUsefulImageLabel(selec *goquery.Selection) string {
 		return false
 	})
 	return label
-}
-
-func layoutCellText(selec *goquery.Selection) string {
-	var parts []string
-	selec.Find("td,th,[data-tidemail-layout-cell]").Each(func(_ int, cell *goquery.Selection) {
-		if cell.Find("td,th,[data-tidemail-layout-cell]").Length() > 0 {
-			return
-		}
-		text := normalizeInlineSpacing(htmlstd.UnescapeString(cell.Text()))
-		if text != "" {
-			parts = append(parts, text)
-		}
-		cell.Find("img").Each(func(_ int, image *goquery.Selection) {
-			label := normalizeInlineSpacing(attrFirst(image, "alt", "title", "aria-label"))
-			if label != "" && !isDecorativeImageLabel(label) {
-				parts = append(parts, "[image: "+label+"]")
-			}
-		})
-	})
-	if len(parts) == 0 {
-		return normalizeInlineSpacing(htmlstd.UnescapeString(selec.Text()))
-	}
-	return strings.Join(parts, " ")
 }
 
 func isVisualOnlyLinkText(text string, selec *goquery.Selection) bool {
