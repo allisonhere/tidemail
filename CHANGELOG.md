@@ -16,6 +16,24 @@ All notable changes to TideMail are documented in this file.
   back to `catppuccin-mocha` when Omarchy isn't present. Pick it with `T` or at
   **Settings → Display → Theme**.
 
+### Changed
+
+- **The stock theme palettes now come from the shared
+  [`tideui`](https://github.com/allisonhere/tideui) toolkit** rather than a
+  local copy (`ui.Theme` is now an alias of `tideui.Theme`), so an upstream
+  palette fix reaches TideMail on a version bump. No visible change — the 17
+  shared palettes were verified byte-identical; vt52/vt100 keep TideMail's
+  contrast-tuned accents. See `docs/tideui-migration.md`.
+
+### Fixed
+
+- **The `T` theme picker no longer spills past its border on a short
+  terminal.** The list now scrolls a fixed-height window that keeps the
+  selected row and the footer hints inside the frame.
+- **On the vt52 theme, every modal now carries its title flush in the top
+  border** (`+- tidemail · <title> --+`) instead of as a separate row below it,
+  matching the other themes.
+
 ## v1.0.10
 
 ### Added
