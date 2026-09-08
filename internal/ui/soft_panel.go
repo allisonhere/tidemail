@@ -67,14 +67,16 @@ func softRail(chrome managerChrome, active bool, bg lipgloss.Color) string {
 		Render(glyph)
 }
 
-// renderSoftPanelBox wraps inner (already padded to width) in a rounded border
-// whose top run carries the title: ╭─ prefix · title ────╮.
+// renderSoftPanelBox wraps inner (already padded to width) in a border whose
+// top run carries the title: ╭─ prefix · title ────╮ (or "+- prefix · title --+"
+// on the plain vt52 theme, where the title sits flush in the top rule the same
+// way rather than as a separate row below the border).
 func renderSoftPanelBox(inner string, width int, prefix, title string, chrome managerChrome) string {
+	openGlyph, fillGlyph, closeGlyph := "╭─ ", "─", "╮"
+	bodyBorder := lipgloss.RoundedBorder()
 	if chrome.plainUI {
-		titleLine := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render(" "+prefix+" · ") +
-			lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.accent).Bold(true).Render(title)
-		titleLine = padStyled(titleLine, width, chrome.baseBg)
-		return renderChromeOverlayBox(titleLine+"\n"+inner, width, chrome, chrome.border)
+		openGlyph, fillGlyph, closeGlyph = "+- ", "-", "+"
+		bodyBorder = lipgloss.ASCIIBorder()
 	}
 
 	borderStyle := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.border)
@@ -82,16 +84,16 @@ func renderSoftPanelBox(inner string, width int, prefix, title string, chrome ma
 	// computing the trailing rule so long titles can't overflow the run.
 	label := prefix + " · "
 	title = ansi.Truncate(title, max(1, width-lipgloss.Width(label)-6), "…")
-	top := borderStyle.Render("╭─ ") +
+	top := borderStyle.Render(openGlyph) +
 		lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render(label) +
 		lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.accent).Bold(true).Render(title) +
 		borderStyle.Render(" ")
 	gap := max(0, width+2-lipgloss.Width(top)-1)
-	top += borderStyle.Render(strings.Repeat("─", gap) + "╮")
+	top += borderStyle.Render(strings.Repeat(fillGlyph, gap) + closeGlyph)
 
 	body := lipgloss.NewStyle().
 		Background(chrome.baseBg).
-		Border(lipgloss.RoundedBorder(), false, true, true, true).
+		Border(bodyBorder, false, true, true, true).
 		BorderForeground(chrome.border).
 		BorderBackground(chrome.baseBg).
 		Width(width).

@@ -32,15 +32,33 @@ func TestSoftPanelBoxEmbedsTitleInTopBorder(t *testing.T) {
 	}
 }
 
-func TestSoftPanelBoxPlainUIFallsBackToASCII(t *testing.T) {
+func TestSoftPanelBoxPlainUIEmbedsTitleInASCIITopBorder(t *testing.T) {
 	chrome := newManagerChrome(40, VT52, true)
 	box := renderSoftPanelBox("hello", 40, "tidemail", "settings", chrome)
 
-	if strings.Contains(box, "╭") || strings.Contains(box, "─") {
+	if strings.ContainsAny(box, "╭╮╰╯─│") {
 		t.Fatalf("expected plainUI soft panel to avoid unicode box drawing, got %q", box)
 	}
-	if !strings.Contains(ansi.Strip(box), "tidemail · settings") {
-		t.Fatalf("expected plainUI soft panel to keep a title line, got %q", box)
+
+	lines := strings.Split(box, "\n")
+	top := ansi.Strip(lines[0])
+	// The title must sit flush in the top rule, not on a separate row below it.
+	if !strings.HasPrefix(top, "+- tidemail · settings ") {
+		t.Fatalf("expected embedded title in ASCII top border, got %q", top)
+	}
+	if !strings.HasSuffix(top, "+") {
+		t.Fatalf("expected ASCII top border to end with +, got %q", top)
+	}
+	if got := lipgloss.Width(lines[0]); got != 42 {
+		t.Fatalf("expected top border to span width+2 = 42 cells, got %d", got)
+	}
+	// The first content row is the actual body, not the title.
+	if row1 := ansi.Strip(lines[1]); strings.Contains(row1, "tidemail · settings") {
+		t.Fatalf("title should not repeat on the first body row, got %q", row1)
+	}
+	bottom := ansi.Strip(lines[len(lines)-1])
+	if !strings.HasPrefix(bottom, "+") || !strings.HasSuffix(bottom, "+") {
+		t.Fatalf("expected ASCII bottom corners, got %q", bottom)
 	}
 }
 
