@@ -138,7 +138,7 @@ var DefaultKeys = KeyMap{
 	DiscardDraft:  key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "discard")),
 	ContentSearch: key.NewBinding(key.WithKeys("ctrl+f"), key.WithHelp("ctrl+f", "find")),
 	ToggleQuote:   key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "toggle quoted text")),
-	ToggleImages:  key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "toggle image previews")),
+	ToggleImages:  key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "show/hide images")),
 	ToggleHeaders: key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "headers")),
 
 	Add:         key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),

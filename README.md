@@ -118,13 +118,15 @@ Global search stays active while you move through results. The content pane can
 find text inside the open message, walk links, copy a visual selection, and save
 attachments to a folder you choose.
 
-TideMail renders HTML mail as terminal text and does not automatically load remote images.
-Enable **Settings → Display → Reading → Image previews**, then use
-**Preview images** in the command palette (`:`). Press `i` in the reading pane
-to toggle the saved image-preview setting. Select an attachment or embedded
-image to preview it; remote images require a separate **Load image** action.
-Previews are off by default and require a terminal supporting the Kitty graphics
-protocol. Escape returns to the image picker; Escape again returns to the reader.
+TideMail renders HTML mail as terminal text, with optional images inside the
+reading pane. Press **`i`** while reading to show or hide images. Turning images
+on requests remote images for that message; opening another message never
+implicitly grants permission to download its remote images. You can also use
+**Load remote images in this message** in the command palette (`:`).
+Images are off by default; the saved setting lives under
+**Settings → Display → Reading → Images in message**. Inline graphics require a
+terminal supporting Kitty Unicode image placeholders. **Preview images** remains
+available in the command palette for a full-screen view.
 Full headers are one `Ctrl+E` away, with SPF, DKIM, and DMARC results called out
 in color.
 

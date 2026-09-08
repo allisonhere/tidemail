@@ -156,6 +156,7 @@ type Model struct {
 	viewport               viewport.Model
 	contentLinks           []string
 	contentLinkIdx         int
+	inlineImages           inlineImageState
 	imagePreview           imagePreviewState
 	contentMessageID       int64
 	contentFocusLine       int
@@ -279,6 +280,9 @@ type Model struct {
 // CloseSessions logs out all pooled IMAP connections and stops the IDLE push
 // watchers; called on shutdown.
 func (m Model) CloseSessions() {
+	if m.inlineImages.cancel != nil {
+		m.inlineImages.cancel()
+	}
 	if m.imagePreview.cancel != nil {
 		m.imagePreview.cancel()
 	}
@@ -404,9 +408,32 @@ func (m Model) Init() tea.Cmd {
 // ── Update ───────────────────────────────────────────────────────────────────
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.update(msg)
+	if model, ok := next.(Model); ok {
+		imageCmd := model.syncInlineImages()
+		if imageCmd != nil {
+			cmd = tea.Batch(cmd, imageCmd)
+		}
+		return model, cmd
+	}
+	return next, cmd
+}
+
+func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Update handles async results before key routing so completed commands cannot be swallowed by modal focus. -allie
 	switch msg := msg.(type) {
 
+	case inlineProbeMsg:
+		m.inlineImages.checked = true
+		m.inlineImages.checking = false
+		m.inlineImages.supported = msg.supported
+		m.inlineImages.cellAspect = msg.aspect
+		if !msg.supported {
+			m.setStatus("Inline images unavailable in this terminal; use Preview images or Save attachments", false)
+		}
+		return m, nil
+	case inlineLoadedMsg:
+		return m.handleInlineLoaded(msg)
 	case imageLoadedMsg:
 		return m.handleImageLoaded(msg)
 	case imagePreviewClosedMsg:
@@ -1845,10 +1872,12 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.ToggleImages) && m.focused == paneContent && m.contentMessageID != 0:
 		m.cfg.Display.ImagePreviews = !m.cfg.Display.ImagePreviews
 		if m.cfg.Display.ImagePreviews {
-			m.setStatus("Image previews on — use Preview images in the command palette", false)
+			m.inlineImages.requestedMessageID = m.contentMessageID
+			m.setStatus("Images on — loading images for this message", false)
 		} else {
 			m.resetImagePreview()
-			m.setStatus("Image previews off", false)
+			m.inlineImages.requestedMessageID = 0
+			m.setStatus("Images off", false)
 		}
 		m.saveConfig()
 		return m, m.clearStatusCmd()

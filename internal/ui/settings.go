@@ -1633,7 +1633,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addToggle("Mark read on focus", s.markReadOnFocus, sfMarkReadOnFocus)
 		b.addToggle("Actionable article links", s.actionableLinks, sfActionableLinks)
 		b.addToggle("Filter links from articles", s.filterLinks, sfFilterLinks)
-		b.addToggle("Image previews", s.imagePreviews, sfImagePreviews)
+		b.addToggle("Images in message", s.imagePreviews, sfImagePreviews)
 		b.addGroup("Behavior")
 		b.addInput("Browser command", s.browserInput, sfBrowser)
 		b.addToggle("Confirm before quitting", s.confirmQuit, sfConfirmQuit)
@@ -2487,7 +2487,7 @@ func (s Settings) fieldHint(field settingsField) string {
 	case sfActionableLinks:
 		return "enable ctrl+n / ctrl+p to select links in article content; o opens selected link"
 	case sfImagePreviews:
-		return "enable the Preview images command; remote images load only on request"
+		return "show embedded images inline; i or Load remote images loads remote images for this message"
 	case sfFilterLinks:
 		return "strip bare URLs from the article body text"
 	case sfFocusLine:

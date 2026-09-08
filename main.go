@@ -12,6 +12,7 @@ import (
 
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
+	"github.com/allisonhere/tidemail/internal/imagepreview"
 	"github.com/allisonhere/tidemail/internal/ui"
 )
 
@@ -119,7 +120,15 @@ func run() (code int, restartExec string) {
 		defer uiModel.CloseSessions()
 	}
 
-	p := tea.NewProgram(model, programOptions()...)
+	options := programOptions()
+	if uiModel, ok := model.(ui.Model); ok {
+		output := imagepreview.NewInlineWriter(os.Stdout)
+		defer output.Close()
+		uiModel.SetInlineImageOutput(output)
+		model = uiModel
+		options = append(options, tea.WithOutput(output))
+	}
+	p := tea.NewProgram(model, options...)
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -136,6 +145,7 @@ func run() (code int, restartExec string) {
 	// A finished session may ask to re-exec the freshly installed binary (in-app
 	// update restart). main does the exec after this function's defers run.
 	if um, ok := finalModel.(ui.Model); ok {
+		defer um.CancelImageLoads()
 		restartExec = um.RestartExecPath()
 		if restartExec == "" && (um.QuitActivated() || um.HasPendingDestructiveActions() || um.HasPendingSends()) {
 			quitIndicator = startShutdownIndicator()

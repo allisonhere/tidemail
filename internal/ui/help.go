@@ -96,7 +96,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{"v/V", "visual select line range / whole message"},
 				{"y/ctrl+c", "copy selected message text; ctrl+c copies focus line without selection"},
 				{keys.ToggleHeaders.Help().Key, "toggle full email headers"},
-				{keys.ToggleImages.Help().Key, "toggle image previews on/off while reading (saved setting)"},
+				{keys.ToggleImages.Help().Key, "show/hide inline images; turning on loads this message’s images"},
 				{keys.SaveAttach.Help().Key, "save all attachments to folder"},
 				{keys.ToggleQuote.Help().Key, "toggle quoted text collapse"},
 				{keys.Summary.Help().Key, "open AI summary overlay"},

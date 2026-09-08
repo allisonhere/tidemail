@@ -1,7 +1,9 @@
 package imagepreview
 
 import (
+	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -84,29 +86,12 @@ func runPreview(screen previewScreen, img Image, signals <-chan os.Signal) error
 	if _, err := io.WriteString(screen, "\x1b[?1049h\x1b[?25l\x1b[2J\x1b[H"); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(screen, "\x1b_Gi=%d,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\", imageID); err != nil {
-		return err
+	supported, err := probeScreen(screen, signals)
+	if errors.Is(err, context.Canceled) {
+		return nil
 	}
-	response := ""
-	supported := false
-	for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); {
-		select {
-		case <-signals:
-			return nil
-		default:
-		}
-		input, err := screen.read(100 * time.Millisecond)
-		if err != nil {
-			return err
-		}
-		response += input
-		if strings.Contains(response, fmt.Sprintf("\x1b_Gi=%d;OK\x1b\\", imageID)) {
-			supported = true
-			break
-		}
-		if len(response) > 4096 || strings.Contains(response, "\x03") {
-			break
-		}
+	if err != nil {
+		return err
 	}
 	if !supported {
 		return fmt.Errorf("this terminal does not support image previews; image descriptions and Save attachments are still available")
@@ -144,6 +129,10 @@ func runPreview(screen previewScreen, img Image, signals <-chan os.Signal) error
 }
 
 func transmitPNG(out io.Writer, png []byte) error {
+	return transmitPNGWithID(out, png, imageID)
+}
+
+func transmitPNGWithID(out io.Writer, png []byte, id uint32) error {
 	encoded := base64.StdEncoding.EncodeToString(png)
 	for offset := 0; offset < len(encoded); offset += 4096 {
 		end := min(offset+4096, len(encoded))
@@ -153,7 +142,7 @@ func transmitPNG(out io.Writer, png []byte) error {
 		}
 		metadata := ""
 		if offset == 0 {
-			metadata = fmt.Sprintf("a=t,f=100,t=d,i=%d,", imageID)
+			metadata = fmt.Sprintf("a=t,f=100,t=d,i=%d,", id)
 		}
 		if _, err := fmt.Fprintf(out, "\x1b_G%sq=2,m=%d;%s\x1b\\", metadata, more, encoded[offset:end]); err != nil {
 			return err
@@ -194,4 +183,59 @@ func placeImage(out io.Writer, img Image, size screenSize) error {
 	}
 	_, err := fmt.Fprintf(out, "\x1b[3;%dH\x1b_Ga=p,i=%d,p=1,c=%d,r=%d,C=1,q=2;\x1b\\", max(1, (size.cols-cols)/2+1), imageID, cols, rows)
 	return err
+}
+
+// Probe runs under tea.Exec so query replies cannot be mistaken for user keys.
+type Probe struct {
+	Supported  bool
+	CellAspect float64
+}
+
+func (*Probe) SetStdin(io.Reader)  {}
+func (*Probe) SetStdout(io.Writer) {}
+func (*Probe) SetStderr(io.Writer) {}
+func (p *Probe) Run() error {
+	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		return nil
+	}
+	defer tty.Close()
+	state, err := term.MakeRaw(int(tty.Fd()))
+	if err != nil {
+		return nil
+	}
+	defer term.Restore(int(tty.Fd()), state)
+	screen := &ttyScreen{tty}
+	p.Supported, err = probeScreen(screen, nil)
+	if size, e := screen.size(); e == nil && size.cols > 0 && size.rows > 0 && size.pixelWidth > 0 && size.pixelHeight > 0 {
+		p.CellAspect = (float64(size.pixelHeight) / float64(size.rows)) / (float64(size.pixelWidth) / float64(size.cols))
+	}
+	return err
+}
+func probeScreen(screen previewScreen, signals <-chan os.Signal) (bool, error) {
+	if _, err := fmt.Fprintf(screen, "\x1b_Gi=%d,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\", imageID); err != nil {
+		return false, err
+	}
+	response := ""
+	supported := false
+	for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); {
+		select {
+		case <-signals:
+			return false, context.Canceled
+		default:
+		}
+		input, err := screen.read(100 * time.Millisecond)
+		if err != nil {
+			return false, err
+		}
+		response += input
+		if strings.Contains(response, fmt.Sprintf("\x1b_Gi=%d;OK\x1b\\", imageID)) {
+			supported = true
+			break
+		}
+		if len(response) > 4096 || strings.Contains(response, "\x03") {
+			break
+		}
+	}
+	return supported, nil
 }

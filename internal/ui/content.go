@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/allisonhere/tidemail/internal/db"
+	"github.com/allisonhere/tidemail/internal/imagepreview"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -95,6 +96,9 @@ func (m Model) renderMessageContent(msg db.Message) string {
 }
 
 func (m Model) renderMessageBody(msg db.Message, bodyWidth int) string {
+	if body, ok := m.renderInlineMessageBody(msg, bodyWidth); ok {
+		return body
+	}
 	return m.renderMessageForDisplay(msg, bodyWidth).body
 }
 
@@ -461,6 +465,9 @@ func (m Model) contentSelectionText(fallbackFocused bool) string {
 
 	lines := make([]string, 0, end-start+1)
 	for _, line := range m.contentLines[start : end+1] {
+		if strings.ContainsRune(line, imagepreview.Placeholder) {
+			continue
+		}
 		lines = append(lines, strings.TrimRight(line, " \t"))
 	}
 	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
@@ -507,6 +514,9 @@ func (m Model) renderContentFocusLine(body string, width, height int, focused bo
 	styleLine := func(lineIdx int, style lipgloss.Style) {
 		viewIdx := lineIdx - m.viewport.YOffset
 		if viewIdx < 0 || viewIdx >= height || viewIdx >= len(lines) {
+			return
+		}
+		if strings.ContainsRune(lines[viewIdx], imagepreview.Placeholder) {
 			return
 		}
 		l := ansi.Truncate(ansi.Strip(lines[viewIdx]), width, "")

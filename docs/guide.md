@@ -344,35 +344,47 @@ Press `S` to open Settings.
 - About: repository and issue links
 
 
-## Image previews
+## Images in email
 
-Image previews are **off by default**. Enable **Settings → Display → Reading →
-Image previews**, or set `image_previews = true` under `[display]` in the config.
-Press `i` in the reading pane to toggle this saved setting on or off. It does not
-download remote images. Outside the reading pane, `i` still dismisses update notices.
-Open a message, press `:` for the command palette, and choose **Preview images**.
-Use Up/Down to select an image and Enter to preview it. Escape closes the preview;
-Escape again closes the picker.
+Images are **off by default**. While reading a message, press **`i`** to show or
+hide images right in the content pane. They appear where the email references
+them, scroll with the text, and resize to fit the reading width. Unreferenced
+image attachments appear below the body. Pressing `i` updates the saved
+**Settings → Display → Reading → Images in message** setting
+(`image_previews` under `[display]`). Outside the reading pane, `i` still dismisses
+update notices.
 
-The picker includes images referenced in the HTML and image attachments. Embedded
-`cid:` references use the attachment's MIME Content-ID. Attachments cached before
-this feature remain available by filename, but old missing CID associations are
-not guessed. Tracking pixels and explicitly hidden HTML images are omitted.
+Turning images on with `i` explicitly requests embedded and remote images for
+that message. On subsequent messages, embedded images can display locally, but
+remote images remain blocked until requested. Use **Load remote images in this
+message** in the command palette (`:`) to request them while images are already
+on. Toggling images off cancels pending loads and clears the message's image
+cache. Opening another message cancels work for the previous one.
 
-Remote images are labeled **remote**. Selecting one shows its server name; press
-Enter on **Load image** to download that image. Opening mail, enabling previews,
-and opening the picker do not download images. Downloads do not use browser
-cookies or mail credentials. The last decoded image is kept only while the picker
-is open for that message; nothing is written to a remote-image disk cache.
+The loader omits tracking pixels and explicitly hidden HTML images. Downloads
+use neither browser cookies nor mail credentials and send no referrer header.
+Image data is retained only in memory for the current message; no remote-image
+disk cache is created.
 
-PNG, JPEG, and GIF are supported; GIF previews show the first frame. Images are
-limited to 10 MiB of input and 20 million decoded pixels. Downloads time out after
-15 seconds and can be cancelled with Escape. Invalid images show an error in the
-picker, leaving the message readable.
+PNG, JPEG, and GIF are supported; GIFs show the first frame. Each source image is
+limited to 10 MiB and 20 million decoded pixels. A message can retain up to
+40 million decoded pixels across its inline images. Downloads time out after
+15 seconds. Invalid, missing, or oversized images leave the text readable and
+show an explanatory message. Embedded `cid:` references use MIME Content-ID;
+attachments cached before this feature remain available by filename, but unknown
+CID associations are not guessed.
 
-The full-screen preview uses the Kitty graphics protocol and checks support
-before displaying graphics. Unsupported terminals retain text descriptions and
-the existing Save attachments action. Terminal multiplexers may prevent protocol
-detection. Previews resize to fit the terminal; terminals that do not report pixel
-dimensions use an estimated cell aspect ratio. Images are not inserted into the
-scrolling message body.
+Inline images use the Kitty graphics protocol's Unicode placeholders. An
+unsupported terminal falls back to image descriptions and **Save attachments**.
+Images fit within 64 columns and 32 rows, preserving aspect ratio. Terminals that
+do not report pixel dimensions use an estimated cell aspect ratio. Image rows
+are excluded from copied text.
+
+For a closer look, choose **Preview images** in the command palette. Use Up/Down
+to select an image and Enter to open a full-screen preview. Remote images require
+**Load image** in that picker. Escape returns to the picker; Escape again returns
+to the message. This separate view is optional; it isn't needed for inline images.
+
+Developers can run the interactive reader smoke test in a compatible terminal:
+`TIDEMAIL_INTERACTIVE_INLINE_TEST=1 go test ./internal/ui -run TestInteractiveInlineImages -v`.
+The fixture is synthetic, and the test does not save user settings or access mail.
