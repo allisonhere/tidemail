@@ -342,3 +342,35 @@ Press `S` to open Settings.
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings
 - Advanced: logs and feed max body size
 - About: repository and issue links
+
+
+## Image previews
+
+Image previews are **off by default**. Enable **Settings → Display → Reading →
+Image previews**, or set `image_previews = true` under `[display]` in the config.
+Open a message, press `:` for the command palette, and choose **Preview images**.
+Use Up/Down to select an image and Enter to preview it. Escape closes the preview;
+Escape again closes the picker.
+
+The picker includes images referenced in the HTML and image attachments. Embedded
+`cid:` references use the attachment's MIME Content-ID. Attachments cached before
+this feature remain available by filename, but old missing CID associations are
+not guessed. Tracking pixels and explicitly hidden HTML images are omitted.
+
+Remote images are labeled **remote**. Selecting one shows its server name; press
+Enter on **Load image** to download that image. Opening mail, enabling previews,
+and opening the picker do not download images. Downloads do not use browser
+cookies or mail credentials. The last decoded image is kept only while the picker
+is open for that message; nothing is written to a remote-image disk cache.
+
+PNG, JPEG, and GIF are supported; GIF previews show the first frame. Images are
+limited to 10 MiB of input and 20 million decoded pixels. Downloads time out after
+15 seconds and can be cancelled with Escape. Invalid images show an error in the
+picker, leaving the message readable.
+
+The full-screen preview uses the Kitty graphics protocol and checks support
+before displaying graphics. Unsupported terminals retain text descriptions and
+the existing Save attachments action. Terminal multiplexers may prevent protocol
+detection. Previews resize to fit the terminal; terminals that do not report pixel
+dimensions use an estimated cell aspect ratio. Images are not inserted into the
+scrolling message body.

@@ -25,6 +25,7 @@ import (
 )
 
 type bodyAttachment struct {
+	ContentID   string
 	Filename    string
 	ContentType string
 	Data        []byte
@@ -215,6 +216,7 @@ func parseIMAPMessage(msg *imapclient.FetchMessageBuffer) (db.Message, error) {
 				m.AttachmentData[i] = db.Attachment{
 					Filename:    sanitizeControl(a.Filename),
 					ContentType: a.ContentType,
+					ContentID:   a.ContentID,
 					Data:        a.Data,
 					Size:        int64(len(a.Data)),
 				}
@@ -379,6 +381,7 @@ func parseBody(raw []byte) (text, html string, attachments []bodyAttachment) {
 			if ct != "" && !strings.HasPrefix(ct, "multipart/") {
 				attachments = append(attachments, bodyAttachment{
 					Filename:    filenameFromPart(part, params, ct),
+					ContentID:   strings.Trim(strings.TrimSpace(part.Header.Get("Content-ID")), "<>"),
 					ContentType: ct,
 					Data:        data,
 				})

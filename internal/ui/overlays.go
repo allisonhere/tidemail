@@ -13,6 +13,8 @@ func (m Model) renderOverlay(base string) string {
 	var box string
 
 	switch m.overlay {
+	case overlayImagePreview:
+		box = m.renderImagePicker()
 	case overlayQuitConfirm:
 		quitW := 40
 		qt := m.styles.Theme

@@ -86,6 +86,7 @@ func (m Model) mainCommandItems() []commandItem {
 	hasMessage := m.activeMessageRowCount() > 0 && m.focused != paneAccounts
 	hasMailbox := m.selectedMailbox() != nil
 	return []commandItem{
+		{id: "preview-images", label: "Preview images", enabled: m.cfg.Display.ImagePreviews && (m.contentMessageID != 0 || hasMessage)},
 		{id: "outbox", label: "Open Outbox (queued, failed, and sent mail)", enabled: true},
 		{id: "compose", label: "Compose new message", enabled: len(m.cfg.Accounts) > 0},
 		{id: "reply", label: "Reply to current message", enabled: m.contentMessageID != 0 || hasMessage},
@@ -151,6 +152,8 @@ func (m Model) filteredCommandItems() []commandItem {
 
 func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 	switch id {
+	case "preview-images":
+		return m.openImagePreview()
 	case "outbox":
 		m.openOutbox()
 		return m, nil

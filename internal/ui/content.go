@@ -192,6 +192,9 @@ func (m Model) focusedLineLink() (string, bool) {
 }
 
 func (m *Model) setViewportMessage(msg db.Message) {
+	if m.imagePreview.messageID != 0 && m.imagePreview.messageID != msg.ID {
+		m.resetImagePreview()
+	}
 	sameMsg := m.contentMessageID == msg.ID && m.contentLineCount > 0
 	m.syncContentLinks(msg)
 	m.contentAttachments = nil
@@ -223,6 +226,9 @@ func (m *Model) setViewportMessage(msg db.Message) {
 
 func (m *Model) setViewportThread(thread messageThread) {
 	rep := thread.Representative
+	if m.imagePreview.messageID != 0 && m.imagePreview.messageID != rep.ID {
+		m.resetImagePreview()
+	}
 	sameMsg := m.contentMessageID == rep.ID && m.contentLineCount > 0
 	m.syncThreadContentLinks(thread)
 	m.contentAttachments = nil
@@ -258,6 +264,7 @@ func (m *Model) setViewportForCurrentRow() {
 }
 
 func (m *Model) clearViewportMessage() {
+	m.resetImagePreview()
 	m.viewport.SetContent("")
 	m.contentLinks = nil
 	m.contentLinkIdx = -1

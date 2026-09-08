@@ -51,6 +51,7 @@ type DisplayConfig struct {
 	FocusLine             bool               `toml:"focus_line"`
 	DefaultUnreadOnly     bool               `toml:"default_unread_only"`
 	ActionableLinks       bool               `toml:"actionable_links"`
+	ImagePreviews         bool               `toml:"image_previews"`
 	FilterLinks           bool               `toml:"filter_links"`
 	ShowSender            bool               `toml:"show_sender"`
 	ThreadedConversations bool               `toml:"threaded_conversations"`

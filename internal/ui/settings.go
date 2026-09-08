@@ -41,6 +41,7 @@ const (
 	sfStarredFirst
 	sfActionableLinks
 	sfFilterLinks
+	sfImagePreviews
 	sfReadingWidth
 	sfDisplayDensity
 	sfPaneCorners
@@ -239,6 +240,7 @@ type Settings struct {
 	unreadFirst           bool
 	starredFirst          bool
 	actionableLinks       bool
+	imagePreviews         bool
 	filterLinks           bool
 	confirmQuit           bool
 	showHeaders           bool
@@ -343,6 +345,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		unreadFirst:           cfg.Display.UnreadFirst,
 		starredFirst:          cfg.Display.StarredFirst,
 		actionableLinks:       cfg.Display.ActionableLinks,
+		imagePreviews:         cfg.Display.ImagePreviews,
 		filterLinks:           cfg.Display.FilterLinks,
 		confirmQuit:           cfg.Display.ConfirmQuit,
 		showHeaders:           cfg.Display.ShowHeaders,
@@ -416,6 +419,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.UnreadFirst = s.unreadFirst
 	cfg.Display.StarredFirst = s.starredFirst
 	cfg.Display.ActionableLinks = s.actionableLinks
+	cfg.Display.ImagePreviews = s.imagePreviews
 	cfg.Display.FilterLinks = s.filterLinks
 	cfg.Display.ConfirmQuit = s.confirmQuit
 	cfg.Display.ShowHeaders = s.showHeaders
@@ -659,7 +663,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
 		fields = append(fields, sfShowSender, sfThreadedConversations, sfDefaultUnreadOnly, sfUnreadFirst, sfStarredFirst)
-		fields = append(fields, sfReadingWidth, sfShowHeaders, sfMarkReadOnOpen, sfMarkReadOnFocus, sfActionableLinks, sfFilterLinks)
+		fields = append(fields, sfReadingWidth, sfShowHeaders, sfMarkReadOnOpen, sfMarkReadOnFocus, sfActionableLinks, sfFilterLinks, sfImagePreviews)
 		return append(fields, sfBrowser, sfConfirmQuit, sfNotifications)
 	case ssEditor:
 		return []settingsField{sfBackToSections, sfComposeVim, sfSendDelay, sfSendMaxAttempts}
@@ -1201,6 +1205,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfImagePreviews:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.imagePreviews = !s.imagePreviews
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfFilterLinks:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.filterLinks = !s.filterLinks
@@ -1620,6 +1633,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addToggle("Mark read on focus", s.markReadOnFocus, sfMarkReadOnFocus)
 		b.addToggle("Actionable article links", s.actionableLinks, sfActionableLinks)
 		b.addToggle("Filter links from articles", s.filterLinks, sfFilterLinks)
+		b.addToggle("Image previews", s.imagePreviews, sfImagePreviews)
 		b.addGroup("Behavior")
 		b.addInput("Browser command", s.browserInput, sfBrowser)
 		b.addToggle("Confirm before quitting", s.confirmQuit, sfConfirmQuit)
@@ -2472,6 +2486,8 @@ func (s Settings) fieldHint(field settingsField) string {
 		return "square or round corners for the pane borders"
 	case sfActionableLinks:
 		return "enable ctrl+n / ctrl+p to select links in article content; o opens selected link"
+	case sfImagePreviews:
+		return "enable the Preview images command; remote images load only on request"
 	case sfFilterLinks:
 		return "strip bare URLs from the article body text"
 	case sfFocusLine:

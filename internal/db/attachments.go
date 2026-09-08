@@ -7,6 +7,7 @@ type Attachment struct {
 	MessageID   int64
 	Filename    string
 	ContentType string
+	ContentID   string
 	Data        []byte
 	Size        int64
 }
@@ -20,9 +21,9 @@ func (db *DB) SaveAttachment(msgID int64, a Attachment) (int64, error) {
 	}
 	res, err := db.Exec(`
 		INSERT INTO attachments
-			(message_id, filename, content_type, data, size)
-		VALUES (?, ?, ?, ?, ?)`,
-		msgID, a.Filename, a.ContentType, a.Data, a.Size)
+			(message_id, filename, content_type, content_id, data, size)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		msgID, a.Filename, a.ContentType, a.ContentID, a.Data, a.Size)
 	if err != nil {
 		return 0, fmt.Errorf("save attachment: %w", err)
 	}
@@ -31,7 +32,7 @@ func (db *DB) SaveAttachment(msgID int64, a Attachment) (int64, error) {
 
 func (db *DB) GetAttachments(msgID int64) ([]Attachment, error) {
 	rows, err := db.Query(`
-		SELECT id, message_id, filename, content_type, data, size
+		SELECT id, message_id, filename, content_type, content_id, data, size
 		FROM attachments WHERE message_id = ?
 		ORDER BY id`, msgID)
 	if err != nil {
@@ -42,7 +43,7 @@ func (db *DB) GetAttachments(msgID int64) ([]Attachment, error) {
 	var atts []Attachment
 	for rows.Next() {
 		var a Attachment
-		if err := rows.Scan(&a.ID, &a.MessageID, &a.Filename, &a.ContentType, &a.Data, &a.Size); err != nil {
+		if err := rows.Scan(&a.ID, &a.MessageID, &a.Filename, &a.ContentType, &a.ContentID, &a.Data, &a.Size); err != nil {
 			return nil, fmt.Errorf("scan attachment: %w", err)
 		}
 		atts = append(atts, a)
@@ -56,4 +57,33 @@ func (db *DB) DeleteAttachmentsForMessage(msgID int64) error {
 		return fmt.Errorf("delete attachments: %w", err)
 	}
 	return nil
+}
+
+// Existing caches have no CID metadata; leave those associations unknown.
+func (db *DB) migrateAttachmentContentID() error {
+	rows, err := db.Query(`PRAGMA table_info(attachments)`)
+	if err != nil {
+		return err
+	}
+	found := false
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, typ string
+		var defaultValue interface{}
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		found = found || name == "content_id"
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	_, err = db.Exec(`ALTER TABLE attachments ADD COLUMN content_id TEXT NOT NULL DEFAULT ''`)
+	return err
 }

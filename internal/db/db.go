@@ -241,6 +241,9 @@ func (db *DB) migrate() error {
 	if err := db.migrateDraftsBCC(); err != nil {
 		return err
 	}
+	if err := db.migrateAttachmentContentID(); err != nil {
+		return err
+	}
 	if err := db.migrateMessageFTS(); err != nil {
 		return err
 	}

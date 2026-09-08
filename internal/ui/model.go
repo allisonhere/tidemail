@@ -67,6 +67,7 @@ const (
 	overlayCompose
 	overlayCommandPalette
 	overlaySaveAttach
+	overlayImagePreview
 	overlayMoveMessage
 	overlayGrammarPreview
 	overlayLogViewer
@@ -155,6 +156,7 @@ type Model struct {
 	viewport               viewport.Model
 	contentLinks           []string
 	contentLinkIdx         int
+	imagePreview           imagePreviewState
 	contentMessageID       int64
 	contentFocusLine       int
 	contentLineCount       int
@@ -277,6 +279,9 @@ type Model struct {
 // CloseSessions logs out all pooled IMAP connections and stops the IDLE push
 // watchers; called on shutdown.
 func (m Model) CloseSessions() {
+	if m.imagePreview.cancel != nil {
+		m.imagePreview.cancel()
+	}
 	m.stopIdleWatchers()
 	if m.sessions != nil {
 		m.sessions.Close()
@@ -401,6 +406,14 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Update handles async results before key routing so completed commands cannot be swallowed by modal focus. -allie
 	switch msg := msg.(type) {
+
+	case imageLoadedMsg:
+		return m.handleImageLoaded(msg)
+	case imagePreviewClosedMsg:
+		if msg.generation == m.imagePreview.generation && msg.err != nil {
+			m.imagePreview.status = safeImageLabel(msg.err.Error())
+		}
+		return m, nil
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -2147,6 +2160,8 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayCompose:
 		return m.handleCompose(msg)
 
+	case overlayImagePreview:
+		return m.handleImagePreviewKey(msg)
 	case overlaySaveAttach:
 		return m.handleSaveAttachPicker(msg)
 
