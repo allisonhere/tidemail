@@ -348,6 +348,8 @@ Press `S` to open Settings.
 
 Image previews are **off by default**. Enable **Settings → Display → Reading →
 Image previews**, or set `image_previews = true` under `[display]` in the config.
+Press `i` in the reading pane to toggle this saved setting on or off. It does not
+download remote images. Outside the reading pane, `i` still dismisses update notices.
 Open a message, press `:` for the command palette, and choose **Preview images**.
 Use Up/Down to select an image and Enter to preview it. Escape closes the preview;
 Escape again closes the picker.

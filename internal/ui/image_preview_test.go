@@ -102,3 +102,29 @@ func TestImagePreviewMissingCIDAndCache(t *testing.T) {
 		t.Fatal("cached image requested download again")
 	}
 }
+
+func TestImageShortcutTogglesAndPersistsWithoutLoading(t *testing.T) {
+	original := configSave
+	t.Cleanup(func() { configSave = original })
+	var saved []bool
+	configSave = func(cfg config.Config) error { saved = append(saved, cfg.Display.ImagePreviews); return nil }
+	m := imageTestModel()
+	m.resetImagePreview()
+	m.focused = paneContent
+	m.cfg.Display.ImagePreviews = false
+	for _, want := range []bool{true, false} {
+		model, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+		m = model.(Model)
+		if m.cfg.Display.ImagePreviews != want || m.overlay != overlayNone || m.imagePreview.loading {
+			t.Fatalf("toggle: enabled=%v overlay=%v loading=%v", m.cfg.Display.ImagePreviews, m.overlay, m.imagePreview.loading)
+		}
+	}
+	if len(saved) != 2 || !saved[0] || saved[1] {
+		t.Fatalf("saved settings: %v", saved)
+	}
+	m.focused = paneMessages
+	model, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	if model.(Model).cfg.Display.ImagePreviews || len(saved) != 2 {
+		t.Fatal("image toggle escaped reading pane")
+	}
+}

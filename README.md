@@ -120,7 +120,8 @@ attachments to a folder you choose.
 
 TideMail renders HTML mail as terminal text and does not automatically load remote images.
 Enable **Settings → Display → Reading → Image previews**, then use
-**Preview images** in the command palette (`:`). Select an attachment or embedded
+**Preview images** in the command palette (`:`). Press `i` in the reading pane
+to toggle the saved image-preview setting. Select an attachment or embedded
 image to preview it; remote images require a separate **Load image** action.
 Previews are off by default and require a terminal supporting the Kitty graphics
 protocol. Escape returns to the image picker; Escape again returns to the reader.

@@ -1842,7 +1842,18 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case msg.String() == "i":
+	case keyMatches(msg, m.keys.ToggleImages) && m.focused == paneContent && m.contentMessageID != 0:
+		m.cfg.Display.ImagePreviews = !m.cfg.Display.ImagePreviews
+		if m.cfg.Display.ImagePreviews {
+			m.setStatus("Image previews on — use Preview images in the command palette", false)
+		} else {
+			m.resetImagePreview()
+			m.setStatus("Image previews off", false)
+		}
+		m.saveConfig()
+		return m, m.clearStatusCmd()
+
+	case keyMatches(msg, m.keys.UpdateIgnore):
 		if m.showAvailableUpdatePrompt() {
 			return m, m.dismissAvailableUpdate()
 		}
@@ -2654,6 +2665,7 @@ func (m Model) renderPaneHint(p pane) string {
 			m.keyHint(m.keys.Reply) + " reply  " + m.keyHint(m.keys.Forward) + " fwd  " +
 			m.keyHint(m.keys.Search) + " find  " +
 			m.keyHint(m.keys.ToggleHeaders) + " headers  " +
+			m.keyHint(m.keys.ToggleImages) + " images  " +
 			m.keyHint(m.keys.Back) + " back"
 		if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
 			hint += "  " + m.keyHint(m.keys.PrevLink) + "/" + m.keyHint(m.keys.NextLink) + " links"
