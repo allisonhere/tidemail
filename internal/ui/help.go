@@ -160,8 +160,8 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.TestAccount.Help().Key, "test account form"},
 				{keys.OAuthSignIn.Help().Key, "sign in (Gmail / Outlook provider with Auth: OAuth)"},
 				{"Signature", `use \n for a line break in the account form`},
-				{"Auth row", "Gmail/Outlook: ‹ / › picks App password or OAuth sign-in"},
-				{"Gmail OAuth", "needs TIDEMAIL_GOOGLE_CLIENT_ID / _SECRET; device-code flow"},
+				{"Auth row", "when available, Gmail/Outlook: ‹ / › picks App password or OAuth sign-in"},
+				{"Gmail OAuth", "needs TIDEMAIL_GOOGLE_CLIENT_ID / _SECRET; --disable-google-oauth previews App Password-only UI"},
 				{"Outlook OAuth", "works out of the box; TIDEMAIL_MS_CLIENT_ID for a device code"},
 				{"App password", "Gmail: 2-Step Verification → App Passwords; Outlook: M365 only"},
 				{"Exchange (on-prem)", "use Custom provider with your server + password (no OAuth)"},
@@ -210,6 +210,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.Left.Help().Key + "/" + keys.Right.Help().Key, "change picker fields"},
 				{keys.Save.Help().Key, "save settings"},
 				{"Editor", "set compose keys and the ctrl+z send delay"},
+				{"Pane header bars", "show titles and shortcuts above panes; off restores one row and moves focused-pane details to the status bar"},
 				{keys.Cancel.Help().Key, "back to sections, then cancel from the section list"},
 				{"q", "discard and close from the section list"},
 			},
@@ -223,7 +224,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{"Attach file", "enter opens dir/attaches file; h/left parent; . toggles hidden files; letters jump"},
 				{"Save attachments", "enter opens/selects folder; h/left parent; . toggles hidden files; letters jump"},
 				{"Summary overlay", "C copies; M saves .md; z toggles quoted text; esc closes"},
-				{"Search overlays", "/ enters persistent search mode — type to filter globally, enter stops editing, esc exits; ctrl+f opens in-content find overlay"},
+				{"Search", "/ opens a dedicated row above message subjects; type to filter globally, enter keeps results, / edits again, esc exits; ctrl+f finds in content"},
 				{"Confirm dialogs", "enter/y confirms; esc/n cancels"},
 			},
 		},
@@ -282,7 +283,11 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		}
 		lines = append(lines, muted(summary), blank)
 	} else {
-		lines = append(lines, muted("The status bar always shows: M accounts · C contacts · S settings · / search · ? help"), blank)
+		lines = append(lines,
+			muted("With pane headers on, the status bar shows: M accounts · C contacts · S settings · / search · ? help"),
+			muted("With pane headers off, it shows the focused pane title and shortcuts; Accounts also keeps the global shortcuts."),
+			blank,
+		)
 	}
 
 	for _, s := range sections {

@@ -21,6 +21,7 @@ type startupOptions struct {
 	previewManualUpdate   bool
 	previewUpdateProgress bool
 	prototypeForms        bool
+	disableGoogleOAuth    bool
 }
 
 func parseStartupOptions(args []string) startupOptions {
@@ -33,6 +34,8 @@ func parseStartupOptions(args []string) startupOptions {
 			opts.previewUpdateProgress = true
 		case "--prototype-forms":
 			opts.prototypeForms = true
+		case "--disable-google-oauth":
+			opts.disableGoogleOAuth = true
 		}
 	}
 	return opts
@@ -78,6 +81,7 @@ func run() (code int, restartExec string) {
 		fmt.Fprintln(os.Stderr, "warning: could not load config:", config.RedactSecrets(err.Error(), cfg))
 		cfg = config.DefaultConfig()
 	}
+	applyStartupOverrides(&cfg, opts)
 	if warnings, err := config.SecurityWarnings(); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: could not check config permissions:", config.RedactSecrets(err.Error(), cfg))
 	} else {
@@ -156,6 +160,18 @@ func run() (code int, restartExec string) {
 		}
 	}
 	return 0, restartExec
+}
+
+func applyStartupOverrides(cfg *config.Config, opts startupOptions) {
+	if cfg == nil || !opts.disableGoogleOAuth {
+		return
+	}
+	// Development/test override: exercise the same account-manager path a user
+	// sees when they have not configured a Google OAuth client. This is
+	// runtime-only; never rewrite the user's saved credentials.
+	cfg.OAuth.GoogleClientID = ""
+	cfg.OAuth.GoogleClientSecret = ""
+	cfg.OAuth.GoogleDisabled = true
 }
 
 func programOptions() []tea.ProgramOption {

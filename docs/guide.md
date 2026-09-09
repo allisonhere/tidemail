@@ -193,6 +193,15 @@ If the refresh token is revoked (or the consent screen was left in "Testing" and
 expired it), the next sync shows "sign-in expired — press M to re-authenticate";
 re-open the account and press `Ctrl+O` again.
 
+Developers can preview the Gmail App Password-only account form without changing
+saved credentials:
+
+```sh
+go run . --disable-google-oauth
+```
+
+See [Development flags](flags.md) for the behavior and other UI preview options.
+
 ### Outlook OAuth sign-in
 
 The **Outlook** provider covers Outlook.com, Hotmail/Live, and Microsoft 365 /

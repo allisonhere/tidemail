@@ -23,6 +23,7 @@ type OAuthConfig struct {
 	GoogleClientID     string `toml:"google_client_id"`
 	GoogleClientSecret string `toml:"google_client_secret"`
 	MSClientID         string `toml:"ms_client_id"`
+	GoogleDisabled     bool   `toml:"-"`
 }
 
 // ThunderbirdMSClientID is Mozilla Thunderbird's Microsoft app registration —

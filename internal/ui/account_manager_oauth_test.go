@@ -190,6 +190,39 @@ func TestAuthMethodSelectorAbsentForNonGmail(t *testing.T) {
 	}
 }
 
+func TestDisabledGoogleOAuthHidesSelectorAndShowsUserMessage(t *testing.T) {
+	am := gmailFormManager()
+	am.oauthCfg.GoogleDisabled = true
+	am.mode = amAdd
+	am.useOAuth = false
+	am.focusField(amFieldUser)
+	am.advanceField(1)
+	if am.focusedField != amFieldPass {
+		t.Fatalf("disabled Google OAuth should navigate directly to Password, got %v", am.focusedField)
+	}
+
+	view := ansi.Strip(am.viewForm(72, 30, newManagerChrome(72, CatppuccinMocha, false)))
+	if strings.Contains(view, "OAuth · sign in with Google") || strings.Contains(view, "Sign in with Google") {
+		t.Fatalf("disabled Google OAuth still rendered sign-in controls:\n%s", view)
+	}
+	if !strings.Contains(view, "Google OAuth is unavailable") || !strings.Contains(view, "Use a Google App Password instead") {
+		t.Fatalf("disabled Google OAuth message missing:\n%s", view)
+	}
+}
+
+func TestDisabledGoogleOAuthPreservesExistingOAuthAccountOnSave(t *testing.T) {
+	am := editFormManager(config.AccountConfig{
+		Name: "Gmail", Provider: "Gmail", AuthMethod: config.AuthOAuth2,
+		IMAPHost: "imap.gmail.com", IMAPPort: 993, SMTPPort: 587,
+		User: "me@gmail.com", RefreshToken: "refresh-1",
+	}, config.OAuthConfig{GoogleDisabled: true})
+
+	cfg := am.buildCfg()
+	if cfg.AuthMethod != config.AuthOAuth2 || cfg.RefreshToken != "refresh-1" {
+		t.Fatalf("disabled preview converted existing OAuth account: auth=%q refresh=%q", cfg.AuthMethod, cfg.RefreshToken)
+	}
+}
+
 func TestGmailFormRejectsSaveWithoutCredentials(t *testing.T) {
 	am := gmailFormManager()
 	cfg := am.buildCfg()

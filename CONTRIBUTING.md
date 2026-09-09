@@ -18,4 +18,6 @@ Thanks for helping out! A few quick notes:
   than dropping them; mark deliberate ignores with `//nolint:errcheck`.
 - **Tests**: prefer table-driven tests; the UI package sandboxes config/data dirs via
   `testmain_test.go`.
+- **UI preview flags**: see [`docs/flags.md`](docs/flags.md), including the
+  App Password-only Gmail preview.
 - **Commits/releases**: releases are cut from `v*` tags via `deploy.sh`.

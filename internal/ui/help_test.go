@@ -119,6 +119,26 @@ func TestRenderHelpDocumentsPaneResizeShortcuts(t *testing.T) {
 	}
 }
 
+func TestRenderHelpDocumentsCurrentHeaderSearchAndOAuthBehavior(t *testing.T) {
+	view := ansi.Strip(renderHelp(120, BuildStyles(CatppuccinMocha, "comfortable", "square"), DefaultKeys, ""))
+	for _, want := range []string{
+		"Pane header bars",
+		"off restores one row",
+		"focused pane title and shortcuts",
+		"dedicated row above message subjects",
+		"--disable-google-oauth",
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("expected help to document current behavior %q, got %q", want, view)
+		}
+	}
+	for _, stale := range []string{"status bar always shows", "Search overlays"} {
+		if strings.Contains(view, stale) {
+			t.Fatalf("expected stale help copy %q to be removed, got %q", stale, view)
+		}
+	}
+}
+
 func TestRenderLogViewerRowsFillModalWidth(t *testing.T) {
 	m := NewModel(nil, config.DefaultConfig(), "dev", false)
 	m.styles = BuildStyles(CatppuccinMocha, "comfortable", "square")

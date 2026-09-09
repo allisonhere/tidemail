@@ -3,6 +3,8 @@ package main
 import (
 	"runtime/debug"
 	"testing"
+
+	"github.com/allisonhere/tidemail/internal/config"
 )
 
 func TestResolvedVersionFromBuildInfoPrefersModuleVersion(t *testing.T) {
@@ -52,6 +54,30 @@ func TestParseStartupOptionsUpdateProgressPreview(t *testing.T) {
 
 	if !opts.previewUpdateProgress {
 		t.Fatal("expected --preview-update-progress to enable update progress preview")
+	}
+}
+
+func TestParseStartupOptionsDisableGoogleOAuth(t *testing.T) {
+	opts := parseStartupOptions([]string{"--disable-google-oauth"})
+
+	if !opts.disableGoogleOAuth {
+		t.Fatal("expected --disable-google-oauth to enable the runtime OAuth override")
+	}
+}
+
+func TestDisableGoogleOAuthOverrideIsRuntimeOnlyAndProviderSpecific(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.OAuth.GoogleClientID = "google-id"
+	cfg.OAuth.GoogleClientSecret = "google-secret"
+	cfg.OAuth.MSClientID = "microsoft-id"
+
+	applyStartupOverrides(&cfg, startupOptions{disableGoogleOAuth: true})
+
+	if cfg.OAuth.GoogleClientID != "" || cfg.OAuth.GoogleClientSecret != "" || !cfg.OAuth.GoogleDisabled {
+		t.Fatalf("expected Google OAuth credentials disabled, got %#v", cfg.OAuth)
+	}
+	if cfg.OAuth.MSClientID != "microsoft-id" {
+		t.Fatalf("Microsoft OAuth should be unchanged, got %q", cfg.OAuth.MSClientID)
 	}
 }
 

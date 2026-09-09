@@ -465,7 +465,13 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 	// (the password from am.passInput is kept). ClientID/Secret are toml:"-" —
 	// they only feed the live connect on save/test; fillSecrets re-fills them on
 	// later loads from the app-level [oauth] config.
-	if am.providerSupportsOAuth() && am.useOAuth && am.oauthRefreshToken != "" {
+	if am.googleOAuthDisabled() && am.origProvider == "Gmail" && am.origAuthMethod == config.AuthOAuth2 && am.oauthRefreshToken != "" {
+		// The preview flag hides Google OAuth controls but must not convert an
+		// existing OAuth account to password auth if its form is saved.
+		cfg.AuthMethod = config.AuthOAuth2
+		cfg.RefreshToken = am.oauthRefreshToken
+		cfg.Password = ""
+	} else if am.providerSupportsOAuth() && am.useOAuth && am.oauthRefreshToken != "" {
 		cfg.AuthMethod = config.AuthOAuth2
 		cfg.RefreshToken = am.oauthRefreshToken
 		cfg.Password = ""
@@ -812,7 +818,11 @@ type authCodeExchanger interface {
 
 // providerSupportsOAuth reports whether the current provider has an OAuth path.
 func (am AccountManager) providerSupportsOAuth() bool {
-	return am.provider == "Gmail" || am.provider == "Outlook"
+	return (am.provider == "Gmail" && !am.googleOAuthDisabled()) || am.provider == "Outlook"
+}
+
+func (am AccountManager) googleOAuthDisabled() bool {
+	return am.provider == "Gmail" && am.oauthCfg.GoogleDisabled
 }
 
 // oauthClientID returns the app-level client ID for the current provider, and
@@ -1474,6 +1484,10 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	if !am.providerSupportsOAuth() {
 		// Providers without an OAuth path: app password only.
 		addControl(amFieldPass, row("Password", passInput, am.focusedField == amFieldPass))
+		if am.googleOAuthDisabled() {
+			addHint("Google OAuth is unavailable.")
+			addHint("Use a Google App Password instead.")
+		}
 	} else {
 		vendor := oauthVendor(am.provider) // "Google" / "Microsoft"
 		// A left/right selector chooses the auth method. The verbose guidance
