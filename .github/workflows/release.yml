@@ -29,6 +29,10 @@ jobs:
         run: echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Build binaries
+        env:
+          TIDEMAIL_GOOGLE_CLIENT_ID: ${{ secrets.TIDEMAIL_GOOGLE_CLIENT_ID }}
+          TIDEMAIL_GOOGLE_CLIENT_SECRET: ${{ secrets.TIDEMAIL_GOOGLE_CLIENT_SECRET }}
+          RELEASE_VERSION: ${{ steps.version.outputs.tag }}
         run: |
           mkdir -p dist
           targets=(
@@ -39,10 +43,7 @@ jobs:
           )
           for entry in "${targets[@]}"; do
             read -r goos goarch name <<< "$entry"
-            CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch go build \
-              -ldflags="-s -w -X main.version=${{ steps.version.outputs.tag }}" \
-              -o "dist/$name" \
-              .
+            GOOS=$goos GOARCH=$goarch bash scripts/build-release.sh "$RELEASE_VERSION" "dist/$name"
             tar -czf "dist/$name.tar.gz" -C dist "$name"
             rm "dist/$name"
             echo "Built dist/$name.tar.gz"

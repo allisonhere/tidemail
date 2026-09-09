@@ -60,7 +60,7 @@ func TestStartGoogleOAuthNeedsClientID(t *testing.T) {
 	am := gmailFormManager()
 	am.oauthCfg = config.OAuthConfig{} // no client id
 	am, _, _ = am.startOAuthSignIn()
-	if !strings.Contains(am.statusMsg, "TIDEMAIL_GOOGLE_CLIENT_ID") {
+	if !strings.Contains(am.statusMsg, "GOOGLE SIGN-IN UNAVAILABLE IN THIS BUILD") {
 		t.Fatalf("expected a not-configured hint, got %q", am.statusMsg)
 	}
 	if am.oauthActive {
@@ -68,43 +68,19 @@ func TestStartGoogleOAuthNeedsClientID(t *testing.T) {
 	}
 }
 
-func TestGoogleDeviceCodeMsgShowsCodeInBusyLine(t *testing.T) {
+func TestGoogleSignInStartsBrowserFlow(t *testing.T) {
 	am := gmailFormManager()
-	am, _, _ = am.startOAuthSignIn()
-	if !am.oauthActive || !am.busy {
-		t.Fatal("startGoogleOAuth should mark the flow active and busy")
-	}
-	am, cmd, _ := am.updateForm(DeviceCodeMsg{
-		VerificationURL: "https://www.google.com/device",
-		UserCode:        "WXYZ-ABCD",
-	}, DefaultKeys)
-	if cmd == nil {
-		t.Fatal("expected a poll command after the device code arrives")
-	}
-	if !strings.Contains(am.busyMsg, "WXYZ-ABCD") || !strings.Contains(am.busyMsg, "google.com/device") {
-		t.Fatalf("busy line missing url/code: %q", am.busyMsg)
-	}
-}
-
-func TestGoogleDeviceCodeErrorFallsBackToPasteFlow(t *testing.T) {
-	am := gmailFormManager()
-	am, _, _ = am.startOAuthSignIn()
-	am, _, _ = am.updateForm(DeviceCodeMsg{Err: errStub("device flow not supported for scope")}, DefaultKeys)
-	if !am.oauthAwaitingCode {
-		t.Fatal("a device-code error should switch to the paste-back flow")
-	}
-	if am.oauthFlow == nil {
-		t.Fatal("paste-back flow object not created")
-	}
-	if am.focusedField != amFieldOAuthCode {
-		t.Fatalf("focus = %v, want amFieldOAuthCode", am.focusedField)
+	am, cmd, _ := am.startOAuthSignIn()
+	defer am.cancelOAuth()
+	if !am.oauthActive || !am.busy || cmd == nil || !strings.Contains(am.busyMsg, "OPENING GOOGLE") {
+		t.Fatal("Gmail should start browser sign-in directly")
 	}
 }
 
 func TestGoogleOAuthDoneSuccess(t *testing.T) {
 	am := gmailFormManager()
 	am, _, _ = am.startOAuthSignIn()
-	am, _, _ = am.updateForm(OAuth2DoneMsg{RefreshToken: "1//new-refresh"}, DefaultKeys)
+	am, _, _ = am.updateForm(OAuth2DoneMsg{attempt: am.oauthCtx, RefreshToken: "1//new-refresh"}, DefaultKeys)
 	if !am.oauthSignedIn || am.oauthRefreshToken != "1//new-refresh" {
 		t.Fatalf("sign-in not recorded: signed=%v tok=%q", am.oauthSignedIn, am.oauthRefreshToken)
 	}
@@ -116,15 +92,14 @@ func TestGoogleOAuthDoneSuccess(t *testing.T) {
 	}
 }
 
-func TestGoogleOAuthDoneErrorKeepsPasteFlowAlive(t *testing.T) {
+func TestGoogleOAuthDoneErrorAllowsRestart(t *testing.T) {
 	am := gmailFormManager()
-	am, _, _ = am.startOAuthSignIn()
-	am, _, _ = am.updateForm(DeviceCodeMsg{Err: errStub("nope")}, DefaultKeys) // -> paste flow
-	am, _, _ = am.updateForm(OAuth2DoneMsg{Err: errStub("bad code")}, DefaultKeys)
-	if !am.oauthAwaitingCode || am.oauthFlow == nil {
-		t.Fatal("a bad paste should keep the sign-in alive for a retry")
+	am, _, _ = am.startAuthCodeFlow()
+	am, _, _ = am.updateForm(OAuth2DoneMsg{attempt: am.oauthCtx, Err: errStub("bad code")}, DefaultKeys)
+	if am.oauthActive || am.oauthFlow != nil || am.busy {
+		t.Fatal("failed Google exchange should close the attempt")
 	}
-	if !strings.Contains(am.statusMsg, "SIGN-IN FAILED") {
+	if !strings.Contains(am.statusMsg, "SIGN-IN FAILED") || !strings.Contains(am.statusMsg, "CTRL+O") {
 		t.Fatalf("status = %q", am.statusMsg)
 	}
 }
@@ -316,7 +291,7 @@ func TestOAuthGmailRestoredAfterCyclingProviderAwayAndBack(t *testing.T) {
 	}
 }
 
-func TestNewGmailAccountDefaultsToAppPassword(t *testing.T) {
+func TestNewGmailAccountDefaultsToOAuth(t *testing.T) {
 	am := NewAccountManager(nil)
 	am.mode = amAdd
 	am.oauthCfg = config.OAuthConfig{GoogleClientID: "cid", GoogleClientSecret: "sec"} // configured
@@ -326,8 +301,8 @@ func TestNewGmailAccountDefaultsToAppPassword(t *testing.T) {
 	if am.provider != "Gmail" {
 		t.Fatalf("provider = %q", am.provider)
 	}
-	if am.useOAuth {
-		t.Fatal("a new Gmail account must default to App password even when a client is configured")
+	if !am.useOAuth {
+		t.Fatal("a new Gmail account must default to OAuth")
 	}
 }
 
@@ -390,7 +365,7 @@ func TestOutlookCustomClientUsesDeviceFlow(t *testing.T) {
 	if !am.busy || !am.oauthActive || cmd == nil {
 		t.Fatal("a custom MS client should use the device-code flow (busy + poll cmd)")
 	}
-	am, _, _ = am.updateForm(DeviceCodeMsg{
+	am, _, _ = am.updateForm(DeviceCodeMsg{attempt: am.oauthCtx,
 		VerificationURL: "https://microsoft.com/devicelogin",
 		UserCode:        "ABCD-EFGH",
 	}, DefaultKeys)
@@ -419,7 +394,7 @@ func TestOutlookBuildCfgUsesPublicClient(t *testing.T) {
 func TestOutlookOAuthDoneSuccess(t *testing.T) {
 	am := outlookFormManager("my-azure-app")
 	am, _, _ = am.startOAuthSignIn()
-	am, _, _ = am.updateForm(OAuth2DoneMsg{RefreshToken: "ms-new"}, DefaultKeys)
+	am, _, _ = am.updateForm(OAuth2DoneMsg{attempt: am.oauthCtx, RefreshToken: "ms-new"}, DefaultKeys)
 	if !am.oauthSignedIn || am.oauthRefreshToken != "ms-new" {
 		t.Fatalf("sign-in not recorded: %v / %q", am.oauthSignedIn, am.oauthRefreshToken)
 	}
@@ -474,3 +449,30 @@ func TestPasteBackShowsURLWhenClipboardFails(t *testing.T) {
 type errStub string
 
 func (e errStub) Error() string { return string(e) }
+
+func TestOAuthIgnoresPreviousAttemptResults(t *testing.T) {
+	am := gmailFormManager()
+	am, _, _ = am.startOAuthSignIn()
+	previous := am.oauthCtx
+	am.cancelOAuth()
+	if previous.Err() == nil {
+		t.Fatal("attempt was not canceled")
+	}
+	am, _, _ = am.startOAuthSignIn()
+	current := am.oauthCtx
+	for _, msg := range []tea.Msg{
+		DeviceCodeMsg{attempt: previous, Err: errStub("canceled")},
+		OAuth2DoneMsg{attempt: previous, Err: errStub("canceled")},
+		OAuth2DoneMsg{attempt: previous, RefreshToken: "old-token"},
+	} {
+		var cmd tea.Cmd
+		am, cmd, _ = am.updateForm(msg, DefaultKeys)
+		if cmd != nil || !am.oauthActive || am.oauthCtx != current || am.oauthSignedIn || am.oauthAwaitingCode {
+			t.Fatal("old result changed the current attempt")
+		}
+	}
+	am, _, _ = am.updateForm(OAuth2DoneMsg{attempt: current, RefreshToken: "current-token"}, DefaultKeys)
+	if am.oauthRefreshToken != "current-token" {
+		t.Fatal("current result was not accepted")
+	}
+}

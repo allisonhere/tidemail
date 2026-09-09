@@ -43,8 +43,8 @@ Current release: **v1.0.5**.
   [`ripple`](https://github.com/allisonhere/ripple) editor library.
 - **Gmail & Outlook OAuth** (optional): the account form's **Auth** row is a
   `‹ ›` selector (App password ⇄ OAuth) for both providers; the OAuth guidance
-  shows only while that cluster is focused. Gmail is bring-your-own client
-  (`TIDEMAIL_GOOGLE_CLIENT_ID` / `_SECRET`) with a device-code flow; Outlook
+  shows only while that cluster is focused. Gmail uses bundled Desktop app
+  credentials in official builds with automatic browser sign-in; Outlook
   defaults to Thunderbird's shared public client (paste-back flow) or a custom
   `TIDEMAIL_MS_CLIENT_ID` (device-code). XOAUTH2 for IMAP and SMTP; refresh
   token stored in the keychain and rotation-persisted.

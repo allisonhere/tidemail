@@ -165,36 +165,33 @@ TideMail stores passwords, AI keys, and OAuth refresh tokens in libsecret on
 Linux or Keychain on macOS. If `secret-tool` is missing on Linux, TideMail falls
 back to `~/.config/tidemail/config.toml`, so protect that file.
 
-### Gmail with OAuth (optional)
+### Gmail with OAuth
 
-Instead of an app password, a Gmail account can sign in with OAuth. TideMail
-ships no OAuth client, so you supply your own (free, no Google verification for
-personal use):
+Official TideMail builds include a Google Desktop app registration. Users do not
+need Google Cloud credentials, environment variables, or config-file edits.
 
-1. [Google Cloud Console](https://console.cloud.google.com/) → new project.
-2. **APIs & Services → Enable APIs → Gmail API** → enable.
-3. **OAuth consent screen** → External. Add your own address as a **test user**.
-   For a refresh token that doesn't expire every 7 days, also **Publish** the app
-   to Production (a single-user project needs no verification — click through the
-   "unverified" notice).
-4. **Credentials → Create OAuth client ID → "TVs and Limited Input devices"**
-   (or "Desktop app" if you prefer the paste-back flow).
-5. Export the credentials before launching TideMail (or put them under
-   `[oauth]` in `config.toml`):
+1. Press `M` → add account → provider **Gmail**, and enter your account details.
+2. Leave **Auth** on **OAuth** and press `Ctrl+O` (or Enter on **Sign in with Google**).
+3. Approve access in your browser. TideMail receives the result automatically;
+   return to TideMail and save with `Ctrl+S`.
 
-   ```sh
-   export TIDEMAIL_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
-   export TIDEMAIL_GOOGLE_CLIENT_SECRET=xxxx
-   ```
+If the browser cannot open, TideMail shows a sign-in URL and manual entry steps.
+For SSH use, press `Ctrl+P` while waiting for browser approval, open the displayed
+URL on your own computer, and paste the full redirect URL into the **Code** field.
+A connection error at that redirect is expected when using another computer.
+Press Enter to finish, then `Ctrl+S` to save. `Esc` cancels an attempt; attempts
+expire after five minutes.
 
-6. In TideMail: `M` → add account → provider **Gmail**. The **Auth** row's
-   `‹ ›` selector picks App password or OAuth; with OAuth selected press
-   `Ctrl+O`. A short code and URL appear — open the URL on any device, approve,
-   and TideMail finishes signing in. Save with `Ctrl+S`.
+Refresh tokens use the existing keychain storage (with the config-file fallback
+described above) and refresh access for IMAP and SMTP. If access expires or is
+revoked, open the account with `M` and press `Ctrl+O` again. Existing app-password
+accounts keep their authentication method; the **Auth** selector still offers
+**App password**.
 
-The refresh token is kept in the keychain and used to mint short-lived access
-tokens for IMAP and SMTP. If it is ever revoked, TideMail shows a
-"sign-in expired — press M to re-authenticate" hint.
+Maintainers and source-build developers: see [Google OAuth registration and
+release setup](docs/google-oauth.md). A source build without credentials explains
+that Google sign-in is unavailable; official release builds reject missing
+credentials before publishing.
 
 ### Outlook
 

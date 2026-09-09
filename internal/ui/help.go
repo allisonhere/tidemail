@@ -161,7 +161,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.OAuthSignIn.Help().Key, "sign in (Gmail / Outlook provider with Auth: OAuth)"},
 				{"Signature", `use \n for a line break in the account form`},
 				{"Auth row", "when available, Gmail/Outlook: ‹ / › picks App password or OAuth sign-in"},
-				{"Gmail OAuth", "needs TIDEMAIL_GOOGLE_CLIENT_ID / _SECRET; --disable-google-oauth previews App Password-only UI"},
+				{"Gmail OAuth", "ctrl+o: browser sign-in; ctrl+p: manual entry; --disable-google-oauth previews App Password-only UI"},
 				{"Outlook OAuth", "works out of the box; TIDEMAIL_MS_CLIENT_ID for a device code"},
 				{"App password", "Gmail: 2-Step Verification → App Passwords; Outlook: M365 only"},
 				{"Exchange (on-prem)", "use Custom provider with your server + password (no OAuth)"},

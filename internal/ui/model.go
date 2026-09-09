@@ -3005,6 +3005,7 @@ func (m Model) newAccountManager() AccountManager {
 	am := NewAccountManager(m.db)
 	am.mode = amList
 	am.setData(m.accounts, m.mailboxes, m.cfg.Accounts, m.cfg.OAuth)
+	am.oauthBrowser = m.cfg.Display.Browser
 	return am
 }
 

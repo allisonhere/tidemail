@@ -26,6 +26,35 @@ type OAuthConfig struct {
 	GoogleDisabled     bool   `toml:"-"`
 }
 
+// Official builds set these Desktop app credentials with -ldflags -X. Desktop
+// clients are public clients: a bundled client secret is not a security boundary.
+var (
+	DefaultGoogleClientID     string
+	DefaultGoogleClientSecret string
+)
+
+// resolveOAuth applies developer overrides after decoding saved settings. An
+// explicitly different client ID must never inherit another client's secret.
+func resolveOAuth(saved OAuthConfig) OAuthConfig {
+	id := strings.TrimSpace(saved.GoogleClientID)
+	secret := strings.TrimSpace(saved.GoogleClientSecret)
+	if id == "" {
+		id, secret = DefaultGoogleClientID, DefaultGoogleClientSecret
+	}
+	if envID := strings.TrimSpace(os.Getenv("TIDEMAIL_GOOGLE_CLIENT_ID")); envID != "" {
+		if envID != id {
+			secret = ""
+		}
+		id = envID
+	}
+	if envSecret := strings.TrimSpace(os.Getenv("TIDEMAIL_GOOGLE_CLIENT_SECRET")); envSecret != "" {
+		secret = envSecret
+	}
+	saved.GoogleClientID, saved.GoogleClientSecret = id, secret
+	saved.MSClientID = firstNonEmpty(strings.TrimSpace(os.Getenv("TIDEMAIL_MS_CLIENT_ID")), firstNonEmpty(saved.MSClientID, DefaultMSClientID))
+	return saved
+}
+
 // ThunderbirdMSClientID is Mozilla Thunderbird's Microsoft app registration —
 // the de facto shared public client ID of the open-source mail ecosystem (mutt,
 // getmail, mbsync setups). A public client's ID identifies the app, it is not a
@@ -240,15 +269,7 @@ func DefaultConfig() Config {
 			OllamaModel: "llama3.2",
 			SavePath:    "~/",
 		},
-		OAuth: OAuthConfig{
-			// App-level OAuth client IDs — sourced from env vars first, then the
-			// config file. These identify the app, not individual users. Gmail
-			// has no default (bring your own); Outlook falls back to
-			// Thunderbird's shared public client.
-			GoogleClientID:     firstNonEmpty(os.Getenv("TIDEMAIL_GOOGLE_CLIENT_ID"), ""),
-			GoogleClientSecret: firstNonEmpty(os.Getenv("TIDEMAIL_GOOGLE_CLIENT_SECRET"), ""),
-			MSClientID:         firstNonEmpty(os.Getenv("TIDEMAIL_MS_CLIENT_ID"), DefaultMSClientID),
-		},
+		OAuth: resolveOAuth(OAuthConfig{}),
 	}
 }
 
@@ -267,9 +288,13 @@ func Load() (Config, error) {
 	}
 
 	cfg := DefaultConfig()
+	// Decode OAuth without defaults so absent/empty saved values cannot erase
+	// build credentials or accidentally mix credentials from different clients.
+	cfg.OAuth = OAuthConfig{}
 	if _, err := toml.Decode(string(data), &cfg); err != nil {
 		return DefaultConfig(), err
 	}
+	cfg.OAuth = resolveOAuth(cfg.OAuth)
 	if cfg.Updates.CheckIntervalHours <= 0 {
 		cfg.Updates.CheckIntervalHours = DefaultConfig().Updates.CheckIntervalHours
 	}
@@ -317,6 +342,10 @@ func Save(cfg Config) error {
 	accts := make([]AccountConfig, len(cfg.Accounts))
 	copy(accts, cfg.Accounts)
 	cfg.Accounts = accts
+	// Do not pin bundled defaults in config.toml across application upgrades.
+	if cfg.OAuth.GoogleClientID == DefaultGoogleClientID && cfg.OAuth.GoogleClientSecret == DefaultGoogleClientSecret {
+		cfg.OAuth.GoogleClientID, cfg.OAuth.GoogleClientSecret = "", ""
+	}
 	stripSecrets(&cfg)
 	path, err := configPath()
 	if err != nil {

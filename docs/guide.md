@@ -152,46 +152,29 @@ then paste it into the password field in the account manager (`M`) and save with
 
 ### Gmail OAuth sign-in
 
-TideMail ships no OAuth client — you supply your own, which keeps personal use
-free and outside Google's verification requirements:
+Official builds supply TideMail's Google app credentials; there is no user
+configuration step.
 
-1. In the [Google Cloud Console](https://console.cloud.google.com/): create a
-   project, enable the **Gmail API**, and configure the **OAuth consent screen**
-   (External; add your address as a test user). Publish the app to Production so
-   the refresh token does not expire weekly — a one-user project needs no
-   security review; click past the "unverified app" notice.
-2. Create an **OAuth client ID** of type *TVs and Limited Input devices* (device
-   code) or *Desktop app* (paste-back).
-3. Provide the credentials to TideMail, either as environment variables:
+1. Press `M`, add an account, choose **Gmail**, and enter the account details.
+2. Leave **Auth** on **OAuth** and press `Ctrl+O` or Enter on **Sign in with Google**.
+3. Approve Google access in the browser. The browser shows a confirmation and
+   TideMail finishes signing in automatically.
+4. Return to TideMail and save with `Ctrl+S`.
 
-   ```sh
-   export TIDEMAIL_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
-   export TIDEMAIL_GOOGLE_CLIENT_SECRET=xxxx
-   ```
+For SSH or manual sign-in, press `Ctrl+P` while waiting for browser approval.
+TideMail displays the URL and a **Code** field. Open the URL, approve access, and
+paste the full redirect URL back into TideMail, then press Enter. If the browser
+is on another computer, its redirect may show a connection error; copy that URL
+anyway. This fallback also appears if TideMail cannot launch the browser. With a
+working local callback, approval can still finish automatically during manual entry.
 
-   or in `config.toml`:
+`Esc` cancels sign-in, and attempts expire after five minutes. Denied access or
+an expired attempt can be retried with `Ctrl+O`. If a refresh token expires or is
+revoked, open the account and sign in again.
 
-   ```toml
-   [oauth]
-   google_client_id = "xxxx.apps.googleusercontent.com"
-   google_client_secret = "xxxx"
-   ```
-
-4. In the account manager, add an account with provider **Gmail**. A new
-   **Auth** row appears with a `‹ ›` selector — leave it on *OAuth* (or press
-   `‹`/`›` to switch to *App password*). With OAuth selected, press `Ctrl+O`
-   (or Enter on the sign-in row). TideMail shows a short code and a URL; open
-   the URL on any device,
-   sign in, and enter the code. When the device endpoint refuses the mail scope,
-   TideMail falls back to a paste-back flow: it copies a sign-in URL to your
-   clipboard; open it, approve, and paste the resulting `http://localhost/?code=…`
-   URL (or the bare code) into the **Code** field.
-5. Save with `Ctrl+S`. TideMail leaves the password field empty and authenticates
-   IMAP and SMTP with XOAUTH2.
-
-If the refresh token is revoked (or the consent screen was left in "Testing" and
-expired it), the next sync shows "sign-in expired — press M to re-authenticate";
-re-open the account and press `Ctrl+O` again.
+Existing app-password accounts keep working; use the **Auth** selector to switch
+methods deliberately. For maintainer registration, developer overrides, and
+Google verification requirements, see [Google OAuth setup](google-oauth.md).
 
 Developers can preview the Gmail App Password-only account form without changing
 saved credentials:
@@ -206,7 +189,7 @@ See [Development flags](flags.md) for the behavior and other UI preview options.
 
 The **Outlook** provider covers Outlook.com, Hotmail/Live, and Microsoft 365 /
 Exchange Online mailboxes. Microsoft retired basic auth for all of these, so the
-account signs in with OAuth. Unlike Gmail this works out of the box — TideMail
+account signs in with OAuth. TideMail
 uses Mozilla Thunderbird's shared public client ID, which is already consented
 for IMAP/SMTP and needs no verification.
 

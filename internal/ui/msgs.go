@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -12,18 +13,18 @@ import (
 	"github.com/allisonhere/tidemail/internal/update"
 )
 
-// DeviceCodeMsg carries the device-code details the user needs to approve a
-// Gmail sign-in (visit the URL, enter the code).
+// DeviceCodeMsg carries Microsoft device-code approval details.
 type DeviceCodeMsg struct {
+	attempt         context.Context
 	VerificationURL string
 	UserCode        string
 	Err             error                      // the device-code request itself failed
 	da              *oauth2.DeviceAuthResponse // polling handle for the follow-up token cmd
 }
 
-// OAuth2DoneMsg reports the outcome of a Gmail sign-in (device-flow polling or
-// authorization-code exchange).
+// OAuth2DoneMsg reports the outcome of a Google or Microsoft sign-in.
 type OAuth2DoneMsg struct {
+	attempt      context.Context
 	RefreshToken string
 	Err          error
 }

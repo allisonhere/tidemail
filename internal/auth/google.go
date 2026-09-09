@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"golang.org/x/oauth2"
@@ -72,43 +73,77 @@ func PollGoogleDeviceToken(ctx context.Context, clientID, clientSecret string, d
 // lands on. Nothing listens there — the browser fails to load the page and the
 // user copies the code out of the address bar. This is the standard
 // mutt/getmail loopback flow and needs no local server (works over SSH).
-const googleRedirectURI = "http://localhost"
+const googleRedirectURI = "http://127.0.0.1"
 
-// GoogleAuthCodeFlow is one authorization-code + PKCE sign-in attempt. Used as
-// the fallback when the device-code flow rejects the mail scope.
+// GoogleAuthCodeFlow is one authorization-code + PKCE sign-in attempt, shared
+// by automatic loopback callbacks and the advanced manual fallback.
 type GoogleAuthCodeFlow struct {
 	// AuthURL is the sign-in page to open in a browser.
 	AuthURL      string
 	clientID     string
 	clientSecret string
 	verifier     string
+	state        string
+	redirectURI  string
 }
 
 // NewGoogleAuthCodeFlow builds the browser URL (with a fresh PKCE verifier) for
 // an authorization-code sign-in. Exchange completes it with the pasted code.
 func NewGoogleAuthCodeFlow(clientID, clientSecret string) *GoogleAuthCodeFlow {
+	return newGoogleAuthCodeFlow(clientID, clientSecret, googleRedirectURI)
+}
+
+func newGoogleAuthCodeFlow(clientID, clientSecret, redirectURI string) *GoogleAuthCodeFlow {
 	conf := googleConfig(clientID, clientSecret)
-	conf.RedirectURL = googleRedirectURI
+	conf.RedirectURL = redirectURI
 	v := oauth2.GenerateVerifier()
+	state := oauth2.GenerateVerifier()
 	// prompt=consent + offline access so Google always returns a refresh token,
 	// even on a repeat sign-in.
-	authURL := conf.AuthCodeURL("tidemail",
+	authURL := conf.AuthCodeURL(state,
 		oauth2.AccessTypeOffline,
 		oauth2.S256ChallengeOption(v),
 		oauth2.SetAuthURLParam("prompt", "consent"),
 	)
-	return &GoogleAuthCodeFlow{AuthURL: authURL, clientID: clientID, clientSecret: clientSecret, verifier: v}
+	return &GoogleAuthCodeFlow{AuthURL: authURL, clientID: clientID, clientSecret: clientSecret, verifier: v, state: state, redirectURI: redirectURI}
 }
 
-// Exchange redeems the pasted authorization code (or the full
-// http://localhost/?code=... URL the browser landed on) for tokens.
+// authorizationCode validates full pasted redirects as strictly as callbacks.
+// A bare code remains available only for the explicit manual-entry path.
+func (f *GoogleAuthCodeFlow) authorizationCode(pasted string) (string, error) {
+	pasted = strings.TrimSpace(pasted)
+	if strings.Contains(pasted, "://") {
+		u, err := url.Parse(pasted)
+		redirect, _ := url.Parse(f.redirectURI)
+		if err != nil || u.Scheme != redirect.Scheme || u.Host != redirect.Host ||
+			strings.TrimRight(u.Path, "/") != strings.TrimRight(redirect.Path, "/") || u.Fragment != "" || u.User != nil {
+			return "", fmt.Errorf("auth: paste the redirect URL from this sign-in attempt")
+		}
+		if u.Query().Get("state") != f.state {
+			return "", fmt.Errorf("auth: sign-in state does not match; use the current sign-in URL")
+		}
+		if u.Query().Get("error") != "" {
+			return "", fmt.Errorf("auth: Google access was denied; press Ctrl+O to try again")
+		}
+		if code := u.Query().Get("code"); code != "" {
+			return code, nil
+		}
+		return "", fmt.Errorf("auth: no authorization code in redirect URL")
+	}
+	if code := ExtractAuthCode(pasted); code != "" {
+		return code, nil
+	}
+	return "", fmt.Errorf("auth: no authorization code in pasted text")
+}
+
+// Exchange redeems a pasted authorization code or the full loopback redirect.
 func (f *GoogleAuthCodeFlow) Exchange(ctx context.Context, pasted string) (*oauth2.Token, error) {
-	code := ExtractAuthCode(pasted)
-	if code == "" {
-		return nil, fmt.Errorf("auth: no authorization code in pasted text")
+	code, err := f.authorizationCode(pasted)
+	if err != nil {
+		return nil, err
 	}
 	conf := googleConfig(f.clientID, f.clientSecret)
-	conf.RedirectURL = googleRedirectURI
+	conf.RedirectURL = f.redirectURI
 	tok, err := conf.Exchange(ctx, code, oauth2.VerifierOption(f.verifier))
 	if err != nil {
 		return nil, fmt.Errorf("auth: code exchange: %w", err)

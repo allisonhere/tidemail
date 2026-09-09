@@ -291,11 +291,11 @@ type AccountManager struct {
 	colorIdx      int
 
 	// OAuth sign-in state for the Gmail and Outlook providers. useOAuth is the
-	// Auth-method selector (App password ⇄ OAuth). Gmail (and custom Microsoft
-	// clients) use the device-code flow — SSH-safe: show a URL + short code,
-	// poll. The bundled Thunderbird Microsoft client, and any device-code
-	// rejection, fall back to the authorization-code paste-back flow.
+	// Auth-method selector (App password ⇄ OAuth). Gmail uses browser sign-in;
+	// Microsoft retains its device-code and paste-back flows.
 	oauthCfg          config.OAuthConfig
+	oauthBrowser      string
+	oauthBrowserFlow  *auth.GoogleBrowserFlow
 	useOAuth          bool
 	oauthSignedIn     bool
 	oauthRefreshToken string
@@ -331,7 +331,7 @@ func NewAccountManager(database *db.DB) AccountManager {
 	am.fromInput = newAMInput("Your Name <you@example.com>", false)
 	am.syncInput = newAMInput("0 = push", false)
 	am.sigInput = newAMInput(`signature (\n for a new line)`, false)
-	am.oauthCodeInput = newAMInput("code, or full http://localhost/?code=... URL", false)
+	am.oauthCodeInput = newAMInput("code, or full browser redirect URL", false)
 	am.oauthCodeInput.CharLimit = 2048 // a pasted redirect URL is long
 	return am
 }
@@ -628,23 +628,30 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 	// Sign-in results arrive async while the form is busy — handle them before
 	// the busy guard.
 	switch dm := msg.(type) {
+	case googleBrowserReadyMsg:
+		return am.googleBrowserReady(dm)
+	case googleSignInExpiredMsg:
+		if am.oauthActive && dm.attempt == am.oauthCtx {
+			am.cancelOAuth()
+			am.statusMsg = "SIGN-IN TIMED OUT — PRESS CTRL+O TO TRY AGAIN"
+			am.focusField(amFieldOAuthSignIn)
+		}
+		return am, nil, false
 	case DeviceCodeMsg:
-		if !am.oauthActive {
+		if !am.oauthActive || dm.attempt != am.oauthCtx || am.provider != "Outlook" {
 			return am, nil, false // stale result from a cancelled flow
 		}
 		if dm.Err != nil {
-			// The device endpoint rejected the request (commonly: the mail
-			// scope isn't allowed for device clients). Fall back to the
-			// authorization-code paste-back flow.
+			// A Microsoft client may not support device authorization.
 			return am.startAuthCodeFlow()
 		}
 		am.busyMsg = fmt.Sprintf("GO TO %s AND ENTER CODE %s (ESC CANCELS)", dm.VerificationURL, dm.UserCode)
 		return am, am.pollDeviceTokenCmd(dm.da), false
 	case OAuth2DoneMsg:
-		if !am.oauthActive {
+		if !am.oauthActive || dm.attempt != am.oauthCtx {
 			return am, nil, false // stale result from a cancelled flow
 		}
-		if dm.Err != nil && am.oauthAwaitingCode {
+		if dm.Err != nil && am.oauthAwaitingCode && am.provider != "Gmail" {
 			// A bad paste doesn't consume the PKCE verifier — keep the flow
 			// alive so the user can paste again without restarting.
 			am.busy = false
@@ -656,11 +663,17 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 		provider := am.provider
 		am.cancelOAuth()
 		if dm.Err != nil {
-			am.statusMsg = fmt.Sprintf("SIGN-IN FAILED: %v", dm.Err)
+			if provider == "Gmail" {
+				am.statusMsg = googleSignInError(dm.Err)
+			} else {
+				am.statusMsg = fmt.Sprintf("SIGN-IN FAILED: %v", dm.Err)
+			}
+			am.focusField(amFieldOAuthSignIn)
 			return am, nil, false
 		}
 		if dm.RefreshToken == "" {
-			am.statusMsg = "SIGN-IN FAILED: NO REFRESH TOKEN RETURNED (RE-CONSENT NEEDED)"
+			am.statusMsg = "SIGN-IN FAILED: NO REFRESH TOKEN RETURNED — PRESS CTRL+O TO APPROVE AGAIN"
+			am.focusField(amFieldOAuthSignIn)
 			return am, nil, false
 		}
 		am.oauthSignedIn = true
@@ -673,11 +686,16 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 		return am, nil, false
 	}
 	if am.busy {
+		if km, ok := msg.(tea.KeyMsg); ok && am.oauthBrowserFlow != nil && km.Type == tea.KeyCtrlP {
+			am.enableGoogleManualEntry()
+			return am, nil, false
+		}
 		// Allow bailing out of a pending device-code approval (it can take
 		// many minutes to expire on its own).
 		if km, ok := msg.(tea.KeyMsg); ok && am.oauthActive && keyMatches(km, keys.Cancel) {
 			am.cancelOAuth()
 			am.statusMsg = "SIGN-IN CANCELLED"
+			am.focusField(amFieldOAuthSignIn)
 		}
 		return am, nil, false
 	}
@@ -826,8 +844,7 @@ func (am AccountManager) googleOAuthDisabled() bool {
 }
 
 // oauthClientID returns the app-level client ID for the current provider, and
-// whether one is configured (Gmail is bring-your-own; Outlook always has the
-// bundled Thunderbird default).
+// whether one is configured (official builds bundle both providers' defaults).
 func (am AccountManager) oauthClientID() (string, bool) {
 	switch am.provider {
 	case "Gmail":
@@ -840,11 +857,9 @@ func (am AccountManager) oauthClientID() (string, bool) {
 }
 
 // defaultUseOAuth picks the Auth-method default for a fresh account or a
-// provider change. Only Outlook defaults to OAuth (Microsoft dropped passwords);
-// Gmail defaults to App password so OAuth is a deliberate opt-in via the ‹ ›
-// selector.
+// provider change. Existing accounts keep their explicitly saved auth method.
 func (am AccountManager) defaultUseOAuth() bool {
-	return am.provider == "Outlook" && am.oauthCfg.MSClientID != ""
+	return am.provider == "Gmail" || (am.provider == "Outlook" && am.oauthCfg.MSClientID != "")
 }
 
 // oauthDeviceCapable reports whether the current provider+client can use the
@@ -854,7 +869,7 @@ func (am AccountManager) oauthDeviceCapable() bool {
 	if am.provider == "Outlook" {
 		return am.oauthCfg.MSClientID != config.ThunderbirdMSClientID
 	}
-	return am.provider == "Gmail"
+	return false
 }
 
 func oauthVendor(provider string) string {
@@ -877,9 +892,12 @@ func forgetOAuthToken(provider, account string) {
 // rejection) updateForm falls back to startAuthCodeFlow.
 func (am AccountManager) startOAuthSignIn() (AccountManager, tea.Cmd, bool) {
 	clientID, ok := am.oauthClientID()
-	if !ok {
-		am.statusMsg = "GMAIL OAUTH NOT CONFIGURED — SET TIDEMAIL_GOOGLE_CLIENT_ID / _SECRET"
+	if !ok || (am.provider == "Gmail" && am.oauthCfg.GoogleClientSecret == "") {
+		am.statusMsg = "GOOGLE SIGN-IN UNAVAILABLE IN THIS BUILD — INSTALL A CONFIGURED RELEASE OR USE APP PASSWORD"
 		return am, nil, false
+	}
+	if am.provider == "Gmail" {
+		return am.startGoogleBrowserSignIn()
 	}
 	am.cancelOAuth() // drop any previous attempt
 	am.statusMsg = ""
@@ -892,22 +910,12 @@ func (am AccountManager) startOAuthSignIn() (AccountManager, tea.Cmd, bool) {
 	am.oauthActive = true
 	am.busy = true
 	am.busyMsg = "REQUESTING SIGN-IN CODE..."
-	provider := am.provider
-	gSecret := am.oauthCfg.GoogleClientSecret
 	return am, func() tea.Msg {
-		var (
-			da  *oauth2.DeviceAuthResponse
-			err error
-		)
-		if provider == "Outlook" {
-			da, err = auth.StartMSDeviceFlow(ctx, clientID)
-		} else {
-			da, err = auth.StartGoogleDeviceFlow(ctx, clientID, gSecret)
-		}
+		da, err := auth.StartMSDeviceFlow(ctx, clientID)
 		if err != nil {
-			return DeviceCodeMsg{Err: err}
+			return DeviceCodeMsg{attempt: ctx, Err: err}
 		}
-		return DeviceCodeMsg{VerificationURL: da.VerificationURI, UserCode: da.UserCode, da: da}
+		return DeviceCodeMsg{attempt: ctx, VerificationURL: da.VerificationURI, UserCode: da.UserCode, da: da}
 	}, false
 }
 
@@ -915,23 +923,14 @@ func (am AccountManager) startOAuthSignIn() (AccountManager, tea.Cmd, bool) {
 // approves the device code.
 func (am AccountManager) pollDeviceTokenCmd(da *oauth2.DeviceAuthResponse) tea.Cmd {
 	ctx := am.oauthCtx
-	provider := am.provider
+	attempt := ctx
 	clientID, _ := am.oauthClientID()
-	gSecret := am.oauthCfg.GoogleClientSecret
 	return func() tea.Msg {
-		var (
-			tok *oauth2.Token
-			err error
-		)
-		if provider == "Outlook" {
-			tok, err = auth.PollMSDeviceToken(ctx, clientID, da)
-		} else {
-			tok, err = auth.PollGoogleDeviceToken(ctx, clientID, gSecret, da)
-		}
+		tok, err := auth.PollMSDeviceToken(ctx, clientID, da)
 		if err != nil {
-			return OAuth2DoneMsg{Err: err}
+			return OAuth2DoneMsg{attempt: attempt, Err: err}
 		}
-		return OAuth2DoneMsg{RefreshToken: tok.RefreshToken}
+		return OAuth2DoneMsg{attempt: attempt, RefreshToken: tok.RefreshToken}
 	}
 }
 
@@ -939,6 +938,18 @@ func (am AccountManager) pollDeviceTokenCmd(da *oauth2.DeviceAuthResponse) tea.C
 // clipboard), the user approves and lands on an unreachable localhost page, then
 // pastes that URL (or the bare code) into the Code field.
 func (am AccountManager) startAuthCodeFlow() (AccountManager, tea.Cmd, bool) {
+	am.cancelOAuth()
+	am.oauthCtx, am.oauthCancel = context.WithCancel(context.Background())
+	var expiry tea.Cmd
+	if am.provider == "Gmail" {
+		am.oauthCancel()
+		am.oauthCtx, am.oauthCancel = context.WithTimeout(context.Background(), auth.GoogleSignInTimeout)
+		attempt := am.oauthCtx
+		expiry = func() tea.Msg {
+			<-attempt.Done()
+			return googleSignInExpiredMsg{attempt: attempt}
+		}
+	}
 	clientID, _ := am.oauthClientID()
 	if am.provider == "Outlook" {
 		f := auth.NewMSAuthCodeFlow(clientID)
@@ -959,7 +970,7 @@ func (am AccountManager) startAuthCodeFlow() (AccountManager, tea.Cmd, bool) {
 	} else {
 		am.statusMsg = "SIGN-IN URL SHOWN BELOW — SEE THE STEPS"
 	}
-	return am, nil, false
+	return am, expiry, false
 }
 
 // submitOAuthCode exchanges the pasted authorization code (or redirect URL) for
@@ -970,6 +981,17 @@ func (am AccountManager) submitOAuthCode() (AccountManager, tea.Cmd, bool) {
 		am.statusMsg = "PASTE THE CODE OR REDIRECT URL FROM THE BROWSER FIRST"
 		return am, nil, false
 	}
+	if am.oauthBrowserFlow != nil {
+		if err := am.oauthBrowserFlow.Submit(pasted); err != nil {
+			am.statusMsg = "INVALID OR EXPIRED SIGN-IN CODE — PASTE THE CURRENT REDIRECT URL OR PRESS CTRL+O"
+			return am, nil, false
+		}
+		am.busy = true
+		am.busyMsg = "FINISHING GOOGLE SIGN-IN..."
+		am.statusMsg = ""
+		// The browser flow's existing Wait command owns the token exchange.
+		return am, nil, false
+	}
 	if am.oauthFlow == nil {
 		am.statusMsg = "SIGN-IN EXPIRED — PRESS CTRL+O TO START AGAIN"
 		return am, nil, false
@@ -978,20 +1000,25 @@ func (am AccountManager) submitOAuthCode() (AccountManager, tea.Cmd, bool) {
 	am.busyMsg = "EXCHANGING SIGN-IN CODE..."
 	am.statusMsg = ""
 	flow := am.oauthFlow
+	attempt := am.oauthCtx
 	return am, func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(attempt, 30*time.Second)
 		defer cancel()
 		tok, err := flow.Exchange(ctx, pasted)
 		if err != nil {
-			return OAuth2DoneMsg{Err: err}
+			return OAuth2DoneMsg{attempt: attempt, Err: err}
 		}
-		return OAuth2DoneMsg{RefreshToken: tok.RefreshToken}
+		return OAuth2DoneMsg{attempt: attempt, RefreshToken: tok.RefreshToken}
 	}, false
 }
 
 // cancelOAuth stops any in-flight sign-in (either flow) and clears its state;
 // safe to call when no flow is active.
 func (am *AccountManager) cancelOAuth() {
+	if am.oauthBrowserFlow != nil {
+		am.oauthBrowserFlow.Close()
+		am.oauthBrowserFlow = nil
+	}
 	if am.oauthCancel != nil {
 		am.oauthCancel()
 	}
@@ -1531,6 +1558,8 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 			switch {
 			case am.oauthAwaitingCode:
 				signVal = "… waiting for pasted code (esc cancels)"
+			case am.oauthActive && am.provider == "Gmail":
+				signVal = "… waiting for Google approval"
 			case am.oauthSignedIn:
 				signVal = "✓ signed in with " + vendor
 				signFg = chrome.successFg
@@ -1555,7 +1584,10 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 					addHint("2. Sign in and approve access")
 					addHint("3. Copy the URL it redirects you to")
 					addHint("4. Paste that here and press enter")
-					if !am.oauthURLCopied {
+					if am.provider == "Gmail" {
+						addHint("A connection error on the redirect is OK for manual entry.")
+					}
+					if !am.oauthURLCopied || am.provider == "Gmail" {
 						addHint("")
 						addHint("Sign-in URL:")
 						for _, ln := range hardWrapString(am.oauthFlowURL, max(8, fieldW-4)) {
@@ -1568,9 +1600,9 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 					addHint("Set TIDEMAIL_MS_CLIENT_ID for a device code.")
 					addHint("‹ / › switches to an App Password.")
 				default:
-					addHint("Enter or ctrl+o starts sign-in.")
-					addHint("A code + URL appears to approve on any device.")
-					addHint("Needs your TIDEMAIL_GOOGLE_CLIENT_ID / _SECRET.")
+					addHint("Enter or ctrl+o opens Google in your browser.")
+					addHint("Approve access, then return here and save with ctrl+s.")
+					addHint("While signing in: ctrl+p for manual entry (SSH).")
 					addHint("‹ / › switches to an App Password.")
 				}
 			}
