@@ -867,6 +867,55 @@ func TestValidateAccountForConnect(t *testing.T) {
 	}
 }
 
+// TestMailboxReloadKeepsScrollPositionAfterDelete verifies that a
+// MessagesLoadedMsg for the active mailbox (as fired after a delete commits, or
+// by a background sync) holds the list where the user left it instead of
+// snapping back to the top.
+func TestMailboxReloadKeepsScrollPositionAfterDelete(t *testing.T) {
+	const mailboxID = int64(7)
+	cfg := config.DefaultConfig()
+	m := NewModel(nil, cfg, "dev", false)
+	m.width = 100
+	m.height = 30
+	m.focused = paneMessages
+	m.accounts = []db.Account{{ID: 1, Name: "Personal"}}
+	m.mailboxes = []db.Mailbox{{ID: mailboxID, AccountID: 1, Name: "INBOX"}}
+	m.rebuildSidebar()
+	for i, row := range m.sidebarRows {
+		if row.kind == rowKindMailbox && row.mailboxID == mailboxID {
+			m.sidebarCursor = i
+			break
+		}
+	}
+
+	msgs := make([]db.Message, 30)
+	for i := range msgs {
+		msgs[i] = db.Message{ID: int64(i + 1), MailboxID: mailboxID, Subject: fmt.Sprintf("msg %d", i+1), Date: time.Unix(int64(1000-i), 0)}
+	}
+	m.messages = msgs
+	m.applyFilter()
+	// User has scrolled down and parked on msg 21 (index 20).
+	m.messageCursor = 20
+	m.listOffset = 14
+	focusedID := m.filteredMessages[m.messageCursor].ID
+
+	// Reload with an earlier message (index 5) removed, mimicking a delete of a
+	// row above the cursor.
+	reloaded := append(append([]db.Message(nil), msgs[:5]...), msgs[6:]...)
+	next, _ := m.Update(MessagesLoadedMsg{MailboxID: mailboxID, Messages: reloaded})
+	m = next.(Model)
+
+	if got := m.filteredMessages[m.messageCursor].ID; got != focusedID {
+		t.Fatalf("expected cursor to stay on message %d, landed on %d", focusedID, got)
+	}
+	if m.messageCursor != 19 {
+		t.Fatalf("expected cursor index to shift to 19 after a row above was removed, got %d", m.messageCursor)
+	}
+	if m.listOffset != 13 {
+		t.Fatalf("expected scroll offset to follow the cursor (13), got %d", m.listOffset)
+	}
+}
+
 func TestSearchResultsReplaceCurrentMailboxListAndRenderContext(t *testing.T) {
 	cfg := config.DefaultConfig()
 	m := NewModel(nil, cfg, "dev", false)

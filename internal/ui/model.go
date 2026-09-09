@@ -688,16 +688,50 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			selected := m.selectedMailbox()
 			return selected != nil && msg.MailboxID == selected.ID
 		}()) {
+			// Remember where the view was so a reload triggered by a delete (or a
+			// background sync) doesn't yank the list back to the top mid-triage.
+			prevCursor := m.messageCursor
+			prevOffset := m.listOffset
+			var focusedID int64
+			if cur := m.currentRowMessage(); cur != nil {
+				focusedID = cur.ID
+			}
+
 			m.messages = msg.Messages
 			m.applyFilter()
-			if m.pendingSelectMessageID != 0 {
+
+			rowCount := m.activeMessageRowCount()
+			switch {
+			case m.pendingSelectMessageID != 0:
+				// An explicit "select this message" request wins over position.
 				if idx := m.indexOfFilteredMessage(m.pendingSelectMessageID); idx >= 0 {
 					m.messageCursor = idx
 				}
 				m.pendingSelectMessageID = 0
+				m.messageCursor = clamp(m.messageCursor, 0, max(0, rowCount-1))
+				m.listOffset = clamp(m.listOffset, 0, max(0, rowCount-1))
+			case focusedID != 0 && m.indexOfFilteredMessage(focusedID) >= 0:
+				// The focused row survived: keep it on the same screen line by
+				// shifting the scroll offset with it.
+				idx := m.indexOfFilteredMessage(focusedID)
+				m.listOffset = clamp(prevOffset+(idx-prevCursor), 0, max(0, rowCount-1))
+				m.messageCursor = idx
+			default:
+				// The focused row is gone (it was the deleted one). Hold the
+				// scroll position and let the cursor land on whatever now sits
+				// at that index.
+				m.messageCursor = clamp(prevCursor, 0, max(0, rowCount-1))
+				m.listOffset = clamp(prevOffset, 0, max(0, rowCount-1))
 			}
-			m.messageCursor = clamp(m.messageCursor, 0, max(0, m.activeMessageRowCount()-1))
-			m.listOffset = 0
+
+			if visible := m.articleRowsVisible(); visible > 0 {
+				if m.messageCursor < m.listOffset {
+					m.listOffset = m.messageCursor
+				} else if m.messageCursor >= m.listOffset+visible {
+					m.listOffset = m.messageCursor - visible + 1
+				}
+			}
+
 			if msg := m.currentRowMessage(); msg != nil {
 				m.setViewportForCurrentRow()
 			}

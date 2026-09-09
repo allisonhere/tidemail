@@ -6,6 +6,32 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- **Toggleable pane header bars.** The title-and-shortcut row above each pane can
+  now be turned off at **Settings → Display → Pane header bars**
+  (`display.show_pane_headers` in `config.toml`, on by default). When off, those
+  rows disappear to give content more room and the focused pane's title and
+  shortcuts move to the bottom status line; global message search still gets a
+  dedicated row above the message list while active.
+
+### Fixed
+
+- **HTML email bodies no longer lose legitimate content.** The old noise
+  stripper was aggressive enough to drop real body sections, long messages, and
+  the inner text of tables and quoted replies. Rendering now runs a conservative
+  DOM normalisation that removes only what is genuinely hidden (`display:none`,
+  `font-size:0` text with no visible descendants, `hidden` / `aria-hidden`
+  nodes), tracking pixels, and non-content elements (`script`, `style`, `head`,
+  form controls), while preserving document structure, table and quote text, and
+  message ordering at every width.
+- **Deleting several emails in a row no longer scrolls the list back to the
+  top.** The mailbox reload that follows a delete (and a background sync) now
+  keeps the focused row on the same screen line, shifting the scroll offset with
+  it, instead of resetting to the first message.
+
+## v1.0.14
+
+### Added
+
 - **`match-omarchy` theme.** For [Omarchy](https://omarchy.org) users, a theme
   that follows the current Omarchy desktop theme: it reads the live palette from
   `omarchy-theme-color` (falling back to
@@ -33,6 +59,42 @@ All notable changes to TideMail are documented in this file.
 - **On the vt52 theme, every modal now carries its title flush in the top
   border** (`+- tidemail · <title> --+`) instead of as a separate row below it,
   matching the other themes.
+
+## v1.0.13
+
+No code changes — the `v1.0.13` tag re-points at the `v1.0.12` commit to correct
+release metadata.
+
+## v1.0.12
+
+### Added
+
+- **An outbox.** Press `O` to open it and inspect every outgoing message by
+  state — queued, sending, failed, sent, or uncertain. `r` retries a failed
+  message; `e` pulls an unsent one back into compose. The queue is persisted, so
+  failed and pending deliveries survive a restart.
+- **Automatic send retries.** A failed delivery is retried after one minute, up
+  to `display.send_max_attempts` total tries (default `3`; set it to `1` to
+  disable retries) — adjustable at **Settings → Editor**. A delivery interrupted
+  mid-send is marked *uncertain* rather than blindly retried, since the server
+  may already have accepted it; check Sent mail before retrying those by hand.
+
+## v1.0.11
+
+### Fixed
+
+- **Emoji in a subject no longer corrupts the content-pane title on repaint.**
+  Content and thread titles now get the same emoji-grapheme stripping the
+  message list already uses, and that stripper also catches `✌` (U+270C) and `‼`
+  (U+203C) — bare text-default symbols that some terminals draw as width-1 emoji,
+  slipping past the width-based check.
+- **The installer now removes a stale binary anywhere on `PATH`, not just the
+  first match.** `install.sh` canonicalises each `PATH` directory before
+  comparing (so a symlink, `..`, or trailing slash can't hide a stale copy or
+  endanger the fresh one), walks the whole `PATH` removing writable stale copies
+  before and after the install dir, uses `sudo rm` for a copy in a non-writable
+  dir (works under `curl … | sh`), and warns about any shadowed copy it still
+  can't remove instead of staying silent.
 
 ## v1.0.10
 
