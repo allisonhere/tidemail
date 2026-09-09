@@ -2703,6 +2703,39 @@ func (m Model) statusBarKeyHintStrip() string {
 	)
 }
 
+func (m Model) statusBarContextHintStrip() string {
+	if m.cfg.Display.ShowPaneHeaders {
+		return m.statusBarKeyHintStrip()
+	}
+	if m.searchMode && m.searchEditing {
+		return m.statusBarJoin(
+			m.statusBarInlineText(m.styles.StatusBar, "Search"),
+			m.styles.StatusHint.Render("type search  enter finish  esc exit  backspace erase"),
+		)
+	}
+	parts := []string{
+		m.statusBarInlineText(m.styles.StatusBar, m.focusedPaneTitle()),
+		m.styles.StatusHint.Render(m.renderPaneHint(m.focused)),
+	}
+	if m.focused == paneAccounts {
+		parts = append(parts, m.statusBarKeyHintStrip())
+	}
+	return m.statusBarJoin(parts...)
+}
+
+func (m Model) focusedPaneTitle() string {
+	switch m.focused {
+	case paneAccounts:
+		return "Accounts"
+	case paneMessages:
+		return m.messagesPaneTitle()
+	case paneContent:
+		return "Content"
+	default:
+		return ""
+	}
+}
+
 func (m *Model) currentContentMessage() *db.Message {
 	for i := range m.filteredMessages {
 		if m.filteredMessages[i].ID == m.contentMessageID {
@@ -2752,7 +2785,7 @@ func (m Model) renderStatusBar() string {
 		if linkPart != "" {
 			parts = append(parts, linkPart)
 		}
-		parts = append(parts, m.statusBarKeyHintStrip())
+		parts = append(parts, m.statusBarContextHintStrip())
 		return style.Width(w).Render(m.statusLine(m.statusBarJoin(parts...), updateActionPart))
 	}
 
@@ -2768,7 +2801,7 @@ func (m Model) renderStatusBar() string {
 		if linkPart != "" {
 			parts = append(parts, linkPart)
 		}
-		parts = append(parts, m.statusBarKeyHintStrip())
+		parts = append(parts, m.statusBarContextHintStrip())
 		return style.Width(w).Render(m.statusLine(m.statusBarJoin(parts...), updateActionPart))
 	}
 
@@ -2783,7 +2816,7 @@ func (m Model) renderStatusBar() string {
 		parts = append(parts, linkPart)
 	}
 
-	if len(m.mailboxes) > 0 {
+	if m.cfg.Display.ShowPaneHeaders && len(m.mailboxes) > 0 {
 		if m.selectedUnifiedInbox() {
 			parts = append(parts, m.statusBarInlineText(sb, "Unified Inbox"))
 			if unread := m.unifiedUnreadCount(); unread > 0 {
@@ -2811,7 +2844,7 @@ func (m Model) renderStatusBar() string {
 		)
 	}
 
-	parts = append(parts, m.statusBarKeyHintStrip())
+	parts = append(parts, m.statusBarContextHintStrip())
 
 	return m.styles.StatusBar.Width(w).Render(m.statusLine(m.statusBarJoin(parts...), updateActionPart))
 }
@@ -2911,7 +2944,7 @@ func (m *Model) rebuildSidebar() {
 }
 
 func (m Model) sidebarVisibleRows() int {
-	bodyLines := max(0, m.accountsPaneContentHeight()-1-m.styles.ListItemLineStride())
+	bodyLines := max(0, m.accountsPaneContentHeight()-m.paneHeaderHeight()-m.styles.ListItemLineStride())
 	return max(1, bodyLines/m.styles.ListItemLineStride())
 }
 
@@ -2962,6 +2995,7 @@ func (m Model) exitSearchMode() (tea.Model, tea.Cmd) {
 
 func (m Model) handleSearchCharacter(newValue string) (tea.Model, tea.Cmd) {
 	m.searchInput.SetValue(newValue)
+	m.searchInput.CursorEnd()
 	m.searchQuery = strings.TrimSpace(newValue)
 	m.messageCursor = 0
 	m.listOffset = 0
@@ -3240,8 +3274,22 @@ func (m Model) articlesPaneContentHeight() int {
 }
 func (m Model) articleRowsVisible() int {
 	stride := m.styles.ListItemLineStride()
-	bodyLines := max(0, m.articlesPaneContentHeight()-1)
+	bodyLines := max(0, m.articlesPaneContentHeight()-m.paneHeaderHeight()-m.messageSearchRowHeight())
 	return bodyLines / stride
+}
+
+func (m Model) messageSearchRowHeight() int {
+	if m.searchMode {
+		return 1
+	}
+	return 0
+}
+
+func (m Model) paneHeaderHeight() int {
+	if m.cfg.Display.ShowPaneHeaders {
+		return 1
+	}
+	return 0
 }
 func (m Model) contentPaneOuterHeight() int {
 	return max(3, m.mainHeight()-m.articlesPaneOuterHeight())
@@ -3251,7 +3299,7 @@ func (m Model) contentPaneOuterHeight() int {
 // full 4-sided focus border is subtracted.
 func (m Model) contentPaneContentWidth() int { return max(1, m.articlesPaneWidth()-2) }
 func (m Model) contentBodyHeight() int {
-	return max(1, m.contentPaneOuterHeight()-3)
+	return max(1, m.contentPaneOuterHeight()-2-m.paneHeaderHeight())
 }
 func (m Model) contentBodyWidth() int {
 	w := m.contentPaneContentWidth()

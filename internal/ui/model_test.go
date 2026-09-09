@@ -905,6 +905,130 @@ func TestSearchResultsReplaceCurrentMailboxListAndRenderContext(t *testing.T) {
 	}
 }
 
+func TestSearchUsesDedicatedRowBelowMessagesHeader(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.width = 100
+	m.height = 20
+	m.focused = paneMessages
+	m.searchMode = true
+	m.searchEditing = true
+	m.searchQuery = "launch"
+	m.searchInput.SetValue("launch")
+	m.filteredMessages = []db.Message{{ID: 1, Subject: "Quarterly launch", Date: time.Unix(10, 0)}}
+	m.selectedMessages = make(map[int64]bool)
+
+	lines := strings.Split(ansi.Strip(m.renderMessagesPane()), "\n")
+	header, search, subject := -1, -1, -1
+	for i, line := range lines {
+		switch {
+		case strings.Contains(line, "Messages"):
+			header = i
+		case strings.Contains(line, "Search: launch"):
+			search = i
+		case strings.Contains(line, "Quarterly launch"):
+			subject = i
+		}
+	}
+	if header < 0 || search != header+1 || subject != search+1 {
+		t.Fatalf("expected header, search, and first subject on consecutive rows; got header=%d search=%d subject=%d\n%s", header, search, subject, strings.Join(lines, "\n"))
+	}
+}
+
+func TestSearchCursorFollowsPromptAndTypedQuery(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.searchMode = true
+	m.searchEditing = true
+
+	empty := ansi.Strip(m.renderMessageSearchRow(40))
+	if !strings.HasPrefix(empty, "Search:  ") {
+		t.Fatalf("empty search cursor should follow the prompt, got %q", empty)
+	}
+
+	next, _ := m.handleSearchCharacter("launch")
+	m = next.(Model)
+	if got, want := m.searchInput.Position(), len([]rune("launch")); got != want {
+		t.Fatalf("search cursor position=%d, want end of query at %d", got, want)
+	}
+	typed := ansi.Strip(m.renderMessageSearchRow(40))
+	if !strings.HasPrefix(typed, "Search: launch ") {
+		t.Fatalf("typed search cursor should follow the query, got %q", typed)
+	}
+}
+
+func TestHiddenPaneHeadersMoveFocusedContextToStatusLine(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Display.ShowPaneHeaders = false
+	m := NewModel(nil, cfg, "dev", false)
+	m.width = 140
+	m.height = 24
+	m.selectedMessages = make(map[int64]bool)
+
+	checks := []struct {
+		focus pane
+		title string
+		want  string
+	}{
+		{paneAccounts, "Accounts", "toggle"},
+		{paneMessages, "Messages", "archive"},
+		{paneContent, "Content", "reply"},
+	}
+	for _, tc := range checks {
+		m.focused = tc.focus
+		got := ansi.Strip(m.renderStatusBar())
+		if !strings.Contains(got, tc.title) || !strings.Contains(got, tc.want) || strings.Index(got, tc.title) > strings.Index(got, tc.want) {
+			t.Errorf("focus %v: expected title %q before contextual hint %q, got %q", tc.focus, tc.title, tc.want, got)
+		}
+	}
+	m.focused = paneAccounts
+	accountStatus := ansi.Strip(m.renderStatusBar())
+	for _, want := range []string{"command", "accounts", "settings", "search", "help"} {
+		if !strings.Contains(accountStatus, want) {
+			t.Errorf("Accounts status hints missing default action %q: %q", want, accountStatus)
+		}
+	}
+
+	if got := ansi.Strip(m.renderMessagesPane()); strings.Contains(got, "> Messages") {
+		t.Fatalf("hidden pane header leaked into message pane: %q", got)
+	}
+}
+
+func TestHiddenPaneHeadersShowSearchControlsWhileEditing(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Display.ShowPaneHeaders = false
+	m := NewModel(nil, cfg, "dev", false)
+	m.width = 120
+	m.height = 24
+	m.focused = paneAccounts
+	m.searchMode = true
+	m.searchEditing = true
+
+	got := ansi.Strip(m.renderStatusBar())
+	if !strings.Contains(got, "enter finish") || !strings.Contains(got, "esc exit") {
+		t.Fatalf("expected active search controls to replace pane hints, got %q", got)
+	}
+}
+
+func TestHiddenPaneHeadersRecoverOneContentRowPerPane(t *testing.T) {
+	shownCfg := config.DefaultConfig()
+	shown := NewModel(nil, shownCfg, "dev", false)
+	shown.width, shown.height = 120, 30
+
+	hiddenCfg := shownCfg
+	hiddenCfg.Display.ShowPaneHeaders = false
+	hidden := NewModel(nil, hiddenCfg, "dev", false)
+	hidden.width, hidden.height = shown.width, shown.height
+
+	if got, want := hidden.sidebarVisibleRows(), shown.sidebarVisibleRows()+1; got != want {
+		t.Fatalf("hidden Accounts header: visible rows=%d, want %d", got, want)
+	}
+	if got, want := hidden.articleRowsVisible(), shown.articleRowsVisible()+1; got != want {
+		t.Fatalf("hidden Messages header: visible rows=%d, want %d", got, want)
+	}
+	if got, want := hidden.contentBodyHeight(), shown.contentBodyHeight()+1; got != want {
+		t.Fatalf("hidden Content header: body height=%d, want %d", got, want)
+	}
+}
+
 func TestSidebarNavigationDoesNotReloadWhileSearchIsActive(t *testing.T) {
 	cfg := config.DefaultConfig()
 	m := NewModel(nil, cfg, "dev", false)

@@ -15,8 +15,10 @@ import (
 func (m Model) renderAccountsPane() string {
 	innerW := m.accountsPaneContentWidth()
 	focused := m.focused == paneAccounts
-	title := m.renderPaneHeader(paneAccounts, "Accounts", focused, innerW)
-	rows := []string{title}
+	rows := []string{}
+	if m.cfg.Display.ShowPaneHeaders {
+		rows = append(rows, m.renderPaneHeader(paneAccounts, "Accounts", focused, innerW))
+	}
 
 	end := min(m.sidebarOffset+m.sidebarVisibleRows(), len(m.sidebarRows))
 	for i := m.sidebarOffset; i < end; i++ {

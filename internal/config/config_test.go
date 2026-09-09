@@ -96,6 +96,12 @@ func TestDefaultConfigDisplayDensityCompact(t *testing.T) {
 	}
 }
 
+func TestDefaultConfigShowsPaneHeaders(t *testing.T) {
+	if !DefaultConfig().Display.ShowPaneHeaders {
+		t.Fatal("pane header bars should default to visible")
+	}
+}
+
 func TestNormalizeDisplayDensity(t *testing.T) {
 	if got := NormalizeDisplayDensity(""); got != "compact" {
 		t.Fatalf("empty: got %q", got)

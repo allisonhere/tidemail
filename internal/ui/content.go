@@ -11,7 +11,7 @@ import (
 
 func (m Model) renderContentPane() string {
 	w := m.contentPaneContentWidth()
-	paneH := m.contentBodyHeight() + 1
+	paneH := m.contentBodyHeight() + m.paneHeaderHeight()
 	bodyH := m.contentBodyHeight()
 	bg := m.styles.Theme.Bg
 
@@ -30,8 +30,11 @@ func (m Model) renderContentPane() string {
 	body := m.renderContentFocusLine(vp.View(), w, vpH, focused)
 	body = clampView(body, w, vpH, bg)
 
-	header := m.renderPaneHeader(paneContent, "Content", focused, w)
-	content := header + "\n" + body
+	content := body
+	if m.cfg.Display.ShowPaneHeaders {
+		header := m.renderPaneHeader(paneContent, "Content", focused, w)
+		content = header + "\n" + body
+	}
 
 	if searching {
 		matchInfo := ""
@@ -47,7 +50,11 @@ func (m Model) renderContentPane() string {
 		input.PlaceholderStyle = lipgloss.NewStyle().Background(searchBg).Foreground(m.styles.Theme.Fg)
 		input.Cursor.Style = lipgloss.NewStyle().Background(m.styles.Theme.BorderFocus).Foreground(accentReadableOn(m.styles.Theme.Fg, m.styles.Theme.BorderFocus, 4.5))
 		searchBar := m.styles.ContentBody.Width(w).Render(inputViewWithCursor(input, true) + matchInfo)
-		content = header + "\n" + searchBar + "\n" + body
+		content = searchBar + "\n" + body
+		if m.cfg.Display.ShowPaneHeaders {
+			header := m.renderPaneHeader(paneContent, "Content", focused, w)
+			content = header + "\n" + content
+		}
 	}
 
 	return m.styles.PaneFrame(focused).

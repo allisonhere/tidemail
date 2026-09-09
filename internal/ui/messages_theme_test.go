@@ -11,7 +11,7 @@ import (
 	"github.com/muesli/termenv"
 )
 
-// The multi-selected-row tint and the search-mode header badge must come from
+// The multi-selected-row tint and the dedicated search row must come from
 // the active theme, not fixed hex values that clash on light themes. Rendered
 // under a light theme (truecolor profile so colors survive as RGB), the old
 // hardcoded colors must be gone and the theme's own accent must be present.
@@ -51,8 +51,8 @@ func TestMessagesPaneUsesThemeColorsNotHardcodedHex(t *testing.T) {
 		}
 	}
 
-	// The search badge must now use the theme's focus accent as its background.
+	// The search row must use the theme's focus accent as its background.
 	if !strings.Contains(view, "48;2;30;102;245") {
-		t.Error("search badge does not use the theme BorderFocus (#1e66f5) background")
+		t.Error("search row does not use the theme BorderFocus (#1e66f5) background")
 	}
 }

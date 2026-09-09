@@ -106,57 +106,14 @@ func (m Model) renderMessagesPane() string {
 	}
 
 	focused := m.focused == paneMessages
-	title := "Messages"
-	if m.selectedUnifiedInbox() {
-		title = "Unified Inbox"
+	contentRows := []string{}
+	if m.cfg.Display.ShowPaneHeaders {
+		contentRows = append(contentRows, m.renderPaneHeaderWithAccent(paneMessages, m.messagesPaneTitle(), focused, w, headerActive))
 	}
 	if m.searchMode {
-		if m.searchQuery != "" {
-			title = fmt.Sprintf("Search: %s", m.searchQuery)
-		} else {
-			title = "Search:"
-		}
+		contentRows = append(contentRows, m.renderMessageSearchRow(w))
 	}
-	if m.showUnreadOnly {
-		title += " (unread)"
-	}
-	if m.starredFirst {
-		title += " (starred first)"
-	}
-	// Surface an active multi-selection so it's clear a bulk action (d/a/m/x)
-	// will apply to those messages, not just the focused row.
-	if n := len(m.selectedMessages); n > 0 {
-		title += fmt.Sprintf("  ✓ %d selected", n)
-	}
-
-	var headerLine string
-	if m.searchMode {
-		// Badge fills from text through the gap to the hint area, using the
-		// theme's focus accent so it stays on-palette (not a black block on
-		// light themes). Mirrors the PaneHeaderActive treatment.
-		badgeBg := m.styles.Theme.BorderFocus
-		badgeStyle := lipgloss.NewStyle().
-			Background(badgeBg).
-			Foreground(accentReadableOn(m.styles.Theme.Fg, badgeBg, 4.5)).
-			Bold(true)
-		badgeText := "> " + m.headerLabel(title)
-		badgeW := lipgloss.Width(badgeText)
-		if badgeW >= w {
-			badgeText = truncate(badgeText, w)
-			badgeW = lipgloss.Width(badgeText)
-		}
-		hint := m.renderPaneHint(paneMessages)
-		hintMax := max(0, w-badgeW)
-		hint = truncate(hint, hintMax)
-		hintW := lipgloss.Width(hint)
-		gap := max(0, w-badgeW-hintW)
-		left := badgeStyle.Width(badgeW + gap).Render(badgeText)
-		headerLine = m.styles.PaneHeaderInactive.Width(w).Render(left + hint)
-	} else {
-		headerLine = m.renderPaneHeaderWithAccent(paneMessages, title, focused, w, headerActive)
-	}
-
-	contentRows := append([]string{headerLine}, rows...)
+	contentRows = append(contentRows, rows...)
 	for viewLineCount(contentRows) < h {
 		contentRows = append(contentRows, msgRead.Width(w).Render(""))
 	}
@@ -175,6 +132,42 @@ func (m Model) renderMessagesPane() string {
 		BorderBackground(bg).
 		Width(w).Height(h).
 		Render(content)
+}
+
+func (m Model) messagesPaneTitle() string {
+	title := "Messages"
+	if m.selectedUnifiedInbox() {
+		title = "Unified Inbox"
+	}
+	if m.showUnreadOnly {
+		title += " (unread)"
+	}
+	if m.starredFirst {
+		title += " (starred first)"
+	}
+	if n := len(m.selectedMessages); n > 0 {
+		title += fmt.Sprintf("  ✓ %d selected", n)
+	}
+	return title
+}
+
+func (m Model) renderMessageSearchRow(width int) string {
+	input := m.searchInput
+	if input.Value() == "" && m.searchQuery != "" {
+		input.SetValue(m.searchQuery)
+		input.CursorEnd()
+	}
+	const prompt = "Search: "
+	input.Prompt = ""
+	input.Width = max(1, width-lipgloss.Width(prompt))
+	bg := m.styles.Theme.BorderFocus
+	fg := accentReadableOn(m.styles.Theme.Fg, bg, 4.5)
+	input.PromptStyle = lipgloss.NewStyle().Background(bg).Foreground(fg).Bold(true)
+	input.TextStyle = lipgloss.NewStyle().Background(bg).Foreground(fg)
+	input.PlaceholderStyle = lipgloss.NewStyle().Background(bg).Foreground(fg)
+	input.Cursor.Style = lipgloss.NewStyle().Background(fg).Foreground(bg)
+	view := input.PromptStyle.Render(prompt) + inputViewWithCursor(input, m.searchEditing)
+	return lipgloss.NewStyle().Background(bg).Foreground(fg).Width(width).Render(truncateStyled(view, width, bg))
 }
 
 func (m Model) messageRowStyles() (lipgloss.Style, lipgloss.Style, lipgloss.Style, lipgloss.Style, lipgloss.Color, lipgloss.Color) {

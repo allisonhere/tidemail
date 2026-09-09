@@ -30,8 +30,11 @@ Current release: **v1.0.5**.
   name preserved in `From:`.
 - **Drafts**: local drafts plus a one-way mirror of server drafts, deduplicated by a
   partial unique index on `(mailbox_id, remote_uid)`.
-- **Three-pane UI**: accounts sidebar, message list, message content. Threaded view,
-  HTML rendering, attachment saving, contacts manager.
+- **Three-pane UI**: accounts sidebar, message list, message content. Pane header
+  bars can be shown or removed; when removed, the focused title and shortcuts
+  move to the status line and each pane gains a content row.
+  Global search uses a dedicated row above message subjects. Threaded view, HTML
+  rendering, attachment saving, contacts manager.
 - **Undo** for destructive message actions and for sending.
 - **AI**: summaries and grammar across OpenAI, Claude, Gemini, and Ollama. Mail rules
   are AI-generated once into reviewed JSON, then matched locally and deterministically —
@@ -46,8 +49,8 @@ Current release: **v1.0.5**.
   `TIDEMAIL_MS_CLIENT_ID` (device-code). XOAUTH2 for IMAP and SMTP; refresh
   token stored in the keychain and rotation-persisted.
 - **Search**, unread-only filtering, command palette, desktop notifications.
-- **Settings**: theme, display density, pane corners, modal drop shadow, AI
-  provider config, editor, update checks.
+- **Settings**: theme, display density, pane corners, pane header bars, modal
+  drop shadow, AI provider config, editor, update checks.
 - **Update checker**: GitHub-releases check with checksum-verified self-update,
   user-local install fallback, and an in-app progress popup.
 

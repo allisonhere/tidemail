@@ -335,6 +335,11 @@ your desktop theme — no restart. If Omarchy isn't installed it falls back to
 
 Press `S` to open Settings.
 
+Under **Display**, **Pane header bars** controls the title-and-shortcut row above
+each pane. When disabled, those rows disappear to make more room for content;
+the focused pane's title and shortcuts appear in the bottom status line instead.
+Global message search uses a dedicated row above message subjects while active.
+
 - Display: theme, icons, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, and quit confirmation
 - Editor: compose keys, send delay, and maximum delivery attempts
 - Accounts: connection details, From address, signature, color, and sync interval
