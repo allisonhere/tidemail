@@ -42,16 +42,17 @@ func IsAuthFailure(err error) bool {
 // PersistRefreshToken is called with the rotated refresh token after every
 // successful refresh so it survives crashes. Wired to the keyring at startup
 // (kept as an injected func to avoid an auth→config import).
-var PersistRefreshToken = func(accountName, refreshToken string) {}
+var PersistRefreshToken = func(accountName, refreshToken string) error { return nil }
 
 // expiryMargin refreshes tokens slightly early so a token that's valid when
 // fetched doesn't expire mid-IMAP-session-setup.
 const expiryMargin = 2 * time.Minute
 
 type tokenState struct {
-	access  string
-	expiry  time.Time
-	refresh string
+	access         string
+	expiry         time.Time
+	refresh        string
+	pendingPersist bool
 }
 
 // tokenCache is a per-account access-token cache for one OAuth provider, shared
@@ -84,6 +85,12 @@ func (c *tokenCache) accessToken(ctx context.Context, clientID, clientSecret, ac
 		st = &tokenState{refresh: seedRefresh}
 		c.states[account] = st
 	}
+	// Retry a failed write before using or refreshing this token again.
+	if st.pendingPersist {
+		if err := c.persist(account, st); err != nil {
+			return "", err
+		}
+	}
 	if st.access != "" && time.Now().Before(st.expiry.Add(-expiryMargin)) {
 		return st.access, nil
 	}
@@ -98,9 +105,21 @@ func (c *tokenCache) accessToken(ctx context.Context, clientID, clientSecret, ac
 	st.expiry = tok.Expiry
 	if tok.RefreshToken != "" && tok.RefreshToken != st.refresh {
 		st.refresh = tok.RefreshToken
-		PersistRefreshToken(account, tok.RefreshToken)
+		st.pendingPersist = true
+		if err := c.persist(account, st); err != nil {
+			return "", err
+		}
 	}
 	return st.access, nil
+}
+
+func (c *tokenCache) persist(account string, st *tokenState) error {
+	if err := PersistRefreshToken(account, st.refresh); err != nil {
+		// Do not include storage errors: a backend could echo secret material.
+		return fmt.Errorf("auth: could not save refreshed credentials for %s; restore credential storage and retry", account)
+	}
+	st.pendingPersist = false
+	return nil
 }
 
 func (c *tokenCache) latest(account string) (string, bool) {

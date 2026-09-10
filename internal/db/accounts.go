@@ -121,21 +121,18 @@ func (db *DB) UpsertMailbox(m Mailbox) (int64, error) {
 	if displayName == "" {
 		displayName = m.Name
 	}
-	res, err := db.Exec(`
+	var id int64
+	err := db.QueryRow(`
 		INSERT INTO mailboxes (account_id, name, display_name, delimiter, flags)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(account_id, name) DO UPDATE SET
 			display_name = excluded.display_name,
 			delimiter    = excluded.delimiter,
 			flags        = excluded.flags
-	`, m.AccountID, m.Name, displayName, m.Delimiter, string(flagsJSON))
+		RETURNING id
+	`, m.AccountID, m.Name, displayName, m.Delimiter, string(flagsJSON)).Scan(&id)
 	if err != nil {
 		return 0, err
-	}
-	id, err := res.LastInsertId()
-	if err != nil || id == 0 {
-		db.QueryRow(`SELECT id FROM mailboxes WHERE account_id = ? AND name = ?`,
-			m.AccountID, m.Name).Scan(&id) //nolint:errcheck
 	}
 	return id, nil
 }

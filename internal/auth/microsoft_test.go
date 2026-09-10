@@ -133,7 +133,7 @@ func TestMSAccessTokenCachesAndRotates(t *testing.T) {
 
 	var persistedName, persistedToken string
 	oldPersist := PersistRefreshToken
-	PersistRefreshToken = func(name, tok string) { persistedName, persistedToken = name, tok }
+	PersistRefreshToken = func(name, tok string) error { persistedName, persistedToken = name, tok; return nil }
 	t.Cleanup(func() { PersistRefreshToken = oldPersist })
 
 	got, err := MSAccessToken(context.Background(), "client-id", account, "refresh-seed")

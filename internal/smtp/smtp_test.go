@@ -1,10 +1,14 @@
 package smtp
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
+	"mime"
+	"mime/multipart"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"strings"
 	"testing"
@@ -12,6 +16,40 @@ import (
 
 	"github.com/allisonhere/tidemail/internal/config"
 )
+
+func TestBuildRawAttachmentFilenameRoundTrip(t *testing.T) {
+	for _, name := range []string{"report.txt", `report"final.txt`, `report\final.txt`, "résumé.txt", "report\nfinal.txt"} {
+		t.Run(name, func(t *testing.T) {
+			raw := buildRaw("a@example.com", OutgoingMessage{
+				To: []string{"b@example.com"}, Body: "See attached",
+				Attachments: []Attachment{{Name: name, Data: []byte("content")}},
+			})
+			msg, err := mail.ReadMessage(bytes.NewReader(raw))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			reader := multipart.NewReader(msg.Body, params["boundary"])
+			if _, err := reader.NextPart(); err != nil {
+				t.Fatal(err)
+			}
+			part, err := reader.NextPart()
+			if err != nil {
+				t.Fatal(err)
+			}
+			disposition, params, err := mime.ParseMediaType(part.Header.Get("Content-Disposition"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if disposition != "attachment" || params["filename"] != name {
+				t.Fatalf("attachment header round trip = %q, %q; want attachment, %q", disposition, params["filename"], name)
+			}
+		})
+	}
+}
 
 func TestSendMail(t *testing.T) {
 	server, client := net.Pipe()

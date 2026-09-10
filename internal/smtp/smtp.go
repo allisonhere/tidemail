@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"mime"
 	"mime/multipart"
 	"net"
 	"net/smtp"
@@ -283,7 +284,7 @@ func buildRaw(from string, msg OutgoingMessage) []byte {
 	for _, att := range msg.Attachments {
 		attHdr := textproto.MIMEHeader{
 			"Content-Type":              {"application/octet-stream"},
-			"Content-Disposition":       {fmt.Sprintf("attachment; filename=\"%s\"", att.Name)},
+			"Content-Disposition":       {mime.FormatMediaType("attachment", map[string]string{"filename": att.Name})},
 			"Content-Transfer-Encoding": {"base64"},
 		}
 		w, _ := mw.CreatePart(attHdr)

@@ -375,8 +375,11 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 	// Google can rotate refresh tokens on refresh; persist the rotated token to
 	// the keyring immediately so it survives crashes. (Injected func —
 	// internal/auth can't import internal/config.)
-	auth.PersistRefreshToken = func(accountName, refreshToken string) {
-		config.StoreOAuth2RefreshToken(accountName, refreshToken)
+	auth.PersistRefreshToken = func(accountName, refreshToken string) error {
+		if !config.StoreOAuth2RefreshToken(accountName, refreshToken) {
+			return fmt.Errorf("credential storage unavailable")
+		}
+		return nil
 	}
 	return m
 }

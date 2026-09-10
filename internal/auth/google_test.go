@@ -221,7 +221,7 @@ func TestGoogleAccessTokenCachesAndRotates(t *testing.T) {
 
 	var persisted string
 	prev := PersistRefreshToken
-	PersistRefreshToken = func(name, tok string) { persisted = tok }
+	PersistRefreshToken = func(name, tok string) error { persisted = tok; return nil }
 	t.Cleanup(func() { PersistRefreshToken = prev })
 
 	got, err := GoogleAccessToken(context.Background(), "cid", "secret", acct, "seed-refresh")
