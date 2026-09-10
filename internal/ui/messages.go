@@ -32,12 +32,13 @@ func (m Model) renderMessagesPane() string {
 			draft := m.drafts[i]
 			age := m.formatTime(draft.UpdatedAt)
 			style := msgRead
-			if i == m.messageCursor {
-				style = msgSelected
-			}
 			prefix := "✎ "
 			if !m.iconsEnabled() {
 				prefix = "d "
+			}
+			if i == m.messageCursor {
+				style = msgSelected
+				prefix = "→ "
 			}
 			rows = append(rows, style.Width(w).Render(renderArticleRow(prefix, m.messageRowStar(false), unescapeDisplayText(draftSubject(draft)), age, w)))
 		}
@@ -65,6 +66,7 @@ func (m Model) renderMessagesPane() string {
 			if threadUnread > 0 {
 				style = msgUnread
 			}
+			cursor := i == m.messageCursor
 			dot := m.messageRowPrefix(threadUnread == 0)
 			if m.messageRowSelected(msg2, thread) {
 				dot = "✓ "
@@ -76,11 +78,13 @@ func (m Model) renderMessagesPane() string {
 					style = style.Foreground(selFg)
 				}
 			}
+			if cursor {
+				dot = "→ "
+			}
 			subject := m.messageRowTitle(msg2)
 			if threadCount > 1 {
 				subject = fmt.Sprintf("%s (%d)", subject, threadCount)
 			}
-			cursor := i == m.messageCursor
 			style = applyMessageRowState(style, msgSelected, msg2.Starred, cursor, m.styles.Theme)
 			star := m.messageRowStar(msg2.Starred)
 			var line string

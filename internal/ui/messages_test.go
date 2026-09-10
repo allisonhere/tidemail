@@ -8,6 +8,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 )
 
@@ -75,5 +76,17 @@ func TestSelectedStarredMessageKeepsHighlightAcrossEntireRow(t *testing.T) {
 	}
 	if strings.Contains(line[starAt:subjectAt], "\x1b[0m") {
 		t.Fatalf("selected-row style reset before subject, leaving part of row unhighlighted: %q", line)
+	}
+}
+
+func TestCurrentMessageRowUsesRightArrowPrefix(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.width = 80
+	m.height = 20
+	m.filteredMessages = []db.Message{{ID: 1, Subject: "Current", Date: time.Now()}}
+
+	view := ansi.Strip(m.renderMessagesPane())
+	if !strings.Contains(view, "→ ") {
+		t.Fatalf("current message row should have a right arrow prefix, got %q", view)
 	}
 }
