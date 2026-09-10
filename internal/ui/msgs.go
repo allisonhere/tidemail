@@ -160,8 +160,9 @@ type MessageSentMsg struct {
 // the model decides whether to dispatch immediately or hold the message for
 // the configured undo grace period.
 type SendQueuedMsg struct {
-	Account config.AccountConfig
-	Msg     smtp.OutgoingMessage
+	Account     config.AccountConfig
+	Msg         smtp.OutgoingMessage
+	ScheduledAt time.Time // zero uses the configured undo-delay send time
 }
 
 // CommitSendMsg fires when a pending send's grace period elapses.

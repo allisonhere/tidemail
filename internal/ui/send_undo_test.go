@@ -2,6 +2,7 @@ package ui
 
 import (
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -119,5 +120,102 @@ func TestCommitMarksPendingSendUncancelable(t *testing.T) {
 	m = next.(Model)
 	if len(m.pendingSends) != 0 {
 		t.Fatal("expected the sent entry to be cleared")
+	}
+}
+
+func TestScheduledSendPersistsFutureTimeAndDoesNotFlushEarly(t *testing.T) {
+	m := newSendTestModel(t, 5)
+	c := NewCompose(config.AccountConfig{}, nil, nil)
+	c.toInput.SetValue("bob@example.com")
+	c.subjectInput.SetValue("later")
+	m.compose = c
+	m.overlay = overlayCompose
+	due := time.Now().Add(2 * time.Hour).Truncate(time.Second)
+
+	next, cmd := m.Update(SendQueuedMsg{
+		Account:     config.AccountConfig{},
+		Msg:         smtp.OutgoingMessage{To: []string{"bob@example.com"}, Subject: "later"},
+		ScheduledAt: due,
+	})
+	m = next.(Model)
+	if cmd == nil || len(m.pendingSends) != 1 {
+		t.Fatal("expected future send to remain queued with a timer")
+	}
+	if got := m.pendingSends[0].DueAt; got != due.Unix() {
+		t.Fatalf("DueAt = %d, want %d", got, due.Unix())
+	}
+	item, err := m.db.GetOutbox(int64(m.pendingSends[0].ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.NextAttempt != due.Unix() || item.State != db.OutboxQueued {
+		t.Fatalf("scheduled outbox item = %+v", item)
+	}
+	if err := m.FlushPendingSends(); err != nil {
+		t.Fatal(err)
+	}
+	item, err = m.db.GetOutbox(item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.State != db.OutboxQueued || item.Attempts != 0 {
+		t.Fatalf("shutdown sent a future message: %+v", item)
+	}
+}
+
+func TestScheduleSendRejectsPastTime(t *testing.T) {
+	m := newSendTestModel(t, 5)
+	m.compose = NewCompose(config.AccountConfig{}, nil, nil)
+	m.overlay = overlayCompose
+	m.openScheduleSend()
+	m.schedulePicker.Select(3) // Custom date and time.
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	// Confirm tomorrow's date, then enter an invalid time to stay in the picker.
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	m.scheduleSendInput.SetValue("not-a-time")
+
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	if m.overlay != overlayScheduleSend || m.scheduleSendInput.Err == nil {
+		t.Fatal("invalid custom time should leave the picker open with an error")
+	}
+}
+
+func TestScheduleSendUsesTwelveHourTime(t *testing.T) {
+	m := newSendTestModel(t, 5)
+	m.compose = NewCompose(config.AccountConfig{}, nil, nil)
+	m.compose.toInput.SetValue("bob@example.com")
+	m.overlay = overlayCompose
+	m.openScheduleSend()
+	m.schedulePicker.Select(3) // Custom date and time.
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	if got := m.scheduleSendInput.Value(); got != "9:00 AM" {
+		t.Fatalf("custom time default = %q, want 12-hour time", got)
+	}
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // Choose the default future date.
+	m = next.(Model)
+	m.scheduleSendInput.SetValue("11:30 pm")
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	if cmd == nil {
+		t.Fatal("expected custom 12-hour time to queue a send")
+	}
+	queued, ok := cmd().(SendQueuedMsg)
+	if !ok {
+		t.Fatalf("schedule command returned %T, want SendQueuedMsg", cmd())
+	}
+	if got := queued.ScheduledAt.In(time.Local).Hour(); got != 23 {
+		t.Fatalf("queued scheduled hour = %d, want 23", got)
+	}
+	next, _ = m.Update(queued)
+	m = next.(Model)
+	if len(m.pendingSends) != 1 {
+		t.Fatal("expected scheduled send in outbox")
+	}
+	if got := time.Unix(m.pendingSends[0].DueAt, 0).In(time.Local).Hour(); got != 23 {
+		t.Fatalf("scheduled hour = %d, want 23", got)
 	}
 }

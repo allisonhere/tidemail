@@ -1160,7 +1160,7 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 		}
 	}
 
-	pairs := []string{"^s", "send", "^g", "grammar", "^u", "sender", "alt+f", "attach", "tab", "next"}
+	pairs := []string{"^s", "send", "^p", "schedule", "^g", "grammar", "^u", "sender"}
 	if c.senderPickerOpen {
 		pairs = []string{"↑↓", "choose sender", "enter", "select", "esc", "cancel"}
 	} else {

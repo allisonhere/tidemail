@@ -109,6 +109,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.Tab.Help().Key + "/shift+tab", "next/previous field; From opens the sender picker"},
 				{keys.Enter.Help().Key, "open sender picker or advance header fields"},
 				{"ctrl+s/ctrl+d", "send message"},
+				{"ctrl+p → Schedule send", "choose a future local date and time"},
 				{keys.AttachFile.Help().Key, "attach file"},
 				{keys.RemoveAttach.Help().Key, "remove last attachment"},
 				{keys.CycleSender.Help().Key, "cycle sender account; From opens the full picker"},

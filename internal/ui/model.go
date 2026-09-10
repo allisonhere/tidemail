@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -75,6 +76,7 @@ const (
 	overlayDraftCloseConfirm
 	overlayBulkDeleteConfirm
 	overlayUnsubscribeConfirm
+	overlayScheduleSend
 )
 
 type commandPaletteContext int
@@ -172,13 +174,18 @@ type Model struct {
 	contentQuotesCollapsed bool
 	contentShowHeaders     bool
 
-	saveAttachPicker filePicker
-	movePicker       movePicker
-	filterManager    filterManager
-	outboxItems      []db.OutboxItem
-	outboxCursor     int
-	outboxStatus     string
-	outboxConfirmID  int64
+	saveAttachPicker  filePicker
+	movePicker        movePicker
+	filterManager     filterManager
+	outboxItems       []db.OutboxItem
+	outboxCursor      int
+	outboxStatus      string
+	outboxConfirmID   int64
+	scheduleSendInput textinput.Model
+	schedulePicker    list.Model
+	scheduleCustom    bool
+	scheduleCalendar  time.Time
+	scheduleDate      time.Time
 
 	grammarOriginal    string
 	grammarCorrected   string
@@ -2045,22 +2052,12 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// composeBodyIsVim reports whether the compose overlay is active with the body
-// focused in vim mode — the one place `:` belongs to the editor's command line
-// rather than TideMail's command palette.
-func (m Model) composeBodyIsVim() bool {
-	return m.overlay == overlayCompose &&
-		m.compose.focusedField == composeFieldBody &&
-		m.compose.bodyInput.vimMode()
-}
-
 func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// The command palette keys (`:` / ctrl+p) open it over an overlay — except
-	// `:` in the vim compose body, where it's the editor's command line
-	// (`:w`/`:q`); there we fall through so the key reaches handleCompose → the
-	// body editor. ctrl+p always opens the palette, so it stays reachable from
-	// the vim body (where `:` is taken) and behaves the same as in the main UI.
-	if keyMatches(msg, m.keys.Command) && (msg.String() != ":" || !m.composeBodyIsVim()) {
+	// Ctrl+P opens the palette while composing. A literal ':' always reaches
+	// the editor so normal email text remains writable; Vim compose mode also
+	// uses it for commands such as :w and :q. Outside compose, ':' remains a
+	// palette key.
+	if keyMatches(msg, m.keys.Command) && (msg.String() != ":" || m.overlay != overlayCompose) {
 		switch m.overlay {
 		case overlayCompose:
 			if !m.compose.picker.active {
@@ -2189,6 +2186,8 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case overlayOutbox:
 		return m.handleOutboxKey(msg)
+	case overlayScheduleSend:
+		return m.handleScheduleSend(msg)
 	case overlayFilterManager:
 		return m.handleFilterManager(msg)
 

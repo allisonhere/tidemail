@@ -107,6 +107,7 @@ func (m Model) composeCommandItems() []commandItem {
 	canCycleSender := len(m.compose.accounts) > 1
 	return []commandItem{
 		{id: "compose-send", label: "Send message", enabled: true},
+		{id: "compose-schedule", label: "Schedule send", enabled: true},
 		{id: "compose-grammar", label: "Run grammar check", enabled: true},
 		{id: "compose-attach", label: "Attach file", enabled: true},
 		{id: "compose-remove-attach", label: "Remove last attachment", enabled: canRemove},
@@ -219,6 +220,9 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "compose-send":
 		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlS})
+	case "compose-schedule":
+		m.openScheduleSend()
+		return m, nil
 	case "compose-grammar":
 		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlG})
 	case "compose-attach":

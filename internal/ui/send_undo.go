@@ -23,6 +23,8 @@ type pendingSend struct {
 	DraftID    int64
 	Compose    ComposeModel
 	Attempts   int
+	DueAt      int64
+	Scheduled  bool
 	Committing bool
 	Runtime    *sendRuntime
 }
@@ -63,11 +65,15 @@ func (m Model) handleSendQueued(msg SendQueuedMsg) (Model, tea.Cmd) {
 		m.setStatus(err.Error(), true)
 		return m, nil
 	}
-	delay := m.cfg.Display.SendDelaySeconds
+	dueAt := msg.ScheduledAt
+	if dueAt.IsZero() {
+		dueAt = time.Now().Add(time.Duration(m.cfg.Display.SendDelaySeconds) * time.Second)
+	}
+	delay := time.Until(dueAt)
 	id, err := m.db.EnqueueOutbox(db.OutboxItem{
 		AccountName: msg.Account.Name, AccountUser: msg.Account.User, DraftID: draft.ID,
 		Subject: msg.Msg.Subject, Recipients: joinRecipients(msg.Msg), MessageJSON: payload, DraftJSON: draftJSON,
-		MaxAttempts: config.NormalizeSendMaxAttempts(m.cfg.Display.SendMaxAttempts), NextAttempt: time.Now().Add(time.Duration(delay) * time.Second).Unix(),
+		MaxAttempts: config.NormalizeSendMaxAttempts(m.cfg.Display.SendMaxAttempts), NextAttempt: dueAt.Unix(),
 	})
 	if err != nil {
 		m.compose = snapshot
@@ -85,15 +91,19 @@ func (m Model) handleSendQueued(msg SendQueuedMsg) (Model, tea.Cmd) {
 	m.overlay = overlayNone
 	m.pendingSends = append(m.pendingSends, pendingSend{
 		ID: uint64(id), Account: msg.Account, Msg: msg.Msg, DraftID: draft.ID, Compose: snapshot,
-		Runtime: newOutboxRuntime(m.db, id, msg.Account, m.deleteDraftCmd(draft.ID)),
+		DueAt: dueAt.Unix(), Scheduled: !msg.ScheduledAt.IsZero(), Runtime: newOutboxRuntime(m.db, id, msg.Account, m.deleteDraftCmd(draft.ID)),
 	})
 	m.refreshOutbox()
 	if delay <= 0 {
 		cmd := m.commitPendingSend(uint64(id))
 		return m, cmd
 	}
-	m.setStatus(fmt.Sprintf("sending in %ds · ctrl+z to undo · O opens Outbox", delay), false)
-	return m, outboxTick(uint64(id), time.Duration(delay)*time.Second)
+	if !msg.ScheduledAt.IsZero() {
+		m.setStatus("scheduled for "+dueAt.Local().Format("Jan 2 3:04 PM")+" · O opens Outbox", false)
+		return m, outboxTick(uint64(id), delay)
+	}
+	m.setStatus(fmt.Sprintf("sending in %s · ctrl+z to undo · O opens Outbox", delay.Round(time.Second)), false)
+	return m, outboxTick(uint64(id), delay)
 }
 
 func outboxTick(id uint64, delay time.Duration) tea.Cmd {
@@ -217,7 +227,7 @@ func newOutboxRuntime(database *db.DB, id int64, account config.AccountConfig, c
 func (m Model) FlushPendingSends() error {
 	var firstErr error
 	for _, p := range m.pendingSends {
-		if p.Attempts > 0 && !p.Committing {
+		if (p.Scheduled && !p.Committing && p.DueAt > time.Now().Unix()) || (p.Attempts > 0 && !p.Committing) {
 			continue
 		}
 		result := p.Runtime.run().(MessageSentMsg)

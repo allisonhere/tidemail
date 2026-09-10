@@ -86,8 +86,12 @@ func (m *Model) scheduleOutbox(id int64) tea.Cmd {
 	}
 	m.pendingSends = append(m.pendingSends, pendingSend{
 		ID: uint64(id), Account: account, Msg: msg, DraftID: item.DraftID, Attempts: item.Attempts,
-		Compose: NewComposeFromDraft(draft, m.cfg.Accounts, m.addressBook),
-		Runtime: newOutboxRuntime(m.db, id, account, m.deleteDraftCmd(item.DraftID)),
+		DueAt: item.NextAttempt,
+		// Queued entries loaded on startup must retain a future delivery time;
+		// there is no transient undo window to complete after a restart.
+		Scheduled: item.NextAttempt > time.Now().Unix(),
+		Compose:   NewComposeFromDraft(draft, m.cfg.Accounts, m.addressBook),
+		Runtime:   newOutboxRuntime(m.db, id, account, m.deleteDraftCmd(item.DraftID)),
 	})
 	delay := time.Until(time.Unix(item.NextAttempt, 0))
 	if delay <= 0 {
@@ -276,7 +280,7 @@ func (m Model) renderOutbox(width, height int, chrome managerChrome) string {
 		details = append(details, line("From: "+item.AccountUser), line("To: "+item.Recipients))
 		detail := item.LastError
 		if item.State == db.OutboxQueued {
-			detail = "Next attempt: " + time.Unix(item.NextAttempt, 0).Local().Format("Jan 2 15:04:05")
+			detail = "Next attempt: " + time.Unix(item.NextAttempt, 0).Local().Format("Jan 2 3:04:05 PM")
 			if item.LastError != "" {
 				detail += " · " + item.LastError
 			}

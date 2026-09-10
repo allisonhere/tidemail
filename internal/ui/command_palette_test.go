@@ -72,7 +72,7 @@ func TestCommandPaletteOpensFromComposeWithComposeContext(t *testing.T) {
 	m.overlay = overlayCompose
 	m.compose = NewCompose(m.cfg.Accounts[0], m.cfg.Accounts, nil)
 
-	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}})
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
 	m = next.(Model)
 
 	if m.overlay != overlayCommandPalette {
@@ -83,6 +83,23 @@ func TestCommandPaletteOpensFromComposeWithComposeContext(t *testing.T) {
 	}
 	if m.commandPaletteContext != commandPaletteCompose {
 		t.Fatalf("expected compose context, got %v", m.commandPaletteContext)
+	}
+}
+
+func TestComposeColonIsInsertedInsteadOfOpeningCommandPalette(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.overlay = overlayCompose
+	m.compose = NewCompose(config.AccountConfig{}, nil, nil)
+	m.compose.focusedField = composeFieldBody
+	m.compose.bodyInput.Focus()
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}})
+	m = next.(Model)
+	if m.overlay != overlayCompose {
+		t.Fatalf("colon opened overlay %v instead of staying in compose", m.overlay)
+	}
+	if got := m.compose.bodyInput.Value(); got != ":" {
+		t.Fatalf("body = %q, want colon", got)
 	}
 }
 

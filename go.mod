@@ -26,6 +26,7 @@ require (
 require (
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
+	github.com/sahilm/fuzzy v0.1.1 // indirect
 )
 
 require (

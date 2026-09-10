@@ -211,6 +211,39 @@ func (m Model) renderOverlay(base string) string {
 		inner := m.renderCommandPalette(winW, chrome)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderSoftPanelBox(inner, winW, "tidemail", "command", chrome)
+
+	case overlayScheduleSend:
+		winW := min(m.width-6, 56)
+		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
+		var body string
+		var hints string
+		if m.scheduleCustom {
+			if m.scheduleDate.IsZero() {
+				body = renderScheduleCalendar(m.scheduleCalendar, winW, chrome)
+				hints = renderSoftHints(winW, chrome, "←→/↑↓", "choose date", "pgup/pgdown", "month", "enter", "choose", "esc", "cancel")
+			} else {
+				input := m.scheduleSendInput
+				input.Width = max(1, winW-8)
+				input.Prompt = "  "
+				input.PromptStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.accent)
+				input.TextStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text)
+				input.PlaceholderStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted)
+				body = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Width(winW).Padding(1, 2).
+					Render("Send on " + m.scheduleDate.Format("Monday, January 2") + " at (local time)\n\n" + input.View() + "\n\nFormat: 3:04 PM")
+				if m.scheduleSendInput.Err != nil {
+					body += "\n" + lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.errorFg).Padding(0, 2).Render(m.scheduleSendInput.Err.Error())
+				}
+				hints = renderSoftHints(winW, chrome, "enter", "schedule", "esc", "cancel")
+			}
+		} else {
+			picker := m.schedulePicker
+			picker.SetSize(max(1, winW-4), 4)
+			body = lipgloss.NewStyle().Background(chrome.baseBg).Width(winW).Padding(1, 2).Render(picker.View())
+			hints = renderSoftHints(winW, chrome, "↑↓", "choose time", "enter", "continue", "esc", "cancel")
+		}
+		inner := lipgloss.JoinVertical(lipgloss.Left, body, hints)
+		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
+		box = renderSoftPanelBox(inner, winW, "tidemail", "schedule send", chrome)
 	}
 
 	return overlayOnBase(base, box, m.width, m.height, m.styles.Theme.Bg, m.cfg.Display.Shadow)
