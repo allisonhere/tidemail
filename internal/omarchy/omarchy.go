@@ -38,45 +38,70 @@ type Palette struct {
 // resolverTimeout bounds the `omarchy-theme-color` subprocess.
 const resolverTimeout = 2 * time.Second
 
-// stateDir returns ~/.local/state/omarchy, honoring XDG_STATE_HOME.
-func stateDir() string {
-	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
-		return filepath.Join(xdg, "omarchy")
+// roots returns the directories that may hold Omarchy's "current" state, most
+// authoritative first. Current releases stage the active theme under
+// ~/.local/state/omarchy, but installs predating that move keep it in
+// ~/.config/omarchy and are still live, so probing only the state root finds
+// nothing on those machines. OMARCHY_DIR overrides both for containers and
+// deterministic tests.
+func roots() []string {
+	if dir := strings.TrimSpace(os.Getenv("OMARCHY_DIR")); dir != "" {
+		return []string{dir}
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return ""
+		return nil
 	}
-	return filepath.Join(home, ".local", "state", "omarchy")
+	stateHome := strings.TrimSpace(os.Getenv("XDG_STATE_HOME"))
+	if stateHome == "" {
+		stateHome = filepath.Join(home, ".local", "state")
+	}
+	configHome, err := os.UserConfigDir()
+	if err != nil {
+		configHome = filepath.Join(home, ".config")
+	}
+	return []string{filepath.Join(stateHome, "omarchy"), filepath.Join(configHome, "omarchy")}
 }
 
+// currentThemeDir returns the first root that actually stages a theme, so an
+// empty state root (Omarchy creates ~/.local/state/omarchy for unrelated
+// things like toggles/) does not shadow a populated config root.
 func currentThemeDir() string {
-	d := stateDir()
-	if d == "" {
-		return ""
+	for _, root := range roots() {
+		dir := filepath.Join(root, "current", "theme")
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			return dir
+		}
 	}
-	return filepath.Join(d, "current", "theme")
+	return ""
 }
 
 func themeNamePath() string {
-	d := stateDir()
-	if d == "" {
-		return ""
+	for _, root := range roots() {
+		p := filepath.Join(root, "current", "theme.name")
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
 	}
-	return filepath.Join(d, "current", "theme.name")
+	return ""
 }
 
 // currentThemeName reads the active theme slug, or "" if unavailable.
 func currentThemeName() string {
-	p := themeNamePath()
-	if p == "" {
-		return ""
+	if p := themeNamePath(); p != "" {
+		if b, err := os.ReadFile(p); err == nil {
+			if name := strings.TrimSpace(string(b)); name != "" {
+				return name
+			}
+		}
 	}
-	b, err := os.ReadFile(p)
-	if err != nil {
-		return ""
+	// No theme.name: the symlink target's basename is the slug.
+	if dir := currentThemeDir(); dir != "" {
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			return filepath.Base(resolved)
+		}
 	}
-	return strings.TrimSpace(string(b))
+	return ""
 }
 
 // CurrentSignature returns a token that changes whenever the active Omarchy
@@ -98,10 +123,17 @@ func CurrentSignature() string {
 			}
 		}
 	}
-	if name == "" && stamp == "" {
+	// Omarchy switches themes by repointing current/theme, which can leave
+	// theme.name's mtime untouched, so the link target has to be part of the
+	// token too or a switch goes unnoticed.
+	var target string
+	if dir := currentThemeDir(); dir != "" {
+		target, _ = filepath.EvalSymlinks(dir)
+	}
+	if name == "" && stamp == "" && target == "" {
 		return ""
 	}
-	return name + "@" + stamp
+	return name + "@" + stamp + "@" + target
 }
 
 // CurrentPalette locates the active Omarchy theme and parses its palette. ok is
@@ -185,12 +217,8 @@ func parseFlatTOML(s string) map[string]string {
 		if !found {
 			continue
 		}
-		key = strings.TrimSpace(key)
-		val = strings.Trim(strings.TrimSpace(val), `"'`)
-		// Drop a trailing inline comment on unquoted values.
-		if i := strings.IndexByte(val, '#'); i > 0 && !strings.HasPrefix(val, "#") {
-			val = strings.TrimSpace(val[:i])
-		}
+		key = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(key), "-", "_"))
+		val = tomlValue(val)
 		if key != "" && val != "" {
 			m[key] = val
 		}
@@ -227,13 +255,16 @@ func parsePalette(m map[string]string) (Palette, bool) {
 		Name:       get("name", "theme_name"),
 		Mode:       strings.ToLower(get("mode", "theme_type")),
 		Background: get("background", "bg", "color0"),
-		Foreground: get("foreground", "fg", "color7"),
+		Foreground: get("foreground", "text", "fg", "color7"),
 		Accent:     get("accent", "color4", "blue"),
-		Selection:  get("selection", "selection_background", "color8"),
-		Muted:      get("muted", "color8", "dark_foreground"),
-		StatusBg:   get("lighter_background", "dark_background", "color8"),
-		Error:      get("red", "color1"),
-		Ok:         get("green", "color2"),
+		// Omarchy's generated Kitty, Alacritty and Ghostty configs all resolve
+		// selection_background to the accent for semantic palettes; color8 is
+		// only right for older ANSI-only ones, so it is tried first.
+		Selection: get("selection", "selection_background", "color8", "accent"),
+		Muted:     get("muted", "color8", "dark_foreground"),
+		StatusBg:  get("lighter_background", "surface", "dark_background", "color8"),
+		Error:     get("danger", "red", "color1"),
+		Ok:        get("success", "green", "color2"),
 	}
 	if !isHex(p.Background) || !isHex(p.Foreground) {
 		return Palette{}, false
@@ -260,7 +291,7 @@ func parseAlacritty(s string) (Palette, bool) {
 			continue
 		}
 		key = strings.TrimSpace(key)
-		val = strings.Trim(strings.TrimSpace(val), `"'`)
+		val = tomlValue(val)
 		if section != "" && key != "" && val != "" {
 			vals[section+"."+key] = val
 		}
@@ -292,6 +323,24 @@ func inferMode(bgHex string) string {
 		return "light"
 	}
 	return "dark"
+}
+
+// tomlValue extracts a scalar from the right-hand side of a `key = value`
+// line. Every Omarchy color is a quoted hex string, so a comment stripper that
+// simply cuts at the first '#' erases the value itself; the quoted span is
+// taken first and only an unquoted remainder is scanned for a trailing
+// comment.
+func tomlValue(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) > 0 && (value[0] == '"' || value[0] == '\'') {
+		if end := strings.IndexByte(value[1:], value[0]); end >= 0 {
+			return value[1 : end+1]
+		}
+	}
+	if i := strings.Index(value, " #"); i >= 0 {
+		value = value[:i]
+	}
+	return strings.TrimSpace(value)
 }
 
 func firstNonEmpty(a, b string) string {
