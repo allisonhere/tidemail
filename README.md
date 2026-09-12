@@ -264,3 +264,5 @@ You can reuse two parts as standalone Go libraries:
 
 - [ripple](https://github.com/allisonhere/ripple), the compose editor
 - [tideui](https://github.com/allisonhere/tideui), the multi-pane TUI toolkit
+
+![TIDE logo](images/TIDE-small.png)
