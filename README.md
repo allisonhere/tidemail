@@ -119,8 +119,11 @@ find text inside the open message, walk links, copy a visual selection, and save
 attachments to a folder you choose.
 
 TideMail renders HTML mail as terminal text and does not load remote images.
-Full headers are one `Ctrl+E` away, with SPF, DKIM, and DMARC results called out
-in color.
+Lists, headings, and tables keep their shape, and link text is highlighted where
+it appears. In a terminal that supports hyperlinks you can click it directly —
+the address itself stays out of the body, where it would break up the text, and
+remains available in the links list. Full headers are one `Ctrl+E` away, with
+SPF, DKIM, and DMARC results called out in color.
 
 ## Optional AI tools
 

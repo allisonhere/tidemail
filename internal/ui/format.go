@@ -500,12 +500,14 @@ func renderHTMLBody(html string, width int, th Theme, plainUI bool) string {
 // the finished output would gut the URI out of its own escape sequence.
 func renderHTMLBodyOpts(html string, width int, th Theme, plainUI, filterLinks bool) string {
 	html = normalizeHTMLForRendering(html)
+	links := &bodyLinkCollector{}
+	tables := &bodyTableCollector{}
 	converter := md.NewConverter("", true, nil)
 	converter.AddRules(spanStyleRule())
-	converter.AddRules(buttonLinkRule())
+	converter.AddRules(buttonLinkRule(links))
 	converter.AddRules(imagePlaceholderRule())
 	converter.AddRules(preformattedRule(width))
-	converter.AddRules(tableTextRule(width))
+	converter.AddRules(tableTextRule(width, tables))
 	markdown, err := converter.ConvertString(html)
 	if err != nil || strings.TrimSpace(markdown) == "" {
 		return ""
@@ -519,6 +521,11 @@ func renderHTMLBodyOpts(html string, width int, th Theme, plainUI, filterLinks b
 	if width > 0 {
 		rendered = ansi.Hardwrap(rendered, width, false)
 	}
+	// Both restyle passes run after wrapping, so the sequences they emit never
+	// pass through it. Filtered links keep their text but lose their
+	// destination, so no hyperlink is emitted in that mode.
+	rendered = styleBodyTables(rendered, th, plainUI, tables)
+	rendered = styleBodyLinks(rendered, th, plainUI, links, !filterLinks)
 	if !hasMeaningfulRenderedHTML(rendered) {
 		return ""
 	}
@@ -797,7 +804,7 @@ func selectionBelongsToTable(selec, table *goquery.Selection) bool {
 	return owner.Length() > 0 && table.Length() > 0 && owner.Get(0) == table.Get(0)
 }
 
-func tableTextRule(width int) md.Rule {
+func tableTextRule(width int, tables *bodyTableCollector) md.Rule {
 	return md.Rule{
 		Filter: []string{"table"},
 		Replacement: func(content string, selec *goquery.Selection, _ *md.Options) *string {
@@ -827,6 +834,7 @@ func tableTextRule(width int) md.Rule {
 				return selectionBelongsToTable(row, selec)
 			}).First()
 			lines := renderTextTable(rows, tableWidth, firstRow.ChildrenFiltered("th").Length() > 0)
+			tables.record(lines)
 			lines = append([]string{"```"}, lines...)
 			lines = append(lines, "```")
 			caption := normalizeInlineSpacing(selec.ChildrenFiltered("caption").Text())
@@ -1035,7 +1043,7 @@ func isDecorativeImageLabel(label string) bool {
 	return false
 }
 
-func buttonLinkRule() md.Rule {
+func buttonLinkRule(links *bodyLinkCollector) md.Rule {
 	return md.Rule{
 		Filter: []string{"a"},
 		Replacement: func(content string, selec *goquery.Selection, _ *md.Options) *string {
@@ -1067,7 +1075,8 @@ func buttonLinkRule() md.Rule {
 				if isVisualOnlyLinkText(text, selec) {
 					return md.String(" ")
 				}
-				return md.String(" " + text + " ")
+				lead, trail := linkPadding(selec)
+				return md.String(lead + links.record(href, text) + trail)
 			}
 			if text == "" {
 				return md.String(" ")
@@ -1075,7 +1084,7 @@ func buttonLinkRule() md.Rule {
 			if isVisualOnlyLinkText(text, selec) {
 				return md.String(" ")
 			}
-			return md.String("[" + text + "]")
+			return md.String(links.record(href, "["+text+"]"))
 		},
 	}
 }

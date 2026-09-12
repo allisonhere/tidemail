@@ -51,6 +51,7 @@ func tidemailDarkStyle(th Theme) string {
 	"h1": {
 		"color": "` + accent + `",
 		"bold": true,
+		"underline": true,
 		"background_color": "` + bg + `"
 	},
 	"h2": {
@@ -60,21 +61,20 @@ func tidemailDarkStyle(th Theme) string {
 	},
 	"h3": {
 		"color": "` + accent + `",
-		"bold": true,
 		"background_color": "` + bg + `"
 	},
 	"h4": {
-		"color": "` + accent + `",
+		"color": "` + fg + `",
 		"bold": true,
 		"background_color": "` + bg + `"
 	},
 	"h5": {
-		"color": "` + accent + `",
+		"color": "` + fg + `",
 		"bold": true,
 		"background_color": "` + bg + `"
 	},
 	"h6": {
-		"color": "` + accent + `",
+		"color": "` + fg + `",
 		"bold": true,
 		"background_color": "` + bg + `"
 	},
@@ -134,18 +134,18 @@ func tidemailDarkStyle(th Theme) string {
 		"background_color": "` + bg + `"
 	},
 	"item": {
-		"block_prefix": "",
+		"block_prefix": "• ",
 		"block_suffix": "",
 		"background_color": "` + bg + `"
 	},
 	"enumeration": {
-		"block_prefix": "",
+		"block_prefix": ". ",
 		"block_suffix": "",
 		"background_color": "` + bg + `"
 	},
 	"task": {
-		"ticked": "[x]",
-		"unticked": "[ ]",
+		"ticked": "[x] ",
+		"unticked": "[ ] ",
 		"background_color": "` + bg + `"
 	},
 	"image": {
