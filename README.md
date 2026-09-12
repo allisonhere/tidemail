@@ -41,6 +41,21 @@ _One inbox, several built-in themes.
   theme follows your current desktop theme — contrast-corrected to the same
   bar as the built-ins — and repaints live when you switch it.
 
+## What's new in v1.0.15
+
+- **Pane header bars are now optional.** Turn the title-and-shortcut row above
+  each pane off at **Settings → Display → Pane header bars** to give content more
+  room. The focused pane's title and shortcuts move to the status line, and each
+  pane gains a row.
+- **HTML mail keeps all of its content.** The old noise stripper could drop real
+  body sections, long messages, and the text inside tables and quoted replies.
+  Rendering now removes only what is genuinely hidden, plus tracking pixels, and
+  leaves document structure and message order alone.
+- **Triage no longer loses your place.** Deleting several messages in a row keeps
+  the focused row on the same line instead of snapping the list back to the top.
+
+Every release is listed in the [changelog](CHANGELOG.md).
+
 ## Install
 
 Linux and macOS builds are available for Intel and ARM machines.
