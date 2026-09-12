@@ -4,6 +4,15 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- **New mail no longer scrolls out of view at the top of the list.** When the
+  message list was already scrolled to the top, mail arriving above the focused
+  row pushed the view down with it, so the new message landed just off the top
+  edge and was never seen. The list now stays at the top in that case and the
+  arrival is visible; the selection stays on the message it was on. Scrolled
+  anywhere else in the list, the focused row still holds its screen line.
+
 ### Added
 
 - **Toggleable pane header bars.** The title-and-shortcut row above each pane can

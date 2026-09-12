@@ -724,7 +724,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// The focused row survived: keep it on the same screen line by
 				// shifting the scroll offset with it.
 				idx := m.indexOfFilteredMessage(focusedID)
-				m.listOffset = clamp(prevOffset+(idx-prevCursor), 0, max(0, rowCount-1))
+				shifted := prevOffset + (idx - prevCursor)
+				if prevOffset == 0 {
+					// Already at the top: mail that arrived above the focused
+					// row should come into view, not push the view down past
+					// it. Holding the offset costs the focused row its screen
+					// line, which is the point — it moves down as mail lands.
+					shifted = 0
+				}
+				m.listOffset = clamp(shifted, 0, max(0, rowCount-1))
 				m.messageCursor = idx
 			default:
 				// The focused row is gone (it was the deleted one). Hold the
