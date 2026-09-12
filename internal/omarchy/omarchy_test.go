@@ -187,3 +187,84 @@ green = "#40a02b"
 		t.Error("CurrentSignature should be non-empty when state exists")
 	}
 }
+
+// The format Omarchy actually ships: a [palette] section header with semantic
+// keys. The older tests here only covered background/foreground/red/green,
+// which no installed theme uses, so a resolver that could not read a single
+// real theme still passed them.
+func TestParseFlatTOMLRealSemanticPalette(t *testing.T) {
+	src := `[palette]
+bg = "#1a1b26"
+surface = "#272833"
+surface_alt = "#444b6a"
+text = "#a9b1d6"
+muted = "#686d86"
+accent = "#7aa2f7"
+accent_alt = "#449dab"
+danger = "#f7768e"
+success = "#9ece6a"
+warning = "#e0af68"
+shadow = "#0d0d13"
+`
+	p, ok := parsePalette(parseFlatTOML(src))
+	if !ok {
+		t.Fatal("real [palette] colors.toml did not parse")
+	}
+	for _, c := range []struct{ name, got, want string }{
+		{"background", p.Background, "#1a1b26"},
+		{"foreground", p.Foreground, "#a9b1d6"},
+		{"accent", p.Accent, "#7aa2f7"},
+		{"muted", p.Muted, "#686d86"},
+		{"statusbg", p.StatusBg, "#272833"},
+		{"error", p.Error, "#f7768e"},
+		{"ok", p.Ok, "#9ece6a"},
+	} {
+		if c.got != c.want {
+			t.Errorf("%s = %q, want %q", c.name, c.got, c.want)
+		}
+	}
+}
+
+// Every value is a hex color, so a comment stripper that cuts at the first '#'
+// deletes the color itself and the whole file parses as empty.
+func TestParseFlatTOMLKeepsHexPastInlineComment(t *testing.T) {
+	m := parseFlatTOML("bg = \"#1a1b26\" # page background\ntext = \"#a9b1d6\"\n")
+	if m["bg"] != "#1a1b26" {
+		t.Fatalf("bg = %q, want #1a1b26", m["bg"])
+	}
+}
+
+// ~/.local/state/omarchy exists on machines whose themes live in
+// ~/.config/omarchy (Omarchy puts toggles/ there regardless), so the state
+// root must not shadow a populated config root.
+func TestCurrentPaletteFallsBackToConfigRoot(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, ".local", "state"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("PATH", filepath.Join(home, "bin")) // no resolver on PATH
+
+	// An empty-but-present state root, as Omarchy leaves it.
+	if err := os.MkdirAll(filepath.Join(home, ".local", "state", "omarchy", "toggles"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	themeDir := filepath.Join(home, ".config", "omarchy", "current", "theme")
+	if err := os.MkdirAll(themeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "[palette]\nbg = \"#1a1b26\"\nsurface = \"#272833\"\ntext = \"#a9b1d6\"\naccent = \"#7aa2f7\"\n"
+	if err := os.WriteFile(filepath.Join(themeDir, "colors.toml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	p, ok := CurrentPalette()
+	if !ok {
+		t.Fatal("config-root theme not found while an empty state root exists")
+	}
+	if p.Background != "#1a1b26" || p.Foreground != "#a9b1d6" {
+		t.Fatalf("palette = %+v", p)
+	}
+	if CurrentSignature() == "" {
+		t.Fatal("signature empty for a resolvable config-root theme")
+	}
+}
