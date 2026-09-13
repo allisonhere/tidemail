@@ -6,6 +6,30 @@ All notable changes to TideMail are documented in this file.
 
 _Nothing yet._
 
+## v1.0.16
+
+### Added
+
+- **Schedule a send for later.** From compose, open the command palette with
+  `Ctrl+P` and pick **Schedule send** to choose a future local date and time.
+  The queued message shows in the Outbox and can still be pulled back.
+
+### Changed
+
+- **The current message row is marked with an arrow**, so the focused row stays
+  identifiable when a selection highlight is not enough on its own.
+
+### Fixed
+
+- **New mail no longer scrolls out of view at the top of the list.** When the
+  message list was already scrolled to the top, mail arriving above the focused
+  row pushed the view down with it, so the new message landed just off the top
+  edge and was never seen. The list now stays at the top in that case and the
+  arrival is visible; the selection stays on the message it was on. Scrolled
+  anywhere else in the list, the focused row still holds its screen line.
+- **OAuth token persistence is more robust**, so a rotated refresh token is
+  stored reliably rather than being lost between sessions.
+
 ## v1.0.15
 
 ### Added
