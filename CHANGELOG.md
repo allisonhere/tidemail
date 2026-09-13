@@ -4,6 +4,10 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+_Nothing yet._
+
+## v1.0.15
+
 ### Added
 
 - **Toggleable pane header bars.** The title-and-shortcut row above each pane can

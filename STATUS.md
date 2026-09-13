@@ -4,7 +4,7 @@ TideMail is a keyboard-first TUI email client for the terminal, built in Go with
 Bubble Tea. It supports multiple IMAP/SMTP accounts, a unified inbox, AI summaries,
 and push or interval sync. See `CLAUDE.md` for the architecture map.
 
-Current release: **v1.0.5**.
+Current release: **v1.0.15**.
 
 ## Working
 
