@@ -956,9 +956,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.mailboxes = kept
 			// If the folder being viewed was pruned, drop its now-orphaned
 			// message list so the content pane doesn't show stale rows.
+			// clearMessages rather than nilling the two slices by hand: it also
+			// drops messageThreads, which activeMessageRowCount reads when
+			// threading is on. Leaving those behind gives renderMessagesPane a
+			// non-zero row count over an empty filteredMessages — an
+			// index-out-of-range panic. -allie
 			if gone[activeID] {
-				m.messages = nil
-				m.filteredMessages = nil
+				m.clearMessages()
 			}
 		}
 		m.rebuildSidebar()

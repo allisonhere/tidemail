@@ -2,6 +2,7 @@ package ui
 
 import (
 	"testing"
+	"time"
 
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
@@ -158,3 +159,48 @@ var errTest = errTestType("list mailboxes: boom")
 type errTestType string
 
 func (e errTestType) Error() string { return string(e) }
+
+// TestMailboxesRefreshedPruneClearsThreadsWhileThreaded guards against an
+// index-out-of-range panic in renderMessagesPane. With threading on,
+// activeMessageRowCount reads len(messageThreads) while the render loop indexes
+// filteredMessages, so a prune that cleared only the latter left the pane
+// iterating rows that no longer had a backing message.
+func TestMailboxesRefreshedPruneClearsThreadsWhileThreaded(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Display.ThreadedConversations = true
+	m := NewModel(nil, cfg, "dev", false)
+	m.width, m.height = 100, 24
+	m.focused = paneMessages
+	m.accounts = []db.Account{{ID: 1, Name: "Personal"}}
+	m.mailboxes = []db.Mailbox{
+		{ID: 10, AccountID: 1, Name: "INBOX"},
+		{ID: 11, AccountID: 1, Name: "Receipts", DisplayName: "Receipts"},
+	}
+	m.rebuildSidebar()
+	for i, row := range m.sidebarRows {
+		if row.kind == rowKindMailbox && row.mailboxID == 11 {
+			m.sidebarCursor = i
+		}
+	}
+	m.messages = []db.Message{
+		{ID: 2, MailboxID: 11, MessageID: "<b@example.com>", InReplyTo: "<a@example.com>", Subject: "Re: Plan", Date: time.Unix(200, 0)},
+		{ID: 1, MailboxID: 11, MessageID: "<a@example.com>", Subject: "Plan", Date: time.Unix(100, 0)},
+	}
+	m.filteredMessages = m.messages
+	m.rebuildMessageThreads()
+	if len(m.messageThreads) == 0 {
+		t.Fatal("expected a thread to be built before the prune")
+	}
+
+	next, _ := m.Update(MailboxesRefreshedMsg{AccountID: 1, Removed: []int64{11}})
+	m = next.(Model)
+
+	if m.messageThreads != nil {
+		t.Fatalf("expected threads cleared with the pruned folder, got %+v", m.messageThreads)
+	}
+	if got := m.activeMessageRowCount(); got != 0 {
+		t.Fatalf("expected no rows after the active folder was pruned, got %d", got)
+	}
+	// Panics if the row count and the backing slice ever disagree again.
+	_ = m.renderMessagesPane()
+}

@@ -941,3 +941,61 @@ type fakeClipboard struct{ copied *string }
 
 func (f fakeClipboard) Read() (string, error)   { return "", nil }
 func (f fakeClipboard) Write(text string) error { *f.copied = text; return nil }
+
+// TestClearViewportMessageLeavesUnrelatedOverlayOpen guards the content-search
+// reset from closing modals it has nothing to do with. clearViewportMessage runs
+// as a side effect of folder switches, account deletion and destructive commits,
+// so an unconditional overlay reset inside clearContentSearch dismissed whatever
+// dialog was open at the time.
+func TestClearViewportMessageLeavesUnrelatedOverlayOpen(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		overlay overlayMode
+	}{
+		{"settings", overlaySettings},
+		{"help", overlayHelp},
+		{"account manager", overlayAccountManager},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := NewModel(nil, config.DefaultConfig(), "dev", false)
+			m.overlay = tc.overlay
+			m.clearViewportMessage()
+			if m.overlay != tc.overlay {
+				t.Fatalf("expected %v overlay to stay open, got %v", tc.overlay, m.overlay)
+			}
+		})
+	}
+}
+
+// TestClearContentSearchStillClosesItsOwnOverlay keeps the cancel path working:
+// dismissing the content search must still close it, and a viewport clear while
+// the search is open should take the now-meaningless search down with it.
+func TestClearContentSearchStillClosesItsOwnOverlay(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.overlay = overlayContentSearch
+	m.clearContentSearch()
+	if m.overlay != overlayNone {
+		t.Fatalf("expected the content-search overlay to close, got %v", m.overlay)
+	}
+}
+
+// TestAccountDeletedKeepsAccountManagerVisible verifies the confirmation the
+// handler sets can actually render. It clears the message list (which clears the
+// viewport) before setting accountManager.statusMsg, so a viewport clear that
+// closed the overlay made that message unreachable.
+func TestAccountDeletedKeepsAccountManagerVisible(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.width, m.height = 100, 40
+	m.accounts = []db.Account{{ID: 1, Name: "Personal"}}
+	m.overlay = overlayAccountManager
+
+	next, _ := m.Update(AccountDeletedMsg{AccountID: 1, AccountName: "Personal"})
+	m = next.(Model)
+
+	if m.overlay != overlayAccountManager {
+		t.Fatalf("expected the account manager to stay open, got %v", m.overlay)
+	}
+	if m.accountManager.statusMsg != "DELETED ACCOUNT" {
+		t.Fatalf("expected the deletion confirmation, got %q", m.accountManager.statusMsg)
+	}
+}

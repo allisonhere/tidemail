@@ -360,7 +360,14 @@ func (m Model) renderFullHeaders(msg db.Message, width int) string {
 }
 
 func (m *Model) clearContentSearch() {
-	m.overlay = overlayNone
+	// Only dismiss the content-search overlay itself. This runs as a side effect
+	// of clearViewportMessage, which fires on folder switches, account deletion
+	// and destructive commits — an unconditional reset there would close whatever
+	// unrelated modal (settings, help, the account manager) happened to be open,
+	// silently swallowing the status message it was about to show. -allie
+	if m.overlay == overlayContentSearch {
+		m.overlay = overlayNone
+	}
 	m.contentSearchQuery = ""
 	m.contentSearchMatches = nil
 	m.contentSearchIdx = -1
