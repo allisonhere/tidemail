@@ -222,6 +222,30 @@ func sendMail(client *smtp.Client, from string, to []string, raw []byte) error {
 	return err
 }
 
+// messageIDHeader renders a stored In-Reply-To / References value as an RFC 5322
+// msg-id list. Messages cached before identifiers were bracketed at parse time
+// hold the bare form, and a bare id makes the header invalid, so the receiving
+// client drops the reply out of its thread.
+//
+// Tokens that cannot be a msg-id are dropped rather than emitted. That also
+// closes a header-injection path: these two values reach buildRaw straight from
+// a parsed message without passing through a text input, and sanitizeControl
+// deliberately preserves CR and LF, so a hostile Message-ID could otherwise
+// inject headers. Splitting on whitespace and requiring an "@" with no angle
+// brackets leaves nothing that can carry a newline through. -allie
+func messageIDHeader(s string) string {
+	fields := strings.Fields(s)
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		f = strings.Trim(f, "<>")
+		if f == "" || !strings.Contains(f, "@") || strings.ContainsAny(f, "<>") {
+			continue
+		}
+		out = append(out, "<"+f+">")
+	}
+	return strings.Join(out, " ")
+}
+
 func buildRaw(from string, msg OutgoingMessage) []byte {
 	var hdr strings.Builder
 	hdr.WriteString("From: " + from + "\r\n")
@@ -230,11 +254,11 @@ func buildRaw(from string, msg OutgoingMessage) []byte {
 		hdr.WriteString("Cc: " + strings.Join(msg.CC, ", ") + "\r\n")
 	}
 	hdr.WriteString("Subject: " + msg.Subject + "\r\n")
-	if msg.InReplyTo != "" {
-		hdr.WriteString("In-Reply-To: " + msg.InReplyTo + "\r\n")
+	if v := messageIDHeader(msg.InReplyTo); v != "" {
+		hdr.WriteString("In-Reply-To: " + v + "\r\n")
 	}
-	if msg.References != "" {
-		hdr.WriteString("References: " + msg.References + "\r\n")
+	if v := messageIDHeader(msg.References); v != "" {
+		hdr.WriteString("References: " + v + "\r\n")
 	}
 	hdr.WriteString("MIME-Version: 1.0\r\n")
 

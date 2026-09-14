@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"mime"
 	"net"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/emersion/go-imap/v2"
 	imapclient "github.com/emersion/go-imap/v2/imapclient"
+	"github.com/emersion/go-message/charset"
 )
 
 type MailboxInfo struct {
@@ -54,6 +56,19 @@ func NewWithUpdates(cfg config.AccountConfig, onUpdate func(MailboxUpdate)) *Cli
 	return &Client{cfg: cfg, onUpdate: onUpdate}
 }
 
+// headerWordDecoder decodes RFC 2047 encoded words in envelope text (subjects
+// and address display names) with go-message's full charset table.
+//
+// go-imap's fallback is a bare mime.WordDecoder, whose nil CharsetReader knows
+// only utf-8, us-ascii and iso-8859-1; for anything else it errors, and
+// Options.decodeText then returns the encoded word unchanged. Subjects in
+// Windows-1252, Shift_JIS, GB2312 or KOI8-R were stored and displayed as
+// literal =?windows-1252?Q?...?= text. The blank charset import in parse.go
+// registers a reader for message bodies only, not for header words. -allie
+func headerWordDecoder() *mime.WordDecoder {
+	return &mime.WordDecoder{CharsetReader: charset.Reader}
+}
+
 func (c *Client) Connect(ctx context.Context) error {
 	addr := fmt.Sprintf("%s:%d", c.cfg.IMAPHost, c.cfg.IMAPPort)
 	dialer := &net.Dialer{}
@@ -77,16 +92,16 @@ func (c *Client) Connect(ctx context.Context) error {
 		conn = tlsConn
 	}
 	c.netConn = conn
-	var opts *imapclient.Options
+	opts := &imapclient.Options{
+		WordDecoder: headerWordDecoder(),
+	}
 	if c.onUpdate != nil {
 		notify := c.onUpdate
-		opts = &imapclient.Options{
-			UnilateralDataHandler: &imapclient.UnilateralDataHandler{
-				Mailbox: func(d *imapclient.UnilateralDataMailbox) {
-					notify(MailboxUpdate{NumMessages: d.NumMessages})
-				},
-				Expunge: func(uint32) { notify(MailboxUpdate{Expunged: true}) },
+		opts.UnilateralDataHandler = &imapclient.UnilateralDataHandler{
+			Mailbox: func(d *imapclient.UnilateralDataMailbox) {
+				notify(MailboxUpdate{NumMessages: d.NumMessages})
 			},
+			Expunge: func(uint32) { notify(MailboxUpdate{Expunged: true}) },
 		}
 	}
 	client := imapclient.New(conn, opts)

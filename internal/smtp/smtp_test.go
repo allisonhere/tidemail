@@ -522,3 +522,59 @@ func TestBuildRaw_MultilineBody(t *testing.T) {
 		t.Fatalf("expected multiline body, got %q", s)
 	}
 }
+
+// TestBuildRawBracketsReplyHeaders verifies In-Reply-To and References go out as
+// RFC 5322 msg-id lists. Identifiers cached before they were bracketed at parse
+// time are bare, and a bare id makes the header invalid, so receiving clients
+// drop the reply out of its thread.
+func TestBuildRawBracketsReplyHeaders(t *testing.T) {
+	raw := string(buildRaw("me@example.com", OutgoingMessage{
+		To:         []string{"you@example.com"},
+		Subject:    "Re: Plan",
+		InReplyTo:  "root@example.com",
+		References: "root@example.com middle@example.com",
+		Body:       "hi",
+	}))
+	head, _, _ := strings.Cut(raw, "\r\n\r\n")
+
+	if !strings.Contains(head, "In-Reply-To: <root@example.com>\r\n") {
+		t.Fatalf("expected a bracketed In-Reply-To, got:\n%s", head)
+	}
+	if !strings.Contains(head, "References: <root@example.com> <middle@example.com>\r\n") {
+		t.Fatalf("expected a bracketed References list, got:\n%s", head)
+	}
+}
+
+// TestBuildRawPreservesAlreadyBracketedIDs verifies the normalisation is
+// idempotent, so messages parsed after the fix are not double-wrapped.
+func TestBuildRawPreservesAlreadyBracketedIDs(t *testing.T) {
+	raw := string(buildRaw("me@example.com", OutgoingMessage{
+		To:        []string{"you@example.com"},
+		InReplyTo: "<root@example.com>",
+		Body:      "hi",
+	}))
+	if !strings.Contains(raw, "In-Reply-To: <root@example.com>\r\n") {
+		t.Fatalf("expected the bracketed id unchanged, got:\n%s", raw)
+	}
+}
+
+// TestBuildRawRejectsHeaderInjectionViaReplyIDs verifies a hostile Message-ID
+// cannot inject headers. These two values reach buildRaw straight from a parsed
+// message without passing through a text input, and sanitizeControl deliberately
+// preserves CR and LF, so this is the one reply path with no upstream guard.
+func TestBuildRawRejectsHeaderInjectionViaReplyIDs(t *testing.T) {
+	raw := string(buildRaw("me@example.com", OutgoingMessage{
+		To:         []string{"you@example.com"},
+		InReplyTo:  "root@example.com\r\nBcc: attacker@evil.com",
+		References: "a@b\r\nX-Injected: yes",
+		Body:       "hi",
+	}))
+	head, _, _ := strings.Cut(raw, "\r\n\r\n")
+
+	if strings.Contains(head, "Bcc:") {
+		t.Fatalf("Bcc injected through In-Reply-To:\n%s", head)
+	}
+	if strings.Contains(head, "X-Injected") {
+		t.Fatalf("header injected through References:\n%s", head)
+	}
+}

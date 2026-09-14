@@ -1,6 +1,7 @@
 package imap
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -349,5 +350,95 @@ func TestParseAuthHeadersKeepsListUnsubscribe(t *testing.T) {
 		"List-Unsubscribe-Post\nList-Unsubscribe=One-Click\n"
 	if got != want {
 		t.Fatalf("parseAuthHeaders = %q, want %q", got, want)
+	}
+}
+
+// TestParseIMAPMessageBracketsEnvelopeIDs verifies message identifiers are stored
+// in RFC 5322 form. go-imap parses envelope IDs through mail.Header.MessageID(),
+// which strips the angle brackets, and the bare value flowed into outgoing
+// In-Reply-To / References headers that other clients will not thread on.
+func TestParseIMAPMessageBracketsEnvelopeIDs(t *testing.T) {
+	msg := &imapclient.FetchMessageBuffer{
+		UID: 7,
+		Envelope: &imap.Envelope{
+			Subject:   "Re: Plan",
+			MessageID: "reply@example.com",                                // as go-imap delivers it
+			InReplyTo: []string{"root@example.com", "middle@example.com"}, // multi-ID
+			Date:      time.Date(2025, 1, 15, 10, 30, 0, 0, time.UTC),
+		},
+	}
+
+	m, err := parseIMAPMessage(msg)
+	if err != nil {
+		t.Fatalf("parseIMAPMessage: %v", err)
+	}
+	if m.MessageID != "<reply@example.com>" {
+		t.Fatalf("expected a bracketed Message-ID, got %q", m.MessageID)
+	}
+	if want := "<root@example.com> <middle@example.com>"; m.InReplyTo != want {
+		t.Fatalf("expected a bracketed msg-id list %q, got %q", want, m.InReplyTo)
+	}
+}
+
+// TestBracketMessageIDRejectsNonIdentifiers verifies values that cannot be a
+// msg-id are dropped rather than wrapped into a malformed header.
+func TestBracketMessageIDRejectsNonIdentifiers(t *testing.T) {
+	for _, in := range []string{"", "   ", "no-at-sign", "has space@example.com", "a@b\r\nBcc: x@y"} {
+		if got := bracketMessageID(in); got != "" {
+			t.Fatalf("bracketMessageID(%q) = %q, want empty", in, got)
+		}
+	}
+	if got := bracketMessageID("  <already@example.com>  "); got != "<already@example.com>" {
+		t.Fatalf("expected an already-bracketed id preserved, got %q", got)
+	}
+}
+
+// TestParseBodyKeepsPartsOnUnknownTopLevelCharset verifies an unrecognised
+// charset on the top-level header does not cost us the parsed message.
+// mail.CreateReader still returns a usable reader alongside that error, but the
+// old code bailed and returned the entire raw payload — headers included — as
+// the body text, dropping the HTML alternative and every attachment.
+func TestParseBodyKeepsPartsOnUnknownTopLevelCharset(t *testing.T) {
+	raw := []byte("MIME-Version: 1.0\r\n" +
+		"Subject: Hi\r\n" +
+		"Content-Type: text/plain; charset=\"x-not-a-real-charset\"\r\n" +
+		"\r\n" +
+		"the actual body\r\n")
+
+	text, html, attachments := parseBody(raw)
+
+	if strings.Contains(text, "Content-Type:") || strings.Contains(text, "MIME-Version:") {
+		t.Fatalf("raw headers leaked into the body text: %q", text)
+	}
+	if !strings.Contains(text, "the actual body") {
+		t.Fatalf("expected the decoded body, got %q", text)
+	}
+	_, _ = html, attachments
+}
+
+// TestParseBodyKeepsHTMLAndAttachmentsOnUnknownCharset covers the multipart case:
+// an unknown charset must not cost the HTML alternative or the attachments.
+func TestParseBodyKeepsHTMLAndAttachmentsOnUnknownCharset(t *testing.T) {
+	raw := []byte("MIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/mixed; boundary=\"bnd\"\r\n\r\n" +
+		"--bnd\r\n" +
+		"Content-Type: text/plain; charset=\"x-not-a-real-charset\"\r\n\r\nplain part\r\n" +
+		"--bnd\r\n" +
+		"Content-Type: text/html\r\n\r\n<p>html part</p>\r\n" +
+		"--bnd\r\n" +
+		"Content-Type: application/pdf\r\n" +
+		"Content-Disposition: attachment; filename=\"notes.pdf\"\r\n\r\nattached\r\n" +
+		"--bnd--\r\n")
+
+	text, html, attachments := parseBody(raw)
+
+	if !strings.Contains(text, "plain part") {
+		t.Fatalf("expected the plain part, got %q", text)
+	}
+	if !strings.Contains(html, "html part") {
+		t.Fatalf("expected the HTML alternative preserved, got %q", html)
+	}
+	if len(attachments) != 1 || attachments[0].Filename != "notes.pdf" {
+		t.Fatalf("expected the attachment preserved, got %+v", attachments)
 	}
 }

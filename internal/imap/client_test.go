@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"mime"
 	"net"
 	"strings"
 	"testing"
@@ -612,5 +613,63 @@ func TestNotConnectedError(t *testing.T) {
 	err = client.DeleteMessage(context.Background(), "INBOX", 1)
 	if err == nil {
 		t.Fatal("expected error for DeleteMessage when not connected")
+	}
+}
+
+// appendRawMessage appends a caller-supplied RFC 5322 message and returns its UID.
+func appendRawMessage(t *testing.T, port int, mailbox, body string) uint32 {
+	t.Helper()
+
+	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		t.Fatalf("dial for append: %v", err)
+	}
+	defer conn.Close()
+
+	client := imapclient.New(conn, nil)
+	defer client.Close()
+
+	if err := client.Login("testuser", "testpass").Wait(); err != nil {
+		t.Fatalf("login for append: %v", err)
+	}
+	cmd := client.Append(mailbox, int64(len(body)), nil)
+	_, _ = cmd.Write([]byte(body))
+	_ = cmd.Close()
+	appendData, err := cmd.Wait()
+	if err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	return uint32(appendData.UID)
+}
+
+// TestHeaderWordDecoderHandlesNonLatinCharsets verifies the decoder handed to
+// go-imap covers charsets beyond its built-in three. It asserts against the bare
+// decoder as well, to pin down why the option has to be set at all: without it
+// Options.decodeText returns the encoded word verbatim and the raw
+// =?windows-1252?Q?...?= reaches the UI.
+//
+// This is a unit test of the decoder rather than an end-to-end fetch because the
+// in-process memory server builds its envelopes with go-message, which decodes
+// the headers itself before they ever reach the client.
+func TestHeaderWordDecoderHandlesNonLatinCharsets(t *testing.T) {
+	cases := []struct{ encoded, want string }{
+		{"=?windows-1252?Q?Caf=E9?=", "Café"},
+		{"=?shift_jis?B?k/qWe4zq?=", "日本語"},
+		{"=?utf-8?Q?Caf=C3=A9?=", "Café"},
+	}
+	for _, tc := range cases {
+		got, err := headerWordDecoder().DecodeHeader(tc.encoded)
+		if err != nil {
+			t.Fatalf("DecodeHeader(%q): %v", tc.encoded, err)
+		}
+		if got != tc.want {
+			t.Fatalf("DecodeHeader(%q) = %q, want %q", tc.encoded, got, tc.want)
+		}
+	}
+
+	// The fallback go-imap would use if Options.WordDecoder were left nil.
+	bare := &mime.WordDecoder{}
+	if _, err := bare.DecodeHeader("=?windows-1252?Q?Caf=E9?="); err == nil {
+		t.Fatal("expected the bare decoder to reject windows-1252; the explicit WordDecoder may no longer be needed")
 	}
 }

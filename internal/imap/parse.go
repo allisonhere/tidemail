@@ -169,9 +169,9 @@ func parseIMAPMessage(msg *imapclient.FetchMessageBuffer) (db.Message, error) {
 
 	if env := msg.Envelope; env != nil {
 		m.Subject = sanitizeControl(env.Subject)
-		m.MessageID = sanitizeControl(env.MessageID)
+		m.MessageID = sanitizeControl(bracketMessageID(env.MessageID))
 		if len(env.InReplyTo) > 0 {
-			m.InReplyTo = sanitizeControl(strings.Join(env.InReplyTo, " "))
+			m.InReplyTo = sanitizeControl(bracketMessageIDList(env.InReplyTo))
 		}
 		if !env.Date.IsZero() {
 			m.Date = env.Date
@@ -233,6 +233,39 @@ func parseIMAPMessage(msg *imapclient.FetchMessageBuffer) (db.Message, error) {
 // viewed — hijack the clipboard (OSC 52), spoof the UI, or move the cursor.
 // C1 controls (U+0080–U+009F) are intentionally left alone: on a UTF-8 terminal
 // they are not control-interpreted, and dropping them would corrupt decoded text.
+// bracketMessageID restores the angle brackets RFC 5322 requires around a
+// msg-id. go-imap parses envelope identifiers through mail.Header.MessageID(),
+// which strips them — go-message's own IMAP server re-adds them when it writes
+// an envelope back out, so bare is the internal form, not the wire form.
+// Storing the bare value propagated it into outgoing In-Reply-To and References
+// headers, producing invalid headers that other clients will not thread on.
+//
+// A value that cannot be a msg-id (no "@", or embedded whitespace or angle
+// brackets) returns empty rather than being wrapped into something malformed.
+func bracketMessageID(id string) string {
+	id = strings.TrimSpace(id)
+	id = strings.Trim(id, "<>")
+	id = strings.TrimSpace(id)
+	if id == "" || !strings.Contains(id, "@") || strings.ContainsAny(id, " \t\r\n<>") {
+		return ""
+	}
+	return "<" + id + ">"
+}
+
+// bracketMessageIDList renders envelope identifiers as an RFC 5322 msg-id list.
+// Joining the bare values with spaces produced a string that is neither a valid
+// header nor parseable back into individual IDs, so a multi-ID In-Reply-To
+// contributed nothing to local threading either.
+func bracketMessageIDList(ids []string) string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if b := bracketMessageID(id); b != "" {
+			out = append(out, b)
+		}
+	}
+	return strings.Join(out, " ")
+}
+
 func sanitizeControl(s string) string {
 	return strings.Map(func(r rune) rune {
 		switch r {
@@ -339,7 +372,16 @@ func parseAuthHeaders(raw []byte) string {
 
 func parseBody(raw []byte) (text, html string, attachments []bodyAttachment) {
 	r, err := mail.CreateReader(bytes.NewReader(raw))
-	if err != nil {
+	// An unknown charset or encoding on the top-level header still yields a
+	// usable reader whose parts read as raw bytes — the same situation the part
+	// loop below already handles. Bailing out here instead returned the entire
+	// raw payload, headers included, as the message body and threw away the HTML
+	// alternative and every attachment. Only a reader we did not get back at all
+	// is a genuine failure. -allie
+	if err != nil && !message.IsUnknownCharset(err) && !message.IsUnknownEncoding(err) {
+		return strings.TrimSpace(string(raw)), "", nil
+	}
+	if r == nil {
 		return strings.TrimSpace(string(raw)), "", nil
 	}
 
