@@ -393,8 +393,14 @@ func TestMoveMessage(t *testing.T) {
 	}
 	defer client.Close()
 
-	if err := client.MoveMessage(context.Background(), "INBOX", uid, "Archive"); err != nil {
+	destUID, err := client.MoveMessage(context.Background(), "INBOX", uid, "Archive")
+	if err != nil {
 		t.Fatalf("MoveMessage failed: %v", err)
+	}
+	// The destination UID comes from the server's COPYUID; the source UID is
+	// meaningless in Archive, so the two must not be assumed equal.
+	if destUID == 0 {
+		t.Fatal("expected the server's COPYUID to report a destination UID")
 	}
 
 	// Verify: message should be gone from INBOX
@@ -521,8 +527,14 @@ func TestMoveMessages_GmailTrashCopyUIDQuirk(t *testing.T) {
 	}
 	defer client.Close()
 
-	if err := client.MoveMessages(context.Background(), "INBOX", []uint32{1}, "[Gmail]/Trash"); err != nil {
+	res, err := client.MoveMessages(context.Background(), "INBOX", []uint32{1}, "[Gmail]/Trash")
+	if err != nil {
 		t.Fatalf("MoveMessages should treat the COPYUID parse failure as success, got: %v", err)
+	}
+	// The malformed COPYUID is unusable, so no destination UID is reported and
+	// callers must fall back to dropping the cached row.
+	if got := res.DestUID(1); got != 0 {
+		t.Fatalf("expected no destination UID from a malformed COPYUID, got %d", got)
 	}
 }
 
@@ -592,7 +604,7 @@ func TestNotConnectedError(t *testing.T) {
 		t.Fatal("expected error for MarkSeen when not connected")
 	}
 
-	err = client.MoveMessage(context.Background(), "INBOX", 1, "Archive")
+	_, err = client.MoveMessage(context.Background(), "INBOX", 1, "Archive")
 	if err == nil {
 		t.Fatal("expected error for MoveMessage when not connected")
 	}

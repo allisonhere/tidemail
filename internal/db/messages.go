@@ -69,9 +69,13 @@ func (db *DB) CountMessages(mailboxID int64) (int64, error) {
 // OldestMessageUID returns the lowest UID cached for a mailbox, which is the
 // cursor for paging further back into server history. Returns 0 when nothing is
 // cached yet — there is no history to page past until the first sync lands.
+//
+// Local-only rows (uid 0) are excluded: they carry no position in the server's
+// UID space, and counting one would make MIN(uid) return 0, which the caller
+// reads as "no older history" and stops backfilling that mailbox for good. -allie
 func (db *DB) OldestMessageUID(mailboxID int64) (uint32, error) {
 	var uid sql.NullInt64
-	err := db.QueryRow(`SELECT MIN(uid) FROM messages WHERE mailbox_id = ?`, mailboxID).Scan(&uid)
+	err := db.QueryRow(`SELECT MIN(uid) FROM messages WHERE mailbox_id = ? AND uid != 0`, mailboxID).Scan(&uid)
 	if err != nil {
 		return 0, err
 	}
@@ -367,8 +371,24 @@ func (db *DB) DeleteMessage(id int64) error {
 	return err
 }
 
-func (db *DB) MoveMessage(id, mailboxID int64) error {
-	_, err := db.Exec(`UPDATE messages SET mailbox_id = ? WHERE id = ?`, mailboxID, id)
+// MoveMessage repoints a cached message at its new mailbox. uid must be the
+// message's UID in that destination mailbox, which the caller reads from the
+// server's COPYUID response.
+//
+// Carrying the source mailbox's UID across is never right: UIDs are per-mailbox,
+// so the old value either collides with a message already in the destination
+// (UNIQUE(mailbox_id, uid) fails, and a completed server-side move is reported
+// as a failure) or survives as a UID the server never assigned, which
+// ReconcileMailboxUIDs then deletes on the destination's next sync — taking the
+// message out of the cache and out of search.
+//
+// Pass uid = 0 only for a message that has no server UID at all. When the server
+// completed a move but did not report a destination UID, delete the row instead
+// and let the destination's next sync re-fetch it: a uid = 0 row is skipped by
+// reconcile and invisible to the (mailbox_id, uid) upsert key, so it would
+// linger as a duplicate of the re-fetched message. -allie
+func (db *DB) MoveMessage(id, mailboxID int64, uid uint32) error {
+	_, err := db.Exec(`UPDATE messages SET mailbox_id = ?, uid = ? WHERE id = ?`, mailboxID, uid, id)
 	return err
 }
 

@@ -169,7 +169,8 @@ func executeDestructiveAction(action pendingDestructiveAction, database *db.DB, 
 	}
 	for _, key := range order {
 		entries := batches[key]
-		if err := executeDestructiveRemote(action.Kind, sessions, entries); err != nil {
+		moveRes, err := executeDestructiveRemote(action.Kind, sessions, entries)
+		if err != nil {
 			if result.Err == nil {
 				result.Err = err
 			}
@@ -180,10 +181,24 @@ func executeDestructiveAction(action pendingDestructiveAction, database *db.DB, 
 		}
 		for _, entry := range entries {
 			var err error
-			if action.Kind == destructiveDelete {
+			destUID := moveRes.DestUID(entry.Message.UID)
+			localOnly := entry.Account.IMAPHost == "" || entry.Message.UID == 0
+			switch {
+			case action.Kind == destructiveDelete:
 				err = database.DeleteMessage(entry.Message.ID)
-			} else {
-				err = database.MoveMessage(entry.Message.ID, entry.Target.ID)
+			case destUID != 0:
+				err = database.MoveMessage(entry.Message.ID, entry.Target.ID, destUID)
+			case localOnly:
+				// Nothing moved server-side, so there are no two UID spaces to
+				// translate between; the row keeps the UID it has.
+				err = database.MoveMessage(entry.Message.ID, entry.Target.ID, entry.Message.UID)
+			default:
+				// The server moved it but reported no COPYUID, leaving the
+				// destination UID unknown. Drop the cached row so the
+				// destination's next sync re-fetches it under its real UID —
+				// keeping the source UID would either collide with a message
+				// already there or be reconciled away later.
+				err = database.DeleteMessage(entry.Message.ID)
 			}
 			if err != nil {
 				if result.Err == nil {
@@ -202,9 +217,13 @@ func executeDestructiveAction(action pendingDestructiveAction, database *db.DB, 
 	return result
 }
 
-func executeDestructiveRemote(kind destructiveActionKind, sessions *imapClient.SessionPool, entries []pendingDestructiveEntry) error {
+// executeDestructiveRemote performs the server-side half of a batch. For a move
+// it returns the COPYUID pairing so the caller can store each message's real
+// destination UID; the result is empty for deletes, for accounts with no IMAP
+// host, and whenever the server reported no usable COPYUID.
+func executeDestructiveRemote(kind destructiveActionKind, sessions *imapClient.SessionPool, entries []pendingDestructiveEntry) (imapClient.MoveResult, error) {
 	if len(entries) == 0 || entries[0].Account.IMAPHost == "" {
-		return nil
+		return imapClient.MoveResult{}, nil
 	}
 	uids := make([]uint32, 0, len(entries))
 	for _, entry := range entries {
@@ -213,17 +232,24 @@ func executeDestructiveRemote(kind destructiveActionKind, sessions *imapClient.S
 		}
 	}
 	if len(uids) == 0 {
-		return nil
+		return imapClient.MoveResult{}, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	entry := entries[0]
-	return sessions.Do(ctx, entry.Account, func(client *imapClient.Client) error {
+	var res imapClient.MoveResult
+	err := sessions.Do(ctx, entry.Account, func(client *imapClient.Client) error {
 		if kind == destructiveDelete && entry.Target.ID == 0 {
 			return client.DeleteMessages(ctx, entry.Source.Name, uids)
 		}
-		return client.MoveMessages(ctx, entry.Source.Name, uids, entry.Target.Name)
+		var moveErr error
+		res, moveErr = client.MoveMessages(ctx, entry.Source.Name, uids, entry.Target.Name)
+		return moveErr
 	})
+	if err != nil {
+		return imapClient.MoveResult{}, err
+	}
+	return res, nil
 }
 
 func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.Cmd {

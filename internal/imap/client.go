@@ -351,8 +351,30 @@ func (c *Client) markDeletedAndExpunge(uidSet imap.UIDSet) error {
 	return nil
 }
 
-func (c *Client) MoveMessage(ctx context.Context, mailboxName string, uid uint32, targetMailbox string) error {
-	return c.MoveMessages(ctx, mailboxName, []uint32{uid}, targetMailbox)
+// MoveResult reports where a MOVE landed. DestUIDs maps each source UID to the
+// UID the message now has in the destination mailbox, which the server reports
+// in the COPYUID resp-code (RFC 4315). It is nil when no usable COPYUID came
+// back — the server lacks UIDPLUS/IMAP4rev2, or it sent a malformed code we
+// deliberately tolerate (see isCopyUIDParseError). Callers must treat a missing
+// entry as "destination UID unknown"; a stored UID from the source mailbox is
+// always wrong, because UIDs are per-mailbox. -allie
+type MoveResult struct {
+	UIDValidity uint32
+	DestUIDs    map[uint32]uint32
+}
+
+// DestUID returns the destination UID for a source UID, or 0 when the server
+// did not report one.
+func (r MoveResult) DestUID(sourceUID uint32) uint32 {
+	return r.DestUIDs[sourceUID]
+}
+
+func (c *Client) MoveMessage(ctx context.Context, mailboxName string, uid uint32, targetMailbox string) (uint32, error) {
+	res, err := c.MoveMessages(ctx, mailboxName, []uint32{uid}, targetMailbox)
+	if err != nil {
+		return 0, err
+	}
+	return res.DestUID(uid), nil
 }
 
 // MoveMessages moves a batch of messages in one SELECT/MOVE round trip when the
@@ -360,27 +382,65 @@ func (c *Client) MoveMessage(ctx context.Context, mailboxName string, uid uint32
 // Bulk actions must share one connection: issuing one connection per message
 // trips per-user connection caps (Gmail: 15, Dovecot default: 10) and the
 // overflow silently fails.
-func (c *Client) MoveMessages(ctx context.Context, mailboxName string, uids []uint32, targetMailbox string) error {
+func (c *Client) MoveMessages(ctx context.Context, mailboxName string, uids []uint32, targetMailbox string) (MoveResult, error) {
 	if c.conn == nil {
-		return fmt.Errorf("not connected")
+		return MoveResult{}, fmt.Errorf("not connected")
 	}
 	if len(uids) == 0 {
-		return nil
+		return MoveResult{}, nil
 	}
 	defer c.applyDeadline(ctx)()
 	if _, err := c.conn.Select(mailboxName, nil).Wait(); err != nil {
-		return fmt.Errorf("select %s: %w", mailboxName, err)
+		return MoveResult{}, fmt.Errorf("select %s: %w", mailboxName, err)
 	}
 	uidSet := uidSetOf(uids)
-	if _, err := c.conn.Move(uidSet, targetMailbox).Wait(); err != nil {
+	data, err := c.conn.Move(uidSet, targetMailbox).Wait()
+	if err != nil {
 		if isCopyUIDParseError(err) {
 			// The MOVE succeeded; go-imap only choked parsing the COPYUID
-			// resp-code on the OK response (see isCopyUIDParseError).
-			return nil
+			// resp-code on the OK response (see isCopyUIDParseError). The
+			// destination UIDs are lost with it, so report none.
+			return MoveResult{}, nil
 		}
-		return fmt.Errorf("move to %s: %w", targetMailbox, err)
+		return MoveResult{}, fmt.Errorf("move to %s: %w", targetMailbox, err)
 	}
-	return nil
+	return moveResultOf(data), nil
+}
+
+// moveResultOf pairs the COPYUID source and destination UID sets. RFC 4315 says
+// the two lists correspond element by element once expanded, so a length
+// mismatch (or a dynamic set containing "*") means we cannot trust the pairing
+// and report nothing rather than guess a wrong UID.
+func moveResultOf(data *imapclient.MoveData) MoveResult {
+	if data == nil || data.SourceUIDs == nil || data.DestUIDs == nil {
+		return MoveResult{}
+	}
+	src, srcOK := uidsOf(data.SourceUIDs)
+	dst, dstOK := uidsOf(data.DestUIDs)
+	if !srcOK || !dstOK || len(src) == 0 || len(src) != len(dst) {
+		return MoveResult{UIDValidity: data.UIDValidity}
+	}
+	pairs := make(map[uint32]uint32, len(src))
+	for i, s := range src {
+		pairs[s] = dst[i]
+	}
+	return MoveResult{UIDValidity: data.UIDValidity, DestUIDs: pairs}
+}
+
+func uidsOf(set imap.NumSet) ([]uint32, bool) {
+	uidSet, ok := set.(imap.UIDSet)
+	if !ok {
+		return nil, false
+	}
+	nums, ok := uidSet.Nums()
+	if !ok {
+		return nil, false
+	}
+	out := make([]uint32, 0, len(nums))
+	for _, n := range nums {
+		out = append(out, uint32(n))
+	}
+	return out, true
 }
 
 // isCopyUIDParseError reports whether err is go-imap failing to parse a COPYUID

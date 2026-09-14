@@ -573,7 +573,9 @@ func TestDBMoveAndDeleteMessageUpdateLocalState(t *testing.T) {
 		t.Fatalf("expected seeded message, got %+v", messages)
 	}
 
-	if err := database.MoveMessage(messages[0].ID, archiveID); err != nil {
+	// 77 is the UID the server reported for the message in Archive; the source
+	// mailbox's UID 44 is meaningless there.
+	if err := database.MoveMessage(messages[0].ID, archiveID, 77); err != nil {
 		t.Fatal(err)
 	}
 	moved, err := database.GetMessage(messages[0].ID)
@@ -582,6 +584,9 @@ func TestDBMoveAndDeleteMessageUpdateLocalState(t *testing.T) {
 	}
 	if moved.MailboxID != archiveID {
 		t.Fatalf("expected message mailbox %d, got %d", archiveID, moved.MailboxID)
+	}
+	if moved.UID != 77 {
+		t.Fatalf("expected the destination UID 77, got %d", moved.UID)
 	}
 
 	if err := database.DeleteMessage(moved.ID); err != nil {
@@ -594,8 +599,10 @@ func TestDBMoveAndDeleteMessageUpdateLocalState(t *testing.T) {
 	if len(remaining) != 0 {
 		t.Fatalf("expected deleted message to be gone, got %+v", remaining)
 	}
+	// The tombstone records the UID the message held in Archive (77), not the
+	// UID it had back in INBOX.
 	var tombstones int
-	if err := database.QueryRow(`SELECT COUNT(*) FROM deleted_messages WHERE mailbox_id = ? AND uid = ?`, archiveID, uint32(44)).Scan(&tombstones); err != nil {
+	if err := database.QueryRow(`SELECT COUNT(*) FROM deleted_messages WHERE mailbox_id = ? AND uid = ?`, archiveID, uint32(77)).Scan(&tombstones); err != nil {
 		t.Fatal(err)
 	}
 	if tombstones != 1 {
@@ -1018,4 +1025,95 @@ func openSQLite(path string) (*DB, error) {
 	}
 	conn.SetMaxOpenConns(1)
 	return &DB{conn}, nil
+}
+
+// TestDBMoveMessageIntoOccupiedUID verifies a move stores the destination
+// mailbox's UID rather than carrying the source's across. UIDs are per-mailbox,
+// so the destination very often already holds the source UID — reusing it trips
+// UNIQUE(mailbox_id, uid) and reports a completed server-side move as a failure.
+func TestDBMoveMessageIntoOccupiedUID(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+
+	accountID, err := database.AddAccount("Personal", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inboxID, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archiveID, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "Archive"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Archive already holds a different message at UID 44.
+	if err := database.UpsertMessage(Message{MailboxID: archiveID, UID: 44, MessageID: "<other@x>", Subject: "already here", Date: time.Unix(1710000000, 0)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertMessage(Message{MailboxID: inboxID, UID: 44, MessageID: "<move@x>", Subject: "Move me", Date: time.Unix(1710000000, 0)}); err != nil {
+		t.Fatal(err)
+	}
+	msgs, err := database.ListMessages(inboxID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := database.MoveMessage(msgs[0].ID, archiveID, 91); err != nil {
+		t.Fatalf("move into a mailbox that already uses the source UID: %v", err)
+	}
+	moved, err := database.GetMessage(msgs[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moved.UID != 91 {
+		t.Fatalf("expected the destination UID 91, got %d", moved.UID)
+	}
+	// The destination's next reconcile must not mistake it for a stale row.
+	removed, err := database.ReconcileMailboxUIDs(archiveID, []uint32{44, 91})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 0 {
+		t.Fatalf("expected the moved message to survive reconcile, %d removed", removed)
+	}
+}
+
+// TestDBOldestMessageUIDIgnoresLocalOnlyRows verifies the backfill cursor skips
+// uid 0. A local-only row made MIN(uid) return 0, which the caller reads as "no
+// older history" and permanently stops paging that mailbox back.
+func TestDBOldestMessageUIDIgnoresLocalOnlyRows(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+	accountID, _ := database.AddAccount("Personal", "")
+	inboxID, _ := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
+
+	if err := database.UpsertMessage(Message{MailboxID: inboxID, UID: 50, MessageID: "<a@x>", Subject: "remote", Date: time.Unix(1710000000, 0)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertMessage(Message{MailboxID: inboxID, UID: 0, MessageID: "<local@x>", Subject: "local only", Date: time.Unix(1710000001, 0)}); err != nil {
+		t.Fatal(err)
+	}
+
+	uid, err := database.OldestMessageUID(inboxID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uid != 50 {
+		t.Fatalf("expected the oldest server UID 50, got %d", uid)
+	}
 }

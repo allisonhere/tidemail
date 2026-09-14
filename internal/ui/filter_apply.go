@@ -65,7 +65,9 @@ func applyFilterAction(ctx context.Context, database *db.DB, client *imapClient.
 		if client != nil && msg.UID != 0 {
 			plan, target := remoteDeletePlan(source, trash)
 			if plan == remoteDeleteMoveToTrash {
-				if err := client.MoveMessage(ctx, source.Name, msg.UID, target.Name); err != nil {
+				// The local row is already gone above, so the destination UID
+				// this reports has nothing to update.
+				if _, err := client.MoveMessage(ctx, source.Name, msg.UID, target.Name); err != nil {
 					return false, err
 				}
 			} else if err := client.DeleteMessage(ctx, source.Name, msg.UID); err != nil {
@@ -85,12 +87,32 @@ func moveMessage(ctx context.Context, database *db.DB, client *imapClient.Client
 	if target.ID == source.ID {
 		return false, nil
 	}
-	if client != nil && msg.UID != 0 {
-		if err := client.MoveMessage(ctx, source.Name, msg.UID, target.Name); err != nil {
+	// No server move to make — a local-only account, or a row the server never
+	// assigned a UID. There are no two UID spaces to translate between, so the
+	// cached row keeps whatever UID it has.
+	if client == nil || msg.UID == 0 {
+		if err := database.MoveMessage(msg.ID, target.ID, msg.UID); err != nil {
 			return false, err
 		}
+		return true, nil
 	}
-	if err := database.MoveMessage(msg.ID, target.ID); err != nil {
+	destUID, err := client.MoveMessage(ctx, source.Name, msg.UID, target.Name)
+	if err != nil {
+		return false, err
+	}
+	// The move completed but the server reported no COPYUID, so the destination
+	// UID is unknown and there is no correct value to store. Drop the row and let
+	// the destination's next sync re-fetch it under its real UID. The tombstone
+	// DeleteMessage leaves behind is scoped to the source mailbox, which is
+	// accurate — the message really is gone from there — so it does not suppress
+	// that re-fetch.
+	if destUID == 0 {
+		if err := database.DeleteMessage(msg.ID); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	if err := database.MoveMessage(msg.ID, target.ID, destUID); err != nil {
 		return false, err
 	}
 	return true, nil
