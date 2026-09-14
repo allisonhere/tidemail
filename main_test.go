@@ -81,6 +81,21 @@ func TestDisableGoogleOAuthOverrideIsRuntimeOnlyAndProviderSpecific(t *testing.T
 	}
 }
 
+func TestGoogleOAuthIsDisabledWhileApprovalIsPending(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.OAuth.GoogleClientID = "google-id"
+	cfg.OAuth.GoogleClientSecret = "google-secret"
+
+	applyStartupOverrides(&cfg, startupOptions{})
+
+	if !cfg.OAuth.GoogleDisabled {
+		t.Fatal("expected Google OAuth disabled while approval is pending")
+	}
+	if cfg.OAuth.GoogleClientID != "google-id" || cfg.OAuth.GoogleClientSecret != "google-secret" {
+		t.Fatalf("approval state must not rewrite saved credentials, got %#v", cfg.OAuth)
+	}
+}
+
 func TestProgramOptionsKeepTerminalMouseSelectionAvailable(t *testing.T) {
 	opts := programOptions()
 	if len(opts) != 1 {

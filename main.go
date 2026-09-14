@@ -163,15 +163,19 @@ func run() (code int, restartExec string) {
 }
 
 func applyStartupOverrides(cfg *config.Config, opts startupOptions) {
-	if cfg == nil || !opts.disableGoogleOAuth {
+	if cfg == nil {
 		return
 	}
-	// Development/test override: exercise the same account-manager path a user
-	// sees when they have not configured a Google OAuth client. This is
-	// runtime-only; never rewrite the user's saved credentials.
-	cfg.OAuth.GoogleClientID = ""
-	cfg.OAuth.GoogleClientSecret = ""
+	// Google must approve TideMail's restricted Gmail scope before new OAuth
+	// authorizations can be offered. Keep this runtime-only so existing OAuth
+	// accounts and their saved credentials are never rewritten.
 	cfg.OAuth.GoogleDisabled = true
+	if opts.disableGoogleOAuth {
+		// Retain this development/test flag's former behavior: it also simulates
+		// a build without a configured Google client.
+		cfg.OAuth.GoogleClientID = ""
+		cfg.OAuth.GoogleClientSecret = ""
+	}
 }
 
 func programOptions() []tea.ProgramOption {

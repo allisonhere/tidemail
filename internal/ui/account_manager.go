@@ -1512,7 +1512,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 		// Providers without an OAuth path: app password only.
 		addControl(amFieldPass, row("Password", passInput, am.focusedField == amFieldPass))
 		if am.googleOAuthDisabled() {
-			addHint("Google OAuth is unavailable.")
+			addHint("Google OAuth is waiting for Google's approval.")
 			addHint("Use a Google App Password instead.")
 		}
 	} else {

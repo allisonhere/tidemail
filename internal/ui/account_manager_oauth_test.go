@@ -180,7 +180,7 @@ func TestDisabledGoogleOAuthHidesSelectorAndShowsUserMessage(t *testing.T) {
 	if strings.Contains(view, "OAuth · sign in with Google") || strings.Contains(view, "Sign in with Google") {
 		t.Fatalf("disabled Google OAuth still rendered sign-in controls:\n%s", view)
 	}
-	if !strings.Contains(view, "Google OAuth is unavailable") || !strings.Contains(view, "Use a Google App Password instead") {
+	if !strings.Contains(view, "Google OAuth is waiting for Google's approval") || !strings.Contains(view, "Use a Google App Password instead") {
 		t.Fatalf("disabled Google OAuth message missing:\n%s", view)
 	}
 }

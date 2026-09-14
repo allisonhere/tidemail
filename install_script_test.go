@@ -35,6 +35,9 @@ func TestInstallScriptDefaultsToUserLocalBinWithoutSudo(t *testing.T) {
 	if strings.Contains(string(out), "sudo") || strings.Contains(string(out), "/usr/local/bin") {
 		t.Fatalf("expected user-local install without sudo, got output:\n%s", out)
 	}
+	if !strings.Contains(string(out), "Google OAuth is waiting for Google's approval") {
+		t.Fatalf("expected Google OAuth approval notice, got output:\n%s", out)
+	}
 }
 
 func TestInstallScriptRemovesWritableStaleBinaryEarlierOnPath(t *testing.T) {
