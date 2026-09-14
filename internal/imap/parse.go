@@ -464,11 +464,18 @@ func filenameFromPart(part *mail.Part, ctParams map[string]string, ct string) st
 	return "attachment" + ext
 }
 
+// addressList renders an envelope address list for storage as a comma-joined
+// string. Display names are quoted when they contain a character that would make
+// the joined list ambiguous — a name like "Doe, John" stored bare is
+// indistinguishable from two separate addresses, so splitting the list back
+// apart silently truncated the name. Quoting only helps paired with a reader
+// that parses the list rather than splitting on commas; see db.splitAddressList
+// and db.QuoteDisplayName. -allie
 func addressList(addrs []imap.Address) string {
 	parts := make([]string, 0, len(addrs))
 	for _, a := range addrs {
 		if a.Name != "" {
-			parts = append(parts, fmt.Sprintf("%s <%s@%s>", a.Name, a.Mailbox, a.Host))
+			parts = append(parts, fmt.Sprintf("%s <%s@%s>", db.QuoteDisplayName(a.Name), a.Mailbox, a.Host))
 		} else {
 			parts = append(parts, fmt.Sprintf("%s@%s", a.Mailbox, a.Host))
 		}

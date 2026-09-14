@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -303,4 +304,125 @@ func contactTestColumns(t *testing.T, database *DB) map[string]bool {
 		t.Fatal(err)
 	}
 	return cols
+}
+
+// TestQuoteDisplayNameOnlyWhenAmbiguous verifies names are quoted exactly when
+// leaving them bare would break the comma-joined list, and left alone otherwise.
+// Non-ASCII names must survive unencoded: quoting via mail.Address.String()
+// would RFC 2047-encode them and undo the charset-aware header decoding.
+func TestQuoteDisplayNameOnlyWhenAmbiguous(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"Doe, John", `"Doe, John"`},
+		{"Plain Name", "Plain Name"},
+		{"John A. Smith", "John A. Smith"},
+		{"O'Brien", "O'Brien"},
+		{"Café", "Café"},
+		{"日本語", "日本語"},
+		{`He said "hi"`, `"He said \"hi\""`},
+		{"x<y>", `"x<y>"`},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		if got := QuoteDisplayName(tc.in); got != tc.want {
+			t.Errorf("QuoteDisplayName(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestSplitAddressListKeepsCommaNames is the regression test for naive comma
+// splitting. "Doe, John <j@x>" was torn into two fragments that parse as neither
+// a name nor an address, so normalizeAddress discarded both and the address
+// disappeared from autocomplete rather than merely losing its display name.
+func TestSplitAddressListKeepsCommaNames(t *testing.T) {
+	got := splitAddressList(`"Smith, Jane" <jane@x.com>, bob@x.com, "Doe, John" <john@x.com>`)
+
+	want := []SeenAddress{
+		{Addr: "jane@x.com", Name: "Smith, Jane"},
+		{Addr: "bob@x.com"},
+		{Addr: "john@x.com", Name: "Doe, John"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d addresses, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("address %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+// TestSplitAddressListFallsBackForLegacyRows covers rows written before display
+// names were quoted. net/mail rejects the whole value, so the comma split still
+// runs; the address must survive even though a name containing a comma cannot.
+func TestSplitAddressListFallsBackForLegacyRows(t *testing.T) {
+	got := splitAddressList(`Doe, John <john@x.com>, bob@x.com`)
+
+	var addrs []string
+	for _, a := range got {
+		addrs = append(addrs, a.Addr)
+	}
+	if len(addrs) != 2 || addrs[0] != "john@x.com" || addrs[1] != "bob@x.com" {
+		t.Fatalf("expected both addresses recovered from a legacy row, got %+v", got)
+	}
+}
+
+// TestSplitAddressListNormalisesCase verifies addresses are lower-cased, matching
+// what the contacts table stores, so dedup against known contacts works.
+func TestSplitAddressListNormalisesCase(t *testing.T) {
+	got := splitAddressList(`Alice <Alice@Example.COM>`)
+	if len(got) != 1 || got[0].Addr != "alice@example.com" {
+		t.Fatalf("expected a lower-cased address, got %+v", got)
+	}
+}
+
+// TestAutocompleteSurvivesCommaInDisplayName is the end-to-end check: a message
+// whose From carries a comma in the display name must produce one autocomplete
+// entry with the name intact. This needs both halves of the fix — the name
+// quoted when stored (internal/imap addressList) and the list parsed rather than
+// split when read — so it pins the two together.
+func TestAutocompleteSurvivesCommaInDisplayName(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+	accountID, _ := database.AddAccount("Personal", "")
+	inboxID, _ := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
+
+	// As internal/imap addressList now writes it.
+	if err := database.UpsertMessage(Message{
+		MailboxID: inboxID, UID: 1,
+		From:    QuoteDisplayName("Doe, John") + " <john@x.com>",
+		To:      QuoteDisplayName("Smith, Jane") + " <jane@x.com>, bob@x.com",
+		Subject: "hi", Date: time.Unix(1710000000, 0),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := database.AutocompleteAddresses()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		`"Doe, John" <john@x.com>`:   false,
+		`"Smith, Jane" <jane@x.com>`: false,
+		"bob@x.com":                  false,
+	}
+	for _, entry := range got {
+		if _, ok := want[entry]; ok {
+			want[entry] = true
+		}
+	}
+	for entry, found := range want {
+		if !found {
+			t.Errorf("autocomplete missing %q; got %q", entry, got)
+		}
+	}
+	if len(got) != 3 {
+		t.Errorf("expected exactly 3 candidates, got %d: %q", len(got), got)
+	}
 }

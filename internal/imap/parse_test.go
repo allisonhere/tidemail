@@ -442,3 +442,28 @@ func TestParseBodyKeepsHTMLAndAttachmentsOnUnknownCharset(t *testing.T) {
 		t.Fatalf("expected the attachment preserved, got %+v", attachments)
 	}
 }
+
+// TestAddressListQuotesAmbiguousDisplayNames verifies stored address lists stay
+// splittable. A display name containing a comma, written bare, is
+// indistinguishable from a separator once the list is joined.
+func TestAddressListQuotesAmbiguousDisplayNames(t *testing.T) {
+	got := addressList([]imap.Address{
+		{Name: "Doe, John", Mailbox: "john", Host: "x.com"},
+		{Name: "Alice", Mailbox: "alice", Host: "x.com"},
+		{Mailbox: "bare", Host: "x.com"},
+	})
+	want := `"Doe, John" <john@x.com>, Alice <alice@x.com>, bare@x.com`
+	if got != want {
+		t.Fatalf("addressList = %q, want %q", got, want)
+	}
+}
+
+// TestAddressListKeepsNonASCIINamesDecoded guards the interaction with
+// charset-aware header decoding: quoting must not RFC 2047-encode a name, or the
+// raw =?utf-8?q?...?= would be stored and shown to the user again.
+func TestAddressListKeepsNonASCIINamesDecoded(t *testing.T) {
+	got := addressList([]imap.Address{{Name: "Café", Mailbox: "cafe", Host: "x.com"}})
+	if want := "Café <cafe@x.com>"; got != want {
+		t.Fatalf("addressList = %q, want %q", got, want)
+	}
+}

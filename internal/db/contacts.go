@@ -26,6 +26,36 @@ type ContactMetadata struct {
 	Note         string
 }
 
+// addressSpecials are the characters that make a bare display name ambiguous in
+// a comma-joined address list. A comma is the damaging one — stored bare,
+// "Doe, John <j@x>" is indistinguishable from two separate addresses — but the
+// rest confuse address parsing in the same way.
+const addressSpecials = `",\<>;:()[]@`
+
+// QuoteDisplayName wraps a display name in an RFC 5322 quoted-string when it
+// contains a character that would otherwise break the list apart. Names without
+// such a character are returned unchanged, so the common case stays readable.
+//
+// Deliberately not mail.Address.String(): that RFC 2047-encodes any non-ASCII
+// name, which would re-encode the display names the charset-aware WordDecoder
+// just decoded and put =?utf-8?q?...?= back in front of the user.
+func QuoteDisplayName(name string) string {
+	if !strings.ContainsAny(name, addressSpecials) {
+		return name
+	}
+	var b strings.Builder
+	b.Grow(len(name) + 2)
+	b.WriteByte('"')
+	for _, r := range name {
+		if r == '"' || r == '\\' {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	b.WriteByte('"')
+	return b.String()
+}
+
 func normalizeAddress(raw string) (addr, name string) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -151,7 +181,9 @@ func (db *DB) ContactAddresses() ([]string, error) {
 	out := make([]string, 0, len(contacts))
 	for _, c := range contacts {
 		if c.DisplayName != "" {
-			out = append(out, c.DisplayName+" <"+c.Addr+">")
+			// Quoted, so a name containing a comma stays one recipient when the
+			// picked entry lands in a compose field alongside others.
+			out = append(out, QuoteDisplayName(c.DisplayName)+" <"+c.Addr+">")
 		} else {
 			out = append(out, c.Addr)
 		}
@@ -173,7 +205,9 @@ func (db *DB) AutocompleteAddresses() ([]string, error) {
 	}
 	for _, c := range seen {
 		if c.DisplayName != "" {
-			out = append(out, c.DisplayName+" <"+c.Addr+">")
+			// Quoted, so a name containing a comma stays one recipient when the
+			// picked entry lands in a compose field alongside others.
+			out = append(out, QuoteDisplayName(c.DisplayName)+" <"+c.Addr+">")
 		} else {
 			out = append(out, c.Addr)
 		}
@@ -196,19 +230,18 @@ func (db *DB) SeenAddresses() ([]Contact, error) {
 		return nil, err
 	}
 	seen := make(map[string]Contact)
-	for _, raw := range addrs {
-		addr, name := normalizeAddress(raw)
-		if addr == "" || known[addr] {
+	for _, a := range addrs {
+		if a.Addr == "" || known[a.Addr] {
 			continue
 		}
-		if existing, ok := seen[addr]; ok {
-			if existing.DisplayName == "" && name != "" {
-				existing.DisplayName = name
-				seen[addr] = existing
+		if existing, ok := seen[a.Addr]; ok {
+			if existing.DisplayName == "" && a.Name != "" {
+				existing.DisplayName = a.Name
+				seen[a.Addr] = existing
 			}
 			continue
 		}
-		seen[addr] = Contact{Addr: addr, DisplayName: name, Source: "seen"}
+		seen[a.Addr] = Contact{Addr: a.Addr, DisplayName: a.Name, Source: "seen"}
 	}
 	out := make([]Contact, 0, len(seen))
 	for _, c := range seen {

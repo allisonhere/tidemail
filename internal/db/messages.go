@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/mail"
 	"strings"
 	"time"
 )
@@ -507,9 +508,15 @@ func scanMessages(rows interface {
 	return msgs, rows.Err()
 }
 
+// SeenAddress is one address parsed out of a stored From/To/CC list.
+type SeenAddress struct {
+	Addr string // normalised, lower-cased
+	Name string // display name; empty when the header carried none
+}
+
 // ListAddresses returns all unique email addresses seen in From, To, and CC
 // fields across all messages, suitable for compose autocomplete.
-func (db *DB) ListAddresses() ([]string, error) {
+func (db *DB) ListAddresses() ([]SeenAddress, error) {
 	rows, err := db.Query(`
 		SELECT DISTINCT addr FROM (
 			SELECT from_addr AS addr FROM messages WHERE from_addr != ''
@@ -522,19 +529,48 @@ func (db *DB) ListAddresses() ([]string, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var addrs []string
+	var addrs []SeenAddress
 	for rows.Next() {
 		var a string
 		if err := rows.Scan(&a); err != nil {
 			return addrs, err
 		}
-		// Split comma-separated addresses
-		for _, part := range strings.Split(a, ",") {
-			part = strings.TrimSpace(part)
-			if part != "" {
-				addrs = append(addrs, part)
-			}
-		}
+		addrs = append(addrs, splitAddressList(a)...)
 	}
 	return addrs, rows.Err()
+}
+
+// splitAddressList breaks a stored From/To/CC value into individual addresses.
+//
+// These fields hold a comma-joined list, so a display name containing a comma
+// looks exactly like a separator. Splitting on every comma tore "Doe, John
+// <j@x>" into "Doe" and "John <j@x>": the surname was discarded and the contact
+// surfaced under a truncated name. Once names are stored quoted the same split
+// is worse still — the fragments "Doe and John" <j@x> parse as neither a name
+// nor an address, so the address drops out of autocomplete altogether. Parsing
+// the list keeps both intact.
+//
+// Rows written before display names were quoted cannot be parsed as a list —
+// net/mail rejects the whole value — so those fall back to the old comma split.
+// The address still comes through there; only a name containing a comma is
+// truncated, which is the best that format allows. -allie
+func splitAddressList(s string) []SeenAddress {
+	if list, err := mail.ParseAddressList(s); err == nil && len(list) > 0 {
+		out := make([]SeenAddress, 0, len(list))
+		for _, a := range list {
+			addr := strings.ToLower(strings.TrimSpace(a.Address))
+			if addr == "" {
+				continue
+			}
+			out = append(out, SeenAddress{Addr: addr, Name: strings.TrimSpace(a.Name)})
+		}
+		return out
+	}
+	var out []SeenAddress
+	for _, part := range strings.Split(s, ",") {
+		if addr, name := normalizeAddress(part); addr != "" {
+			out = append(out, SeenAddress{Addr: addr, Name: name})
+		}
+	}
+	return out
 }
