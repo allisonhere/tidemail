@@ -146,7 +146,7 @@ func TestMSAccessTokenCachesAndRotates(t *testing.T) {
 	if persistedName != account || persistedToken != "refresh-rotated" {
 		t.Errorf("persisted %q/%q, want %s/refresh-rotated", persistedName, persistedToken, account)
 	}
-	if tok, ok := LatestRefreshToken(account); !ok || tok != "refresh-rotated" {
+	if tok, ok := LatestRefreshToken(ProviderMicrosoft, account); !ok || tok != "refresh-rotated" {
 		t.Errorf("LatestRefreshToken = %q,%v, want refresh-rotated,true", tok, ok)
 	}
 

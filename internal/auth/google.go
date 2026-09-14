@@ -182,7 +182,7 @@ func TokenFromJSON(data string) (*oauth2.Token, error) {
 }
 
 // googleCache is the shared IMAP/SMTP access-token cache for Gmail accounts.
-var googleCache = newTokenCache(RefreshGoogleToken)
+var googleCache = newTokenCache(ProviderGoogle, RefreshGoogleToken)
 
 // GoogleAccessToken returns a valid access token for the account, refreshing at
 // most once per expiry window. cfgRefreshToken seeds the cache on first use;

@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/allisonhere/tidemail/internal/auth"
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 )
@@ -686,5 +687,32 @@ func TestLoadMailboxMessagesIncludesReadMessages(t *testing.T) {
 	}
 	if len(msg.Messages) != 2 {
 		t.Fatalf("expected read and unread messages, got %d", len(msg.Messages))
+	}
+}
+
+// TestAuthProviderMapsAccountsToTheirTokenCache verifies each account is
+// reconciled against its own provider's cache. Caches are keyed by account name,
+// which is not unique across providers, so a wrong answer here means saveConfig
+// writes the other provider's stale refresh token over the one just issued.
+func TestAuthProviderMapsAccountsToTheirTokenCache(t *testing.T) {
+	cases := []struct {
+		name    string
+		account config.AccountConfig
+		want    auth.Provider
+		wantOK  bool
+	}{
+		{"gmail oauth", config.AccountConfig{Provider: "Gmail", AuthMethod: config.AuthOAuth2}, auth.ProviderGoogle, true},
+		{"outlook oauth", config.AccountConfig{Provider: "Outlook", AuthMethod: config.AuthOAuth2}, auth.ProviderMicrosoft, true},
+		{"gmail app password", config.AccountConfig{Provider: "Gmail", AuthMethod: config.AuthPassword}, "", false},
+		{"generic password", config.AccountConfig{Provider: "Generic", AuthMethod: config.AuthPassword}, "", false},
+		{"unset", config.AccountConfig{}, "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := authProvider(tc.account)
+			if ok != tc.wantOK || got != tc.want {
+				t.Fatalf("authProvider(%+v) = %q,%v; want %q,%v", tc.account, got, ok, tc.want, tc.wantOK)
+			}
+		})
 	}
 }

@@ -3169,7 +3169,11 @@ func (m *Model) saveConfig() {
 	// (theme change, etc.) would clobber the rotated keyring token with a stale
 	// one the provider has already invalidated.
 	for i := range m.cfg.Accounts {
-		if tok, ok := auth.LatestRefreshToken(m.cfg.Accounts[i].Name); ok {
+		p, ok := authProvider(m.cfg.Accounts[i])
+		if !ok {
+			continue
+		}
+		if tok, ok := auth.LatestRefreshToken(p, m.cfg.Accounts[i].Name); ok {
 			m.cfg.Accounts[i].RefreshToken = tok
 		}
 	}

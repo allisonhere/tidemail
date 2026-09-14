@@ -234,7 +234,7 @@ func TestGoogleAccessTokenCachesAndRotates(t *testing.T) {
 	if persisted != "rotated-1" {
 		t.Fatalf("rotated refresh token not persisted: %q", persisted)
 	}
-	if latest, ok := LatestRefreshToken(acct); !ok || latest != "rotated-1" {
+	if latest, ok := LatestRefreshToken(ProviderGoogle, acct); !ok || latest != "rotated-1" {
 		t.Fatalf("LatestRefreshToken = %q,%v", latest, ok)
 	}
 

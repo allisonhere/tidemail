@@ -117,7 +117,7 @@ func RefreshMSToken(ctx context.Context, clientID, refreshToken string) (*oauth2
 
 // msCache is the shared IMAP/SMTP access-token cache for Outlook accounts.
 // Microsoft is a public client, so the clientSecret argument is unused.
-var msCache = newTokenCache(func(ctx context.Context, clientID, _, refreshToken string) (*oauth2.Token, error) {
+var msCache = newTokenCache(ProviderMicrosoft, func(ctx context.Context, clientID, _, refreshToken string) (*oauth2.Token, error) {
 	return RefreshMSToken(ctx, clientID, refreshToken)
 })
 

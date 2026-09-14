@@ -680,7 +680,7 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 		am.oauthRefreshToken = dm.RefreshToken
 		// Drop any cached tokens for this account so the next connect seeds
 		// from the freshly issued refresh token.
-		forgetOAuthToken(provider, strings.TrimSpace(am.nameInput.Value()))
+		forgetOAuthToken(strings.TrimSpace(am.nameInput.Value()))
 		am.statusMsg = "SIGNED IN: " + strings.ToUpper(oauthVendor(provider)) + " ACCOUNT LINKED"
 		am.focusField(amFieldFrom)
 		return am, nil, false
@@ -879,12 +879,27 @@ func oauthVendor(provider string) string {
 	return "Google"
 }
 
-func forgetOAuthToken(provider, account string) {
-	if provider == "Outlook" {
-		auth.ForgetMSToken(account)
-		return
+// authProvider maps an account's configured provider onto the OAuth token cache
+// that holds its tokens. ok is false for accounts with no OAuth path, which have
+// no cached token to reconcile against.
+func authProvider(acc config.AccountConfig) (auth.Provider, bool) {
+	switch {
+	case acc.UsesGoogleOAuth2():
+		return auth.ProviderGoogle, true
+	case acc.UsesMicrosoftOAuth2():
+		return auth.ProviderMicrosoft, true
+	default:
+		return "", false
 	}
-	auth.ForgetGoogleToken(account)
+}
+
+// forgetOAuthToken drops the account's cached tokens from every provider, not
+// just the one it is currently configured for. Clearing only the current
+// provider left the previous provider's entry behind when an account was
+// switched between Gmail and Outlook, and that stale entry then outlived the
+// re-auth it was supposed to be cleared by.
+func forgetOAuthToken(account string) {
+	auth.ForgetToken(account)
 }
 
 // startOAuthSignIn kicks off a sign-in for the current provider. Device-capable

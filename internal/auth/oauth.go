@@ -65,11 +65,21 @@ type tokenCache struct {
 	refresh func(ctx context.Context, clientID, clientSecret, refreshToken string) (*oauth2.Token, error)
 }
 
-var allCaches []*tokenCache
+// Provider identifies which OAuth provider a cached token belongs to. Caches are
+// keyed by account name, which is not unique across providers, so every lookup
+// has to say which provider it means.
+type Provider string
 
-func newTokenCache(refresh func(ctx context.Context, clientID, clientSecret, refreshToken string) (*oauth2.Token, error)) *tokenCache {
+const (
+	ProviderGoogle    Provider = "google"
+	ProviderMicrosoft Provider = "microsoft"
+)
+
+var allCaches = map[Provider]*tokenCache{}
+
+func newTokenCache(p Provider, refresh func(ctx context.Context, clientID, clientSecret, refreshToken string) (*oauth2.Token, error)) *tokenCache {
 	c := &tokenCache{states: map[string]*tokenState{}, refresh: refresh}
-	allCaches = append(allCaches, c)
+	allCaches[p] = c
 	return c
 }
 
@@ -139,15 +149,29 @@ func (c *tokenCache) forget(account string) {
 }
 
 // LatestRefreshToken reports an account's current (possibly rotated) refresh
-// token from whichever provider cache holds it. Used by saveConfig to avoid
-// writing a stale token over a rotated one.
-func LatestRefreshToken(account string) (string, bool) {
-	for _, c := range allCaches {
-		if tok, ok := c.latest(account); ok {
-			return tok, true
-		}
+// token from the given provider's cache. Used by saveConfig to avoid writing a
+// stale token over a rotated one.
+//
+// The provider must be specified. Searching every cache for the account name
+// meant that switching an account between Gmail and Outlook — which leaves the
+// old provider's entry behind, since a re-auth only clears the new provider's
+// cache — returned the other provider's stale token, which saveConfig then wrote
+// over the token that had just been issued. Whichever cache was registered first
+// won, so the result also depended on package initialisation order. -allie
+func LatestRefreshToken(p Provider, account string) (string, bool) {
+	c := allCaches[p]
+	if c == nil {
+		return "", false
 	}
-	return "", false
+	return c.latest(account)
+}
+
+// ForgetToken drops an account's cached tokens from every provider, so a stale
+// entry cannot outlive a switch from one provider to another.
+func ForgetToken(account string) {
+	for _, c := range allCaches {
+		c.forget(account)
+	}
 }
 
 // ExtractAuthCode accepts either a bare authorization code or the full redirect
