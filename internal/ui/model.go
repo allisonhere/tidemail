@@ -241,6 +241,15 @@ type Model struct {
 	// "never refreshed", so the first auto-sync after launch picks up folders.
 	lastFolderRefresh map[int64]time.Time
 
+	// syncGen is the generation of the live auto-sync timer chain per account.
+	// tea.Every cannot be cancelled, so a chain is retired instead of stopped:
+	// every AutoSyncMsg carries the generation it was armed under, and a tick
+	// whose generation no longer matches is dropped without rescheduling, which
+	// ends that chain. Arming a new chain (armSyncTimer) bumps the generation.
+	// Generations start at 1, so the zero value never matches a live chain.
+	// The map is shared across Model copies.
+	syncGen map[int64]int
+
 	// idleWatchers holds the per-account IMAP IDLE push watchers (keyed by
 	// account ID); see startIdleWatchers. The map is shared across Model copies.
 	idleWatchers map[int64]idleWatcherEntry
@@ -354,6 +363,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		syncing:               make(map[int64]bool),
 		olderExhausted:        make(map[int64]bool),
 		lastFolderRefresh:     make(map[int64]time.Time),
+		syncGen:               make(map[int64]int),
 		idleWatchers:          make(map[int64]idleWatcherEntry),
 		collapsedAccounts:     map[int64]bool{},
 		collapsedSections:     map[string]bool{},
@@ -873,7 +883,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(msg.Mailboxes) > 0 {
 			m.pendingSelectMailboxID = msg.Mailboxes[0].ID
 		}
-		return m, tea.Batch(m.loadAccountsCmd(), m.clearStatusCmd(), m.scheduleNextSync(msg.Account.ID))
+		return m, tea.Batch(m.loadAccountsCmd(), m.clearStatusCmd(), m.armSyncTimer(msg.Account.ID))
 
 	case IdleEventMsg:
 		// Ignore events from a watcher that has since been replaced or stopped —
@@ -890,6 +900,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 
 	case AutoSyncMsg:
+		// Drop ticks from a chain that has been superseded (the account was
+		// saved, re-arming it). Returning without rescheduling is what ends the
+		// old chain, since tea.Every cannot be cancelled.
+		if !m.syncGenCurrent(msg.AccountID, msg.Gen) {
+			return m, nil
+		}
 		var cmds []tea.Cmd
 		for _, mb := range m.mailboxes {
 			if mb.AccountID == msg.AccountID && isInboxMailbox(mb) {
@@ -906,10 +922,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, cmd)
 			}
 		}
-		// Reschedule next auto-sync for this account — only one pending
-		// timer per account, avoiding the accumulation that causes
-		// "Too many simultaneous connections" errors.
-		if cmd := m.scheduleNextSync(msg.AccountID); cmd != nil {
+		// Continue this chain. Reusing the tick's own generation (rather than
+		// arming a new one) keeps exactly one live chain per account, which is
+		// what avoids the accumulation that causes "too many simultaneous
+		// connections".
+		if cmd := m.scheduleNextSync(msg.AccountID, msg.Gen); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 		if len(cmds) > 0 {

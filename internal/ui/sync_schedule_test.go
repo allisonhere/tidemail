@@ -54,14 +54,14 @@ func TestScheduleNextSyncHonoursMode(t *testing.T) {
 	m := NewModel(database, cfg, "dev", false)
 	m.accounts = []db.Account{{ID: 1, Name: "Poll"}, {ID: 2, Name: "Push"}, {ID: 3, Name: "ManualOnly"}}
 
-	if m.scheduleNextSync(1) == nil {
+	if m.armSyncTimer(1) == nil {
 		t.Fatal("expected a timer for a polling account")
 	}
 	// Push still gets a timer — the safety poll — even though IDLE does the work.
-	if m.scheduleNextSync(2) == nil {
+	if m.armSyncTimer(2) == nil {
 		t.Fatal("expected a safety-poll timer for a push account")
 	}
-	if m.scheduleNextSync(3) != nil {
+	if m.armSyncTimer(3) != nil {
 		t.Fatal("expected no timer for a manual-only account")
 	}
 }
@@ -194,5 +194,98 @@ func TestValidateFormRejectsBadSyncMinutes(t *testing.T) {
 	am.syncInput.SetValue("-1")
 	if status := am.validateForm(am.buildCfg()); status != "" {
 		t.Fatalf("expected manual-only mode to validate, got %q", status)
+	}
+}
+
+// TestAutoSyncRetiresSupersededTimerChain is the regression test for auto-sync
+// timer chains multiplying. tea.Every cannot be cancelled, so re-arming an
+// account's timer used to leave the previous self-rescheduling chain running
+// alongside the new one. Each chain reschedules itself forever, so every account
+// edit permanently added another stream of syncs and connections.
+//
+// A tick reschedules by returning a command; a retired tick must return none,
+// which is what lets the old chain die out.
+func TestAutoSyncRetiresSupersededTimerChain(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Accounts = []config.AccountConfig{{Name: "Poll", SyncMinutes: 5}}
+	m := NewModel(nil, cfg, "dev", false)
+	m.accounts = []db.Account{{ID: 1, Name: "Poll"}}
+
+	if cmd := m.armSyncTimer(1); cmd == nil {
+		t.Fatal("expected a timer for a polling account")
+	}
+	retired := m.syncGen[1]
+
+	// Re-arm, as saving the account does.
+	if cmd := m.armSyncTimer(1); cmd == nil {
+		t.Fatal("expected the re-armed timer")
+	}
+	live := m.syncGen[1]
+	if live == retired {
+		t.Fatal("re-arming must supersede the previous generation")
+	}
+
+	next, cmd := m.Update(AutoSyncMsg{AccountID: 1, Gen: retired})
+	if cmd != nil {
+		t.Fatal("a tick from the retired chain rescheduled itself; the old chain is still alive")
+	}
+	m = next.(Model)
+
+	if _, cmd := m.Update(AutoSyncMsg{AccountID: 1, Gen: live}); cmd == nil {
+		t.Fatal("the live chain stopped rescheduling itself")
+	}
+}
+
+// TestAutoSyncZeroGenerationIsNeverLive verifies a zero-value tick cannot keep a
+// chain alive. Generations start at 1 so the zero value never matches, which
+// matters because the map returns 0 for an account that has no armed chain.
+func TestAutoSyncZeroGenerationIsNeverLive(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Accounts = []config.AccountConfig{{Name: "Poll", SyncMinutes: 5}}
+	m := NewModel(nil, cfg, "dev", false)
+	m.accounts = []db.Account{{ID: 1, Name: "Poll"}}
+
+	// Never armed: nothing is live, so nothing should reschedule.
+	if _, cmd := m.Update(AutoSyncMsg{AccountID: 1}); cmd != nil {
+		t.Fatal("a zero-generation tick armed a chain that was never started")
+	}
+	if m.armSyncTimer(1) == nil {
+		t.Fatal("expected a timer")
+	}
+	if _, cmd := m.Update(AutoSyncMsg{AccountID: 1}); cmd != nil {
+		t.Fatal("a zero-generation tick kept running alongside the live chain")
+	}
+}
+
+// TestAccountSavedRetiresPreviousTimerChain covers the path that actually caused
+// the accumulation: saving an account re-arms its timer, so any chain armed
+// before the save must stop rescheduling. Changing sync_minutes otherwise left
+// the old chain ticking at the old interval as well as the new one.
+func TestAccountSavedRetiresPreviousTimerChain(t *testing.T) {
+	orig := configSave
+	configSave = func(config.Config) error { return nil }
+	defer func() { configSave = orig }()
+
+	cfg := config.DefaultConfig()
+	cfg.Accounts = []config.AccountConfig{{Name: "Poll", SyncMinutes: 5}}
+	m := NewModel(nil, cfg, "dev", false)
+	m.accounts = []db.Account{{ID: 1, Name: "Poll"}}
+
+	if m.armSyncTimer(1) == nil {
+		t.Fatal("expected an initial timer")
+	}
+	before := m.syncGen[1]
+
+	next, _ := m.Update(AccountSavedMsg{
+		Account:    db.Account{ID: 1, Name: "Poll"},
+		AccountCfg: config.AccountConfig{Name: "Poll", SyncMinutes: 15},
+	})
+	m = next.(Model)
+
+	if m.syncGen[1] == before {
+		t.Fatal("saving the account left the previous timer chain live")
+	}
+	if _, cmd := m.Update(AutoSyncMsg{AccountID: 1, Gen: before}); cmd != nil {
+		t.Fatal("the pre-save chain is still rescheduling itself at the old interval")
 	}
 }

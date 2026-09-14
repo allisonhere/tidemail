@@ -232,8 +232,13 @@ type AttachmentsSavedMsg struct {
 
 type StatusClearMsg struct{}
 
+// AutoSyncMsg is one tick of an account's background refresh chain. Gen is the
+// generation the chain was armed under; the handler drops a tick whose
+// generation has been superseded, which is how a tea.Every chain that cannot be
+// cancelled is retired. See Model.syncGen.
 type AutoSyncMsg struct {
 	AccountID int64
+	Gen       int
 }
 
 // MailboxesRefreshedMsg reports the result of an account-level folder LIST.

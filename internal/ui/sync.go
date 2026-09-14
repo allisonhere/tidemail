@@ -252,8 +252,24 @@ func syncPollInterval(syncMinutes int) (time.Duration, bool) {
 	}
 }
 
-// scheduleNextSync arms the next background refresh for an account.
-func (m *Model) scheduleNextSync(accountID int64) tea.Cmd {
+// armSyncTimer starts a fresh auto-sync chain for an account, retiring whichever
+// chain was running before.
+//
+// tea.Every timers cannot be cancelled, so every call to this used to leave the
+// previous self-rescheduling chain running alongside the new one. Editing an
+// account armed another chain on every save — at the old interval as well as the
+// new one — and the connection count grew with each edit, which is exactly the
+// "too many simultaneous connections" accumulation the scheduling was meant to
+// prevent. Bumping the generation lets the superseded chain expire on its next
+// tick instead. -allie
+func (m *Model) armSyncTimer(accountID int64) tea.Cmd {
+	m.syncGen[accountID]++
+	return m.scheduleNextSync(accountID, m.syncGen[accountID])
+}
+
+// scheduleNextSync arms one tick of an existing chain. Callers starting a chain
+// want armSyncTimer; this is for continuing the chain a tick belongs to.
+func (m *Model) scheduleNextSync(accountID int64, gen int) tea.Cmd {
 	for _, acc := range m.accounts {
 		if acc.ID != accountID {
 			continue
@@ -267,11 +283,18 @@ func (m *Model) scheduleNextSync(accountID int64) tea.Cmd {
 				return nil
 			}
 			return tea.Every(interval, func(t time.Time) tea.Msg {
-				return AutoSyncMsg{AccountID: accountID}
+				return AutoSyncMsg{AccountID: accountID, Gen: gen}
 			})
 		}
 	}
 	return nil
+}
+
+// syncGenCurrent reports whether a tick belongs to the account's live chain.
+// A generation of 0 is never current: generations start at 1, so a zero-value
+// message cannot keep a retired chain alive.
+func (m *Model) syncGenCurrent(accountID int64, gen int) bool {
+	return gen != 0 && m.syncGen[accountID] == gen
 }
 
 // pushSafetyPollInterval is how often a push-only account (sync_minutes = 0)
@@ -285,7 +308,7 @@ const pushSafetyPollInterval = 30 * time.Minute
 func (m *Model) startSyncTimers() tea.Cmd {
 	var cmds []tea.Cmd
 	for _, acc := range m.accounts {
-		if cmd := m.scheduleNextSync(acc.ID); cmd != nil {
+		if cmd := m.armSyncTimer(acc.ID); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 		// Also trigger an immediate sync for every inbox on startup,
