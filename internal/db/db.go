@@ -22,26 +22,47 @@ func Open() (*DB, error) {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
 
-	path := filepath.Join(dir, "mail.db")
-	conn, err := sql.Open("sqlite", path)
+	db, err := openSQLite(filepath.Join(dir, "mail.db"))
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
-
-	conn.SetMaxOpenConns(1)
-
-	db := &DB{conn}
 	if err := db.init(); err != nil {
-		conn.Close()
+		db.Close() //nolint:errcheck
 		return nil, fmt.Errorf("init db: %w", err)
 	}
 	return db, nil
 }
 
+// sqliteDSN builds the connection string for the message store.
+//
+// foreign_keys has to be set here rather than as a PRAGMA after connecting,
+// because it is per-connection state and database/sql owns the pool.
+// SetMaxOpenConns(1) keeps a single connection alive in practice, but the pool
+// is free to discard and replace it — after a connection error, say — and the
+// replacement would come up with enforcement off. Every ON DELETE CASCADE
+// (attachments, messages, mailboxes) would then silently stop firing, leaving
+// orphaned rows behind with nothing to signal it. A DSN pragma applies to every
+// connection the pool ever opens.
+//
+// journal_mode is deliberately not set here: WAL is recorded in the database
+// file itself, so running it once in init carries across connections. -allie
+func sqliteDSN(path string) string {
+	return "file:" + path + "?_pragma=foreign_keys(1)"
+}
+
+// openSQLite opens the store at path without running migrations.
+func openSQLite(path string) (*DB, error) {
+	conn, err := sql.Open("sqlite", sqliteDSN(path))
+	if err != nil {
+		return nil, err
+	}
+	conn.SetMaxOpenConns(1)
+	return &DB{conn}, nil
+}
+
 func (db *DB) init() error {
 	pragmas := []string{
 		"PRAGMA journal_mode=WAL",
-		"PRAGMA foreign_keys=ON",
 	}
 	for _, p := range pragmas {
 		if _, err := db.Exec(p); err != nil {

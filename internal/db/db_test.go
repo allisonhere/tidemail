@@ -1,7 +1,6 @@
 package db
 
 import (
-	"database/sql"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1018,15 +1017,6 @@ func TestDBSearchAllMessagesUnreadFirstAndDeleteSyncFTS(t *testing.T) {
 	}
 }
 
-func openSQLite(path string) (*DB, error) {
-	conn, err := sql.Open("sqlite", path)
-	if err != nil {
-		return nil, err
-	}
-	conn.SetMaxOpenConns(1)
-	return &DB{conn}, nil
-}
-
 // TestDBMoveMessageIntoOccupiedUID verifies a move stores the destination
 // mailbox's UID rather than carrying the source's across. UIDs are per-mailbox,
 // so the destination very often already holds the source UID — reusing it trips
@@ -1115,5 +1105,74 @@ func TestDBOldestMessageUIDIgnoresLocalOnlyRows(t *testing.T) {
 	}
 	if uid != 50 {
 		t.Fatalf("expected the oldest server UID 50, got %d", uid)
+	}
+}
+
+// TestForeignKeysEnforcedOnEveryConnection verifies foreign-key enforcement
+// comes from the DSN rather than a one-off PRAGMA. foreign_keys is
+// per-connection state, and database/sql owns the pool: SetMaxOpenConns(1) keeps
+// one connection alive in practice, but the pool may discard and replace it, and
+// a replacement opened without the pragma would silently stop firing every
+// ON DELETE CASCADE in the schema.
+//
+// Forcing the pool to hand out fresh connections is what the old code could not
+// survive.
+func TestForeignKeysEnforcedOnEveryConnection(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+
+	database.SetMaxOpenConns(4)
+	database.SetMaxIdleConns(0) // make the pool open a new connection each time
+	for i := 0; i < 3; i++ {
+		var on int
+		if err := database.QueryRow("PRAGMA foreign_keys").Scan(&on); err != nil {
+			t.Fatal(err)
+		}
+		if on != 1 {
+			t.Fatalf("connection %d has foreign_keys=%d; cascades would not fire on it", i, on)
+		}
+	}
+}
+
+// TestDeleteAccountCascadesToMessages verifies the cascade the pragma exists to
+// support actually fires, so the DSN change is checked by behaviour and not only
+// by reading the pragma back.
+func TestDeleteAccountCascadesToMessages(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+
+	accountID, _ := database.AddAccount("Personal", "")
+	inboxID, _ := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
+	if err := database.UpsertMessage(Message{MailboxID: inboxID, UID: 1, Subject: "hi", Date: time.Unix(1710000000, 0)}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := database.Exec(`DELETE FROM accounts WHERE id = ?`, accountID); err != nil {
+		t.Fatal(err)
+	}
+
+	var mailboxes, messages int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM mailboxes`).Scan(&mailboxes); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT COUNT(*) FROM messages`).Scan(&messages); err != nil {
+		t.Fatal(err)
+	}
+	if mailboxes != 0 || messages != 0 {
+		t.Fatalf("expected the cascade to clear mailboxes and messages, got %d/%d", mailboxes, messages)
 	}
 }
