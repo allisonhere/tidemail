@@ -408,3 +408,46 @@ func TestSaveIsAtomicUnderConcurrentReads(t *testing.T) {
 		}
 	}
 }
+
+// TestRedactSecretsHandlesPrefixSecrets is the regression test for
+// order-dependent redaction. Replacing in insertion order meant a secret that is
+// a prefix of another leaked the difference: "pass" redacted first rewrote
+// "pass123" to "[redacted]123", so the longer secret no longer matched and its
+// tail survived in cleartext into status and error output.
+func TestRedactSecretsHandlesPrefixSecrets(t *testing.T) {
+	cfg := Config{}
+	cfg.AI.OpenAIKey = "pass"
+	cfg.AI.ClaudeKey = "pass123"
+
+	got := RedactSecrets("openai=pass claude=pass123", cfg)
+
+	if strings.Contains(got, "123") {
+		t.Fatalf("leaked the longer secret's tail: %q", got)
+	}
+	if want := "openai=[redacted] claude=[redacted]"; got != want {
+		t.Fatalf("RedactSecrets = %q, want %q", got, want)
+	}
+}
+
+// TestRedactSecretsIndependentOfConfigOrder verifies the result does not depend
+// on which field a secret happens to live in, since that determined replacement
+// order before.
+func TestRedactSecretsIndependentOfConfigOrder(t *testing.T) {
+	const in = "a=short b=shortlonger"
+
+	forward := Config{}
+	forward.AI.OpenAIKey = "short"
+	forward.AI.ClaudeKey = "shortlonger"
+
+	reverse := Config{}
+	reverse.AI.OpenAIKey = "shortlonger"
+	reverse.AI.ClaudeKey = "short"
+
+	got, want := RedactSecrets(in, forward), RedactSecrets(in, reverse)
+	if got != want {
+		t.Fatalf("redaction depends on config field order: %q vs %q", got, want)
+	}
+	if strings.Contains(got, "longer") {
+		t.Fatalf("leaked a secret fragment: %q", got)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -432,8 +433,27 @@ func SecurityWarnings() ([]string, error) {
 	return nil, nil
 }
 
+// RedactSecrets replaces every configured secret in s with a placeholder, for
+// status-line and error text that may quote a server response or a command.
+//
+// Secrets are replaced longest-first. In insertion order, a secret that is a
+// prefix of another leaks the difference: redacting "pass" before "pass123"
+// rewrites the longer one to "[redacted]123", after which "pass123" no longer
+// matches and the trailing "123" survives into the output in cleartext. Doing
+// the longest first consumes the whole value before any shorter secret can
+// break it up.
+//
+// Two secrets that overlap without one containing the other (a pathological case
+// for real keys and passwords) can still leave a fragment behind. -allie
 func RedactSecrets(s string, cfg Config) string {
-	for _, secret := range secretValues(cfg) {
+	secrets := secretValues(cfg)
+	sort.Slice(secrets, func(i, j int) bool {
+		if len(secrets[i]) != len(secrets[j]) {
+			return len(secrets[i]) > len(secrets[j])
+		}
+		return secrets[i] < secrets[j] // stable for equal lengths
+	})
+	for _, secret := range secrets {
 		s = strings.ReplaceAll(s, secret, "[redacted]")
 	}
 	return s
