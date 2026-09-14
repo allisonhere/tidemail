@@ -1,10 +1,13 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/BurntSushi/toml"
 )
 
 func TestNormalizeSendMaxAttempts(t *testing.T) {
@@ -313,5 +316,95 @@ from = "alice@example.com"
 	}
 	if !cfg.Display.UnreadFirst {
 		t.Fatal("expected unread_first to load true")
+	}
+}
+
+// TestSaveLeavesNoTempFiles verifies the atomic write cleans up after itself, so
+// repeated saves do not litter the config directory.
+func TestSaveLeavesNoTempFiles(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	cfg := DefaultConfig()
+	cfg.Accounts = []AccountConfig{{Name: "Personal", User: "alice@example.com"}}
+	for i := 0; i < 3; i++ {
+		if err := Save(cfg); err != nil {
+			t.Fatalf("Save returned error: %v", err)
+		}
+	}
+
+	entries, err := os.ReadDir(filepath.Join(dir, "tidemail"))
+	if err != nil {
+		t.Fatalf("read config dir: %v", err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if len(names) != 1 || names[0] != "config.toml" {
+		t.Fatalf("expected only config.toml in the config dir, got %v", names)
+	}
+}
+
+// TestSaveIsAtomicUnderConcurrentReads is the regression test for the in-place
+// O_TRUNC write. A reader racing a save must never observe a truncated or
+// partially written config: with the old code the file spent a window empty
+// between the truncate and the encode, so a concurrent read came back with no
+// accounts. The rename makes the replacement indivisible, so every read sees
+// either the old file or the new one.
+func TestSaveIsAtomicUnderConcurrentReads(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	cfg := DefaultConfig()
+	cfg.Accounts = []AccountConfig{
+		{Name: "Personal", User: "alice@example.com"},
+		{Name: "Work", User: "alice@work.example.com"},
+	}
+	if err := Save(cfg); err != nil {
+		t.Fatalf("seed Save: %v", err)
+	}
+	cfgPath := filepath.Join(dir, "tidemail", "config.toml")
+
+	done := make(chan struct{})
+	bad := make(chan string, 1)
+	go func() {
+		defer close(done)
+		for i := 0; i < 300; i++ {
+			if err := Save(cfg); err != nil {
+				select {
+				case bad <- fmt.Sprintf("Save: %v", err):
+				default:
+				}
+				return
+			}
+		}
+	}()
+
+	for {
+		select {
+		case <-done:
+			select {
+			case msg := <-bad:
+				t.Fatal(msg)
+			default:
+			}
+			return
+		default:
+		}
+		data, err := os.ReadFile(cfgPath)
+		if err != nil {
+			t.Fatalf("config vanished mid-save: %v", err)
+		}
+		if len(data) == 0 {
+			t.Fatal("observed an empty config file mid-save")
+		}
+		var got Config
+		if _, err := toml.Decode(string(data), &got); err != nil {
+			t.Fatalf("observed a partially written config mid-save: %v", err)
+		}
+		if len(got.Accounts) != 2 {
+			t.Fatalf("observed %d accounts mid-save, want 2", len(got.Accounts))
+		}
 	}
 }

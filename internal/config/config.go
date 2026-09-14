@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -358,16 +359,59 @@ func Save(cfg Config) error {
 		return err
 	}
 
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
+	// Encode fully before touching the filesystem: a failure here must leave the
+	// existing config alone rather than half-rewrite it.
+	var buf bytes.Buffer
+	if err := toml.NewEncoder(&buf).Encode(cfg); err != nil {
+		return fmt.Errorf("encode config: %w", err)
 	}
-	defer f.Close()
-	if err := f.Chmod(0o600); err != nil {
-		return err
-	}
+	return writeFileAtomic(path, buf.Bytes())
+}
 
-	return toml.NewEncoder(f).Encode(cfg)
+// writeFileAtomic replaces path with data via a temp file and a rename, so a
+// crash, a full disk or a kill can never leave a truncated config behind. The
+// old O_TRUNC-in-place write had no recovery: anything that failed after the
+// truncate lost every account and setting in the file, including the plaintext
+// secrets that live there when no keyring is available.
+//
+// The temp file is created in the target's own directory because rename is only
+// atomic within a filesystem, and is fsynced before the rename so the rename
+// cannot expose a file whose contents have not reached disk. The directory
+// itself is fsynced afterwards so the rename survives a power loss. -allie
+func writeFileAtomic(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*")
+	if err != nil {
+		return fmt.Errorf("create temp config: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer func() {
+		tmp.Close()        //nolint:errcheck // already closed on the success path
+		os.Remove(tmpName) //nolint:errcheck // no-op once renamed away
+	}()
+
+	if err := tmp.Chmod(0o600); err != nil {
+		return fmt.Errorf("chmod temp config: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		return fmt.Errorf("write temp config: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("sync temp config: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp config: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("replace config: %w", err)
+	}
+	// Best effort: the config is already durable and in place, and some
+	// filesystems refuse a directory fsync.
+	if d, err := os.Open(dir); err == nil {
+		d.Sync()  //nolint:errcheck
+		d.Close() //nolint:errcheck
+	}
+	return nil
 }
 
 func SecurityWarnings() ([]string, error) {
