@@ -19,6 +19,8 @@ type SessionPool struct {
 	mu      sync.Mutex
 	entries map[string]*session
 	stop    chan struct{}
+	// closed guards stop against a double close; see Close.
+	closed bool
 
 	// connect and validate are seams for tests.
 	connect  func(ctx context.Context, cfg config.AccountConfig) (*Client, error)
@@ -110,10 +112,19 @@ func (p *SessionPool) Do(ctx context.Context, acfg config.AccountConfig, fn func
 	return fn(s.client)
 }
 
-// Close shuts down the reaper and closes all pooled connections.
+// Close shuts down the reaper and closes all pooled connections. It is safe to
+// call more than once: shutdown paths are not always single-entry (a signal
+// handler racing the normal exit, say), and closing p.stop unconditionally
+// panics on the second call with "close of closed channel", turning a redundant
+// cleanup into a crash on the way out. -allie
 func (p *SessionPool) Close() {
-	close(p.stop)
 	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return
+	}
+	p.closed = true
+	close(p.stop)
 	entries := make([]*session, 0, len(p.entries))
 	for _, s := range p.entries {
 		entries = append(entries, s)

@@ -126,7 +126,15 @@ func (m Model) openBrowserCmd(url string) tea.Cmd {
 				cmd = exec.Command("xdg-open", url)
 			}
 		}
-		_ = cmd.Start()
+		if err := cmd.Start(); err != nil {
+			return nil
+		}
+		// Reap the child once it exits. Nothing here waits on the browser — it
+		// typically stays open until the user closes the window — but without a
+		// Wait the finished process lingers as a zombie for the lifetime of the
+		// app, one per link opened. The sign-in path already does this; see
+		// openBrowser in google_signin.go. -allie
+		go cmd.Wait() //nolint:errcheck
 		return nil
 	}
 }

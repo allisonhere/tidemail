@@ -208,3 +208,29 @@ func TestSessionPoolReapsIdleConnections(t *testing.T) {
 		t.Fatalf("expected redial after idle reap, got %d dials", got)
 	}
 }
+
+// TestSessionPoolCloseIsIdempotent verifies a second Close is a no-op rather
+// than a panic. Close used to close p.stop unconditionally, so a redundant
+// cleanup — a signal handler racing the normal exit, say — crashed the process
+// on the way out with "close of closed channel".
+func TestSessionPoolCloseIsIdempotent(t *testing.T) {
+	p := NewSessionPool()
+	p.Close()
+	p.Close() // panics without the guard
+	p.Close()
+}
+
+// TestSessionPoolCloseIsIdempotentConcurrently verifies the guard holds when
+// two shutdown paths race, which is the case that actually produced the panic.
+func TestSessionPoolCloseIsIdempotentConcurrently(t *testing.T) {
+	p := NewSessionPool()
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			p.Close()
+		}()
+	}
+	wg.Wait()
+}
