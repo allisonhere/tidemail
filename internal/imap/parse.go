@@ -403,6 +403,19 @@ func parseBody(raw []byte) (text, html string, attachments []bodyAttachment) {
 		if readErr != nil {
 			continue
 		}
+		// A part the sender marked as an attachment is one whatever its type.
+		// Routing on Content-Type alone sent an attached .log, .txt or .csv into
+		// the text/plain branch, where the "first part wins" guard meant it was
+		// neither shown as the body nor listed as an attachment — it disappeared
+		// from the message with nothing to indicate it had ever been there. -allie
+		if isAttachmentPart(part) && !strings.HasPrefix(ct, "multipart/") {
+			attachments = append(attachments, bodyAttachment{
+				Filename:    filenameFromPart(part, params, ct),
+				ContentType: ct,
+				Data:        data,
+			})
+			continue
+		}
 		switch ct {
 		case "text/plain":
 			if text == "" {
@@ -428,6 +441,26 @@ func parseBody(raw []byte) (text, html string, attachments []bodyAttachment) {
 		}
 	}
 	return text, html, attachments
+}
+
+// isAttachmentPart reports whether a MIME part is explicitly marked as an
+// attachment.
+//
+// Only "attachment" counts. "inline" asks the client to render the part in
+// place, which is what an HTML mail's embedded images use, and those already
+// reach the attachment list by content type. A bare name= parameter on the
+// Content-Type, with no Content-Disposition at all, is too weak a signal to pull
+// a part out of the body on — some mailers set it on the body part itself.
+func isAttachmentPart(part *mail.Part) bool {
+	raw := part.Header.Get("Content-Disposition")
+	if raw == "" {
+		return false
+	}
+	disp, _, err := mime.ParseMediaType(raw)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(disp, "attachment")
 }
 
 // filenameFromPart extracts a filename from a MIME part's Content-Disposition

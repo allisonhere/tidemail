@@ -467,3 +467,86 @@ func TestAddressListKeepsNonASCIINamesDecoded(t *testing.T) {
 		t.Fatalf("addressList = %q, want %q", got, want)
 	}
 }
+
+// TestParseBodyKeepsTextAttachments verifies a part the sender marked as an
+// attachment is collected whatever its content type. Routing on Content-Type
+// alone sent an attached .log or .csv into the text/plain branch, where the
+// "first part wins" guard dropped it: it was neither shown as the body nor
+// listed as an attachment, so the file vanished from the message entirely.
+func TestParseBodyKeepsTextAttachments(t *testing.T) {
+	raw := []byte("MIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/mixed; boundary=\"b\"\r\n\r\n" +
+		"--b\r\nContent-Type: text/plain\r\n\r\nHere is the log you asked for.\r\n" +
+		"--b\r\nContent-Type: text/plain; name=\"server.log\"\r\n" +
+		"Content-Disposition: attachment; filename=\"server.log\"\r\n\r\nERROR line one\r\n" +
+		"--b\r\nContent-Type: text/html\r\n" +
+		"Content-Disposition: attachment; filename=\"report.html\"\r\n\r\n<p>report</p>\r\n" +
+		"--b--\r\n")
+
+	text, html, attachments := parseBody(raw)
+
+	if text != "Here is the log you asked for." {
+		t.Fatalf("body text = %q, want the inline part only", text)
+	}
+	if html != "" {
+		t.Fatalf("an attached HTML file must not become the message body, got %q", html)
+	}
+	if len(attachments) != 2 {
+		t.Fatalf("expected both attachments, got %d: %+v", len(attachments), attachments)
+	}
+	for i, want := range []struct{ name, ct string }{
+		{"server.log", "text/plain"},
+		{"report.html", "text/html"},
+	} {
+		if attachments[i].Filename != want.name || attachments[i].ContentType != want.ct {
+			t.Errorf("attachment %d = %s (%s), want %s (%s)",
+				i, attachments[i].Filename, attachments[i].ContentType, want.name, want.ct)
+		}
+	}
+	if got := string(attachments[0].Data); !strings.Contains(got, "ERROR line one") {
+		t.Errorf("attachment content lost: %q", got)
+	}
+}
+
+// TestParseBodyPlainPartsStayBody guards the ordinary case: parts with no
+// Content-Disposition, and inline parts, are body content and must not be pulled
+// out into the attachment list.
+func TestParseBodyPlainPartsStayBody(t *testing.T) {
+	raw := []byte("MIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/alternative; boundary=\"b\"\r\n\r\n" +
+		"--b\r\nContent-Type: text/plain\r\n" +
+		"Content-Disposition: inline\r\n\r\nplain body\r\n" +
+		"--b\r\nContent-Type: text/html\r\n\r\n<p>html body</p>\r\n" +
+		"--b--\r\n")
+
+	text, html, attachments := parseBody(raw)
+
+	if text != "plain body" {
+		t.Fatalf("body text = %q", text)
+	}
+	if !strings.Contains(html, "html body") {
+		t.Fatalf("html body = %q", html)
+	}
+	if len(attachments) != 0 {
+		t.Fatalf("body parts were treated as attachments: %+v", attachments)
+	}
+}
+
+// TestParseBodyInlineImageStaysAttachment guards embedded images, which are
+// marked inline but still need to reach the attachment list — they get there by
+// content type, not disposition.
+func TestParseBodyInlineImageStaysAttachment(t *testing.T) {
+	raw := []byte("MIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/related; boundary=\"b\"\r\n\r\n" +
+		"--b\r\nContent-Type: text/html\r\n\r\n<img src=\"cid:logo\">\r\n" +
+		"--b\r\nContent-Type: image/png; name=\"logo.png\"\r\n" +
+		"Content-Disposition: inline; filename=\"logo.png\"\r\n" +
+		"Content-ID: <logo>\r\n\r\nPNGDATA\r\n" +
+		"--b--\r\n")
+
+	_, _, attachments := parseBody(raw)
+
+	if len(attachments) != 1 || attachments[0].Filename != "logo.png" {
+		t.Fatalf("expected the inline image collected, got %+v", attachments)
+	}
+}
