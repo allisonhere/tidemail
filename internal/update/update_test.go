@@ -426,3 +426,141 @@ func responseWithBody(status int, body string) *http.Response {
 		Body:       io.NopCloser(strings.NewReader(body)),
 	}
 }
+
+// TestDownloadCleansUpTempDirOnFailure verifies a failed download leaves nothing
+// behind. Only the checksum-mismatch path used to remove the scratch directory,
+// so every other failure after the archive was written leaked an extracted
+// binary into the system temp directory until reboot.
+func TestDownloadCleansUpTempDirOnFailure(t *testing.T) {
+	before := countUpdateTempDirs(t)
+
+	archive := testArchive(t, "tidemail-linux-x86_64", "real")
+	sums := sha256Hex([]byte("tampered")) + "  tidemail-linux-x86_64.tar.gz\n"
+	updater := &Updater{HTTPClient: archiveServer(archive, sums)}
+	if _, err := updater.Download(ReleaseInfo{
+		Version:      "v1.2.3",
+		AssetName:    "tidemail-linux-x86_64",
+		DownloadURL:  testDownloadURL,
+		ChecksumsURL: testChecksumsURL,
+	}); err == nil {
+		t.Fatal("expected the download to fail")
+	}
+
+	if after := countUpdateTempDirs(t); after != before {
+		t.Fatalf("failed download leaked a temp dir: %d before, %d after", before, after)
+	}
+}
+
+// TestInstallCleansUpDownloadTempDir verifies a completed install removes the
+// staged payload rather than leaving it in the system temp directory.
+func TestInstallCleansUpDownloadTempDir(t *testing.T) {
+	dir := t.TempDir()
+	current := filepath.Join(dir, "tide")
+	if err := os.WriteFile(current, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	staging := filepath.Join(dir, "staging")
+	if err := os.MkdirAll(staging, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	newBinary := filepath.Join(staging, "downloaded")
+	if err := os.WriteFile(newBinary, []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := New().Install(DownloadedAsset{
+		Release:    ReleaseInfo{Version: "v1.2.3"},
+		BinaryPath: newBinary,
+		TempDir:    staging,
+	}, current); err != nil {
+		t.Fatalf("Install returned error: %v", err)
+	}
+
+	if _, err := os.Stat(staging); !os.IsNotExist(err) {
+		t.Fatalf("expected the staging dir removed after install, stat err = %v", err)
+	}
+}
+
+// TestInstallKeepsStagingForManualCommand verifies the manual-install path keeps
+// the payload: the command handed to the user points at a file inside it, so
+// cleaning up there would hand them a path that no longer exists.
+func TestInstallKeepsStagingForManualCommand(t *testing.T) {
+	dir := t.TempDir()
+	protectedDir := filepath.Join(dir, "protected")
+	if err := os.Mkdir(protectedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(protectedDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(protectedDir, 0o755) //nolint:errcheck
+
+	staging := filepath.Join(dir, "staging")
+	if err := os.MkdirAll(staging, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	newBinary := filepath.Join(staging, "downloaded")
+	if err := os.WriteFile(newBinary, []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	oldHome, oldWritable := userHomeDir, dirWritable
+	defer func() { userHomeDir, dirWritable = oldHome, oldWritable }()
+	userHomeDir = func() (string, error) { return "", os.ErrNotExist }
+	dirWritable = func(string) error { return os.ErrPermission }
+
+	result, err := New().Install(DownloadedAsset{
+		Release:    ReleaseInfo{Version: "v1.2.3"},
+		BinaryPath: newBinary,
+		TempDir:    staging,
+	}, filepath.Join(protectedDir, "tide"))
+	if err != nil {
+		t.Fatalf("Install returned error: %v", err)
+	}
+	if !result.RequiresManual {
+		t.Fatal("expected install to require a manual step")
+	}
+	if _, err := os.Stat(newBinary); err != nil {
+		t.Fatalf("manual install command points at a removed file: %v", err)
+	}
+	if !strings.Contains(result.ManualCommand, newBinary) {
+		t.Fatalf("manual command %q does not reference the staged binary", result.ManualCommand)
+	}
+}
+
+// TestInstallLeavesNoBackupFile verifies the install replaces the target with a
+// single rename. Moving the old binary aside first left a window with no
+// executable at the path, and a crash inside it left only a .bak behind.
+func TestInstallLeavesNoBackupFile(t *testing.T) {
+	dir := t.TempDir()
+	current := filepath.Join(dir, "tide")
+	if err := os.WriteFile(current, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	newBinary := filepath.Join(dir, "downloaded")
+	if err := os.WriteFile(newBinary, []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := New().Install(DownloadedAsset{
+		Release:    ReleaseInfo{Version: "v1.2.3"},
+		BinaryPath: newBinary,
+	}, current); err != nil {
+		t.Fatalf("Install returned error: %v", err)
+	}
+
+	for _, leftover := range []string{current + ".bak", current + ".new"} {
+		if _, err := os.Stat(leftover); !os.IsNotExist(err) {
+			t.Errorf("expected %s not to exist, stat err = %v", filepath.Base(leftover), err)
+		}
+	}
+}
+
+func countUpdateTempDirs(t *testing.T) int {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(os.TempDir(), "tide-update-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(matches)
+}

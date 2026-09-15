@@ -62,6 +62,24 @@ type DownloadedAsset struct {
 	Release     ReleaseInfo
 	ArchivePath string
 	BinaryPath  string
+	// TempDir is the scratch directory holding ArchivePath and BinaryPath. Call
+	// Cleanup once the payload is no longer needed.
+	TempDir string
+}
+
+// Cleanup removes the download's scratch directory. Safe to call more than once
+// and on a zero-value asset.
+//
+// Nothing used to remove these except the checksum-mismatch path, so every
+// successful update — and every failure after the archive was written — left an
+// extracted binary behind in the system temp directory until reboot. Install
+// calls this once the binary is in place; the manual-install path deliberately
+// does not, because the command handed to the user points into this directory.
+func (a DownloadedAsset) Cleanup() error {
+	if a.TempDir == "" {
+		return nil
+	}
+	return os.RemoveAll(a.TempDir)
 }
 
 // InstallResult tells the UI whether Tide was replaced directly or needs a manual command. -allie
@@ -187,6 +205,15 @@ func (u *Updater) Download(release ReleaseInfo) (DownloadedAsset, error) {
 	if err != nil {
 		return DownloadedAsset{}, fmt.Errorf("create update temp dir: %w", err)
 	}
+	// Remove the scratch directory unless we hand it to the caller. Only the
+	// checksum-mismatch path used to do this, so every other failure after this
+	// point leaked an extracted binary into the system temp directory.
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			_ = os.RemoveAll(tmpDir)
+		}
+	}()
 
 	archivePath := filepath.Join(tmpDir, release.AssetName+".tar.gz")
 	archiveFile, err := os.Create(archivePath)
@@ -202,7 +229,6 @@ func (u *Updater) Download(release ReleaseInfo) (DownloadedAsset, error) {
 	}
 
 	if err := u.verifyArchiveChecksum(release, archivePath); err != nil {
-		_ = os.RemoveAll(tmpDir)
 		return DownloadedAsset{}, err
 	}
 
@@ -214,10 +240,12 @@ func (u *Updater) Download(release ReleaseInfo) (DownloadedAsset, error) {
 		return DownloadedAsset{}, fmt.Errorf("mark update binary executable: %w", err)
 	}
 
+	handedOff = true
 	return DownloadedAsset{
 		Release:     release,
 		ArchivePath: archivePath,
 		BinaryPath:  binaryPath,
+		TempDir:     tmpDir,
 	}, nil
 }
 
@@ -323,36 +351,28 @@ func (u *Updater) Install(asset DownloadedAsset, currentExec string) (InstallRes
 	result.ExecutablePath = targetExec
 
 	nextPath := targetExec + ".new"
-	backupPath := targetExec + ".bak"
 	_ = os.Remove(nextPath)
-	_ = os.Remove(backupPath)
+	// Clean up a leftover backup from the previous install scheme, which moved
+	// the old binary aside before putting the new one in place.
+	_ = os.Remove(targetExec + ".bak")
 
 	if err := copyExecutable(asset.BinaryPath, nextPath); err != nil {
 		return result, fmt.Errorf("stage update binary: %w", err)
 	}
 
-	_, statErr := os.Stat(targetExec)
-	targetExists := statErr == nil
-	if statErr != nil && !os.IsNotExist(statErr) {
-		return result, fmt.Errorf("stat current executable: %w", statErr)
-	}
-
-	if targetExists {
-		if err := os.Rename(targetExec, backupPath); err != nil {
-			return result, fmt.Errorf("backup current executable: %w", err)
-		}
-	}
-
+	// One rename. On POSIX this replaces the target atomically, so there is never
+	// a moment when no executable exists at the path and nothing to roll back if
+	// it fails. Renaming the old binary aside first opened a window where the
+	// target was missing, and a crash inside it left the user with only a
+	// tidemail.bak and no working command. -allie
 	if err := os.Rename(nextPath, targetExec); err != nil {
-		if targetExists {
-			_ = os.Rename(backupPath, targetExec)
-		}
+		_ = os.Remove(nextPath)
 		return result, fmt.Errorf("replace executable: %w", err)
 	}
 
-	if targetExists {
-		_ = os.Remove(backupPath)
-	}
+	// The staged copy has served its purpose; the download directory would
+	// otherwise sit in the system temp dir until reboot.
+	_ = asset.Cleanup()
 	result.Restartable = true
 	if shadowedBy(currentExec, targetExec) {
 		result.ShadowedPath = currentExec
@@ -662,7 +682,14 @@ func copyExecutable(src, dst string) error {
 		return err
 	}
 	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
+		out.Close() //nolint:errcheck
+		return err
+	}
+	// Flush before the rename that puts this in place: without it a crash or
+	// power loss just after the update can leave a zero-length or partial file
+	// where the executable should be, with no copy of the old one left.
+	if err := out.Sync(); err != nil {
+		out.Close() //nolint:errcheck
 		return err
 	}
 	if err := out.Close(); err != nil {
