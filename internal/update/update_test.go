@@ -564,3 +564,47 @@ func countUpdateTempDirs(t *testing.T) int {
 	}
 	return len(matches)
 }
+
+// TestInstallFallbackCannotEscapeTheTestHome pins the guard in TestMain.
+//
+// installTarget falls back to ~/.local/bin whenever the current executable's
+// directory is not writable. A test pointing Install at a read-only temp dir
+// therefore does not fail — it silently resolves to the real
+// ~/.local/bin/tidemail and overwrites the developer's installed binary with
+// whatever fixture bytes the test used. The only visible symptom is
+// RequiresManual coming back false, which reads like an uninteresting skip.
+//
+// This asserts the fallback stays inside the throwaway HOME, so the failure mode
+// is a failing test rather than a clobbered binary.
+func TestInstallFallbackCannotEscapeTheTestHome(t *testing.T) {
+	dir := t.TempDir()
+	roDir := filepath.Join(dir, "ro")
+	if err := os.MkdirAll(roDir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(roDir, 0o700) }) //nolint:errcheck
+
+	newBinary := filepath.Join(dir, "downloaded")
+	if err := os.WriteFile(newBinary, []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := New().Install(DownloadedAsset{
+		Release:    ReleaseInfo{Version: "v1.2.3"},
+		BinaryPath: newBinary,
+	}, filepath.Join(roDir, "tidemail"))
+	if err != nil {
+		t.Fatalf("Install returned error: %v", err)
+	}
+
+	home, homeErr := os.UserHomeDir()
+	if homeErr != nil {
+		t.Fatalf("UserHomeDir: %v", homeErr)
+	}
+	if !strings.HasPrefix(home, os.TempDir()) {
+		t.Fatalf("TestMain did not redirect HOME; it is %s", home)
+	}
+	if result.ExecutablePath != "" && !strings.HasPrefix(result.ExecutablePath, home) {
+		t.Fatalf("install escaped the test home and wrote to %s", result.ExecutablePath)
+	}
+}
