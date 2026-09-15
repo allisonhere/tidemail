@@ -49,6 +49,19 @@ type DestructiveActionResultMsg struct {
 	Succeeded []MessageRef
 	Failed    []db.Message
 	Err       error
+	// ExpungeSkipped is set when the server could not purge the messages
+	// selectively and other mail in the mailbox was flagged for deletion, so the
+	// purge was skipped rather than destroying it. OthersFlagged counts that mail.
+	ExpungeSkipped bool
+	OthersFlagged  int
+}
+
+// remoteActionOutcome is what the server-side half of a destructive action
+// reported: the COPYUID pairing for a move, and for a delete whether the purge
+// had to be skipped.
+type remoteActionOutcome struct {
+	move    imapClient.MoveResult
+	deleted imapClient.DeleteResult
 }
 
 func (m *Model) scheduleArchive(msgs []db.Message) tea.Cmd {
@@ -169,7 +182,7 @@ func executeDestructiveAction(action pendingDestructiveAction, database *db.DB, 
 	}
 	for _, key := range order {
 		entries := batches[key]
-		moveRes, err := executeDestructiveRemote(action.Kind, sessions, entries)
+		outcome, err := executeDestructiveRemote(action.Kind, sessions, entries)
 		if err != nil {
 			if result.Err == nil {
 				result.Err = err
@@ -181,7 +194,7 @@ func executeDestructiveAction(action pendingDestructiveAction, database *db.DB, 
 		}
 		for _, entry := range entries {
 			var err error
-			destUID := moveRes.DestUID(entry.Message.UID)
+			destUID := outcome.move.DestUID(entry.Message.UID)
 			localOnly := entry.Account.IMAPHost == "" || entry.Message.UID == 0
 			switch {
 			case action.Kind == destructiveDelete:
@@ -213,6 +226,10 @@ func executeDestructiveAction(action pendingDestructiveAction, database *db.DB, 
 			}
 			result.Succeeded = append(result.Succeeded, MessageRef{ID: entry.Message.ID, MailboxID: entry.Message.MailboxID})
 		}
+		if outcome.deleted.ExpungeSkipped {
+			result.ExpungeSkipped = true
+			result.OthersFlagged += outcome.deleted.OthersFlagged
+		}
 	}
 	return result
 }
@@ -221,9 +238,9 @@ func executeDestructiveAction(action pendingDestructiveAction, database *db.DB, 
 // it returns the COPYUID pairing so the caller can store each message's real
 // destination UID; the result is empty for deletes, for accounts with no IMAP
 // host, and whenever the server reported no usable COPYUID.
-func executeDestructiveRemote(kind destructiveActionKind, sessions *imapClient.SessionPool, entries []pendingDestructiveEntry) (imapClient.MoveResult, error) {
+func executeDestructiveRemote(kind destructiveActionKind, sessions *imapClient.SessionPool, entries []pendingDestructiveEntry) (remoteActionOutcome, error) {
 	if len(entries) == 0 || entries[0].Account.IMAPHost == "" {
-		return imapClient.MoveResult{}, nil
+		return remoteActionOutcome{}, nil
 	}
 	uids := make([]uint32, 0, len(entries))
 	for _, entry := range entries {
@@ -232,24 +249,26 @@ func executeDestructiveRemote(kind destructiveActionKind, sessions *imapClient.S
 		}
 	}
 	if len(uids) == 0 {
-		return imapClient.MoveResult{}, nil
+		return remoteActionOutcome{}, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	entry := entries[0]
-	var res imapClient.MoveResult
+	var out remoteActionOutcome
 	err := sessions.Do(ctx, entry.Account, func(client *imapClient.Client) error {
 		if kind == destructiveDelete && entry.Target.ID == 0 {
-			return client.DeleteMessages(ctx, entry.Source.Name, uids)
+			var delErr error
+			out.deleted, delErr = client.DeleteMessages(ctx, entry.Source.Name, uids)
+			return delErr
 		}
 		var moveErr error
-		res, moveErr = client.MoveMessages(ctx, entry.Source.Name, uids, entry.Target.Name)
+		out.move, moveErr = client.MoveMessages(ctx, entry.Source.Name, uids, entry.Target.Name)
 		return moveErr
 	})
 	if err != nil {
-		return imapClient.MoveResult{}, err
+		return remoteActionOutcome{}, err
 	}
-	return res, nil
+	return out, nil
 }
 
 func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.Cmd {
@@ -270,6 +289,17 @@ func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.C
 		m.setStatus(fmt.Sprintf("%s failed: %v", action.Kind, result.Err), true)
 	case len(result.Failed) > 0:
 		m.setStatus(fmt.Sprintf("%s %d; %d failed and restored: %v", verb, len(result.Succeeded), len(result.Failed), result.Err), true)
+	case result.ExpungeSkipped:
+		// The mail is gone locally and flagged on the server, but not purged —
+		// see markDeletedAndExpunge. Say so rather than reporting a plain success,
+		// because the messages are still visible in other clients until the
+		// server next expunges the mailbox.
+		m.setStatus(fmt.Sprintf("%s %d — server purge skipped (see log)", verb, len(result.Succeeded)), false)
+		logFetch(string(action.Kind), "(expunge)", len(result.Succeeded), 0, 0, 0,
+			fmt.Errorf("purge skipped: %d other message(s) in the mailbox are flagged for deletion "+
+				"and this server cannot expunge selectively, so purging yours would permanently "+
+				"delete those too; your messages are removed locally and flagged on the server",
+				result.OthersFlagged))
 	case len(result.Succeeded) > 1:
 		m.setStatus(fmt.Sprintf("%s %d", verb, len(result.Succeeded)), false)
 	default:

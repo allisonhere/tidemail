@@ -60,7 +60,10 @@ func (m *Model) deleteDraftCmd(id int64) tea.Cmd {
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
 			if err := sessions.Do(ctx, remoteCfg, func(client *imapClient.Client) error {
-				return client.DeleteMessages(ctx, remote.Name, []uint32{remoteUID})
+				// A skipped purge is not a failure: the draft is gone locally and
+				// the server drops it on its next expunge.
+				_, delErr := client.DeleteMessages(ctx, remote.Name, []uint32{remoteUID})
+				return delErr
 			}); err != nil {
 				return DraftDeletedMsg{DraftID: id, Err: err}
 			}

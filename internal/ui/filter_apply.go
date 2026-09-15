@@ -70,8 +70,13 @@ func applyFilterAction(ctx context.Context, database *db.DB, client *imapClient.
 				if _, err := client.MoveMessage(ctx, source.Name, msg.UID, target.Name); err != nil {
 					return false, err
 				}
-			} else if err := client.DeleteMessage(ctx, source.Name, msg.UID); err != nil {
-				return false, err
+			} else {
+				// The DeleteResult is discarded: a purge the server had to skip is
+				// not a failure here. The message is already gone locally, and the
+				// server drops it whenever it next expunges the mailbox.
+				if _, err := client.DeleteMessage(ctx, source.Name, msg.UID); err != nil {
+					return false, err
+				}
 			}
 		}
 		return true, nil

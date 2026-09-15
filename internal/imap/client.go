@@ -345,25 +345,70 @@ func (c *Client) MarkFlagged(ctx context.Context, mailboxName string, uid uint32
 	return c.conn.Store(imap.UIDSetNum(imap.UID(uid)), flags, nil).Close()
 }
 
-func (c *Client) markDeletedAndExpunge(uidSet imap.UIDSet) error {
+// DeleteResult reports what the server-side delete actually did.
+type DeleteResult struct {
+	// ExpungeSkipped is set when the messages were flagged \Deleted but not
+	// purged from the server, because purging them would have destroyed other
+	// messages too. They are gone locally and the server will remove them
+	// whenever something else expunges the mailbox.
+	ExpungeSkipped bool
+	// OthersFlagged is how many messages the skipped purge would have destroyed.
+	OthersFlagged int
+}
+
+func (c *Client) markDeletedAndExpunge(uidSet imap.UIDSet) (DeleteResult, error) {
 	flags := &imap.StoreFlags{
 		Op:     imap.StoreFlagsAdd,
 		Silent: true,
 		Flags:  []imap.Flag{imap.FlagDeleted},
 	}
 	if err := c.conn.Store(uidSet, flags, nil).Close(); err != nil {
-		return fmt.Errorf("mark deleted: %w", err)
+		return DeleteResult{}, fmt.Errorf("mark deleted: %w", err)
 	}
 	if c.conn.Caps().Has(imap.CapUIDPlus) || c.conn.Caps().Has(imap.CapIMAP4rev2) {
 		if _, err := c.conn.UIDExpunge(uidSet).Collect(); err != nil {
-			return fmt.Errorf("expunge: %w", err)
+			return DeleteResult{}, fmt.Errorf("expunge: %w", err)
 		}
-		return nil
+		return DeleteResult{}, nil
+	}
+
+	// Without UIDPLUS there is no way to purge specific UIDs: a bare EXPUNGE
+	// permanently removes every message in the mailbox carrying \Deleted, not
+	// just the ones asked for. Another client — or the user in webmail — can
+	// easily have left that flag on mail they still want.
+	//
+	// It is not blind, though: the server can be asked who else is flagged. When
+	// nobody is, a bare EXPUNGE is exactly equivalent to UID EXPUNGE and runs as
+	// before, which is the usual case. When somebody is, the purge is skipped
+	// rather than destroying mail the user never selected — the messages stay
+	// flagged and the server removes them whenever it next expunges. A failed
+	// check is treated the same way: without proof it is safe, do not purge. -allie
+	others, err := c.otherDeletedUIDs(uidSet)
+	if err != nil || len(others) > 0 {
+		return DeleteResult{ExpungeSkipped: true, OthersFlagged: len(others)}, nil
 	}
 	if _, err := c.conn.Expunge().Collect(); err != nil {
-		return fmt.Errorf("expunge: %w", err)
+		return DeleteResult{}, fmt.Errorf("expunge: %w", err)
 	}
-	return nil
+	return DeleteResult{}, nil
+}
+
+// otherDeletedUIDs returns the UIDs flagged \Deleted in the selected mailbox
+// that are not in ours — the messages a bare EXPUNGE would destroy as collateral.
+func (c *Client) otherDeletedUIDs(ours imap.UIDSet) ([]uint32, error) {
+	data, err := c.conn.UIDSearch(&imap.SearchCriteria{
+		Flag: []imap.Flag{imap.FlagDeleted},
+	}, nil).Wait()
+	if err != nil {
+		return nil, fmt.Errorf("search deleted: %w", err)
+	}
+	var others []uint32
+	for _, uid := range data.AllUIDs() {
+		if !ours.Contains(uid) {
+			others = append(others, uint32(uid))
+		}
+	}
+	return others, nil
 }
 
 // MoveResult reports where a MOVE landed. DestUIDs maps each source UID to the
@@ -481,22 +526,22 @@ func (c *Client) CreateMailbox(ctx context.Context, name string) error {
 	return nil
 }
 
-func (c *Client) DeleteMessage(ctx context.Context, mailboxName string, uid uint32) error {
+func (c *Client) DeleteMessage(ctx context.Context, mailboxName string, uid uint32) (DeleteResult, error) {
 	return c.DeleteMessages(ctx, mailboxName, []uint32{uid})
 }
 
 // DeleteMessages expunges a batch of messages in one SELECT/STORE/EXPUNGE round
 // trip on this connection (see MoveMessages for why batching matters).
-func (c *Client) DeleteMessages(ctx context.Context, mailboxName string, uids []uint32) error {
+func (c *Client) DeleteMessages(ctx context.Context, mailboxName string, uids []uint32) (DeleteResult, error) {
 	if c.conn == nil {
-		return fmt.Errorf("not connected")
+		return DeleteResult{}, fmt.Errorf("not connected")
 	}
 	if len(uids) == 0 {
-		return nil
+		return DeleteResult{}, nil
 	}
 	defer c.applyDeadline(ctx)()
 	if _, err := c.conn.Select(mailboxName, nil).Wait(); err != nil {
-		return fmt.Errorf("select %s: %w", mailboxName, err)
+		return DeleteResult{}, fmt.Errorf("select %s: %w", mailboxName, err)
 	}
 	return c.markDeletedAndExpunge(uidSetOf(uids))
 }

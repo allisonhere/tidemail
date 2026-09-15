@@ -432,8 +432,13 @@ func TestDeleteMessage(t *testing.T) {
 	}
 	defer client.Close()
 
-	if err := client.DeleteMessage(context.Background(), "INBOX", uid); err != nil {
+	res, err := client.DeleteMessage(context.Background(), "INBOX", uid)
+	if err != nil {
 		t.Fatalf("DeleteMessage failed: %v", err)
+	}
+	// Nothing else in the mailbox is flagged, so the purge must actually run.
+	if res.ExpungeSkipped {
+		t.Fatalf("expunge skipped with no other flagged messages: %+v", res)
 	}
 
 	// Verify: message should be gone
@@ -610,7 +615,7 @@ func TestNotConnectedError(t *testing.T) {
 		t.Fatal("expected error for MoveMessage when not connected")
 	}
 
-	err = client.DeleteMessage(context.Background(), "INBOX", 1)
+	_, err = client.DeleteMessage(context.Background(), "INBOX", 1)
 	if err == nil {
 		t.Fatal("expected error for DeleteMessage when not connected")
 	}
@@ -671,5 +676,86 @@ func TestHeaderWordDecoderHandlesNonLatinCharsets(t *testing.T) {
 	bare := &mime.WordDecoder{}
 	if _, err := bare.DecodeHeader("=?windows-1252?Q?Caf=E9?="); err == nil {
 		t.Fatal("expected the bare decoder to reject windows-1252; the explicit WordDecoder may no longer be needed")
+	}
+}
+
+// flagDeleted marks a message \Deleted from a separate connection, standing in
+// for another client (or the user in webmail) leaving the flag behind.
+func flagDeleted(t *testing.T, port int, mailbox string, uid uint32) {
+	t.Helper()
+	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	client := imapclient.New(conn, nil)
+	defer client.Close()
+	if err := client.Login("testuser", "testpass").Wait(); err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	if _, err := client.Select(mailbox, nil).Wait(); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	err = client.Store(imap.UIDSetNum(imap.UID(uid)), &imap.StoreFlags{
+		Op:     imap.StoreFlagsAdd,
+		Silent: true,
+		Flags:  []imap.Flag{imap.FlagDeleted},
+	}, nil).Close()
+	if err != nil {
+		t.Fatalf("store \\Deleted: %v", err)
+	}
+}
+
+// TestDeleteSkipsExpungeWhenOthersAreFlagged is the safety test for servers
+// without UIDPLUS. A bare EXPUNGE purges every message in the mailbox carrying
+// \Deleted, not just the ones asked for, so deleting one message would
+// permanently destroy mail another client had merely flagged. The purge must be
+// skipped instead, and the bystander must survive.
+//
+// The in-process memory server advertises no UIDPLUS, so this exercises the real
+// fallback rather than a simulation of it.
+func TestDeleteSkipsExpungeWhenOthersAreFlagged(t *testing.T) {
+	port, cleanup := startTestServer(t)
+	defer cleanup()
+
+	ours := appendRawMessage(t, port, "INBOX",
+		"Subject: ours\r\nMessage-ID: <ours@x>\r\nDate: Mon, 2 Jan 2006 15:04:05 -0700\r\n\r\nbody\r\n")
+	bystander := appendRawMessage(t, port, "INBOX",
+		"Subject: bystander\r\nMessage-ID: <keep@x>\r\nDate: Mon, 2 Jan 2006 15:04:05 -0700\r\n\r\nbody\r\n")
+
+	// Another client flagged the bystander for deletion but never expunged.
+	flagDeleted(t, port, "INBOX", bystander)
+
+	client := New(config.AccountConfig{
+		IMAPHost: "127.0.0.1", IMAPPort: port, User: "testuser", Password: "testpass",
+	})
+	if err := client.Connect(context.Background()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer client.Close()
+
+	res, err := client.DeleteMessage(context.Background(), "INBOX", ours)
+	if err != nil {
+		t.Fatalf("DeleteMessage: %v", err)
+	}
+	if !res.ExpungeSkipped {
+		t.Fatal("expunge ran with another message flagged; the bystander would have been destroyed")
+	}
+	if res.OthersFlagged != 1 {
+		t.Fatalf("OthersFlagged = %d, want 1", res.OthersFlagged)
+	}
+
+	msgs, err := client.FetchMessages(context.Background(), "INBOX", 10)
+	if err != nil {
+		t.Fatalf("FetchMessages: %v", err)
+	}
+	var found bool
+	for _, m := range msgs {
+		if m.Subject == "bystander" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the bystander was destroyed by the expunge; mailbox now holds %d message(s)", len(msgs))
 	}
 }
