@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -275,6 +276,30 @@ func DefaultConfig() Config {
 	}
 }
 
+// quarantineUnreadable moves a config that would not parse aside, and returns an
+// error naming where it went.
+//
+// Callers of Load treat a failure as survivable and carry on with
+// DefaultConfig() — which has no accounts. The first automatic save after that
+// (the update check runs on startup) writes that emptiness straight over the
+// file, so a single unreadable read permanently destroys every account, mail
+// server and setting the user had. The warning goes to stderr, where a TUI
+// paints over it immediately, so there is nothing to notice either.
+//
+// Renaming first means the bytes survive whatever the process does next: the
+// user gets their settings back by moving one file, instead of reconstructing
+// them from memory. Failing to rename is reported rather than swallowed, since
+// the original parse error is the less urgent half of the message. -allie
+func quarantineUnreadable(path string, cause error) error {
+	backup := fmt.Sprintf("%s.corrupt-%d", path, time.Now().Unix())
+	if err := os.Rename(path, backup); err != nil {
+		return fmt.Errorf("config at %s is unreadable (%w), and it could not be moved aside (%v); "+
+			"back it up before running again, or the accounts in it will be overwritten", path, cause, err)
+	}
+	return fmt.Errorf("config at %s was unreadable (%w); it has been moved to %s so nothing in it is lost — "+
+		"repair that file and move it back, or set the accounts up again", path, cause, backup)
+}
+
 func Load() (Config, error) {
 	path, err := configPath()
 	if err != nil {
@@ -294,7 +319,7 @@ func Load() (Config, error) {
 	// build credentials or accidentally mix credentials from different clients.
 	cfg.OAuth = OAuthConfig{}
 	if _, err := toml.Decode(string(data), &cfg); err != nil {
-		return DefaultConfig(), err
+		return DefaultConfig(), quarantineUnreadable(path, err)
 	}
 	cfg.OAuth = resolveOAuth(cfg.OAuth)
 	if cfg.Updates.CheckIntervalHours <= 0 {

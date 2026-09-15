@@ -451,3 +451,97 @@ func TestRedactSecretsIndependentOfConfigOrder(t *testing.T) {
 		t.Fatalf("leaked a secret fragment: %q", got)
 	}
 }
+
+// TestLoadQuarantinesUnreadableConfig is the regression test for permanently
+// losing every account to one bad read.
+//
+// Load returns DefaultConfig() when the file will not parse, and callers treat
+// that as survivable and carry on — with no accounts. The first automatic save
+// after that (the update check runs on startup) writes the empty account list
+// straight over the file. The only warning goes to stderr, which a TUI paints
+// over immediately, so the settings are gone with nothing to notice.
+//
+// Moving the file aside first means the bytes survive whatever the process does
+// next.
+func TestLoadQuarantinesUnreadableConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	cfgDir := filepath.Join(dir, "tidemail")
+	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(cfgDir, "config.toml")
+	const broken = "theme = \"dark\"\n[[account]]\n  name = \"Personal\"\n  imap_host = \"mail.example.com\"\n  this is not valid toml\n"
+	if err := os.WriteFile(cfgPath, []byte(broken), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load()
+	if err == nil {
+		t.Fatal("expected an error for an unparseable config")
+	}
+	if len(cfg.Accounts) != 0 {
+		t.Fatalf("expected no accounts from a failed load, got %d", len(cfg.Accounts))
+	}
+
+	// The original must no longer be at the live path, or the next save overwrites it.
+	if _, statErr := os.Stat(cfgPath); !os.IsNotExist(statErr) {
+		t.Fatalf("unreadable config still sits at the live path; the next save destroys it (stat err = %v)", statErr)
+	}
+
+	matches, globErr := filepath.Glob(cfgPath + ".corrupt-*")
+	if globErr != nil {
+		t.Fatal(globErr)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected exactly one quarantined copy, got %v", matches)
+	}
+	saved, readErr := os.ReadFile(matches[0])
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(saved) != broken {
+		t.Fatal("quarantined copy does not match the original bytes")
+	}
+	if !strings.Contains(err.Error(), matches[0]) {
+		t.Fatalf("error should name the quarantined file so it can be recovered, got: %v", err)
+	}
+}
+
+// TestSaveAfterQuarantineCannotClobberTheOriginal walks the whole failure path:
+// a bad load followed by the automatic save that used to destroy the settings.
+func TestSaveAfterQuarantineCannotClobberTheOriginal(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	cfgDir := filepath.Join(dir, "tidemail")
+	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(cfgDir, "config.toml")
+	if err := os.WriteFile(cfgPath, []byte("[[account]]\n  name = \"Personal\"\n  bad bad bad\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load()
+	if err == nil {
+		t.Fatal("expected a load error")
+	}
+	// What main.go does next: carry on with defaults, then save.
+	if saveErr := Save(cfg); saveErr != nil {
+		t.Fatalf("Save: %v", saveErr)
+	}
+
+	matches, _ := filepath.Glob(cfgPath + ".corrupt-*")
+	if len(matches) != 1 {
+		t.Fatalf("the original was not preserved across the save, got %v", matches)
+	}
+	saved, readErr := os.ReadFile(matches[0])
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !strings.Contains(string(saved), "Personal") {
+		t.Fatal("the account survived neither the load nor the save")
+	}
+}
