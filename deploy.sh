@@ -21,7 +21,11 @@ GITHUB_FILE_LIMIT_BYTES=$((100 * 1024 * 1024))
 # How long to wait for the release workflow to publish its assets.
 ASSET_WAIT_SECONDS=900
 
+# VERSION is the release being prepared — chosen by the bump step and sticky
+# until the console exits. CURRENT_TAG is whatever git already has; keeping them
+# apart is what stops a status refresh from silently undoing a version bump.
 VERSION=""
+CURRENT_TAG=""
 NEXT_VERSION=""
 # ── Colors ───────────────────────────────────────────────────────────────────
 if [ -t 1 ]; then
@@ -184,13 +188,13 @@ frame_flush() {
 ST_VERSION="" ST_NEXT="" ST_BRANCH="" ST_DIRTY="" ST_GO="" ST_GH="" ST_AUR=""
 AUR_PROBE_FILE=""
 
-read_version() {
-  VERSION=$(git -C "$PROJECT_DIR" describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+read_current_tag() {
+  CURRENT_TAG=$(git -C "$PROJECT_DIR" describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
 }
 
 suggest_next_patch() {
   NEXT_VERSION=""
-  local clean=${VERSION#v}
+  local clean=${CURRENT_TAG#v}
   if [[ $clean =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
     NEXT_VERSION="v${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$((BASH_REMATCH[3] + 1))"
   fi
@@ -234,9 +238,9 @@ aur_probe_read() {
 }
 
 refresh_status() {
-  read_version
+  read_current_tag
   suggest_next_patch
-  ST_VERSION="$VERSION"
+  ST_VERSION="$CURRENT_TAG"
   ST_NEXT="$NEXT_VERSION"
   ST_BRANCH=$(git -C "$PROJECT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
   ST_DIRTY=$(git -C "$PROJECT_DIR" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
@@ -488,7 +492,11 @@ draw_header() {
   short_branch="$ST_BRANCH"
   if [ "${#short_branch}" -gt 18 ]; then short_branch="${short_branch:0:17}…"; fi
   ver_cell=$(status_cell "version" "$GREEN" "${ST_VERSION:-?}")
-  if [ -n "$ST_NEXT" ]; then
+  if [ -n "$VERSION" ] && [ "$VERSION" != "$ST_VERSION" ]; then
+    # A bump has been made: show what is actually going to be released, so a
+    # pending version is never invisible on the way to the tag step.
+    ver_cell+=" ${DIM}→${NC} ${BOLD}${CYAN}releasing ${VERSION}${NC}"
+  elif [ -n "$ST_NEXT" ]; then
     ver_cell+=" ${DIM}→${NC} ${CYAN}${ST_NEXT}${NC}"
   fi
   if [ "${ST_DIRTY:-0}" -gt 0 ] 2>/dev/null; then
@@ -629,9 +637,9 @@ draw_frame() {
 
 act_bump() {
   log_step "Bump version"
-  read_version
+  read_current_tag
   suggest_next_patch
-  log_info "current tag: ${GREEN}${VERSION}${NC}"
+  log_info "current tag: ${GREEN}${CURRENT_TAG}${NC}"
 
   if [ -n "$NEXT_VERSION" ] && tui_confirm "Use $NEXT_VERSION?" y; then
     VERSION="$NEXT_VERSION"
@@ -651,7 +659,8 @@ act_bump() {
 # ensure_version makes VERSION usable by steps run straight from the menu.
 ensure_version() {
   if [ -z "$VERSION" ] || [ "$VERSION" = "v0.0.0" ]; then
-    read_version
+    read_current_tag
+    VERSION="$CURRENT_TAG"
   fi
   [ -n "$VERSION" ] && [ "$VERSION" != "v0.0.0" ]
 }
@@ -1043,11 +1052,11 @@ act_aur_status() {
 
   pkgrel=$(aur_current_pkgrel "$dir/pkg" 2>/dev/null || echo 1)
   log_ok "AUR has $AUR_PKGNAME ${GREEN}${pkgver}-${pkgrel}${NC}"
-  read_version
-  if [ "${VERSION#v}" = "$pkgver" ]; then
-    log_ok "matches the latest tag $VERSION"
+  read_current_tag
+  if [ "${CURRENT_TAG#v}" = "$pkgver" ]; then
+    log_ok "matches the latest tag $CURRENT_TAG"
   else
-    log_warn "latest tag is $VERSION — the AUR is behind"
+    log_warn "latest tag is $CURRENT_TAG — the AUR is behind"
   fi
   log_detail "https://${AUR_HOST}/packages/${AUR_PKGNAME}"
   rm -rf "$dir"
