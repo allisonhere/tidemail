@@ -55,7 +55,7 @@ func StartGoogleBrowserFlow(ctx context.Context, clientID, clientSecret string) 
 		select {
 		case code := <-f.codes:
 			exchangeCtx, stop := context.WithTimeout(ctx, 30*time.Second)
-			result.token, result.err = f.GoogleAuthCodeFlow.Exchange(exchangeCtx, code)
+			result.token, result.err = f.Exchange(exchangeCtx, code)
 			stop()
 		case <-ctx.Done():
 			result.err = ctx.Err()
