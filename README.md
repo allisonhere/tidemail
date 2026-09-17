@@ -51,7 +51,9 @@ TideMail is on the AUR as [`tidemail-bin`](https://aur.archlinux.org/packages/ti
 which packages the official release binary:
 
 ```bash
-paru -S tidemail-bin   # or: yay -S tidemail-bin
+yay -S tidemail-bin
+# or
+paru -S tidemail-bin
 ```
 
 Updates then come from `pacman -Syu` along with everything else. TideMail
