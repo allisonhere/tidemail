@@ -217,11 +217,101 @@ func (m *Model) setViewportMessage(msg db.Message) {
 	m.contentSearchMatches = collectSearchMatches(content, m.contentSearchQuery)
 	m.viewport.SetContent(content)
 	m.contentMessageID = msg.ID
+	m.contentDraftID = 0
 	m.contentLines = strings.Split(ansi.Strip(content), "\n")
 	m.contentLineCount = len(m.contentLines)
 	m.contentFocusable = messageFocusableLines(content)
 	m.contentFocusLine = clamp(m.contentFocusLine, 0, max(0, m.contentLineCount-1))
 	if !sameMsg {
+		m.contentFocusLine = firstFocusableLine(m.contentFocusable)
+		m.viewport.GotoTop()
+	}
+	m.ensureContentFocusVisible()
+}
+
+// renderDraftContent renders an unsent draft for the reading pane. A draft is
+// not a db.Message — it has no sender and no received date — so it gets its own
+// header showing the recipients and when it was last saved. The body is run
+// through the normal plain-text renderer so wrapping and links match the rest
+// of the pane.
+func (m Model) renderDraftContent(d db.Draft) string {
+	paneWidth := m.contentPaneContentWidth()
+	contentWidth := m.contentBodyWidth()
+	titleWidth := max(1, paneWidth-m.styles.ContentTitle.GetHorizontalFrameSize())
+	metaWidth := max(1, contentWidth-m.styles.ContentMeta.GetHorizontalFrameSize())
+
+	title := m.styles.ContentTitle.Width(paneWidth).
+		Render(truncate(messageListDisplayText(unescapeDisplayText(draftSubject(d))), titleWidth))
+
+	metaStr := "Draft"
+	if !d.UpdatedAt.IsZero() {
+		metaStr += "  Saved: " + d.UpdatedAt.Format("Mon, 02 Jan 2006 15:04")
+	}
+	meta := " " + m.styles.ContentMeta.Width(contentWidth).Render(truncate(metaStr, metaWidth))
+
+	dim := readableText(m.styles.Theme.Dimmed, m.styles.Theme.Bg, 3.0)
+	var headerLines []string
+	for _, f := range []struct{ label, value string }{
+		{"To", d.To},
+		{"CC", d.CC},
+		{"BCC", d.BCC},
+	} {
+		if strings.TrimSpace(f.value) == "" {
+			continue
+		}
+		headerLines = append(headerLines, lipgloss.NewStyle().
+			Background(m.styles.Theme.Bg).Foreground(dim).Width(contentWidth).
+			Render(fmt.Sprintf("  %-5s %s", f.label+":", f.value)))
+	}
+	if len(headerLines) == 0 {
+		// An unaddressed draft still needs to say so, or the pane looks like it
+		// simply failed to load.
+		headerLines = append(headerLines, lipgloss.NewStyle().
+			Background(m.styles.Theme.Bg).Foreground(dim).Width(contentWidth).
+			Render("  To:   (no recipient yet)"))
+	}
+	header := strings.Join(headerLines, "\n") + "\n"
+
+	body := m.renderMessageBody(db.Message{BodyText: d.BodyText}, m.contentBodyWidth())
+	if strings.TrimSpace(ansi.Strip(body)) == "" {
+		body = m.styles.ContentBody.Width(m.contentBodyWidth()).Render("  (empty draft)")
+	}
+
+	if len(d.Attachments) > 0 {
+		names := make([]string, 0, len(d.Attachments))
+		for _, a := range d.Attachments {
+			names = append(names, a.Filename)
+		}
+		body += "\n\n" + m.styles.ContentBody.Width(m.contentBodyWidth()).
+			Render("  Attachments: "+strings.Join(names, ", "))
+	}
+
+	content := title + "\n" + meta + "\n\n" + header + "\n" + body
+	content = normalizeHardBreaks(content)
+	return fillViewWidth(content, paneWidth, m.styles.Theme.Bg)
+}
+
+// setViewportDraft shows a draft in the reading pane. It deliberately leaves
+// contentMessageID at zero: that field is looked up against filteredMessages,
+// and a draft ID reused there would resolve to an unrelated message.
+func (m *Model) setViewportDraft(d db.Draft) {
+	sameDraft := m.contentDraftID == d.ID && m.contentLineCount > 0
+	m.syncContentLinks(db.Message{BodyText: d.BodyText})
+	m.contentAttachments = nil
+	m.clearContentSelection()
+	if !sameDraft {
+		m.contentQuotesCollapsed = false
+	}
+	content := m.renderDraftContent(d)
+	m.contentSearchMatches = collectSearchMatches(content, m.contentSearchQuery)
+	m.viewport.SetContent(content)
+	m.contentMessageID = 0
+	m.contentDraftID = d.ID
+	m.contentLines = strings.Split(ansi.Strip(content), "\n")
+	m.contentLineCount = len(m.contentLines)
+	m.contentFocusable = messageFocusableLines(content)
+	m.contentFocusLine = clamp(m.contentFocusLine, 0, max(0, m.contentLineCount-1))
+	if !sameDraft {
 		m.contentFocusLine = firstFocusableLine(m.contentFocusable)
 		m.viewport.GotoTop()
 	}
@@ -241,6 +331,7 @@ func (m *Model) setViewportThread(thread messageThread) {
 	m.contentSearchMatches = collectSearchMatches(content, m.contentSearchQuery)
 	m.viewport.SetContent(content)
 	m.contentMessageID = rep.ID
+	m.contentDraftID = 0
 	m.contentLines = strings.Split(ansi.Strip(content), "\n")
 	m.contentLineCount = len(m.contentLines)
 	m.contentFocusable = messageFocusableLines(content)
@@ -253,6 +344,16 @@ func (m *Model) setViewportThread(thread messageThread) {
 }
 
 func (m *Model) setViewportForCurrentRow() {
+	// Drafts live in their own list, not in filteredMessages, so they have to
+	// be resolved before the message paths below.
+	if m.selectedDraftsMailbox() {
+		if d := m.currentRowDraft(); d != nil {
+			m.setViewportDraft(*d)
+		} else {
+			m.clearViewportMessage()
+		}
+		return
+	}
 	if m.threadedMessagesEnabled() {
 		if m.messageCursor >= 0 && m.messageCursor < len(m.messageThreads) {
 			m.setViewportThread(m.messageThreads[m.messageCursor])
@@ -269,6 +370,7 @@ func (m *Model) clearViewportMessage() {
 	m.contentLinks = nil
 	m.contentLinkIdx = -1
 	m.contentMessageID = 0
+	m.contentDraftID = 0
 	m.contentFocusLine = 0
 	m.contentLineCount = 0
 	m.contentFocusable = nil

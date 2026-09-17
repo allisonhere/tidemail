@@ -6,6 +6,11 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- **Scrolling through drafts shows the draft.** Moving the cursor in the Drafts
+  folder now renders the draft under it — subject, recipients, when it was last
+  saved, the body, and any attachments — instead of leaving the reading pane on
+  whatever was there before.
+
 - **TideMail is on the AUR.** Arch users can install `tidemail-bin` with
   `paru -S tidemail-bin`, which packages the official release binary so Gmail
   sign-in works without registering a Google app. Updates arrive through

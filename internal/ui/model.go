@@ -158,6 +158,7 @@ type Model struct {
 	contentLinks           []string
 	contentLinkIdx         int
 	contentMessageID       int64
+	contentDraftID         int64
 	contentFocusLine       int
 	contentLineCount       int
 	contentFocusable       []bool
@@ -765,6 +766,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.drafts = msg.Drafts
 			m.messageCursor = clamp(m.messageCursor, 0, max(0, len(m.drafts)-1))
 			m.listOffset = clamp(m.listOffset, 0, max(0, len(m.drafts)-1))
+			m.setViewportForCurrentRow()
 		}
 		return m, nil
 
@@ -1986,6 +1988,7 @@ func (m Model) handleUp() (tea.Model, tea.Cmd) {
 				m.listOffset = m.messageCursor
 			}
 			if m.selectedDraftsMailbox() {
+				m.setViewportForCurrentRow()
 				return m, nil
 			}
 			if msg2 := m.currentRowMessage(); msg2 != nil {
@@ -2036,6 +2039,7 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 				m.listOffset = m.messageCursor - visible + 1
 			}
 			if m.selectedDraftsMailbox() {
+				m.setViewportForCurrentRow()
 				return m, nil
 			}
 			if msg2 := m.currentRowMessage(); msg2 != nil {
@@ -3285,6 +3289,10 @@ func (m *Model) resizeMessagesPane(delta int) {
 func (m *Model) refreshContentAfterPaneResize() {
 	m.viewport.Width = m.contentBodyWidth()
 	m.viewport.Height = m.contentBodyHeight()
+	if m.contentDraftID != 0 && len(m.drafts) > 0 {
+		m.setViewportForCurrentRow()
+		return
+	}
 	if m.contentMessageID != 0 && m.activeMessageRowCount() > 0 {
 		m.setViewportForCurrentRow()
 	}

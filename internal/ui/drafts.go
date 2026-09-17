@@ -115,6 +115,14 @@ func (m Model) selectedDraftsMailbox() bool {
 	return m.isDraftsMailbox(*mb)
 }
 
+// currentRowDraft is the draft under the cursor in the drafts list, or nil.
+func (m Model) currentRowDraft() *db.Draft {
+	if m.messageCursor < 0 || m.messageCursor >= len(m.drafts) {
+		return nil
+	}
+	return &m.drafts[m.messageCursor]
+}
+
 func (m Model) isDraftsMailbox(mb db.Mailbox) bool {
 	if hasFlag(mb.Flags, "\\Drafts") {
 		return true
