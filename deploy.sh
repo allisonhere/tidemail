@@ -1206,8 +1206,18 @@ sha_for_asset() {
 # license_sha256 hashes the LICENSE blob at the tag, which is exactly what the
 # PKGBUILD's raw.githubusercontent source URL serves.
 license_sha256() {
-  local tag=$1
-  git -C "$PROJECT_DIR" show "${tag}:LICENSE" 2>/dev/null | sha256sum | cut -d' ' -f1
+  local tag=$1 tmp hash
+  tmp=$(mktemp "${TMPDIR:-/tmp}/license-XXXXXX")
+  # Piping git straight into sha256sum hides a missing file: the pipeline still
+  # succeeds and hashes empty input, yielding e3b0c442… — a digest that looks
+  # real and would publish a PKGBUILD nobody can build. Capture, check, then hash.
+  if ! git -C "$PROJECT_DIR" show "${tag}:LICENSE" > "$tmp" 2>/dev/null || [ ! -s "$tmp" ]; then
+    rm -f "$tmp"
+    return 1
+  fi
+  hash=$(sha256sum "$tmp" | cut -d' ' -f1)
+  rm -f "$tmp"
+  printf '%s' "$hash"
 }
 
 act_aur_publish() {
@@ -1257,7 +1267,8 @@ act_aur_publish() {
     return 1
   fi
   if [ -z "$sha_license" ]; then
-    log_err "could not hash LICENSE at $VERSION — is the tag fetched locally?"
+    log_err "no LICENSE at $VERSION — the tag must carry one, and be fetched locally"
+    log_detail "the PKGBUILD installs the licence from $VERSION, so it has to exist there"
     rm -rf "$work"
     return 1
   fi
