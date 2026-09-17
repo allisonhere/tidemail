@@ -21,6 +21,25 @@ GITHUB_FILE_LIMIT_BYTES=$((100 * 1024 * 1024))
 # How long to wait for the release workflow to publish its assets.
 ASSET_WAIT_SECONDS=900
 
+# DRY_RUN makes every operation that changes something outside this process —
+# a commit, a push, a tag, a file rewrite — report what it would do instead of
+# doing it. Read-only inspection still runs, so a dry run is a real rehearsal.
+DRY_RUN=0
+for arg in "$@"; do
+  case "$arg" in
+    -n | --dry-run) DRY_RUN=1 ;;
+    -h | --help)
+      cat <<'USAGE'
+Usage: ./deploy.sh [--dry-run]
+
+  -n, --dry-run   Rehearse: no commit, push, tag, or file is written.
+                  Toggle it from inside the console with `d`.
+USAGE
+      exit 0
+      ;;
+  esac
+done
+
 # VERSION is the release being prepared — chosen by the bump step and sticky
 # until the console exits. CURRENT_TAG is whatever git already has; keeping them
 # apart is what stops a status refresh from silently undoing a version bump.
@@ -329,6 +348,49 @@ run_streamed() {
   return "${status:-1}"
 }
 
+# mutate DESC CMD... — the single gate for anything that changes state outside
+# this process. In a dry run it reports the command and returns success, so the
+# rest of the flow still exercises.
+mutate() {
+  local desc=$1; shift
+  if [ "$DRY_RUN" -eq 1 ]; then
+    log_warn "would $desc"
+    log_detail "$*"
+    return 0
+  fi
+  run_quiet "$desc" "$@"
+}
+
+# mutate_streamed is mutate for a command whose output is worth watching.
+mutate_streamed() {
+  local desc=$1; shift
+  if [ "$DRY_RUN" -eq 1 ]; then
+    log_warn "would $desc"
+    log_detail "$*"
+    return 0
+  fi
+  run_streamed "$desc" "$@"
+}
+
+# log_result reports a completed action, or makes plain that a dry run only
+# rehearsed it — a rehearsal saying "pushed" is how a dry run stops being dry
+# in the reader's head.
+log_result() {
+  if [ "$DRY_RUN" -eq 1 ]; then
+    log_detail "dry run — nothing changed"
+  else
+    log_ok "$1"
+  fi
+}
+
+# dry_run_blocks reports true when an operation must be skipped entirely,
+# for the cases that are not a single command.
+dry_run_blocks() {
+  [ "$DRY_RUN" -eq 1 ] || return 1
+  log_warn "would $1"
+  return 0
+}
+
 # run_quiet DESC CMD... — same, but only surfaces output on failure.
 run_quiet() {
   local desc=$1; shift
@@ -480,11 +542,14 @@ draw_header() {
   local inner=$((COLS - 4))
   [ "$inner" -gt 74 ] && inner=74
   local title=" TideMail Release "
+  [ "$DRY_RUN" -eq 1 ] && title=" TideMail Release · DRY RUN "
   local title_len=${#title}
   local dashes=$((inner - title_len - 1))
   [ "$dashes" -lt 0 ] && dashes=0
 
-  frame_line "${BLUE}╭─${NC}${BOLD}${CYAN}${title}${NC}${BLUE}$(repeat_char '─' "$dashes")╮${NC}"
+  local title_color=$CYAN
+  [ "$DRY_RUN" -eq 1 ] && title_color=$YELLOW
+  frame_line "${BLUE}╭─${NC}${BOLD}${title_color}${title}${NC}${BLUE}$(repeat_char '─' "$dashes")╮${NC}"
 
   # Row 1: version and branch.
   local ver_cell branch_cell short_branch
@@ -593,7 +658,7 @@ draw_log() {
 # draw_footer drops hints rather than letting the row be clipped, so the way
 # out of the console stays visible however narrow the terminal is.
 draw_footer() {
-  local hint=" ↑↓/jk move · enter run · r refresh · c clear log · q quit"
+  local hint=" ↑↓/jk move · enter run · d dry-run · r refresh · c clear · q quit"
   if [ "${#hint}" -gt "$COLS" ]; then
     hint=" ↑↓ move · enter run · q quit"
   fi
@@ -706,6 +771,10 @@ changelog_promote() {
     rm -f "$tmp"
     return 1
   fi
+  if dry_run_blocks "rewrite CHANGELOG.md, promoting Unreleased to ## $version"; then
+    rm -f "$tmp"
+    return 0
+  fi
   cat "$tmp" > "$PROJECT_DIR/CHANGELOG.md" || { rm -f "$tmp"; return 1; }
   rm -f "$tmp"
 }
@@ -761,7 +830,7 @@ act_notes() {
   fi
 
   changelog_promote "$VERSION" || return 1
-  log_ok "CHANGELOG.md: Unreleased → $VERSION"
+  log_result "CHANGELOG.md: Unreleased → $VERSION"
   changelog_preview "$VERSION"
 }
 
@@ -831,6 +900,9 @@ act_commit() {
     return 0
   fi
 
+  if dry_run_blocks "stage and commit $(git -C "$PROJECT_DIR" status --porcelain | wc -l | tr -d ' ') change(s) as \"chore: release $VERSION\""; then
+    return 0
+  fi
   git -C "$PROJECT_DIR" add -A
   local skipped=0 path size
   while IFS= read -r path; do
@@ -850,8 +922,8 @@ act_commit() {
   fi
 
   ensure_version
-  if run_quiet "committing" git -C "$PROJECT_DIR" commit -m "chore: release $VERSION"; then
-    log_ok "committed: chore: release $VERSION"
+  if mutate "commit \"chore: release $VERSION\"" git -C "$PROJECT_DIR" commit -m "chore: release $VERSION"; then
+    log_result "committed: chore: release $VERSION"
     [ "$skipped" -eq 1 ] && log_info "oversized files remain in your working tree"
     refresh_status
     return 0
@@ -864,8 +936,8 @@ act_push() {
   local branch
   branch=$(git -C "$PROJECT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)
   log_step "Push $branch"
-  if run_streamed "pushing $branch" git -C "$PROJECT_DIR" push origin "$branch"; then
-    log_ok "pushed to origin/$branch"
+  if mutate_streamed "push $branch to origin" git -C "$PROJECT_DIR" push origin "$branch"; then
+    log_result "pushed to origin/$branch"
     refresh_status
     return 0
   fi
@@ -909,17 +981,29 @@ act_release() {
       log_info "keeping the existing tag"
       return 1
     fi
-    git -C "$PROJECT_DIR" tag -d "$VERSION" >/dev/null 2>&1
-    git -C "$PROJECT_DIR" push origin --delete "$VERSION" >/dev/null 2>&1
+    if ! dry_run_blocks "delete tag $VERSION locally and on origin"; then
+      git -C "$PROJECT_DIR" tag -d "$VERSION" >/dev/null 2>&1
+      git -C "$PROJECT_DIR" push origin --delete "$VERSION" >/dev/null 2>&1
+    fi
     log_ok "old tag removed"
   fi
 
-  git -C "$PROJECT_DIR" tag -a "$VERSION" -m "Release $VERSION"
-  if ! run_streamed "pushing tag $VERSION" git -C "$PROJECT_DIR" push origin "$VERSION"; then
+  # Point of no return: pushing the tag is what makes the release public and
+  # starts the build. Nothing before this leaves the machine irreversibly.
+  if [ "$DRY_RUN" -eq 0 ]; then
+    log_warn "${BOLD}this publishes ${VERSION} to ${REPO} and cannot be undone by this script${NC}"
+    if ! tui_confirm "Push tag $VERSION and publish the release?" n; then
+      log_info "nothing published"
+      return 1
+    fi
+    git -C "$PROJECT_DIR" tag -a "$VERSION" -m "Release $VERSION"
+  fi
+  if ! mutate_streamed "push tag $VERSION to origin, publishing the release" \
+      git -C "$PROJECT_DIR" push origin "$VERSION"; then
     log_err "tag push failed"
     return 1
   fi
-  log_ok "tag $VERSION pushed — the release workflow is building the assets"
+  log_result "tag $VERSION pushed — the release workflow is building the assets"
   log_detail "https://github.com/${REPO}/actions"
   refresh_status
 }
@@ -947,6 +1031,12 @@ act_wait_assets() {
 
   if release_has_all_assets "$VERSION"; then
     log_ok "release $VERSION already has every Linux asset"
+    return 0
+  fi
+
+  # Nothing was tagged in a dry run, so the assets are never going to appear;
+  # waiting out the timeout would just stall the rehearsal.
+  if dry_run_blocks "wait for the release workflow to publish $VERSION"; then
     return 0
   fi
 
@@ -1207,13 +1297,17 @@ act_aur_publish() {
 
   local msg="Update to ${pkgver}-${pkgrel}"
   [ -z "$old_ver" ] && msg="Add ${AUR_PKGNAME} ${pkgver}-${pkgrel}"
-  if ! run_quiet "committing" git -C "$repo_dir" commit -m "$msg"; then
+  if ! mutate "commit \"$msg\" in the AUR checkout" git -C "$repo_dir" commit -m "$msg"; then
     log_err "commit failed"
     rm -rf "$work"
     return 1
   fi
 
   # The AUR may prompt for an SSH key passphrase, which needs the real terminal.
+  if dry_run_blocks "push ${AUR_PKGNAME} ${pkgver}-${pkgrel} to $AUR_REMOTE"; then
+    log_detail "rendered package kept at $repo_dir"
+    return 0
+  fi
   tui_suspend
   git -C "$repo_dir" push origin HEAD:master
   local push_rc=$?
@@ -1224,7 +1318,7 @@ act_aur_publish() {
     log_detail "checkout kept at $repo_dir"
     return 1
   fi
-  log_ok "published ${AUR_PKGNAME} ${pkgver}-${pkgrel}"
+  log_result "published ${AUR_PKGNAME} ${pkgver}-${pkgrel}"
   log_detail "https://${AUR_HOST}/packages/${AUR_PKGNAME}"
   rm -rf "$work"
   refresh_status
@@ -1319,6 +1413,15 @@ main() {
         run_action "${MENU_ACTION[$CURSOR]}"
         ;;
       r | R) refresh_status; log_info "status refreshed" ;;
+      d | D)
+        if [ "$DRY_RUN" -eq 1 ]; then
+          DRY_RUN=0
+          log_warn "dry run ${BOLD}off${NC} — actions now commit, push, and publish for real"
+        else
+          DRY_RUN=1
+          log_ok "dry run ${BOLD}on${NC} — nothing will be committed, pushed, or published"
+        fi
+        ;;
       c | C) LOG=(); log_raw "  ${DIM}log cleared${NC}" ;;
       g)     CURSOR=0; move_cursor 1 ;;
       G)     CURSOR=$((${#MENU_KIND[@]} - 1)); [ "${MENU_KIND[$CURSOR]}" = "header" ] && move_cursor -1 ;;
