@@ -4,6 +4,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.0.18
+
 ## v1.0.17
 
 ### Added
