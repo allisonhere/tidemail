@@ -42,8 +42,10 @@ SAVED_STTY=""
 measure_term() {
   ROWS=$(tput lines 2>/dev/null || echo 24)
   COLS=$(tput cols 2>/dev/null || echo 80)
-  [ "$ROWS" -ge 14 ] || ROWS=14
-  [ "$COLS" -ge 50 ] || COLS=50
+  # Never round these up: drawing more rows or columns than the terminal has
+  # wraps and scrolls the frame instead of fitting inside it.
+  [ "$ROWS" -ge 1 ] || ROWS=24
+  [ "$COLS" -ge 20 ] || COLS=20
 }
 
 tui_enter() {
@@ -75,7 +77,8 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'cleanup; exit 130' INT
-trap 'measure_term; draw_frame' WINCH
+RESIZE_PENDING=0
+trap 'RESIZE_PENDING=1' WINCH
 
 # ── Frame buffer ─────────────────────────────────────────────────────────────
 # Lines are written with ESC[K (erase to end of line) so a shorter line never
@@ -87,8 +90,10 @@ CLR_EOL=$'\033[K'
 # pad_to fits a possibly-colored string to an exact printable width: padded
 # with spaces when short, clipped when long, so a box border always lands on
 # the same column. Escape sequences are copied through and never counted.
+# pad_to WIDTH TEXT [nopad] — fits text to WIDTH printable columns. With
+# "nopad" it only clips, leaving a short line short.
 pad_to() {
-  local width=${1-0} text=${2-}
+  local width=${1-0} text=${2-} mode=${3-}
   local n i=0 shown=0 ch out=""
   # State as it was before the most recent printable character was appended.
   # Clipping rewinds to here, so the ellipsis replaces a whole character and
@@ -122,7 +127,7 @@ pad_to() {
     out="${prev_out}…${NC}"
     shown=$((prev_shown + 1))
   fi
-  if [ "$shown" -lt "$width" ]; then
+  if [ "$shown" -lt "$width" ] && [ "$mode" != "nopad" ]; then
     printf '%s%*s' "$out" $((width - shown)) ""
   else
     printf '%s' "$out"
@@ -138,12 +143,36 @@ repeat_char() {
 
 FRAME=""
 FRAME_ROWS=0
-frame_line() { FRAME+="$1${CLR_EOL}"$'\n'; FRAME_ROWS=$((FRAME_ROWS + 1)); }
-frame_blank() { FRAME+="${CLR_EOL}"$'\n'; FRAME_ROWS=$((FRAME_ROWS + 1)); }
+# frame_line is the one place the frame's bounds are enforced: never more rows
+# than the terminal has, and never a row wider than it, since either one wraps
+# the frame onto an extra line and scrolls the top away.
+frame_line() {
+  [ "$FRAME_ROWS" -ge "$ROWS" ] && return 0
+  local text=$1
+  # A tab moves the cursor without erasing, so whatever the previous frame left
+  # in the skipped cells shows through; a carriage return would reset to column
+  # zero and overwrite the row. Neither belongs in a painted frame.
+  text=${text//$'\t'/    }
+  text=${text//$'\r'/}
+  # The cheap length test counts escape bytes too, so it can only over-trigger
+  # the clip, never miss an overflowing line.
+  if [ "${#text}" -gt "$COLS" ]; then
+    text=$(pad_to "$COLS" "$text" nopad)
+  fi
+  FRAME+="$text${CLR_EOL}"$'\n'
+  FRAME_ROWS=$((FRAME_ROWS + 1))
+}
+frame_blank() {
+  [ "$FRAME_ROWS" -ge "$ROWS" ] && return 0
+  FRAME+="${CLR_EOL}"$'\n'
+  FRAME_ROWS=$((FRAME_ROWS + 1))
+}
 
 frame_flush() {
   tput cup 0 0 2>/dev/null
-  printf '%s' "$FRAME"
+  # Strip the trailing newline: emitting one while on the last row scrolls the
+  # terminal up, which pushes the top border of the frame off screen.
+  printf '%s' "${FRAME%$'\n'}"
   # Erase any rows the new frame did not reach.
   printf '\033[J'
   FRAME=""
@@ -553,18 +582,31 @@ draw_log() {
   done
 }
 
+# draw_footer drops hints rather than letting the row be clipped, so the way
+# out of the console stays visible however narrow the terminal is.
 draw_footer() {
-  frame_line " ${DIM}↑↓/jk move · enter run · r refresh · c clear log · q quit${NC}"
+  local hint=" ↑↓/jk move · enter run · r refresh · c clear log · q quit"
+  if [ "${#hint}" -gt "$COLS" ]; then
+    hint=" ↑↓ move · enter run · q quit"
+  fi
+  if [ "${#hint}" -gt "$COLS" ]; then
+    hint=" ↑↓ · enter · q"
+  fi
+  frame_line "${DIM}${hint}${NC}"
 }
 
 draw_frame() {
   [ "$TUI_ACTIVE" -eq 1 ] || return 0
+  if [ "$RESIZE_PENDING" -eq 1 ]; then
+    RESIZE_PENDING=0
+    measure_term
+  fi
   FRAME=""
   FRAME_ROWS=0
   draw_header
   # 4 header rows, the log separator, and the footer row are fixed overhead.
   local available=$((ROWS - 6))
-  [ "$available" -lt 4 ] && available=4
+  [ "$available" -lt 1 ] && available=1
 
   # Split the remaining rows: the menu never grows past its own length and
   # never squeezes the log pane below a usable height.
@@ -1242,11 +1284,7 @@ main() {
     # instead of waiting for the next keystroke.
     aur_probe_read
     local rc
-    if [ "${ST_AUR%%:*}" = "probing" ]; then
-      read_key 1
-    else
-      read_key
-    fi
+    read_key 1
     rc=$?
     if [ "$rc" -eq 1 ]; then
       # stdin closed (piped input exhausted) — leave cleanly rather than spin.
@@ -1254,8 +1292,12 @@ main() {
       exit 0
     fi
     if [ "$rc" -eq 2 ]; then
-      aur_probe_read
-      draw_frame
+      # Idle tick: redraw only when something actually changed, so a quiet
+      # console costs nothing.
+      if [ "$RESIZE_PENDING" -eq 1 ] || [ "${ST_AUR%%:*}" = "probing" ]; then
+        aur_probe_read
+        draw_frame
+      fi
       continue
     fi
     key="$READ_KEY_VALUE"
