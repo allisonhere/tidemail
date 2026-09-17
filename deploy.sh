@@ -1181,11 +1181,15 @@ act_aur_publish() {
     return 1
   fi
 
-  # 1. The checksums must come from the assets users actually download.
+  # 1. The checksums must come from the assets users actually download. Right
+  # after a tag push the workflow is usually still uploading, so wait for them
+  # rather than failing a publish that would have worked a minute later.
   if ! release_has_all_assets "$VERSION"; then
-    log_err "release $VERSION is missing Linux assets"
-    log_info "run 'Wait for release assets' first"
-    return 1
+    log_info "release $VERSION has no Linux assets yet — waiting for the workflow"
+    if ! act_wait_assets; then
+      log_err "cannot publish $AUR_PKGNAME without the release assets"
+      return 1
+    fi
   fi
 
   local work
