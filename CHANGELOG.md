@@ -4,27 +4,12 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
-### Fixed
-
-- **New mail no longer scrolls out of view at the top of the list.** When the
-  message list was already scrolled to the top, mail arriving above the focused
-  row pushed the view down with it, so the new message landed just off the top
-  edge and was never seen. The list now stays at the top in that case and the
-  arrival is visible; the selection stays on the message it was on. Scrolled
-  anywhere else in the list, the focused row still holds its screen line.
-
 ### Added
 
 - **TideMail is on the AUR.** Arch users can install `tidemail-bin` with
   `paru -S tidemail-bin`, which packages the official release binary so Gmail
   sign-in works without registering a Google app. Updates arrive through
   `pacman -Syu`.
-- **Toggleable pane header bars.** The title-and-shortcut row above each pane can
-  now be turned off at **Settings → Display → Pane header bars**
-  (`display.show_pane_headers` in `config.toml`, on by default). When off, those
-  rows disappear to give content more room and the focused pane's title and
-  shortcuts move to the bottom status line; global message search still gets a
-  dedicated row above the message list while active.
 
 ### Fixed
 
@@ -34,6 +19,55 @@ All notable changes to TideMail are documented in this file.
   left a stale copy in `~/.local/bin` shadowing the real one while `pacman`
   reported everything up to date. Settings now shows your package manager's
   upgrade command instead.
+
+## v1.0.16
+
+### Added
+
+- **Automatic Gmail sign-in.** Adding a Gmail account now opens Google's consent
+  page in your browser and completes the OAuth exchange on its own, instead of
+  making you copy a URL and paste a code back. `Ctrl+P` still switches to the
+  manual URL-and-paste flow, `Ctrl+O` retries after a timeout or a denial, and
+  `Esc` cancels; if no browser can be opened, the sign-in URL is shown to open
+  yourself.
+- **Scheduled send.** Composed mail can be held and delivered later from a
+  picker offering presets such as "In one hour" alongside a custom date and time
+  chosen on a calendar.
+- **An arrow marks the current message row**, so the focused message stays
+  obvious when a row's colours are hard to tell apart.
+
+### Fixed
+
+- **New mail no longer scrolls out of view at the top of the list.** When the
+  message list was already scrolled to the top, mail arriving above the focused
+  row pushed the view down with it, so the new message landed just off the top
+  edge and was never seen. The list now stays at the top in that case and the
+  arrival is visible; the selection stays on the message it was on. Scrolled
+  anywhere else in the list, the focused row still holds its screen line.
+- **OAuth tokens survive a failed write.** A refresh token that could not be
+  written to the account store was previously left only in memory, so the next
+  run silently fell back to re-authenticating. The write is now retried before
+  the token is used or refreshed again, and a persistence failure surfaces as an
+  error instead of passing quietly.
+
+## v1.0.15
+
+### Added
+
+- **Toggleable pane header bars.** The title-and-shortcut row above each pane can
+  now be turned off at **Settings → Display → Pane header bars**
+  (`display.show_pane_headers` in `config.toml`, on by default). When off, those
+  rows disappear to give content more room and the focused pane's title and
+  shortcuts move to the bottom status line; global message search still gets a
+  dedicated row above the message list while active.
+- **`--disable-google-oauth` preview flag.** A runtime-only override that clears
+  the app-level Google OAuth client, so the account manager renders the Gmail
+  App Password form that a user without a configured client sees. It never
+  rewrites saved credentials, and an existing Gmail OAuth account keeps using
+  OAuth. Outlook is untouched. See `docs/flags.md`.
+
+### Fixed
+
 - **HTML email bodies no longer lose legitimate content.** The old noise
   stripper was aggressive enough to drop real body sections, long messages, and
   the inner text of tables and quoted replies. Rendering now runs a conservative
