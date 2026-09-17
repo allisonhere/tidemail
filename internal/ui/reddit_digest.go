@@ -163,13 +163,21 @@ func renderRedditDigestPosts(posts []*redditDigestPost, width int, th Theme, pla
 		}
 		return style.Render(text)
 	}
-	renderBlock := func(style lipgloss.Style, text string) string {
+	// The OSC 8 wrapper goes outside the SGR styling, and around each wrapped
+	// line rather than the block: an escape that straddled a newline would
+	// break both our own per-line lookup and real terminals. An empty uri is
+	// not a link — safeOSC8URI rejects it and osc8Link returns the bare label,
+	// which is also what happens under plainUI.
+	linkedBlock := func(style lipgloss.Style, text, uri string) string {
 		wrapped := wrapWords(text, width)
 		lines := strings.Split(wrapped, "\n")
 		for i, line := range lines {
-			lines[i] = render(style, line)
+			lines[i] = osc8Link(uri, render(style, line), plainUI)
 		}
 		return strings.Join(lines, "\n")
+	}
+	renderBlock := func(style lipgloss.Style, text string) string {
+		return linkedBlock(style, text, "")
 	}
 
 	var blocks []string
@@ -183,7 +191,7 @@ func renderRedditDigestPosts(posts []*redditDigestPost, width int, th Theme, pla
 			metaParts = append(metaParts, post.age)
 		}
 		lines = append(lines, renderBlock(metaStyle, strings.Join(metaParts, " - ")))
-		lines = append(lines, renderBlock(titleStyle, post.title))
+		lines = append(lines, linkedBlock(titleStyle, post.title, post.link))
 		if post.excerpt != "" {
 			lines = append(lines, renderBlock(bodyStyle, post.excerpt))
 		}

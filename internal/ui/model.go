@@ -154,15 +154,19 @@ type Model struct {
 	// awaiting the user's y/n in overlayUnsubscribeConfirm.
 	pendingUnsubscribe db.Message
 
-	viewport               viewport.Model
-	contentLinks           []string
-	contentLinkIdx         int
-	contentMessageID       int64
-	contentDraftID         int64
-	contentFocusLine       int
-	contentLineCount       int
-	contentFocusable       []bool
-	contentLines           []string
+	viewport         viewport.Model
+	contentLinks     []string
+	contentLinkIdx   int
+	contentMessageID int64
+	contentDraftID   int64
+	contentFocusLine int
+	contentLineCount int
+	contentFocusable []bool
+	contentLines     []string
+	// contentLineLinks holds the OSC 8 hyperlink target for each contentLines
+	// entry, index-aligned with it, so a link that exists only inside an escape
+	// sequence can still be resolved from the focus line.
+	contentLineLinks       []string
 	contentSearchInput     textinput.Model
 	contentSearchQuery     string
 	contentSearchMatches   []int
@@ -1596,6 +1600,12 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.focused == paneMessages && (m.activeMessageRowCount() > 0 || (m.selectedDraftsMailbox() && len(m.drafts) > 0)) {
 			return m.focusPane(paneContent)
 		}
+		// In the content pane Enter opens the focused link, the same resolution
+		// the `o` key uses. Overlays never reach here — they are routed to
+		// handleOverlayKey and bind keys.Confirm instead.
+		if cmd, ok := m.openContentLinkCmd(); ok {
+			return m, cmd
+		}
 		return m, nil
 
 	case keyMatches(msg, m.keys.Back):
@@ -1793,13 +1803,8 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.OpenBrowser):
-		if len(m.filteredMessages) > 0 && m.focused == paneContent {
-			if link, ok := m.focusedLineLink(); ok {
-				return m, m.openBrowserCmd(link)
-			}
-			if link, ok := m.currentContentLink(); ok {
-				return m, m.openBrowserCmd(link)
-			}
+		if cmd, ok := m.openContentLinkCmd(); ok {
+			return m, cmd
 		}
 		return m, nil
 
@@ -2806,6 +2811,22 @@ func (m *Model) ensureContentFocusVisible() {
 	case m.contentFocusLine > bottom:
 		m.viewport.SetYOffset(m.contentFocusLine - bodyH + 1)
 	}
+}
+
+// openContentLinkCmd resolves the link the content pane is pointing at: the one
+// on the focus line first, then the selected actionable link. Enter and the `o`
+// key both route through here so the two can never drift apart.
+func (m Model) openContentLinkCmd() (tea.Cmd, bool) {
+	if len(m.filteredMessages) == 0 || m.focused != paneContent {
+		return nil, false
+	}
+	if link, ok := m.focusedLineLink(); ok {
+		return m.openBrowserCmd(link), true
+	}
+	if link, ok := m.currentContentLink(); ok {
+		return m.openBrowserCmd(link), true
+	}
+	return nil, false
 }
 
 func (m Model) currentContentLink() (string, bool) {

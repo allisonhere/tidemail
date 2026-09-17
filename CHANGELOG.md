@@ -6,6 +6,11 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- **`Enter` opens the link on the focus line.** In the reading pane `Enter` now
+  does what `o` does — open the focused line's link, falling back to the
+  selected content link. Reddit digest post titles are openable too, alongside
+  their `[Read post]` action, so a post opens from wherever the highlight sits.
+
 - **Scrolling through drafts shows the draft.** Moving the cursor in the Drafts
   folder now renders the draft under it — subject, recipients, when it was last
   saved, the body, and any attachments — instead of leaving the reading pane on

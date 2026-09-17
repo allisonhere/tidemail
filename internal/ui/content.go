@@ -184,6 +184,25 @@ func (m Model) actionableLinksEnabled() bool {
 // focusedLineLink returns the first URL on the currently highlighted focus line,
 // when the focus-line feature is active. This lets `o` open whatever link sits
 // under the highlight, independent of the actionable-links list.
+// contentDisplayLines splits rendered content into the stripped display lines
+// used for focus and selection indexing, plus a parallel slice holding the OSC 8
+// hyperlink target on each line. The slices are index-aligned, so
+// contentFocusLine addresses both. If an escape ever swallowed a newline and
+// broke that 1:1 mapping, the link slice is dropped rather than silently
+// attributing a link to the wrong row.
+func contentDisplayLines(content string) (lines, lineLinks []string) {
+	lines = strings.Split(ansi.Strip(content), "\n")
+	raw := strings.Split(content, "\n")
+	if len(raw) != len(lines) {
+		return lines, nil
+	}
+	lineLinks = make([]string, len(raw))
+	for i := range raw {
+		lineLinks[i] = firstOSC8Target(raw[i])
+	}
+	return lines, lineLinks
+}
+
 func (m Model) focusedLineLink() (string, bool) {
 	if !m.cfg.Display.FocusLine {
 		return "", false
@@ -191,11 +210,20 @@ func (m Model) focusedLineLink() (string, bool) {
 	if m.contentFocusLine < 0 || m.contentFocusLine >= len(m.contentLines) {
 		return "", false
 	}
-	links := extractActionableLinks(m.contentLines[m.contentFocusLine], "")
-	if len(links) == 0 {
-		return "", false
+	// Visible text wins: what the reader can see is what they meant to open.
+	if links := extractActionableLinks(m.contentLines[m.contentFocusLine], ""); len(links) > 0 {
+		return links[0], true
 	}
-	return links[0], true
+	// Otherwise fall back to a hyperlink the terminal can see but ansi.Strip
+	// removed. Reddit digest titles and their [Read post] action carry their
+	// URL only there. Checked separately because a caller may have set
+	// contentLines without the parallel slice.
+	if m.contentFocusLine < len(m.contentLineLinks) {
+		if link := cleanDetectedURL(m.contentLineLinks[m.contentFocusLine]); link != "" {
+			return link, true
+		}
+	}
+	return "", false
 }
 
 func (m *Model) setViewportMessage(msg db.Message) {
@@ -218,7 +246,7 @@ func (m *Model) setViewportMessage(msg db.Message) {
 	m.viewport.SetContent(content)
 	m.contentMessageID = msg.ID
 	m.contentDraftID = 0
-	m.contentLines = strings.Split(ansi.Strip(content), "\n")
+	m.contentLines, m.contentLineLinks = contentDisplayLines(content)
 	m.contentLineCount = len(m.contentLines)
 	m.contentFocusable = messageFocusableLines(content)
 	m.contentFocusLine = clamp(m.contentFocusLine, 0, max(0, m.contentLineCount-1))
@@ -307,7 +335,7 @@ func (m *Model) setViewportDraft(d db.Draft) {
 	m.viewport.SetContent(content)
 	m.contentMessageID = 0
 	m.contentDraftID = d.ID
-	m.contentLines = strings.Split(ansi.Strip(content), "\n")
+	m.contentLines, m.contentLineLinks = contentDisplayLines(content)
 	m.contentLineCount = len(m.contentLines)
 	m.contentFocusable = messageFocusableLines(content)
 	m.contentFocusLine = clamp(m.contentFocusLine, 0, max(0, m.contentLineCount-1))
@@ -332,7 +360,7 @@ func (m *Model) setViewportThread(thread messageThread) {
 	m.viewport.SetContent(content)
 	m.contentMessageID = rep.ID
 	m.contentDraftID = 0
-	m.contentLines = strings.Split(ansi.Strip(content), "\n")
+	m.contentLines, m.contentLineLinks = contentDisplayLines(content)
 	m.contentLineCount = len(m.contentLines)
 	m.contentFocusable = messageFocusableLines(content)
 	m.contentFocusLine = clamp(m.contentFocusLine, 0, max(0, m.contentLineCount-1))
@@ -375,6 +403,7 @@ func (m *Model) clearViewportMessage() {
 	m.contentLineCount = 0
 	m.contentFocusable = nil
 	m.contentLines = nil
+	m.contentLineLinks = nil
 	m.contentAttachments = nil
 	m.clearContentSelection()
 	m.clearContentSearch()

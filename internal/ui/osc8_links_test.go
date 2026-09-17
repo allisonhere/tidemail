@@ -251,7 +251,7 @@ func TestFilterLinksStillAppliesToPlainTextBodies(t *testing.T) {
 // rune; wrapping the hyperlink first splits its ESC from the "]8;;<url>" payload,
 // so the terminal prints the tracking URL as visible text. That inflates the
 // line from 11 columns to ~100, which then wraps and overflows the content pane.
-func TestRedditDigestReadPostHyperlinkSurvivesStyling(t *testing.T) {
+func TestRedditDigestPostHyperlinksSurviveStyling(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
 
@@ -261,25 +261,101 @@ func TestRedditDigestReadPostHyperlinkSurvivesStyling(t *testing.T) {
 	}
 
 	const post = "https://www.reddit.com/r/omarchy/comments/1vxc6xv/free_ai_in_omarchy/"
-	var cta string
-	for _, line := range strings.Split(got, "\n") {
-		if strings.Contains(ansi.Strip(line), "[Read post]") {
-			cta = line
-			break
+	// Both the title and the call to action link to the post, so Enter opens it
+	// from either line.
+	for _, label := range []string{"Free ai in Omarchy?", "[Read post]"} {
+		var found string
+		for _, line := range strings.Split(got, "\n") {
+			if strings.Contains(ansi.Strip(line), label) {
+				found = line
+				break
+			}
 		}
-	}
-	if cta == "" {
-		t.Fatalf("no [Read post] line in rendered digest: %q", ansi.Strip(got))
-	}
-	if w := ansi.StringWidth(cta); w != len("[Read post]") {
-		t.Fatalf("CTA occupies %d columns, want %d — the hyperlink leaked into visible text: %q", w, len("[Read post]"), cta)
+		if found == "" {
+			t.Fatalf("no %q line in rendered digest: %q", label, ansi.Strip(got))
+		}
+		if w := ansi.StringWidth(found); w != len(label) {
+			t.Fatalf("%q occupies %d columns, want %d — the hyperlink leaked into visible text: %q", label, w, len(label), found)
+		}
 	}
 
 	stripped := ansi.Strip(got)
 	if strings.Contains(stripped, "]8;;") || strings.Contains(stripped, post) {
 		t.Fatalf("OSC 8 sequence rendered as literal text: %q", stripped)
 	}
-	if strings.Count(got, osc8Open+post) != 1 || strings.Count(got, osc8Close) != 1 {
-		t.Fatalf("expected exactly one intact OSC 8 hyperlink to %q, got %q", post, got)
+	// Two intact pairs: one around the title, one around [Read post].
+	if strings.Count(got, osc8Open+post) != 2 || strings.Count(got, osc8Close) != 2 {
+		t.Fatalf("expected exactly two intact OSC 8 hyperlinks to %q, got %q", post, got)
+	}
+}
+
+// ansi.Strip removes the whole escape, so reading a hyperlink back out of a
+// rendered line is the only way to resolve it from the focus line.
+func TestFirstOSC8TargetParsesHyperlinks(t *testing.T) {
+	const uri = "https://example.com/a"
+	cases := map[string]struct {
+		line string
+		want string
+	}{
+		"ST terminator":     {"\x1b]8;;" + uri + "\x1b\\label\x1b]8;;\x1b\\", uri},
+		"BEL terminator":    {"\x1b]8;;" + uri + "\x07label\x1b]8;;\x07", uri},
+		"with params":       {"\x1b]8;id=42;" + uri + "\x1b\\label\x1b]8;;\x1b\\", uri},
+		"closing only":      {"\x1b]8;;\x1b\\", ""},
+		"no escape":         {"just text", ""},
+		"literal lookalike": {"see ]8;; in text", ""},
+		"unterminated":      {"\x1b]8;;" + uri, ""},
+		"first of two wins": {"\x1b]8;;" + uri + "\x1b\\a\x1b]8;;\x1b\\ \x1b]8;;https://example.com/b\x1b\\b\x1b]8;;\x1b\\", uri},
+		"styled label":      {"\x1b]8;;" + uri + "\x1b\\\x1b[1mlabel\x1b[0m\x1b]8;;\x1b\\", uri},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := firstOSC8Target(tc.line); got != tc.want {
+				t.Fatalf("firstOSC8Target(%q) = %q, want %q", tc.line, got, tc.want)
+			}
+		})
+	}
+}
+
+// A title wrapped across several lines must link on every one of them, or the
+// focus line lands on a row with no link.
+func TestRedditDigestWrappedTitleLinksEveryLine(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+
+	const width = 12
+	got, ok := renderRedditDigestHTML(redditDigestFixture(), width, CatppuccinMocha, false)
+	if !ok {
+		t.Fatal("expected Reddit digest fixture to render")
+	}
+
+	const post = "https://www.reddit.com/r/omarchy/comments/1vxc6xv/free_ai_in_omarchy/"
+	titleLines := 0
+	for _, line := range strings.Split(got, "\n") {
+		plain := ansi.Strip(line)
+		if w := ansi.StringWidth(line); w > width {
+			t.Fatalf("line %q occupies %d columns, want <= %d", plain, w, width)
+		}
+		if !strings.Contains(plain, "Free ai") && !strings.Contains(plain, "Omarchy?") {
+			continue
+		}
+		titleLines++
+		if n := strings.Count(line, osc8Open+post); n != 1 {
+			t.Fatalf("title line %q carries %d hyperlinks, want 1", plain, n)
+		}
+	}
+	if titleLines < 2 {
+		t.Fatalf("expected the title to wrap across several lines at width %d, got %d", width, titleLines)
+	}
+}
+
+// The vt52 theme renders without escapes, so no hyperlink may be emitted there.
+func TestRedditDigestEmitsNoEscapesForPlainUI(t *testing.T) {
+	got, ok := renderRedditDigestHTML(redditDigestFixture(), 44, CatppuccinMocha, true)
+	if !ok {
+		t.Fatal("expected Reddit digest fixture to render")
+	}
+	if strings.Contains(got, "\x1b]8") {
+		t.Fatalf("plainUI output must contain no OSC 8 sequence, got %q", got)
 	}
 }

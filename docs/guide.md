@@ -291,7 +291,7 @@ switches to OAuth on its own — a leftover keychain token cannot promote it.
 | `t` | Toggle starred-first sort (starred messages float to the top) |
 | `Ctrl+Z` | Cancel a queued send, or undo the latest pending delete, archive, or move |
 | `O` | Open the Outbox |
-| `o` | Open link on the focus line (falls back to the selected content link) |
+| `o` or `Enter` | Open link on the focus line (falls back to the selected content link) |
 | `Ctrl+U` | Unsubscribe from the mailing list for the open message |
 | `Ctrl+U` in compose | Cycle the sending account; focus From and press `Enter` to open the account picker |
 | `Ctrl+N` / `Alt+N` | Next content link |

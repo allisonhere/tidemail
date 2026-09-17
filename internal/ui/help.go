@@ -88,6 +88,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 			entries: []entry{
 				{keys.Up.Help().Key + "/" + keys.Down.Help().Key, "move focus line; scroll only when needed"},
 				{keys.Back.Help().Key, "return to message list"},
+				{keys.Enter.Help().Key, "open link on focus line, else selected link"},
 				{keys.OpenBrowser.Help().Key, "open link on focus line, else selected link"},
 				{keys.Unsubscribe.Help().Key, "unsubscribe from this sender's list"},
 				{keys.NextLink.Help().Key, "next actionable link"},

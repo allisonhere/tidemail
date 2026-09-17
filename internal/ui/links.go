@@ -118,6 +118,49 @@ func osc8Link(uri, label string, plainUI bool) string {
 	return "\x1b]8;;" + uri + "\x1b\\" + label + "\x1b]8;;\x1b\\"
 }
 
+// firstOSC8Target returns the first hyperlink URI carried by an OSC 8 escape on
+// line, or "" when there is none.
+//
+// The sequence is ESC ] 8 ; <params> ; <uri> ST, where ST is either ESC \ or
+// BEL. The closing half of a pair carries an empty URI and is skipped, as is a
+// sequence that never terminates — a mangled line must not swallow the rest of
+// the content. Reading these back matters because ansi.Strip removes the whole
+// escape, so a link rendered this way has no URL left in its visible text.
+func firstOSC8Target(line string) string {
+	const intro = "\x1b]8;"
+	rest := line
+	for {
+		i := strings.Index(rest, intro)
+		if i < 0 {
+			return ""
+		}
+		rest = rest[i+len(intro):]
+		// Params end at the next ';'. OSC 8 separates its own params with ':',
+		// so the first ';' always closes the params section.
+		semi := strings.IndexByte(rest, ';')
+		if semi < 0 {
+			return ""
+		}
+		rest = rest[semi+1:]
+
+		end, termLen := -1, 0
+		if j := strings.Index(rest, "\x1b\\"); j >= 0 {
+			end, termLen = j, 2
+		}
+		if j := strings.IndexByte(rest, '\x07'); j >= 0 && (end < 0 || j < end) {
+			end, termLen = j, 1
+		}
+		if end < 0 {
+			return ""
+		}
+		uri := rest[:end]
+		rest = rest[end+termLen:]
+		if uri != "" {
+			return uri
+		}
+	}
+}
+
 func cleanDetectedURL(raw string) string {
 	clean := strings.TrimSpace(raw)
 	clean = strings.TrimRight(clean, ".,;:!?)]}\"'")

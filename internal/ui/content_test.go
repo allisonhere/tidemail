@@ -941,3 +941,57 @@ type fakeClipboard struct{ copied *string }
 
 func (f fakeClipboard) Read() (string, error)   { return "", nil }
 func (f fakeClipboard) Write(text string) error { *f.copied = text; return nil }
+
+// End to end through the real pipeline: renderRedditDigestPosts → styling →
+// setViewportMessage → contentLineLinks → Enter. ActionableLinks is left at its
+// default false, matching a plain install, so only the focus-line path can
+// succeed — the selected-content-link fallback is empty.
+func TestEnterOpensRedditDigestTitleAndReadPost(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+
+	cfg := config.DefaultConfig()
+	if cfg.Display.ActionableLinks {
+		t.Fatal("test assumes ActionableLinks defaults to false")
+	}
+	if !cfg.Display.FocusLine {
+		t.Fatal("test assumes FocusLine defaults to true")
+	}
+
+	m := NewModel(nil, cfg, "dev", false)
+	m.width, m.height = 100, 24
+	m.viewport.Width = m.contentBodyWidth()
+	m.viewport.Height = m.contentBodyHeight()
+	m.focused = paneContent
+	m.filteredMessages = []db.Message{{
+		ID:       1,
+		Subject:  "Reddit digest",
+		From:     "Reddit <noreply@redditmail.com>",
+		BodyHTML: redditDigestFixture(),
+		Date:     time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC),
+	}}
+	m.setViewportMessage(m.filteredMessages[0])
+
+	const post = "https://www.reddit.com/r/omarchy/comments/1vxc6xv/free_ai_in_omarchy/"
+	for _, needle := range []string{"Free ai in Omarchy?", "[Read post]"} {
+		t.Run(needle, func(t *testing.T) {
+			m.contentFocusLine = indexContentLine(t, m, needle)
+
+			link, ok := m.focusedLineLink()
+			if !ok {
+				t.Fatalf("no link resolved on the %q line", needle)
+			}
+			if link != post {
+				t.Fatalf("link = %q, want %q", link, post)
+			}
+
+			if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter}); cmd == nil {
+				t.Fatalf("Enter on the %q line dispatched no command", needle)
+			}
+			// `o` must resolve identically; they share one code path.
+			if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}}); cmd == nil {
+				t.Fatalf("o on the %q line dispatched no command", needle)
+			}
+		})
+	}
+}

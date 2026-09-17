@@ -72,3 +72,98 @@ func TestFocusedLineLinkRequiresFocusLineSetting(t *testing.T) {
 		t.Fatalf("expected no focused-line link when FocusLine display setting is off")
 	}
 }
+
+const osc8TestPost = "https://www.reddit.com/r/omarchy/comments/1vxc6xv/free_ai_in_omarchy/"
+
+// A Reddit CTA carries its URL only inside an OSC 8 escape, which ansi.Strip
+// removes from contentLines — so the link has to come from the parallel slice.
+func TestFocusedLineLinkFallsBackToOSC8Target(t *testing.T) {
+	m := newFocusLineModel(t)
+	m.contentLines = []string{"[Read post]"}
+	m.contentLineLinks = []string{osc8TestPost}
+	m.contentFocusLine = 0
+
+	link, ok := m.focusedLineLink()
+	if !ok {
+		t.Fatal("expected the OSC 8 target to resolve")
+	}
+	if link != osc8TestPost {
+		t.Fatalf("link = %q, want %q", link, osc8TestPost)
+	}
+}
+
+// Visible text stays authoritative: what the reader can see is what they meant.
+func TestFocusedLineLinkPrefersVisibleURLOverHyperlink(t *testing.T) {
+	m := newFocusLineModel(t)
+	m.contentLines = []string{"See https://example.com/visible now"}
+	m.contentLineLinks = []string{"https://example.com/hidden"}
+	m.contentFocusLine = 0
+
+	link, ok := m.focusedLineLink()
+	if !ok {
+		t.Fatal("expected a link")
+	}
+	if link != "https://example.com/visible" {
+		t.Fatalf("link = %q, want the visible URL", link)
+	}
+}
+
+// Callers that set contentLines without the parallel slice must still work.
+func TestFocusedLineLinkHandlesMissingLineLinks(t *testing.T) {
+	m := newFocusLineModel(t)
+	m.contentLines = []string{"no link here", "nor here"}
+	m.contentLineLinks = nil
+	m.contentFocusLine = 1
+
+	if _, ok := m.focusedLineLink(); ok {
+		t.Fatal("expected no link when the line has none and no link slice exists")
+	}
+}
+
+func TestEnterOpensFocusedLineLink(t *testing.T) {
+	m := newFocusLineModel(t)
+	m.contentLines = []string{"[Read post]"}
+	m.contentLineLinks = []string{osc8TestPost}
+	m.contentFocusLine = 0
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected Enter to dispatch the open-browser command")
+	}
+}
+
+func TestEnterInContentPaneWithoutLinkDoesNothing(t *testing.T) {
+	m := newFocusLineModel(t)
+	m.contentLines = []string{"nothing to open here"}
+	m.contentFocusLine = 0
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil {
+		t.Fatal("expected Enter to stay inert when no link resolves")
+	}
+}
+
+// Enter must still move focus from the list into the reading pane.
+func TestEnterFromMessageListStillFocusesContentPane(t *testing.T) {
+	m := newFocusLineModel(t)
+	m.focused = paneMessages
+	m.messages = m.filteredMessages
+	m.messageCursor = 0
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if got := next.(Model).focused; got != paneContent {
+		t.Fatalf("focused = %v, want paneContent", got)
+	}
+}
+
+func TestFocusedLineLinkIgnoresOSC8TargetWhenFocusLineDisabled(t *testing.T) {
+	m := newFocusLineModel(t)
+	m.cfg.Display.FocusLine = false
+	m.contentLines = []string{"[Read post]"}
+	m.contentLineLinks = []string{osc8TestPost}
+	m.contentFocusLine = 0
+
+	if _, ok := m.focusedLineLink(); ok {
+		t.Fatal("expected no link when the focus line is disabled")
+	}
+}
