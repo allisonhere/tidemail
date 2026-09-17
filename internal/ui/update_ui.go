@@ -149,7 +149,7 @@ func (m Model) effectiveManualCommand() string {
 	if err != nil || ok {
 		return ""
 	}
-	return update.SuggestedManualInstallScript
+	return update.ManualUpdateCommand()
 }
 
 func (m Model) settingsUpdateState() settingsUpdateState {

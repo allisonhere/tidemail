@@ -1,0 +1,122 @@
+package update
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// stubOwnerProbe points the package-manager probe at canned output and makes
+// the given directory look unwritable, the way /usr/bin is for a normal user.
+func stubOwnerProbe(t *testing.T, available string, out string, err error) {
+	t.Helper()
+	resetOwnerCacheForTest()
+	origLook, origQuery, origWritable := lookPath, queryOwner, dirWritable
+	lookPath = func(name string) (string, error) {
+		if name == available {
+			return "/usr/bin/" + name, nil
+		}
+		return "", fmt.Errorf("not found")
+	}
+	queryOwner = func(string, ...string) (string, error) { return out, err }
+	dirWritable = func(string) error { return fmt.Errorf("read-only") }
+	t.Cleanup(func() {
+		lookPath, queryOwner, dirWritable = origLook, origQuery, origWritable
+		resetOwnerCacheForTest()
+	})
+}
+
+func TestOwningPackageDetectsPacmanBinary(t *testing.T) {
+	stubOwnerProbe(t, "pacman", "tidemail-bin\n", nil)
+
+	owner, owned := owningPackage("/usr/bin/tidemail")
+	if !owned {
+		t.Fatal("expected /usr/bin/tidemail to be reported as package-managed")
+	}
+	if owner.Package != "tidemail-bin" || owner.Manager != "pacman" {
+		t.Fatalf("unexpected owner: %+v", owner)
+	}
+	if got, want := owner.UpdateCommand(), "sudo pacman -Syu tidemail-bin"; got != want {
+		t.Fatalf("update command = %q, want %q", got, want)
+	}
+}
+
+func TestOwningPackageParsesDpkgOutput(t *testing.T) {
+	stubOwnerProbe(t, "dpkg-query", "tidemail:amd64: /usr/bin/tidemail\n", nil)
+
+	owner, owned := owningPackage("/usr/bin/tidemail")
+	if !owned || owner.Package != "tidemail" {
+		t.Fatalf("expected dpkg owner tidemail, got %+v owned=%v", owner, owned)
+	}
+}
+
+func TestOwningPackageIgnoresUnownedFileError(t *testing.T) {
+	stubOwnerProbe(t, "pacman", "", fmt.Errorf("No package owns /usr/bin/tidemail"))
+
+	if _, owned := owningPackage("/usr/bin/tidemail"); owned {
+		t.Fatal("unowned binary must not be reported as package-managed")
+	}
+}
+
+// pacman prints an error line to stdout in some locales; a path or spaces in
+// the output means we did not get a bare package name.
+func TestOwningPackageRejectsNonPackageOutput(t *testing.T) {
+	stubOwnerProbe(t, "pacman", "error: No package owns /usr/bin/tidemail\n", nil)
+
+	if _, owned := owningPackage("/usr/bin/tidemail"); owned {
+		t.Fatal("error text must not be parsed as a package name")
+	}
+}
+
+// The probe must not run for a binary in a directory we can write, which is
+// where install.sh puts it.
+func TestOwningPackageSkipsProbeForWritableDirectory(t *testing.T) {
+	resetOwnerCacheForTest()
+	origLook, origQuery := lookPath, queryOwner
+	probed := false
+	lookPath = func(string) (string, error) { probed = true; return "", fmt.Errorf("not found") }
+	queryOwner = func(string, ...string) (string, error) { probed = true; return "", nil }
+	t.Cleanup(func() {
+		lookPath, queryOwner = origLook, origQuery
+		resetOwnerCacheForTest()
+	})
+
+	exe := filepath.Join(t.TempDir(), "tidemail")
+	if err := os.WriteFile(exe, []byte("binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, owned := owningPackage(exe); owned {
+		t.Fatal("a binary in a writable directory is not package-managed")
+	}
+	if probed {
+		t.Fatal("package manager must not be queried for a writable install directory")
+	}
+}
+
+// An AUR install must be told to run pacman rather than have a second copy
+// written into ~/.local/bin that shadows the packaged binary.
+func TestInstallRefusesToShadowPackageManagedBinary(t *testing.T) {
+	stubOwnerProbe(t, "pacman", "tidemail-bin\n", nil)
+
+	tmp := t.TempDir()
+	staged := filepath.Join(tmp, "tidemail")
+	if err := os.WriteFile(staged, []byte("new binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	u := New()
+	result, err := u.Install(DownloadedAsset{BinaryPath: staged}, "/usr/bin/tidemail")
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if !result.RequiresManual {
+		t.Fatal("expected a package-managed install to require a manual update")
+	}
+	if got, want := result.ManualCommand, "sudo pacman -Syu tidemail-bin"; got != want {
+		t.Fatalf("manual command = %q, want %q", got, want)
+	}
+	if result.Restartable {
+		t.Fatal("nothing was installed, so the result must not offer a restart")
+	}
+}

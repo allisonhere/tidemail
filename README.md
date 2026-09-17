@@ -45,6 +45,21 @@ _One inbox, several built-in themes.
 
 Linux and macOS builds are available for Intel and ARM machines.
 
+### Arch Linux
+
+TideMail is on the AUR as [`tidemail-bin`](https://aur.archlinux.org/packages/tidemail-bin),
+which packages the official release binary:
+
+```bash
+paru -S tidemail-bin   # or: yay -S tidemail-bin
+```
+
+Updates then come from `pacman -Syu` along with everything else. TideMail
+notices it was installed this way and points you at your package manager
+instead of trying to replace a root-owned binary itself.
+
+### Everywhere else
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/allisonhere/tidemail/main/install.sh | sh
 ```

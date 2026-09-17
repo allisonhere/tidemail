@@ -15,6 +15,10 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- **TideMail is on the AUR.** Arch users can install `tidemail-bin` with
+  `paru -S tidemail-bin`, which packages the official release binary so Gmail
+  sign-in works without registering a Google app. Updates arrive through
+  `pacman -Syu`.
 - **Toggleable pane header bars.** The title-and-shortcut row above each pane can
   now be turned off at **Settings → Display → Pane header bars**
   (`display.show_pane_headers` in `config.toml`, on by default). When off, those
@@ -24,6 +28,12 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- **A package-managed install no longer self-updates into a second copy.** When
+  TideMail is installed by a package manager (the AUR's `tidemail-bin`, a `.deb`,
+  an `.rpm`), it can no longer write an update beside the packaged binary — that
+  left a stale copy in `~/.local/bin` shadowing the real one while `pacman`
+  reported everything up to date. Settings now shows your package manager's
+  upgrade command instead.
 - **HTML email bodies no longer lose legitimate content.** The old noise
   stripper was aggressive enough to drop real body sections, long messages, and
   the inner text of tables and quoted replies. Rendering now runs a conservative

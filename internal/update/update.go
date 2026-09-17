@@ -314,6 +314,17 @@ func (u *Updater) Install(asset DownloadedAsset, currentExec string) (InstallRes
 		return result, fmt.Errorf("current executable path is empty")
 	}
 
+	// Never write beside a package-managed binary: the copy would shadow it
+	// and desync the package manager's file list.
+	if owner, owned := owningPackage(currentExec); owned {
+		result.RequiresManual = true
+		result.ManualCommand = owner.UpdateCommand()
+		if result.ManualCommand == "" {
+			result.ManualCommand = manualInstallCommand(asset.BinaryPath, currentExec)
+		}
+		return result, nil
+	}
+
 	targetExec, err := installTarget(currentExec, true)
 	if err != nil {
 		result.RequiresManual = true
@@ -544,10 +555,31 @@ func InstallDestinationWritable() (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	// A package-managed binary is never ours to replace, even though the
+	// ~/.local/bin fallback below would happily accept the write.
+	if _, owned := owningPackage(exe); owned {
+		return false, nil
+	}
 	if _, err := installTarget(exe, false); err != nil {
 		return false, nil
 	}
 	return true, nil
+}
+
+// ManualUpdateCommand is the command to show when an update is available but
+// we must not install it ourselves: the owning package manager's upgrade
+// command for a packaged build, otherwise the install script.
+func ManualUpdateCommand() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return SuggestedManualInstallScript
+	}
+	if owner, owned := owningPackage(exe); owned {
+		if cmd := owner.UpdateCommand(); cmd != "" {
+			return cmd
+		}
+	}
+	return SuggestedManualInstallScript
 }
 
 var (
