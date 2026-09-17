@@ -4,6 +4,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.0.17
+
 ### Added
 
 - **`Enter` opens the link on the focus line.** In the reading pane `Enter` now
@@ -29,6 +31,8 @@ All notable changes to TideMail are documented in this file.
   left a stale copy in `~/.local/bin` shadowing the real one while `pacman`
   reported everything up to date. Settings now shows your package manager's
   upgrade command instead.
+
+### enjoy -allie
 
 ## v1.0.16
 
