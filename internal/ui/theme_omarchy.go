@@ -49,6 +49,10 @@ func omarchyTheme(p omarchy.Palette) Theme {
 	if p.Accent == "" {
 		accent = fg
 	}
+	selected := c(p.Selection)
+	if p.Selection == "" {
+		selected = accent
+	}
 	statusBg := c(p.StatusBg)
 	if p.StatusBg == "" {
 		if isDark(bg) {
@@ -72,7 +76,7 @@ func omarchyTheme(p omarchy.Palette) Theme {
 		Fg:            fg,
 		Border:        border,
 		BorderFocus:   accent,
-		Selected:      accent,
+		Selected:      selected,
 		Unread:        unread,
 		Dimmed:        border,
 		StatusBar:     statusBg,
@@ -129,13 +133,17 @@ func currentOmarchyThemeName() string {
 
 // omarchyThemeTickMsg drives the live-follow poll while the active theme is
 // "match-omarchy".
-type omarchyThemeTickMsg struct{}
+type omarchyThemeTickMsg struct {
+	Generation uint64
+}
 
 const omarchyWatchInterval = 2 * time.Second
 
 // omarchyWatchCmd schedules the next live-follow poll.
-func omarchyWatchCmd() tea.Cmd {
-	return tea.Tick(omarchyWatchInterval, func(time.Time) tea.Msg { return omarchyThemeTickMsg{} })
+func omarchyWatchCmd(generation uint64) tea.Cmd {
+	return tea.Tick(omarchyWatchInterval, func(time.Time) tea.Msg {
+		return omarchyThemeTickMsg{Generation: generation}
+	})
 }
 
 // omarchySignature is the cheap change-detection token for the active Omarchy
@@ -143,33 +151,29 @@ func omarchyWatchCmd() tea.Cmd {
 func omarchySignature() string { return omarchy.CurrentSignature() }
 
 // startOmarchyWatchIfNeeded records the current Omarchy signature and returns
-// the live-follow poll command when the active theme is "match-omarchy" and no
-// poll loop is already running; otherwise it returns nil.
+// a fresh live-follow poll command when the active theme is "match-omarchy".
+// Advancing the generation invalidates any delayed tick from an earlier theme
+// selection, including switching away and quickly switching back.
 func (m *Model) startOmarchyWatchIfNeeded() tea.Cmd {
+	m.omarchyWatchGeneration++
 	if !isMatchOmarchy(m.cfg.Theme) {
 		return nil
 	}
 	m.omarchySig = omarchySignature()
-	if m.omarchyWatching {
-		return nil
-	}
-	m.omarchyWatching = true
-	return omarchyWatchCmd()
+	return omarchyWatchCmd(m.omarchyWatchGeneration)
 }
 
 // handleOmarchyThemeTick is the live-follow poll. While the active theme is
 // "match-omarchy" it re-resolves the Omarchy palette whenever the desktop theme
 // changed and re-arms itself; when the theme is no longer "match-omarchy" it
 // stops (returns no command).
-func (m Model) handleOmarchyThemeTick() (tea.Model, tea.Cmd) {
-	if !isMatchOmarchy(m.cfg.Theme) {
-		m.omarchyWatching = false
+func (m Model) handleOmarchyThemeTick(msg omarchyThemeTickMsg) (tea.Model, tea.Cmd) {
+	if msg.Generation != m.omarchyWatchGeneration || !isMatchOmarchy(m.cfg.Theme) {
 		return m, nil
 	}
-	m.omarchyWatching = true
 	sig := omarchySignature()
 	if sig == m.omarchySig {
-		return m, omarchyWatchCmd()
+		return m, omarchyWatchCmd(msg.Generation)
 	}
 	m.omarchySig = sig
 	merged, _ := MergedThemeFromConfig(m.cfg)
@@ -177,5 +181,5 @@ func (m Model) handleOmarchyThemeTick() (tea.Model, tea.Cmd) {
 	if m.activeMessageRowCount() > 0 {
 		m.setViewportForCurrentRow()
 	}
-	return m, tea.Batch(omarchyWatchCmd(), setTermColorsCmd(merged.Fg, merged.Bg))
+	return m, tea.Batch(omarchyWatchCmd(msg.Generation), setTermColorsCmd(merged.Fg, merged.Bg))
 }

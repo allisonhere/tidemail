@@ -49,6 +49,8 @@ type MailboxSyncedMsg struct {
 	NewMessages []db.Message // genuinely-new unread mail, for notification sender/subject
 	Err         error
 	Manual      bool
+	Passive     bool      // settled-folder refresh; never drives animated sync chrome
+	SyncedAt    time.Time // successful completion time, applied to in-memory freshness immediately
 	Total       time.Duration
 }
 

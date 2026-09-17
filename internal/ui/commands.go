@@ -206,7 +206,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 	case "sync-all":
 		var cmds []tea.Cmd
 		for _, mb := range m.mailboxes {
-			cmds = append(cmds, m.syncMailboxCmd(mb.ID, false))
+			cmds = append(cmds, m.syncMailboxCmd(mb.ID, true))
 		}
 		return m, tea.Batch(cmds...)
 	case "accounts":

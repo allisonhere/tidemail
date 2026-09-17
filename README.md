@@ -86,7 +86,8 @@ a key. TideMail keeps the help screen inside the app and lets you search it.
 
 ## A normal day in TideMail
 
-- Press `s` to sync the current mailbox. Press `F` to sync every folder.
+- Rest on a folder to refresh a stale cache silently, press `Enter` or `s` to
+  fetch it immediately, or press `F` to sync every folder.
 - Mark messages with `Space`, then archive, move, delete, or change read state as
   a group.
 - Press `/` to search the local message cache across accounts.
@@ -126,8 +127,9 @@ announces it (`sync_minutes = 0`); interval polling stays available for servers
 that need it, and `-1` keeps an account manual-only.
 
 Drafts live under the selected sender account. Sent messages use that account's
-SMTP settings. TideMail detects common Archive and Trash folder names, including
-Gmail labels.
+SMTP settings and are filed in its server-side Sent folder; Gmail's own SMTP
+filing is detected so it does not receive a duplicate. TideMail detects common
+Sent, Archive, and Trash folder names, including Gmail labels.
 
 ## Search, links, and attachments
 
@@ -153,7 +155,7 @@ AI stays off until you configure a provider.
 |---|---|
 | `j` / `k` | Move down or up |
 | `Tab` / `Shift+Tab` | Move between panes or compose fields |
-| `Enter` | Open a message, folder, draft, or picker |
+| `Enter` | Open a message, immediately sync a folder, or open a draft or picker |
 | `c` | Compose |
 | `r` / `f` | Reply or forward from the reading pane |
 | `Space` | Select a message for a bulk action |

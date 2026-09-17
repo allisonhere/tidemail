@@ -4,13 +4,25 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.0.19
+
 ### Fixed
 
+- **`match-omarchy` now applies and follows the real desktop palette.** TideMail
+  previously set the terminal's default foreground and background from a
+  Catppuccin placeholder, then loaded the Omarchy palette only for styled UI
+  elements. Unstyled message text could therefore keep the wrong colors until
+  the desktop theme changed. Live following could also stop after switching
+  away from and back to `match-omarchy`; each selection now starts a fresh,
+  stale-tick-safe watcher. Omarchy's explicit selection color is honored too.
 - **The Sent folder now fills in.** Opening any folder other than the inbox
   fetches it — previously only inboxes were ever synced, so Sent, Archive and
-  every label stayed empty no matter how long you waited. Landing on a folder
-  syncs it after a short pause, so scrolling the sidebar does not fire a request
-  per row, and `Enter` on a folder fetches it immediately.
+  every label stayed empty no matter how long you waited. Resting on a stale
+  folder refreshes it silently after a short pause; superseded refreshes are
+  cancelled so scrolling stays responsive. `Enter` fetches a folder immediately.
+  Background syncs — timers, push nudges, the startup sweep and this resting
+  refresh — no longer flash `syncing...` on the status line; only a sync you
+  start yourself (`s`, `F`, `Enter`, or the commands) shows progress.
 - **Mail you send is saved to the server's Sent folder.** TideMail delivered
   over SMTP but never filed a copy, so on a custom domain nothing you sent
   appeared in Sent at all. Gmail is left alone, since it files submitted mail

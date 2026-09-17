@@ -21,7 +21,7 @@ func TestInstallScriptDefaultsToUserLocalBinWithoutSudo(t *testing.T) {
 	cmd := exec.Command("sh", "install.sh")
 	cmd.Env = append(os.Environ(),
 		"HOME="+tmp,
-		"PATH="+installTestPath(bin),
+		"PATH="+installTestPath(t, bin),
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -54,7 +54,7 @@ func TestInstallScriptRemovesWritableStaleBinaryEarlierOnPath(t *testing.T) {
 	cmd := exec.Command("sh", "install.sh")
 	cmd.Env = append(os.Environ(),
 		"HOME="+tmp,
-		"PATH="+installTestPath(fakeBin, staleBin, filepath.Join(tmp, ".local", "bin")),
+		"PATH="+installTestPath(t, fakeBin, staleBin, filepath.Join(tmp, ".local", "bin")),
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -88,7 +88,7 @@ func TestInstallScriptLeavesExistingBinaryWhenDownloadedBinaryFailsVersionCheck(
 	cmd.Env = append(os.Environ(),
 		"HOME="+tmp,
 		"INSTALL_DIR="+installDir,
-		"PATH="+installTestPath(fakeBin),
+		"PATH="+installTestPath(t, fakeBin),
 	)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -143,7 +143,7 @@ func TestInstallScriptCleansStagedBinaryWhenInstallVerificationFails(t *testing.
 	cmd.Env = append(os.Environ(),
 		"HOME="+tmp,
 		"INSTALL_DIR="+installDir,
-		"PATH="+installTestPath(fakeBin),
+		"PATH="+installTestPath(t, fakeBin),
 	)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -215,10 +215,40 @@ func assertNoInstallTemps(t *testing.T, dir string) {
 	}
 }
 
-func installTestPath(dirs ...string) string {
+func installTestPath(t *testing.T, dirs ...string) string {
+	t.Helper()
 	parts := append([]string{}, dirs...)
-	parts = append(parts, "/usr/bin", "/bin")
+	parts = append(parts, installTestSystemDir(t))
 	return strings.Join(parts, string(os.PathListSeparator))
+}
+
+// installTestSystemDir mirrors the host's system utilities into a temp
+// directory without any pre-existing tidemail. Tests must not depend on, or
+// try to delete, a real install on the machine running them: an unrelated
+// /usr/bin/tidemail (e.g. a distro package) used to make the no-sudo test fail.
+func installTestSystemDir(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "system-bin")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, base := range []string{"/usr/bin", "/bin"} {
+		entries, err := os.ReadDir(base)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if entry.Name() == "tidemail" {
+				continue
+			}
+			dst := filepath.Join(dir, entry.Name())
+			if _, err := os.Lstat(dst); err == nil {
+				continue
+			}
+			_ = os.Symlink(filepath.Join(base, entry.Name()), dst)
+		}
+	}
+	return dir
 }
 
 func shellQuote(s string) string {

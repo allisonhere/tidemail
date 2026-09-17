@@ -11,7 +11,9 @@ Current release: **v1.0.5**.
 - **Multi-account IMAP**: connect, list mailboxes, fetch, move, delete, archive,
   mark read/unread, star. Delete moves remote mail to Trash when one is available,
   with permanent expunge as the fallback. Incremental sync via UID SEARCH SINCE,
-  with pagination past the first 100 messages.
+  with a 100-message inbox first page, a 25-message first page for attachment-heavy
+  folders, and 100-message pagination. Resting on a stale non-inbox folder starts
+  one cancellable, silent refresh; `Enter` or `s` refreshes it immediately.
 - **Connection model**: a per-account session pool (`internal/imap/pool.go`) keeps one
   reusable connection per account, serializes that account's operations, revalidates
   with NOOP, redials on config change, and reaps after 3 minutes idle. Every UI
@@ -27,7 +29,9 @@ Current release: **v1.0.5**.
   mail from resurrecting through date-granular re-fetches.
 - **SMTP send**: plain, STARTTLS, and direct TLS (port 465). Auth is app-password over
   PLAIN, or XOAUTH2 for OAuth Gmail accounts. Reply/forward threading headers; display
-  name preserved in `From:`.
+  name preserved in `From:`. Delivered mail is appended to the account's discovered
+  Sent folder for providers that do not file SMTP submissions themselves; Gmail is
+  skipped to avoid duplicate copies.
 - **Drafts**: local drafts plus a one-way mirror of server drafts, deduplicated by a
   partial unique index on `(mailbox_id, remote_uid)`.
 - **Three-pane UI**: accounts sidebar, message list, message content. Pane header

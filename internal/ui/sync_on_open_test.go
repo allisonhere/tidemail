@@ -57,6 +57,9 @@ func TestSettledTickSyncsNeverSyncedFolder(t *testing.T) {
 	if !next.(Model).syncing[sentID] {
 		t.Fatal("expected the folder to be marked syncing")
 	}
+	if next.(Model).syncVisible[sentID] {
+		t.Fatal("a passive folder refresh must not animate sync chrome")
+	}
 }
 
 // Scrolling past a folder must not sync it: the tick armed for it is stale by
@@ -158,6 +161,9 @@ func TestSyncKeysStartSyncs(t *testing.T) {
 	if cmd == nil || !next.(Model).syncing[sentID] {
 		t.Fatal("expected s to sync the selected folder")
 	}
+	if !next.(Model).syncVisible[sentID] {
+		t.Fatal("an explicit sync should retain visible progress")
+	}
 
 	m2, _ := sentFolderModel(t, 0)
 	next2, cmd2 := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
@@ -189,5 +195,78 @@ func TestSidebarMovementArmsTheSettleTick(t *testing.T) {
 	}
 	if next.(Model).syncing[sentID] {
 		t.Fatal("movement alone must not sync — that is what the debounce is for")
+	}
+}
+
+func TestSupersededSettleCommandReturnsNoMessage(t *testing.T) {
+	m, _ := sentFolderModel(t, 0)
+	first := m.scheduleFolderSettle()
+	if first == nil {
+		t.Fatal("expected the first settle command")
+	}
+	if second := m.scheduleFolderSettle(); second == nil {
+		t.Fatal("expected the replacement settle command")
+	}
+	if msg := first(); msg != nil {
+		t.Fatalf("superseded settle command returned %T; want nil to avoid a redraw", msg)
+	}
+}
+
+func TestMovingOntoNonFolderCancelsSettleCommand(t *testing.T) {
+	m, _ := sentFolderModel(t, 0)
+	m.sidebarRows = append(m.sidebarRows, sidebarRow{kind: rowKindAccount, accountID: 1})
+	settle := m.scheduleFolderSettle()
+
+	next, _ := m.handleDown()
+	if next.(Model).folderSettlePending != 0 {
+		t.Fatal("moving away from a folder must clear a deferred passive refresh")
+	}
+	if msg := settle(); msg != nil {
+		t.Fatalf("moving onto a non-folder left settle message %T armed", msg)
+	}
+}
+
+func TestPassiveRefreshDefersBehindSameAccountSync(t *testing.T) {
+	m, sentID := sentFolderModel(t, 0)
+	inboxID, err := m.db.UpsertMailbox(db.Mailbox{AccountID: 1, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.mailboxes = append(m.mailboxes, db.Mailbox{ID: inboxID, AccountID: 1, Name: "INBOX"})
+	m.syncing[inboxID] = true
+	m.folderSettleSeq = 4
+
+	next, cmd := m.Update(FolderSettledMsg{Seq: 4, MailboxID: sentID})
+	got := next.(Model)
+	if cmd != nil {
+		t.Fatal("passive refresh must not queue behind a same-account sync")
+	}
+	if got.syncing[sentID] {
+		t.Fatal("deferred folder must not be marked syncing")
+	}
+	if got.folderSettlePending != sentID {
+		t.Fatalf("pending folder = %d, want %d", got.folderSettlePending, sentID)
+	}
+
+	next, cmd = got.Update(MailboxSyncedMsg{MailboxID: inboxID})
+	if cmd == nil {
+		t.Fatal("completing the account sync should rearm the selected folder")
+	}
+	if next.(Model).folderSettlePending != 0 {
+		t.Fatal("rearmed folder should no longer remain pending")
+	}
+}
+
+func TestSuccessfulSyncUpdatesFreshnessImmediately(t *testing.T) {
+	m, sentID := sentFolderModel(t, 0)
+	syncedAt := time.Now()
+
+	next, _ := m.Update(MailboxSyncedMsg{MailboxID: sentID, SyncedAt: syncedAt})
+	got := next.(Model).mailboxByID(sentID)
+	if got == nil || !got.LastSynced.Equal(syncedAt) {
+		t.Fatalf("LastSynced = %v, want %v", got, syncedAt)
+	}
+	if next.(Model).shouldAutoSyncFolder(*got) {
+		t.Fatal("a just-completed sync must be fresh before the account reload lands")
 	}
 }

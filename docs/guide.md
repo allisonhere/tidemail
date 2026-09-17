@@ -49,6 +49,10 @@ provider requires an app password, create one before saving the account.
 
 After you add an account, press `s` to sync the selected mailbox. Press `s` on
 the Unified Inbox to sync every account's inbox, or `F` to sync all mailboxes.
+When you stop on a non-inbox folder, TideMail silently refreshes it if its cache
+is more than 15 minutes old. Scrolling past folders does not queue refreshes;
+press `Enter` on a folder row when you want to fetch it immediately. Manual-only
+accounts refresh only when you explicitly use `Enter`, `s`, or `F`.
 `sync_minutes` controls how an account refreshes on its own:
 
 | Value | Meaning |
@@ -77,10 +81,10 @@ account and folder, and matches as you type. In the content pane, `Ctrl+E` shows
 the full headers and authentication results. `Ctrl+U` opens the mailing list's
 unsubscribe option when the message provides one.
 
-Search only reaches mail TideMail has cached. The first sync of a mailbox
-fetches the 100 most recent messages; moving down past the last message in the
-list pulls the next 100 from the server, so you can page back as far as the
-mailbox goes.
+Search only reaches mail TideMail has cached. The first sync fetches the 100
+most recent inbox messages and 25 messages from other folders, whose attachments
+can make each batch much larger. Moving down past the last message in a folder
+pulls the next 100 from the server, so you can page back as far as it goes.
 
 ## Writing mail
 
@@ -92,6 +96,11 @@ If you have more than one account, the From row works as an account picker.
 Focus it with `Shift+Tab` from the To row, then press `Enter` or `Space` and
 choose the account. `Ctrl+U` cycles through the same list. TideMail uses that
 account's SMTP settings, From address, and signature.
+
+After delivery, TideMail saves a copy to the sending account's server-side Sent
+folder. Gmail already files SMTP submissions itself, so TideMail does not append
+a duplicate there. Other providers use the server's `\Sent` folder flag, with
+common names such as `Sent`, `Sent Items`, and `INBOX.Sent` as fallbacks.
 
 TideMail waits five seconds before sending by default. Press `Ctrl+Z` during
 that window to cancel delivery and reopen the draft. Change the delay under
@@ -320,8 +329,9 @@ follows your current Omarchy desktop theme, remapped and contrast-corrected so
 TideMail stays readable whatever palette Omarchy is on. It reads the palette
 from `omarchy-theme-color` (falling back to
 `~/.local/state/omarchy/current/theme/colors.toml`), works for both light and
-dark Omarchy themes, and repaints within a couple of seconds when you switch
-your desktop theme — no restart. If Omarchy isn't installed it falls back to
+dark Omarchy themes, applies the palette to both styled UI and terminal-default
+text at startup, and repaints within a couple of seconds when you switch your
+desktop theme — no restart. If Omarchy isn't installed it falls back to
 `catppuccin-mocha`.
 
 ## Settings

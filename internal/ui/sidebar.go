@@ -579,7 +579,7 @@ func (m Model) renderSidebarMailboxRow(mb db.Mailbox, selected bool, width int) 
 	if !m.iconsEnabled() {
 		prefix = "    " + m.mailboxRowPrefix(selected)
 	}
-	if m.syncing[mb.ID] {
+	if m.syncVisible[mb.ID] {
 		prefix = "    " + m.spinner.View() + " "
 	}
 	row := renderFeedRow(prefix, title, badge, width)
