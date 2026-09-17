@@ -279,12 +279,64 @@ func (c *Client) ListMailboxes(ctx context.Context) ([]MailboxInfo, error) {
 // anything. Older mail is paged in on demand — see Client.FetchOlderThan.
 const MessagesPerInitialSync = 100
 
+// MessagesPerFolderFirstSync is the smaller first page used for folders other
+// than the inbox. A fetch pulls whole bodies, attachments included, and buffers
+// the batch before returning — and Sent is exactly where a user's large
+// outgoing attachments accumulate. Asking Gmail for 100 of those makes it drop
+// the connection mid-response ("unexpected EOF") after about a minute, where 25
+// completes in three seconds. Older mail still pages in on demand.
+const MessagesPerFolderFirstSync = 25
+
 func (c *Client) FetchMessages(ctx context.Context, mailboxName string, limit int) ([]db.Message, error) {
 	return c.fetchMessages(ctx, mailboxName, limit, time.Time{})
 }
 
 func (c *Client) FetchSince(ctx context.Context, mailboxName string, since time.Time) ([]db.Message, error) {
 	return c.fetchMessages(ctx, mailboxName, MessagesPerInitialSync, since)
+}
+
+// FetchSinceLimit is FetchSince with an explicit cap on the first page, for
+// callers that know the mailbox is cold and potentially heavy.
+func (c *Client) FetchSinceLimit(ctx context.Context, mailboxName string, since time.Time, limit int) ([]db.Message, error) {
+	if limit <= 0 {
+		limit = MessagesPerInitialSync
+	}
+	return c.fetchMessages(ctx, mailboxName, limit, since)
+}
+
+// AppendSent stores a copy of an outgoing message in mailboxName, flagged
+// \Seen because mail you just sent is not unread. SMTP submission leaves no
+// copy behind, so without this the Sent folder stays empty on any server that
+// does not file submitted mail itself.
+//
+// APPEND writes to a mailbox without selecting it, so this does not disturb
+// whichever mailbox the pooled connection currently has selected.
+func (c *Client) AppendSent(ctx context.Context, mailboxName string, raw []byte, when time.Time) error {
+	if c.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	if len(raw) == 0 {
+		return fmt.Errorf("empty message")
+	}
+	defer c.applyDeadline(ctx)()
+
+	cmd := c.conn.Append(mailboxName, int64(len(raw)), &imap.AppendOptions{
+		Flags: []imap.Flag{imap.FlagSeen},
+		Time:  when,
+	})
+	if _, err := cmd.Write(raw); err != nil {
+		// The literal must still be closed, or the encoder keeps hold of the
+		// connection and every later command on this pooled session hangs.
+		cmd.Close() //nolint:errcheck // the write error is the one worth reporting
+		return fmt.Errorf("append %s: %w", mailboxName, err)
+	}
+	if err := cmd.Close(); err != nil {
+		return fmt.Errorf("append %s: %w", mailboxName, err)
+	}
+	if _, err := cmd.Wait(); err != nil {
+		return fmt.Errorf("append %s: %w", mailboxName, err)
+	}
+	return nil
 }
 
 func (c *Client) MarkSeen(ctx context.Context, mailboxName string, uid uint32, seen bool) error {

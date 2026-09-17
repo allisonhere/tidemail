@@ -369,7 +369,13 @@ func (m *Model) refreshMailboxesCmd(accountID int64) tea.Cmd {
 			known[mb.Name] = true
 		}
 
+		byName := make(map[string]db.Mailbox, len(existing))
+		for _, mb := range existing {
+			byName[mb.Name] = mb
+		}
+
 		var added []db.Mailbox
+		var updated []db.Mailbox
 		var removed []int64
 		err = sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
 			infos, listErr := client.ListMailboxes(ctx)
@@ -379,9 +385,6 @@ func (m *Model) refreshMailboxesCmd(accountID int64) tea.Cmd {
 			server := make(map[string]bool, len(infos))
 			for _, info := range infos {
 				server[info.Name] = true
-				if known[info.Name] {
-					continue
-				}
 				mb := db.Mailbox{
 					AccountID:   accountID,
 					Name:        info.Name,
@@ -389,12 +392,21 @@ func (m *Model) refreshMailboxesCmd(accountID int64) tea.Cmd {
 					Delimiter:   info.Delimiter,
 					Flags:       info.Flags,
 				}
+				// Upsert even when the mailbox is already known: the row may
+				// predate special-use flags entirely (accounts imported from
+				// the config file get a bare INBOX), and without this refresh
+				// \Sent and friends could never be learned.
 				id, upsertErr := database.UpsertMailbox(mb)
 				if upsertErr != nil {
 					continue
 				}
 				mb.ID = id
-				added = append(added, mb)
+				if !known[info.Name] {
+					added = append(added, mb)
+				} else if prev := byName[info.Name]; !sameMailboxMetadata(prev, mb) {
+					mb.ID = prev.ID
+					updated = append(updated, mb)
+				}
 			}
 
 			for _, id := range prunableMailboxIDs(existing, server) {
@@ -410,7 +422,7 @@ func (m *Model) refreshMailboxesCmd(accountID int64) tea.Cmd {
 			}
 			return nil
 		})
-		return MailboxesRefreshedMsg{AccountID: accountID, Mailboxes: added, Removed: removed, Err: err}
+		return MailboxesRefreshedMsg{AccountID: accountID, Mailboxes: added, Updated: updated, Removed: removed, Err: err}
 	}
 }
 
@@ -520,6 +532,76 @@ func (m *Model) loadOlderMessagesCmd(mailboxID int64) tea.Cmd {
 	}
 }
 
+// Opening a folder should fill it, but syncing on every cursor movement would
+// fire a request per row while scrolling the sidebar. Instead arm a timer and
+// only act if the cursor is still on the same folder when it lands. Bubble Tea
+// cannot cancel a tea.Tick, so a generation counter stands in: a tick whose
+// sequence no longer matches is simply discarded.
+const (
+	folderSettleDelay = 500 * time.Millisecond
+	folderStaleAfter  = 15 * time.Minute
+	// coldSyncTimeout covers a first-ever fetch of a folder, which downloads a
+	// whole page of bodies rather than the handful an incremental sync sees.
+	coldSyncTimeout = 5 * time.Minute
+)
+
+// sameMailboxMetadata reports whether a server LIST entry tells us anything new
+// about a folder we already store.
+func sameMailboxMetadata(a, b db.Mailbox) bool {
+	if a.Delimiter != b.Delimiter || len(a.Flags) != len(b.Flags) {
+		return false
+	}
+	have := make(map[string]bool, len(a.Flags))
+	for _, f := range a.Flags {
+		have[strings.ToLower(f)] = true
+	}
+	for _, f := range b.Flags {
+		if !have[strings.ToLower(f)] {
+			return false
+		}
+	}
+	return true
+}
+
+// scheduleFolderSettle arms a background sync for the highlighted folder.
+func (m *Model) scheduleFolderSettle() tea.Cmd {
+	selected := m.selectedMailbox()
+	if selected == nil {
+		return nil
+	}
+	m.folderSettleSeq++
+	seq := m.folderSettleSeq
+	id := selected.ID
+	return tea.Tick(folderSettleDelay, func(time.Time) tea.Msg {
+		return FolderSettledMsg{Seq: seq, MailboxID: id}
+	})
+}
+
+// shouldAutoSyncFolder reports whether resting on this folder should fetch it.
+// Inboxes are excluded because the timers and the IDLE watcher already cover
+// them, and an account set to manual-only is never touched in the background.
+func (m Model) shouldAutoSyncFolder(mb db.Mailbox) bool {
+	if isInboxMailbox(mb) {
+		return false
+	}
+	for _, acc := range m.accounts {
+		if acc.ID != mb.AccountID {
+			continue
+		}
+		for _, acfg := range m.cfg.Accounts {
+			if acfg.Name == acc.Name && acfg.SyncMinutes < 0 {
+				return false
+			}
+		}
+	}
+	// A row that has never synced decodes to the Unix epoch, not the zero
+	// time, so IsZero alone would miss it.
+	if mb.LastSynced.IsZero() || mb.LastSynced.Unix() <= 0 {
+		return true
+	}
+	return time.Since(mb.LastSynced) >= folderStaleAfter
+}
+
 func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
 	// One sync per mailbox at a time. Launch timers, the startup sweep, and IDLE
 	// nudges all target the inbox and can otherwise stack up on it, which costs a
@@ -559,9 +641,17 @@ func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
 		}
 	}
 	sessions := m.sessions
+	// A folder that has never synced pulls a full page of message bodies, which
+	// is a different order of work from an incremental fetch — Gmail's Sent Mail
+	// needs well over a minute. Give the cold case room rather than tearing the
+	// connection down mid-response.
+	timeout := 60 * time.Second
+	if mailbox.LastSynced.IsZero() || mailbox.LastSynced.Unix() <= 0 {
+		timeout = coldSyncTimeout
+	}
 	fetch := func() tea.Msg {
 		t0 := time.Now()
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		// "connect" in the fetch log now covers session acquisition: a queue
 		// wait plus either a NOOP revalidation or a fresh dial.
@@ -586,11 +676,22 @@ func (m *Model) syncMailboxCmd(mailboxID int64, manual bool) tea.Cmd {
 				_ = database.SetMailboxUIDValidity(mailboxID, uidValidity) //nolint:errcheck
 			}
 
+			// A cold mailbox has no floor to fetch from, so take the most
+			// recent page instead of everything since the epoch.
+			cold := false
 			if existing, countErr := database.CountMessages(mailboxID); countErr == nil && existing == 0 {
 				since = time.Time{}
+				cold = true
+			}
+			// Keep the inbox's proven first page, but ask for less from other
+			// folders: they are fetched whole-body and Sent in particular can
+			// be heavy enough that the server drops the connection.
+			limit := imapClient.MessagesPerInitialSync
+			if cold && !isInboxMailbox(mailbox) {
+				limit = imapClient.MessagesPerFolderFirstSync
 			}
 			fetchStart := time.Now()
-			msgs, err := client.FetchSince(ctx, mailbox.Name, since)
+			msgs, err := client.FetchSinceLimit(ctx, mailbox.Name, since, limit)
 			fetchDur := time.Since(fetchStart)
 			if err != nil {
 				logFetch(acc.Name, mailbox.Name, 0, connectDur, fetchDur, time.Since(t0), err)

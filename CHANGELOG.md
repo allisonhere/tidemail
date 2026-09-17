@@ -4,6 +4,24 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- **The Sent folder now fills in.** Opening any folder other than the inbox
+  fetches it — previously only inboxes were ever synced, so Sent, Archive and
+  every label stayed empty no matter how long you waited. Landing on a folder
+  syncs it after a short pause, so scrolling the sidebar does not fire a request
+  per row, and `Enter` on a folder fetches it immediately.
+- **Mail you send is saved to the server's Sent folder.** TideMail delivered
+  over SMTP but never filed a copy, so on a custom domain nothing you sent
+  appeared in Sent at all. Gmail is left alone, since it files submitted mail
+  itself and a second copy would show everything twice.
+- **A first fetch of a large folder no longer fails.** Asking for a hundred
+  whole messages at once made Gmail drop the connection partway through Sent,
+  where attachments accumulate. Folders outside the inbox now start with a
+  smaller page and fill in the rest as you scroll.
+- **A sync key that cannot act now says why** instead of doing nothing, and the
+  message list advertises `s sync`.
+
 ## v1.0.18
 
 ## v1.0.17

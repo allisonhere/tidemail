@@ -200,6 +200,9 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		if selected := m.selectedMailbox(); selected != nil {
 			return m, m.syncMailboxCmd(selected.ID, true)
 		}
+		// Same latent silent no-op as the Sync key: say why nothing happened.
+		m.setStatus("no folder selected — pick one in the sidebar first", false)
+		return m, m.clearStatusCmd()
 	case "sync-all":
 		var cmds []tea.Cmd
 		for _, mb := range m.mailboxes {

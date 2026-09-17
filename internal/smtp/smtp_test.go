@@ -522,3 +522,56 @@ func TestBuildRaw_MultilineBody(t *testing.T) {
 		t.Fatalf("expected multiline body, got %q", s)
 	}
 }
+
+// The copy appended to Sent must be exactly what was delivered, or the user's
+// record of what they sent is a near-miss rather than the thing itself.
+func TestBuildRawIsStableAcrossCalls(t *testing.T) {
+	cfg := config.AccountConfig{From: "me@example.com", User: "me@example.com"}
+	msg := OutgoingMessage{
+		To:      []string{"you@example.com"},
+		Subject: "Stable bytes",
+		Body:    "hello",
+	}
+	msg.EnsureIdentity(cfg.From)
+
+	first := BuildRaw(cfg, msg)
+	second := BuildRaw(cfg, msg)
+	if string(first) != string(second) {
+		t.Fatal("BuildRaw must be deterministic once identity is stamped")
+	}
+	if len(first) == 0 {
+		t.Fatal("BuildRaw produced nothing")
+	}
+}
+
+// Without these headers an appended copy has no date and nothing to thread or
+// deduplicate on — a submission server stamps them, but our own copy is ours.
+func TestBuildRawIncludesDateAndMessageID(t *testing.T) {
+	cfg := config.AccountConfig{From: "Me <me@example.com>"}
+	msg := OutgoingMessage{To: []string{"you@example.com"}, Subject: "Headers", Body: "hi"}
+	msg.EnsureIdentity(cfg.From)
+
+	raw := string(BuildRaw(cfg, msg))
+	if !strings.Contains(raw, "Date: ") {
+		t.Fatalf("missing Date header:\n%s", raw)
+	}
+	if !strings.Contains(raw, "Message-ID: <") {
+		t.Fatalf("missing Message-ID header:\n%s", raw)
+	}
+	// The msg-id domain should come from the sender, not a placeholder.
+	if !strings.Contains(raw, "@example.com>") {
+		t.Fatalf("Message-ID should use the sender's domain:\n%s", raw)
+	}
+}
+
+// EnsureIdentity must not overwrite values a message already carries.
+func TestEnsureIdentityIsIdempotent(t *testing.T) {
+	msg := OutgoingMessage{MessageID: "<fixed@example.com>", Date: time.Unix(1700000000, 0)}
+	msg.EnsureIdentity("me@example.com")
+	if msg.MessageID != "<fixed@example.com>" {
+		t.Fatalf("MessageID = %q, want it left alone", msg.MessageID)
+	}
+	if msg.Date.Unix() != 1700000000 {
+		t.Fatalf("Date = %v, want it left alone", msg.Date)
+	}
+}

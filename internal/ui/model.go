@@ -124,11 +124,14 @@ type Model struct {
 	width, height int
 	focused       pane
 
-	accounts          []db.Account
-	mailboxes         []db.Mailbox
-	sidebarRows       []sidebarRow
-	sidebarCursor     int
-	sidebarOffset     int
+	accounts      []db.Account
+	mailboxes     []db.Mailbox
+	sidebarRows   []sidebarRow
+	sidebarCursor int
+	sidebarOffset int
+	// folderSettleSeq invalidates in-flight folder-settle ticks: every sidebar
+	// move bumps it, so a tick armed for an earlier row is ignored on arrival.
+	folderSettleSeq   int
 	collapsedAccounts map[int64]bool
 	collapsedSections map[string]bool // key: "system:<id>" or "personal:<id>"
 
@@ -576,6 +579,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loadCollapseState()
 			m.rebuildSidebar()
 			statusCmd = tea.Batch(statusCmd, m.startSyncTimers(), m.syncInboxesNowCmd(), m.loadAddressBookCmd())
+			// One folder LIST per account at launch, independent of sync mode.
+			// refreshMailboxesCmd otherwise only runs off AutoSyncMsg, which a
+			// manual-only account never receives — so its folder tree would
+			// stay at whatever was stored last, or a bare INBOX for an account
+			// imported from the config file.
+			for _, acc := range m.accounts {
+				if cmd := m.refreshMailboxesCmd(acc.ID); cmd != nil {
+					m.lastFolderRefresh[acc.ID] = time.Now()
+					statusCmd = tea.Batch(statusCmd, cmd)
+				}
+			}
 			// If the keychain isn't readable, stored passwords/tokens came back
 			// empty — warn once up front so the failed syncs that follow aren't a
 			// mystery.
@@ -651,6 +665,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.selectedDraftsMailbox() {
 				cmds = append(cmds, m.loadDraftsCmd(selected.ID))
 			}
+			// A folder restored as the selection on startup fills in too.
+			cmds = append(cmds, m.scheduleFolderSettle())
 		} else {
 			m.clearMessages()
 		}
@@ -760,6 +776,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+
+	case FolderSettledMsg:
+		// Ignore a tick armed for a folder the cursor has since left.
+		if msg.Seq != m.folderSettleSeq {
+			return m, nil
+		}
+		selected := m.selectedMailbox()
+		if selected == nil || selected.ID != msg.MailboxID {
+			return m, nil
+		}
+		if !m.shouldAutoSyncFolder(*selected) {
+			return m, nil
+		}
+		// Not a manual sync: it was not asked for, so it stays quiet and
+		// yields to any sync already running.
+		return m, m.syncMailboxCmd(selected.ID, false)
 
 	case DraftsLoadedMsg:
 		if msg.Err != nil {
@@ -939,7 +971,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			logFetch(fmt.Sprintf("account %d", msg.AccountID), "(folders)", 0, 0, 0, 0, msg.Err)
 			return m, nil
 		}
-		if len(msg.Mailboxes) == 0 && len(msg.Removed) == 0 {
+		if len(msg.Mailboxes) == 0 && len(msg.Updated) == 0 && len(msg.Removed) == 0 {
 			return m, nil
 		}
 		// Capture the active folder before mutating so we can detect whether it
@@ -950,6 +982,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if len(msg.Mailboxes) > 0 {
 			m.mailboxes = append(m.mailboxes, msg.Mailboxes...)
+		}
+		if len(msg.Updated) > 0 {
+			// Refreshed flags/delimiter for folders we already had. Keep
+			// LastSynced and unread counts, which the LIST does not carry.
+			byID := make(map[int64]db.Mailbox, len(msg.Updated))
+			for _, mb := range msg.Updated {
+				byID[mb.ID] = mb
+			}
+			for i := range m.mailboxes {
+				if fresh, ok := byID[m.mailboxes[i].ID]; ok {
+					m.mailboxes[i].Flags = fresh.Flags
+					m.mailboxes[i].Delimiter = fresh.Delimiter
+					m.mailboxes[i].DisplayName = fresh.DisplayName
+				}
+			}
 		}
 		if len(msg.Removed) > 0 {
 			gone := make(map[int64]bool, len(msg.Removed))
@@ -1596,6 +1643,15 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.toggleSelectedSection() {
 				return m, nil
 			}
+			// Neither toggle applied, so the cursor is on a folder row: Enter
+			// means "fetch this folder now". Explicit, so it skips the settle
+			// debounce and the passive gates — a manual-only account syncs on
+			// request, which is what manual-only means.
+			if selected := m.selectedMailbox(); selected != nil {
+				// Supersede any armed settle so it cannot fire a second sync.
+				m.folderSettleSeq++
+				return m, m.syncMailboxCmd(selected.ID, true)
+			}
 		}
 		if m.focused == paneMessages && (m.activeMessageRowCount() > 0 || (m.selectedDraftsMailbox() && len(m.drafts) > 0)) {
 			return m.focusPane(paneContent)
@@ -1640,7 +1696,11 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if selected := m.selectedMailbox(); selected != nil {
 			return m, m.syncMailboxCmd(selected.ID, true)
 		}
-		return m, nil
+		// A keypress that silently does nothing reads as the app being broken —
+		// the same rule syncMailboxCmd already applies to a refused sync.
+		m.setStatus("no folder selected — pick one in the sidebar, or "+
+			m.keyHint(m.keys.SyncAll)+" syncs every folder", false)
+		return m, m.clearStatusCmd()
 
 	case keyMatches(msg, m.keys.SyncAll):
 		var cmds []tea.Cmd
@@ -1982,7 +2042,8 @@ func (m Model) handleUp() (tea.Model, tea.Cmd) {
 				if m.selectedDraftsMailbox() {
 					cmd = tea.Batch(cmd, m.loadDraftsCmd(selected.ID))
 				}
-				return m, cmd
+				// Fill the folder from the server too, once the cursor settles.
+				return m, tea.Batch(cmd, m.scheduleFolderSettle())
 			}
 			m.clearMessages()
 		}
@@ -2028,7 +2089,8 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 				if m.selectedDraftsMailbox() {
 					cmd = tea.Batch(cmd, m.loadDraftsCmd(selected.ID))
 				}
-				return m, cmd
+				// Fill the folder from the server too, once the cursor settles.
+				return m, tea.Batch(cmd, m.scheduleFolderSettle())
 			}
 			m.clearMessages()
 		}
@@ -2672,13 +2734,14 @@ func (m Model) renderPaneHint(p pane) string {
 	switch p {
 	case paneAccounts:
 		hint = m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " move  " +
-			m.keyHint(m.keys.Enter) + " toggle  " + m.keyHint(m.keys.Sync) + " sync"
+			m.keyHint(m.keys.Enter) + " toggle/sync  " + m.keyHint(m.keys.Sync) + " sync"
 	case paneMessages:
 		hint = m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " move  " +
 			m.keyHint(m.keys.Space) + " select  " +
 			m.keyHint(m.keys.MarkRead) + " read  " +
 			m.keyHint(m.keys.ToggleStar) + " star  " +
 			m.keyHint(m.keys.Archive) + " archive  " + m.keyHint(m.keys.Move) + " move  " + m.keyHint(m.keys.Delete) + " delete  " +
+			m.keyHint(m.keys.Sync) + " sync  " +
 			m.keyHint(m.keys.Command) + " command"
 	case paneContent:
 		progress := ""

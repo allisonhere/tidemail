@@ -240,6 +240,57 @@ func (db *DB) FindDraftsMailbox(accountID int64) (Mailbox, error) {
 	return Mailbox{}, fmt.Errorf("drafts mailbox not found")
 }
 
+// AccountIDByName resolves an account row from its configured name.
+func (db *DB) AccountIDByName(name string) (int64, error) {
+	var id int64
+	if err := db.QueryRow(`SELECT id FROM accounts WHERE name = ?`, name).Scan(&id); err != nil {
+		return 0, fmt.Errorf("account %q not found: %w", name, err)
+	}
+	return id, nil
+}
+
+// FindSentMailbox locates the account's Sent folder, preferring the \Sent
+// special-use flag and falling back to the conventional names. Servers differ:
+// Gmail uses "[Gmail]/Sent Mail", Dovecot "INBOX.Sent", Exchange "Sent Items".
+func (db *DB) FindSentMailbox(accountID int64) (Mailbox, error) {
+	mailboxes, err := db.ListMailboxes(accountID)
+	if err != nil {
+		return Mailbox{}, err
+	}
+	var nameMatch *Mailbox
+	for i, mb := range mailboxes {
+		for _, flag := range mb.Flags {
+			if strings.EqualFold(flag, `\Sent`) {
+				return mb, nil
+			}
+		}
+		if nameMatch == nil && (isCommonSentMailboxName(mb.Name) || isCommonSentMailboxName(mb.DisplayName)) {
+			nameMatch = &mailboxes[i]
+		}
+	}
+	if nameMatch != nil {
+		return *nameMatch, nil
+	}
+	return Mailbox{}, fmt.Errorf("sent mailbox not found")
+}
+
+// isCommonSentMailboxName covers both hierarchy delimiters, since a dot-
+// delimited server yields "INBOX.Sent" where Gmail yields "[Gmail]/Sent Mail".
+func isCommonSentMailboxName(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	switch n {
+	case "sent", "sent items", "sent mail", "sent messages":
+		return true
+	}
+	for _, suffix := range []string{"/sent", ".sent", "/sent items", ".sent items",
+		"/sent mail", ".sent mail", "/sent messages", ".sent messages"} {
+		if strings.HasSuffix(n, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
 func isCommonDraftsMailboxName(name string) bool {
 	n := strings.ToLower(strings.TrimSpace(name))
 	return n == "drafts" || strings.HasSuffix(n, "/drafts") || strings.HasSuffix(n, ".drafts")

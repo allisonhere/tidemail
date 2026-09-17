@@ -274,6 +274,7 @@ switches to OAuth on its own — a leftover keychain token cannot promote it.
 | `c` in Contacts | Compose to selected contact(s) |
 | `M` | Account manager |
 | `s` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
+| `Enter` on a folder | Fetch that folder now |
 | `F` | Sync all mailboxes |
 | `Enter` in Drafts | Reopen selected draft in compose |
 | `d` in Drafts | Delete selected draft |

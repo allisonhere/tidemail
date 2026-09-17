@@ -154,6 +154,9 @@ type MessageSentMsg struct {
 	Err        error
 	DraftID    int64  // draft to delete on success (0 = none)
 	PendingID  uint64 // pending-send entry to clear
+	// SentCopyErr reports a failure to place a copy in the server's Sent
+	// folder. The message was still delivered — this never means a failed send.
+	SentCopyErr error
 }
 
 // SendQueuedMsg is emitted by the compose overlay when the user hits send;
@@ -178,6 +181,14 @@ type DraftSavedMsg struct {
 type DraftDeletedMsg struct {
 	DraftID int64
 	Err     error
+}
+
+// FolderSettledMsg fires once the sidebar cursor has rested on a folder long
+// enough to be worth fetching. Seq guards against a stale tick from a folder
+// the cursor has already moved past.
+type FolderSettledMsg struct {
+	Seq       int
+	MailboxID int64
 }
 
 type DraftsLoadedMsg struct {
@@ -244,8 +255,13 @@ type AutoSyncMsg struct {
 type MailboxesRefreshedMsg struct {
 	AccountID int64
 	Mailboxes []db.Mailbox
-	Removed   []int64
-	Err       error
+	// Updated carries already-known folders whose flags or delimiter changed
+	// server-side. Without merging these the in-memory copy keeps whatever it
+	// was first stored with, so a mailbox that only just learned it is \Sent
+	// would still look flagless until the next restart.
+	Updated []db.Mailbox
+	Removed []int64
+	Err     error
 }
 
 type AddressBookLoadedMsg struct {
