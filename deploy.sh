@@ -23,8 +23,6 @@ ASSET_WAIT_SECONDS=900
 
 VERSION=""
 NEXT_VERSION=""
-RELEASE_NOTES_FILE=""
-
 # ── Colors ───────────────────────────────────────────────────────────────────
 if [ -t 1 ]; then
   RED=$'\033[0;31m';     GREEN=$'\033[0;32m';   YELLOW=$'\033[0;33m'
@@ -73,7 +71,6 @@ tui_resume()  { tui_enter; draw_frame; }
 
 cleanup() {
   tui_leave
-  [ -n "$RELEASE_NOTES_FILE" ] && rm -f "$RELEASE_NOTES_FILE"
   return 0
 }
 trap cleanup EXIT
@@ -87,32 +84,16 @@ trap 'measure_term; draw_frame' WINCH
 
 CLR_EOL=$'\033[K'
 
-# vis_len counts printable characters, ignoring SGR escapes.
-# `local` expands every argument before assigning any of them, so `s` must be
-# assigned in its own statement before ${#s} can reference it under `set -u`.
-vis_len() {
-  local s=${1-}
-  local out="" i=0 n ch
-  n=${#s}
-  while [ "$i" -lt "$n" ]; do
-    ch=${s:i:1}
-    if [ "$ch" = $'\033' ]; then
-      while [ "$i" -lt "$n" ] && [[ ${s:i:1} != m ]]; do i=$((i + 1)); done
-      i=$((i + 1))
-      continue
-    fi
-    out+=$ch
-    i=$((i + 1))
-  done
-  printf '%s' "${#out}"
-}
-
 # pad_to fits a possibly-colored string to an exact printable width: padded
 # with spaces when short, clipped when long, so a box border always lands on
 # the same column. Escape sequences are copied through and never counted.
 pad_to() {
   local width=${1-0} text=${2-}
   local n i=0 shown=0 ch out=""
+  # State as it was before the most recent printable character was appended.
+  # Clipping rewinds to here, so the ellipsis replaces a whole character and
+  # can never cut an escape sequence in half.
+  local prev_out="" prev_shown=0
   n=${#text}
   while [ "$i" -lt "$n" ]; do
     ch=${text:i:1}
@@ -126,17 +107,20 @@ pad_to() {
       continue
     fi
     if [ "$shown" -ge "$width" ]; then
-      # Ran out of room: stop copying text but keep scanning for escapes so
-      # the line still ends with a reset and cannot bleed color rightwards.
+      # Ran out of room; the tail is dropped below.
       break
     fi
+    prev_out="$out"
+    prev_shown=$shown
     out+=$ch
     shown=$((shown + 1))
     i=$((i + 1))
   done
   if [ "$i" -lt "$n" ] && [ "$width" -gt 0 ]; then
-    # Clipped: mark it, replacing the last cell.
-    out="${out%?}…${NC}"
+    # Clipped: rewind one character and mark it, then reset colour so nothing
+    # bleeds past the right edge.
+    out="${prev_out}…${NC}"
+    shown=$((prev_shown + 1))
   fi
   if [ "$shown" -lt "$width" ]; then
     printf '%s%*s' "$out" $((width - shown)) ""
@@ -414,9 +398,9 @@ build_menu() {
   MENU_KIND=(); MENU_LABEL=(); MENU_ACTION=(); MENU_HINT=()
 
   menu_header "Release"
-  menu_item   "Full release" "act_full_release" "bump → verify → tag → wait for CI → AUR"
+  menu_item   "Full release" "act_full_release" "bump → notes → verify → tag → wait for CI → AUR"
   menu_item   "Bump version" "act_bump" "choose the next tag"
-  menu_item   "Write release notes" "act_notes" "opens \$EDITOR"
+  menu_item   "Release notes" "act_notes" "promote Unreleased → \$VERSION in CHANGELOG.md"
 
   menu_header "Verify"
   menu_item   "Run tests" "act_test" "go test ./..."
@@ -630,36 +614,104 @@ ensure_version() {
   [ -n "$VERSION" ] && [ "$VERSION" != "v0.0.0" ]
 }
 
-act_notes() {
-  log_step "Write release notes"
-  ensure_version
-  local tmp
-  tmp=$(mktemp "${TMPDIR:-/tmp}/tidemail-release-notes-XXXXXX.md")
-  cat > "$tmp" <<TEMPLATE
-## What's new in ${VERSION}
+# changelog_has_section reports whether CHANGELOG.md already documents a tag.
+changelog_has_section() {
+  grep -qx "## $1" "$PROJECT_DIR/CHANGELOG.md" 2>/dev/null
+}
 
-<!-- Write your release notes above this line. This comment is removed. -->
-TEMPLATE
+# changelog_section prints one section's body, using the same extraction the
+# release workflow runs, so a preview here is exactly what CI will publish.
+changelog_section() {
+  awk -v ver="## $1" '
+    $0 == ver { flag = 1; next }
+    /^## / && flag { flag = 0 }
+    flag { print }
+  ' "$PROJECT_DIR/CHANGELOG.md" 2>/dev/null
+}
 
-  local editor="${EDITOR:-${VISUAL:-nano}}"
-  log_info "opening $editor"
-  tui_suspend
-  "$editor" "$tmp"
-  tui_resume
+# changelog_promote renames "## Unreleased" to "## VERSION" and opens a fresh
+# empty Unreleased above it. Without this the release workflow finds no section
+# for the tag and publishes nothing but the boilerplate description.
+changelog_promote() {
+  local version=$1 tmp
+  if ! grep -qx "## Unreleased" "$PROJECT_DIR/CHANGELOG.md"; then
+    log_err "CHANGELOG.md has no '## Unreleased' heading to promote"
+    return 1
+  fi
+  tmp=$(mktemp "${TMPDIR:-/tmp}/tidemail-changelog-XXXXXX")
+  awk -v ver="## $version" '
+    !promoted && $0 == "## Unreleased" {
+      print "## Unreleased"
+      print ""
+      print ver
+      promoted = 1
+      next
+    }
+    { print }
+  ' "$PROJECT_DIR/CHANGELOG.md" > "$tmp" || { rm -f "$tmp"; return 1; }
 
-  local cleaned
-  cleaned=$(grep -v '^<!--' "$tmp" | grep -v '^-->' | sed '/^[[:space:]]*$/{ /./!d }')
+  if ! grep -qx "## $version" "$tmp"; then
+    log_err "promotion produced no '## $version' section — changelog left alone"
+    rm -f "$tmp"
+    return 1
+  fi
+  cat "$tmp" > "$PROJECT_DIR/CHANGELOG.md" || { rm -f "$tmp"; return 1; }
   rm -f "$tmp"
+}
 
-  if [ -z "$(printf '%s' "$cleaned" | tr -d '[:space:]')" ]; then
-    log_warn "no notes written — the release will use CHANGELOG.md"
-    RELEASE_NOTES_FILE=""
+changelog_preview() {
+  local body count
+  body=$(changelog_section "$1")
+  count=$(printf '%s\n' "$body" | grep -cE '^- \*\*')
+  log_info "the release workflow will publish $count entr$([ "$count" = 1 ] && echo y || echo ies) for $1:"
+  local line
+  while IFS= read -r line; do
+    [ -n "$line" ] && log_detail "$line"
+  done < <(printf '%s\n' "$body" | grep -E '^- \*\*|^### ' | head -10)
+}
+
+# act_notes prepares the notes for VERSION in CHANGELOG.md. The release
+# workflow builds its notes from the "## <tag>" section, so promoting
+# Unreleased here is what makes a tagged release come out documented.
+act_notes() {
+  log_step "Release notes"
+  ensure_version || { log_err "no version selected — bump the version first"; return 1; }
+
+  if [ ! -f "$PROJECT_DIR/CHANGELOG.md" ]; then
+    log_err "CHANGELOG.md not found"
+    return 1
+  fi
+
+  if changelog_has_section "$VERSION"; then
+    log_ok "CHANGELOG.md already documents $VERSION"
+    changelog_preview "$VERSION"
     return 0
   fi
 
-  RELEASE_NOTES_FILE=$(mktemp "${TMPDIR:-/tmp}/tidemail-release-notes-final-XXXXXX.md")
-  printf '%s\n' "$cleaned" > "$RELEASE_NOTES_FILE"
-  log_ok "release notes saved ($(wc -l < "$RELEASE_NOTES_FILE") lines)"
+  local pending
+  pending=$(changelog_section "Unreleased")
+  if [ -z "$(printf '%s' "$pending" | tr -d '[:space:]')" ]; then
+    log_warn "the Unreleased section is empty — $VERSION would publish empty notes"
+  else
+    log_info "Unreleased holds $(printf '%s\n' "$pending" | grep -cE '^- \*\*') entries"
+  fi
+
+  if tui_confirm "Edit CHANGELOG.md before promoting?" y; then
+    local editor="${EDITOR:-${VISUAL:-nano}}"
+    log_info "opening $editor"
+    tui_suspend
+    "$editor" "$PROJECT_DIR/CHANGELOG.md"
+    tui_resume
+  fi
+
+  if ! tui_confirm "Promote '## Unreleased' to '## $VERSION'?" y; then
+    log_info "changelog left unchanged — $VERSION will publish empty notes"
+    return 1
+  fi
+
+  changelog_promote "$VERSION" || return 1
+  log_ok "CHANGELOG.md: Unreleased → $VERSION"
+  changelog_preview "$VERSION"
 }
 
 # ── Actions: verification ────────────────────────────────────────────────────
@@ -788,6 +840,17 @@ act_release() {
   log_step "Tag and release"
   ensure_version || { log_err "no version selected — bump first"; return 1; }
   require_gh || return 1
+
+  # The release workflow builds its notes from the "## <tag>" changelog
+  # section. Tagging without one publishes the boilerplate description alone.
+  if ! changelog_has_section "$VERSION"; then
+    log_warn "CHANGELOG.md has no '## $VERSION' section"
+    log_detail "the release workflow would publish empty notes for $VERSION"
+    log_detail "run 'Release notes' first to promote Unreleased"
+    if ! tui_confirm "Tag $VERSION anyway?" n; then
+      return 1
+    fi
+  fi
 
   if git -C "$PROJECT_DIR" rev-parse "$VERSION" >/dev/null 2>&1; then
     log_warn "tag $VERSION already exists"
@@ -1124,6 +1187,7 @@ act_full_release() {
   log_raw "  ${BOLD}${CYAN}━━ Full release ━━${NC}"
 
   act_bump           || { log_err "release aborted at: version bump"; return 1; }
+  act_notes          || { log_err "release aborted at: release notes"; return 1; }
   act_test           || { log_err "release aborted at: tests"; return 1; }
   act_lint           || { log_err "release aborted at: lint"; return 1; }
   act_build          || { log_err "release aborted at: build"; return 1; }

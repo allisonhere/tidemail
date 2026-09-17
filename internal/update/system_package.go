@@ -39,7 +39,9 @@ func (o packageOwner) UpdateCommand() string {
 const probeTimeout = 2 * time.Second
 
 var (
-	ownerOnce   sync.Once
+	ownerMu     sync.Mutex
+	ownerPath   string
+	ownerCached bool
 	cachedOwner packageOwner
 	cachedOwned bool
 
@@ -50,18 +52,27 @@ var (
 
 // resetOwnerCacheForTest clears the memoised probe result.
 func resetOwnerCacheForTest() {
-	ownerOnce = sync.Once{}
+	ownerMu.Lock()
+	defer ownerMu.Unlock()
+	ownerPath = ""
+	ownerCached = false
 	cachedOwner = packageOwner{}
 	cachedOwned = false
 }
 
 // owningPackage reports the distro package that owns path. The result is
-// memoised: the executable path cannot change while we run, and the probe
-// runs subprocesses on a path the UI touches every frame.
+// memoised because the probe runs subprocesses on a path the UI touches every
+// frame — but keyed on the path, so a different executable is probed again
+// rather than handed the previous answer.
 func owningPackage(path string) (packageOwner, bool) {
-	ownerOnce.Do(func() {
-		cachedOwner, cachedOwned = probeOwningPackage(path)
-	})
+	ownerMu.Lock()
+	defer ownerMu.Unlock()
+	if ownerCached && ownerPath == path {
+		return cachedOwner, cachedOwned
+	}
+	cachedOwner, cachedOwned = probeOwningPackage(path)
+	ownerPath = path
+	ownerCached = true
 	return cachedOwner, cachedOwned
 }
 

@@ -120,3 +120,41 @@ func TestInstallRefusesToShadowPackageManagedBinary(t *testing.T) {
 		t.Fatal("nothing was installed, so the result must not offer a restart")
 	}
 }
+
+// The probe result is memoised, but a different executable path must be probed
+// again instead of inheriting the previous path's answer.
+func TestOwningPackageCacheIsKeyedOnPath(t *testing.T) {
+	resetOwnerCacheForTest()
+	origLook, origQuery, origWritable := lookPath, queryOwner, dirWritable
+	lookPath = func(name string) (string, error) {
+		if name == "pacman" {
+			return "/usr/bin/pacman", nil
+		}
+		return "", fmt.Errorf("not found")
+	}
+	queryOwner = func(_ string, args ...string) (string, error) {
+		// The queried path is the last argument.
+		switch args[len(args)-1] {
+		case "/usr/bin/tidemail":
+			return "tidemail-bin\n", nil
+		default:
+			return "", fmt.Errorf("No package owns that file")
+		}
+	}
+	dirWritable = func(string) error { return fmt.Errorf("read-only") }
+	t.Cleanup(func() {
+		lookPath, queryOwner, dirWritable = origLook, origQuery, origWritable
+		resetOwnerCacheForTest()
+	})
+
+	if _, owned := owningPackage("/usr/bin/tidemail"); !owned {
+		t.Fatal("expected /usr/bin/tidemail to be package-managed")
+	}
+	if _, owned := owningPackage("/opt/custom/tidemail"); owned {
+		t.Fatal("a different path must be probed again, not served from the cache")
+	}
+	// The original path still answers from the cache.
+	if _, owned := owningPackage("/usr/bin/tidemail"); !owned {
+		t.Fatal("re-querying the original path must still report it as owned")
+	}
+}
