@@ -4,6 +4,16 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- **Upgrading no longer duplicates every account.** A TideMail older than
+  v1.0.20 does not know about stable account IDs, so saving its settings strips
+  them from `config.toml` — which an instance left running across an upgrade will
+  do on its next save. The newer build then saw a config it did not recognise and
+  imported the whole account list again, once per restart. It now reconnects the
+  existing rows instead, keeping their cached mail, and only creates an account
+  when there is genuinely nothing to reconnect to.
+
 ## v1.0.21
 
 ### Fixed
