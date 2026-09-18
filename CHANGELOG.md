@@ -4,6 +4,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.0.22
+
 ### Changed
 
 - **The signature field takes real lines now.** It was a single-line box that
