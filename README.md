@@ -11,7 +11,7 @@ Need the full settings and shortcut reference? Open the
 
 ![TideMail running in several terminal themes](banner.png)
 
-_One inbox, several built-in themes. 
+One inbox, several built-in themes. 
 
 ## Highlights
 
@@ -83,6 +83,8 @@ You can also grab an archive from the
 The left pane holds accounts and folders. The upper-right pane shows the current
 message list. The reading pane stays below it, so opening a message never hides
 the rest of your inbox.
+
+![The three panes, with the theme picker open](images/tidemail.png)
 
 Use `j` and `k` to move. Press `Tab` to cross panes. Hit `?` whenever you forget
 a key. TideMail keeps the help screen inside the app and lets you search it.
