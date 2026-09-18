@@ -4,6 +4,14 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- **`--open <message-id>` starts on a message.** The TideDeck mail panel hands
+  over the message the reader picked, by the id both programs read out of the
+  same cache, and TideMail opens its folder with the cursor on it and the reading
+  pane filled in. A message the cache does not know still starts; a missing or
+  malformed id is refused rather than silently ignored.
+
 ## v1.0.23
 
 ### Fixed

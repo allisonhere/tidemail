@@ -1,17 +1,35 @@
-# Development flags
+# Flags
 
-Run development flags after the package argument:
+Flags go after the package argument:
 
 ```sh
 go run . --disable-google-oauth
+tidemail --open 4821
 ```
 
 | Flag | Purpose |
 | --- | --- |
+| `--open <message-id>` | Starts on that message: the folder holding it becomes the selection, the cursor lands on it, and the reading pane shows it. The id is TideMail's own cache id for the message (`messages.id` in `mail.db`). An id this cache does not know still starts, and says so; a missing or malformed id is a startup error. Ignored with `--prototype-forms`, which never opens the database. |
 | `--disable-google-oauth` | Hides Gmail OAuth controls and shows the App Password-only experience. The flag changes runtime state only; it does not rewrite `config.toml` or disable Outlook OAuth. |
 | `--preview-manual-update` | Opens the update window a package-managed install gets — the one that explains why TideMail cannot replace its own binary and offers the command to run. |
 | `--preview-update-progress` | Previews the in-app update progress state. |
 | `--prototype-forms` | Runs the standalone form prototype instead of the mail client. |
+
+## Opening a message from somewhere else
+
+The TideDeck mail panel runs `tidemail --open <id>` for the message under its
+cursor, so picking a message there lands here on that message:
+
+```sh
+tidemail --open 4821
+```
+
+The id is the row's `messages.id` in `~/.local/share/tidemail/mail.db`. Two
+caveats worth knowing: if TideMail is **already running**, this is a second
+TideMail over the same cache and nothing is handed over (there is no
+single-instance channel yet); and an id is only meaningful against the cache it
+came from, so a dashboard pointed at a different `mail.db` will name a
+different message.
 
 With `--disable-google-oauth`, a Gmail account form omits the Auth selector and
 Google sign-in button. It shows this guidance under Password:
