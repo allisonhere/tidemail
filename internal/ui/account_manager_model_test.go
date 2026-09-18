@@ -243,7 +243,7 @@ func TestDeleteAccountRemovesItFromConfig(t *testing.T) {
 		t.Fatalf("Work account not loaded: %#v", m.accounts)
 	}
 
-	delMsg := deleteAccountCmd(m.db, workID, workConfigID, "Work")().(AccountDeletedMsg)
+	delMsg := deleteAccountCmd(workID, workConfigID, "Work")().(AccountDeletedMsg)
 	if delMsg.Err != nil {
 		t.Fatalf("deleteAccountCmd: %v", delMsg.Err)
 	}

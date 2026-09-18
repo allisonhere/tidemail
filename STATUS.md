@@ -14,6 +14,9 @@ Current release: **v1.0.5**.
   with a 100-message inbox first page, a 25-message first page for attachment-heavy
   folders, and 100-message pagination. Resting on a stale non-inbox folder starts
   one cancellable, silent refresh; `Enter` or `s` refreshes it immediately.
+  Config, database rows, drafts, queued sends, sessions, OAuth caches, and
+  keychain entries share a stable account ID, so renames and duplicate display
+  names cannot cross-wire accounts.
 - **Connection model**: a per-account session pool (`internal/imap/pool.go`) keeps one
   reusable connection per account, serializes that account's operations, revalidates
   with NOOP, redials on config change, and reaps after 3 minutes idle. Every UI

@@ -143,3 +143,26 @@ func TestDraftsFollowTheAccountAcrossARename(t *testing.T) {
 		t.Fatalf("expected both drafts after the backfill, got %#v", after)
 	}
 }
+
+func TestDraftMigrationLeavesAmbiguousIdentityUnlinked(t *testing.T) {
+	database := newConfigIDTestDB(t)
+	if _, err := database.Exec(`INSERT INTO drafts
+		(account_config_id, account_name, account_user, subject, created_at, updated_at)
+		VALUES ('', 'Shared', 'same@example.com', 'ambiguous', 1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	links := []DraftAccountLink{
+		{ConfigID: "cfg-a", Name: "Shared", User: "same@example.com"},
+		{ConfigID: "cfg-b", Name: "Shared", User: "same@example.com"},
+	}
+	if err := database.MigrateDraftAccountConfigIDs(links); err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	if err := database.QueryRow(`SELECT account_config_id FROM drafts WHERE subject='ambiguous'`).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != "" {
+		t.Fatalf("ambiguous legacy draft was assigned to %q", got)
+	}
+}

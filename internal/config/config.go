@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -239,12 +241,15 @@ func migrateAuthMethod(cfg *Config, getPassword, getToken func(id, legacyName st
 // newAccountID returns an opaque account identifier. It is deliberately not
 // derived from the account's name or address: an ID that encodes the name would
 // change when the name does, which is the whole problem it exists to solve.
+var fallbackAccountIDCounter atomic.Uint64
+
 func newAccountID() string {
-	var b [6]byte
+	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		// crypto/rand failing is not recoverable here, and a predictable ID is
-		// still a working one — these are local join keys, not secrets.
-		return fmt.Sprintf("acct%08x", len(b))
+		// These are local join keys, not secrets. Keep the fallback unique within
+		// the process instead of returning a constant that would make the collision
+		// retry loop below spin forever when crypto/rand is unavailable.
+		return fmt.Sprintf("%016x%016x", uint64(time.Now().UnixNano()), fallbackAccountIDCounter.Add(1))
 	}
 	return hex.EncodeToString(b[:])
 }
@@ -274,8 +279,8 @@ func (a AccountConfig) SessionKey() string {
 // ensureAccountIDs stamps a stable ID on every account that lacks one and
 // resolves any collision, reporting whether it changed anything. It runs on
 // every load so a config hand-edited to add an account (documented as a
-// supported workaround) still gets a usable identity. The stamped config is
-// persisted by the next Save; Load deliberately does not write.
+// supported workaround) still gets a usable identity. Load persists a changed
+// identity set before the database can link any rows to it.
 func ensureAccountIDs(cfg *Config) bool {
 	seen := make(map[string]bool, len(cfg.Accounts))
 	changed := false
@@ -387,10 +392,34 @@ func Load() (Config, error) {
 	cfg.Display.SendMaxAttempts = NormalizeSendMaxAttempts(cfg.Display.SendMaxAttempts)
 	cfg.Display.Density = NormalizeDisplayDensity(cfg.Display.Density)
 	cfg.Display.PaneCorners = NormalizePaneCorners(cfg.Display.PaneCorners)
-	ensureAccountIDs(&cfg)
+	idsChanged := ensureAccountIDs(&cfg)
 	migrateAuthMethod(&cfg, GetAccountPassword, GetOAuth2RefreshToken)
 	fillSecrets(&cfg)
+	if idsChanged {
+		if err := backupPreAccountIDConfig(path, data); err != nil {
+			return cfg, fmt.Errorf("back up config before account-ID migration: %w", err)
+		}
+		if err := Save(cfg); err != nil {
+			return cfg, fmt.Errorf("persist account-ID migration: %w", err)
+		}
+	}
 	return cfg, nil
+}
+
+func backupPreAccountIDConfig(path string, data []byte) error {
+	backup := path + ".pre-account-ids.bak"
+	f, err := os.OpenFile(backup, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if os.IsExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 func NormalizeDisplayDensity(s string) string {
@@ -452,16 +481,28 @@ func Save(cfg Config) error {
 		return err
 	}
 
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	f, err := os.CreateTemp(filepath.Dir(path), ".config.toml.*.tmp")
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	tmp := f.Name()
+	defer os.Remove(tmp) //nolint:errcheck -- renamed on success
 	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
 		return err
 	}
-
-	return toml.NewEncoder(f).Encode(cfg)
+	if err := toml.NewEncoder(f).Encode(cfg); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 func SecurityWarnings() ([]string, error) {

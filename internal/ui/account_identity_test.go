@@ -165,7 +165,7 @@ func TestDeletingSameNamedAccountKeepsPeerCredentials(t *testing.T) {
 		t.Fatalf("second account never reached the database: %#v", m.accounts)
 	}
 
-	delMsg := deleteAccountCmd(m.db, dropID, drop.ID, drop.Name)().(AccountDeletedMsg)
+	delMsg := deleteAccountCmd(dropID, drop.ID, drop.Name)().(AccountDeletedMsg)
 	if delMsg.Err != nil {
 		t.Fatalf("deleteAccountCmd: %v", delMsg.Err)
 	}
@@ -279,5 +279,78 @@ func TestUpgradeAdoptsLegacyAccountRows(t *testing.T) {
 	// One INBOX each — no starter mailbox created for a ghost.
 	if len(loaded.Mailboxes) != 2 {
 		t.Fatalf("expected 2 mailboxes, got %d: %#v", len(loaded.Mailboxes), loaded.Mailboxes)
+	}
+}
+
+func TestAccountSaveConfigFailureDoesNotMutateDatabase(t *testing.T) {
+	m, _, _ := newIdentityModel(t, acct("Personal", "imap.old.example", "me@example.com", "pw"))
+	before := m.accounts[0]
+	updated, ok := m.cfg.AccountByID(before.ConfigID)
+	if !ok {
+		t.Fatal("missing account config")
+	}
+	updated.Name = "Renamed"
+
+	orig := configSave
+	configSave = func(config.Config) error { return errors.New("disk full") }
+	defer func() { configSave = orig }()
+	next, _ := m.Update(AccountSavedMsg{AccountCfg: updated, EditID: before.ID})
+	m = next.(Model)
+	after, err := m.db.GetAccount(before.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Name != before.Name || after.ConfigID != before.ConfigID {
+		t.Fatalf("database changed despite config failure: before=%#v after=%#v", before, after)
+	}
+}
+
+func TestAccountDeleteConfigFailurePreservesDatabase(t *testing.T) {
+	m, _, _ := newIdentityModel(t, acct("Personal", "imap.example.com", "me@example.com", "pw"))
+	account := m.accounts[0]
+	orig := configSave
+	configSave = func(config.Config) error { return errors.New("disk full") }
+	defer func() { configSave = orig }()
+
+	next, _ := m.Update(AccountDeletedMsg{AccountID: account.ID, ConfigID: account.ConfigID, AccountName: account.Name})
+	m = next.(Model)
+	if _, err := m.db.GetAccount(account.ID); err != nil {
+		t.Fatalf("database account deleted despite config failure: %v", err)
+	}
+	if _, ok := m.cfg.AccountByID(account.ConfigID); !ok {
+		t.Fatal("in-memory account config removed despite config failure")
+	}
+}
+
+func TestAccountCfgForMailboxDoesNotFallBackToPeer(t *testing.T) {
+	m, _, _ := newIdentityModel(t, acct("Personal", "imap.example.com", "me@example.com", "pw"))
+	orphanID, err := m.db.AddAccount(config.NewAccountID(), "Orphan", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailboxID, err := m.db.UpsertMailbox(db.Mailbox{AccountID: orphanID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.accounts, _ = m.db.ListAccounts()
+	m.mailboxes, _ = m.db.ListMailboxes(orphanID)
+	if got := m.accountCfgForMailbox(mailboxID); got.ID != "" || got.IMAPHost != "" {
+		t.Fatalf("orphan mailbox inherited peer credentials: %#v", got)
+	}
+}
+
+func TestDuplicateAccountNamesAreDisambiguatedInSidebar(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Accounts = []config.AccountConfig{
+		{ID: "cfg-a", Name: "Shared", User: "first@example.com"},
+		{ID: "cfg-b", Name: "Shared", User: "second@example.com"},
+	}
+	m := NewModel(nil, cfg, "dev", false)
+	m.accounts = []db.Account{
+		{ID: 1, ConfigID: "cfg-a", Name: "Shared"},
+		{ID: 2, ConfigID: "cfg-b", Name: "Shared"},
+	}
+	if got := m.renderAccountHeader(2, false, 60); !strings.Contains(got, "second@example.com") {
+		t.Fatalf("duplicate account header was not disambiguated: %q", got)
 	}
 }

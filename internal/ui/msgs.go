@@ -9,6 +9,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidemail/internal/filter"
+	imapClient "github.com/allisonhere/tidemail/internal/imap"
 	"github.com/allisonhere/tidemail/internal/smtp"
 	"github.com/allisonhere/tidemail/internal/update"
 )
@@ -65,10 +66,13 @@ type OlderMessagesLoadedMsg struct {
 }
 
 type AccountSavedMsg struct {
-	Account    db.Account
-	Mailboxes  []db.Mailbox
-	AccountCfg config.AccountConfig
-	Err        error
+	Account     db.Account
+	Mailboxes   []db.Mailbox
+	AccountCfg  config.AccountConfig
+	EditID      int64
+	Color       string
+	MailboxInfo []imapClient.MailboxInfo
+	Err         error
 }
 
 type AccountTestedMsg struct {

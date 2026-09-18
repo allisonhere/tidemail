@@ -333,9 +333,6 @@ func (m Model) accountName(accountID int64) string {
 func (m Model) accountCfgForMailbox(mailboxID int64) config.AccountConfig {
 	mb := m.mailboxByID(mailboxID)
 	if mb == nil {
-		if len(m.cfg.Accounts) > 0 {
-			return m.cfg.Accounts[0]
-		}
 		return config.AccountConfig{}
 	}
 	acc := m.accountByID(mb.AccountID)
@@ -343,9 +340,6 @@ func (m Model) accountCfgForMailbox(mailboxID int64) config.AccountConfig {
 		if acfg, err := m.accountConfigFor(*acc); err == nil {
 			return acfg
 		}
-	}
-	if len(m.cfg.Accounts) > 0 {
-		return m.cfg.Accounts[0]
 	}
 	return config.AccountConfig{}
 }
@@ -504,6 +498,19 @@ func renderPaneHeaderRow(prefix, title, hint string, width int) string {
 func (m Model) renderAccountHeader(accountID int64, selected bool, width int) string {
 	icon := "v "
 	label := m.accountName(accountID)
+	duplicates := 0
+	for _, acc := range m.accounts {
+		if acc.Name == label {
+			duplicates++
+		}
+	}
+	if duplicates > 1 {
+		if acc := m.accountByID(accountID); acc != nil {
+			if acfg, err := m.accountConfigFor(*acc); err == nil && acfg.User != "" {
+				label += " · " + acfg.User
+			}
+		}
+	}
 	if m.iconsEnabled() {
 		icon = "▾ "
 	}

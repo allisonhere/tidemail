@@ -932,43 +932,99 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setStatus(fmt.Sprintf("save failed: %s", detail), true)
 			return m, m.clearStatusCmd()
 		}
+		previousCfg := m.cfg
+		nextCfg := m.cfg
+		nextCfg.Accounts = append([]config.AccountConfig(nil), m.cfg.Accounts...)
 		// Update config with the saved account, matched on its stable ID. Matching
 		// on the display name used to mean that saving an account under a name a
 		// peer already had overwrote that peer's whole block — host, user and
 		// password — and that renaming an account appended a duplicate instead of
 		// updating its own entry.
 		found := false
-		for i, a := range m.cfg.Accounts {
+		for i, a := range nextCfg.Accounts {
 			if a.ID == msg.AccountCfg.ID {
-				m.cfg.Accounts[i] = msg.AccountCfg
+				nextCfg.Accounts[i] = msg.AccountCfg
 				found = true
 				break
 			}
 		}
 		if !found {
-			m.cfg.Accounts = append(m.cfg.Accounts, msg.AccountCfg)
+			nextCfg.Accounts = append(nextCfg.Accounts, msg.AccountCfg)
 		}
+		if err := m.persistConfig(nextCfg); err != nil {
+			detail := config.RedactSecrets(err.Error(), nextCfg)
+			m.accountManager.statusMsg = "SAVE FAILED: " + detail
+			m.setStatus("save failed: "+detail, true)
+			return m, m.clearStatusCmd()
+		}
+
+		account := msg.Account
+		mailboxes := msg.Mailboxes
+		if account.ID == 0 {
+			var accountID int64
+			var err error
+			var previousAccount db.Account
+			if msg.EditID != 0 {
+				previousAccount, err = m.db.GetAccount(msg.EditID)
+				if err == nil {
+					err = m.db.UpdateAccount(msg.EditID, msg.AccountCfg.ID, msg.AccountCfg.Name, msg.Color)
+				}
+				accountID = msg.EditID
+			} else {
+				accountID, err = m.db.AddAccount(msg.AccountCfg.ID, msg.AccountCfg.Name, msg.Color)
+			}
+			if err == nil {
+				account, err = m.db.GetAccount(accountID)
+			}
+			if err == nil {
+				for _, info := range msg.MailboxInfo {
+					mb := db.Mailbox{AccountID: accountID, Name: info.Name, DisplayName: cleanDisplayName(info.Name), Delimiter: info.Delimiter, Flags: info.Flags}
+					mb.ID, err = m.db.UpsertMailbox(mb)
+					if err != nil {
+						break
+					}
+					mailboxes = append(mailboxes, mb)
+				}
+			}
+			if err != nil {
+				// The config is the durable source of connection settings. Restore it
+				// if the database half of the mutation cannot be completed.
+				rollbackErr := m.persistConfig(previousCfg)
+				if msg.EditID == 0 && accountID != 0 {
+					_ = m.db.DeleteAccount(accountID)
+				} else if msg.EditID != 0 && previousAccount.ID != 0 {
+					_ = m.db.UpdateAccount(previousAccount.ID, previousAccount.ConfigID, previousAccount.Name, previousAccount.Color)
+				}
+				detail := err.Error()
+				if rollbackErr != nil {
+					detail += "; config rollback failed: " + rollbackErr.Error()
+				}
+				m.accountManager.statusMsg = "SAVE FAILED: " + detail
+				m.setStatus("save failed: "+detail, true)
+				return m, m.clearStatusCmd()
+			}
+		}
+		m.cfg = nextCfg
 		// Also update in-memory accounts so scheduleNextSync can find it.
 		foundAcct := false
 		for i, a := range m.accounts {
-			if a.ID == msg.Account.ID {
-				m.accounts[i] = msg.Account
+			if a.ID == account.ID {
+				m.accounts[i] = account
 				foundAcct = true
 				break
 			}
 		}
 		if !foundAcct {
-			m.accounts = append(m.accounts, msg.Account)
+			m.accounts = append(m.accounts, account)
 		}
-		m.saveConfig()
 		m.accountManager = m.newAccountManager()
 		m.accountManager.mode = amList
-		m.accountManager.statusMsg = fmt.Sprintf("SAVED: %s", strings.ToUpper(msg.Account.Name))
-		m.setStatus(fmt.Sprintf("saved: %s", msg.Account.Name), false)
-		if len(msg.Mailboxes) > 0 {
-			m.pendingSelectMailboxID = msg.Mailboxes[0].ID
+		m.accountManager.statusMsg = fmt.Sprintf("SAVED: %s", strings.ToUpper(account.Name))
+		m.setStatus(fmt.Sprintf("saved: %s", account.Name), false)
+		if len(mailboxes) > 0 {
+			m.pendingSelectMailboxID = mailboxes[0].ID
 		}
-		return m, tea.Batch(m.loadAccountsCmd(), m.clearStatusCmd(), m.scheduleNextSync(msg.Account.ID))
+		return m, tea.Batch(m.loadAccountsCmd(), m.clearStatusCmd(), m.scheduleNextSync(account.ID))
 
 	case IdleEventMsg:
 		// Ignore events from a watcher that has since been replaced or stopped —
@@ -1106,15 +1162,44 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// would return again on the next launch). Only the deleted account's own
 		// entry goes: this used to drop every entry sharing its display name,
 		// which took a peer's credentials with it.
+		previousCfg := m.cfg
+		nextCfg := m.cfg
+		nextCfg.Accounts = make([]config.AccountConfig, 0, len(m.cfg.Accounts))
 		if id := strings.TrimSpace(msg.ConfigID); id != "" {
-			kept := m.cfg.Accounts[:0]
 			for _, a := range m.cfg.Accounts {
 				if a.ID != id {
-					kept = append(kept, a)
+					nextCfg.Accounts = append(nextCfg.Accounts, a)
 				}
 			}
-			m.cfg.Accounts = kept
-			m.saveConfig()
+			if err := m.persistConfig(nextCfg); err != nil {
+				m.accountManager.statusMsg = "DELETE FAILED: " + err.Error()
+				m.setStatus("delete failed: "+err.Error(), true)
+				return m, m.clearStatusCmd()
+			}
+			if err := m.db.DeleteAccount(msg.AccountID); err != nil {
+				rollbackErr := m.persistConfig(previousCfg)
+				detail := err.Error()
+				if rollbackErr != nil {
+					detail += "; config rollback failed: " + rollbackErr.Error()
+				}
+				m.accountManager.statusMsg = "DELETE FAILED: " + detail
+				m.setStatus("delete failed: "+detail, true)
+				return m, m.clearStatusCmd()
+			}
+			m.cfg = nextCfg
+			legacyName := msg.AccountName
+			for _, survivor := range nextCfg.Accounts {
+				if survivor.Name == msg.AccountName {
+					legacyName = ""
+					break
+				}
+			}
+			config.DeleteOAuth2Secrets(msg.ConfigID, legacyName)
+			config.DeleteAccountPassword(msg.ConfigID, legacyName)
+		} else if err := m.db.DeleteAccount(msg.AccountID); err != nil {
+			m.accountManager.statusMsg = "DELETE FAILED: " + err.Error()
+			m.setStatus("delete failed: "+err.Error(), true)
+			return m, m.clearStatusCmd()
 		}
 		for i, a := range m.accounts {
 			if a.ID == msg.AccountID {
@@ -3308,20 +3393,27 @@ var configSave = config.Save
 // saveConfig persists the config and surfaces any failure on the status line, so a
 // failed write (read-only dir, full disk) no longer silently drops account/OAuth/setting
 // changes the way a fire-and-forget config.Save would.
-func (m *Model) saveConfig() {
+func (m *Model) persistConfig(cfg config.Config) error {
+	cfg.Accounts = append([]config.AccountConfig(nil), cfg.Accounts...)
 	// Reconcile rotated OAuth refresh tokens before writing: config.Save's
 	// stripSecrets pushes each account's in-memory RefreshToken to the keyring,
 	// and m.cfg still holds the token from load time — without this, any save
 	// (theme change, etc.) would clobber the rotated keyring token with a stale
 	// one the provider has already invalidated.
-	for i := range m.cfg.Accounts {
-		if tok, ok := auth.LatestRefreshToken(m.cfg.Accounts[i].Name); ok {
-			m.cfg.Accounts[i].RefreshToken = tok
+	for i := range cfg.Accounts {
+		if tok, ok := auth.LatestRefreshToken(cfg.Accounts[i].SessionKey()); ok {
+			cfg.Accounts[i].RefreshToken = tok
 		}
 	}
-	if err := configSave(m.cfg); err != nil {
+	return configSave(cfg)
+}
+
+func (m *Model) saveConfig() error {
+	if err := m.persistConfig(m.cfg); err != nil {
 		m.setStatus(fmt.Sprintf("couldn't save settings: %v", err), true)
+		return err
 	}
+	return nil
 }
 
 // addToLog appends to the in-memory log buffer without updating the status bar.

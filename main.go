@@ -78,8 +78,8 @@ func run() (code int, restartExec string) {
 
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "warning: could not load config:", config.RedactSecrets(err.Error(), cfg))
-		cfg = config.DefaultConfig()
+		fmt.Fprintln(os.Stderr, "error: could not load or migrate config:", config.RedactSecrets(err.Error(), cfg))
+		return 1, ""
 	}
 	applyStartupOverrides(&cfg, opts)
 	if warnings, err := config.SecurityWarnings(); err != nil {

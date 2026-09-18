@@ -87,6 +87,16 @@ user = "d@gmail.com"
 	if cfg.Accounts[0].IMAPHost != "imap.gigahost.dk" || cfg.Accounts[1].IMAPHost != "imap.gmail.com" {
 		t.Fatalf("stamping IDs disturbed the accounts: %#v", cfg.Accounts)
 	}
+	var persisted Config
+	if _, err := toml.DecodeFile(path, &persisted); err != nil {
+		t.Fatalf("decode migrated config: %v", err)
+	}
+	if persisted.Accounts[0].ID != cfg.Accounts[0].ID || persisted.Accounts[1].ID != cfg.Accounts[1].ID {
+		t.Fatalf("Load did not persist its IDs: loaded=%#v disk=%#v", cfg.Accounts, persisted.Accounts)
+	}
+	if _, err := os.Stat(path + ".pre-account-ids.bak"); err != nil {
+		t.Fatalf("legacy config backup missing: %v", err)
+	}
 
 	// Save must write the IDs through, so the next load reuses them, and must
 	// teach the in-memory config the same IDs rather than minting new ones.

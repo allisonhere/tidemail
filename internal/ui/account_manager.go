@@ -841,7 +841,7 @@ func (am AccountManager) submitForm() (AccountManager, tea.Cmd, bool) {
 	am.busy = true
 	am.busyMsg = "CONNECTING TO IMAP..."
 	am.statusMsg = am.duplicateNameWarning(acfg)
-	return am, saveAccountCmd(am.db, acfg, am.editAccountID, color), false
+	return am, saveAccountCmd(acfg, am.editAccountID, color), false
 }
 
 func (am AccountManager) testForm() (AccountManager, tea.Cmd, bool) {
@@ -1162,7 +1162,7 @@ func (am AccountManager) updateConfirmDelete(msg tea.Msg, keys KeyMap) (AccountM
 		if acc := am.selectedAccount(); acc != nil {
 			am.busy = true
 			am.busyMsg = "DELETING..."
-			return am, deleteAccountCmd(am.db, acc.ID, acc.ConfigID, acc.Name), false
+			return am, deleteAccountCmd(acc.ID, acc.ConfigID, acc.Name), false
 		}
 		am.mode = amList
 	case keyMatches(km, keys.No), keyMatches(km, keys.Cancel):
@@ -1727,7 +1727,7 @@ func (am AccountManager) viewConfirmDelete(width int, chrome managerChrome) stri
 
 // ── Async commands ────────────────────────────────────────────────────────────
 
-func saveAccountCmd(database *db.DB, acfg config.AccountConfig, editID int64, color string) tea.Cmd {
+func saveAccountCmd(acfg config.AccountConfig, editID int64, color string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
@@ -1738,49 +1738,11 @@ func saveAccountCmd(database *db.DB, acfg config.AccountConfig, editID int64, co
 		}
 		defer client.Close()
 
-		var accountID int64
-		var err error
-		if editID != 0 {
-			if err = database.UpdateAccount(editID, acfg.ID, acfg.Name, color); err != nil {
-				return AccountSavedMsg{AccountCfg: acfg, Err: fmt.Errorf("update account: %w", err)}
-			}
-			accountID = editID
-		} else {
-			accountID, err = database.AddAccount(acfg.ID, acfg.Name, color)
-			if err != nil {
-				return AccountSavedMsg{AccountCfg: acfg, Err: fmt.Errorf("add account: %w", err)}
-			}
-		}
-
-		account, err := database.GetAccount(accountID)
-		if err != nil {
-			return AccountSavedMsg{AccountCfg: acfg, Err: fmt.Errorf("get account: %w", err)}
-		}
-
 		infos, err := client.ListMailboxes(ctx)
 		if err != nil {
-			return AccountSavedMsg{Account: account, AccountCfg: acfg,
-				Err: fmt.Errorf("list mailboxes: %w", err)}
+			return AccountSavedMsg{AccountCfg: acfg, Err: fmt.Errorf("list mailboxes: %w", err)}
 		}
-
-		var mailboxes []db.Mailbox
-		for _, info := range infos {
-			mb := db.Mailbox{
-				AccountID:   accountID,
-				Name:        info.Name,
-				DisplayName: cleanDisplayName(info.Name),
-				Delimiter:   info.Delimiter,
-				Flags:       info.Flags,
-			}
-			id, upsertErr := database.UpsertMailbox(mb)
-			if upsertErr != nil {
-				continue
-			}
-			mb.ID = id
-			mailboxes = append(mailboxes, mb)
-		}
-
-		return AccountSavedMsg{Account: account, Mailboxes: mailboxes, AccountCfg: acfg}
+		return AccountSavedMsg{AccountCfg: acfg, EditID: editID, Color: color, MailboxInfo: infos}
 	}
 }
 
@@ -1803,17 +1765,8 @@ func testAccountCmd(acfg config.AccountConfig) tea.Cmd {
 	}
 }
 
-func deleteAccountCmd(database *db.DB, accountID int64, configID, accountName string) tea.Cmd {
+func deleteAccountCmd(accountID int64, configID, accountName string) tea.Cmd {
 	return func() tea.Msg {
-		err := database.DeleteAccount(accountID)
-		if err == nil {
-			// Clear both generations of this account's keychain items: the
-			// ID-keyed ones and whatever an older build left under the display
-			// name. Passing the name is safe here only because the caller has
-			// already confirmed this specific account is being removed.
-			config.DeleteOAuth2Secrets(configID, accountName)
-			config.DeleteAccountPassword(configID, accountName)
-		}
-		return AccountDeletedMsg{AccountID: accountID, ConfigID: configID, AccountName: accountName, Err: err}
+		return AccountDeletedMsg{AccountID: accountID, ConfigID: configID, AccountName: accountName}
 	}
 }

@@ -4,6 +4,14 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- **Multiple accounts keep their own settings and credentials.** Accounts now
+  have stable internal IDs instead of using their editable display names as a
+  join key. Adding, renaming, or deleting an account cannot overwrite a peer,
+  attach a mailbox to the wrong server, or clear another account's keychain
+  entry. Existing configurations are backed up and migrated automatically.
+
 ## v1.0.19
 
 ### Fixed

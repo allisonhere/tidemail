@@ -270,8 +270,18 @@ func (db *DB) DraftCount(accountConfigID, accountName, accountUser string) (int6
 // An ambiguous pair is left blank; the fallback in draftOwnerClause still finds
 // those rows.
 func (db *DB) MigrateDraftAccountConfigIDs(links []DraftAccountLink) error {
+	type legacyIdentity struct{ name, user string }
+	counts := make(map[legacyIdentity]int, len(links))
+	for _, l := range links {
+		if l.ConfigID != "" && l.Name != "" {
+			counts[legacyIdentity{l.Name, l.User}]++
+		}
+	}
 	for _, l := range links {
 		if l.ConfigID == "" || l.Name == "" {
+			continue
+		}
+		if counts[legacyIdentity{l.Name, l.User}] != 1 {
 			continue
 		}
 		for _, table := range []string{"drafts", "outbox"} {
