@@ -4,6 +4,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.0.23
+
 ### Fixed
 
 - **A multi-line signature arrives with its lines intact.** The plain-text part
