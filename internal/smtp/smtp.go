@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"html"
 	"mime"
 	"mime/multipart"
 	"net"
@@ -388,6 +389,32 @@ func MarkdownToHTML(md string) string {
 		return ""
 	}
 	return buf.String()
+}
+
+// SignatureHTML renders a signature block for the HTML part of a message.
+//
+// It deliberately does not go through MarkdownToHTML. Markdown folds
+// consecutive lines into one paragraph, so a three-line signature arrived as a
+// single run-on line in every client that prefers the HTML part — even though
+// the plain-text part was correct. A signature is not prose to be reflowed; the
+// lines are the point.
+func SignatureHTML(sig string) string {
+	sig = strings.TrimSpace(sig)
+	if sig == "" {
+		return ""
+	}
+	lines := strings.Split(strings.ReplaceAll(sig, "\r\n", "\n"), "\n")
+	for i, line := range lines {
+		lines[i] = html.EscapeString(line)
+	}
+	// A div rather than a paragraph: <p> carries a margin above as well as
+	// below, which opened a gap visibly wider than the single blank line the
+	// text part has. The preceding paragraph's own bottom margin is the
+	// separation, and this block adds nothing on top of it.
+	//
+	// "-- " on its own line is the standard delimiter; clients use it to fold or
+	// strip the signature, and the trailing space is part of the convention.
+	return "<div>-- <br>\n" + strings.Join(lines, "<br>\n") + "</div>\n"
 }
 
 // cleanEmail extracts a bare email address from formats like "user@host" or "Name <user@host>".

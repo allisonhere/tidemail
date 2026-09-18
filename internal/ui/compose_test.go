@@ -1032,3 +1032,35 @@ func TestComposeEmptyFieldsNoBackgroundBleed(t *testing.T) {
 		}
 	}
 }
+
+// The plain-text part was always right; the HTML part ran the signature through
+// the Markdown renderer along with the body, which folded its lines into one
+// paragraph. Clients that prefer HTML — most of them — showed a run-on line.
+func TestSendKeepsSignatureLinesInTheHTMLPart(t *testing.T) {
+	acfg := config.AccountConfig{Signature: "-allie\nSent with Tidemail\nhttps://example.com/tidemail"}
+	c := NewCompose(acfg, nil, nil)
+	c.toInput.SetValue("bob@example.com")
+	c.bodyInput.SetValue("hi bob")
+
+	_, cmd, _ := c.send()
+	if cmd == nil {
+		t.Fatal("expected send to produce a command")
+	}
+	queued, ok := cmd().(SendQueuedMsg)
+	if !ok {
+		t.Fatalf("expected SendQueuedMsg, got %T", cmd())
+	}
+
+	if want := "hi bob\n\n-- \n-allie\nSent with Tidemail\nhttps://example.com/tidemail\n"; queued.Msg.Body != want {
+		t.Fatalf("plain body = %q, want %q", queued.Msg.Body, want)
+	}
+	html := queued.Msg.HTMLBody
+	if !strings.Contains(html, "<p>hi bob</p>") {
+		t.Fatalf("body is no longer rendered as Markdown:\n%s", html)
+	}
+	for _, want := range []string{"-- <br>", "-allie<br>", "Sent with Tidemail<br>"} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("HTML part lost the signature's line breaks, missing %q:\n%s", want, html)
+		}
+	}
+}
