@@ -144,6 +144,13 @@ func run() (code int, restartExec string) {
 		if opts.previewUpdateProgress {
 			m.ApplyUpdateProgressPreview()
 		}
+		if opts.openMessageID != 0 {
+			// Applied to the local model, before it is copied into the
+			// tea.Model below: a copy taken first would carry the empty one into
+			// the program. --open is meaningless beside --prototype-forms, which
+			// never opens the database and never builds this model.
+			m.OpenMessageAtStartup(opts.openMessageID)
+		}
 		model = m
 	}
 	if uiModel, ok := model.(ui.Model); ok {
