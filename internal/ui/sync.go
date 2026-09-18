@@ -8,6 +8,7 @@ import (
 	"net/mail"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 
@@ -106,10 +107,45 @@ func ensureConfiguredAccounts(database *db.DB, accounts []db.Account, configs []
 		accounts = refreshed
 	}
 	existing := make(map[string]db.Account, len(accounts))
+	claimed := make(map[string]bool, len(configs))
+	for _, accountCfg := range configs {
+		if accountCfg.ID != "" {
+			claimed[accountCfg.ID] = true
+		}
+	}
+	// Rows whose config block is gone. A version of TideMail older than stable
+	// account IDs does not know the `id` field, so saving config.toml from one —
+	// an instance left running across an upgrade, or a downgrade — drops every
+	// id. The next launch then stamps a fresh set, matches nothing here, and
+	// imports the whole account list again. Adopting the stale row instead keeps
+	// that from multiplying the sidebar on every restart, and keeps the cached
+	// mail attached to the account it belongs to.
+	orphansByName := make(map[string][]db.Account)
 	for _, account := range accounts {
 		if account.ConfigID != "" {
 			existing[account.ConfigID] = account
+			if !claimed[account.ConfigID] {
+				name := strings.TrimSpace(account.Name)
+				orphansByName[name] = append(orphansByName[name], account)
+			}
 		}
+	}
+	// Oldest first: the earliest row is the one that has been syncing longest
+	// and holds the real cache, so it is the one worth reconnecting.
+	for name := range orphansByName {
+		sort.Slice(orphansByName[name], func(i, j int) bool {
+			return orphansByName[name][i].ID < orphansByName[name][j].ID
+		})
+	}
+	adoptOrphan := func(name string) (db.Account, bool) {
+		queue := orphansByName[name]
+		if len(queue) == 0 {
+			return db.Account{}, false
+		}
+		// Pop it, so two config accounts sharing a display name cannot both
+		// claim the same row.
+		orphansByName[name] = queue[1:]
+		return queue[0], true
 	}
 	changed := false
 	for _, accountCfg := range configs {
@@ -119,11 +155,18 @@ func ensureConfiguredAccounts(database *db.DB, accounts []db.Account, configs []
 		}
 		account, ok := existing[accountCfg.ID]
 		if !ok {
-			accountID, err := database.AddAccount(accountCfg.ID, name, "")
-			if err != nil {
-				return accounts, fmt.Errorf("import configured account %s: %w", name, err)
+			if orphan, found := adoptOrphan(name); found {
+				if err := database.UpdateAccount(orphan.ID, accountCfg.ID, name, orphan.Color); err != nil {
+					return accounts, fmt.Errorf("adopt existing account %s: %w", name, err)
+				}
+				account = db.Account{ID: orphan.ID, ConfigID: accountCfg.ID, Name: name, Position: orphan.Position, Color: orphan.Color}
+			} else {
+				accountID, err := database.AddAccount(accountCfg.ID, name, "")
+				if err != nil {
+					return accounts, fmt.Errorf("import configured account %s: %w", name, err)
+				}
+				account = db.Account{ID: accountID, ConfigID: accountCfg.ID, Name: name}
 			}
-			account = db.Account{ID: accountID, ConfigID: accountCfg.ID, Name: name}
 			existing[accountCfg.ID] = account
 			changed = true
 		}

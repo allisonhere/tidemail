@@ -587,3 +587,120 @@ func TestFilterRunSkipsUnresolvedMailboxAndReports(t *testing.T) {
 		t.Fatalf("an unresolved mailbox aborted the whole run: %v", run.Err)
 	}
 }
+
+// A TideMail older than stable account IDs does not know the `id` field, so
+// saving config.toml from one — an instance left running across an upgrade, or
+// a downgrade — strips every id. The next launch stamps a fresh set, and before
+// this fix matched nothing and imported the whole account list again. Doing that
+// twice is how a four-account setup became twelve.
+func TestStaleAccountRowsAreAdoptedNotDuplicated(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	database, err := db.Open()
+	if err != nil {
+		t.Fatalf("Open DB: %v", err)
+	}
+	defer database.Close()
+
+	configs := []config.AccountConfig{
+		acct("Gmail", "imap.gmail.com", "me@gmail.com", "pw1"),
+		acct("alliehere.com", "mail.alliehere.com", "allie@alliehere.com", "pw2"),
+	}
+	for i := range configs {
+		configs[i].ID = config.NewAccountID()
+	}
+
+	accounts, err := database.ListAccounts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accounts, err = ensureConfiguredAccounts(database, accounts, configs); err != nil {
+		t.Fatalf("first import: %v", err)
+	}
+	if len(accounts) != 2 {
+		t.Fatalf("expected 2 accounts, got %d", len(accounts))
+	}
+	// Give the original rows some cached mail so we can prove it survives.
+	firstIDs := map[string]int64{}
+	for _, a := range accounts {
+		firstIDs[a.Name] = a.ID
+		if _, err := database.UpsertMailbox(db.Mailbox{AccountID: a.ID, Name: "Archive"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The old binary strips the ids; the new one stamps fresh ones. Twice.
+	for pass := 0; pass < 2; pass++ {
+		for i := range configs {
+			configs[i].ID = config.NewAccountID()
+		}
+		if accounts, err = ensureConfiguredAccounts(database, accounts, configs); err != nil {
+			t.Fatalf("re-import pass %d: %v", pass, err)
+		}
+		if len(accounts) != 2 {
+			t.Fatalf("pass %d left %d accounts, want 2: %#v", pass, len(accounts), accounts)
+		}
+	}
+
+	// Same rows throughout, now carrying the current ids, cache intact.
+	for _, a := range accounts {
+		if a.ID != firstIDs[a.Name] {
+			t.Fatalf("%s moved to a new row (%d, was %d) — its cached mail was abandoned",
+				a.Name, a.ID, firstIDs[a.Name])
+		}
+		var want string
+		for _, c := range configs {
+			if c.Name == a.Name {
+				want = c.ID
+			}
+		}
+		if a.ConfigID != want {
+			t.Fatalf("%s config_id = %q, want %q", a.Name, a.ConfigID, want)
+		}
+		boxes, err := database.ListMailboxes(a.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(boxes) < 2 {
+			t.Fatalf("%s lost its mailboxes: %#v", a.Name, boxes)
+		}
+	}
+}
+
+// A row that another config account still owns must never be taken from it.
+func TestAdoptionNeverStealsALiveAccountsRow(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	database, err := db.Open()
+	if err != nil {
+		t.Fatalf("Open DB: %v", err)
+	}
+	defer database.Close()
+
+	live := acct("Shared", "imap.one.example", "one@example.com", "pw1")
+	live.ID = config.NewAccountID()
+	accounts, err := ensureConfiguredAccounts(database, nil, []config.AccountConfig{live})
+	if err != nil {
+		t.Fatal(err)
+	}
+	liveRow := accounts[0].ID
+
+	// A second account with the same display name arrives. The first one's row
+	// is still claimed, so this must get its own.
+	second := acct("Shared", "imap.two.example", "two@example.com", "pw2")
+	second.ID = config.NewAccountID()
+	accounts, err = ensureConfiguredAccounts(database, accounts, []config.AccountConfig{live, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(accounts) != 2 {
+		t.Fatalf("expected 2 rows, got %d: %#v", len(accounts), accounts)
+	}
+	for _, a := range accounts {
+		if a.ID == liveRow && a.ConfigID != live.ID {
+			t.Fatalf("the live account's row was reassigned to %q", a.ConfigID)
+		}
+	}
+}
