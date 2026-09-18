@@ -4,6 +4,15 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- **A multi-line signature arrives with its lines intact.** The plain-text part
+  was always correct, but the HTML part ran the signature through the Markdown
+  renderer along with the message body, and Markdown folds consecutive lines into
+  one paragraph — so anyone whose mail client prefers HTML, which is most of
+  them, saw the whole signature run together on one line. It is now rendered as
+  its own block, with the `-- ` delimiter and a break between each line.
+
 ## v1.0.22
 
 ### Changed

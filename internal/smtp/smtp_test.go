@@ -575,3 +575,44 @@ func TestEnsureIdentityIsIdempotent(t *testing.T) {
 		t.Fatalf("Date = %v, want it left alone", msg.Date)
 	}
 }
+
+// Markdown folds consecutive lines into one paragraph, which arrived in the
+// recipient's client as a single run-on signature line even though the
+// plain-text part was correct.
+func TestSignatureHTMLKeepsItsLines(t *testing.T) {
+	got := SignatureHTML("-allie\nSent with Tidemail\nhttps://github.com/allisonhere/tidemail")
+	for _, want := range []string{
+		"-- <br>",
+		"-allie<br>",
+		"Sent with Tidemail<br>",
+		"https://github.com/allisonhere/tidemail",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("signature HTML missing %q:\n%s", want, got)
+		}
+	}
+	if n := strings.Count(got, "<br>"); n != 3 {
+		t.Fatalf("expected a break after the delimiter and each of the first two lines, got %d:\n%s", n, got)
+	}
+}
+
+// A signature is user text, not markup.
+func TestSignatureHTMLEscapesMarkup(t *testing.T) {
+	got := SignatureHTML("Allie <allie@example.com>\nR&D <script>alert(1)</script>")
+	for _, bad := range []string{"<allie@example.com>", "<script>"} {
+		if strings.Contains(got, bad) {
+			t.Fatalf("signature HTML left %q unescaped:\n%s", bad, got)
+		}
+	}
+	for _, want := range []string{"&lt;allie@example.com&gt;", "R&amp;D", "&lt;script&gt;"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("signature HTML missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestSignatureHTMLEmptyIsNothing(t *testing.T) {
+	if got := SignatureHTML("   \n  "); got != "" {
+		t.Fatalf("blank signature produced %q", got)
+	}
+}

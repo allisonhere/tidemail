@@ -945,9 +945,15 @@ func (c ComposeModel) send() (ComposeModel, tea.Cmd, bool) {
 		})
 	}
 
+	// The signature is appended to each part separately. Running it through the
+	// Markdown renderer with the body folded its lines into one paragraph, so a
+	// multi-line signature arrived as a single line in any client showing the
+	// HTML part.
 	body := c.bodyInput.Value()
+	htmlBody := smtp.MarkdownToHTML(body)
 	if sig := strings.TrimSpace(acfg.Signature); sig != "" {
 		body = strings.TrimRight(body, "\n") + "\n\n-- \n" + sig + "\n"
+		htmlBody += smtp.SignatureHTML(sig)
 	}
 	msg := smtp.OutgoingMessage{
 		To:          parseAddressList(to),
@@ -955,7 +961,7 @@ func (c ComposeModel) send() (ComposeModel, tea.Cmd, bool) {
 		BCC:         parseAddressList(bcc),
 		Subject:     c.subjectInput.Value(),
 		Body:        body,
-		HTMLBody:    smtp.MarkdownToHTML(body),
+		HTMLBody:    htmlBody,
 		InReplyTo:   c.inReplyTo,
 		References:  c.references,
 		Attachments: atts,
