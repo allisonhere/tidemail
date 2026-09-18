@@ -4,6 +4,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.0.21
+
 ### Fixed
 
 - **An AUR install is now told how to update itself.** TideMail correctly
