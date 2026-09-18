@@ -1,0 +1,66 @@
+version: 1
+name: deepseek
+description: Tool-rich coding harness for repository work.
+flavor: coding
+runtime:
+  backend: builtin
+  fallback_backends: []
+model_policy: {}
+execution_policy:
+  sandbox: local
+  approval_profile: balanced
+  allow_read: true
+  allow_write: true
+  allow_shell: true
+  allow_network: false
+  allowed_commands: []
+  blocked_categories: []
+agents:
+- id: coder
+  role: implementation
+  tools:
+  - read_file
+  - write_file
+  - list_directory
+  - edit_file
+  - insert_text
+  - patch
+  - multi_edit
+  - grep
+  - glob
+  - local_code_search
+  - repo_search
+  - code_search
+  - bash
+  - todo_write
+  - todo_read
+workflow:
+  mode: single
+  max_task_depth: 4
+  parallelism: 1
+  merge_strategy: summary
+context:
+  instruction_files:
+  - AGENTS.md
+  - CLAUDE.md
+  - SUPERQODE.md
+  skills_dir: .agents/skills
+  roles_dir: .agents/roles
+  session_storage: .superqode/sessions
+  prompt_persistence: preview
+  compaction: {}
+  memory: {}
+checks:
+  enabled: true
+  fail_on_error: false
+  timeout_seconds: 300
+  custom_steps: []
+observability:
+  events: true
+  traces: false
+  local: true
+  exporters: []
+  run_store: memory
+metadata:
+  template: coding
+  built_with: harness wizard

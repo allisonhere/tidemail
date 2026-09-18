@@ -4,6 +4,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.0.20
+
 ### Fixed
 
 - **Multiple accounts keep their own settings and credentials.** Accounts now
