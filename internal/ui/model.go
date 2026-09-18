@@ -414,6 +414,31 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 	return m
 }
 
+// OpenMessageAtStartup makes the model land on a message as soon as its folder
+// has loaded — what --open asks for. The id is the cache's own id for the
+// message (messages.id), which is what a dashboard panel has in hand, so it is
+// resolved here rather than guessed at; a message this cache does not know is
+// reported and the client starts normally, because a panel can hand over a
+// message that was deleted a moment ago.
+func (m *Model) OpenMessageAtStartup(id int64) {
+	if m.db == nil || id <= 0 {
+		return
+	}
+	msg, err := m.db.GetMessage(id)
+	if err != nil {
+		m.setStatus(fmt.Sprintf("no message %d to open", id), true)
+		return
+	}
+	// Both halves of the startup plumbing that already exists: the folder
+	// holding the message becomes the selection once the accounts load, and the
+	// message becomes the cursor once that folder loads.
+	m.pendingSelectMailboxID = msg.MailboxID
+	m.pendingSelectMessageID = msg.ID
+	// The reader asked for a message, so the keyboard starts in the list rather
+	// than on the account sidebar.
+	m.focused = paneMessages
+}
+
 func (m Model) Init() tea.Cmd {
 	// The spinner tick loop is started lazily by ensureSpinner when a loading
 	// state begins — not here. Kicking it at startup would re-render the idle TUI
