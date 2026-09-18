@@ -20,19 +20,59 @@ import (
 type packageOwner struct {
 	Manager string // pacman, dpkg, rpm
 	Package string // tidemail-bin
+	// Foreign marks a pacman package that came from outside the sync repos —
+	// the AUR, or a local makepkg. It matters because `pacman -Syu` silently
+	// skips foreign packages, so the plain pacman command would look right and
+	// do nothing.
+	Foreign bool
+}
+
+// aurHelpers are tried in order for a foreign pacman package. Each takes
+// `-S <pkg>` to rebuild and reinstall the current AUR version, and prompts for
+// sudo itself.
+var aurHelpers = []string{"yay", "paru", "pikaur", "trizen"}
+
+// aurFallbackCommand builds the package straight from the AUR. It is the answer
+// when no helper is installed: it needs nothing but base-devel and git, which
+// an Arch box building AUR packages already has.
+func aurFallbackCommand(pkg string) string {
+	return "git clone https://aur.archlinux.org/" + pkg + ".git && cd " + pkg + " && makepkg -si"
 }
 
 // UpdateCommand is the shell command that upgrades this package in place.
 func (o packageOwner) UpdateCommand() string {
 	switch o.Manager {
 	case "pacman":
-		return "sudo pacman -Syu " + o.Package
+		if !o.Foreign {
+			return "sudo pacman -Syu " + o.Package
+		}
+		for _, helper := range aurHelpers {
+			if _, err := lookPath(helper); err == nil {
+				return helper + " -S " + o.Package
+			}
+		}
+		// Deliberately not SuggestedManualInstallScript: that drops a binary in
+		// ~/.local/bin which would shadow the packaged one, the exact failure
+		// this file exists to prevent.
+		return aurFallbackCommand(o.Package)
 	case "dpkg":
 		return "sudo apt update && sudo apt install --only-upgrade " + o.Package
 	case "rpm":
 		return "sudo dnf upgrade " + o.Package
 	}
 	return ""
+}
+
+// pacmanPackageIsForeign reports whether pacman knows the package only locally.
+// `pacman -Qmq <pkg>` prints the name and exits 0 for a foreign package, and
+// exits non-zero for one from a sync repo — so an error here means "not
+// foreign", not "probe failed".
+func pacmanPackageIsForeign(pkg string) bool {
+	out, err := queryOwner("pacman", "-Qmq", pkg)
+	if err != nil {
+		return false
+	}
+	return firstLineField(out) == pkg
 }
 
 // probeTimeout keeps a wedged package manager from stalling a render pass.
@@ -109,7 +149,11 @@ func probeOwningPackage(path string) (packageOwner, bool) {
 			continue
 		}
 		if pkg := probe.parse(out); pkg != "" {
-			return packageOwner{Manager: probe.manager, Package: pkg}, true
+			owner := packageOwner{Manager: probe.manager, Package: pkg}
+			if probe.manager == "pacman" {
+				owner.Foreign = pacmanPackageIsForeign(pkg)
+			}
+			return owner, true
 		}
 	}
 	return packageOwner{}, false

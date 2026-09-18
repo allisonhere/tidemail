@@ -56,9 +56,12 @@ yay -S tidemail-bin
 paru -S tidemail-bin
 ```
 
-Updates then come from `pacman -Syu` along with everything else. TideMail
-notices it was installed this way and points you at your package manager
-instead of trying to replace a root-owned binary itself.
+Updates come from your AUR helper — `yay -Syu` or `paru -Syu` alongside
+everything else, or `yay -S tidemail-bin` for just this one. Plain
+`pacman -Syu` will not do it: pacman skips packages it did not install from a
+sync repo, so it reports success and leaves TideMail where it was. TideMail
+notices it was installed this way and points you at the right command instead
+of trying to replace a root-owned binary itself.
 
 ### Everywhere else
 

@@ -9,17 +9,44 @@ import (
 
 // stubOwnerProbe points the package-manager probe at canned output and makes
 // the given directory look unwritable, the way /usr/bin is for a normal user.
+// The foreign-package query (`pacman -Qmq`) answers "not foreign", so these
+// stubs describe a package from a sync repo; stubForeignOwnerProbe covers the
+// AUR case.
 func stubOwnerProbe(t *testing.T, available string, out string, err error) {
+	t.Helper()
+	stubOwnerProbeWith(t, []string{available}, out, err, "", fmt.Errorf("not foreign"))
+}
+
+// stubForeignOwnerProbe describes a pacman package that came from the AUR, with
+// the named binaries on PATH alongside pacman.
+func stubForeignOwnerProbe(t *testing.T, pkg string, helpers ...string) {
+	t.Helper()
+	stubOwnerProbeWith(t, append([]string{"pacman"}, helpers...), pkg+"\n", nil, pkg+"\n", nil)
+}
+
+// stubOwnerProbeWith answers the ownership query and the -Qmq foreign query
+// separately, because a single canned answer would make every stubbed package
+// look foreign.
+func stubOwnerProbeWith(t *testing.T, available []string, ownerOut string, ownerErr error, foreignOut string, foreignErr error) {
 	t.Helper()
 	resetOwnerCacheForTest()
 	origLook, origQuery, origWritable := lookPath, queryOwner, dirWritable
 	lookPath = func(name string) (string, error) {
-		if name == available {
-			return "/usr/bin/" + name, nil
+		for _, a := range available {
+			if name == a {
+				return "/usr/bin/" + name, nil
+			}
 		}
 		return "", fmt.Errorf("not found")
 	}
-	queryOwner = func(string, ...string) (string, error) { return out, err }
+	queryOwner = func(_ string, args ...string) (string, error) {
+		for _, arg := range args {
+			if arg == "-Qmq" {
+				return foreignOut, foreignErr
+			}
+		}
+		return ownerOut, ownerErr
+	}
 	dirWritable = func(string) error { return fmt.Errorf("read-only") }
 	t.Cleanup(func() {
 		lookPath, queryOwner, dirWritable = origLook, origQuery, origWritable
@@ -156,5 +183,61 @@ func TestOwningPackageCacheIsKeyedOnPath(t *testing.T) {
 	// The original path still answers from the cache.
 	if _, owned := owningPackage("/usr/bin/tidemail"); !owned {
 		t.Fatal("re-querying the original path must still report it as owned")
+	}
+}
+
+// An AUR package cannot be updated by pacman — `pacman -Syu` skips foreign
+// packages silently — so the command has to come from an AUR helper.
+func TestForeignPacmanPackageUsesAURHelper(t *testing.T) {
+	stubForeignOwnerProbe(t, "tidemail-bin", "yay")
+
+	owner, owned := owningPackage("/usr/bin/tidemail")
+	if !owned || !owner.Foreign {
+		t.Fatalf("expected a foreign pacman package, got %+v owned=%v", owner, owned)
+	}
+	if got, want := owner.UpdateCommand(), "yay -S tidemail-bin"; got != want {
+		t.Fatalf("update command = %q, want %q", got, want)
+	}
+}
+
+// A package from a sync repo keeps the plain pacman command.
+func TestRepoPacmanPackageKeepsPacmanCommand(t *testing.T) {
+	stubOwnerProbe(t, "pacman", "tidemail\n", nil)
+
+	owner, owned := owningPackage("/usr/bin/tidemail")
+	if !owned {
+		t.Fatal("expected the binary to be package-managed")
+	}
+	if owner.Foreign {
+		t.Fatal("a sync-repo package must not be marked foreign")
+	}
+	if got, want := owner.UpdateCommand(), "sudo pacman -Syu tidemail"; got != want {
+		t.Fatalf("update command = %q, want %q", got, want)
+	}
+}
+
+// With no helper installed, build from the AUR. It must not fall back to the
+// install script, which would drop a second binary in ~/.local/bin shadowing
+// the packaged one.
+func TestForeignPacmanPackageWithoutHelperBuildsFromAUR(t *testing.T) {
+	stubForeignOwnerProbe(t, "tidemail-bin")
+
+	owner, _ := owningPackage("/usr/bin/tidemail")
+	got := owner.UpdateCommand()
+	if got == SuggestedManualInstallScript {
+		t.Fatal("the install script would shadow the packaged binary")
+	}
+	if want := aurFallbackCommand("tidemail-bin"); got != want {
+		t.Fatalf("update command = %q, want %q", got, want)
+	}
+}
+
+// Helper choice follows the documented order rather than PATH order.
+func TestForeignPacmanPackagePrefersFirstListedHelper(t *testing.T) {
+	stubForeignOwnerProbe(t, "tidemail-bin", "paru", "yay")
+
+	owner, _ := owningPackage("/usr/bin/tidemail")
+	if got, want := owner.UpdateCommand(), "yay -S tidemail-bin"; got != want {
+		t.Fatalf("update command = %q, want %q", got, want)
 	}
 }

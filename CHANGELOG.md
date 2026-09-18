@@ -4,6 +4,17 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- **An AUR install is now told how to update itself.** TideMail correctly
+  refuses to overwrite a package-managed binary, but the command it offered in
+  Settings → Updates was `sudo pacman -Syu tidemail-bin`, which fails with
+  "target not found" — pacman cannot update a package it did not install from a
+  sync repo. It now offers your AUR helper (`yay -S tidemail-bin`, or paru,
+  pikaur or trizen), falling back to a `makepkg` line from the AUR when no
+  helper is installed. The README said the same wrong thing and has been
+  corrected.
+
 ## v1.0.20
 
 ### Fixed
