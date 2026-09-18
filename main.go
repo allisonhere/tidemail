@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -22,12 +23,18 @@ type startupOptions struct {
 	previewUpdateProgress bool
 	prototypeForms        bool
 	disableGoogleOAuth    bool
+	// openMessageID is the message a panel asked us to show, by the id in the
+	// cache both programs read (messages.id). Zero means nobody asked.
+	openMessageID int64
 }
 
-func parseStartupOptions(args []string) startupOptions {
+// parseStartupOptions reads the flags. A flag that takes a value reads it from
+// the argument after it, and an unknown argument is ignored: a terminal or a
+// desktop environment hands a program arguments it did not ask for.
+func parseStartupOptions(args []string) (startupOptions, error) {
 	var opts startupOptions
-	for _, a := range args {
-		switch strings.TrimSpace(a) {
+	for i := 0; i < len(args); i++ {
+		switch strings.TrimSpace(args[i]) {
 		case "--preview-manual-update":
 			opts.previewManualUpdate = true
 		case "--preview-update-progress":
@@ -36,9 +43,19 @@ func parseStartupOptions(args []string) startupOptions {
 			opts.prototypeForms = true
 		case "--disable-google-oauth":
 			opts.disableGoogleOAuth = true
+		case "--open":
+			if i+1 >= len(args) {
+				return startupOptions{}, fmt.Errorf("--open needs a message id")
+			}
+			id, err := strconv.ParseInt(strings.TrimSpace(args[i+1]), 10, 64)
+			if err != nil || id <= 0 {
+				return startupOptions{}, fmt.Errorf("--open needs a message id, not %q", args[i+1])
+			}
+			opts.openMessageID = id
+			i++ // the value is not an argument of its own
 		}
 	}
-	return opts
+	return opts, nil
 }
 
 func main() {
@@ -67,7 +84,13 @@ func main() {
 }
 
 func run() (code int, restartExec string) {
-	opts := parseStartupOptions(os.Args[1:])
+	opts, err := parseStartupOptions(os.Args[1:])
+	if err != nil {
+		// Refusing here is the point: a mistyped id that started the client
+		// anyway would look exactly like the feature not working.
+		fmt.Fprintln(os.Stderr, "tidemail:", err)
+		return 1, ""
+	}
 	for _, a := range os.Args[1:] {
 		switch strings.TrimSpace(a) {
 		case "--version", "-version", "-v":

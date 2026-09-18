@@ -54,7 +54,10 @@ func TestResolvedVersionFromBuildInfoFallsBackToRevision(t *testing.T) {
 }
 
 func TestParseStartupOptionsPrototypeForms(t *testing.T) {
-	opts := parseStartupOptions([]string{"--prototype-forms"})
+	opts, err := parseStartupOptions([]string{"--prototype-forms"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if !opts.prototypeForms {
 		t.Fatal("expected --prototype-forms to enable prototype form mode")
@@ -62,7 +65,10 @@ func TestParseStartupOptionsPrototypeForms(t *testing.T) {
 }
 
 func TestParseStartupOptionsUpdateProgressPreview(t *testing.T) {
-	opts := parseStartupOptions([]string{"--preview-update-progress"})
+	opts, err := parseStartupOptions([]string{"--preview-update-progress"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if !opts.previewUpdateProgress {
 		t.Fatal("expected --preview-update-progress to enable update progress preview")
@@ -70,10 +76,55 @@ func TestParseStartupOptionsUpdateProgressPreview(t *testing.T) {
 }
 
 func TestParseStartupOptionsDisableGoogleOAuth(t *testing.T) {
-	opts := parseStartupOptions([]string{"--disable-google-oauth"})
+	opts, err := parseStartupOptions([]string{"--disable-google-oauth"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if !opts.disableGoogleOAuth {
 		t.Fatal("expected --disable-google-oauth to enable the runtime OAuth override")
+	}
+}
+
+// --open names the message a dashboard panel handed over, by the id in the
+// cache both programs read.
+func TestParseStartupOptionsOpenMessage(t *testing.T) {
+	opts, err := parseStartupOptions([]string{"--open", "4821"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.openMessageID != 4821 {
+		t.Fatalf("openMessageID = %d, want 4821", opts.openMessageID)
+	}
+
+	// The other flags still parse beside it.
+	opts, err = parseStartupOptions([]string{"--preview-manual-update", "--open", "12"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.openMessageID != 12 || !opts.previewManualUpdate {
+		t.Fatalf("opts = %+v, want the id and the preview flag", opts)
+	}
+
+	// A bare positional argument stays ignored, so nothing starts treating one
+	// as a value.
+	if opts, err = parseStartupOptions([]string{"4821"}); err != nil || opts.openMessageID != 0 {
+		t.Fatalf("a positional argument set openMessageID = %d (%v)", opts.openMessageID, err)
+	}
+}
+
+// A value that is not there, or is not an id, is a startup error: the one
+// failure that would otherwise look like the feature quietly not working.
+func TestParseStartupOptionsRejectsABadOpenValue(t *testing.T) {
+	for _, args := range [][]string{
+		{"--open"},
+		{"--open", "abc"},
+		{"--open", "0"},
+		{"--open", "-3"},
+	} {
+		if _, err := parseStartupOptions(args); err == nil {
+			t.Errorf("parseStartupOptions(%v) accepted a bad id", args)
+		}
 	}
 }
 
