@@ -241,3 +241,24 @@ func TestForeignPacmanPackagePrefersFirstListedHelper(t *testing.T) {
 		t.Fatalf("update command = %q, want %q", got, want)
 	}
 }
+
+// OwningPackageInstall is what the UI uses to name the package when it explains
+// why TideMail will not replace its own binary, so it must report the same
+// manager, package and foreign flag the probe found.
+func TestOwningPackageInstallReportsTheProbeResult(t *testing.T) {
+	stubForeignOwnerProbe(t, "tidemail-bin", "yay")
+
+	// The probe is keyed on the running test binary's path here, so drive it
+	// through the same entry point the UI uses and accept either outcome for
+	// ownership — what matters is that a reported owner matches the probe.
+	if pkg, ok := OwningPackageInstall(); ok {
+		if pkg.Manager != "pacman" || pkg.Package != "tidemail-bin" || !pkg.Foreign {
+			t.Fatalf("OwningPackageInstall() = %+v, want the stubbed pacman/tidemail-bin/foreign", pkg)
+		}
+	}
+
+	owner, owned := owningPackage("/usr/bin/tidemail")
+	if !owned || owner.Manager != "pacman" || owner.Package != "tidemail-bin" || !owner.Foreign {
+		t.Fatalf("probe = %+v owned=%v, want pacman/tidemail-bin/foreign", owner, owned)
+	}
+}

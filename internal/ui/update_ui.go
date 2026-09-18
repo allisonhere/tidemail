@@ -152,6 +152,17 @@ func (m Model) effectiveManualCommand() string {
 	return update.ManualUpdateCommand()
 }
 
+// updateManualCommand is the command this install has to run outside TideMail.
+// effectiveManualCommand already prefers whatever the installer reported when it
+// could not write; the script is the last resort for an install TideMail cannot
+// otherwise place.
+func (m Model) updateManualCommand() string {
+	if cmd := strings.TrimSpace(m.effectiveManualCommand()); cmd != "" {
+		return cmd
+	}
+	return update.SuggestedManualInstallScript
+}
+
 func (m Model) settingsUpdateState() settingsUpdateState {
 	lastChecked := time.Time{}
 	if m.cfg.Updates.LastCheckedUnix > 0 {

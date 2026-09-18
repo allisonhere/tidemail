@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -73,6 +74,31 @@ func pacmanPackageIsForeign(pkg string) bool {
 		return false
 	}
 	return firstLineField(out) == pkg
+}
+
+// PackageInstall describes the distro package that owns the running binary.
+type PackageInstall struct {
+	Manager string // pacman, dpkg, rpm
+	Package string // tidemail-bin
+	Foreign bool   // pacman only: came from the AUR rather than a sync repo
+}
+
+// OwningPackageInstall reports the package that owns the running executable, so
+// the UI can name it when explaining why TideMail will not replace its own
+// binary. It shares the memoised probe behind ManualUpdateCommand, so the two
+// can never disagree about what owns the file.
+func OwningPackageInstall() (PackageInstall, bool) {
+	exe, err := os.Executable()
+	if err != nil {
+		return PackageInstall{}, false
+	}
+	owner, owned := owningPackage(exe)
+	if !owned {
+		return PackageInstall{}, false
+	}
+	// Field-identical to packageOwner by design: the conversion stops the two
+	// drifting apart silently, since adding a field to one breaks the build.
+	return PackageInstall(owner), true
 }
 
 // probeTimeout keeps a wedged package manager from stalling a render pass.

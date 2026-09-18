@@ -253,7 +253,7 @@ func (m Model) updateOverlayTitle() string {
 	switch {
 	case m.updateState == updateStateInstalled:
 		return "update installed"
-	case m.updateState == updateStateNeedsElevation:
+	case m.updateState == updateStateNeedsElevation, m.manualUpdateRequired():
 		return "manual update"
 	case m.updateInProgress():
 		return "installing update"
@@ -359,60 +359,110 @@ func (m Model) renderSummaryOverlay(width, height int, chrome managerChrome) str
 	return lipgloss.JoinVertical(lipgloss.Left, body, hints)
 }
 
+// updatePanel is one modal body: a heading, wrapped detail lines, an optional
+// shell command in a code box, an optional muted footnote, and a hint row. Every
+// branch of the update modal goes through it so they cannot drift apart again —
+// they differ in content, not in layout.
+type updatePanel struct {
+	heading string
+	details []string
+	command string
+	note    string
+	hints   []string
+}
+
+func (m Model) renderUpdatePanel(width int, chrome managerChrome, p updatePanel) string {
+	contentW := max(1, width-4)
+	lines := []string{p.heading}
+	for _, detail := range p.details {
+		if strings.TrimSpace(detail) == "" {
+			lines = append(lines, "")
+			continue
+		}
+		// Wrap here rather than leaning on the block style: a long target path
+		// or a 140-character release summary would otherwise set the modal's
+		// width and overflow a narrow terminal.
+		lines = append(lines, wrapShellCommand(detail, contentW)...)
+	}
+	body := lipgloss.NewStyle().
+		Background(chrome.baseBg).
+		Foreground(chrome.text).
+		Width(width).
+		Padding(1, 2, 0, 2).
+		Render(strings.Join(lines, "\n"))
+
+	parts := []string{body}
+	if cmd := strings.TrimSpace(p.command); cmd != "" {
+		// renderShellCommandBox sizes the block's interior; its border adds two
+		// cells on top, so subtract them to land flush with the body text.
+		box := lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Width(width).
+			Padding(1, 2, 0, 2).
+			Render(renderShellCommandBox(max(1, contentW-2), cmd, false, chrome))
+		parts = append(parts, box)
+	}
+	if strings.TrimSpace(p.note) != "" {
+		parts = append(parts, lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Foreground(chrome.muted).
+			Width(width).
+			Padding(1, 2, 1, 2).
+			Render(strings.Join(wrapShellCommand(p.note, contentW), "\n")))
+	}
+	if len(p.hints) > 0 {
+		parts = append(parts, renderSoftHints(width, chrome, p.hints...))
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+// manualUpdateReason explains why this install cannot replace its own binary.
+// It returns detail lines rather than one string so a long install path lands on
+// its own line: wrapped mid-sentence it strands the punctuation after it.
+func (m Model) manualUpdateReason() []string {
+	if pkg, ok := update.OwningPackageInstall(); ok {
+		return []string{"TideMail was installed by " + pkg.Manager + " as " + pkg.Package +
+			", so it cannot replace its own binary."}
+	}
+	lines := []string{"TideMail cannot write to its install location, so it cannot replace its own binary."}
+	if target, _ := os.Executable(); strings.TrimSpace(target) != "" {
+		lines = append(lines, "", "Location: "+target)
+	}
+	return lines
+}
+
 func (m Model) renderUpdateConfirmOverlay(width int, chrome managerChrome) string {
 	target, _ := os.Executable()
 	contentW := max(1, width-4)
+
 	if m.updateState == updateStateInstalled {
-		bodyText := "Updated TideMail to " + m.updateInstall.Version + "."
+		panel := updatePanel{
+			heading: "Updated TideMail to " + m.updateInstall.Version + ".",
+			hints:   []string{"enter", "restart", "esc", "close"},
+		}
 		if shadowed := strings.TrimSpace(m.updateInstall.ShadowedPath); shadowed != "" {
 			cmd := strings.TrimSpace(m.updateInstall.ShadowedCommand)
 			if cmd == "" {
 				cmd = "rm -f " + shadowed
 			}
-			bodyText = strings.Join([]string{
-				bodyText,
+			panel.details = []string{
 				"",
 				shadowed + " is still earlier on PATH.",
 				"Remove it so tidemail starts this version:",
-				cmd,
-			}, "\n")
+			}
+			panel.command = cmd
+			panel.hints = []string{"C", "copy", "enter", "restart", "esc", "close"}
 		}
-		body := lipgloss.NewStyle().
-			Background(chrome.baseBg).
-			Foreground(chrome.text).
-			Width(width).
-			Padding(1, 2, 0, 2).
-			Render(bodyText)
-		hints := renderSoftHints(width, chrome, "enter", "restart", "esc", "close")
-		return lipgloss.JoinVertical(lipgloss.Left, body, hints)
+		return m.renderUpdatePanel(width, chrome, panel)
 	}
-	if m.updateState == updateStateNeedsElevation {
-		cmd := strings.TrimSpace(m.updateInstall.ManualCommand)
-		if cmd == "" {
-			cmd = update.SuggestedManualInstallScript
-		}
-		bodyText := strings.Join([]string{
-			"Update downloaded, but the install target is not writable.",
-			"",
-			"Run this command outside TideMail:",
-			cmd,
-		}, "\n")
-		body := lipgloss.NewStyle().
-			Background(chrome.baseBg).
-			Foreground(chrome.text).
-			Width(width).
-			Padding(1, 2, 0, 2).
-			Render(bodyText)
-		hints := renderSoftHints(width, chrome, "enter/esc", "close")
-		return lipgloss.JoinVertical(lipgloss.Left, body, hints)
-	}
+
 	if m.updateInProgress() {
 		verb := "Downloading"
 		if m.updateState == updateStateInstalling {
 			verb = "Installing"
 		}
 		label := fmt.Sprintf("%s TideMail %s... %d%%", verb, m.updateInfo.Version, m.updateProgress)
-		body := lipgloss.NewStyle().
+		return lipgloss.NewStyle().
 			Background(chrome.baseBg).
 			Foreground(chrome.text).
 			Width(width).
@@ -422,39 +472,46 @@ func (m Model) renderUpdateConfirmOverlay(width int, chrome managerChrome) strin
 				"",
 				updateProgressBar(m.updateProgress, contentW, chrome),
 			}, "\n"))
-		return body
 	}
-	bodyLines := []string{
-		"Install TideMail " + m.updateInfo.Version + "?",
+
+	// Either the installer downloaded an update it cannot place, or this install
+	// is package-managed and was never going to place one. Same shape either way:
+	// explain, show the command, let them copy it.
+	if m.updateState == updateStateNeedsElevation || m.manualUpdateRequired() {
+		heading := "Update available: " + m.updateInfo.Version
+		reason := m.manualUpdateReason()
+		if m.updateState == updateStateNeedsElevation {
+			heading = "Update downloaded, but it cannot be installed here."
+			reason = []string{"The install target is not writable."}
+		}
+		details := append([]string{""}, reason...)
+		details = append(details, "", "Run this outside TideMail:")
+		return m.renderUpdatePanel(width, chrome, updatePanel{
+			heading: heading,
+			details: details,
+			command: m.updateManualCommand(),
+			note:    "Also available in Settings > Updates",
+			hints:   []string{"C", "copy", "esc", "close"},
+		})
 	}
+
+	details := []string{}
 	if summary := strings.TrimSpace(m.updateInfo.Summary); summary != "" {
-		bodyLines = append(bodyLines, "", "What's new: "+summary)
+		details = append(details, "", "What's new: "+summary)
 	}
-	bodyLines = append(bodyLines,
+	details = append(details,
 		"",
 		"Asset: "+m.updateInfo.AssetName+".tar.gz",
 		"Target: "+target,
 		"",
 		"The update will download first, then replace the current binary if the install path is writable.",
 	)
-	bodyText := strings.Join(bodyLines, "\n")
-
-	body := lipgloss.NewStyle().
-		Background(chrome.baseBg).
-		Foreground(chrome.text).
-		Width(width).
-		Padding(1, 2, 0, 2).
-		Render(bodyText)
-
-	note := lipgloss.NewStyle().
-		Background(chrome.baseBg).
-		Foreground(chrome.muted).
-		Width(width).
-		Padding(0, 2, 1, 2).
-		Render("Also available in Settings > Updates")
-
-	hints := renderSoftHints(width, chrome, "enter", "install", "esc", "cancel")
-	return lipgloss.JoinVertical(lipgloss.Left, body, note, hints)
+	return m.renderUpdatePanel(width, chrome, updatePanel{
+		heading: "Install TideMail " + m.updateInfo.Version + "?",
+		details: details,
+		note:    "Also available in Settings > Updates",
+		hints:   []string{"enter", "install", "esc", "cancel"},
+	})
 }
 
 func updateProgressBar(pct int, width int, chrome managerChrome) string {
