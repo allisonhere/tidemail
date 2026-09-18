@@ -40,9 +40,27 @@ func TestStarKeyTogglesStarOnMessage(t *testing.T) {
 	}
 	defer database.Close()
 
-	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	cfg := config.DefaultConfig()
+	cfg.Accounts = []config.AccountConfig{{ID: "star-account", Name: "Personal"}}
+	accountID, err := database.AddAccount("star-account", "Personal", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailboxID, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertMessage(db.Message{MailboxID: mailboxID, UID: 1, Subject: "Star me", Date: time.Unix(100, 0)}); err != nil {
+		t.Fatal(err)
+	}
+	msgs, err := database.ListMessages(mailboxID)
+	if err != nil || len(msgs) != 1 {
+		t.Fatalf("load message: count=%d err=%v", len(msgs), err)
+	}
+	m := NewModel(database, cfg, "dev", false)
 	m.focused = paneMessages
-	msgs := []db.Message{{ID: 1, Subject: "Star me", Date: time.Unix(100, 0)}}
+	m.accounts = []db.Account{{ID: accountID, ConfigID: "star-account", Name: "Personal"}}
+	m.mailboxes = []db.Mailbox{{ID: mailboxID, AccountID: accountID, Name: "INBOX"}}
 	m.messages = msgs
 	m.filteredMessages = msgs
 

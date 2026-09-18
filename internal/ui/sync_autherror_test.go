@@ -18,7 +18,7 @@ func TestSyncRevokedTokenShowsStickyStatus(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, _ := database.AddAccount("gmail", "")
+	accountID, _ := database.AddAccount("", "gmail", "")
 	inboxID, _ := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "INBOX"})
 
 	m := NewModel(database, config.DefaultConfig(), "dev", false)
@@ -52,7 +52,7 @@ func TestSyncGenericErrorStillClears(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, _ := database.AddAccount("gmail", "")
+	accountID, _ := database.AddAccount("", "gmail", "")
 	inboxID, _ := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "INBOX"})
 	m := NewModel(database, config.DefaultConfig(), "dev", false)
 	next, _ := m.Update(AccountsLoadedMsg{

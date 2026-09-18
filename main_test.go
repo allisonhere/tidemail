@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"runtime/debug"
+	"strings"
 	"testing"
 
 	"github.com/allisonhere/tidemail/internal/config"
@@ -21,6 +23,16 @@ func TestResolvedVersionFromBuildInfoPrefersModuleVersion(t *testing.T) {
 	got := resolvedVersionFromBuildInfo(info)
 	if got != "v1.3.2" {
 		t.Fatalf("expected module version to win, got %q", got)
+	}
+}
+
+func TestFormatConfigLoadErrorNamesPathAndRecovery(t *testing.T) {
+	path := "/tmp/tidemail/config.toml"
+	got := formatConfigLoadError(path, errors.New("toml: expected value"), config.DefaultConfig())
+	for _, want := range []string{path, "expected value", "restart TideMail", "config parses"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("startup error %q does not contain %q", got, want)
+		}
 	}
 }
 

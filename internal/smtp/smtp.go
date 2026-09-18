@@ -3,8 +3,10 @@ package smtp
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"mime"
@@ -47,9 +49,63 @@ type OutgoingMessage struct {
 	InReplyTo   string
 	References  string
 	Attachments []Attachment
+	// Date and MessageID are stamped once, before the message is transmitted,
+	// so that a copy appended to the Sent folder is byte-identical to what was
+	// delivered. Generating them inside buildRaw would differ per call.
+	Date      time.Time
+	MessageID string
 }
 
-func Send(ctx context.Context, cfg config.AccountConfig, msg OutgoingMessage) error {
+// EnsureIdentity stamps the Date and Message-ID if they are not set yet. Call
+// it before Send so BuildRaw reproduces exactly the transmitted bytes.
+func (m *OutgoingMessage) EnsureIdentity(from string) {
+	if m.Date.IsZero() {
+		m.Date = time.Now()
+	}
+	if m.MessageID == "" {
+		m.MessageID = newMessageID(from)
+	}
+}
+
+func (m OutgoingMessage) sentAt() time.Time {
+	if m.Date.IsZero() {
+		return time.Now()
+	}
+	return m.Date
+}
+
+func (m OutgoingMessage) messageID(from string) string {
+	if m.MessageID != "" {
+		return m.MessageID
+	}
+	return newMessageID(from)
+}
+
+// newMessageID builds an RFC 5322 msg-id using the sender's domain, falling
+// back to the local host when the address has none.
+func newMessageID(from string) string {
+	domain := "localhost"
+	if addr := cleanEmail(from); addr != "" {
+		if at := strings.LastIndex(addr, "@"); at >= 0 && at+1 < len(addr) {
+			domain = addr[at+1:]
+		}
+	}
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("<%d@%s>", time.Now().UnixNano(), domain)
+	}
+	return fmt.Sprintf("<%s@%s>", hex.EncodeToString(b[:]), domain)
+}
+
+// BuildRaw returns the exact RFC822 bytes Send transmits for msg, so a caller
+// can append an identical copy to the server's Sent folder. SMTP submission
+// leaves no copy behind.
+func BuildRaw(cfg config.AccountConfig, msg OutgoingMessage) []byte {
+	return buildRaw(senderAddress(cfg, msg), msg)
+}
+
+// senderAddress resolves the From: header value the same way Send does.
+func senderAddress(cfg config.AccountConfig, msg OutgoingMessage) string {
 	from := msg.From
 	if from == "" {
 		from = cfg.From
@@ -57,6 +113,11 @@ func Send(ctx context.Context, cfg config.AccountConfig, msg OutgoingMessage) er
 	if from == "" {
 		from = cfg.User
 	}
+	return from
+}
+
+func Send(ctx context.Context, cfg config.AccountConfig, msg OutgoingMessage) error {
+	from := senderAddress(cfg, msg)
 	// The envelope (MAIL FROM) must be a bare address — Gmail rejects "Name <addr>" —
 	// but the From: header should keep the display name, so clean only the envelope copy.
 	envelopeFrom := cleanEmail(from)
@@ -112,9 +173,9 @@ func smtpAuth(ctx context.Context, cfg config.AccountConfig, host string) (smtp.
 	var err error
 	switch {
 	case cfg.UsesGoogleOAuth2():
-		tok, err = auth.GoogleAccessToken(ctx, cfg.ClientID, cfg.ClientSecret, cfg.Name, cfg.RefreshToken)
+		tok, err = auth.GoogleAccessToken(ctx, cfg.ClientID, cfg.ClientSecret, cfg.SessionKey(), cfg.RefreshToken)
 	case cfg.UsesMicrosoftOAuth2():
-		tok, err = auth.MSAccessToken(ctx, cfg.ClientID, cfg.Name, cfg.RefreshToken)
+		tok, err = auth.MSAccessToken(ctx, cfg.ClientID, cfg.SessionKey(), cfg.RefreshToken)
 	default:
 		return smtp.PlainAuth("", cfg.User, cfg.Password, host), nil
 	}
@@ -230,6 +291,12 @@ func buildRaw(from string, msg OutgoingMessage) []byte {
 		hdr.WriteString("Cc: " + strings.Join(msg.CC, ", ") + "\r\n")
 	}
 	hdr.WriteString("Subject: " + msg.Subject + "\r\n")
+	// RFC 5322 requires Date and an originator. A submission server stamps
+	// these when they are missing, but a copy we APPEND to Sent is our own
+	// bytes — without them it would have no date, and nothing for threading or
+	// duplicate detection to key on.
+	hdr.WriteString("Date: " + msg.sentAt().Format(time.RFC1123Z) + "\r\n")
+	hdr.WriteString("Message-ID: " + msg.messageID(from) + "\r\n")
 	if msg.InReplyTo != "" {
 		hdr.WriteString("In-Reply-To: " + msg.InReplyTo + "\r\n")
 	}

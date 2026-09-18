@@ -97,14 +97,14 @@ func (m Model) finalizeUpdateInstall() (Model, tea.Cmd) {
 		m.syncSettingsUpdateState()
 		m.updateDismissed = false
 		m.cfg.Updates.DismissedVersion = ""
-		m.saveConfig()
+		_ = m.saveConfig()
 		return m, nil
 	}
 	m.updateState = updateStateInstalled
 	m.updateDismissed = false
 	m.cfg.Updates.DismissedVersion = ""
 	m.clearCachedAvailableUpdate()
-	m.saveConfig()
+	_ = m.saveConfig()
 	m.syncSettingsUpdateState()
 	if m.updateInstall.Restartable && m.updateInstall.ExecutablePath != "" {
 		m.restartExecPath = m.updateInstall.ExecutablePath
@@ -233,7 +233,7 @@ func (m *Model) dismissAvailableUpdate() tea.Cmd {
 		return nil
 	}
 	m.cfg.Updates.DismissedVersion = m.updateInfo.Version
-	m.saveConfig()
+	_ = m.saveConfig()
 	m.updateDismissed = true
 	m.syncSettingsUpdateState()
 	m.setStatus("Tide update "+m.updateInfo.Version+" dismissed", false)

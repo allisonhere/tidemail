@@ -234,7 +234,11 @@ func (m Model) handleUnsubscribe(cur db.Message) (tea.Model, tea.Cmd) {
 			m.setStatus("unsubscribe link is malformed", true)
 			return m, m.clearStatusCmd()
 		}
-		acfg := m.accountCfgForMailbox(cur.MailboxID)
+		acfg, err := m.accountCfgForMailbox(cur.MailboxID)
+		if err != nil {
+			m.setStatus("unsubscribe failed: "+err.Error(), true)
+			return m, m.clearStatusCmd()
+		}
 		c := NewCompose(acfg, m.cfg.Accounts, m.addressBook)
 		c.toInput.SetValue(addr)
 		c.subjectInput.SetValue(subject)

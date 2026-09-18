@@ -5,7 +5,7 @@ Left,"h,left",h/←,move left,global
 Right,"l,right",l/→,move right,global
 NextPane,"tab,]",tab/],next pane,global
 PrevPane,"shift+tab,[",shift+tab/[,prev pane,global
-Enter,enter,enter,open; in the content pane opens the focus-line link,global
+Enter,enter,enter,"open or immediately sync a folder; in content opens the focus-line link",global
 Back,esc,esc,back,global
 Sync,s,s,sync mailbox,main
 SyncAll,"F,ctrl+s",F/ctrl+s,sync all,main

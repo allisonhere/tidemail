@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
+	imapClient "github.com/allisonhere/tidemail/internal/imap"
 	"github.com/allisonhere/tidemail/internal/smtp"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -71,7 +73,8 @@ func (m Model) handleSendQueued(msg SendQueuedMsg) (Model, tea.Cmd) {
 	}
 	delay := time.Until(dueAt)
 	id, err := m.db.EnqueueOutbox(db.OutboxItem{
-		AccountName: msg.Account.Name, AccountUser: msg.Account.User, DraftID: draft.ID,
+		AccountConfigID: msg.Account.ID,
+		AccountName:     msg.Account.Name, AccountUser: msg.Account.User, DraftID: draft.ID,
 		Subject: msg.Msg.Subject, Recipients: joinRecipients(msg.Msg), MessageJSON: payload, DraftJSON: draftJSON,
 		MaxAttempts: config.NormalizeSendMaxAttempts(m.cfg.Display.SendMaxAttempts), NextAttempt: dueAt.Unix(),
 	})
@@ -91,7 +94,7 @@ func (m Model) handleSendQueued(msg SendQueuedMsg) (Model, tea.Cmd) {
 	m.overlay = overlayNone
 	m.pendingSends = append(m.pendingSends, pendingSend{
 		ID: uint64(id), Account: msg.Account, Msg: msg.Msg, DraftID: draft.ID, Compose: snapshot,
-		DueAt: dueAt.Unix(), Scheduled: !msg.ScheduledAt.IsZero(), Runtime: newOutboxRuntime(m.db, id, msg.Account, m.deleteDraftCmd(draft.ID)),
+		DueAt: dueAt.Unix(), Scheduled: !msg.ScheduledAt.IsZero(), Runtime: newOutboxRuntime(m.db, m.sessions, id, msg.Account, m.deleteDraftCmd(draft.ID)),
 	})
 	m.refreshOutbox()
 	if delay <= 0 {
@@ -169,7 +172,7 @@ func (rt *sendRuntime) run() tea.Msg {
 	return rt.result
 }
 
-func newOutboxRuntime(database *db.DB, id int64, account config.AccountConfig, cleanup tea.Cmd) *sendRuntime {
+func newOutboxRuntime(database *db.DB, sessions *imapClient.SessionPool, id int64, account config.AccountConfig, cleanup tea.Cmd) *sendRuntime {
 	return &sendRuntime{command: func() tea.Msg {
 		result := MessageSentMsg{PendingID: uint64(id)}
 		item, err := database.GetOutbox(id)
@@ -191,6 +194,9 @@ func newOutboxRuntime(database *db.DB, id int64, account config.AccountConfig, c
 			result.Skipped = true
 			return result
 		}
+		// Stamp Date and Message-ID once, so the copy appended to Sent is
+		// byte-identical to what goes out over SMTP.
+		msg.EnsureIdentity(account.From)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		err = smtp.Send(ctx, account, msg)
 		cancel()
@@ -215,11 +221,58 @@ func newOutboxRuntime(database *db.DB, id int64, account config.AccountConfig, c
 			}
 			return result
 		}
+		// Only once delivery is recorded: an APPEND is decoration, and must
+		// never sit between delivery and the durable record, or a crash inside
+		// it leaves a delivered message looking unsent and eligible for resend.
+		if err == nil {
+			result.SentCopyErr = appendToSentFolder(database, sessions, account, msg)
+		}
 		if err == nil && item.DraftID != 0 && cleanup != nil {
 			result.CleanupErr = cleanup().(DraftDeletedMsg).Err
 		}
 		return result
 	}}
+}
+
+// serverFilesSentMail reports whether the provider files submitted mail into
+// Sent by itself, in which case appending our own copy would show the user two
+// of everything. Gmail does this for anything submitted through its SMTP —
+// including Workspace accounts on a custom address — so match the host as well
+// as the provider name.
+func serverFilesSentMail(acfg config.AccountConfig) bool {
+	host := strings.ToLower(strings.TrimSpace(acfg.SMTPHost))
+	if strings.HasSuffix(host, "smtp.gmail.com") || strings.HasSuffix(host, "smtp-relay.gmail.com") {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(acfg.Provider), "Gmail")
+}
+
+// appendToSentFolder puts a copy of a just-delivered message in the account's
+// Sent folder. Any error is returned for reporting only — the mail is already
+// delivered and recorded, so there is nothing to retry and nothing to fail.
+func appendToSentFolder(database *db.DB, sessions *imapClient.SessionPool, acfg config.AccountConfig, msg smtp.OutgoingMessage) error {
+	if database == nil || sessions == nil || strings.TrimSpace(acfg.IMAPHost) == "" {
+		return nil
+	}
+	if serverFilesSentMail(acfg) {
+		return nil
+	}
+	accountID, err := database.AccountIDByConfigID(acfg.ID)
+	if err != nil {
+		return err
+	}
+	// Report rather than guess: creating folders on someone's server as a side
+	// effect of sending mail is too aggressive.
+	sent, err := database.FindSentMailbox(accountID)
+	if err != nil {
+		return err
+	}
+	raw := smtp.BuildRaw(acfg, msg)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	return sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
+		return client.AppendSent(ctx, sent.Name, raw, msg.Date)
+	})
 }
 
 // Complete first sends and in-flight deliveries on quit. Scheduled retries are

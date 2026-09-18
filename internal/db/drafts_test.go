@@ -120,7 +120,7 @@ func TestDBListDraftsSortsByUpdatedAndFiltersAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	drafts, err := database.ListDrafts("Personal", "allie@example.com")
+	drafts, err := database.ListDrafts("", "Personal", "allie@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestDBListDraftsSortsByUpdatedAndFiltersAccount(t *testing.T) {
 		t.Fatalf("expected newest first, got %+v", drafts)
 	}
 
-	count, err := database.DraftCount("Personal", "allie@example.com")
+	count, err := database.DraftCount("", "Personal", "allie@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestDBListDraftsSortsByUpdatedAndFiltersAccount(t *testing.T) {
 
 func TestDBFindDraftsMailboxPrefersSpecialUseThenCommonNames(t *testing.T) {
 	database := openDraftTestDB(t)
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestSaveDraftUpdatePreservesRemoteLinkage(t *testing.T) {
 func TestImportRemoteDraftIsIdempotentAndTracksUnmirrored(t *testing.T) {
 	database := openDraftTestDB(t)
 
-	accountID, err := database.AddAccount("Acct", "")
+	accountID, err := database.AddAccount("", "Acct", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func TestImportRemoteDraftIsIdempotentAndTracksUnmirrored(t *testing.T) {
 	if err := database.ImportRemoteDraft(mirror); err != nil {
 		t.Fatal(err)
 	}
-	if n, err := database.DraftCount("Acct", ""); err != nil || n != 1 {
+	if n, err := database.DraftCount("", "Acct", ""); err != nil || n != 1 {
 		t.Fatalf("expected exactly 1 mirrored draft after double import, got %d err=%v", n, err)
 	}
 	if n, err := database.UnmirroredDraftMessageCount(mailboxID); err != nil || n != 1 {

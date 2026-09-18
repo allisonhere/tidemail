@@ -81,7 +81,7 @@ func TestSyncMailboxCmdGuardsConcurrentSyncs(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatalf("AddAccount: %v", err)
 	}
@@ -140,6 +140,40 @@ func TestSyncMailboxCmdReportsRefusedManualSync(t *testing.T) {
 	}
 	if m.statusMsg != "" {
 		t.Fatalf("expected a refused auto sync to stay silent, got status %q", m.statusMsg)
+	}
+}
+
+// A background sync (timer, IDLE nudge, startup sweep, passive refresh) must
+// stay quiet: no status-line "syncing...", no sidebar spinner, and no frame
+// clock, so an unattended fetch never animates the screen while the user reads.
+func TestBackgroundSyncStaysInvisible(t *testing.T) {
+	m, mailboxID := sentFolderModel(t, 0)
+	m.initialLoading = false
+
+	if cmd := m.syncMailboxCmd(mailboxID, false); cmd == nil {
+		t.Fatal("expected a background sync to be admitted")
+	}
+	if m.syncVisible[mailboxID] {
+		t.Fatal("a background sync must not animate sync chrome")
+	}
+	if m.spinnerActive() {
+		t.Fatal("a background sync must not start the spinner loop")
+	}
+}
+
+// Only an explicitly requested sync shows progress.
+func TestExplicitSyncIsVisible(t *testing.T) {
+	m, mailboxID := sentFolderModel(t, 0)
+	m.initialLoading = false
+
+	if cmd := m.syncMailboxCmd(mailboxID, true); cmd == nil {
+		t.Fatal("expected an explicit sync to be admitted")
+	}
+	if !m.syncVisible[mailboxID] {
+		t.Fatal("an explicit sync should show progress")
+	}
+	if !m.spinnerActive() {
+		t.Fatal("an explicit sync should start the spinner loop")
 	}
 }
 

@@ -226,6 +226,16 @@ func (db *DB) migrate() error {
 	db.Exec(`ALTER TABLE messages ADD COLUMN references_text TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
 	db.Exec(`ALTER TABLE messages ADD COLUMN starred INTEGER NOT NULL DEFAULT 0`)       //nolint:errcheck
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_starred ON messages(starred)`)     //nolint:errcheck
+	// config_id links an account row to its [[account]] block in config.toml.
+	// Before it existed the link was the display name, so a rename detached the
+	// row and a duplicate name attached two rows to one block.
+	db.Exec(`ALTER TABLE accounts ADD COLUMN config_id TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
+	_, _ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_config_id
+		ON accounts(config_id) WHERE config_id != ''`)
+	db.Exec(`ALTER TABLE drafts ADD COLUMN account_config_id TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_drafts_account_config
+		ON drafts(account_config_id)`)
+	db.Exec(`ALTER TABLE outbox ADD COLUMN account_config_id TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
 	// Enforce one local mirror per remote draft. Drop any duplicates a previous
 	// build's check-then-insert race may have created before adding the index.
 	_, _ = db.Exec(`DELETE FROM drafts WHERE remote_uid != 0 AND id NOT IN (

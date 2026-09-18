@@ -24,7 +24,7 @@ func openReconcileTestDB(t *testing.T) *DB {
 
 func TestReconcileMailboxUIDsRemovesVanishedKeepsPresent(t *testing.T) {
 	database := openReconcileTestDB(t)
-	accountID, err := database.AddAccount("Acct", "")
+	accountID, err := database.AddAccount("", "Acct", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestReconcileMailboxUIDsRemovesVanishedKeepsPresent(t *testing.T) {
 
 func TestReconcileMailboxUIDsEmptyServerSetWipesUIDMessages(t *testing.T) {
 	database := openReconcileTestDB(t)
-	accountID, _ := database.AddAccount("Acct", "")
+	accountID, _ := database.AddAccount("", "Acct", "")
 	mailboxID, _ := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
 	if err := database.UpsertMessage(Message{MailboxID: mailboxID, UID: 5, Subject: "gone"}); err != nil {
 		t.Fatal(err)
@@ -105,7 +105,7 @@ func TestReconcileMailboxUIDsEmptyServerSetWipesUIDMessages(t *testing.T) {
 
 func TestApplyServerReadStatesAdoptsServerFlags(t *testing.T) {
 	database := openReconcileTestDB(t)
-	accountID, _ := database.AddAccount("Acct", "")
+	accountID, _ := database.AddAccount("", "Acct", "")
 	mailboxID, _ := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
 
 	// uid1 unread locally, uid2 read locally, uid3 read locally (will stay read).
@@ -165,7 +165,7 @@ func TestApplyServerReadStatesAdoptsServerFlags(t *testing.T) {
 
 func TestApplyServerStarredStatesAdoptsServerFlags(t *testing.T) {
 	database := openReconcileTestDB(t)
-	accountID, _ := database.AddAccount("Acct", "")
+	accountID, _ := database.AddAccount("", "Acct", "")
 	mailboxID, _ := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
 
 	if err := database.UpsertMessage(Message{MailboxID: mailboxID, UID: 1, Subject: "add star"}); err != nil {
@@ -221,7 +221,7 @@ func TestApplyServerStarredStatesAdoptsServerFlags(t *testing.T) {
 
 func TestUIDValidityRoundTripAndResetMailboxCache(t *testing.T) {
 	database := openReconcileTestDB(t)
-	accountID, _ := database.AddAccount("Acct", "")
+	accountID, _ := database.AddAccount("", "Acct", "")
 	mailboxID, _ := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
 
 	if v, err := database.MailboxUIDValidity(mailboxID); err != nil || v != 0 {

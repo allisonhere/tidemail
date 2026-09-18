@@ -1,10 +1,14 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -139,6 +143,13 @@ const (
 )
 
 type AccountConfig struct {
+	// ID is the account's stable identity. It survives renames and is what the
+	// database row, the keychain items, and the IMAP session pool key off.
+	// Display names are for people, not for joins: keying on them is what let a
+	// second account overwrite its peer and a delete take the survivor's
+	// credentials with it. Configs written before this field existed are
+	// stamped at load by ensureAccountIDs.
+	ID       string `toml:"id"`
 	Name     string `toml:"name"`
 	Provider string `toml:"provider"`
 	// AuthMethod is the explicit, opt-in auth choice: "password" (default) or
@@ -212,11 +223,11 @@ func isOAuthProvider(provider string) bool {
 // "has a token"/"has a password" look at both the decoded TOML (keyless systems
 // keep secrets there) and the keychain. getPassword/getToken are injected so
 // this is testable without a real keychain.
-func migrateAuthMethod(cfg *Config, getPassword, getToken func(string) string) {
+func migrateAuthMethod(cfg *Config, getPassword, getToken func(id, legacyName string) string) {
 	for i := range cfg.Accounts {
 		a := &cfg.Accounts[i]
-		hasPassword := a.Password != "" || getPassword(a.Name) != ""
-		hasToken := a.RefreshToken != "" || getToken(a.Name) != ""
+		hasPassword := a.Password != "" || getPassword(a.ID, a.Name) != ""
+		hasToken := a.RefreshToken != "" || getToken(a.ID, a.Name) != ""
 		if isOAuthProvider(a.Provider) && !hasPassword && hasToken {
 			a.AuthMethod = AuthOAuth2
 			continue
@@ -227,8 +238,88 @@ func migrateAuthMethod(cfg *Config, getPassword, getToken func(string) string) {
 	}
 }
 
+// newAccountID returns an opaque account identifier. It is deliberately not
+// derived from the account's name or address: an ID that encodes the name would
+// change when the name does, which is the whole problem it exists to solve.
+var fallbackAccountIDCounter atomic.Uint64
+
+func newAccountID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// These are local join keys, not secrets. Keep the fallback unique within
+		// the process instead of returning a constant that would make the collision
+		// retry loop below spin forever when crypto/rand is unavailable.
+		return fmt.Sprintf("%016x%016x", uint64(time.Now().UnixNano()), fallbackAccountIDCounter.Add(1))
+	}
+	return hex.EncodeToString(b[:])
+}
+
+// EnsureAccountIDs stamps a stable ID on any account that lacks one. Load and
+// Save both do this, but a Config assembled in code (tests, embedders) reaches
+// the model without passing through either.
+func EnsureAccountIDs(cfg *Config) bool { return ensureAccountIDs(cfg) }
+
+// NewAccountID mints an identity for an account being created in the UI. The
+// form needs it before the account is saved, so an OAuth sign-in taken
+// mid-form already caches its token under the final identity.
+func NewAccountID() string { return newAccountID() }
+
+// SessionKey returns the value that identifies this account to per-account
+// caches: the IMAP session pool and the OAuth access-token cache. It is the
+// stable ID, with a user@host fallback for a config built without one. Keying
+// those caches on the display name meant two accounts sharing a name shared one
+// connection slot and one token entry.
+func (a AccountConfig) SessionKey() string {
+	if id := strings.TrimSpace(a.ID); id != "" {
+		return id
+	}
+	return a.User + "@" + a.IMAPHost
+}
+
+// ensureAccountIDs stamps a stable ID on every account that lacks one and
+// resolves any collision, reporting whether it changed anything. It runs on
+// every load so a config hand-edited to add an account (documented as a
+// supported workaround) still gets a usable identity. Load persists a changed
+// identity set before the database can link any rows to it.
+func ensureAccountIDs(cfg *Config) bool {
+	seen := make(map[string]bool, len(cfg.Accounts))
+	changed := false
+	for i := range cfg.Accounts {
+		id := strings.TrimSpace(cfg.Accounts[i].ID)
+		if id == "" || seen[id] {
+			for {
+				id = newAccountID()
+				if !seen[id] {
+					break
+				}
+			}
+			cfg.Accounts[i].ID = id
+			changed = true
+		} else if id != cfg.Accounts[i].ID {
+			cfg.Accounts[i].ID = id
+			changed = true
+		}
+		seen[id] = true
+	}
+	return changed
+}
+
+// AccountByID returns the account with the given stable ID.
+func (c Config) AccountByID(id string) (AccountConfig, bool) {
+	if strings.TrimSpace(id) == "" {
+		return AccountConfig{}, false
+	}
+	for _, a := range c.Accounts {
+		if a.ID == id {
+			return a, true
+		}
+	}
+	return AccountConfig{}, false
+}
+
 func DefaultAccountConfig() AccountConfig {
 	return AccountConfig{
+		ID:       newAccountID(),
 		IMAPPort: 993,
 		IMAPTLS:  true,
 		SMTPPort: 587,
@@ -301,9 +392,34 @@ func Load() (Config, error) {
 	cfg.Display.SendMaxAttempts = NormalizeSendMaxAttempts(cfg.Display.SendMaxAttempts)
 	cfg.Display.Density = NormalizeDisplayDensity(cfg.Display.Density)
 	cfg.Display.PaneCorners = NormalizePaneCorners(cfg.Display.PaneCorners)
+	idsChanged := ensureAccountIDs(&cfg)
 	migrateAuthMethod(&cfg, GetAccountPassword, GetOAuth2RefreshToken)
 	fillSecrets(&cfg)
+	if idsChanged {
+		if err := backupPreAccountIDConfig(path, data); err != nil {
+			return cfg, fmt.Errorf("back up config before account-ID migration: %w", err)
+		}
+		if err := Save(cfg); err != nil {
+			return cfg, fmt.Errorf("persist account-ID migration: %w", err)
+		}
+	}
 	return cfg, nil
+}
+
+func backupPreAccountIDConfig(path string, data []byte) error {
+	backup := path + ".pre-account-ids.bak"
+	f, err := os.OpenFile(backup, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if os.IsExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 func NormalizeDisplayDensity(s string) string {
@@ -339,6 +455,13 @@ func firstNonEmpty(a, b string) string {
 func Save(cfg Config) error {
 	// Deep-copy accounts to avoid mutating the caller's slice (stripSecrets
 	// clears Password fields on the shared backing array).
+	// stripSecrets keys the keychain on the ID, so every account must have one
+	// before it runs — a config assembled in code has not been through Load.
+	// This runs before the copy deliberately: cfg.Accounts still shares the
+	// caller's backing array here, so the caller learns the IDs too. Minting a
+	// fresh ID on every Save instead would orphan the keychain item written
+	// under the previous one.
+	ensureAccountIDs(&cfg)
 	accts := make([]AccountConfig, len(cfg.Accounts))
 	copy(accts, cfg.Accounts)
 	cfg.Accounts = accts
@@ -358,16 +481,28 @@ func Save(cfg Config) error {
 		return err
 	}
 
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	f, err := os.CreateTemp(filepath.Dir(path), ".config.toml.*.tmp")
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	tmp := f.Name()
+	defer func() { _ = os.Remove(tmp) }() // renamed on success
 	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
 		return err
 	}
-
-	return toml.NewEncoder(f).Encode(cfg)
+	if err := toml.NewEncoder(f).Encode(cfg); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 func SecurityWarnings() ([]string, error) {
@@ -396,11 +531,16 @@ func RedactSecrets(s string, cfg Config) string {
 }
 
 func secretValues(cfg Config) []string {
+	const minimumRedactedSecretLength = 8
+
 	seen := map[string]struct{}{}
 	var secrets []string
 	add := func(secret string) {
 		secret = strings.TrimSpace(secret)
-		if secret == "" {
+		// Very short values are more likely to be ordinary substrings than useful
+		// redaction targets. A one-character password, for example, used to turn
+		// "open ... permission" into an unreadable wall of [redacted] markers.
+		if len(secret) < minimumRedactedSecretLength {
 			return
 		}
 		if _, ok := seen[secret]; ok {
@@ -431,6 +571,11 @@ func configPath() (string, error) {
 		xdg = filepath.Join(home, ".config")
 	}
 	return filepath.Join(xdg, "tidemail", "config.toml"), nil
+}
+
+// Path returns the path to TideMail's configuration file.
+func Path() (string, error) {
+	return configPath()
 }
 
 // LogPath returns the path to the fetch log file (alongside config.toml).

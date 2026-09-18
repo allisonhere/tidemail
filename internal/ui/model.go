@@ -124,13 +124,21 @@ type Model struct {
 	width, height int
 	focused       pane
 
-	accounts          []db.Account
-	mailboxes         []db.Mailbox
-	sidebarRows       []sidebarRow
-	sidebarCursor     int
-	sidebarOffset     int
-	collapsedAccounts map[int64]bool
-	collapsedSections map[string]bool // key: "system:<id>" or "personal:<id>"
+	accounts      []db.Account
+	mailboxes     []db.Mailbox
+	sidebarRows   []sidebarRow
+	sidebarCursor int
+	sidebarOffset int
+	// folderSettleSeq is a final identity check for a settle command. The cancel
+	// function prevents superseded commands from producing a message at all.
+	folderSettleSeq    int
+	folderSettleCancel func()
+	// folderSettlePending remembers a settled folder whose passive refresh was
+	// deferred because another mailbox for the same account was already syncing.
+	// The completion handler rearms it only if the user is still on that folder.
+	folderSettlePending int64
+	collapsedAccounts   map[int64]bool
+	collapsedSections   map[string]bool // key: "system:<id>" or "personal:<id>"
 
 	messages         []db.Message
 	filteredMessages []db.Message
@@ -215,9 +223,10 @@ type Model struct {
 	// omarchySig is the last-seen Omarchy theme signature, used by the
 	// "match-omarchy" live-follow poll to detect desktop theme changes.
 	omarchySig string
-	// omarchyWatching guards against starting a second live-follow poll loop
-	// while one is already running.
-	omarchyWatching bool
+	// omarchyWatchGeneration identifies the current live-follow poll loop. A
+	// generation makes ticks from an old theme selection harmless and ensures
+	// selecting match-omarchy always starts a fresh loop.
+	omarchyWatchGeneration uint64
 
 	accountManager AccountManager
 	contactManager ContactManager
@@ -228,6 +237,11 @@ type Model struct {
 	statusErr bool
 
 	syncing map[int64]bool
+	// syncVisible is the subset of syncing mailboxes that should animate in the
+	// sidebar/status line: only syncs the user explicitly requested. Background
+	// work (timers, IDLE, startup sweep, passive folder refreshes) stays out of
+	// it so it never lights up the status line or keeps the frame clock running.
+	syncVisible map[int64]bool
 	// olderExhausted records mailboxes whose server history has been paged all
 	// the way back, so scrolling to the bottom stops asking for more.
 	olderExhausted map[int64]bool
@@ -305,6 +319,10 @@ func (m Model) RestartExecPath() string { return m.restartExecPath }
 func (m Model) QuitActivated() bool { return m.quitActivated }
 
 func NewModel(database *db.DB, cfg config.Config, currentVersion string, previewManualUpdate bool) Model {
+	// Every account must carry its stable ID by the time the model joins config
+	// blocks to database rows. Load and Save both stamp them, but a Config
+	// assembled in code reaches here without passing through either.
+	config.EnsureAccountIDs(&cfg)
 	merged, themeIdx := MergedThemeFromConfig(cfg)
 
 	// Compose body editors pick up vim mode from config via this package var
@@ -338,40 +356,41 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 	summarizer, _ := ai.New(cfg.AI)
 
 	m := Model{
-		db:                    database,
-		sessions:              imapClient.NewSessionPool(),
-		cfg:                   cfg,
-		currentVersion:        currentVersion,
-		previewManualUpdateUI: previewManualUpdate,
-		updater:               update.New(),
-		focused:               paneAccounts,
-		confirmedTheme:        themeIdx,
-		activeTheme:           themeIdx,
-		omarchySig:            omarchySignature(),
-		omarchyWatching:       isMatchOmarchy(cfg.Theme),
-		styles:                BuildStyles(merged, cfg.Display.Density, cfg.Display.PaneCorners),
-		accountManager:        NewAccountManager(database),
-		searchInput:           si,
-		helpSearchInput:       hsi,
-		commandInput:          ci,
-		spinner:               sp,
-		initialLoading:        true,
-		syncing:               make(map[int64]bool),
-		olderExhausted:        make(map[int64]bool),
-		lastFolderRefresh:     make(map[int64]time.Time),
-		idleWatchers:          make(map[int64]idleWatcherEntry),
-		collapsedAccounts:     map[int64]bool{},
-		collapsedSections:     map[string]bool{},
-		firstLoad:             true,
-		keys:                  DefaultKeys,
-		summarizer:            summarizer,
-		showUnreadOnly:        cfg.Display.DefaultUnreadOnly,
-		starredFirst:          cfg.Display.StarredFirst,
-		contentLinkIdx:        -1,
-		contentShowHeaders:    cfg.Display.ShowHeaders,
-		contentSearchInput:    csi,
-		contentSearchIdx:      -1,
-		selectedMessages:      make(map[int64]bool),
+		db:                     database,
+		sessions:               imapClient.NewSessionPool(),
+		cfg:                    cfg,
+		currentVersion:         currentVersion,
+		previewManualUpdateUI:  previewManualUpdate,
+		updater:                update.New(),
+		focused:                paneAccounts,
+		confirmedTheme:         themeIdx,
+		activeTheme:            themeIdx,
+		omarchySig:             omarchySignature(),
+		omarchyWatchGeneration: 1,
+		styles:                 BuildStyles(merged, cfg.Display.Density, cfg.Display.PaneCorners),
+		accountManager:         NewAccountManager(database),
+		searchInput:            si,
+		helpSearchInput:        hsi,
+		commandInput:           ci,
+		spinner:                sp,
+		initialLoading:         true,
+		syncing:                make(map[int64]bool),
+		syncVisible:            make(map[int64]bool),
+		olderExhausted:         make(map[int64]bool),
+		lastFolderRefresh:      make(map[int64]time.Time),
+		idleWatchers:           make(map[int64]idleWatcherEntry),
+		collapsedAccounts:      map[int64]bool{},
+		collapsedSections:      map[string]bool{},
+		firstLoad:              true,
+		keys:                   DefaultKeys,
+		summarizer:             summarizer,
+		showUnreadOnly:         cfg.Display.DefaultUnreadOnly,
+		starredFirst:           cfg.Display.StarredFirst,
+		contentLinkIdx:         -1,
+		contentShowHeaders:     cfg.Display.ShowHeaders,
+		contentSearchInput:     csi,
+		contentSearchIdx:       -1,
+		selectedMessages:       make(map[int64]bool),
 	}
 	m.restoreCachedUpdateState()
 	if previewManualUpdate {
@@ -380,8 +399,10 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 	// Google can rotate refresh tokens on refresh; persist the rotated token to
 	// the keyring immediately so it survives crashes. (Injected func —
 	// internal/auth can't import internal/config.)
-	auth.PersistRefreshToken = func(accountName, refreshToken string) error {
-		if !config.StoreOAuth2RefreshToken(accountName, refreshToken) {
+	// accountKey is the caller's per-account cache key, which is
+	// AccountConfig.SessionKey() — the account's stable ID.
+	auth.PersistRefreshToken = func(accountKey, refreshToken string) error {
+		if !config.StoreOAuth2RefreshToken(accountKey, refreshToken) {
 			return fmt.Errorf("credential storage unavailable")
 		}
 		return nil
@@ -398,7 +419,7 @@ func (m Model) Init() tea.Cmd {
 		cmds = append(cmds, cmd)
 	}
 	if isMatchOmarchy(m.cfg.Theme) {
-		cmds = append(cmds, omarchyWatchCmd())
+		cmds = append(cmds, omarchyWatchCmd(m.omarchyWatchGeneration))
 	}
 	if !m.previewManualUpdateUI {
 		if cmd := m.maybeCheckForUpdatesCmd(false); cmd != nil {
@@ -450,7 +471,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case omarchyThemeTickMsg:
-		return m.handleOmarchyThemeTick()
+		return m.handleOmarchyThemeTick(msg)
 
 	case StatusClearMsg:
 		m.statusMsg = ""
@@ -471,7 +492,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateState = updateStateError
 			m.updateErr = msg.Err.Error()
 			m.syncSettingsUpdateState()
-			m.saveConfig()
+			_ = m.saveConfig()
 			if msg.Manual {
 				m.setStatus("update check failed: "+msg.Err.Error(), true)
 				return m, m.clearStatusCmd()
@@ -488,7 +509,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cfg.Updates.AvailableSummary = msg.Result.Latest.Summary
 			m.cfg.Updates.AvailablePublished = msg.Result.Latest.PublishedAt.Unix()
 			m.syncSettingsUpdateState()
-			m.saveConfig()
+			_ = m.saveConfig()
 			if m.pendingUpdateInstall {
 				m.pendingUpdateInstall = false
 				// A manual check from Settings overrides any previous dismiss.
@@ -505,7 +526,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateDismissed = false
 		m.cfg.Updates.DismissedVersion = ""
 		m.clearCachedAvailableUpdate()
-		m.saveConfig()
+		_ = m.saveConfig()
 		m.syncSettingsUpdateState()
 		if msg.Manual {
 			m.setStatus("Tide is up to date", false)
@@ -576,6 +597,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loadCollapseState()
 			m.rebuildSidebar()
 			statusCmd = tea.Batch(statusCmd, m.startSyncTimers(), m.syncInboxesNowCmd(), m.loadAddressBookCmd())
+			// One folder LIST per account at launch, independent of sync mode.
+			// refreshMailboxesCmd otherwise only runs off AutoSyncMsg, which a
+			// manual-only account never receives — so its folder tree would
+			// stay at whatever was stored last, or a bare INBOX for an account
+			// imported from the config file.
+			for _, acc := range m.accounts {
+				if cmd := m.refreshMailboxesCmd(acc.ID); cmd != nil {
+					m.lastFolderRefresh[acc.ID] = time.Now()
+					statusCmd = tea.Batch(statusCmd, cmd)
+				}
+			}
 			// If the keychain isn't readable, stored passwords/tokens came back
 			// empty — warn once up front so the failed syncs that follow aren't a
 			// mystery.
@@ -651,6 +683,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.selectedDraftsMailbox() {
 				cmds = append(cmds, m.loadDraftsCmd(selected.ID))
 			}
+			// A folder restored as the selection on startup fills in too.
+			cmds = append(cmds, m.scheduleFolderSettle())
 		} else {
 			m.clearMessages()
 		}
@@ -761,6 +795,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case FolderSettledMsg:
+		// Ignore a tick armed for a folder the cursor has since left.
+		if msg.Seq != m.folderSettleSeq {
+			return m, nil
+		}
+		selected := m.selectedMailbox()
+		if selected == nil || selected.ID != msg.MailboxID {
+			return m, nil
+		}
+		if !m.shouldAutoSyncFolder(*selected) {
+			return m, nil
+		}
+		// Do not put a passive refresh into the account's serialized IMAP queue.
+		// A slow fetch ahead of it can otherwise leave this mailbox marked as
+		// syncing (and, historically, animating) for minutes. Rearm it when the
+		// active mailbox finishes, provided the user is still here.
+		if m.accountHasSyncInFlight(selected.AccountID, selected.ID) {
+			m.folderSettlePending = selected.ID
+			return m, nil
+		}
+		m.folderSettlePending = 0
+		return m, m.syncPassiveFolderCmd(selected.ID)
+
 	case DraftsLoadedMsg:
 		if msg.Err != nil {
 			m.setStatus(fmt.Sprintf("load drafts failed: %v", msg.Err), true)
@@ -776,13 +833,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case MailboxSyncedMsg:
 		delete(m.syncing, msg.MailboxID)
+		delete(m.syncVisible, msg.MailboxID)
+		deferredFolderCmd := m.rearmDeferredFolderSettle()
 		if msg.Err != nil {
+			// Passive refreshes are tied to the folder the user rested on. If they
+			// have since moved away, keep the already-logged failure out of their
+			// current context.
+			if msg.Passive {
+				selected := m.selectedMailbox()
+				if selected == nil || selected.ID != msg.MailboxID {
+					return m, deferredFolderCmd
+				}
+			}
 			// A locked/unreadable keychain makes every stored secret come back
 			// empty, which surfaces as "empty username or password" / "no refresh
 			// token". Blaming the account's sign-in would be misleading.
 			if usable, reason := config.KeyringStatus(); !usable && looksLikeMissingCredential(msg.Err) {
 				m.setStatus("can't read saved passwords: "+reason+" — unlock your login keychain, or re-enter (M)", true)
-				return m, nil
+				return m, deferredFolderCmd
 			}
 			if auth.IsAuthFailure(msg.Err) || auth.IsTokenRevoked(msg.Err) {
 				name := "account"
@@ -792,10 +860,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Sticky (no clearStatusCmd): an expired sign-in needs the user to
 				// re-authenticate, so a 2-second flash would just be missed.
 				m.setStatus(name+" sign-in expired — press M to re-authenticate", true)
-				return m, nil
+				return m, deferredFolderCmd
 			}
 			m.setStatus(fmt.Sprintf("sync failed: %v (%v)", msg.Err, msg.Total.Round(time.Millisecond)), true)
-			return m, m.clearStatusCmd()
+			return m, tea.Batch(m.clearStatusCmd(), deferredFolderCmd)
+		}
+		if !msg.SyncedAt.IsZero() {
+			if mb := m.mailboxByID(msg.MailboxID); mb != nil {
+				mb.LastSynced = msg.SyncedAt
+			}
 		}
 		cmds := []tea.Cmd{m.loadAccountsCmd()}
 		if m.selectedUnifiedInbox() {
@@ -819,11 +892,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(msg.NewMessages) > 0 && !msg.Manual && m.cfg.Display.Notifications {
 			cmds = append(cmds, m.notifyCmd(msg.MailboxID, msg.NewMessages))
 		}
+		if deferredFolderCmd != nil {
+			cmds = append(cmds, deferredFolderCmd)
+		}
 		cmds = append(cmds, m.loadAddressBookCmd())
 		return m, tea.Batch(cmds...)
 
 	case OlderMessagesLoadedMsg:
 		delete(m.syncing, msg.MailboxID)
+		delete(m.syncVisible, msg.MailboxID)
 		if msg.Err != nil {
 			m.setStatus(fmt.Sprintf("could not load older mail: %v", msg.Err), true)
 			return m, m.clearStatusCmd()
@@ -846,48 +923,88 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case AccountSavedMsg:
-		m.accountManager.busy = false
-		m.accountManager.busyMsg = ""
 		m.accountManager.statusMsg = ""
 		if msg.Err != nil {
+			m.accountManager.busy = false
+			m.accountManager.busyMsg = ""
 			detail := m.accountManager.redactSensitiveWithAccounts(msg.Err.Error(), []config.AccountConfig{msg.AccountCfg})
 			m.accountManager.statusMsg = fmt.Sprintf("SAVE FAILED: %s", detail)
 			m.setStatus(fmt.Sprintf("save failed: %s", detail), true)
 			return m, m.clearStatusCmd()
 		}
-		// Update config with new account
+		previousCfg := m.cfg
+		nextCfg := m.cfg
+		nextCfg.Accounts = append([]config.AccountConfig(nil), m.cfg.Accounts...)
+		// Update config with the saved account, matched on its stable ID. Matching
+		// on the display name used to mean that saving an account under a name a
+		// peer already had overwrote that peer's whole block — host, user and
+		// password — and that renaming an account appended a duplicate instead of
+		// updating its own entry.
 		found := false
-		for i, a := range m.cfg.Accounts {
-			if a.Name == msg.AccountCfg.Name {
-				m.cfg.Accounts[i] = msg.AccountCfg
+		for i, a := range nextCfg.Accounts {
+			if a.ID == msg.AccountCfg.ID {
+				nextCfg.Accounts[i] = msg.AccountCfg
 				found = true
 				break
 			}
 		}
 		if !found {
-			m.cfg.Accounts = append(m.cfg.Accounts, msg.AccountCfg)
+			nextCfg.Accounts = append(nextCfg.Accounts, msg.AccountCfg)
 		}
+		if err := m.persistConfig(nextCfg); err != nil {
+			m.accountManager.busy = false
+			m.accountManager.busyMsg = ""
+			detail := config.RedactSecrets(err.Error(), nextCfg)
+			m.accountManager.statusMsg = "SAVE FAILED: " + detail
+			m.setStatus("save failed: "+detail, true)
+			return m, m.clearStatusCmd()
+		}
+
+		m.accountManager.busy = true
+		m.accountManager.busyMsg = "SAVING..."
+		return m, saveAccountDatabaseCmd(m.db, msg, previousCfg, nextCfg)
+
+	case AccountDatabaseSavedMsg:
+		m.accountManager.busy = false
+		m.accountManager.busyMsg = ""
+		if msg.Err != nil {
+			// Save may already have moved credentials into the keychain. Remove
+			// the candidate generation first, then writing the previous config
+			// restores an edited account's prior credentials when it had any.
+			config.DeleteOAuth2Secrets(msg.AccountCfg.ID, "")
+			config.DeleteAccountPassword(msg.AccountCfg.ID, "")
+			rollbackErr := m.persistConfig(msg.PreviousCfg)
+			detail := config.RedactSecrets(msg.Err.Error(), msg.NextCfg)
+			if rollbackErr != nil {
+				detail += "; config rollback failed: " + config.RedactSecrets(rollbackErr.Error(), msg.PreviousCfg)
+			}
+			m.accountManager.statusMsg = "SAVE FAILED: " + detail
+			m.setStatus("save failed: "+detail, true)
+			return m, m.clearStatusCmd()
+		}
+		account := msg.Account
+		mailboxes := msg.Mailboxes
+		m.cfg = msg.NextCfg
 		// Also update in-memory accounts so scheduleNextSync can find it.
 		foundAcct := false
 		for i, a := range m.accounts {
-			if a.ID == msg.Account.ID {
-				m.accounts[i] = msg.Account
+			if a.ID == account.ID {
+				m.accounts[i] = account
 				foundAcct = true
 				break
 			}
 		}
 		if !foundAcct {
-			m.accounts = append(m.accounts, msg.Account)
+			m.accounts = append(m.accounts, account)
 		}
-		m.saveConfig()
 		m.accountManager = m.newAccountManager()
 		m.accountManager.mode = amList
-		m.accountManager.statusMsg = fmt.Sprintf("SAVED: %s", strings.ToUpper(msg.Account.Name))
-		m.setStatus(fmt.Sprintf("saved: %s", msg.Account.Name), false)
-		if len(msg.Mailboxes) > 0 {
-			m.pendingSelectMailboxID = msg.Mailboxes[0].ID
+		m.accountManager.statusMsg = fmt.Sprintf("SAVED: %s", strings.ToUpper(account.Name))
+		m.setStatus(fmt.Sprintf("saved: %s", account.Name), false)
+		if len(mailboxes) > 0 {
+			m.pendingSelectMailboxID = mailboxes[0].ID
 		}
-		return m, tea.Batch(m.loadAccountsCmd(), m.clearStatusCmd(), m.scheduleNextSync(msg.Account.ID))
+		return m, tea.Batch(m.loadAccountsCmd(), m.clearStatusCmd(), m.scheduleNextSync(account.ID))
 
 	case IdleEventMsg:
 		// Ignore events from a watcher that has since been replaced or stopped —
@@ -939,7 +1056,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			logFetch(fmt.Sprintf("account %d", msg.AccountID), "(folders)", 0, 0, 0, 0, msg.Err)
 			return m, nil
 		}
-		if len(msg.Mailboxes) == 0 && len(msg.Removed) == 0 {
+		if len(msg.Mailboxes) == 0 && len(msg.Updated) == 0 && len(msg.Removed) == 0 {
 			return m, nil
 		}
 		// Capture the active folder before mutating so we can detect whether it
@@ -951,6 +1068,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(msg.Mailboxes) > 0 {
 			m.mailboxes = append(m.mailboxes, msg.Mailboxes...)
 		}
+		if len(msg.Updated) > 0 {
+			// Refreshed flags/delimiter for folders we already had. Keep
+			// LastSynced and unread counts, which the LIST does not carry.
+			byID := make(map[int64]db.Mailbox, len(msg.Updated))
+			for _, mb := range msg.Updated {
+				byID[mb.ID] = mb
+			}
+			for i := range m.mailboxes {
+				if fresh, ok := byID[m.mailboxes[i].ID]; ok {
+					m.mailboxes[i].Flags = fresh.Flags
+					m.mailboxes[i].Delimiter = fresh.Delimiter
+					m.mailboxes[i].DisplayName = fresh.DisplayName
+				}
+			}
+		}
 		if len(msg.Removed) > 0 {
 			gone := make(map[int64]bool, len(msg.Removed))
 			for _, id := range msg.Removed {
@@ -960,6 +1092,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// mailbox ID — once the row is gone that message can never land,
 				// so the entry (and its status-line spinner) would leak forever.
 				delete(m.syncing, id)
+				delete(m.syncVisible, id)
 			}
 			kept := m.mailboxes[:0]
 			for _, mb := range m.mailboxes {
@@ -996,27 +1129,63 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case AccountDeletedMsg:
-		m.accountManager.busy = false
-		m.accountManager.busyMsg = ""
 		m.accountManager.statusMsg = ""
 		if msg.Err != nil {
+			m.accountManager.busy = false
+			m.accountManager.busyMsg = ""
 			m.accountManager.statusMsg = fmt.Sprintf("DELETE FAILED: %v", msg.Err)
 			m.setStatus(fmt.Sprintf("delete failed: %v", msg.Err), true)
 			return m, m.clearStatusCmd()
 		}
 		// Drop the account from the config too, otherwise loadAccountsCmd's
 		// ensureConfiguredAccounts re-imports it straight back into the DB (and it
-		// would return again on the next launch).
-		if name := strings.TrimSpace(msg.AccountName); name != "" {
-			kept := m.cfg.Accounts[:0]
+		// would return again on the next launch). Only the deleted account's own
+		// entry goes: this used to drop every entry sharing its display name,
+		// which took a peer's credentials with it.
+		previousCfg := m.cfg
+		nextCfg := m.cfg
+		nextCfg.Accounts = make([]config.AccountConfig, 0, len(m.cfg.Accounts))
+		if id := strings.TrimSpace(msg.ConfigID); id != "" {
 			for _, a := range m.cfg.Accounts {
-				if strings.TrimSpace(a.Name) != name {
-					kept = append(kept, a)
+				if a.ID != id {
+					nextCfg.Accounts = append(nextCfg.Accounts, a)
 				}
 			}
-			m.cfg.Accounts = kept
-			m.saveConfig()
+			if err := m.persistConfig(nextCfg); err != nil {
+				m.accountManager.busy = false
+				m.accountManager.busyMsg = ""
+				m.accountManager.statusMsg = "DELETE FAILED: " + err.Error()
+				m.setStatus("delete failed: "+err.Error(), true)
+				return m, m.clearStatusCmd()
+			}
 		}
+		m.accountManager.busy = true
+		m.accountManager.busyMsg = "DELETING..."
+		return m, deleteAccountDatabaseCmd(m.db, msg, previousCfg, nextCfg)
+
+	case AccountDatabaseDeletedMsg:
+		m.accountManager.busy = false
+		m.accountManager.busyMsg = ""
+		if msg.Err != nil {
+			rollbackErr := m.persistConfig(msg.PreviousCfg)
+			detail := msg.Err.Error()
+			if rollbackErr != nil {
+				detail += "; config rollback failed: " + rollbackErr.Error()
+			}
+			m.accountManager.statusMsg = "DELETE FAILED: " + detail
+			m.setStatus("delete failed: "+detail, true)
+			return m, m.clearStatusCmd()
+		}
+		m.cfg = msg.NextCfg
+		legacyName := msg.AccountName
+		for _, survivor := range msg.NextCfg.Accounts {
+			if survivor.Name == msg.AccountName {
+				legacyName = ""
+				break
+			}
+		}
+		config.DeleteOAuth2Secrets(msg.ConfigID, legacyName)
+		config.DeleteAccountPassword(msg.ConfigID, legacyName)
 		for i, a := range m.accounts {
 			if a.ID == msg.AccountID {
 				m.accounts = append(m.accounts[:i], m.accounts[i+1:]...)
@@ -1488,7 +1657,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		// Persist so the sort survives restarts (mirrors the Settings toggle).
 		m.cfg.Display.StarredFirst = m.starredFirst
-		m.saveConfig()
+		_ = m.saveConfig()
 		if m.activeMessageRowCount() > 0 {
 			m.setViewportForCurrentRow()
 		} else {
@@ -1516,7 +1685,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.clearViewportMessage()
 		}
-		m.saveConfig()
+		_ = m.saveConfig()
 		if m.cfg.Display.ThreadedConversations {
 			m.setStatus("threaded conversations on", false)
 		} else {
@@ -1596,6 +1765,15 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.toggleSelectedSection() {
 				return m, nil
 			}
+			// Neither toggle applied, so the cursor is on a folder row: Enter
+			// means "fetch this folder now". Explicit, so it skips the settle
+			// debounce and the passive gates — a manual-only account syncs on
+			// request, which is what manual-only means.
+			if selected := m.selectedMailbox(); selected != nil {
+				// Supersede any armed settle so it cannot fire a second sync.
+				m.cancelFolderSettle()
+				return m, m.syncMailboxCmd(selected.ID, true)
+			}
 		}
 		if m.focused == paneMessages && (m.activeMessageRowCount() > 0 || (m.selectedDraftsMailbox() && len(m.drafts) > 0)) {
 			return m.focusPane(paneContent)
@@ -1640,12 +1818,16 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if selected := m.selectedMailbox(); selected != nil {
 			return m, m.syncMailboxCmd(selected.ID, true)
 		}
-		return m, nil
+		// A keypress that silently does nothing reads as the app being broken —
+		// the same rule syncMailboxCmd already applies to a refused sync.
+		m.setStatus("no folder selected — pick one in the sidebar, or "+
+			m.keyHint(m.keys.SyncAll)+" syncs every folder", false)
+		return m, m.clearStatusCmd()
 
 	case keyMatches(msg, m.keys.SyncAll):
 		var cmds []tea.Cmd
 		for _, mb := range m.mailboxes {
-			cmds = append(cmds, m.syncMailboxCmd(mb.ID, false))
+			cmds = append(cmds, m.syncMailboxCmd(mb.ID, true))
 		}
 		return m, tea.Batch(cmds...)
 
@@ -1764,7 +1946,11 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			cur = m.currentRowMessage()
 		}
 		if cur != nil {
-			acfg := m.accountCfgForMailbox(cur.MailboxID)
+			acfg, err := m.accountCfgForMailbox(cur.MailboxID)
+			if err != nil {
+				m.setStatus("reply failed: "+err.Error(), true)
+				return m, m.clearStatusCmd()
+			}
 			m.compose = NewReply(*cur, acfg, m.cfg.Accounts, m.addressBook)
 			m.overlay = overlayCompose
 		}
@@ -1778,7 +1964,11 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			cur = m.currentRowMessage()
 		}
 		if cur != nil {
-			acfg := m.accountCfgForMailbox(cur.MailboxID)
+			acfg, err := m.accountCfgForMailbox(cur.MailboxID)
+			if err != nil {
+				m.setStatus("forward failed: "+err.Error(), true)
+				return m, m.clearStatusCmd()
+			}
 			m.compose = NewForward(*cur, acfg, m.cfg.Accounts, m.addressBook)
 			m.overlay = overlayCompose
 		}
@@ -1969,6 +2159,7 @@ func (m Model) handleUp() (tea.Model, tea.Cmd) {
 	switch m.focused {
 	case paneAccounts:
 		if m.sidebarCursor > 0 {
+			m.cancelFolderSettle()
 			m.sidebarCursor--
 			m.clampSidebarOffset()
 			if m.searchActive() {
@@ -1982,7 +2173,8 @@ func (m Model) handleUp() (tea.Model, tea.Cmd) {
 				if m.selectedDraftsMailbox() {
 					cmd = tea.Batch(cmd, m.loadDraftsCmd(selected.ID))
 				}
-				return m, cmd
+				// Fill the folder from the server too, once the cursor settles.
+				return m, tea.Batch(cmd, m.scheduleFolderSettle())
 			}
 			m.clearMessages()
 		}
@@ -2015,6 +2207,7 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 	switch m.focused {
 	case paneAccounts:
 		if m.sidebarCursor < len(m.sidebarRows)-1 {
+			m.cancelFolderSettle()
 			m.sidebarCursor++
 			m.clampSidebarOffset()
 			if m.searchActive() {
@@ -2028,7 +2221,8 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 				if m.selectedDraftsMailbox() {
 					cmd = tea.Batch(cmd, m.loadDraftsCmd(selected.ID))
 				}
-				return m, cmd
+				// Fill the folder from the server too, once the cursor settles.
+				return m, tea.Batch(cmd, m.scheduleFolderSettle())
 			}
 			m.clearMessages()
 		}
@@ -2171,7 +2365,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.confirmedTheme = m.themeCursor
 			m.overlay = overlayNone
 			m.cfg.Theme = pickableThemeNameAt(m.confirmedTheme)
-			m.saveConfig()
+			_ = m.saveConfig()
 			themeCmd = m.startOmarchyWatchIfNeeded()
 			if m.activeMessageRowCount() > 0 {
 				m.setViewportForCurrentRow()
@@ -2440,7 +2634,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.spinner.Spinner = spinner.Dot
 			}
-			m.saveConfig()
+			_ = m.saveConfig()
 			omarchyCmd := m.startOmarchyWatchIfNeeded()
 			summarizer, _ := ai.New(m.cfg.AI)
 			m.summarizer = summarizer
@@ -2672,13 +2866,14 @@ func (m Model) renderPaneHint(p pane) string {
 	switch p {
 	case paneAccounts:
 		hint = m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " move  " +
-			m.keyHint(m.keys.Enter) + " toggle  " + m.keyHint(m.keys.Sync) + " sync"
+			m.keyHint(m.keys.Enter) + " toggle/sync  " + m.keyHint(m.keys.Sync) + " sync"
 	case paneMessages:
 		hint = m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " move  " +
 			m.keyHint(m.keys.Space) + " select  " +
 			m.keyHint(m.keys.MarkRead) + " read  " +
 			m.keyHint(m.keys.ToggleStar) + " star  " +
 			m.keyHint(m.keys.Archive) + " archive  " + m.keyHint(m.keys.Move) + " move  " + m.keyHint(m.keys.Delete) + " delete  " +
+			m.keyHint(m.keys.Sync) + " sync  " +
 			m.keyHint(m.keys.Command) + " command"
 	case paneContent:
 		progress := ""
@@ -2907,7 +3102,7 @@ func (m Model) renderStatusBar() string {
 		}
 	}
 
-	if len(m.syncing) > 0 {
+	if len(m.syncVisible) > 0 {
 		parts = append(parts, m.styles.StatusSpinner.Render(
 			m.spinner.View()+" syncing..."),
 		)
@@ -2986,7 +3181,7 @@ func (m *Model) clearStatusCmd() tea.Cmd {
 // a state shown there but missing here leaves that spinner frozen.
 func (m Model) spinnerActive() bool {
 	return m.initialLoading ||
-		len(m.syncing) > 0 ||
+		len(m.syncVisible) > 0 ||
 		m.updateState == updateStateChecking ||
 		m.summaryGenerating
 }
@@ -3188,23 +3383,88 @@ func (m *Model) setStatus(msg string, isErr bool) {
 // configSave is a seam over config.Save so tests can simulate a failed write.
 var configSave = config.Save
 
+func saveAccountDatabaseCmd(database *db.DB, request AccountSavedMsg, previousCfg, nextCfg config.Config) tea.Cmd {
+	return func() tea.Msg {
+		result := AccountDatabaseSavedMsg{
+			AccountCfg:  request.AccountCfg,
+			PreviousCfg: previousCfg,
+			NextCfg:     nextCfg,
+			WasNew:      request.EditID == 0,
+		}
+		if database == nil {
+			result.Err = fmt.Errorf("database unavailable")
+			return result
+		}
+		mailboxes := make([]db.Mailbox, 0, len(request.MailboxInfo))
+		for _, info := range request.MailboxInfo {
+			mailboxes = append(mailboxes, db.Mailbox{
+				Name:        info.Name,
+				DisplayName: cleanDisplayName(info.Name),
+				Delimiter:   info.Delimiter,
+				Flags:       info.Flags,
+			})
+		}
+		account, saved, err := database.SaveAccountWithMailboxes(
+			request.EditID,
+			request.AccountCfg.ID,
+			request.AccountCfg.Name,
+			request.Color,
+			mailboxes,
+		)
+		if err != nil {
+			result.Err = fmt.Errorf("save account database: %w", err)
+			return result
+		}
+		result.Account = account
+		result.Mailboxes = saved
+		return result
+	}
+}
+
+func deleteAccountDatabaseCmd(database *db.DB, request AccountDeletedMsg, previousCfg, nextCfg config.Config) tea.Cmd {
+	return func() tea.Msg {
+		result := AccountDatabaseDeletedMsg{
+			AccountID:   request.AccountID,
+			ConfigID:    request.ConfigID,
+			AccountName: request.AccountName,
+			PreviousCfg: previousCfg,
+			NextCfg:     nextCfg,
+		}
+		if database == nil {
+			result.Err = fmt.Errorf("database unavailable")
+			return result
+		}
+		if err := database.DeleteAccount(request.AccountID); err != nil {
+			result.Err = fmt.Errorf("delete account database: %w", err)
+		}
+		return result
+	}
+}
+
 // saveConfig persists the config and surfaces any failure on the status line, so a
 // failed write (read-only dir, full disk) no longer silently drops account/OAuth/setting
 // changes the way a fire-and-forget config.Save would.
-func (m *Model) saveConfig() {
+func (m *Model) persistConfig(cfg config.Config) error {
+	cfg.Accounts = append([]config.AccountConfig(nil), cfg.Accounts...)
 	// Reconcile rotated OAuth refresh tokens before writing: config.Save's
 	// stripSecrets pushes each account's in-memory RefreshToken to the keyring,
 	// and m.cfg still holds the token from load time — without this, any save
 	// (theme change, etc.) would clobber the rotated keyring token with a stale
 	// one the provider has already invalidated.
-	for i := range m.cfg.Accounts {
-		if tok, ok := auth.LatestRefreshToken(m.cfg.Accounts[i].Name); ok {
-			m.cfg.Accounts[i].RefreshToken = tok
+	for i := range cfg.Accounts {
+		if tok, ok := auth.LatestRefreshToken(cfg.Accounts[i].SessionKey()); ok {
+			cfg.Accounts[i].RefreshToken = tok
 		}
 	}
-	if err := configSave(m.cfg); err != nil {
+	return configSave(cfg)
+}
+
+func (m *Model) saveConfig() error {
+	if err := m.persistConfig(m.cfg); err != nil {
 		m.setStatus(fmt.Sprintf("couldn't save settings: %v", err), true)
+		return err
 	}
+	return nil
 }
 
 // addToLog appends to the in-memory log buffer without updating the status bar.
@@ -3297,14 +3557,14 @@ func (m *Model) resizeAccountsPane(delta int) {
 	m.cfg.Display.AccountsWidthPercent = clamp(m.accountsWidthPercent()+delta, minAccountsWidthPercent, maxAccountsWidthPercent)
 	m.refreshContentAfterPaneResize()
 	m.setStatus("pane layout saved", false)
-	m.saveConfig()
+	_ = m.saveConfig()
 }
 
 func (m *Model) resizeMessagesPane(delta int) {
 	m.cfg.Display.MessagesHeightPercent = clamp(m.messagesHeightPercent()+delta, minMessagesHeightPercent, maxMessagesHeightPercent)
 	m.refreshContentAfterPaneResize()
 	m.setStatus("pane layout saved", false)
-	m.saveConfig()
+	_ = m.saveConfig()
 }
 
 func (m *Model) refreshContentAfterPaneResize() {

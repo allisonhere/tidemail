@@ -19,7 +19,10 @@ const (
 var ErrOutboxBusy = errors.New("message is sending or no longer available")
 
 type OutboxItem struct {
-	ID                       int64
+	ID int64
+	// AccountConfigID is the stable ID of the sending [[account]] block; name
+	// and user remain for display and as the pre-migration fallback.
+	AccountConfigID          string
 	AccountName, AccountUser string
 	DraftID                  int64
 	Subject, Recipients      string
@@ -35,10 +38,10 @@ type OutboxItem struct {
 func (db *DB) EnqueueOutbox(item OutboxItem) (int64, error) {
 	now := time.Now().Unix()
 	res, err := db.Exec(`INSERT INTO outbox
-  (account_name, account_user, draft_id, subject, recipients, message_json, draft_json,
+  (account_config_id, account_name, account_user, draft_id, subject, recipients, message_json, draft_json,
    max_attempts, next_attempt, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		item.AccountName, item.AccountUser, item.DraftID, item.Subject, item.Recipients,
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		item.AccountConfigID, item.AccountName, item.AccountUser, item.DraftID, item.Subject, item.Recipients,
 		item.MessageJSON, item.DraftJSON, max(1, item.MaxAttempts), item.NextAttempt, now, now)
 	if err != nil {
 		return 0, err
@@ -46,12 +49,12 @@ func (db *DB) EnqueueOutbox(item OutboxItem) (int64, error) {
 	return res.LastInsertId()
 }
 
-const outboxColumns = `id, account_name, account_user, draft_id, subject, recipients,
+const outboxColumns = `id, account_config_id, account_name, account_user, draft_id, subject, recipients,
  state, attempts, max_attempts, next_attempt, last_error, created_at, updated_at`
 
 func scanOutbox(row interface{ Scan(...any) error }, payload bool) (OutboxItem, error) {
 	var item OutboxItem
-	dest := []any{&item.ID, &item.AccountName, &item.AccountUser, &item.DraftID, &item.Subject, &item.Recipients,
+	dest := []any{&item.ID, &item.AccountConfigID, &item.AccountName, &item.AccountUser, &item.DraftID, &item.Subject, &item.Recipients,
 		&item.State, &item.Attempts, &item.MaxAttempts, &item.NextAttempt, &item.LastError, &item.CreatedAt, &item.UpdatedAt}
 	if payload {
 		dest = append(dest, &item.MessageJSON, &item.DraftJSON)

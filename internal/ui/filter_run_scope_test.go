@@ -21,8 +21,8 @@ func modelWithTwoAccounts(t *testing.T) (Model, *db.DB, int64, int64) {
 	}
 	t.Cleanup(func() { database.Close() })
 
-	accA, _ := database.AddAccount("A", "")
-	accB, _ := database.AddAccount("B", "")
+	accA, _ := database.AddAccount("", "A", "")
+	accB, _ := database.AddAccount("", "B", "")
 	aInbox, _ := database.UpsertMailbox(db.Mailbox{AccountID: accA, Name: "INBOX", DisplayName: "Inbox", Delimiter: "."})
 	database.UpsertMailbox(db.Mailbox{AccountID: accA, Name: "INBOX.Sent", DisplayName: "Sent", Delimiter: "."})
 	bInbox, _ := database.UpsertMailbox(db.Mailbox{AccountID: accB, Name: "INBOX", DisplayName: "Inbox", Delimiter: "/"})

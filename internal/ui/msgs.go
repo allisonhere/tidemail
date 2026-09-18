@@ -9,6 +9,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidemail/internal/filter"
+	imapClient "github.com/allisonhere/tidemail/internal/imap"
 	"github.com/allisonhere/tidemail/internal/smtp"
 	"github.com/allisonhere/tidemail/internal/update"
 )
@@ -49,6 +50,8 @@ type MailboxSyncedMsg struct {
 	NewMessages []db.Message // genuinely-new unread mail, for notification sender/subject
 	Err         error
 	Manual      bool
+	Passive     bool      // settled-folder refresh; never drives animated sync chrome
+	SyncedAt    time.Time // successful completion time, applied to in-memory freshness immediately
 	Total       time.Duration
 }
 
@@ -63,10 +66,23 @@ type OlderMessagesLoadedMsg struct {
 }
 
 type AccountSavedMsg struct {
-	Account    db.Account
-	Mailboxes  []db.Mailbox
-	AccountCfg config.AccountConfig
-	Err        error
+	Account     db.Account
+	Mailboxes   []db.Mailbox
+	AccountCfg  config.AccountConfig
+	EditID      int64
+	Color       string
+	MailboxInfo []imapClient.MailboxInfo
+	Err         error
+}
+
+type AccountDatabaseSavedMsg struct {
+	Account     db.Account
+	Mailboxes   []db.Mailbox
+	AccountCfg  config.AccountConfig
+	PreviousCfg config.Config
+	NextCfg     config.Config
+	WasNew      bool
+	Err         error
 }
 
 type AccountTestedMsg struct {
@@ -76,7 +92,17 @@ type AccountTestedMsg struct {
 
 type AccountDeletedMsg struct {
 	AccountID   int64
+	ConfigID    string
 	AccountName string
+	Err         error
+}
+
+type AccountDatabaseDeletedMsg struct {
+	AccountID   int64
+	ConfigID    string
+	AccountName string
+	PreviousCfg config.Config
+	NextCfg     config.Config
 	Err         error
 }
 
@@ -154,6 +180,9 @@ type MessageSentMsg struct {
 	Err        error
 	DraftID    int64  // draft to delete on success (0 = none)
 	PendingID  uint64 // pending-send entry to clear
+	// SentCopyErr reports a failure to place a copy in the server's Sent
+	// folder. The message was still delivered — this never means a failed send.
+	SentCopyErr error
 }
 
 // SendQueuedMsg is emitted by the compose overlay when the user hits send;
@@ -178,6 +207,14 @@ type DraftSavedMsg struct {
 type DraftDeletedMsg struct {
 	DraftID int64
 	Err     error
+}
+
+// FolderSettledMsg fires once the sidebar cursor has rested on a folder long
+// enough to be worth fetching. Seq guards against a stale tick from a folder
+// the cursor has already moved past.
+type FolderSettledMsg struct {
+	Seq       int
+	MailboxID int64
 }
 
 type DraftsLoadedMsg struct {
@@ -244,8 +281,13 @@ type AutoSyncMsg struct {
 type MailboxesRefreshedMsg struct {
 	AccountID int64
 	Mailboxes []db.Mailbox
-	Removed   []int64
-	Err       error
+	// Updated carries already-known folders whose flags or delimiter changed
+	// server-side. Without merging these the in-memory copy keeps whatever it
+	// was first stored with, so a mailbox that only just learned it is \Sent
+	// would still look flagless until the next restart.
+	Updated []db.Mailbox
+	Removed []int64
+	Err     error
 }
 
 type AddressBookLoadedMsg struct {

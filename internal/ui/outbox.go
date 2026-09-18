@@ -40,7 +40,19 @@ func (m *Model) openOutbox() {
 	m.overlay = overlayOutbox
 }
 
+// outboxAccount resolves the account a queued message sends from. It matches on
+// the stable config ID, falling back to the (name, user) pair for rows queued
+// before that column existed — matching on the pair alone stranded every queued
+// message when its account was renamed.
 func (m Model) outboxAccount(item db.OutboxItem) (config.AccountConfig, bool) {
+	if item.AccountConfigID != "" {
+		for _, account := range m.cfg.Accounts {
+			if account.ID == item.AccountConfigID {
+				return account, true
+			}
+		}
+		return config.AccountConfig{}, false
+	}
 	for _, account := range m.cfg.Accounts {
 		if account.Name == item.AccountName && account.User == item.AccountUser {
 			return account, true
@@ -91,7 +103,7 @@ func (m *Model) scheduleOutbox(id int64) tea.Cmd {
 		// there is no transient undo window to complete after a restart.
 		Scheduled: item.NextAttempt > time.Now().Unix(),
 		Compose:   NewComposeFromDraft(draft, m.cfg.Accounts, m.addressBook),
-		Runtime:   newOutboxRuntime(m.db, id, account, m.deleteDraftCmd(item.DraftID)),
+		Runtime:   newOutboxRuntime(m.db, m.sessions, id, account, m.deleteDraftCmd(item.DraftID)),
 	})
 	delay := time.Until(time.Unix(item.NextAttempt, 0))
 	if delay <= 0 {
@@ -136,6 +148,12 @@ func (m Model) handleOutboxSent(msg MessageSentMsg) (tea.Model, tea.Cmd) {
 			m.setStatus("send failed · saved in Outbox (O): "+msg.Err.Error(), true)
 		}
 		return m, tea.Batch(cmd, m.clearStatusCmd())
+	}
+	if msg.SentCopyErr != nil {
+		// The message was delivered — only the Sent-folder copy failed, so this
+		// is not an error state.
+		m.setStatus("message sent (no copy saved to Sent: "+msg.SentCopyErr.Error()+")", false)
+		return m, m.clearStatusCmd()
 	}
 	m.setStatus("message sent", false)
 	return m, m.clearStatusCmd()

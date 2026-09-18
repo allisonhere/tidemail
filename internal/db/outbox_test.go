@@ -37,10 +37,10 @@ func TestOutboxSurvivesReopenAndHidesQueuedDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := outboxTestItem(t, database)
-	if n, err := database.DraftCount("Personal", "alice@example.com"); err != nil || n != 0 {
+	if n, err := database.DraftCount("", "Personal", "alice@example.com"); err != nil || n != 0 {
 		t.Fatalf("queued draft visible: %d %v", n, err)
 	}
-	if drafts, err := database.ListDrafts("Personal", "alice@example.com"); err != nil || len(drafts) != 0 {
+	if drafts, err := database.ListDrafts("", "Personal", "alice@example.com"); err != nil || len(drafts) != 0 {
 		t.Fatalf("drafts: %v %v", drafts, err)
 	}
 	database.Close()
@@ -128,7 +128,7 @@ func TestOutboxEditMovesToDraftAtomically(t *testing.T) {
 	if restored.BCC != "hidden@example.com" || len(restored.Attachments) != 1 || string(restored.Attachments[0].Data) != "report" {
 		t.Fatalf("lost content: %+v", restored)
 	}
-	if n, err := database.DraftCount("Personal", "alice@example.com"); err != nil || n != 1 {
+	if n, err := database.DraftCount("", "Personal", "alice@example.com"); err != nil || n != 1 {
 		t.Fatalf("restored draft invisible: %d %v", n, err)
 	}
 	if ok, err := database.ClaimOutbox(id); err != nil || ok {

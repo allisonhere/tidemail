@@ -19,8 +19,8 @@ func pickAccountModel(t *testing.T) (Model, int64, int64) {
 		t.Fatalf("Open DB: %v", err)
 	}
 	t.Cleanup(func() { database.Close() })
-	accA, _ := database.AddAccount("A", "")
-	accB, _ := database.AddAccount("B", "")
+	accA, _ := database.AddAccount("", "A", "")
+	accB, _ := database.AddAccount("", "B", "")
 	database.UpsertMailbox(db.Mailbox{AccountID: accA, Name: "INBOX", Delimiter: "/"})
 	database.UpsertMailbox(db.Mailbox{AccountID: accB, Name: "INBOX", Delimiter: "/"})
 	cfg := config.DefaultConfig()
@@ -87,7 +87,7 @@ func TestMoveCreatesFolderWhenMissing(t *testing.T) {
 		t.Fatalf("Open DB: %v", err)
 	}
 	defer database.Close()
-	accB, _ := database.AddAccount("B", "")
+	accB, _ := database.AddAccount("", "B", "")
 	bInbox, _ := database.UpsertMailbox(db.Mailbox{AccountID: accB, Name: "INBOX", Delimiter: "/"})
 	msg := db.Message{MailboxID: bInbox, UID: 1, From: "newsletter@substack.com", Subject: "Weekly"}
 	database.UpsertMessage(msg)
@@ -125,7 +125,7 @@ func TestScopedMoveCreatesFolder(t *testing.T) {
 		t.Fatalf("Open DB: %v", err)
 	}
 	defer database.Close()
-	acc, _ := database.AddAccount("A", "")
+	acc, _ := database.AddAccount("", "A", "")
 	inbox, _ := database.UpsertMailbox(db.Mailbox{AccountID: acc, Name: "INBOX", Delimiter: "/"})
 	database.UpsertMessage(db.Message{MailboxID: inbox, UID: 1, From: "x@substack.com"})
 	stored, _ := database.ListMessages(inbox)

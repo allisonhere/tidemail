@@ -21,7 +21,12 @@ func openTTY() (*os.File, error) {
 // instead of the terminal's own default. This matters most for the monochrome
 // phosphor themes (vt52/vt100), where that default would otherwise be white.
 func TerminalColorSequences(themeName string) (set string, reset string) {
-	theme, _ := ThemeByName(themeName)
+	var theme Theme
+	if isMatchOmarchy(themeName) {
+		theme = omarchyOrFallbackTheme()
+	} else {
+		theme, _ = ThemeByName(themeName)
+	}
 	if theme.Fg != "" {
 		set += fmt.Sprintf("\x1b]10;%s\x07", string(theme.Fg))
 		reset += "\x1b]110\x07"

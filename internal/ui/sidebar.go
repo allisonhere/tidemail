@@ -330,26 +330,16 @@ func (m Model) accountName(accountID int64) string {
 	return "Account"
 }
 
-func (m Model) accountCfgForMailbox(mailboxID int64) config.AccountConfig {
+func (m Model) accountCfgForMailbox(mailboxID int64) (config.AccountConfig, error) {
 	mb := m.mailboxByID(mailboxID)
 	if mb == nil {
-		if len(m.cfg.Accounts) > 0 {
-			return m.cfg.Accounts[0]
-		}
-		return config.AccountConfig{}
+		return config.AccountConfig{}, fmt.Errorf("%w (mailbox %d)", errNoAccountConfig, mailboxID)
 	}
 	acc := m.accountByID(mb.AccountID)
-	if acc != nil {
-		for _, acfg := range m.cfg.Accounts {
-			if acfg.Name == acc.Name {
-				return acfg
-			}
-		}
+	if acc == nil {
+		return config.AccountConfig{}, fmt.Errorf("%w (account %d)", errNoAccountConfig, mb.AccountID)
 	}
-	if len(m.cfg.Accounts) > 0 {
-		return m.cfg.Accounts[0]
-	}
-	return config.AccountConfig{}
+	return m.accountConfigFor(*acc)
 }
 
 func (m Model) accountColor(accountID int64) lipgloss.Color {
@@ -506,6 +496,19 @@ func renderPaneHeaderRow(prefix, title, hint string, width int) string {
 func (m Model) renderAccountHeader(accountID int64, selected bool, width int) string {
 	icon := "v "
 	label := m.accountName(accountID)
+	duplicates := 0
+	for _, acc := range m.accounts {
+		if acc.Name == label {
+			duplicates++
+		}
+	}
+	if duplicates > 1 {
+		if acc := m.accountByID(accountID); acc != nil {
+			if acfg, err := m.accountConfigFor(*acc); err == nil && acfg.User != "" {
+				label += " · " + acfg.User
+			}
+		}
+	}
 	if m.iconsEnabled() {
 		icon = "▾ "
 	}
@@ -579,7 +582,7 @@ func (m Model) renderSidebarMailboxRow(mb db.Mailbox, selected bool, width int) 
 	if !m.iconsEnabled() {
 		prefix = "    " + m.mailboxRowPrefix(selected)
 	}
-	if m.syncing[mb.ID] {
+	if m.syncVisible[mb.ID] {
 		prefix = "    " + m.spinner.View() + " "
 	}
 	row := renderFeedRow(prefix, title, badge, width)

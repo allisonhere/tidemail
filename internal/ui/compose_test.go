@@ -785,7 +785,7 @@ func TestDraftCloseConfirmSavesDraft(t *testing.T) {
 	if !ok || msg.Err != nil {
 		t.Fatalf("expected successful DraftSavedMsg, got %#v", msg)
 	}
-	drafts, err := database.ListDrafts("Personal", "allie@example.com")
+	drafts, err := database.ListDrafts("", "Personal", "allie@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}

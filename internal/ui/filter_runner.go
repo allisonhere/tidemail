@@ -131,15 +131,8 @@ func (m *Model) prepareFilterFoldersCmd(intent filterSaveIntent) tea.Cmd {
 		if m.filterManager.draftAcct != 0 && account.ID != m.filterManager.draftAcct {
 			continue
 		}
-		var acfg config.AccountConfig
-		configured := false
-		for _, candidate := range m.cfg.Accounts {
-			if candidate.Name == account.Name {
-				acfg = candidate
-				configured = true
-				break
-			}
-		}
+		acfg, cfgErr := m.accountConfigFor(account)
+		configured := cfgErr == nil
 		targets = append(targets, filterFolderTarget{account: account, acfg: acfg, configured: configured})
 	}
 	return func() tea.Msg {
@@ -205,9 +198,22 @@ func (m *Model) applyRulesCmd(mailboxIDs []int64, dryRun bool, onlyRuleID int64)
 	}
 	rules := compileRules(records)
 	targets := make([]mailboxTarget, 0, len(mailboxIDs))
+	// A mailbox whose account settings cannot be resolved is skipped rather than
+	// failing the whole run: a rule set spanning every mailbox must still run for
+	// the healthy accounts, and the run already reports partial progress with the
+	// first error it hit. The destructive single-batch actions take the opposite
+	// line, because a half-applied archive or move is worse than none.
+	var unresolved error
 	for _, id := range mailboxIDs {
 		if mb := m.mailboxByID(id); mb != nil {
-			targets = append(targets, mailboxTarget{mailbox: *mb, acfg: m.accountCfgForMailbox(id)})
+			acfg, err := m.accountCfgForMailbox(id)
+			if err != nil {
+				if unresolved == nil {
+					unresolved = err
+				}
+				continue
+			}
+			targets = append(targets, mailboxTarget{mailbox: *mb, acfg: acfg})
 		}
 	}
 	sessions := m.sessions
@@ -222,6 +228,7 @@ func (m *Model) applyRulesCmd(mailboxIDs []int64, dryRun bool, onlyRuleID int64)
 				firstErr = err
 			}
 		}
+		recordErr(unresolved)
 		for _, t := range targets {
 			msgs, err := database.ListMessages(t.mailbox.ID)
 			if err != nil {

@@ -57,8 +57,10 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 			name: "Accounts Pane",
 			entries: []entry{
 				{keys.Enter.Help().Key + "/" + keys.Space.Help().Key, "expand or collapse selected account/section"},
+				{keys.Enter.Help().Key, "on a folder row, fetch that folder now"},
 				{keys.Sync.Help().Key, "sync selected mailbox; on Unified Inbox, sync all inboxes"},
 				bind(keys.SyncAll),
+				{"pause", "rest on a stale folder to refresh it silently; scrolling past does not queue work"},
 				{"auto", "folder list refreshes on background sync (≈hourly): webmail-added labels appear, deleted ones are pruned"},
 				{keys.MarkAllRead.Help().Key, "mark selected mailbox or account as read"},
 				bind(keys.AccountManager),

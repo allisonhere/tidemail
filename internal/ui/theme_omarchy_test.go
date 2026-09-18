@@ -152,6 +152,112 @@ func TestResolveOmarchyThemeReadsStagedPalette(t *testing.T) {
 	}
 }
 
+func TestOmarchyThemeUsesExplicitSelectionColor(t *testing.T) {
+	p := omarchy.Palette{
+		Background: "#0a0f1a",
+		Foreground: "#a8dfff",
+		Accent:     "#00aaff",
+		Selection:  "#a8dfff",
+	}
+	theme := omarchyTheme(p)
+	if theme.Selected != lipgloss.Color(p.Selection) {
+		t.Fatalf("selected = %s, want Omarchy selection %s", theme.Selected, p.Selection)
+	}
+}
+
+func TestTerminalColorSequencesResolveMatchOmarchy(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_STATE_HOME", dir)
+	t.Setenv("PATH", filepath.Join(dir, "no-bin"))
+
+	themeDir := filepath.Join(dir, "omarchy", "current", "theme")
+	if err := os.MkdirAll(themeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	colors := "background = \"#0a0f1a\"\nforeground = \"#a8dfff\"\naccent = \"#00aaff\"\n"
+	if err := os.WriteFile(filepath.Join(themeDir, "colors.toml"), []byte(colors), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	set, reset := TerminalColorSequences(ThemeNameMatchOmarchy)
+	for _, want := range []string{"\x1b]10;#a8dfff\x07", "\x1b]11;#0a0f1a\x07"} {
+		if !strings.Contains(set, want) {
+			t.Fatalf("startup sequences %q do not contain resolved Omarchy color %q", set, want)
+		}
+	}
+	if reset != "\x1b]110\x07\x1b]111\x07" {
+		t.Fatalf("reset sequences = %q", reset)
+	}
+}
+
+func TestOmarchyThemeWatcherAppliesLivePaletteChange(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_STATE_HOME", dir)
+	t.Setenv("PATH", filepath.Join(dir, "no-bin"))
+
+	themeDir := filepath.Join(dir, "omarchy", "current", "theme")
+	if err := os.MkdirAll(themeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	namePath := filepath.Join(dir, "omarchy", "current", "theme.name")
+	if err := os.WriteFile(namePath, []byte("first\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(themeDir, "colors.toml"), []byte("background = \"#101820\"\nforeground = \"#f0f4f8\"\naccent = \"#58a6ff\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := NewModel(nil, config.Config{Theme: ThemeNameMatchOmarchy, Display: config.DefaultConfig().Display}, "dev", false)
+	wantGeneration := m.omarchyWatchGeneration
+	before := m.styles.Theme.Bg
+
+	if err := os.WriteFile(namePath, []byte("second\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(themeDir, "colors.toml"), []byte("background = \"#281030\"\nforeground = \"#fff0ff\"\naccent = \"#e879f9\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	updated, cmd := m.handleOmarchyThemeTick(omarchyThemeTickMsg{Generation: wantGeneration})
+	m = updated.(Model)
+	if cmd == nil {
+		t.Fatal("live watcher did not schedule its next poll")
+	}
+	if m.styles.Theme.Bg == before {
+		t.Fatalf("background stayed %s after Omarchy palette changed", before)
+	}
+	if m.styles.Theme.Bg != lipgloss.Color("#281030") {
+		t.Fatalf("background = %s, want new Omarchy background #281030", m.styles.Theme.Bg)
+	}
+}
+
+func TestOmarchyThemeWatcherRestartsAfterThemeReselection(t *testing.T) {
+	m := NewModel(nil, config.Config{Theme: ThemeNameMatchOmarchy, Display: config.DefaultConfig().Display}, "dev", false)
+	oldGeneration := m.omarchyWatchGeneration
+
+	m.cfg.Theme = "catppuccin-mocha"
+	if cmd := m.startOmarchyWatchIfNeeded(); cmd != nil {
+		t.Fatal("non-Omarchy theme unexpectedly started a watcher")
+	}
+	m.cfg.Theme = ThemeNameMatchOmarchy
+	if cmd := m.startOmarchyWatchIfNeeded(); cmd == nil {
+		t.Fatal("reselecting match-omarchy did not start a fresh watcher")
+	}
+	if m.omarchyWatchGeneration == oldGeneration {
+		t.Fatal("watch generation did not advance")
+	}
+
+	unchanged, cmd := m.handleOmarchyThemeTick(omarchyThemeTickMsg{Generation: oldGeneration})
+	if cmd != nil {
+		t.Fatal("stale watcher tick scheduled another poll")
+	}
+	if unchanged.(Model).omarchyWatchGeneration != m.omarchyWatchGeneration {
+		t.Fatal("stale watcher tick changed the active generation")
+	}
+}
+
 // The T overlay theme picker must window its list so it stays inside the box
 // border on short terminals — the selected row and the footer hints must remain
 // visible instead of spilling past the frame.

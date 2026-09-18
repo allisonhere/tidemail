@@ -57,7 +57,7 @@ func TestLoadOlderMessagesCmdGuards(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatalf("AddAccount: %v", err)
 	}

@@ -120,15 +120,28 @@ func NewCompose(acfg config.AccountConfig, accounts []config.AccountConfig, addr
 }
 
 func NewComposeFromDraft(draft db.Draft, accounts []config.AccountConfig, addressBook []string) ComposeModel {
-	acfg := config.AccountConfig{Name: draft.AccountName, User: draft.AccountUser}
-	// Trust the stored index only if it still points at the same account; the
-	// config may have been reordered since the draft was saved. Otherwise resolve
-	// by name/user so the draft never sends from the wrong account.
-	if draft.AccountIndex >= 0 && draft.AccountIndex < len(accounts) &&
-		accounts[draft.AccountIndex].Name == draft.AccountName &&
-		accounts[draft.AccountIndex].User == draft.AccountUser {
+	acfg := config.AccountConfig{ID: draft.AccountConfigID, Name: draft.AccountName, User: draft.AccountUser}
+	// Resolve by stable ID first: it survives the rename that the (name, user)
+	// pair does not. Trust the stored index only if it still points at the same
+	// account; the config may have been reordered since the draft was saved.
+	// Otherwise fall back to name/user, which is all a pre-ID draft row has.
+	switch {
+	case draft.AccountConfigID != "" && draft.AccountIndex >= 0 && draft.AccountIndex < len(accounts) &&
+		accounts[draft.AccountIndex].ID == draft.AccountConfigID:
 		acfg = accounts[draft.AccountIndex]
-	} else {
+	case draft.AccountConfigID != "":
+		for i, account := range accounts {
+			if account.ID == draft.AccountConfigID {
+				acfg = account
+				draft.AccountIndex = i
+				break
+			}
+		}
+	case draft.AccountIndex >= 0 && draft.AccountIndex < len(accounts) &&
+		accounts[draft.AccountIndex].Name == draft.AccountName &&
+		accounts[draft.AccountIndex].User == draft.AccountUser:
+		acfg = accounts[draft.AccountIndex]
+	default:
 		for i, account := range accounts {
 			if account.Name == draft.AccountName && account.User == draft.AccountUser {
 				acfg = account
@@ -866,18 +879,19 @@ func (c ComposeModel) hasContent() bool {
 func (c ComposeModel) toDraftRecord() db.Draft {
 	account := c.selectedAccount()
 	draft := db.Draft{
-		ID:           c.draftID,
-		AccountName:  account.Name,
-		AccountUser:  account.User,
-		AccountIndex: c.accountIndex,
-		To:           strings.TrimSpace(c.toInput.Value()),
-		CC:           strings.TrimSpace(c.ccInput.Value()),
-		BCC:          strings.TrimSpace(c.bccInput.Value()),
-		Subject:      c.subjectInput.Value(),
-		BodyText:     c.bodyInput.Value(),
-		InReplyTo:    c.inReplyTo,
-		References:   c.references,
-		Dirty:        true,
+		ID:              c.draftID,
+		AccountConfigID: account.ID,
+		AccountName:     account.Name,
+		AccountUser:     account.User,
+		AccountIndex:    c.accountIndex,
+		To:              strings.TrimSpace(c.toInput.Value()),
+		CC:              strings.TrimSpace(c.ccInput.Value()),
+		BCC:             strings.TrimSpace(c.bccInput.Value()),
+		Subject:         c.subjectInput.Value(),
+		BodyText:        c.bodyInput.Value(),
+		InReplyTo:       c.inReplyTo,
+		References:      c.references,
+		Dirty:           true,
 	}
 	for i, att := range c.attachments {
 		draft.Attachments = append(draft.Attachments, db.DraftAttachment{

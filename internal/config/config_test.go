@@ -53,15 +53,15 @@ func TestUsesOAuth2ProviderGates(t *testing.T) {
 }
 
 func TestMigrateAuthMethod(t *testing.T) {
-	none := func(string) string { return "" }
-	pw := func(string) string { return "pw" }
-	tok := func(string) string { return "1//refresh" }
+	none := func(id, legacyName string) string { return "" }
+	pw := func(id, legacyName string) string { return "pw" }
+	tok := func(id, legacyName string) string { return "1//refresh" }
 
 	cases := []struct {
 		name        string
 		acct        AccountConfig
-		getPassword func(string) string
-		getToken    func(string) string
+		getPassword func(id, legacyName string) string
+		getToken    func(id, legacyName string) string
 		want        string
 	}{
 		{"legacy gmail with app password", AccountConfig{Provider: "Gmail", Password: "pw"}, none, none, AuthPassword},
@@ -213,6 +213,40 @@ func TestRedactSecretsRemovesOAuthTokens(t *testing.T) {
 	}
 	if !strings.Contains(got, "ok=visible") {
 		t.Fatalf("expected harmless text to remain, got %q", got)
+	}
+}
+
+func TestRedactSecretsIgnoresShortValuesThatMangleErrors(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Accounts = []AccountConfig{{Password: "p"}}
+	want := "open config.toml.pre-account-ids.bak: permission denied"
+	if got := RedactSecrets(want, cfg); got != want {
+		t.Fatalf("short password mangled the error:\n got: %q\nwant: %q", got, want)
+	}
+}
+
+func TestRedactSecretsMinimumLengthBoundary(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Accounts = []AccountConfig{{Password: "1234567", RefreshToken: "12345678"}}
+	got := RedactSecrets("short=1234567 long=12345678", cfg)
+	if !strings.Contains(got, "short=1234567") {
+		t.Fatalf("seven-character value should remain readable: %q", got)
+	}
+	if strings.Contains(got, "12345678") || !strings.Contains(got, "long=[redacted]") {
+		t.Fatalf("eight-character value should be redacted: %q", got)
+	}
+}
+
+func TestPathUsesXDGConfigHome(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	got, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dir, "tidemail", "config.toml")
+	if got != want {
+		t.Fatalf("Path() = %q, want %q", got, want)
 	}
 }
 

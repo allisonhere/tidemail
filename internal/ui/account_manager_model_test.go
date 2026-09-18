@@ -23,7 +23,7 @@ func TestAccountManagerOpensWithLoadedAccounts(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatalf("AddAccount: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestFirstLoadSyncsInboxesImmediately(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatalf("AddAccount: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestFirstLoadWithAccountsDoesNotOpenAccountManager(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatalf("AddAccount: %v", err)
 	}
@@ -233,21 +233,28 @@ func TestDeleteAccountRemovesItFromConfig(t *testing.T) {
 	m = next.(Model)
 
 	var workID int64
+	var workConfigID string
 	for _, a := range m.accounts {
 		if a.Name == "Work" {
-			workID = a.ID
+			workID, workConfigID = a.ID, a.ConfigID
 		}
 	}
 	if workID == 0 {
 		t.Fatalf("Work account not loaded: %#v", m.accounts)
 	}
 
-	delMsg := deleteAccountCmd(m.db, workID, "Work")().(AccountDeletedMsg)
+	delMsg := deleteAccountCmd(workID, workConfigID, "Work")().(AccountDeletedMsg)
 	if delMsg.Err != nil {
 		t.Fatalf("deleteAccountCmd: %v", delMsg.Err)
 	}
 	next, cmd := m.Update(delMsg)
 	m = next.(Model)
+	if _, err := m.db.GetAccount(workID); err != nil {
+		t.Fatalf("database changed before asynchronous delete ran: %v", err)
+	}
+	if len(m.cfg.Accounts) != 2 {
+		t.Fatalf("in-memory config changed before database delete completed: %#v", m.cfg.Accounts)
+	}
 
 	if !savedCalled {
 		t.Fatalf("expected config to be saved after account deletion")
@@ -255,11 +262,16 @@ func TestDeleteAccountRemovesItFromConfig(t *testing.T) {
 	if len(saved.Accounts) != 1 || saved.Accounts[0].Name != "Personal" {
 		t.Fatalf("expected saved config to drop Work, got %#v", saved.Accounts)
 	}
+	if cmd == nil {
+		t.Fatalf("expected an asynchronous database delete")
+	}
+	next, cmd = m.Update(cmd())
+	m = next.(Model)
 	if len(m.cfg.Accounts) != 1 || m.cfg.Accounts[0].Name != "Personal" {
 		t.Fatalf("expected in-memory config to drop Work, got %#v", m.cfg.Accounts)
 	}
 
-	// The reload the delete handler kicks off must not resurrect the account.
+	// The reload the completion handler kicks off must not resurrect the account.
 	if cmd == nil {
 		t.Fatalf("expected a reload command after deletion")
 	}
@@ -621,7 +633,7 @@ func TestStoreFetchedMessagesAssignsMailboxID(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatalf("AddAccount: %v", err)
 	}
@@ -663,7 +675,7 @@ func TestLoadMailboxMessagesIncludesReadMessages(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatalf("AddAccount: %v", err)
 	}

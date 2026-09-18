@@ -4,6 +4,47 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- **Multiple accounts keep their own settings and credentials.** Accounts now
+  have stable internal IDs instead of using their editable display names as a
+  join key. Adding, renaming, or deleting an account cannot overwrite a peer,
+  attach a mailbox to the wrong server, or clear another account's keychain
+  entry. Existing configurations are backed up and migrated automatically.
+  Missing account settings now stop affected actions with a useful status
+  message, malformed configs name the file to repair, and account database
+  updates run asynchronously without blocking the interface.
+
+## v1.0.19
+
+### Fixed
+
+- **`match-omarchy` now applies and follows the real desktop palette.** TideMail
+  previously set the terminal's default foreground and background from a
+  Catppuccin placeholder, then loaded the Omarchy palette only for styled UI
+  elements. Unstyled message text could therefore keep the wrong colors until
+  the desktop theme changed. Live following could also stop after switching
+  away from and back to `match-omarchy`; each selection now starts a fresh,
+  stale-tick-safe watcher. Omarchy's explicit selection color is honored too.
+- **The Sent folder now fills in.** Opening any folder other than the inbox
+  fetches it — previously only inboxes were ever synced, so Sent, Archive and
+  every label stayed empty no matter how long you waited. Resting on a stale
+  folder refreshes it silently after a short pause; superseded refreshes are
+  cancelled so scrolling stays responsive. `Enter` fetches a folder immediately.
+  Background syncs — timers, push nudges, the startup sweep and this resting
+  refresh — no longer flash `syncing...` on the status line; only a sync you
+  start yourself (`s`, `F`, `Enter`, or the commands) shows progress.
+- **Mail you send is saved to the server's Sent folder.** TideMail delivered
+  over SMTP but never filed a copy, so on a custom domain nothing you sent
+  appeared in Sent at all. Gmail is left alone, since it files submitted mail
+  itself and a second copy would show everything twice.
+- **A first fetch of a large folder no longer fails.** Asking for a hundred
+  whole messages at once made Gmail drop the connection partway through Sent,
+  where attachments accumulate. Folders outside the inbox now start with a
+  smaller page and fill in the rest as you scroll.
+- **A sync key that cannot act now says why** instead of doing nothing, and the
+  message list advertises `s sync`.
+
 ## v1.0.18
 
 ## v1.0.17

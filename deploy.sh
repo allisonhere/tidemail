@@ -166,6 +166,8 @@ repeat_char() {
 
 FRAME=""
 FRAME_ROWS=0
+PROMPT_TEXT=""
+PROMPT_HINT=""
 # frame_line is the one place the frame's bounds are enforced: never more rows
 # than the terminal has, and never a row wider than it, since either one wraps
 # the frame onto an extra line and scrolls the top away.
@@ -436,13 +438,17 @@ read_key() {
 # tui_confirm PROMPT [default-yes] — draws a prompt in the log pane.
 tui_confirm() {
   local prompt=$1 default=${2:-n} key hint
-  if [ "$default" = "y" ]; then hint="[Y/n]"; else hint="[y/N]"; fi
-  log_raw "  ${YELLOW}?${NC} ${BOLD}${prompt}${NC} ${DIM}${hint}${NC}"
+  if [ "$default" = "y" ]; then hint="Y/n"; else hint="y/N"; fi
+  # A question rendered as one more log line is indistinguishable from output,
+  # and then Enter is ambiguous: answering the prompt or re-running the menu
+  # item. Give it a reserved row of its own instead.
+  PROMPT_TEXT="$prompt"
+  PROMPT_HINT="$hint"
   draw_frame
   read_key
   key="$READ_KEY_VALUE"
-  # Replace the question with the recorded answer.
-  unset 'LOG[-1]'
+  PROMPT_TEXT=""
+  PROMPT_HINT=""
   case "$key" in
     y|Y) log_raw "  ${YELLOW}?${NC} ${prompt} ${GREEN}yes${NC}"; draw_frame; return 0 ;;
     n|N) log_raw "  ${YELLOW}?${NC} ${prompt} ${DIM}no${NC}";   draw_frame; return 1 ;;
@@ -657,7 +663,18 @@ draw_log() {
 
 # draw_footer drops hints rather than letting the row be clipped, so the way
 # out of the console stays visible however narrow the terminal is.
+# draw_prompt renders the pending question on its own highlighted row, so it
+# can never be mistaken for log output.
+draw_prompt() {
+  [ -n "$PROMPT_TEXT" ] || return 0
+  frame_line " ${BOLD}${YELLOW}▶ ${PROMPT_TEXT}${NC}  ${DIM}[${PROMPT_HINT}]${NC}"
+}
+
 draw_footer() {
+  if [ -n "$PROMPT_TEXT" ]; then
+    frame_line " ${DIM}y yes · n no · enter takes the capitalised default${NC}"
+    return 0
+  fi
   local hint=" ↑↓/jk move · enter run · d dry-run · r refresh · c clear · q quit"
   if [ "${#hint}" -gt "$COLS" ]; then
     hint=" ↑↓ move · enter run · q quit"
@@ -678,7 +695,9 @@ draw_frame() {
   FRAME_ROWS=0
   draw_header
   # 4 header rows, the log separator, and the footer row are fixed overhead.
-  local available=$((ROWS - 6))
+  local overhead=6
+  [ -n "$PROMPT_TEXT" ] && overhead=$((overhead + 1))
+  local available=$((ROWS - overhead))
   [ "$available" -lt 1 ] && available=1
 
   # Split the remaining rows: the menu never grows past its own length and
@@ -692,8 +711,11 @@ draw_frame() {
   draw_menu "$menu_height"
   local log_height=$((available - menu_height))
   draw_log "$log_height"
-  # Push the footer onto the last row so it never floats mid-screen.
-  while [ "$FRAME_ROWS" -lt $((ROWS - 1)) ]; do frame_blank; done
+  # Push the prompt and footer onto the last rows so they never float mid-screen.
+  local tail_rows=1
+  [ -n "$PROMPT_TEXT" ] && tail_rows=2
+  while [ "$FRAME_ROWS" -lt $((ROWS - tail_rows)) ]; do frame_blank; done
+  draw_prompt
   draw_footer
   frame_flush
 }
@@ -1152,6 +1174,29 @@ act_aur_status() {
   rm -rf "$dir"
 }
 
+# aur_render_into writes PKGBUILD and .SRCINFO for one pkgrel into an AUR
+# checkout. Both are produced together so they can never disagree.
+aur_render_into() {
+  local dir=$1 rel=$2 x86=$3 arm=$4 lic=$5
+  if ! bash "$PROJECT_DIR/packaging/aur/render-pkgbuild.sh" \
+      --version "$VERSION" --pkgrel "$rel" \
+      --sha256-x86_64 "$x86" --sha256-aarch64 "$arm" \
+      --sha256-license "$lic" \
+      --output "$dir/PKGBUILD"; then
+    log_err "rendering the PKGBUILD failed"
+    return 1
+  fi
+  if ! command -v makepkg >/dev/null 2>&1; then
+    log_err "makepkg is required to generate .SRCINFO (install base-devel)"
+    return 1
+  fi
+  if ! ( cd "$dir" && makepkg --printsrcinfo > .SRCINFO 2>/dev/null ); then
+    log_err "makepkg rejected the PKGBUILD"
+    return 1
+  fi
+  return 0
+}
+
 # sha_for_asset pulls one checksum out of the release's SHA256SUMS file.
 sha_for_asset() {
   local sums_file=$1 asset=$2
@@ -1161,8 +1206,18 @@ sha_for_asset() {
 # license_sha256 hashes the LICENSE blob at the tag, which is exactly what the
 # PKGBUILD's raw.githubusercontent source URL serves.
 license_sha256() {
-  local tag=$1
-  git -C "$PROJECT_DIR" show "${tag}:LICENSE" 2>/dev/null | sha256sum | cut -d' ' -f1
+  local tag=$1 tmp hash
+  tmp=$(mktemp "${TMPDIR:-/tmp}/license-XXXXXX")
+  # Piping git straight into sha256sum hides a missing file: the pipeline still
+  # succeeds and hashes empty input, yielding e3b0c442… — a digest that looks
+  # real and would publish a PKGBUILD nobody can build. Capture, check, then hash.
+  if ! git -C "$PROJECT_DIR" show "${tag}:LICENSE" > "$tmp" 2>/dev/null || [ ! -s "$tmp" ]; then
+    rm -f "$tmp"
+    return 1
+  fi
+  hash=$(sha256sum "$tmp" | cut -d' ' -f1)
+  rm -f "$tmp"
+  printf '%s' "$hash"
 }
 
 act_aur_publish() {
@@ -1181,11 +1236,15 @@ act_aur_publish() {
     return 1
   fi
 
-  # 1. The checksums must come from the assets users actually download.
+  # 1. The checksums must come from the assets users actually download. Right
+  # after a tag push the workflow is usually still uploading, so wait for them
+  # rather than failing a publish that would have worked a minute later.
   if ! release_has_all_assets "$VERSION"; then
-    log_err "release $VERSION is missing Linux assets"
-    log_info "run 'Wait for release assets' first"
-    return 1
+    log_info "release $VERSION has no Linux assets yet — waiting for the workflow"
+    if ! act_wait_assets; then
+      log_err "cannot publish $AUR_PKGNAME without the release assets"
+      return 1
+    fi
   fi
 
   local work
@@ -1208,7 +1267,8 @@ act_aur_publish() {
     return 1
   fi
   if [ -z "$sha_license" ]; then
-    log_err "could not hash LICENSE at $VERSION — is the tag fetched locally?"
+    log_err "no LICENSE at $VERSION — the tag must carry one, and be fetched locally"
+    log_detail "the PKGBUILD installs the licence from $VERSION, so it has to exist there"
     rm -rf "$work"
     return 1
   fi
@@ -1224,39 +1284,40 @@ act_aur_publish() {
     return 1
   fi
 
+  # Start at whatever pkgrel is published for this pkgver. Bumping up front
+  # would guarantee a difference, so re-running the step could never report
+  # "nothing to do" and would publish a pointless release every time.
   local pkgrel=1 old_ver old_rel
   old_ver=$(aur_current_pkgver "$repo_dir" 2>/dev/null)
   old_rel=$(aur_current_pkgrel "$repo_dir" 2>/dev/null)
   if [ -n "$old_ver" ] && [ "$old_ver" = "$pkgver" ]; then
-    pkgrel=$(( ${old_rel:-1} + 1 ))
-    log_info "same pkgver already published — bumping pkgrel to $pkgrel"
+    pkgrel=${old_rel:-1}
   elif [ -n "$old_ver" ]; then
     log_info "updating $old_ver-${old_rel:-1} → ${pkgver}-1"
   fi
 
   # 3. Render the PKGBUILD and its .SRCINFO.
-  if ! bash "$PROJECT_DIR/packaging/aur/render-pkgbuild.sh" \
-      --version "$VERSION" --pkgrel "$pkgrel" \
-      --sha256-x86_64 "$sha_x86" --sha256-aarch64 "$sha_arm" \
-      --sha256-license "$sha_license" \
-      --output "$repo_dir/PKGBUILD"; then
-    log_err "rendering the PKGBUILD failed"
+  if ! aur_render_into "$repo_dir" "$pkgrel" "$sha_x86" "$sha_arm" "$sha_license"; then
     rm -rf "$work"
     return 1
+  fi
+
+  # Unchanged against what the AUR already has: nothing to publish.
+  if [ -n "$old_ver" ] && [ "$old_ver" = "$pkgver" ]; then
+    git -C "$repo_dir" add -N PKGBUILD .SRCINFO 2>/dev/null
+    if git -C "$repo_dir" diff --quiet -- PKGBUILD .SRCINFO 2>/dev/null; then
+      log_ok "the AUR already has ${AUR_PKGNAME} ${pkgver}-${pkgrel} — nothing to publish"
+      rm -rf "$work"
+      return 0
+    fi
+    pkgrel=$((pkgrel + 1))
+    log_info "same pkgver, changed package — bumping pkgrel to $pkgrel"
+    if ! aur_render_into "$repo_dir" "$pkgrel" "$sha_x86" "$sha_arm" "$sha_license"; then
+      rm -rf "$work"
+      return 1
+    fi
   fi
   log_ok "PKGBUILD rendered for ${pkgver}-${pkgrel}"
-
-  if ! command -v makepkg >/dev/null 2>&1; then
-    log_err "makepkg is required to generate .SRCINFO (install base-devel)"
-    rm -rf "$work"
-    return 1
-  fi
-  if ! ( cd "$repo_dir" && makepkg --printsrcinfo > .SRCINFO 2>/dev/null ); then
-    log_err "makepkg rejected the PKGBUILD"
-    rm -rf "$work"
-    return 1
-  fi
-  log_ok ".SRCINFO generated"
 
   # 4. Show what would be published before anything leaves this machine.
   log_plain ""
