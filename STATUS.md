@@ -4,7 +4,7 @@ TideMail is a keyboard-first TUI email client for the terminal, built in Go with
 Bubble Tea. It supports multiple IMAP/SMTP accounts, a unified inbox, AI summaries,
 and push or interval sync. See `CLAUDE.md` for the architecture map.
 
-Current release: **v1.0.5**.
+Current release: **v1.0.23**.
 
 ## Working
 
@@ -59,7 +59,11 @@ Current release: **v1.0.5**.
 - **Settings**: theme, display density, pane corners, pane header bars, modal
   drop shadow, AI provider config, editor, update checks.
 - **Update checker**: GitHub-releases check with checksum-verified self-update,
-  user-local install fallback, and an in-app progress popup.
+  user-local install fallback, and an in-app progress popup. `U` offers an
+  update whatever way TideMail was installed: it installs in place where it can,
+  and where a distro package owns the binary it opens a window naming that
+  package and offering the right command to copy — an AUR helper for a foreign
+  pacman package, since `pacman -Syu` silently skips those.
 
 Authentication is app-password for every provider, plus optional OAuth2 (XOAUTH2)
 for Gmail and Outlook. The method is an explicit, persisted per-account setting

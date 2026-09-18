@@ -253,9 +253,15 @@ smtp_port = 587
 smtp_tls = true
 user = "mira@example.com"
 from = "Mira Chen <mira@example.com>"
-signature = "Mira\nSent with TideMail"
+signature = """
+Mira
+Sent with TideMail"""
 sync_minutes = 0  # push via IMAP IDLE; N polls every N min, -1 is manual only
 ```
+
+The signature is a multi-line box in the account form, so `Enter` gives you a
+new line and there is no escape to remember; editing the file by hand works too,
+and a TOML multi-line string is easier to read than `\n` escapes.
 
 Config lives at `~/.config/tidemail/config.toml`. TideMail puts its SQLite cache
 at `~/.local/share/tidemail/mail.db` unless `XDG_DATA_HOME` points elsewhere.
