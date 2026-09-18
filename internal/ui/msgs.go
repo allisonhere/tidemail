@@ -75,6 +75,16 @@ type AccountSavedMsg struct {
 	Err         error
 }
 
+type AccountDatabaseSavedMsg struct {
+	Account     db.Account
+	Mailboxes   []db.Mailbox
+	AccountCfg  config.AccountConfig
+	PreviousCfg config.Config
+	NextCfg     config.Config
+	WasNew      bool
+	Err         error
+}
+
 type AccountTestedMsg struct {
 	MailboxCount int
 	Err          error
@@ -84,6 +94,15 @@ type AccountDeletedMsg struct {
 	AccountID   int64
 	ConfigID    string
 	AccountName string
+	Err         error
+}
+
+type AccountDatabaseDeletedMsg struct {
+	AccountID   int64
+	ConfigID    string
+	AccountName string
+	PreviousCfg config.Config
+	NextCfg     config.Config
 	Err         error
 }
 

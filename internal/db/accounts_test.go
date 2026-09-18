@@ -46,3 +46,40 @@ func TestUpsertMailboxReturnsExistingID(t *testing.T) {
 		t.Fatalf("returned mailbox does not contain the update: %+v", saved)
 	}
 }
+
+func TestSaveAccountWithMailboxesRollsBackPartialEdit(t *testing.T) {
+	database, err := openSQLite(filepath.Join(t.TempDir(), "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+	accountID, err := database.AddAccount("cfg-old", "Before", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`CREATE TRIGGER fail_broken_mailbox BEFORE INSERT ON mailboxes WHEN NEW.name = 'Broken' BEGIN SELECT RAISE(FAIL, 'forced mailbox failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err = database.SaveAccountWithMailboxes(accountID, "cfg-new", "After", "#fff", []Mailbox{{Name: "Good"}, {Name: "Broken"}})
+	if err == nil {
+		t.Fatal("expected forced mailbox failure")
+	}
+	account, err := database.GetAccount(accountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if account.Name != "Before" || account.ConfigID != "cfg-old" {
+		t.Fatalf("account edit escaped rolled-back transaction: %#v", account)
+	}
+	mailboxes, err := database.ListMailboxes(accountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mailboxes) != 0 {
+		t.Fatalf("partial mailbox set escaped rolled-back transaction: %#v", mailboxes)
+	}
+}

@@ -492,7 +492,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateState = updateStateError
 			m.updateErr = msg.Err.Error()
 			m.syncSettingsUpdateState()
-			m.saveConfig()
+			_ = m.saveConfig()
 			if msg.Manual {
 				m.setStatus("update check failed: "+msg.Err.Error(), true)
 				return m, m.clearStatusCmd()
@@ -509,7 +509,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cfg.Updates.AvailableSummary = msg.Result.Latest.Summary
 			m.cfg.Updates.AvailablePublished = msg.Result.Latest.PublishedAt.Unix()
 			m.syncSettingsUpdateState()
-			m.saveConfig()
+			_ = m.saveConfig()
 			if m.pendingUpdateInstall {
 				m.pendingUpdateInstall = false
 				// A manual check from Settings overrides any previous dismiss.
@@ -526,7 +526,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateDismissed = false
 		m.cfg.Updates.DismissedVersion = ""
 		m.clearCachedAvailableUpdate()
-		m.saveConfig()
+		_ = m.saveConfig()
 		m.syncSettingsUpdateState()
 		if msg.Manual {
 			m.setStatus("Tide is up to date", false)
@@ -923,10 +923,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case AccountSavedMsg:
-		m.accountManager.busy = false
-		m.accountManager.busyMsg = ""
 		m.accountManager.statusMsg = ""
 		if msg.Err != nil {
+			m.accountManager.busy = false
+			m.accountManager.busyMsg = ""
 			detail := m.accountManager.redactSensitiveWithAccounts(msg.Err.Error(), []config.AccountConfig{msg.AccountCfg})
 			m.accountManager.statusMsg = fmt.Sprintf("SAVE FAILED: %s", detail)
 			m.setStatus(fmt.Sprintf("save failed: %s", detail), true)
@@ -952,59 +952,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			nextCfg.Accounts = append(nextCfg.Accounts, msg.AccountCfg)
 		}
 		if err := m.persistConfig(nextCfg); err != nil {
+			m.accountManager.busy = false
+			m.accountManager.busyMsg = ""
 			detail := config.RedactSecrets(err.Error(), nextCfg)
 			m.accountManager.statusMsg = "SAVE FAILED: " + detail
 			m.setStatus("save failed: "+detail, true)
 			return m, m.clearStatusCmd()
 		}
 
+		m.accountManager.busy = true
+		m.accountManager.busyMsg = "SAVING..."
+		return m, saveAccountDatabaseCmd(m.db, msg, previousCfg, nextCfg)
+
+	case AccountDatabaseSavedMsg:
+		m.accountManager.busy = false
+		m.accountManager.busyMsg = ""
+		if msg.Err != nil {
+			// Save may already have moved credentials into the keychain. Remove
+			// the candidate generation first, then writing the previous config
+			// restores an edited account's prior credentials when it had any.
+			config.DeleteOAuth2Secrets(msg.AccountCfg.ID, "")
+			config.DeleteAccountPassword(msg.AccountCfg.ID, "")
+			rollbackErr := m.persistConfig(msg.PreviousCfg)
+			detail := config.RedactSecrets(msg.Err.Error(), msg.NextCfg)
+			if rollbackErr != nil {
+				detail += "; config rollback failed: " + config.RedactSecrets(rollbackErr.Error(), msg.PreviousCfg)
+			}
+			m.accountManager.statusMsg = "SAVE FAILED: " + detail
+			m.setStatus("save failed: "+detail, true)
+			return m, m.clearStatusCmd()
+		}
 		account := msg.Account
 		mailboxes := msg.Mailboxes
-		if account.ID == 0 {
-			var accountID int64
-			var err error
-			var previousAccount db.Account
-			if msg.EditID != 0 {
-				previousAccount, err = m.db.GetAccount(msg.EditID)
-				if err == nil {
-					err = m.db.UpdateAccount(msg.EditID, msg.AccountCfg.ID, msg.AccountCfg.Name, msg.Color)
-				}
-				accountID = msg.EditID
-			} else {
-				accountID, err = m.db.AddAccount(msg.AccountCfg.ID, msg.AccountCfg.Name, msg.Color)
-			}
-			if err == nil {
-				account, err = m.db.GetAccount(accountID)
-			}
-			if err == nil {
-				for _, info := range msg.MailboxInfo {
-					mb := db.Mailbox{AccountID: accountID, Name: info.Name, DisplayName: cleanDisplayName(info.Name), Delimiter: info.Delimiter, Flags: info.Flags}
-					mb.ID, err = m.db.UpsertMailbox(mb)
-					if err != nil {
-						break
-					}
-					mailboxes = append(mailboxes, mb)
-				}
-			}
-			if err != nil {
-				// The config is the durable source of connection settings. Restore it
-				// if the database half of the mutation cannot be completed.
-				rollbackErr := m.persistConfig(previousCfg)
-				if msg.EditID == 0 && accountID != 0 {
-					_ = m.db.DeleteAccount(accountID)
-				} else if msg.EditID != 0 && previousAccount.ID != 0 {
-					_ = m.db.UpdateAccount(previousAccount.ID, previousAccount.ConfigID, previousAccount.Name, previousAccount.Color)
-				}
-				detail := err.Error()
-				if rollbackErr != nil {
-					detail += "; config rollback failed: " + rollbackErr.Error()
-				}
-				m.accountManager.statusMsg = "SAVE FAILED: " + detail
-				m.setStatus("save failed: "+detail, true)
-				return m, m.clearStatusCmd()
-			}
-		}
-		m.cfg = nextCfg
+		m.cfg = msg.NextCfg
 		// Also update in-memory accounts so scheduleNextSync can find it.
 		foundAcct := false
 		for i, a := range m.accounts {
@@ -1149,10 +1129,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case AccountDeletedMsg:
-		m.accountManager.busy = false
-		m.accountManager.busyMsg = ""
 		m.accountManager.statusMsg = ""
 		if msg.Err != nil {
+			m.accountManager.busy = false
+			m.accountManager.busyMsg = ""
 			m.accountManager.statusMsg = fmt.Sprintf("DELETE FAILED: %v", msg.Err)
 			m.setStatus(fmt.Sprintf("delete failed: %v", msg.Err), true)
 			return m, m.clearStatusCmd()
@@ -1172,35 +1152,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			if err := m.persistConfig(nextCfg); err != nil {
+				m.accountManager.busy = false
+				m.accountManager.busyMsg = ""
 				m.accountManager.statusMsg = "DELETE FAILED: " + err.Error()
 				m.setStatus("delete failed: "+err.Error(), true)
 				return m, m.clearStatusCmd()
 			}
-			if err := m.db.DeleteAccount(msg.AccountID); err != nil {
-				rollbackErr := m.persistConfig(previousCfg)
-				detail := err.Error()
-				if rollbackErr != nil {
-					detail += "; config rollback failed: " + rollbackErr.Error()
-				}
-				m.accountManager.statusMsg = "DELETE FAILED: " + detail
-				m.setStatus("delete failed: "+detail, true)
-				return m, m.clearStatusCmd()
+		}
+		m.accountManager.busy = true
+		m.accountManager.busyMsg = "DELETING..."
+		return m, deleteAccountDatabaseCmd(m.db, msg, previousCfg, nextCfg)
+
+	case AccountDatabaseDeletedMsg:
+		m.accountManager.busy = false
+		m.accountManager.busyMsg = ""
+		if msg.Err != nil {
+			rollbackErr := m.persistConfig(msg.PreviousCfg)
+			detail := msg.Err.Error()
+			if rollbackErr != nil {
+				detail += "; config rollback failed: " + rollbackErr.Error()
 			}
-			m.cfg = nextCfg
-			legacyName := msg.AccountName
-			for _, survivor := range nextCfg.Accounts {
-				if survivor.Name == msg.AccountName {
-					legacyName = ""
-					break
-				}
-			}
-			config.DeleteOAuth2Secrets(msg.ConfigID, legacyName)
-			config.DeleteAccountPassword(msg.ConfigID, legacyName)
-		} else if err := m.db.DeleteAccount(msg.AccountID); err != nil {
-			m.accountManager.statusMsg = "DELETE FAILED: " + err.Error()
-			m.setStatus("delete failed: "+err.Error(), true)
+			m.accountManager.statusMsg = "DELETE FAILED: " + detail
+			m.setStatus("delete failed: "+detail, true)
 			return m, m.clearStatusCmd()
 		}
+		m.cfg = msg.NextCfg
+		legacyName := msg.AccountName
+		for _, survivor := range msg.NextCfg.Accounts {
+			if survivor.Name == msg.AccountName {
+				legacyName = ""
+				break
+			}
+		}
+		config.DeleteOAuth2Secrets(msg.ConfigID, legacyName)
+		config.DeleteAccountPassword(msg.ConfigID, legacyName)
 		for i, a := range m.accounts {
 			if a.ID == msg.AccountID {
 				m.accounts = append(m.accounts[:i], m.accounts[i+1:]...)
@@ -1672,7 +1657,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		// Persist so the sort survives restarts (mirrors the Settings toggle).
 		m.cfg.Display.StarredFirst = m.starredFirst
-		m.saveConfig()
+		_ = m.saveConfig()
 		if m.activeMessageRowCount() > 0 {
 			m.setViewportForCurrentRow()
 		} else {
@@ -1700,7 +1685,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.clearViewportMessage()
 		}
-		m.saveConfig()
+		_ = m.saveConfig()
 		if m.cfg.Display.ThreadedConversations {
 			m.setStatus("threaded conversations on", false)
 		} else {
@@ -1961,7 +1946,11 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			cur = m.currentRowMessage()
 		}
 		if cur != nil {
-			acfg := m.accountCfgForMailbox(cur.MailboxID)
+			acfg, err := m.accountCfgForMailbox(cur.MailboxID)
+			if err != nil {
+				m.setStatus("reply failed: "+err.Error(), true)
+				return m, m.clearStatusCmd()
+			}
 			m.compose = NewReply(*cur, acfg, m.cfg.Accounts, m.addressBook)
 			m.overlay = overlayCompose
 		}
@@ -1975,7 +1964,11 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			cur = m.currentRowMessage()
 		}
 		if cur != nil {
-			acfg := m.accountCfgForMailbox(cur.MailboxID)
+			acfg, err := m.accountCfgForMailbox(cur.MailboxID)
+			if err != nil {
+				m.setStatus("forward failed: "+err.Error(), true)
+				return m, m.clearStatusCmd()
+			}
 			m.compose = NewForward(*cur, acfg, m.cfg.Accounts, m.addressBook)
 			m.overlay = overlayCompose
 		}
@@ -2372,7 +2365,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.confirmedTheme = m.themeCursor
 			m.overlay = overlayNone
 			m.cfg.Theme = pickableThemeNameAt(m.confirmedTheme)
-			m.saveConfig()
+			_ = m.saveConfig()
 			themeCmd = m.startOmarchyWatchIfNeeded()
 			if m.activeMessageRowCount() > 0 {
 				m.setViewportForCurrentRow()
@@ -2641,7 +2634,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.spinner.Spinner = spinner.Dot
 			}
-			m.saveConfig()
+			_ = m.saveConfig()
 			omarchyCmd := m.startOmarchyWatchIfNeeded()
 			summarizer, _ := ai.New(m.cfg.AI)
 			m.summarizer = summarizer
@@ -3390,6 +3383,64 @@ func (m *Model) setStatus(msg string, isErr bool) {
 // configSave is a seam over config.Save so tests can simulate a failed write.
 var configSave = config.Save
 
+func saveAccountDatabaseCmd(database *db.DB, request AccountSavedMsg, previousCfg, nextCfg config.Config) tea.Cmd {
+	return func() tea.Msg {
+		result := AccountDatabaseSavedMsg{
+			AccountCfg:  request.AccountCfg,
+			PreviousCfg: previousCfg,
+			NextCfg:     nextCfg,
+			WasNew:      request.EditID == 0,
+		}
+		if database == nil {
+			result.Err = fmt.Errorf("database unavailable")
+			return result
+		}
+		mailboxes := make([]db.Mailbox, 0, len(request.MailboxInfo))
+		for _, info := range request.MailboxInfo {
+			mailboxes = append(mailboxes, db.Mailbox{
+				Name:        info.Name,
+				DisplayName: cleanDisplayName(info.Name),
+				Delimiter:   info.Delimiter,
+				Flags:       info.Flags,
+			})
+		}
+		account, saved, err := database.SaveAccountWithMailboxes(
+			request.EditID,
+			request.AccountCfg.ID,
+			request.AccountCfg.Name,
+			request.Color,
+			mailboxes,
+		)
+		if err != nil {
+			result.Err = fmt.Errorf("save account database: %w", err)
+			return result
+		}
+		result.Account = account
+		result.Mailboxes = saved
+		return result
+	}
+}
+
+func deleteAccountDatabaseCmd(database *db.DB, request AccountDeletedMsg, previousCfg, nextCfg config.Config) tea.Cmd {
+	return func() tea.Msg {
+		result := AccountDatabaseDeletedMsg{
+			AccountID:   request.AccountID,
+			ConfigID:    request.ConfigID,
+			AccountName: request.AccountName,
+			PreviousCfg: previousCfg,
+			NextCfg:     nextCfg,
+		}
+		if database == nil {
+			result.Err = fmt.Errorf("database unavailable")
+			return result
+		}
+		if err := database.DeleteAccount(request.AccountID); err != nil {
+			result.Err = fmt.Errorf("delete account database: %w", err)
+		}
+		return result
+	}
+}
+
 // saveConfig persists the config and surfaces any failure on the status line, so a
 // failed write (read-only dir, full disk) no longer silently drops account/OAuth/setting
 // changes the way a fire-and-forget config.Save would.
@@ -3506,14 +3557,14 @@ func (m *Model) resizeAccountsPane(delta int) {
 	m.cfg.Display.AccountsWidthPercent = clamp(m.accountsWidthPercent()+delta, minAccountsWidthPercent, maxAccountsWidthPercent)
 	m.refreshContentAfterPaneResize()
 	m.setStatus("pane layout saved", false)
-	m.saveConfig()
+	_ = m.saveConfig()
 }
 
 func (m *Model) resizeMessagesPane(delta int) {
 	m.cfg.Display.MessagesHeightPercent = clamp(m.messagesHeightPercent()+delta, minMessagesHeightPercent, maxMessagesHeightPercent)
 	m.refreshContentAfterPaneResize()
 	m.setStatus("pane layout saved", false)
-	m.saveConfig()
+	_ = m.saveConfig()
 }
 
 func (m *Model) refreshContentAfterPaneResize() {

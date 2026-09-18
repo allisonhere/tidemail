@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -379,7 +380,14 @@ func (m *Model) createFolderCmd(accountID int64, parentPath, name string) tea.Cm
 	}
 	var acfg config.AccountConfig
 	if len(m.movePicker.messages) > 0 {
-		acfg = m.accountCfgForMailbox(m.movePicker.messages[0].MailboxID)
+		var err error
+		acfg, err = m.accountCfgForMailbox(m.movePicker.messages[0].MailboxID)
+		if err != nil {
+			return func() tea.Msg { return FolderCreatedMsg{AccountID: accountID, Name: fullName, Err: err} }
+		}
+	} else {
+		err := fmt.Errorf("%w (account %d)", errNoAccountConfig, accountID)
+		return func() tea.Msg { return FolderCreatedMsg{AccountID: accountID, Name: fullName, Err: err} }
 	}
 	database := m.db
 	sessions := m.sessions

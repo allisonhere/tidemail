@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -260,12 +261,24 @@ func TestUnsubscribeMailtoOpensPrefilledCompose(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	cfg := config.DefaultConfig()
+	cfg.Accounts = []config.AccountConfig{{ID: "unsubscribe-account", Name: "Personal"}}
+	accountID, err := database.AddAccount(cfg.Accounts[0].ID, cfg.Accounts[0].Name, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailboxID, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewModel(database, cfg, "dev", false)
+	m.accounts, _ = database.ListAccounts()
+	m.mailboxes, _ = database.ListMailboxes(accountID)
 	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = next.(Model)
 
 	cur := db.Message{
-		MailboxID: 1,
+		MailboxID: mailboxID,
 		Headers:   "List-Unsubscribe\n<mailto:leave@list.example.com?subject=stop>\n",
 	}
 	n, _ := m.handleUnsubscribe(cur)
@@ -279,5 +292,34 @@ func TestUnsubscribeMailtoOpensPrefilledCompose(t *testing.T) {
 	}
 	if got := m.compose.subjectInput.Value(); got != "stop" {
 		t.Fatalf("expected prefilled subject, got %q", got)
+	}
+}
+
+func TestUnsubscribeMailtoOnOrphanedAccountReportsError(t *testing.T) {
+	database, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	orphanID, err := database.AddAccount("missing-config", "Orphan", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailboxID, err := database.UpsertMailbox(db.Mailbox{AccountID: orphanID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	m.accounts, _ = database.ListAccounts()
+	m.mailboxes, _ = database.ListMailboxes(orphanID)
+	cur := db.Message{MailboxID: mailboxID, Headers: "List-Unsubscribe\n<mailto:leave@list.example.com>\n"}
+
+	next, _ := m.handleUnsubscribe(cur)
+	m = next.(Model)
+	if m.overlay == overlayCompose {
+		t.Fatal("orphaned unsubscribe opened compose")
+	}
+	if !m.statusErr || !strings.Contains(m.statusMsg, errNoAccountConfig.Error()) {
+		t.Fatalf("orphaned unsubscribe did not explain the problem: %q", m.statusMsg)
 	}
 }

@@ -259,6 +259,8 @@ at `~/.local/share/tidemail/mail.db` unless `XDG_DATA_HOME` points elsewhere.
 Each account's generated `id` is its permanent internal identity, so display
 names may be changed or shared safely. TideMail adds missing IDs automatically
 and writes a one-time `.pre-account-ids.bak` copy beside the config first.
+TideMail refuses to start on a malformed config and prints the exact path to
+repair, rather than loading defaults that could overwrite the real settings.
 
 ## Build it
 

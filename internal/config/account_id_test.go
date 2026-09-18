@@ -185,3 +185,34 @@ func TestGetAccountPasswordFallsBackToLegacyNameKey(t *testing.T) {
 		t.Fatalf("the legacy item must not be rewritten or cleared: got %q", got)
 	}
 }
+
+// The account-save rollback clears the candidate generation's keychain items by
+// ID with an empty legacy name. That must never reach a peer's name-keyed item,
+// which is the only copy of its password until that account is next saved.
+func TestDeleteAccountPasswordByIDLeavesLegacyPeerItem(t *testing.T) {
+	t.Setenv("TIDEMAIL_DISABLE_KEYRING", "0")
+	if !keyringUsable() {
+		t.Skip("system keychain unavailable")
+	}
+	const peerName = "tidemail-test-peer-account"
+	const rolledBackID = "tidemail-test-rollback-id"
+	if err := storeSecret(accountPasswordKey(peerName), "peer-pw"); err != nil {
+		t.Skipf("cannot write to the keychain: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = clearSecret(accountPasswordKey(peerName))
+		_ = clearSecret(accountPasswordKey(rolledBackID))
+	})
+	if !StoreAccountPassword(rolledBackID, "candidate-pw") {
+		t.Skip("keychain write failed")
+	}
+
+	DeleteAccountPassword(rolledBackID, "")
+
+	if got := lookupSecret(accountPasswordKey(rolledBackID)); got != "" {
+		t.Fatalf("candidate credential survived the rollback: %q", got)
+	}
+	if got := lookupSecret(accountPasswordKey(peerName)); got != "peer-pw" {
+		t.Fatalf("rollback destroyed a peer's legacy credential: %q", got)
+	}
+}

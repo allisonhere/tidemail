@@ -330,18 +330,16 @@ func (m Model) accountName(accountID int64) string {
 	return "Account"
 }
 
-func (m Model) accountCfgForMailbox(mailboxID int64) config.AccountConfig {
+func (m Model) accountCfgForMailbox(mailboxID int64) (config.AccountConfig, error) {
 	mb := m.mailboxByID(mailboxID)
 	if mb == nil {
-		return config.AccountConfig{}
+		return config.AccountConfig{}, fmt.Errorf("%w (mailbox %d)", errNoAccountConfig, mailboxID)
 	}
 	acc := m.accountByID(mb.AccountID)
-	if acc != nil {
-		if acfg, err := m.accountConfigFor(*acc); err == nil {
-			return acfg
-		}
+	if acc == nil {
+		return config.AccountConfig{}, fmt.Errorf("%w (account %d)", errNoAccountConfig, mb.AccountID)
 	}
-	return config.AccountConfig{}
+	return m.accountConfigFor(*acc)
 }
 
 func (m Model) accountColor(accountID int64) lipgloss.Color {

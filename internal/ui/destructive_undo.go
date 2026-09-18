@@ -64,7 +64,12 @@ func (m *Model) scheduleArchive(msgs []db.Message) tea.Cmd {
 			m.setStatus("archive failed: "+err.Error(), true)
 			continue
 		}
-		entries = append(entries, pendingDestructiveEntry{Message: msg, Source: *source, Target: target, Account: m.accountCfgForMailbox(msg.MailboxID)})
+		acfg, err := m.accountCfgForMailbox(msg.MailboxID)
+		if err != nil {
+			m.setStatus("archive failed: "+err.Error(), true)
+			return m.clearStatusCmd()
+		}
+		entries = append(entries, pendingDestructiveEntry{Message: msg, Source: *source, Target: target, Account: acfg})
 	}
 	return m.scheduleDestructive(destructiveArchive, entries)
 }
@@ -77,7 +82,12 @@ func (m *Model) scheduleMove(msgs []db.Message, target db.Mailbox) tea.Cmd {
 			m.setStatus("move failed: source and target must be in one account", true)
 			continue
 		}
-		entries = append(entries, pendingDestructiveEntry{Message: msg, Source: *source, Target: target, Account: m.accountCfgForMailbox(msg.MailboxID)})
+		acfg, err := m.accountCfgForMailbox(msg.MailboxID)
+		if err != nil {
+			m.setStatus("move failed: "+err.Error(), true)
+			return m.clearStatusCmd()
+		}
+		entries = append(entries, pendingDestructiveEntry{Message: msg, Source: *source, Target: target, Account: acfg})
 	}
 	return m.scheduleDestructive(destructiveMove, entries)
 }
@@ -90,7 +100,12 @@ func (m *Model) scheduleDelete(msgs []db.Message) tea.Cmd {
 			m.setStatus("delete failed: mailbox not found", true)
 			continue
 		}
-		entry := pendingDestructiveEntry{Message: msg, Source: *source, Account: m.accountCfgForMailbox(msg.MailboxID)}
+		acfg, err := m.accountCfgForMailbox(msg.MailboxID)
+		if err != nil {
+			m.setStatus("delete failed: "+err.Error(), true)
+			return m.clearStatusCmd()
+		}
+		entry := pendingDestructiveEntry{Message: msg, Source: *source, Account: acfg}
 		if trash, err := m.db.FindTrashMailbox(source.AccountID); err == nil && trash.ID != source.ID && trash.Name != source.Name {
 			entry.Target = trash
 		}

@@ -50,7 +50,10 @@ func (m *Model) deleteDraftCmd(id int64) tea.Cmd {
 	if draft.RemoteUID != 0 && draft.MailboxID != 0 {
 		if mb := m.mailboxByID(draft.MailboxID); mb != nil {
 			remote = mb
-			remoteCfg = m.accountCfgForMailbox(draft.MailboxID)
+			remoteCfg, err = m.accountCfgForMailbox(draft.MailboxID)
+			if err != nil {
+				return func() tea.Msg { return DraftDeletedMsg{DraftID: id, Err: err} }
+			}
 			remoteUID = draft.RemoteUID
 		}
 	}

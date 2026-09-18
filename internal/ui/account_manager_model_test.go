@@ -249,6 +249,12 @@ func TestDeleteAccountRemovesItFromConfig(t *testing.T) {
 	}
 	next, cmd := m.Update(delMsg)
 	m = next.(Model)
+	if _, err := m.db.GetAccount(workID); err != nil {
+		t.Fatalf("database changed before asynchronous delete ran: %v", err)
+	}
+	if len(m.cfg.Accounts) != 2 {
+		t.Fatalf("in-memory config changed before database delete completed: %#v", m.cfg.Accounts)
+	}
 
 	if !savedCalled {
 		t.Fatalf("expected config to be saved after account deletion")
@@ -256,11 +262,16 @@ func TestDeleteAccountRemovesItFromConfig(t *testing.T) {
 	if len(saved.Accounts) != 1 || saved.Accounts[0].Name != "Personal" {
 		t.Fatalf("expected saved config to drop Work, got %#v", saved.Accounts)
 	}
+	if cmd == nil {
+		t.Fatalf("expected an asynchronous database delete")
+	}
+	next, cmd = m.Update(cmd())
+	m = next.(Model)
 	if len(m.cfg.Accounts) != 1 || m.cfg.Accounts[0].Name != "Personal" {
 		t.Fatalf("expected in-memory config to drop Work, got %#v", m.cfg.Accounts)
 	}
 
-	// The reload the delete handler kicks off must not resurrect the account.
+	// The reload the completion handler kicks off must not resurrect the account.
 	if cmd == nil {
 		t.Fatalf("expected a reload command after deletion")
 	}

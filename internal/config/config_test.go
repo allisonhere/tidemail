@@ -216,6 +216,40 @@ func TestRedactSecretsRemovesOAuthTokens(t *testing.T) {
 	}
 }
 
+func TestRedactSecretsIgnoresShortValuesThatMangleErrors(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Accounts = []AccountConfig{{Password: "p"}}
+	want := "open config.toml.pre-account-ids.bak: permission denied"
+	if got := RedactSecrets(want, cfg); got != want {
+		t.Fatalf("short password mangled the error:\n got: %q\nwant: %q", got, want)
+	}
+}
+
+func TestRedactSecretsMinimumLengthBoundary(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Accounts = []AccountConfig{{Password: "1234567", RefreshToken: "12345678"}}
+	got := RedactSecrets("short=1234567 long=12345678", cfg)
+	if !strings.Contains(got, "short=1234567") {
+		t.Fatalf("seven-character value should remain readable: %q", got)
+	}
+	if strings.Contains(got, "12345678") || !strings.Contains(got, "long=[redacted]") {
+		t.Fatalf("eight-character value should be redacted: %q", got)
+	}
+}
+
+func TestPathUsesXDGConfigHome(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	got, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dir, "tidemail", "config.toml")
+	if got != want {
+		t.Fatalf("Path() = %q, want %q", got, want)
+	}
+}
+
 func TestLoadPreservesUpdateConfig(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)

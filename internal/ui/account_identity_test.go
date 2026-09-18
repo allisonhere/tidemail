@@ -7,6 +7,7 @@ import (
 
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // These are regression tests for issue #18: multi-account setups where adding
@@ -53,6 +54,17 @@ func acct(name, host, user, pass string) config.AccountConfig {
 	}
 }
 
+func runAccountPersistence(t *testing.T, m Model, msg tea.Msg) Model {
+	t.Helper()
+	next, cmd := m.Update(msg)
+	m = next.(Model)
+	if cmd == nil {
+		t.Fatal("expected account persistence command")
+	}
+	next, _ = m.Update(cmd())
+	return next.(Model)
+}
+
 // Adding a second account under a display name the first already uses must not
 // overwrite the first account's server settings. This is symptom 1 of #18:
 // "adding a second account causes both entries to become the same".
@@ -72,8 +84,7 @@ func TestSavingDuplicateDisplayNameKeepsPeerIntact(t *testing.T) {
 		t.Fatalf("GetAccount: %v", err)
 	}
 
-	next, _ := m.Update(AccountSavedMsg{Account: account, AccountCfg: second})
-	m = next.(Model)
+	m = runAccountPersistence(t, m, AccountSavedMsg{Account: account, AccountCfg: second, EditID: account.ID})
 
 	if len(m.cfg.Accounts) != 2 {
 		t.Fatalf("expected both accounts in config, got %d: %#v", len(m.cfg.Accounts), m.cfg.Accounts)
@@ -117,8 +128,7 @@ func TestRenamingAccountUpdatesItsOwnConfigBlock(t *testing.T) {
 		t.Fatalf("GetAccount: %v", err)
 	}
 
-	next, _ := m.Update(AccountSavedMsg{Account: account, AccountCfg: renamed})
-	m = next.(Model)
+	m = runAccountPersistence(t, m, AccountSavedMsg{Account: account, AccountCfg: renamed, EditID: account.ID})
 
 	if len(m.cfg.Accounts) != 2 {
 		t.Fatalf("rename changed the account count: %#v", m.cfg.Accounts)
@@ -169,8 +179,7 @@ func TestDeletingSameNamedAccountKeepsPeerCredentials(t *testing.T) {
 	if delMsg.Err != nil {
 		t.Fatalf("deleteAccountCmd: %v", delMsg.Err)
 	}
-	next, _ := m.Update(delMsg)
-	m = next.(Model)
+	m = runAccountPersistence(t, m, delMsg)
 
 	if !*called {
 		t.Fatal("expected the config to be saved after a delete")
@@ -305,6 +314,95 @@ func TestAccountSaveConfigFailureDoesNotMutateDatabase(t *testing.T) {
 	}
 }
 
+func TestAccountSaveDatabaseWriteRunsInCommand(t *testing.T) {
+	m, saved, _ := newIdentityModel(t, acct("Personal", "imap.example.com", "me@example.com", "password"))
+	before, err := m.db.ListAccounts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	added := acct("Work", "imap.work.example.com", "me@work.example.com", "work-password")
+	added.ID = config.NewAccountID()
+
+	next, cmd := m.Update(AccountSavedMsg{AccountCfg: added})
+	m = next.(Model)
+	if cmd == nil {
+		t.Fatal("expected asynchronous database save")
+	}
+	during, err := m.db.ListAccounts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(during) != len(before) {
+		t.Fatalf("database changed on the UI update path: before=%d during=%d", len(before), len(during))
+	}
+	if len(m.cfg.Accounts) != 1 {
+		t.Fatalf("in-memory config changed before database completion: %#v", m.cfg.Accounts)
+	}
+	if len(saved.Accounts) != 2 {
+		t.Fatalf("candidate config was not persisted before database command: %#v", saved.Accounts)
+	}
+
+	next, _ = m.Update(cmd())
+	m = next.(Model)
+	after, err := m.db.ListAccounts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before)+1 || len(m.cfg.Accounts) != 2 {
+		t.Fatalf("database completion did not publish the account: db=%#v config=%#v", after, m.cfg.Accounts)
+	}
+}
+
+func TestAccountSaveDatabaseFailureRollsBackConfig(t *testing.T) {
+	m, saved, _ := newIdentityModel(t, acct("Personal", "imap.example.com", "me@example.com", "password"))
+	added := acct("Work", "imap.work.example.com", "me@work.example.com", "work-password")
+	added.ID = config.NewAccountID()
+
+	next, cmd := m.Update(AccountSavedMsg{AccountCfg: added})
+	m = next.(Model)
+	if cmd == nil {
+		t.Fatal("expected asynchronous database save")
+	}
+	if err := m.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	next, _ = m.Update(cmd())
+	m = next.(Model)
+	if len(m.cfg.Accounts) != 1 || len(saved.Accounts) != 1 {
+		t.Fatalf("failed database save did not restore config: memory=%#v saved=%#v", m.cfg.Accounts, saved.Accounts)
+	}
+	if !m.statusErr || !strings.Contains(m.statusMsg, "save account database") {
+		t.Fatalf("database failure was not surfaced: %q", m.statusMsg)
+	}
+}
+
+func TestReplyOnOrphanedAccountReportsError(t *testing.T) {
+	m, _, _ := newIdentityModel(t, acct("Personal", "imap.example.com", "me@example.com", "password"))
+	orphanID, err := m.db.AddAccount(config.NewAccountID(), "Orphan", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailboxID, err := m.db.UpsertMailbox(db.Mailbox{AccountID: orphanID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.accounts, _ = m.db.ListAccounts()
+	m.mailboxes, _ = m.db.ListMailboxes(orphanID)
+	message := db.Message{ID: 1, MailboxID: mailboxID, Subject: "Orphaned"}
+	m.messages = []db.Message{message}
+	m.filteredMessages = []db.Message{message}
+	m.focused = paneMessages
+
+	next, _ := m.executeCommand("reply")
+	m = next.(Model)
+	if m.overlay == overlayCompose {
+		t.Fatal("orphaned reply opened compose")
+	}
+	if !m.statusErr || !strings.Contains(m.statusMsg, errNoAccountConfig.Error()) {
+		t.Fatalf("orphaned reply did not explain the problem: %q", m.statusMsg)
+	}
+}
+
 func TestAccountDeleteConfigFailurePreservesDatabase(t *testing.T) {
 	m, _, _ := newIdentityModel(t, acct("Personal", "imap.example.com", "me@example.com", "pw"))
 	account := m.accounts[0]
@@ -334,7 +432,11 @@ func TestAccountCfgForMailboxDoesNotFallBackToPeer(t *testing.T) {
 	}
 	m.accounts, _ = m.db.ListAccounts()
 	m.mailboxes, _ = m.db.ListMailboxes(orphanID)
-	if got := m.accountCfgForMailbox(mailboxID); got.ID != "" || got.IMAPHost != "" {
+	got, err := m.accountCfgForMailbox(mailboxID)
+	if !errors.Is(err, errNoAccountConfig) {
+		t.Fatalf("expected errNoAccountConfig, got %v", err)
+	}
+	if got.ID != "" || got.IMAPHost != "" {
 		t.Fatalf("orphan mailbox inherited peer credentials: %#v", got)
 	}
 }
@@ -352,5 +454,136 @@ func TestDuplicateAccountNamesAreDisambiguatedInSidebar(t *testing.T) {
 	}
 	if got := m.renderAccountHeader(2, false, 60); !strings.Contains(got, "second@example.com") {
 		t.Fatalf("duplicate account header was not disambiguated: %q", got)
+	}
+}
+
+// newOrphanModel returns a model with one healthy account plus an account row
+// that no [[account]] block owns, and a message sitting in the orphan's inbox.
+func newOrphanModel(t *testing.T) (Model, db.Message, int64) {
+	t.Helper()
+	m, _, _ := newIdentityModel(t, acct("Personal", "imap.example.com", "me@example.com", "password"))
+	orphanID, err := m.db.AddAccount(config.NewAccountID(), "Orphan", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailboxID, err := m.db.UpsertMailbox(db.Mailbox{AccountID: orphanID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.accounts, _ = m.db.ListAccounts()
+	m.mailboxes, _ = m.db.ListMailboxes(orphanID)
+	message := db.Message{ID: 1, MailboxID: mailboxID, UID: 7, Subject: "Orphaned"}
+	m.messages = []db.Message{message}
+	m.filteredMessages = []db.Message{message}
+	m.focused = paneMessages
+	return m, message, mailboxID
+}
+
+// Archive, move and delete act on a whole selection, so an account they cannot
+// resolve rejects the entire request. A half-applied destructive batch is worse
+// than none, and the undo window would only cover the part that ran — so the
+// batch here deliberately mixes a healthy message with an orphaned one.
+func TestDestructiveBatchRejectedWhenAccountUnresolved(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		schedule func(m *Model, msgs []db.Message) tea.Cmd
+		want     string
+	}{
+		{"archive", func(m *Model, msgs []db.Message) tea.Cmd { return m.scheduleArchive(msgs) }, "archive failed"},
+		{"delete", func(m *Model, msgs []db.Message) tea.Cmd { return m.scheduleDelete(msgs) }, "delete failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, orphanMsg, _ := newOrphanModel(t)
+			orphan := m.accounts[len(m.accounts)-1]
+			healthy := m.accounts[0]
+			// Archive resolves its target folder before the account, so both
+			// accounts need one for the account check to be reached at all.
+			for _, accountID := range []int64{healthy.ID, orphan.ID} {
+				if _, err := m.db.UpsertMailbox(db.Mailbox{
+					AccountID: accountID, Name: "Archive", Flags: []string{`\Archive`},
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			healthyBox, err := m.db.UpsertMailbox(db.Mailbox{AccountID: healthy.ID, Name: "INBOX"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			m.mailboxes = nil
+			for _, accountID := range []int64{healthy.ID, orphan.ID} {
+				boxes, _ := m.db.ListMailboxes(accountID)
+				m.mailboxes = append(m.mailboxes, boxes...)
+			}
+			healthyMsg := db.Message{ID: 2, MailboxID: healthyBox, UID: 9, Subject: "Fine"}
+
+			tc.schedule(&m, []db.Message{healthyMsg, orphanMsg})
+
+			// The healthy message must not be scheduled on its own: the whole
+			// request is refused, not quietly trimmed to the part that worked.
+			if len(m.pendingDestructiveActions) != 0 {
+				t.Fatalf("scheduled a partial destructive batch: %#v", m.pendingDestructiveActions)
+			}
+			if !m.statusErr || !strings.Contains(m.statusMsg, tc.want) ||
+				!strings.Contains(m.statusMsg, errNoAccountConfig.Error()) {
+				t.Fatalf("batch rejection was not explained: %q", m.statusMsg)
+			}
+		})
+	}
+}
+
+// Star and folder creation report through the message they already return, so
+// the normal handler shows the reason, and neither touches local or remote
+// state first.
+func TestResultMessageCallersReportUnresolvedAccount(t *testing.T) {
+	m, message, _ := newOrphanModel(t)
+
+	starMsg, ok := m.setMessageStarredCmd(message, true)().(MessageStarredUpdatedMsg)
+	if !ok {
+		t.Fatal("star did not return its usual result message")
+	}
+	if starMsg.Err == nil || !errors.Is(starMsg.Err, errNoAccountConfig) {
+		t.Fatalf("star did not report the unresolved account: %v", starMsg.Err)
+	}
+	stored, err := m.db.GetMessage(message.ID)
+	if err == nil && stored.Starred {
+		t.Fatal("star mutated the database despite an unresolved account")
+	}
+
+	m.movePicker.messages = []db.Message{message}
+	folderMsg, ok := m.createFolderCmd(m.accounts[len(m.accounts)-1].ID, "", "New")().(FolderCreatedMsg)
+	if !ok {
+		t.Fatal("folder creation did not return its usual result message")
+	}
+	if folderMsg.Err == nil || !errors.Is(folderMsg.Err, errNoAccountConfig) {
+		t.Fatalf("folder creation did not report the unresolved account: %v", folderMsg.Err)
+	}
+}
+
+// A filter run spans mailboxes that may belong to different accounts, and it
+// already reports partial progress. One orphaned account must not stop the run
+// for every healthy one — unlike the single-batch destructive actions above.
+func TestFilterRunSkipsUnresolvedMailboxAndReports(t *testing.T) {
+	m, _, orphanMailboxID := newOrphanModel(t)
+	healthy := m.accounts[0]
+	healthyMailboxID, err := m.db.UpsertMailbox(db.Mailbox{AccountID: healthy.ID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.mailboxes, _ = m.db.ListMailboxes(healthy.ID)
+	orphanBoxes, _ := m.db.ListMailboxes(m.accounts[len(m.accounts)-1].ID)
+	m.mailboxes = append(m.mailboxes, orphanBoxes...)
+
+	cmd := m.applyRulesCmd([]int64{healthyMailboxID, orphanMailboxID}, true, 0)
+	if cmd == nil {
+		t.Fatal("expected a filter run command")
+	}
+	run, ok := cmd().(FilterRunMsg)
+	if !ok {
+		t.Fatalf("expected FilterRunMsg, got %T", cmd())
+	}
+	// With no rules configured the run stops on that, which still proves the
+	// unresolved mailbox did not abort it before the command was built.
+	if run.Err != nil && errors.Is(run.Err, errNoAccountConfig) {
+		t.Fatalf("an unresolved mailbox aborted the whole run: %v", run.Err)
 	}
 }

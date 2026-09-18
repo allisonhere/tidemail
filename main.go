@@ -78,7 +78,11 @@ func run() (code int, restartExec string) {
 
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error: could not load or migrate config:", config.RedactSecrets(err.Error(), cfg))
+		path, pathErr := config.Path()
+		if pathErr != nil {
+			path = "config.toml"
+		}
+		fmt.Fprintln(os.Stderr, formatConfigLoadError(path, err, cfg))
 		return 1, ""
 	}
 	applyStartupOverrides(&cfg, opts)
@@ -160,6 +164,11 @@ func run() (code int, restartExec string) {
 		}
 	}
 	return 0, restartExec
+}
+
+func formatConfigLoadError(path string, err error, cfg config.Config) string {
+	detail := config.RedactSecrets(err.Error(), cfg)
+	return fmt.Sprintf("error: could not load or migrate config %s: %s\nFix the file or permissions shown above, then restart TideMail; it will start once the config parses and any required migration can be saved.", path, detail)
 }
 
 func applyStartupOverrides(cfg *config.Config, opts startupOptions) {

@@ -277,6 +277,13 @@ and keychain credentials. It stays fixed when the display name changes. TideMail
 adds missing IDs on upgrade and first saves the original file as
 `config.toml.pre-account-ids.bak`.
 
+If `config.toml` is malformed or an automatic migration cannot be saved,
+TideMail stops instead of starting with defaults that could overwrite the real
+settings. The startup error names the exact config path and the parse or
+permission problem to fix. If an account's cached folders no longer have a
+matching config block, affected actions stop with a status-line explanation;
+open **Accounts** and re-enter that account's server details.
+
 ## Keyboard shortcuts
 
 | Key | Action |

@@ -486,7 +486,7 @@ func Save(cfg Config) error {
 		return err
 	}
 	tmp := f.Name()
-	defer os.Remove(tmp) //nolint:errcheck -- renamed on success
+	defer func() { _ = os.Remove(tmp) }() // renamed on success
 	if err := f.Chmod(0o600); err != nil {
 		_ = f.Close()
 		return err
@@ -531,11 +531,16 @@ func RedactSecrets(s string, cfg Config) string {
 }
 
 func secretValues(cfg Config) []string {
+	const minimumRedactedSecretLength = 8
+
 	seen := map[string]struct{}{}
 	var secrets []string
 	add := func(secret string) {
 		secret = strings.TrimSpace(secret)
-		if secret == "" {
+		// Very short values are more likely to be ordinary substrings than useful
+		// redaction targets. A one-character password, for example, used to turn
+		// "open ... permission" into an unreadable wall of [redacted] markers.
+		if len(secret) < minimumRedactedSecretLength {
 			return
 		}
 		if _, ok := seen[secret]; ok {
@@ -566,6 +571,11 @@ func configPath() (string, error) {
 		xdg = filepath.Join(home, ".config")
 	}
 	return filepath.Join(xdg, "tidemail", "config.toml"), nil
+}
+
+// Path returns the path to TideMail's configuration file.
+func Path() (string, error) {
+	return configPath()
 }
 
 // LogPath returns the path to the fetch log file (alongside config.toml).

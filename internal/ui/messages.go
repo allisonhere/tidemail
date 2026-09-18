@@ -270,7 +270,12 @@ func (m *Model) setMessageReadCmd(msg db.Message, read, advance bool) tea.Cmd {
 	database := m.db
 	sessions := m.sessions
 	mailbox := m.mailboxByID(msg.MailboxID)
-	acfg := m.accountCfgForMailbox(msg.MailboxID)
+	acfg, cfgErr := m.accountCfgForMailbox(msg.MailboxID)
+	if cfgErr != nil {
+		return func() tea.Msg {
+			return MessageReadUpdatedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, WasRead: msg.Read, Read: read, Advance: advance, Err: cfgErr}
+		}
+	}
 	return func() tea.Msg {
 		if mailbox != nil && acfg.IMAPHost != "" && msg.UID != 0 {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -305,7 +310,12 @@ func (m *Model) setMessageStarredCmd(msg db.Message, starred bool) tea.Cmd {
 	database := m.db
 	sessions := m.sessions
 	mailbox := m.mailboxByID(msg.MailboxID)
-	acfg := m.accountCfgForMailbox(msg.MailboxID)
+	acfg, cfgErr := m.accountCfgForMailbox(msg.MailboxID)
+	if cfgErr != nil {
+		return func() tea.Msg {
+			return MessageStarredUpdatedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, Starred: starred, Err: cfgErr}
+		}
+	}
 	return func() tea.Msg {
 		if mailbox != nil && acfg.IMAPHost != "" && msg.UID != 0 {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

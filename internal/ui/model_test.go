@@ -175,7 +175,7 @@ func TestSettingsSavePreservesSelectedMessageAfterUnreadFirstReload(t *testing.T
 	}
 	defer database.Close()
 
-	accountID, err := database.AddAccount("", "Acct", "")
+	accountID, err := database.AddAccount("cfg-acct", "Acct", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -413,8 +413,11 @@ func TestRightFromMessageListMarksUnreadMessageRead(t *testing.T) {
 		t.Fatalf("expected one message, got %d", len(msgs))
 	}
 
-	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	cfg := config.DefaultConfig()
+	cfg.Accounts = []config.AccountConfig{{ID: "cfg-acct", Name: "Acct"}}
+	m := NewModel(database, cfg, "dev", false)
 	m.focused = paneMessages
+	m.accounts = []db.Account{{ID: accountID, ConfigID: "cfg-acct", Name: "Acct"}}
 	m.messages = msgs
 	m.filteredMessages = msgs
 	m.mailboxes = []db.Mailbox{{ID: mailboxID, AccountID: accountID, Name: "INBOX", UnreadCount: 1}}

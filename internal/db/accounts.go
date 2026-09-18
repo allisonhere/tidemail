@@ -72,6 +72,69 @@ func (db *DB) UpdateAccount(id int64, configID, name, color string) error {
 	return err
 }
 
+// SaveAccountWithMailboxes writes an account and its discovered mailboxes as a
+// single transaction. A failed mailbox upsert must not leave a renamed account
+// or a partially-created mailbox set behind.
+func (db *DB) SaveAccountWithMailboxes(editID int64, configID, name, color string, mailboxes []Mailbox) (Account, []Mailbox, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return Account{}, nil, err
+	}
+	defer func() { _ = tx.Rollback() }() // commit below owns the success path
+
+	accountID := editID
+	if editID != 0 {
+		if _, err := tx.Exec(`UPDATE accounts SET config_id = ?, name = ?, color = ? WHERE id = ?`, configID, name, color, editID); err != nil {
+			return Account{}, nil, err
+		}
+	} else {
+		var maxPos int
+		if err := tx.QueryRow(`SELECT COALESCE(MAX(position),0) FROM accounts`).Scan(&maxPos); err != nil {
+			return Account{}, nil, err
+		}
+		res, err := tx.Exec(`INSERT INTO accounts (config_id, name, position, color) VALUES (?, ?, ?, ?)`, configID, name, maxPos+1, color)
+		if err != nil {
+			return Account{}, nil, err
+		}
+		accountID, err = res.LastInsertId()
+		if err != nil {
+			return Account{}, nil, err
+		}
+	}
+
+	var account Account
+	if err := tx.QueryRow(`SELECT id, config_id, name, position, color FROM accounts WHERE id = ?`, accountID).
+		Scan(&account.ID, &account.ConfigID, &account.Name, &account.Position, &account.Color); err != nil {
+		return Account{}, nil, err
+	}
+
+	saved := make([]Mailbox, 0, len(mailboxes))
+	for _, mailbox := range mailboxes {
+		mailbox.AccountID = accountID
+		flagsJSON, _ := json.Marshal(mailbox.Flags)
+		if mailbox.DisplayName == "" {
+			mailbox.DisplayName = mailbox.Name
+		}
+		if err := tx.QueryRow(`
+			INSERT INTO mailboxes (account_id, name, display_name, delimiter, flags)
+			VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT(account_id, name) DO UPDATE SET
+				display_name = excluded.display_name,
+				delimiter    = excluded.delimiter,
+				flags        = excluded.flags
+			RETURNING id
+		`, mailbox.AccountID, mailbox.Name, mailbox.DisplayName, mailbox.Delimiter, string(flagsJSON)).Scan(&mailbox.ID); err != nil {
+			return Account{}, nil, err
+		}
+		saved = append(saved, mailbox)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Account{}, nil, err
+	}
+	return account, saved, nil
+}
+
 // AccountLink pairs a config account's stable ID with the display name that
 // older builds used as the link between config.toml and this database.
 type AccountLink struct {

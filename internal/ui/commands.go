@@ -168,7 +168,11 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		if msg == nil {
 			return m, nil
 		}
-		acfg := m.accountCfgForMailbox(msg.MailboxID)
+		acfg, err := m.accountCfgForMailbox(msg.MailboxID)
+		if err != nil {
+			m.setStatus("reply failed: "+err.Error(), true)
+			return m, m.clearStatusCmd()
+		}
 		m.compose = NewReply(*msg, acfg, m.cfg.Accounts, m.addressBook)
 		m.overlay = overlayCompose
 		return m, nil
@@ -177,7 +181,11 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		if msg == nil {
 			return m, nil
 		}
-		acfg := m.accountCfgForMailbox(msg.MailboxID)
+		acfg, err := m.accountCfgForMailbox(msg.MailboxID)
+		if err != nil {
+			m.setStatus("forward failed: "+err.Error(), true)
+			return m, m.clearStatusCmd()
+		}
 		m.compose = NewForward(*msg, acfg, m.cfg.Accounts, m.addressBook)
 		m.overlay = overlayCompose
 		return m, nil

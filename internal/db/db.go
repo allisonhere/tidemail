@@ -230,11 +230,11 @@ func (db *DB) migrate() error {
 	// Before it existed the link was the display name, so a rename detached the
 	// row and a duplicate name attached two rows to one block.
 	db.Exec(`ALTER TABLE accounts ADD COLUMN config_id TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
-	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_config_id
-		ON accounts(config_id) WHERE config_id != ''`) //nolint:errcheck
+	_, _ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_config_id
+		ON accounts(config_id) WHERE config_id != ''`)
 	db.Exec(`ALTER TABLE drafts ADD COLUMN account_config_id TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
-	db.Exec(`CREATE INDEX IF NOT EXISTS idx_drafts_account_config
-		ON drafts(account_config_id)`) //nolint:errcheck
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_drafts_account_config
+		ON drafts(account_config_id)`)
 	db.Exec(`ALTER TABLE outbox ADD COLUMN account_config_id TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
 	// Enforce one local mirror per remote draft. Drop any duplicates a previous
 	// build's check-then-insert race may have created before adding the index.

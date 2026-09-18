@@ -11,6 +11,9 @@ All notable changes to TideMail are documented in this file.
   join key. Adding, renaming, or deleting an account cannot overwrite a peer,
   attach a mailbox to the wrong server, or clear another account's keychain
   entry. Existing configurations are backed up and migrated automatically.
+  Missing account settings now stop affected actions with a useful status
+  message, malformed configs name the file to repair, and account database
+  updates run asynchronously without blocking the interface.
 
 ## v1.0.19
 
