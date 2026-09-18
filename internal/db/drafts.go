@@ -11,7 +11,12 @@ import (
 var ErrDraftNotFound = errors.New("draft not found")
 
 type Draft struct {
-	ID              int64
+	ID int64
+	// AccountConfigID is the stable ID of the owning [[account]] block. Name and
+	// user are kept for display and as the fallback for rows written before this
+	// column existed; on their own they orphaned every draft when an account was
+	// renamed.
+	AccountConfigID string
 	AccountName     string
 	AccountUser     string
 	AccountIndex    int
@@ -85,11 +90,11 @@ func saveDraft(tx *sql.Tx, d Draft) (int64, error) {
 		}
 		res, err := tx.Exec(`
 			INSERT INTO drafts
-				(account_name, account_user, account_index, mailbox_id, remote_uid, remote_message_id,
+				(account_config_id, account_name, account_user, account_index, mailbox_id, remote_uid, remote_message_id,
 				 to_addr, cc_addr, bcc_addr, subject, body_text, in_reply_to, references_text,
 				 created_at, updated_at, last_remote_sync, dirty)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			d.AccountName, d.AccountUser, d.AccountIndex, d.MailboxID, d.RemoteUID, d.RemoteMessageID,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			d.AccountConfigID, d.AccountName, d.AccountUser, d.AccountIndex, d.MailboxID, d.RemoteUID, d.RemoteMessageID,
 			d.To, d.CC, d.BCC, d.Subject, d.BodyText, d.InReplyTo, d.References,
 			createdAt, updatedAt, lastRemoteSync, dirty)
 		if err != nil {
@@ -106,6 +111,7 @@ func saveDraft(tx *sql.Tx, d Draft) (int64, error) {
 		// remote draft and re-import it as a duplicate on the next sync.
 		if _, err := tx.Exec(`
 			UPDATE drafts SET
+				account_config_id = CASE WHEN ? != '' THEN ? ELSE account_config_id END,
 				account_name = ?, account_user = ?, account_index = ?,
 				mailbox_id = CASE WHEN ? != 0 THEN ? ELSE mailbox_id END,
 				remote_uid = CASE WHEN ? != 0 THEN ? ELSE remote_uid END,
@@ -117,6 +123,7 @@ func saveDraft(tx *sql.Tx, d Draft) (int64, error) {
 				last_remote_sync = CASE WHEN ? != 0 THEN ? ELSE last_remote_sync END,
 				dirty = ?
 			WHERE id = ?`,
+			d.AccountConfigID, d.AccountConfigID,
 			d.AccountName, d.AccountUser, d.AccountIndex,
 			d.MailboxID, d.MailboxID,
 			d.RemoteUID, d.RemoteUID,
@@ -157,7 +164,7 @@ func saveDraft(tx *sql.Tx, d Draft) (int64, error) {
 
 func (db *DB) GetDraft(id int64) (Draft, error) {
 	row := db.QueryRow(`
-		SELECT id, account_name, account_user, account_index, mailbox_id, remote_uid, remote_message_id,
+		SELECT id, account_config_id, account_name, account_user, account_index, mailbox_id, remote_uid, remote_message_id,
 		       to_addr, cc_addr, bcc_addr, subject, body_text, in_reply_to, references_text,
 		       created_at, updated_at, last_remote_sync, dirty
 		FROM drafts WHERE id = ?`, id)
@@ -173,15 +180,21 @@ func (db *DB) GetDraft(id int64) (Draft, error) {
 	return d, nil
 }
 
-func (db *DB) ListDrafts(accountName, accountUser string) ([]Draft, error) {
+// draftOwnerClause matches a draft to its account. It prefers the stable config
+// ID and falls back to the legacy (name, user) pair only for rows that have no
+// ID stamped — so renaming an account no longer hides its drafts.
+const draftOwnerClause = `((account_config_id != '' AND account_config_id = ?)
+		 OR (account_config_id = '' AND account_name = ? AND account_user = ?))`
+
+func (db *DB) ListDrafts(accountConfigID, accountName, accountUser string) ([]Draft, error) {
 	rows, err := db.Query(`
-		SELECT id, account_name, account_user, account_index, mailbox_id, remote_uid, remote_message_id,
+		SELECT id, account_config_id, account_name, account_user, account_index, mailbox_id, remote_uid, remote_message_id,
 		       to_addr, cc_addr, bcc_addr, subject, body_text, in_reply_to, references_text,
 		       created_at, updated_at, last_remote_sync, dirty
 		FROM drafts
-		WHERE account_name = ? AND account_user = ?
+		WHERE `+draftOwnerClause+`
           AND NOT EXISTS (SELECT 1 FROM outbox o WHERE o.draft_id=drafts.id)
-		ORDER BY updated_at DESC, id DESC`, accountName, accountUser)
+		ORDER BY updated_at DESC, id DESC`, accountConfigID, accountName, accountUser)
 	if err != nil {
 		return nil, err
 	}
@@ -244,11 +257,40 @@ func (db *DB) MarkDraftRemoteSynced(id int64, mailboxID int64, uid uint32, messa
 	return err
 }
 
-func (db *DB) DraftCount(accountName, accountUser string) (int64, error) {
+func (db *DB) DraftCount(accountConfigID, accountName, accountUser string) (int64, error) {
 	var n int64
-	err := db.QueryRow(`SELECT COUNT(*) FROM drafts WHERE account_name = ? AND account_user = ?
-  AND NOT EXISTS (SELECT 1 FROM outbox o WHERE o.draft_id=drafts.id)`, accountName, accountUser).Scan(&n)
+	err := db.QueryRow(`SELECT COUNT(*) FROM drafts WHERE `+draftOwnerClause+`
+  AND NOT EXISTS (SELECT 1 FROM outbox o WHERE o.draft_id=drafts.id)`,
+		accountConfigID, accountName, accountUser).Scan(&n)
 	return n, err
+}
+
+// MigrateDraftAccountConfigIDs backfills account_config_id on drafts and outbox
+// rows written before the column existed, matching the legacy (name, user) pair.
+// An ambiguous pair is left blank; the fallback in draftOwnerClause still finds
+// those rows.
+func (db *DB) MigrateDraftAccountConfigIDs(links []DraftAccountLink) error {
+	for _, l := range links {
+		if l.ConfigID == "" || l.Name == "" {
+			continue
+		}
+		for _, table := range []string{"drafts", "outbox"} {
+			if _, err := db.Exec(`UPDATE `+table+` SET account_config_id = ?
+				WHERE account_config_id = '' AND account_name = ? AND account_user = ?`,
+				l.ConfigID, l.Name, l.User); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// DraftAccountLink maps a config account's stable ID to the (name, user) pair
+// that older builds stored on its drafts and outbox rows.
+type DraftAccountLink struct {
+	ConfigID string
+	Name     string
+	User     string
 }
 
 // ImportRemoteDraft inserts a server-side draft as a local mirror, keyed by
@@ -279,11 +321,11 @@ func (db *DB) ImportRemoteDraft(d Draft) error {
 	defer tx.Rollback() //nolint:errcheck
 	res, err := tx.Exec(`
 		INSERT OR IGNORE INTO drafts
-			(account_name, account_user, account_index, mailbox_id, remote_uid, remote_message_id,
+			(account_config_id, account_name, account_user, account_index, mailbox_id, remote_uid, remote_message_id,
 			 to_addr, cc_addr, bcc_addr, subject, body_text, in_reply_to, references_text,
 			 created_at, updated_at, last_remote_sync, dirty)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
-		d.AccountName, d.AccountUser, d.AccountIndex, d.MailboxID, d.RemoteUID, d.RemoteMessageID,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+		d.AccountConfigID, d.AccountName, d.AccountUser, d.AccountIndex, d.MailboxID, d.RemoteUID, d.RemoteMessageID,
 		d.To, d.CC, d.BCC, d.Subject, d.BodyText, d.InReplyTo, d.References,
 		createdAt, updatedAt, lastRemoteSync)
 	if err != nil {
@@ -352,7 +394,7 @@ func scanDraft(row draftScanner) (Draft, error) {
 	var createdAt, updatedAt, lastRemoteSync int64
 	var dirty int
 	if err := row.Scan(
-		&d.ID, &d.AccountName, &d.AccountUser, &d.AccountIndex, &d.MailboxID, &d.RemoteUID, &d.RemoteMessageID,
+		&d.ID, &d.AccountConfigID, &d.AccountName, &d.AccountUser, &d.AccountIndex, &d.MailboxID, &d.RemoteUID, &d.RemoteMessageID,
 		&d.To, &d.CC, &d.BCC, &d.Subject, &d.BodyText, &d.InReplyTo, &d.References,
 		&createdAt, &updatedAt, &lastRemoteSync, &dirty,
 	); err != nil {

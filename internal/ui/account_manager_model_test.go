@@ -23,7 +23,7 @@ func TestAccountManagerOpensWithLoadedAccounts(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatalf("AddAccount: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestFirstLoadSyncsInboxesImmediately(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatalf("AddAccount: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestFirstLoadWithAccountsDoesNotOpenAccountManager(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatalf("AddAccount: %v", err)
 	}
@@ -233,16 +233,17 @@ func TestDeleteAccountRemovesItFromConfig(t *testing.T) {
 	m = next.(Model)
 
 	var workID int64
+	var workConfigID string
 	for _, a := range m.accounts {
 		if a.Name == "Work" {
-			workID = a.ID
+			workID, workConfigID = a.ID, a.ConfigID
 		}
 	}
 	if workID == 0 {
 		t.Fatalf("Work account not loaded: %#v", m.accounts)
 	}
 
-	delMsg := deleteAccountCmd(m.db, workID, "Work")().(AccountDeletedMsg)
+	delMsg := deleteAccountCmd(m.db, workID, workConfigID, "Work")().(AccountDeletedMsg)
 	if delMsg.Err != nil {
 		t.Fatalf("deleteAccountCmd: %v", delMsg.Err)
 	}
@@ -621,7 +622,7 @@ func TestStoreFetchedMessagesAssignsMailboxID(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatalf("AddAccount: %v", err)
 	}
@@ -663,7 +664,7 @@ func TestLoadMailboxMessagesIncludesReadMessages(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatalf("AddAccount: %v", err)
 	}

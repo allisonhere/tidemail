@@ -175,7 +175,7 @@ func TestSettingsSavePreservesSelectedMessageAfterUnreadFirstReload(t *testing.T
 	}
 	defer database.Close()
 
-	accountID, err := database.AddAccount("Acct", "")
+	accountID, err := database.AddAccount("", "Acct", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -394,7 +394,7 @@ func TestRightFromMessageListMarksUnreadMessageRead(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, err := database.AddAccount("Acct", "")
+	accountID, err := database.AddAccount("", "Acct", "")
 	if err != nil {
 		t.Fatal(err)
 	}

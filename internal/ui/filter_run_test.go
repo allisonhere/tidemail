@@ -19,7 +19,7 @@ func TestApplyRulesMovesMatchingMail(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, _ := database.AddAccount("Personal", "")
+	accountID, _ := database.AddAccount("", "Personal", "")
 	inboxID, _ := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "INBOX", Delimiter: "/"})
 	readingID, _ := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "Reading", Delimiter: "/"})
 

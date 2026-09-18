@@ -73,7 +73,8 @@ func (m Model) handleSendQueued(msg SendQueuedMsg) (Model, tea.Cmd) {
 	}
 	delay := time.Until(dueAt)
 	id, err := m.db.EnqueueOutbox(db.OutboxItem{
-		AccountName: msg.Account.Name, AccountUser: msg.Account.User, DraftID: draft.ID,
+		AccountConfigID: msg.Account.ID,
+		AccountName:     msg.Account.Name, AccountUser: msg.Account.User, DraftID: draft.ID,
 		Subject: msg.Msg.Subject, Recipients: joinRecipients(msg.Msg), MessageJSON: payload, DraftJSON: draftJSON,
 		MaxAttempts: config.NormalizeSendMaxAttempts(m.cfg.Display.SendMaxAttempts), NextAttempt: dueAt.Unix(),
 	})
@@ -256,7 +257,7 @@ func appendToSentFolder(database *db.DB, sessions *imapClient.SessionPool, acfg 
 	if serverFilesSentMail(acfg) {
 		return nil
 	}
-	accountID, err := database.AccountIDByName(acfg.Name)
+	accountID, err := database.AccountIDByConfigID(acfg.ID)
 	if err != nil {
 		return err
 	}

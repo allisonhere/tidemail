@@ -122,9 +122,9 @@ func (c *Client) Connect(ctx context.Context) error {
 func (c *Client) oauthAccessToken(ctx context.Context) (string, error) {
 	switch {
 	case c.cfg.UsesGoogleOAuth2():
-		return auth.GoogleAccessToken(ctx, c.cfg.ClientID, c.cfg.ClientSecret, c.cfg.Name, c.cfg.RefreshToken)
+		return auth.GoogleAccessToken(ctx, c.cfg.ClientID, c.cfg.ClientSecret, c.cfg.SessionKey(), c.cfg.RefreshToken)
 	case c.cfg.UsesMicrosoftOAuth2():
-		return auth.MSAccessToken(ctx, c.cfg.ClientID, c.cfg.Name, c.cfg.RefreshToken)
+		return auth.MSAccessToken(ctx, c.cfg.ClientID, c.cfg.SessionKey(), c.cfg.RefreshToken)
 	default:
 		return "", nil
 	}

@@ -15,7 +15,7 @@ func newSentTestDB(t *testing.T) (*DB, int64) {
 	if err := database.init(); err != nil {
 		t.Fatal(err)
 	}
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("cfg-personal", "Personal", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,16 +121,23 @@ func TestUpsertMailboxRefreshesFlags(t *testing.T) {
 	t.Fatal("INBOX.Sent missing after upsert")
 }
 
-func TestAccountIDByName(t *testing.T) {
+func TestAccountIDByConfigID(t *testing.T) {
 	database, accountID := newSentTestDB(t)
-	got, err := database.AccountIDByName("Personal")
+	got, err := database.AccountIDByConfigID("cfg-personal")
 	if err != nil {
-		t.Fatalf("AccountIDByName: %v", err)
+		t.Fatalf("AccountIDByConfigID: %v", err)
 	}
 	if got != accountID {
 		t.Fatalf("got %d, want %d", got, accountID)
 	}
-	if _, err := database.AccountIDByName("Nope"); err == nil {
+	if _, err := database.AccountIDByConfigID("cfg-nope"); err == nil {
 		t.Fatal("expected an error for an unknown account")
+	}
+	// The display name is not an identity: renaming must not break the lookup.
+	if err := database.UpdateAccount(accountID, "cfg-personal", "Renamed", ""); err != nil {
+		t.Fatalf("UpdateAccount: %v", err)
+	}
+	if got, err := database.AccountIDByConfigID("cfg-personal"); err != nil || got != accountID {
+		t.Fatalf("after rename got %d, %v; want %d, nil", got, err, accountID)
 	}
 }

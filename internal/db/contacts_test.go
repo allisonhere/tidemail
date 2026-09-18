@@ -157,7 +157,7 @@ func TestUpdateContactPreservesMetadata(t *testing.T) {
 
 func TestSeenAddressesDedupesAndExcludesContacts(t *testing.T) {
 	d := newTestDB(t)
-	accountID, _ := d.AddAccount("Acct", "")
+	accountID, _ := d.AddAccount("", "Acct", "")
 	mailboxID, _ := d.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
 	_ = d.UpsertMessage(Message{
 		MailboxID: mailboxID,
@@ -199,7 +199,7 @@ func TestSeenAddressesDedupesAndExcludesContacts(t *testing.T) {
 
 func TestAutocompleteAddressesContactsFirstThenSeenNoDupes(t *testing.T) {
 	d := newTestDB(t)
-	accountID, _ := d.AddAccount("Acct", "")
+	accountID, _ := d.AddAccount("", "Acct", "")
 	mailboxID, _ := d.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
 	_ = d.UpsertMessage(Message{
 		MailboxID: mailboxID,

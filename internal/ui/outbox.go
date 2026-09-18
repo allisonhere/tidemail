@@ -40,7 +40,19 @@ func (m *Model) openOutbox() {
 	m.overlay = overlayOutbox
 }
 
+// outboxAccount resolves the account a queued message sends from. It matches on
+// the stable config ID, falling back to the (name, user) pair for rows queued
+// before that column existed — matching on the pair alone stranded every queued
+// message when its account was renamed.
 func (m Model) outboxAccount(item db.OutboxItem) (config.AccountConfig, bool) {
+	if item.AccountConfigID != "" {
+		for _, account := range m.cfg.Accounts {
+			if account.ID == item.AccountConfigID {
+				return account, true
+			}
+		}
+		return config.AccountConfig{}, false
+	}
 	for _, account := range m.cfg.Accounts {
 		if account.Name == item.AccountName && account.User == item.AccountUser {
 			return account, true

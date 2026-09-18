@@ -82,7 +82,7 @@ func TestImportedDraftPreservesAttachmentsThroughCompose(t *testing.T) {
 	}
 	defer database.Close()
 	name := t.Name()
-	aid, err := database.AddAccount(name, "")
+	aid, err := database.AddAccount("", name, "")
 	if err != nil {
 		t.Fatal(err)
 	}

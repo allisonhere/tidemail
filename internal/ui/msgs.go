@@ -78,6 +78,7 @@ type AccountTestedMsg struct {
 
 type AccountDeletedMsg struct {
 	AccountID   int64
+	ConfigID    string
 	AccountName string
 	Err         error
 }

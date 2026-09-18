@@ -22,7 +22,7 @@ func sentFolderModel(t *testing.T, syncMinutes int) (Model, int64) {
 	}
 	t.Cleanup(func() { database.Close() })
 
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatal(err)
 	}

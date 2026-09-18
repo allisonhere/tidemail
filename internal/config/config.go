@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -139,6 +141,13 @@ const (
 )
 
 type AccountConfig struct {
+	// ID is the account's stable identity. It survives renames and is what the
+	// database row, the keychain items, and the IMAP session pool key off.
+	// Display names are for people, not for joins: keying on them is what let a
+	// second account overwrite its peer and a delete take the survivor's
+	// credentials with it. Configs written before this field existed are
+	// stamped at load by ensureAccountIDs.
+	ID       string `toml:"id"`
 	Name     string `toml:"name"`
 	Provider string `toml:"provider"`
 	// AuthMethod is the explicit, opt-in auth choice: "password" (default) or
@@ -212,11 +221,11 @@ func isOAuthProvider(provider string) bool {
 // "has a token"/"has a password" look at both the decoded TOML (keyless systems
 // keep secrets there) and the keychain. getPassword/getToken are injected so
 // this is testable without a real keychain.
-func migrateAuthMethod(cfg *Config, getPassword, getToken func(string) string) {
+func migrateAuthMethod(cfg *Config, getPassword, getToken func(id, legacyName string) string) {
 	for i := range cfg.Accounts {
 		a := &cfg.Accounts[i]
-		hasPassword := a.Password != "" || getPassword(a.Name) != ""
-		hasToken := a.RefreshToken != "" || getToken(a.Name) != ""
+		hasPassword := a.Password != "" || getPassword(a.ID, a.Name) != ""
+		hasToken := a.RefreshToken != "" || getToken(a.ID, a.Name) != ""
 		if isOAuthProvider(a.Provider) && !hasPassword && hasToken {
 			a.AuthMethod = AuthOAuth2
 			continue
@@ -227,8 +236,85 @@ func migrateAuthMethod(cfg *Config, getPassword, getToken func(string) string) {
 	}
 }
 
+// newAccountID returns an opaque account identifier. It is deliberately not
+// derived from the account's name or address: an ID that encodes the name would
+// change when the name does, which is the whole problem it exists to solve.
+func newAccountID() string {
+	var b [6]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// crypto/rand failing is not recoverable here, and a predictable ID is
+		// still a working one — these are local join keys, not secrets.
+		return fmt.Sprintf("acct%08x", len(b))
+	}
+	return hex.EncodeToString(b[:])
+}
+
+// EnsureAccountIDs stamps a stable ID on any account that lacks one. Load and
+// Save both do this, but a Config assembled in code (tests, embedders) reaches
+// the model without passing through either.
+func EnsureAccountIDs(cfg *Config) bool { return ensureAccountIDs(cfg) }
+
+// NewAccountID mints an identity for an account being created in the UI. The
+// form needs it before the account is saved, so an OAuth sign-in taken
+// mid-form already caches its token under the final identity.
+func NewAccountID() string { return newAccountID() }
+
+// SessionKey returns the value that identifies this account to per-account
+// caches: the IMAP session pool and the OAuth access-token cache. It is the
+// stable ID, with a user@host fallback for a config built without one. Keying
+// those caches on the display name meant two accounts sharing a name shared one
+// connection slot and one token entry.
+func (a AccountConfig) SessionKey() string {
+	if id := strings.TrimSpace(a.ID); id != "" {
+		return id
+	}
+	return a.User + "@" + a.IMAPHost
+}
+
+// ensureAccountIDs stamps a stable ID on every account that lacks one and
+// resolves any collision, reporting whether it changed anything. It runs on
+// every load so a config hand-edited to add an account (documented as a
+// supported workaround) still gets a usable identity. The stamped config is
+// persisted by the next Save; Load deliberately does not write.
+func ensureAccountIDs(cfg *Config) bool {
+	seen := make(map[string]bool, len(cfg.Accounts))
+	changed := false
+	for i := range cfg.Accounts {
+		id := strings.TrimSpace(cfg.Accounts[i].ID)
+		if id == "" || seen[id] {
+			for {
+				id = newAccountID()
+				if !seen[id] {
+					break
+				}
+			}
+			cfg.Accounts[i].ID = id
+			changed = true
+		} else if id != cfg.Accounts[i].ID {
+			cfg.Accounts[i].ID = id
+			changed = true
+		}
+		seen[id] = true
+	}
+	return changed
+}
+
+// AccountByID returns the account with the given stable ID.
+func (c Config) AccountByID(id string) (AccountConfig, bool) {
+	if strings.TrimSpace(id) == "" {
+		return AccountConfig{}, false
+	}
+	for _, a := range c.Accounts {
+		if a.ID == id {
+			return a, true
+		}
+	}
+	return AccountConfig{}, false
+}
+
 func DefaultAccountConfig() AccountConfig {
 	return AccountConfig{
+		ID:       newAccountID(),
 		IMAPPort: 993,
 		IMAPTLS:  true,
 		SMTPPort: 587,
@@ -301,6 +387,7 @@ func Load() (Config, error) {
 	cfg.Display.SendMaxAttempts = NormalizeSendMaxAttempts(cfg.Display.SendMaxAttempts)
 	cfg.Display.Density = NormalizeDisplayDensity(cfg.Display.Density)
 	cfg.Display.PaneCorners = NormalizePaneCorners(cfg.Display.PaneCorners)
+	ensureAccountIDs(&cfg)
 	migrateAuthMethod(&cfg, GetAccountPassword, GetOAuth2RefreshToken)
 	fillSecrets(&cfg)
 	return cfg, nil
@@ -339,6 +426,13 @@ func firstNonEmpty(a, b string) string {
 func Save(cfg Config) error {
 	// Deep-copy accounts to avoid mutating the caller's slice (stripSecrets
 	// clears Password fields on the shared backing array).
+	// stripSecrets keys the keychain on the ID, so every account must have one
+	// before it runs — a config assembled in code has not been through Load.
+	// This runs before the copy deliberately: cfg.Accounts still shares the
+	// caller's backing array here, so the caller learns the IDs too. Minting a
+	// fresh ID on every Save instead would orphan the keychain item written
+	// under the previous one.
+	ensureAccountIDs(&cfg)
 	accts := make([]AccountConfig, len(cfg.Accounts))
 	copy(accts, cfg.Accounts)
 	cfg.Accounts = accts

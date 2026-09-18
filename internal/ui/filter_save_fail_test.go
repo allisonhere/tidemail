@@ -20,7 +20,7 @@ func TestFilterSaveFailureStaysInReview(t *testing.T) {
 		t.Fatalf("Open DB: %v", err)
 	}
 
-	accountID, _ := database.AddAccount("Personal", "")
+	accountID, _ := database.AddAccount("", "Personal", "")
 	database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "INBOX"})
 
 	m := NewModel(database, config.DefaultConfig(), "dev", false)

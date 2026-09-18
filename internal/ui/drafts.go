@@ -134,8 +134,8 @@ func (m Model) draftsSidebarCount(mb db.Mailbox) int64 {
 	if m.db == nil {
 		return 0
 	}
-	accountName, accountUser := m.draftAccountIdentity(mb.ID)
-	local, _ := m.db.DraftCount(accountName, accountUser)
+	accountConfigID, accountName, accountUser := m.draftAccountIdentity(mb.ID)
+	local, _ := m.db.DraftCount(accountConfigID, accountName, accountUser)
 	// Only count remote drafts that haven't been mirrored into the drafts
 	// table yet, so a synced mailbox isn't counted twice.
 	remote, _ := m.db.UnmirroredDraftMessageCount(mb.ID)
@@ -147,28 +147,33 @@ func isCommonDraftsName(name string) bool {
 	return name == "drafts" || strings.HasSuffix(name, "/drafts") || strings.HasSuffix(name, ".drafts")
 }
 
-func (m Model) draftAccountIdentity(mailboxID int64) (string, string) {
+// draftAccountIdentity returns the owning account's stable config ID plus the
+// legacy (name, user) pair, which still matches draft rows written before the
+// config ID column existed.
+func (m Model) draftAccountIdentity(mailboxID int64) (configID, name, user string) {
 	mb := m.mailboxByID(mailboxID)
 	if mb == nil {
-		return "", ""
+		return "", "", ""
 	}
-	accountName := m.accountName(mb.AccountID)
-	for _, acfg := range m.cfg.Accounts {
-		if acfg.Name == accountName {
-			return acfg.Name, acfg.User
-		}
+	acc := m.accountByID(mb.AccountID)
+	if acc == nil {
+		return "", m.accountName(mb.AccountID), ""
 	}
-	return accountName, ""
+	acfg, err := m.accountConfigFor(*acc)
+	if err != nil {
+		return acc.ConfigID, acc.Name, ""
+	}
+	return acfg.ID, acfg.Name, acfg.User
 }
 
 func (m *Model) loadDraftsCmd(mailboxID int64) tea.Cmd {
 	database := m.db
-	accountName, accountUser := m.draftAccountIdentity(mailboxID)
+	accountConfigID, accountName, accountUser := m.draftAccountIdentity(mailboxID)
 	return func() tea.Msg {
 		if database == nil {
 			return DraftsLoadedMsg{MailboxID: mailboxID}
 		}
-		drafts, err := database.ListDrafts(accountName, accountUser)
+		drafts, err := database.ListDrafts(accountConfigID, accountName, accountUser)
 		return DraftsLoadedMsg{MailboxID: mailboxID, Drafts: drafts, Err: err}
 	}
 }
@@ -180,10 +185,10 @@ func (m *Model) loadDraftsCmd(mailboxID int64) tea.Cmd {
 // Returns a refreshed DraftsLoadedMsg for the mailbox.
 func (m *Model) importRemoteDraftsCmd(mailboxID int64) tea.Cmd {
 	database := m.db
-	accountName, accountUser := m.draftAccountIdentity(mailboxID)
+	accountConfigID, accountName, accountUser := m.draftAccountIdentity(mailboxID)
 	accountIndex := -1
 	for i, acfg := range m.cfg.Accounts {
-		if acfg.Name == accountName && acfg.User == accountUser {
+		if acfg.ID == accountConfigID && accountConfigID != "" {
 			accountIndex = i
 			break
 		}
@@ -196,7 +201,7 @@ func (m *Model) importRemoteDraftsCmd(mailboxID int64) tea.Cmd {
 		// sync was queued)? Don't write drafts with an empty/unknown account —
 		// they'd be invisible orphans. Just load whatever already exists.
 		if accountName == "" || accountIndex < 0 {
-			drafts, err := database.ListDrafts(accountName, accountUser)
+			drafts, err := database.ListDrafts(accountConfigID, accountName, accountUser)
 			return DraftsLoadedMsg{MailboxID: mailboxID, Drafts: drafts, Err: err}
 		}
 		msgs, err := database.ListMessages(mailboxID)
@@ -208,6 +213,7 @@ func (m *Model) importRemoteDraftsCmd(mailboxID int64) tea.Cmd {
 				continue // mirror key is mailbox+uid; a real UID is required
 			}
 			draft := db.Draft{
+				AccountConfigID: accountConfigID,
 				AccountName:     accountName,
 				AccountUser:     accountUser,
 				AccountIndex:    accountIndex,
@@ -237,7 +243,7 @@ func (m *Model) importRemoteDraftsCmd(mailboxID int64) tea.Cmd {
 				return DraftsLoadedMsg{MailboxID: mailboxID, Err: err}
 			}
 		}
-		drafts, err := database.ListDrafts(accountName, accountUser)
+		drafts, err := database.ListDrafts(accountConfigID, accountName, accountUser)
 		return DraftsLoadedMsg{MailboxID: mailboxID, Drafts: drafts, Err: err}
 	}
 }

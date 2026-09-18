@@ -14,7 +14,7 @@ func TestUpsertMailboxReturnsExistingID(t *testing.T) {
 	if err := database.init(); err != nil {
 		t.Fatal(err)
 	}
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatal(err)
 	}

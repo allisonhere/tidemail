@@ -131,15 +131,8 @@ func (m *Model) prepareFilterFoldersCmd(intent filterSaveIntent) tea.Cmd {
 		if m.filterManager.draftAcct != 0 && account.ID != m.filterManager.draftAcct {
 			continue
 		}
-		var acfg config.AccountConfig
-		configured := false
-		for _, candidate := range m.cfg.Accounts {
-			if candidate.Name == account.Name {
-				acfg = candidate
-				configured = true
-				break
-			}
-		}
+		acfg, cfgErr := m.accountConfigFor(account)
+		configured := cfgErr == nil
 		targets = append(targets, filterFolderTarget{account: account, acfg: acfg, configured: configured})
 	}
 	return func() tea.Msg {

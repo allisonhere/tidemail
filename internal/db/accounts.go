@@ -8,7 +8,10 @@ import (
 )
 
 type Account struct {
-	ID       int64
+	ID int64
+	// ConfigID is the stable ID of the [[account]] block in config.toml that
+	// owns this row. It is the join key; Name is only what the user sees.
+	ConfigID string
 	Name     string
 	Position int
 	Color    string
@@ -26,7 +29,7 @@ type Mailbox struct {
 }
 
 func (db *DB) ListAccounts() ([]Account, error) {
-	rows, err := db.Query(`SELECT id, name, position, color FROM accounts ORDER BY position, id`)
+	rows, err := db.Query(`SELECT id, config_id, name, position, color FROM accounts ORDER BY position, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -34,7 +37,7 @@ func (db *DB) ListAccounts() ([]Account, error) {
 	var accounts []Account
 	for rows.Next() {
 		var a Account
-		if err := rows.Scan(&a.ID, &a.Name, &a.Position, &a.Color); err != nil {
+		if err := rows.Scan(&a.ID, &a.ConfigID, &a.Name, &a.Position, &a.Color); err != nil {
 			return nil, err
 		}
 		accounts = append(accounts, a)
@@ -44,25 +47,89 @@ func (db *DB) ListAccounts() ([]Account, error) {
 
 func (db *DB) GetAccount(id int64) (Account, error) {
 	var a Account
-	err := db.QueryRow(`SELECT id, name, position, color FROM accounts WHERE id = ?`, id).
-		Scan(&a.ID, &a.Name, &a.Position, &a.Color)
+	err := db.QueryRow(`SELECT id, config_id, name, position, color FROM accounts WHERE id = ?`, id).
+		Scan(&a.ID, &a.ConfigID, &a.Name, &a.Position, &a.Color)
 	return a, err
 }
 
-func (db *DB) AddAccount(name, color string) (int64, error) {
+func (db *DB) AddAccount(configID, name, color string) (int64, error) {
 	var maxPos int
 	db.QueryRow(`SELECT COALESCE(MAX(position),0) FROM accounts`).Scan(&maxPos) //nolint:errcheck
-	res, err := db.Exec(`INSERT INTO accounts (name, position, color) VALUES (?, ?, ?)`,
-		name, maxPos+1, color)
+	res, err := db.Exec(`INSERT INTO accounts (config_id, name, position, color) VALUES (?, ?, ?, ?)`,
+		configID, name, maxPos+1, color)
 	if err != nil {
 		return 0, err
 	}
 	return res.LastInsertId()
 }
 
-func (db *DB) UpdateAccount(id int64, name, color string) error {
-	_, err := db.Exec(`UPDATE accounts SET name = ?, color = ? WHERE id = ?`, name, color, id)
+// UpdateAccount renames an account and re-stamps its config link. The link is
+// written here too so an account row adopted from a pre-config_id database
+// stops relying on its name the first time it is edited.
+func (db *DB) UpdateAccount(id int64, configID, name, color string) error {
+	_, err := db.Exec(`UPDATE accounts SET config_id = ?, name = ?, color = ? WHERE id = ?`,
+		configID, name, color, id)
 	return err
+}
+
+// AccountLink pairs a config account's stable ID with the display name that
+// older builds used as the link between config.toml and this database.
+type AccountLink struct {
+	ConfigID string
+	Name     string
+}
+
+// MigrateAccountConfigIDs backfills config_id on rows written before the column
+// existed, matching on the display name. A name shared by more than one config
+// block or more than one account row is left unlinked rather than guessed: an
+// ambiguous row shows up as an account needing repair, which is recoverable,
+// whereas a wrong link syncs one account with another's credentials.
+func (db *DB) MigrateAccountConfigIDs(links []AccountLink) error {
+	byName := map[string][]string{}
+	for _, l := range links {
+		name := strings.TrimSpace(l.Name)
+		if name == "" || strings.TrimSpace(l.ConfigID) == "" {
+			continue
+		}
+		byName[name] = append(byName[name], l.ConfigID)
+	}
+	rows, err := db.Query(`SELECT id, name FROM accounts WHERE config_id = ''`)
+	if err != nil {
+		return err
+	}
+	type pending struct {
+		id   int64
+		name string
+	}
+	var unlinked []pending
+	for rows.Next() {
+		var p pending
+		if err := rows.Scan(&p.id, &p.name); err != nil {
+			rows.Close()
+			return err
+		}
+		unlinked = append(unlinked, p)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	seen := map[string]int{}
+	for _, p := range unlinked {
+		seen[strings.TrimSpace(p.name)]++
+	}
+	for _, p := range unlinked {
+		name := strings.TrimSpace(p.name)
+		ids := byName[name]
+		if len(ids) != 1 || seen[name] != 1 {
+			continue
+		}
+		if _, err := db.Exec(`UPDATE accounts SET config_id = ? WHERE id = ? AND config_id = ''`,
+			ids[0], p.id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (db *DB) DeleteAccount(id int64) error {
@@ -241,10 +308,16 @@ func (db *DB) FindDraftsMailbox(accountID int64) (Mailbox, error) {
 }
 
 // AccountIDByName resolves an account row from its configured name.
-func (db *DB) AccountIDByName(name string) (int64, error) {
+// AccountIDByConfigID resolves the account row owned by a config block. It
+// replaces the old name lookup, which returned an arbitrary row when two
+// accounts shared a display name.
+func (db *DB) AccountIDByConfigID(configID string) (int64, error) {
+	if strings.TrimSpace(configID) == "" {
+		return 0, fmt.Errorf("account not found: no config id")
+	}
 	var id int64
-	if err := db.QueryRow(`SELECT id FROM accounts WHERE name = ?`, name).Scan(&id); err != nil {
-		return 0, fmt.Errorf("account %q not found: %w", name, err)
+	if err := db.QueryRow(`SELECT id FROM accounts WHERE config_id = ?`, configID).Scan(&id); err != nil {
+		return 0, fmt.Errorf("account %q not found: %w", configID, err)
 	}
 	return id, nil
 }

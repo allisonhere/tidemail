@@ -19,7 +19,7 @@ func filterManagerModel(t *testing.T) Model {
 		t.Fatalf("Open DB: %v", err)
 	}
 	t.Cleanup(func() { database.Close() })
-	accountID, _ := database.AddAccount("Personal", "")
+	accountID, _ := database.AddAccount("", "Personal", "")
 	inboxID, _ := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "INBOX", Delimiter: "/"})
 	_ = inboxID
 	m := NewModel(database, config.DefaultConfig(), "dev", false)

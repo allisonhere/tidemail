@@ -18,7 +18,7 @@ func TestStoreFetchedMessagesDeduplicatesByUID(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatalf("AddAccount: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestStoreFetchedMessagesIgnoresRead(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, _ := database.AddAccount("Personal", "")
+	accountID, _ := database.AddAccount("", "Personal", "")
 	mailboxID, _ := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "INBOX"})
 
 	newMsgs, err := storeFetchedMessages(database, mailboxID, []db.Message{{UID: 9, Read: true, Subject: "Seen"}})
@@ -78,7 +78,7 @@ func TestStoreFetchedMessagesSkipsLocallyDeletedUID(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, _ := database.AddAccount("Personal", "")
+	accountID, _ := database.AddAccount("", "Personal", "")
 	mailboxID, _ := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "INBOX"})
 	msg := db.Message{UID: 11, MessageID: "<deleted@example.com>", Subject: "Delete me"}
 	if err := database.UpsertMessage(db.Message{MailboxID: mailboxID, UID: msg.UID, MessageID: msg.MessageID, Subject: msg.Subject}); err != nil {

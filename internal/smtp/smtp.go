@@ -173,9 +173,9 @@ func smtpAuth(ctx context.Context, cfg config.AccountConfig, host string) (smtp.
 	var err error
 	switch {
 	case cfg.UsesGoogleOAuth2():
-		tok, err = auth.GoogleAccessToken(ctx, cfg.ClientID, cfg.ClientSecret, cfg.Name, cfg.RefreshToken)
+		tok, err = auth.GoogleAccessToken(ctx, cfg.ClientID, cfg.ClientSecret, cfg.SessionKey(), cfg.RefreshToken)
 	case cfg.UsesMicrosoftOAuth2():
-		tok, err = auth.MSAccessToken(ctx, cfg.ClientID, cfg.Name, cfg.RefreshToken)
+		tok, err = auth.MSAccessToken(ctx, cfg.ClientID, cfg.SessionKey(), cfg.RefreshToken)
 	default:
 		return smtp.PlainAuth("", cfg.User, cfg.Password, host), nil
 	}

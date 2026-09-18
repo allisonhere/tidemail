@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -33,7 +34,20 @@ var (
 // probes once per process with a sentinel round-trip; a locked login collection,
 // a missing session bus, or a hung prompter all fail the probe, and the caller
 // then falls back to the plaintext config file.
+// keyringDisabled reports the TIDEMAIL_DISABLE_KEYRING opt-out. It is read on
+// every call rather than cached with the probe below, so a test can scope it to
+// itself. Tests must set it: the keychain is per-user and global, so a test that
+// loads a config whose account names match the real ones would otherwise read
+// live passwords out of it and write copies back under new keys.
+func keyringDisabled() bool {
+	v := strings.TrimSpace(os.Getenv("TIDEMAIL_DISABLE_KEYRING"))
+	return v != "" && v != "0" && !strings.EqualFold(v, "false")
+}
+
 func keyringUsable() bool {
+	if keyringDisabled() {
+		return false
+	}
 	keyringProbeOnce.Do(func() {
 		if !keyringInstalled() {
 			keyringProbeReason = "secret-tool is not installed"
@@ -59,6 +73,9 @@ func keyringUsable() bool {
 // KeyringStatus reports whether the keychain is usable and, if not, a short
 // human-readable reason for the UI.
 func KeyringStatus() (usable bool, reason string) {
+	if keyringDisabled() {
+		return false, "credential storage disabled by TIDEMAIL_DISABLE_KEYRING"
+	}
 	return keyringUsable(), keyringProbeReason
 }
 
@@ -107,39 +124,70 @@ func clearSecret(key string) error {
 	return err
 }
 
-// ── Account passwords ──────────────────────────────────────────────────────────
+// ── Account secrets ────────────────────────────────────────────────────────────
+//
+// Every account secret is stored under the account's stable ID. Builds up to
+// v1.0.19 keyed them by display name instead, so each getter falls back to the
+// name-keyed item when the ID-keyed one is absent.
+//
+// The fallback is read-only on purpose: nothing rewrites or clears the legacy
+// item as a "migration". keyringUsable() probes the keychain with a 3s timeout
+// and a locked or momentarily unreachable collection fails that probe, so a
+// migration that cleared the old item could destroy the only copy of a
+// password. The legacy item is removed only when the user deletes the account.
 
-func accountPasswordKey(accountName string) string {
-	return "account:" + accountName
+func accountPasswordKey(id string) string {
+	return "account:" + id
 }
 
-// StoreAccountPassword saves an account password to the keychain.
-// Returns true on success, false if keyring is unavailable.
-func StoreAccountPassword(accountName, password string) bool {
-	if !keyringAvailable() || password == "" {
+// lookupWithLegacy reads the ID-keyed item, falling back to the item an older
+// build wrote under the display name.
+func lookupWithLegacy(key func(string) string, id, legacyName string) string {
+	if !keyringAvailable() {
+		return ""
+	}
+	if id != "" {
+		if v := lookupSecret(key(id)); v != "" {
+			return v
+		}
+	}
+	if legacyName == "" || legacyName == id {
+		return ""
+	}
+	return lookupSecret(key(legacyName))
+}
+
+// StoreAccountPassword saves an account password to the keychain under the
+// account's stable ID. Returns true on success, false if keyring is unavailable.
+func StoreAccountPassword(id, password string) bool {
+	if !keyringAvailable() || id == "" || password == "" {
 		return false
 	}
-	if err := storeSecret(accountPasswordKey(accountName), password); err != nil {
+	if err := storeSecret(accountPasswordKey(id), password); err != nil {
 		return false
 	}
 	return true
 }
 
-// GetAccountPassword retrieves an account password from the keychain.
-// Returns empty string if not found or keyring unavailable.
-func GetAccountPassword(accountName string) string {
-	if !keyringAvailable() {
-		return ""
-	}
-	return lookupSecret(accountPasswordKey(accountName))
+// GetAccountPassword retrieves an account password from the keychain, falling
+// back to the legacy name-keyed item. Returns empty string if not found or
+// keyring unavailable.
+func GetAccountPassword(id, legacyName string) string {
+	return lookupWithLegacy(accountPasswordKey, id, legacyName)
 }
 
-// DeleteAccountPassword removes an account password from the keychain.
-func DeleteAccountPassword(accountName string) {
+// DeleteAccountPassword removes an account password from the keychain, both
+// generations of the key.
+func DeleteAccountPassword(id, legacyName string) {
 	if !keyringAvailable() {
 		return
 	}
-	_ = clearSecret(accountPasswordKey(accountName))
+	if id != "" {
+		_ = clearSecret(accountPasswordKey(id))
+	}
+	if legacyName != "" && legacyName != id {
+		_ = clearSecret(accountPasswordKey(legacyName))
+	}
 }
 
 // ── AI API keys ────────────────────────────────────────────────────────────────
@@ -178,59 +226,62 @@ func DeleteAIKey(providerField string) {
 
 // ── OAuth2 tokens ──────────────────────────────────────────────────────────────
 
-func oauth2SecretKey(accountName string) string {
-	return "oauth2:" + accountName
+func oauth2SecretKey(id string) string {
+	return "oauth2:" + id
 }
 
-func oauth2RefreshKey(accountName string) string {
-	return "oauth2_refresh:" + accountName
+func oauth2RefreshKey(id string) string {
+	return "oauth2_refresh:" + id
 }
 
 // StoreOAuth2Secret saves an OAuth2 client secret to the keychain.
-func StoreOAuth2Secret(accountName, secret string) bool {
-	if !keyringAvailable() || secret == "" {
+func StoreOAuth2Secret(id, secret string) bool {
+	if !keyringAvailable() || id == "" || secret == "" {
 		return false
 	}
-	if err := storeSecret(oauth2SecretKey(accountName), secret); err != nil {
+	if err := storeSecret(oauth2SecretKey(id), secret); err != nil {
 		return false
 	}
 	return true
 }
 
-// GetOAuth2Secret retrieves an OAuth2 client secret from the keychain.
-func GetOAuth2Secret(accountName string) string {
-	if !keyringAvailable() {
-		return ""
-	}
-	return lookupSecret(oauth2SecretKey(accountName))
+// GetOAuth2Secret retrieves an OAuth2 client secret from the keychain, falling
+// back to the legacy name-keyed item.
+func GetOAuth2Secret(id, legacyName string) string {
+	return lookupWithLegacy(oauth2SecretKey, id, legacyName)
 }
 
 // StoreOAuth2RefreshToken saves an OAuth2 refresh token to the keychain.
-func StoreOAuth2RefreshToken(accountName, token string) bool {
-	if !keyringAvailable() || token == "" {
+func StoreOAuth2RefreshToken(id, token string) bool {
+	if !keyringAvailable() || id == "" || token == "" {
 		return false
 	}
-	if err := storeSecret(oauth2RefreshKey(accountName), token); err != nil {
+	if err := storeSecret(oauth2RefreshKey(id), token); err != nil {
 		return false
 	}
 	return true
 }
 
-// GetOAuth2RefreshToken retrieves an OAuth2 refresh token from the keychain.
-func GetOAuth2RefreshToken(accountName string) string {
-	if !keyringAvailable() {
-		return ""
-	}
-	return lookupSecret(oauth2RefreshKey(accountName))
+// GetOAuth2RefreshToken retrieves an OAuth2 refresh token from the keychain,
+// falling back to the legacy name-keyed item.
+func GetOAuth2RefreshToken(id, legacyName string) string {
+	return lookupWithLegacy(oauth2RefreshKey, id, legacyName)
 }
 
-// DeleteOAuth2Secrets removes OAuth2 secrets for an account from the keychain.
-func DeleteOAuth2Secrets(accountName string) {
+// DeleteOAuth2Secrets removes an account's OAuth2 secrets from the keychain,
+// both generations of the key.
+func DeleteOAuth2Secrets(id, legacyName string) {
 	if !keyringAvailable() {
 		return
 	}
-	_ = clearSecret(oauth2SecretKey(accountName))
-	_ = clearSecret(oauth2RefreshKey(accountName))
+	for _, key := range []func(string) string{oauth2SecretKey, oauth2RefreshKey} {
+		if id != "" {
+			_ = clearSecret(key(id))
+		}
+		if legacyName != "" && legacyName != id {
+			_ = clearSecret(key(legacyName))
+		}
+	}
 }
 
 // ── Bulk operations ────────────────────────────────────────────────────────────
@@ -244,7 +295,7 @@ func stripSecrets(cfg *Config) int {
 	stored := 0
 	for i := range cfg.Accounts {
 		if cfg.Accounts[i].Password != "" {
-			if StoreAccountPassword(cfg.Accounts[i].Name, cfg.Accounts[i].Password) {
+			if StoreAccountPassword(cfg.Accounts[i].ID, cfg.Accounts[i].Password) {
 				cfg.Accounts[i].Password = ""
 				stored++
 			}
@@ -255,7 +306,7 @@ func stripSecrets(cfg *Config) int {
 		// wiping it here would destroy a token an auto-migration mis-classified.
 		// Real cleanup happens on account delete (deleteAccountCmd).
 		if cfg.Accounts[i].AuthMethod == AuthOAuth2 && cfg.Accounts[i].RefreshToken != "" &&
-			StoreOAuth2RefreshToken(cfg.Accounts[i].Name, cfg.Accounts[i].RefreshToken) {
+			StoreOAuth2RefreshToken(cfg.Accounts[i].ID, cfg.Accounts[i].RefreshToken) {
 			cfg.Accounts[i].RefreshToken = ""
 			stored++
 		}
@@ -281,7 +332,7 @@ func stripSecrets(cfg *Config) int {
 func fillSecrets(cfg *Config) {
 	for i := range cfg.Accounts {
 		if cfg.Accounts[i].Password == "" {
-			if pw := GetAccountPassword(cfg.Accounts[i].Name); pw != "" {
+			if pw := GetAccountPassword(cfg.Accounts[i].ID, cfg.Accounts[i].Name); pw != "" {
 				cfg.Accounts[i].Password = pw
 			}
 		}
@@ -291,7 +342,7 @@ func fillSecrets(cfg *Config) {
 		// alone, so an orphaned oauth2_refresh:<name> item stays inert.
 		if cfg.Accounts[i].AuthMethod == AuthOAuth2 {
 			if cfg.Accounts[i].RefreshToken == "" {
-				if t := GetOAuth2RefreshToken(cfg.Accounts[i].Name); t != "" {
+				if t := GetOAuth2RefreshToken(cfg.Accounts[i].ID, cfg.Accounts[i].Name); t != "" {
 					cfg.Accounts[i].RefreshToken = t
 				}
 			}

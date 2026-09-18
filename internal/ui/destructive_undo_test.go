@@ -26,7 +26,7 @@ func newUndoTestFixture(t *testing.T, count int) undoTestFixture {
 	}
 	t.Cleanup(func() { database.Close() })
 	accountName := "undo-" + strings.ReplaceAll(t.Name(), "/", "-")
-	accountID, err := database.AddAccount(accountName, "")
+	accountID, err := database.AddAccount("", accountName, "")
 	if err != nil {
 		t.Fatal(err)
 	}

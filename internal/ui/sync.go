@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/mail"
@@ -15,6 +16,44 @@ import (
 	imapClient "github.com/allisonhere/tidemail/internal/imap"
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+// errNoAccountConfig reports an account row with no reachable [[account]] block
+// in config.toml. Every sync path must stop on it. Syncing anyway used to mean
+// dialing a zero-value AccountConfig — empty host, port 0 — which surfaced to
+// users as the baffling "dial tcp :0: connect: connection refused".
+var errNoAccountConfig = errors.New("no account settings found for this account — open Accounts and re-enter its server details")
+
+// accountConfigFor resolves the config block that owns an account row, joining
+// on the stable config ID. The name fallback covers rows the config_id
+// migration left blank, and it only matches when exactly one config block
+// claims that name — an ambiguous name is an unresolved account, not a guess.
+func accountConfigFor(configs []config.AccountConfig, acc db.Account) (config.AccountConfig, error) {
+	if acc.ConfigID != "" {
+		for _, acfg := range configs {
+			if acfg.ID == acc.ConfigID {
+				return acfg, nil
+			}
+		}
+		return config.AccountConfig{}, fmt.Errorf("%w (%q)", errNoAccountConfig, acc.Name)
+	}
+	var found config.AccountConfig
+	matches := 0
+	for _, acfg := range configs {
+		if acfg.Name == acc.Name {
+			found = acfg
+			matches++
+		}
+	}
+	if matches != 1 {
+		return config.AccountConfig{}, fmt.Errorf("%w (%q)", errNoAccountConfig, acc.Name)
+	}
+	return found, nil
+}
+
+// accountConfigFor is the Model-scoped form of the resolver above.
+func (m Model) accountConfigFor(acc db.Account) (config.AccountConfig, error) {
+	return accountConfigFor(m.cfg.Accounts, acc)
+}
 
 func (m *Model) loadAccountsCmd() tea.Cmd {
 	database := m.db
@@ -43,24 +82,49 @@ func (m *Model) loadAccountsCmd() tea.Cmd {
 }
 
 func ensureConfiguredAccounts(database *db.DB, accounts []db.Account, configs []config.AccountConfig) ([]db.Account, error) {
+	// Adopt rows written before config_id existed, so they are not re-imported
+	// as duplicates below.
+	links := make([]db.AccountLink, 0, len(configs))
+	draftLinks := make([]db.DraftAccountLink, 0, len(configs))
+	for _, accountCfg := range configs {
+		links = append(links, db.AccountLink{ConfigID: accountCfg.ID, Name: accountCfg.Name})
+		draftLinks = append(draftLinks, db.DraftAccountLink{
+			ConfigID: accountCfg.ID, Name: accountCfg.Name, User: accountCfg.User,
+		})
+	}
+	if err := database.MigrateAccountConfigIDs(links); err != nil {
+		return accounts, fmt.Errorf("link configured accounts: %w", err)
+	}
+	if err := database.MigrateDraftAccountConfigIDs(draftLinks); err != nil {
+		return accounts, fmt.Errorf("link drafts and outbox to accounts: %w", err)
+	}
+	if len(links) > 0 {
+		refreshed, err := database.ListAccounts()
+		if err != nil {
+			return accounts, err
+		}
+		accounts = refreshed
+	}
 	existing := make(map[string]db.Account, len(accounts))
 	for _, account := range accounts {
-		existing[strings.TrimSpace(account.Name)] = account
+		if account.ConfigID != "" {
+			existing[account.ConfigID] = account
+		}
 	}
 	changed := false
 	for _, accountCfg := range configs {
 		name := strings.TrimSpace(accountCfg.Name)
-		if name == "" {
+		if name == "" || accountCfg.ID == "" {
 			continue
 		}
-		account, ok := existing[name]
+		account, ok := existing[accountCfg.ID]
 		if !ok {
-			accountID, err := database.AddAccount(name, "")
+			accountID, err := database.AddAccount(accountCfg.ID, name, "")
 			if err != nil {
 				return accounts, fmt.Errorf("import configured account %s: %w", name, err)
 			}
-			account = db.Account{ID: accountID, Name: name}
-			existing[name] = account
+			account = db.Account{ID: accountID, ConfigID: accountCfg.ID, Name: name}
+			existing[accountCfg.ID] = account
 			changed = true
 		}
 		mailboxes, err := database.ListMailboxes(account.ID)
@@ -258,18 +322,17 @@ func (m *Model) scheduleNextSync(accountID int64) tea.Cmd {
 		if acc.ID != accountID {
 			continue
 		}
-		for _, acfg := range m.cfg.Accounts {
-			if acfg.Name != acc.Name {
-				continue
-			}
-			interval, ok := syncPollInterval(acfg.SyncMinutes)
-			if !ok {
-				return nil
-			}
-			return tea.Every(interval, func(t time.Time) tea.Msg {
-				return AutoSyncMsg{AccountID: accountID}
-			})
+		acfg, err := m.accountConfigFor(acc)
+		if err != nil {
+			return nil
 		}
+		interval, ok := syncPollInterval(acfg.SyncMinutes)
+		if !ok {
+			return nil
+		}
+		return tea.Every(interval, func(t time.Time) tea.Msg {
+			return AutoSyncMsg{AccountID: accountID}
+		})
 	}
 	return nil
 }
@@ -348,11 +411,10 @@ func (m *Model) refreshMailboxesCmd(accountID int64) tea.Cmd {
 	if acc.ID == 0 {
 		return nil
 	}
-	var acfg config.AccountConfig
-	for _, a := range m.cfg.Accounts {
-		if a.Name == acc.Name {
-			acfg = a
-			break
+	acfg, err := m.accountConfigFor(acc)
+	if err != nil {
+		return func() tea.Msg {
+			return MailboxesRefreshedMsg{AccountID: accountID, Err: err}
 		}
 	}
 	sessions := m.sessions
@@ -493,11 +555,10 @@ func (m *Model) loadOlderMessagesCmd(mailboxID int64) tea.Cmd {
 			return OlderMessagesLoadedMsg{MailboxID: mailboxID, Err: fmt.Errorf("load account: %w", err)}
 		}
 	}
-	var acfg config.AccountConfig
-	for _, a := range m.cfg.Accounts {
-		if a.Name == acc.Name {
-			acfg = a
-			break
+	acfg, err := m.accountConfigFor(acc)
+	if err != nil {
+		return func() tea.Msg {
+			return OlderMessagesLoadedMsg{MailboxID: mailboxID, Err: err}
 		}
 	}
 	m.syncing[mailboxID] = true
@@ -639,10 +700,12 @@ func (m Model) shouldAutoSyncFolder(mb db.Mailbox) bool {
 		if acc.ID != mb.AccountID {
 			continue
 		}
-		for _, acfg := range m.cfg.Accounts {
-			if acfg.Name == acc.Name && acfg.SyncMinutes < 0 {
-				return false
-			}
+		acfg, err := m.accountConfigFor(acc)
+		if err != nil {
+			return false
+		}
+		if acfg.SyncMinutes < 0 {
+			return false
 		}
 	}
 	// A row that has never synced decodes to the Unix epoch, not the zero
@@ -702,11 +765,10 @@ func (m *Model) syncMailboxCmdWithMode(mailboxID int64, manual, passive bool) te
 			return MailboxSyncedMsg{MailboxID: mailboxID, Err: fmt.Errorf("load account: %w", err), Manual: manual, Passive: passive}
 		}
 	}
-	var acfg config.AccountConfig
-	for _, a := range m.cfg.Accounts {
-		if a.Name == acc.Name {
-			acfg = a
-			break
+	acfg, err := m.accountConfigFor(acc)
+	if err != nil {
+		return func() tea.Msg {
+			return MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual, Passive: passive}
 		}
 	}
 	sessions := m.sessions

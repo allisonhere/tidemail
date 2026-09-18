@@ -169,7 +169,7 @@ func TestContactManagerBulkDelete(t *testing.T) {
 
 func TestContactManagerPickerAddsSeenAddresses(t *testing.T) {
 	d := newContactTestDB(t)
-	accountID, _ := d.AddAccount("Acct", "")
+	accountID, _ := d.AddAccount("", "Acct", "")
 	mailboxID, _ := d.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "INBOX"})
 	_ = d.UpsertMessage(db.Message{
 		MailboxID: mailboxID,

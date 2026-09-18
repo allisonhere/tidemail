@@ -20,7 +20,7 @@ func TestSaveDraftRuleScopesToGenerationAccount(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountID, _ := database.AddAccount("Personal", "")
+	accountID, _ := database.AddAccount("", "Personal", "")
 	m := NewModel(database, config.DefaultConfig(), "dev", false)
 	m.filterManager = m.newFilterManager()
 	m.filterManager.draft = filter.Rule{
@@ -52,8 +52,8 @@ func TestScopedRuleDoesNotTouchOtherAccount(t *testing.T) {
 	}
 	defer database.Close()
 
-	accA, _ := database.AddAccount("A", "")
-	accB, _ := database.AddAccount("B", "")
+	accA, _ := database.AddAccount("", "A", "")
+	accB, _ := database.AddAccount("", "B", "")
 	database.UpsertMailbox(db.Mailbox{AccountID: accA, Name: "INBOX", Delimiter: "/"})
 	database.UpsertMailbox(db.Mailbox{AccountID: accA, Name: "Reading", Delimiter: "/"})
 	bInbox, _ := database.UpsertMailbox(db.Mailbox{AccountID: accB, Name: "INBOX", Delimiter: "/"})

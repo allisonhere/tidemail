@@ -52,14 +52,8 @@ type idleWatcherEntry struct {
 func (m *Model) startIdleWatchers() tea.Cmd {
 	desired := make(map[int64]idleWatcherEntry, len(m.accounts))
 	for _, acc := range m.accounts {
-		var acfg config.AccountConfig
-		for _, a := range m.cfg.Accounts {
-			if a.Name == acc.Name {
-				acfg = a
-				break
-			}
-		}
-		if acfg.IMAPHost == "" || acfg.SyncMinutes < 0 {
+		acfg, err := m.accountConfigFor(acc)
+		if err != nil || acfg.IMAPHost == "" || acfg.SyncMinutes < 0 {
 			continue
 		}
 		var inbox *db.Mailbox

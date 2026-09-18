@@ -22,7 +22,7 @@ func TestDBAccountsMailboxesAndMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	accountID, err := database.AddAccount("Personal", "#7aa2f7")
+	accountID, err := database.AddAccount("", "Personal", "#7aa2f7")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestDBUnreadAndSummaryUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	accountID, err := database.AddAccount("Work", "")
+	accountID, err := database.AddAccount("", "Work", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestDBMigrateAddsStarredToLegacySchema(t *testing.T) {
 		t.Fatalf("init on legacy schema should add starred column, got: %v", err)
 	}
 
-	accountID, err := database.AddAccount("Work", "")
+	accountID, err := database.AddAccount("", "Work", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestMigrateMessageFTSRebuildsOnceThenSkips(t *testing.T) {
 		t.Fatalf("expected fts token %q after init, got %q", ftsSchemaVersion, token)
 	}
 
-	accountID, err := database.AddAccount("Work", "")
+	accountID, err := database.AddAccount("", "Work", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +300,7 @@ func TestDBMarkStarredRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	accountID, err := database.AddAccount("Work", "")
+	accountID, err := database.AddAccount("", "Work", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,7 +371,7 @@ func TestDBListMessagesUnreadFirstGroupsUnreadBeforeRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	accountID, err := database.AddAccount("Work", "")
+	accountID, err := database.AddAccount("", "Work", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,11 +414,11 @@ func TestDBListUnifiedInboxUsesInboxMailboxesAcrossAccounts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	personalID, err := database.AddAccount("Personal", "")
+	personalID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	workID, err := database.AddAccount("Work", "")
+	workID, err := database.AddAccount("", "Work", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -481,11 +481,11 @@ func TestDBListUnifiedInboxUnreadFirstGroupsUnreadBeforeRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	personalID, err := database.AddAccount("Personal", "")
+	personalID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	workID, err := database.AddAccount("Work", "")
+	workID, err := database.AddAccount("", "Work", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -550,7 +550,7 @@ func TestDBMoveAndDeleteMessageUpdateLocalState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -627,7 +627,7 @@ func TestMessageDeletedLocallyPrefersMessageIDOverUID(t *testing.T) {
 	if err := database.init(); err != nil {
 		t.Fatal(err)
 	}
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -669,7 +669,7 @@ func TestMessageDeletedLocallyFallsBackToUIDOnlyTombstones(t *testing.T) {
 	if err := database.init(); err != nil {
 		t.Fatal(err)
 	}
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -704,7 +704,7 @@ func TestPruneOldDeletedMessageTombstones(t *testing.T) {
 	if err := database.init(); err != nil {
 		t.Fatal(err)
 	}
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -749,7 +749,7 @@ func TestDBFindArchiveMailboxPrefersSpecialUseThenCommonNames(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -793,7 +793,7 @@ func TestDBFindArchiveMailboxErrorsWhenUnavailable(t *testing.T) {
 	if err := database.init(); err != nil {
 		t.Fatal(err)
 	}
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -818,7 +818,7 @@ func TestDBFindTrashMailboxPrefersSpecialUseThenCommonNames(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -862,7 +862,7 @@ func TestDBFindTrashMailboxErrorsWhenUnavailable(t *testing.T) {
 	if err := database.init(); err != nil {
 		t.Fatal(err)
 	}
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -887,11 +887,11 @@ func TestDBSearchAllMessagesUsesFTSAcrossAccountsAndMailboxes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	personalID, err := database.AddAccount("Personal", "")
+	personalID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	workID, err := database.AddAccount("Work", "")
+	workID, err := database.AddAccount("", "Work", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -974,7 +974,7 @@ func TestDBSearchAllMessagesUnreadFirstAndDeleteSyncFTS(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	accountID, err := database.AddAccount("Personal", "")
+	accountID, err := database.AddAccount("", "Personal", "")
 	if err != nil {
 		t.Fatal(err)
 	}

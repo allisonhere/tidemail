@@ -53,15 +53,15 @@ func TestUsesOAuth2ProviderGates(t *testing.T) {
 }
 
 func TestMigrateAuthMethod(t *testing.T) {
-	none := func(string) string { return "" }
-	pw := func(string) string { return "pw" }
-	tok := func(string) string { return "1//refresh" }
+	none := func(id, legacyName string) string { return "" }
+	pw := func(id, legacyName string) string { return "pw" }
+	tok := func(id, legacyName string) string { return "1//refresh" }
 
 	cases := []struct {
 		name        string
 		acct        AccountConfig
-		getPassword func(string) string
-		getToken    func(string) string
+		getPassword func(id, legacyName string) string
+		getToken    func(id, legacyName string) string
 		want        string
 	}{
 		{"legacy gmail with app password", AccountConfig{Provider: "Gmail", Password: "pw"}, none, none, AuthPassword},

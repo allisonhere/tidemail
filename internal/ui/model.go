@@ -319,6 +319,10 @@ func (m Model) RestartExecPath() string { return m.restartExecPath }
 func (m Model) QuitActivated() bool { return m.quitActivated }
 
 func NewModel(database *db.DB, cfg config.Config, currentVersion string, previewManualUpdate bool) Model {
+	// Every account must carry its stable ID by the time the model joins config
+	// blocks to database rows. Load and Save both stamp them, but a Config
+	// assembled in code reaches here without passing through either.
+	config.EnsureAccountIDs(&cfg)
 	merged, themeIdx := MergedThemeFromConfig(cfg)
 
 	// Compose body editors pick up vim mode from config via this package var
@@ -395,8 +399,10 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 	// Google can rotate refresh tokens on refresh; persist the rotated token to
 	// the keyring immediately so it survives crashes. (Injected func —
 	// internal/auth can't import internal/config.)
-	auth.PersistRefreshToken = func(accountName, refreshToken string) error {
-		if !config.StoreOAuth2RefreshToken(accountName, refreshToken) {
+	// accountKey is the caller's per-account cache key, which is
+	// AccountConfig.SessionKey() — the account's stable ID.
+	auth.PersistRefreshToken = func(accountKey, refreshToken string) error {
+		if !config.StoreOAuth2RefreshToken(accountKey, refreshToken) {
 			return fmt.Errorf("credential storage unavailable")
 		}
 		return nil
@@ -926,10 +932,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setStatus(fmt.Sprintf("save failed: %s", detail), true)
 			return m, m.clearStatusCmd()
 		}
-		// Update config with new account
+		// Update config with the saved account, matched on its stable ID. Matching
+		// on the display name used to mean that saving an account under a name a
+		// peer already had overwrote that peer's whole block — host, user and
+		// password — and that renaming an account appended a duplicate instead of
+		// updating its own entry.
 		found := false
 		for i, a := range m.cfg.Accounts {
-			if a.Name == msg.AccountCfg.Name {
+			if a.ID == msg.AccountCfg.ID {
 				m.cfg.Accounts[i] = msg.AccountCfg
 				found = true
 				break
@@ -1093,11 +1103,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Drop the account from the config too, otherwise loadAccountsCmd's
 		// ensureConfiguredAccounts re-imports it straight back into the DB (and it
-		// would return again on the next launch).
-		if name := strings.TrimSpace(msg.AccountName); name != "" {
+		// would return again on the next launch). Only the deleted account's own
+		// entry goes: this used to drop every entry sharing its display name,
+		// which took a peer's credentials with it.
+		if id := strings.TrimSpace(msg.ConfigID); id != "" {
 			kept := m.cfg.Accounts[:0]
 			for _, a := range m.cfg.Accounts {
-				if strings.TrimSpace(a.Name) != name {
+				if a.ID != id {
 					kept = append(kept, a)
 				}
 			}

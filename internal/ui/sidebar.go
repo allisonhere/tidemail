@@ -340,10 +340,8 @@ func (m Model) accountCfgForMailbox(mailboxID int64) config.AccountConfig {
 	}
 	acc := m.accountByID(mb.AccountID)
 	if acc != nil {
-		for _, acfg := range m.cfg.Accounts {
-			if acfg.Name == acc.Name {
-				return acfg
-			}
+		if acfg, err := m.accountConfigFor(*acc); err == nil {
+			return acfg
 		}
 	}
 	if len(m.cfg.Accounts) > 0 {

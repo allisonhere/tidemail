@@ -288,7 +288,11 @@ type AccountManager struct {
 	provider      string
 	focusedField  amField
 	editAccountID int64
-	colorIdx      int
+	// editConfigID is the stable ID of the config block the form is editing. It
+	// must survive a rename — it is what tells the save path which [[account]]
+	// block to update rather than which one happens to share the new name.
+	editConfigID string
+	colorIdx     int
 
 	// OAuth sign-in state for the Gmail and Outlook providers. useOAuth is the
 	// Auth-method selector (App password ⇄ OAuth). Gmail uses browser sign-in;
@@ -402,6 +406,7 @@ func (am *AccountManager) populateFormFrom(acfg config.AccountConfig) {
 	if _, ok := providerPresets[am.provider]; !ok {
 		am.provider = "Custom"
 	}
+	am.editConfigID = acfg.ID
 	am.nameInput.SetValue(acfg.Name)
 	am.imapHostInput.SetValue(acfg.IMAPHost)
 	am.imapPortInput.SetValue(strconv.Itoa(acfg.IMAPPort))
@@ -437,6 +442,7 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 		smtpPort = 587
 	}
 	cfg := config.AccountConfig{
+		ID:          am.editConfigID,
 		Provider:    am.provider,
 		Name:        strings.TrimSpace(am.nameInput.Value()),
 		IMAPHost:    strings.TrimSpace(am.imapHostInput.Value()),
@@ -504,13 +510,28 @@ func colorIndexForHex(hex string) int {
 	return 0
 }
 
+// configForAccount resolves the config block that owns an account row. It joins
+// on the stable ID; the name fallback covers a row whose config_id the
+// migration left blank because the name was ambiguous, and it only matches when
+// exactly one config block claims that name.
 func (am AccountManager) configForAccount(acc db.Account) (config.AccountConfig, bool) {
+	if acc.ConfigID != "" {
+		for _, acfg := range am.configs {
+			if acfg.ID == acc.ConfigID {
+				return acfg, true
+			}
+		}
+		return config.AccountConfig{}, false
+	}
+	var found config.AccountConfig
+	matches := 0
 	for _, acfg := range am.configs {
 		if acfg.Name == acc.Name {
-			return acfg, true
+			found = acfg
+			matches++
 		}
 	}
-	return config.AccountConfig{}, false
+	return found, matches == 1
 }
 
 func (am AccountManager) statusForeground(chrome managerChrome) lipgloss.Color {
@@ -573,6 +594,9 @@ func (am AccountManager) updateList(msg tea.Msg, keys KeyMap) (AccountManager, t
 		am.mode = amAdd
 		am.editAccountID = 0
 		am.resetForm()
+		// A new account gets its identity here, not at save time, so the OAuth
+		// sign-in that may happen mid-form already keys its token on it.
+		am.editConfigID = config.NewAccountID()
 		am.focusField(amFieldProvider)
 	case keyMatches(km, keys.Edit):
 		if acc := am.selectedAccount(); acc != nil {
@@ -583,7 +607,14 @@ func (am AccountManager) updateList(msg tea.Msg, keys KeyMap) (AccountManager, t
 			if acfg, ok := am.configForAccount(*acc); ok {
 				am.populateFormFrom(acfg)
 			} else {
+				// An account row with no reachable config block — the state that
+				// produced "dial tcp :0". Editing it adopts it under a fresh
+				// identity rather than re-attaching it by name.
+				am.editConfigID = config.NewAccountID()
 				am.nameInput.SetValue(acc.Name)
+			}
+			if am.editConfigID == "" {
+				am.editConfigID = config.NewAccountID()
 			}
 			am.colorIdx = colorIndexForHex(acc.Color)
 		}
@@ -680,7 +711,7 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 		am.oauthRefreshToken = dm.RefreshToken
 		// Drop any cached tokens for this account so the next connect seeds
 		// from the freshly issued refresh token.
-		forgetOAuthToken(provider, strings.TrimSpace(am.nameInput.Value()))
+		forgetOAuthToken(provider, am.buildCfg().SessionKey())
 		am.statusMsg = "SIGNED IN: " + strings.ToUpper(oauthVendor(provider)) + " ACCOUNT LINKED"
 		am.focusField(amFieldFrom)
 		return am, nil, false
@@ -809,7 +840,7 @@ func (am AccountManager) submitForm() (AccountManager, tea.Cmd, bool) {
 	}
 	am.busy = true
 	am.busyMsg = "CONNECTING TO IMAP..."
-	am.statusMsg = ""
+	am.statusMsg = am.duplicateNameWarning(acfg)
 	return am, saveAccountCmd(am.db, acfg, am.editAccountID, color), false
 }
 
@@ -1083,6 +1114,22 @@ func (am AccountManager) validateForm(acfg config.AccountConfig) string {
 	return validateAccountForConnect(acfg)
 }
 
+// duplicateNameWarning reports a display name another account already uses.
+// It is a warning, not a validation failure: accounts are identified by their
+// stable ID, so a shared name is now only confusing to read, never destructive.
+func (am AccountManager) duplicateNameWarning(acfg config.AccountConfig) string {
+	name := strings.TrimSpace(acfg.Name)
+	if name == "" {
+		return ""
+	}
+	for _, other := range am.configs {
+		if other.ID != acfg.ID && strings.EqualFold(strings.TrimSpace(other.Name), name) {
+			return "NOTE: ANOTHER ACCOUNT IS ALSO NAMED " + strings.ToUpper(name)
+		}
+	}
+	return ""
+}
+
 func validateAccountForConnect(acfg config.AccountConfig) string {
 	if acfg.Name == "" {
 		return "NAME IS REQUIRED"
@@ -1115,7 +1162,7 @@ func (am AccountManager) updateConfirmDelete(msg tea.Msg, keys KeyMap) (AccountM
 		if acc := am.selectedAccount(); acc != nil {
 			am.busy = true
 			am.busyMsg = "DELETING..."
-			return am, deleteAccountCmd(am.db, acc.ID, acc.Name), false
+			return am, deleteAccountCmd(am.db, acc.ID, acc.ConfigID, acc.Name), false
 		}
 		am.mode = amList
 	case keyMatches(km, keys.No), keyMatches(km, keys.Cancel):
@@ -1164,6 +1211,7 @@ func (am *AccountManager) advanceField(delta int) {
 }
 
 func (am *AccountManager) resetForm() {
+	am.editConfigID = ""
 	am.provider = "Custom"
 	am.colorIdx = 0
 	am.nameInput.Reset()
@@ -1693,12 +1741,12 @@ func saveAccountCmd(database *db.DB, acfg config.AccountConfig, editID int64, co
 		var accountID int64
 		var err error
 		if editID != 0 {
-			if err = database.UpdateAccount(editID, acfg.Name, color); err != nil {
+			if err = database.UpdateAccount(editID, acfg.ID, acfg.Name, color); err != nil {
 				return AccountSavedMsg{AccountCfg: acfg, Err: fmt.Errorf("update account: %w", err)}
 			}
 			accountID = editID
 		} else {
-			accountID, err = database.AddAccount(acfg.Name, color)
+			accountID, err = database.AddAccount(acfg.ID, acfg.Name, color)
 			if err != nil {
 				return AccountSavedMsg{AccountCfg: acfg, Err: fmt.Errorf("add account: %w", err)}
 			}
@@ -1755,15 +1803,17 @@ func testAccountCmd(acfg config.AccountConfig) tea.Cmd {
 	}
 }
 
-func deleteAccountCmd(database *db.DB, accountID int64, accountName string) tea.Cmd {
+func deleteAccountCmd(database *db.DB, accountID int64, configID, accountName string) tea.Cmd {
 	return func() tea.Msg {
 		err := database.DeleteAccount(accountID)
 		if err == nil {
-			// Don't leave the account's secrets behind for a same-name re-add to
-			// resurrect (fillSecrets keys off the account name).
-			config.DeleteOAuth2Secrets(accountName)
-			config.DeleteAccountPassword(accountName)
+			// Clear both generations of this account's keychain items: the
+			// ID-keyed ones and whatever an older build left under the display
+			// name. Passing the name is safe here only because the caller has
+			// already confirmed this specific account is being removed.
+			config.DeleteOAuth2Secrets(configID, accountName)
+			config.DeleteAccountPassword(configID, accountName)
 		}
-		return AccountDeletedMsg{AccountID: accountID, AccountName: accountName, Err: err}
+		return AccountDeletedMsg{AccountID: accountID, ConfigID: configID, AccountName: accountName, Err: err}
 	}
 }

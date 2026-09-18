@@ -143,10 +143,7 @@ func (p *SessionPool) Close() {
 }
 
 func (p *SessionPool) entry(acfg config.AccountConfig) *session {
-	key := acfg.Name
-	if key == "" {
-		key = acfg.User + "@" + acfg.IMAPHost
-	}
+	key := acfg.SessionKey()
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	s := p.entries[key]
