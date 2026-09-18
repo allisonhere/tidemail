@@ -581,6 +581,9 @@ func TestEnsureIdentityIsIdempotent(t *testing.T) {
 // plain-text part was correct.
 func TestSignatureHTMLKeepsItsLines(t *testing.T) {
 	got := SignatureHTML("-allie\nSent with Tidemail\nhttps://github.com/allisonhere/tidemail")
+	if !strings.HasPrefix(got, "<div>") {
+		t.Fatalf("signature should be a plain block, not a paragraph with margins:\n%s", got)
+	}
 	for _, want := range []string{
 		"-- <br>",
 		"-allie<br>",

@@ -407,9 +407,14 @@ func SignatureHTML(sig string) string {
 	for i, line := range lines {
 		lines[i] = html.EscapeString(line)
 	}
+	// A div rather than a paragraph: <p> carries a margin above as well as
+	// below, which opened a gap visibly wider than the single blank line the
+	// text part has. The preceding paragraph's own bottom margin is the
+	// separation, and this block adds nothing on top of it.
+	//
 	// "-- " on its own line is the standard delimiter; clients use it to fold or
 	// strip the signature, and the trailing space is part of the convention.
-	return "<p>-- <br>\n" + strings.Join(lines, "<br>\n") + "</p>\n"
+	return "<div>-- <br>\n" + strings.Join(lines, "<br>\n") + "</div>\n"
 }
 
 // cleanEmail extracts a bare email address from formats like "user@host" or "Name <user@host>".
