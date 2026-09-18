@@ -130,3 +130,22 @@ func assertNoLineExceeds(t *testing.T, name, body string, width int) {
 		}
 	}
 }
+
+// --preview-manual-update exists so the packaged window can be looked at on a
+// machine that did not install TideMail from a package. If it stops opening
+// that window, or stops faking the owner, the preview is useless.
+func TestManualUpdatePreviewOpensPackagedModal(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "v0.0.38", true)
+	if m.overlay != overlayUpdateConfirm {
+		t.Fatalf("overlay = %v, want the update modal", m.overlay)
+	}
+	if !m.manualUpdateRequired() {
+		t.Fatal("preview must require a manual update")
+	}
+	body := ansi.Strip(m.renderUpdateConfirmOverlay(64, newManagerChrome(64, CatppuccinMocha, true)))
+	for _, want := range []string{"installed by pacman as tidemail-bin", "yay -S tidemail-bin"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("preview modal missing %q:\n%s", want, body)
+		}
+	}
+}

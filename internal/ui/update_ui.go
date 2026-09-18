@@ -188,15 +188,22 @@ func (m *Model) syncSettingsUpdateState() {
 	m.settings.setUpdateState(m.settingsUpdateState())
 }
 
+// applyManualUpdatePreview stages the update a package-managed install cannot
+// apply itself, and opens the window it gets instead. That window is otherwise
+// only reachable on a machine where a distro package really does own the
+// binary, which makes it the one piece of the update UI nobody can check while
+// working on it. The state it leaves behind is the real thing, so closing the
+// window and opening Settings > Updates previews that side too.
 func (m *Model) applyManualUpdatePreview() {
 	pub := time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC)
 	now := time.Now()
 	m.currentVersion = "v0.0.38"
-	m.updateState = updateStateNeedsElevation
+	m.updateState = updateStateAvailable
 	m.updateInfo = update.ReleaseInfo{
 		Version:     "v0.0.39",
 		PublishedAt: pub,
-		Summary:     "## Tide v0.0.39",
+		Summary:     "Accounts keep their own settings and credentials.",
+		AssetName:   "tidemail-linux-x86_64",
 	}
 	m.updateInfoFresh = true
 	m.updateErr = ""
@@ -205,14 +212,22 @@ func (m *Model) applyManualUpdatePreview() {
 	m.downloadedUpdate = nil
 	m.updateInstall = update.InstallResult{
 		RequiresManual: true,
-		ManualCommand:  update.SuggestedManualInstallScript,
+		ManualCommand:  "yay -S tidemail-bin",
+	}
+	// Name a package the preview machine almost certainly does not have, so the
+	// wording an AUR user sees is what renders rather than the generic
+	// "cannot write to its install location" fallback.
+	m.previewPackageOwner = &update.PackageInstall{
+		Manager: "pacman",
+		Package: "tidemail-bin",
+		Foreign: true,
 	}
 	m.cfg.Updates.LastCheckedUnix = now.Unix()
 	m.settings = newSettings(m.cfg, m.settingsUpdateState())
 	m.settings.setFocusedPane(settingsPaneDetail)
 	m.settings.setActiveSection(ssUpdates)
 	m.settings.setFocusedField(sfUpdateManualCommand)
-	m.overlay = overlaySettings
+	m.overlay = overlayUpdateConfirm
 }
 
 func (m *Model) ApplyUpdateProgressPreview() {

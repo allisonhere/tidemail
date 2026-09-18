@@ -420,7 +420,11 @@ func (m Model) renderUpdatePanel(width int, chrome managerChrome, p updatePanel)
 // It returns detail lines rather than one string so a long install path lands on
 // its own line: wrapped mid-sentence it strands the punctuation after it.
 func (m Model) manualUpdateReason() []string {
-	if pkg, ok := update.OwningPackageInstall(); ok {
+	pkg, ok := update.OwningPackageInstall()
+	if m.previewPackageOwner != nil {
+		pkg, ok = *m.previewPackageOwner, true
+	}
+	if ok {
 		return []string{"TideMail was installed by " + pkg.Manager + " as " + pkg.Package +
 			", so it cannot replace its own binary."}
 	}

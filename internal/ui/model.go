@@ -293,6 +293,10 @@ type Model struct {
 	quitActivated   bool
 
 	previewManualUpdateUI bool
+	// previewPackageOwner fakes the package that owns the binary, so
+	// --preview-manual-update can show the packaged wording on a machine that
+	// did not install TideMail from a package. Nil everywhere else.
+	previewPackageOwner *update.PackageInstall
 
 	summarizer        ai.Summarizer
 	summaryMessage    db.Message
