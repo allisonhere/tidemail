@@ -2069,6 +2069,18 @@ func (s Settings) renderValueRow(label, value string, focused bool, width int, c
 // rowContentW is the usable width for this row; the box is drawn 5 cells narrower than that so it does not span the full detail width.
 func (s Settings) manualInstallCommandLines(rowContentW int, command string, focused bool, chrome managerChrome) []string {
 	labelRow := s.renderFieldLabel("Copy Command", focused, rowContentW, chrome) + s.renderBadge("COPY", focused, chrome)
+	lines := []string{labelRow}
+	// The -5 keeps the box clear of the settings row's own chrome; the modal
+	// has none and passes its full content width.
+	lines = append(lines, strings.Split(renderShellCommandBox(max(1, rowContentW-5), command, focused, chrome), "\n")...)
+	return lines
+}
+
+// renderShellCommandBox draws a shell command in a bordered, syntax-highlighted
+// code block of the given outer width. Settings and the update modal both show
+// commands the user is meant to run elsewhere, and they should look identical
+// when they do.
+func renderShellCommandBox(boxW int, command string, focused bool, chrome managerChrome) string {
 	borderFg := lipgloss.Color("#2a2a2a")
 	if focused {
 		borderFg = chrome.highlight
@@ -2079,7 +2091,7 @@ func (s Settings) manualInstallCommandLines(rowContentW int, command string, foc
 	urlFg := lipgloss.Color("#f9e2af")
 	pipeFg := lipgloss.Color("#89dceb")
 	defFg := lipgloss.Color("#e8e8e8")
-	boxW := max(1, rowContentW-5)
+	boxW = max(1, boxW)
 	// Border (2) + horizontal padding (2+2).
 	innerTextW := max(1, boxW-6)
 	wrapped := wrapShellCommand(command, innerTextW)
@@ -2089,7 +2101,7 @@ func (s Settings) manualInstallCommandLines(rowContentW int, command string, foc
 		styledLines = append(styledLines, padStyledCodeLine(lineStyled, codeBg, innerTextW))
 	}
 	inner := lipgloss.JoinVertical(lipgloss.Left, styledLines...)
-	box := lipgloss.NewStyle().
+	return lipgloss.NewStyle().
 		Background(codeBg).
 		Border(lipPaneBorder(chrome.plainUI)).
 		BorderForeground(borderFg).
@@ -2097,9 +2109,6 @@ func (s Settings) manualInstallCommandLines(rowContentW int, command string, foc
 		Width(boxW).
 		Align(lipgloss.Left).
 		Render(inner)
-	lines := []string{labelRow}
-	lines = append(lines, strings.Split(box, "\n")...)
-	return lines
 }
 
 func styleShellCommandLine(line string, bg, kwFg, flagFg, urlFg, pipeFg, defFg lipgloss.Color) string {

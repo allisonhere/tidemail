@@ -293,6 +293,10 @@ type Model struct {
 	quitActivated   bool
 
 	previewManualUpdateUI bool
+	// previewPackageOwner fakes the package that owns the binary, so
+	// --preview-manual-update can show the packaged wording on a machine that
+	// did not install TideMail from a package. Nil everywhere else.
+	previewPackageOwner *update.PackageInstall
 
 	summarizer        ai.Summarizer
 	summaryMessage    db.Message
@@ -2072,7 +2076,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case msg.String() == "U":
-		if m.showAvailableUpdatePrompt() && strings.TrimSpace(m.effectiveManualCommand()) == "" {
+		if m.showAvailableUpdatePrompt() {
 			m.overlay = overlayUpdateConfirm
 			return m, nil
 		}
@@ -2488,7 +2492,18 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		if m.updateState == updateStateNeedsElevation {
+		if m.updateState == updateStateNeedsElevation || m.manualUpdateRequired() {
+			// Deliberately ahead of the default branch below, which treats enter
+			// as "begin install" — there is nothing to install on this path.
+			// renderSoftHints lowercases what it shows, so the hint reads "c
+			// copy" while CopyText is bound to "C". Accept both, as the
+			// settings field does, rather than advertise a key that misses.
+			if keyMatches(msg, m.keys.CopyText) || msg.String() == "c" {
+				if cmd := strings.TrimSpace(m.updateManualCommand()); cmd != "" {
+					return m, clipboardWriteCmd(cmd)
+				}
+				return m, nil
+			}
 			if keyMatches(msg, m.keys.Confirm, m.keys.Cancel) {
 				m.overlay = overlayNone
 			}
@@ -3128,14 +3143,22 @@ func (m Model) statusUpdateInfoPart() string {
 	return ""
 }
 
+// manualUpdateRequired reports that this install cannot replace its own binary —
+// a distro package owns it, or the install path is not writable — so updating
+// means running a command outside TideMail.
+func (m Model) manualUpdateRequired() bool {
+	return strings.TrimSpace(m.effectiveManualCommand()) != ""
+}
+
 func (m Model) statusUpdateActionPart() string {
 	if !m.showAvailableUpdatePrompt() {
 		return ""
 	}
-	if strings.TrimSpace(m.effectiveManualCommand()) != "" {
-		return m.styles.StatusNotice.Render("App update available  i ignore")
-	}
-	return m.styles.StatusNotice.Render("App update available  U install  i ignore")
+	// One offer for both install types. U used to be hidden when an update had
+	// to be applied by hand, which left package-managed users with no signal
+	// that a path existed at all. "update" rather than "install" because the
+	// packaged path hands over a command instead of installing anything.
+	return m.styles.StatusNotice.Render("App update available  U update  i ignore")
 }
 
 func (m Model) statusMsgCoversUpdateState() bool {
