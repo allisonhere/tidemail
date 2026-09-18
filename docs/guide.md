@@ -268,6 +268,17 @@ signature = "Alice\nSent with TideMail"
 sync_minutes = 0  # 0 = push (IDLE), N = poll every N min, -1 = manual only
 ```
 
+The signature is a multi-line box in the account form — press `Enter` for a new
+line, `Tab` to move on, and `Ctrl+S` to save without leaving it. Arrow keys walk
+its lines and step to the next field at the top and bottom. Editing the file by
+hand works too; a TOML multi-line string is easier to read than escapes:
+
+```toml
+signature = """
+Alice
+Sent with TideMail"""
+```
+
 `auth_method` is set for you: it becomes `"oauth2"` once you complete a `Ctrl+O`
 sign-in for a Gmail/Outlook account, otherwise `"password"`. The refresh token
 and password live in the system keychain, not this file. An account never

@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -283,7 +284,7 @@ type AccountManager struct {
 	passInput     textinput.Model
 	fromInput     textinput.Model
 	syncInput     textinput.Model
-	sigInput      textinput.Model
+	sigArea       textarea.Model
 
 	provider      string
 	focusedField  amField
@@ -334,10 +335,26 @@ func NewAccountManager(database *db.DB) AccountManager {
 	am.passInput = newAMInput("password", true)
 	am.fromInput = newAMInput("Your Name <you@example.com>", false)
 	am.syncInput = newAMInput("0 = push", false)
-	am.sigInput = newAMInput(`signature (\n for a new line)`, false)
+	am.sigArea = newAMSigArea()
 	am.oauthCodeInput = newAMInput("code, or full browser redirect URL", false)
 	am.oauthCodeInput.CharLimit = 2048 // a pasted redirect URL is long
 	return am
+}
+
+// newAMSigArea builds the signature field. It is a textarea rather than a
+// single-line input because a signature is usually several lines, and the old
+// field made people type a literal \n escape to get one — a convention to learn,
+// and an awkward key to reach on a Nordic layout.
+const signatureFieldHeight = 4
+
+func newAMSigArea() textarea.Model {
+	ta := textarea.New()
+	ta.Placeholder = "signature (enter for a new line)"
+	ta.ShowLineNumbers = false
+	ta.CharLimit = 2048
+	ta.SetHeight(signatureFieldHeight)
+	ta.Prompt = ""
+	return ta
 }
 
 func newAMInput(placeholder string, password bool) textinput.Model {
@@ -369,7 +386,7 @@ func (am *AccountManager) focusField(f amField) {
 	am.passInput.Blur()
 	am.fromInput.Blur()
 	am.syncInput.Blur()
-	am.sigInput.Blur()
+	am.sigArea.Blur()
 	am.oauthCodeInput.Blur()
 	switch f {
 	case amFieldName:
@@ -395,7 +412,7 @@ func (am *AccountManager) focusField(f amField) {
 	case amFieldSyncInterval:
 		am.syncInput.Focus()
 	case amFieldSignature:
-		am.sigInput.Focus()
+		_ = am.sigArea.Focus()
 	}
 }
 
@@ -419,7 +436,7 @@ func (am *AccountManager) populateFormFrom(acfg config.AccountConfig) {
 	am.fromInput.SetValue(acfg.From)
 	am.syncInput.SetValue(strconv.Itoa(acfg.SyncMinutes))
 	// The form is single-line; real newlines round-trip as literal \n escapes.
-	am.sigInput.SetValue(strings.ReplaceAll(acfg.Signature, "\n", `\n`))
+	am.sigArea.SetValue(acfg.Signature)
 	// Auth method comes from the explicit marker, never from "a token exists".
 	am.useOAuth = acfg.AuthMethod == config.AuthOAuth2
 	// Carry the existing refresh token so buildCfg preserves OAuth on save.
@@ -455,7 +472,7 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 		Password:    am.passInput.Value(),
 		From:        strings.TrimSpace(am.fromInput.Value()),
 		SyncMinutes: func() int { n, _ := parseSyncMinutes(am.syncInput.Value()); return n }(),
-		Signature:   strings.ReplaceAll(strings.TrimSpace(am.sigInput.Value()), `\n`, "\n"),
+		Signature:   strings.TrimSpace(am.sigArea.Value()),
 	}
 	if preset, ok := providerPresets[am.provider]; ok {
 		cfg.IMAPHost = preset.IMAPHost
@@ -650,7 +667,7 @@ func (am *AccountManager) updateFocusedInput(msg tea.Msg) tea.Cmd {
 	case amFieldSyncInterval:
 		am.syncInput, cmd = am.syncInput.Update(msg)
 	case amFieldSignature:
-		am.sigInput, cmd = am.sigInput.Update(msg)
+		am.sigArea, cmd = am.sigArea.Update(msg)
 	}
 	return cmd
 }
@@ -756,8 +773,16 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 	case keyMatches(km, keys.Tab):
 		am.advanceField(1)
 	case am.formNavMatches(km, keys.Down):
+		// The signature is the one field with lines of its own, so down walks
+		// them first and only leaves from the last one. Tab always leaves.
+		if am.signatureCursorCanMove(1) {
+			return am, am.updateFocusedInput(msg), false
+		}
 		am.advanceField(1)
 	case am.formNavMatches(km, keys.Up):
+		if am.signatureCursorCanMove(-1) {
+			return am, am.updateFocusedInput(msg), false
+		}
 		am.advanceField(-1)
 	case am.focusedField == amFieldProvider && (keyMatches(km, keys.Left) || keyMatches(km, keys.Right)):
 		for i, p := range providerList {
@@ -813,6 +838,10 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 			}
 		}
 		if keyMatches(km, keys.Confirm) {
+			if am.focusedField == amFieldSignature {
+				// The whole point of the multi-line field: enter makes a line.
+				return am, am.updateFocusedInput(msg), false
+			}
 			if am.focusedField == amFieldOAuthSignIn {
 				return am.startOAuthSignIn()
 			}
@@ -1078,6 +1107,18 @@ func (am AccountManager) formNavMatches(km tea.KeyMsg, b key.Binding) bool {
 
 // focusedIsTextInput reports whether the focused form row is a free-text input
 // (as opposed to a picker/toggle/button row).
+// signatureCursorCanMove reports whether the signature box still has a line to
+// move to in that direction, so up and down stay inside it until its edges.
+func (am AccountManager) signatureCursorCanMove(delta int) bool {
+	if am.focusedField != amFieldSignature {
+		return false
+	}
+	if delta < 0 {
+		return am.sigArea.Line() > 0
+	}
+	return am.sigArea.Line() < am.sigArea.LineCount()-1
+}
+
 func (am AccountManager) focusedIsTextInput() bool {
 	switch am.focusedField {
 	case amFieldProvider, amFieldColor, amFieldAuthMethod, amFieldIMAPTLS, amFieldSMTPTLS, amFieldOAuthSignIn:
@@ -1224,6 +1265,8 @@ func (am *AccountManager) resetForm() {
 	am.userInput.Reset()
 	am.passInput.Reset()
 	am.fromInput.Reset()
+	am.sigArea.Reset()
+	am.syncInput.SetValue("0")
 	am.cancelOAuth()
 	am.oauthSignedIn = false
 	am.oauthRefreshToken = ""
@@ -1656,9 +1699,56 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 			}
 		}
 	}
+	// sigRow is row()'s multi-line sibling: the label column repeats down the
+	// left of the box so the field reads as one control rather than four rows.
+	sigRow := func(label string, ta textarea.Model, focused bool) string {
+		bg := chrome.surfaceBg
+		if focused {
+			bg = chrome.fieldBg
+		}
+		labelFg := chrome.muted
+		if focused {
+			labelFg = chrome.text
+		}
+		style := func(base lipgloss.Style) lipgloss.Style { return base.Background(bg) }
+		for _, st := range []*textarea.Style{&ta.FocusedStyle, &ta.BlurredStyle} {
+			st.Base = style(lipgloss.NewStyle())
+			st.Text = style(lipgloss.NewStyle()).Foreground(chrome.text)
+			st.Placeholder = style(lipgloss.NewStyle()).Foreground(chrome.muted)
+			st.CursorLine = style(lipgloss.NewStyle())
+			st.EndOfBuffer = style(lipgloss.NewStyle()).Foreground(bg)
+			st.Prompt = style(lipgloss.NewStyle())
+		}
+		ta.SetWidth(fieldW)
+		ta.SetHeight(signatureFieldHeight)
+
+		labelCellStyle := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(labelFg).Width(max(1, labelW-2)).Padding(0, 1)
+		leftLines := make([]string, 0, signatureFieldHeight)
+		for i := 0; i < signatureFieldHeight; i++ {
+			text := ""
+			if i == 0 {
+				text = label
+			}
+			leftLines = append(leftLines, rail(focused)+labelCellStyle.Render(text))
+		}
+		fieldLines := strings.Split(ta.View(), "\n")
+		rightLines := make([]string, 0, signatureFieldHeight)
+		for i := 0; i < signatureFieldHeight; i++ {
+			line := ""
+			if i < len(fieldLines) {
+				line = fieldLines[i]
+			}
+			rightLines = append(rightLines, lipgloss.NewStyle().Background(bg).Width(fieldW).Render(truncateStyled(line, fieldW, bg)))
+		}
+		return lipgloss.JoinHorizontal(lipgloss.Top,
+			lipgloss.JoinVertical(lipgloss.Left, leftLines...),
+			lipgloss.JoinVertical(lipgloss.Left, rightLines...),
+		)
+	}
+
 	addSection("Sending identity")
 	addControl(amFieldFrom, row("From", am.fromInput, am.focusedField == amFieldFrom))
-	addControl(amFieldSignature, row("Signature", am.sigInput, am.focusedField == amFieldSignature))
+	addControl(amFieldSignature, sigRow("Signature", am.sigArea, am.focusedField == amFieldSignature))
 	addSection("Sync")
 	addControl(amFieldSyncInterval, row("Refresh", am.syncInput, am.focusedField == amFieldSyncInterval))
 	addHint("0 = push (IMAP IDLE) · -1 = manual only")

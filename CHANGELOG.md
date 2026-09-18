@@ -4,6 +4,15 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- **The signature field takes real lines now.** It was a single-line box that
+  made you type a literal `\n` where you wanted a line break — a convention to
+  learn, and an awkward key to reach on a Nordic keyboard. It is a four-line box:
+  `Enter` starts a line, arrow keys walk them and step to the next field at the
+  top and bottom, `Tab` moves on from anywhere, and `Ctrl+S` still saves. Existing
+  signatures appear as the lines they already were.
+
 ### Fixed
 
 - **Upgrading no longer duplicates every account.** A TideMail older than
@@ -13,6 +22,8 @@ All notable changes to TideMail are documented in this file.
   imported the whole account list again, once per restart. It now reconnects the
   existing rows instead, keeping their cached mail, and only creates an account
   when there is genuinely nothing to reconnect to.
+- **Adding an account after editing one no longer inherits its signature** or
+  refresh interval; the form was not clearing either.
 
 ## v1.0.21
 
