@@ -226,6 +226,45 @@ func (m Model) focusedLineLink() (string, bool) {
 	return "", false
 }
 
+// viewportContentKey builds the cache key for the reading pane. It covers the
+// item shown plus every setting that changes how it is laid out, so a hit is
+// only ever returned for an identical render.
+func (m Model) viewportContentKey(id string, fingerprint int) viewportCacheKey {
+	return viewportCacheKey{
+		id:              id,
+		width:           m.contentBodyWidth(),
+		paneWidth:       m.contentPaneContentWidth(),
+		theme:           m.styles.Theme.Name,
+		plainUI:         m.styles.PlainUI,
+		filterLinks:     m.cfg.Display.FilterLinks,
+		showHeaders:     m.contentShowHeaders,
+		quotesCollapsed: m.contentQuotesCollapsed,
+		actionableLinks: m.actionableLinksEnabled(),
+		fingerprint:     fingerprint,
+	}
+}
+
+// viewportContentFor returns the finished reading-pane content, rendering it
+// only when this exact view has not been built before. Laying out a message
+// costs milliseconds even with its body already rendered — mostly ansi width
+// scans over the whole content — and moving the cursor back onto a message
+// should not pay for it twice.
+func (m *Model) viewportContentFor(key viewportCacheKey, render func() string) viewportContent {
+	if vc, ok := m.viewportCache.get(key); ok {
+		return vc
+	}
+	content := render()
+	lines, lineLinks := contentDisplayLines(content)
+	vc := viewportContent{
+		content:   content,
+		lines:     lines,
+		lineLinks: lineLinks,
+		focusable: focusableFromLines(lines),
+	}
+	m.viewportCache.put(key, vc)
+	return vc
+}
+
 func (m *Model) setViewportMessage(msg db.Message) {
 	sameMsg := m.contentMessageID == msg.ID && m.contentLineCount > 0
 	m.syncContentLinks(msg)
@@ -241,14 +280,18 @@ func (m *Model) setViewportMessage(msg db.Message) {
 			m.contentAttachments = atts
 		}
 	}
-	content := m.renderMessageContent(msg)
-	m.contentSearchMatches = collectSearchMatches(content, m.contentSearchQuery)
-	m.viewport.SetContent(content)
+	key := m.viewportContentKey(
+		fmt.Sprintf("msg:%d", msg.ID),
+		len(msg.BodyHTML)+len(msg.BodyText)+len(m.contentAttachments),
+	)
+	vc := m.viewportContentFor(key, func() string { return m.renderMessageContent(msg) })
+	m.contentSearchMatches = collectSearchMatches(vc.content, m.contentSearchQuery)
+	m.viewport.SetContent(vc.content)
 	m.contentMessageID = msg.ID
 	m.contentDraftID = 0
-	m.contentLines, m.contentLineLinks = contentDisplayLines(content)
+	m.contentLines, m.contentLineLinks = vc.lines, vc.lineLinks
 	m.contentLineCount = len(m.contentLines)
-	m.contentFocusable = messageFocusableLines(content)
+	m.contentFocusable = vc.focusable
 	m.contentFocusLine = clamp(m.contentFocusLine, 0, max(0, m.contentLineCount-1))
 	if !sameMsg {
 		m.contentFocusLine = firstFocusableLine(m.contentFocusable)
@@ -337,7 +380,7 @@ func (m *Model) setViewportDraft(d db.Draft) {
 	m.contentDraftID = d.ID
 	m.contentLines, m.contentLineLinks = contentDisplayLines(content)
 	m.contentLineCount = len(m.contentLines)
-	m.contentFocusable = messageFocusableLines(content)
+	m.contentFocusable = focusableFromLines(m.contentLines)
 	m.contentFocusLine = clamp(m.contentFocusLine, 0, max(0, m.contentLineCount-1))
 	if !sameDraft {
 		m.contentFocusLine = firstFocusableLine(m.contentFocusable)
@@ -355,14 +398,19 @@ func (m *Model) setViewportThread(thread messageThread) {
 	if !sameMsg {
 		m.contentQuotesCollapsed = false
 	}
-	content := m.renderThreadContent(thread)
-	m.contentSearchMatches = collectSearchMatches(content, m.contentSearchQuery)
-	m.viewport.SetContent(content)
+	fingerprint := len(thread.Messages)
+	for _, tm := range thread.Messages {
+		fingerprint += len(tm.BodyHTML) + len(tm.BodyText)
+	}
+	key := m.viewportContentKey("thread:"+thread.Key, fingerprint)
+	vc := m.viewportContentFor(key, func() string { return m.renderThreadContent(thread) })
+	m.contentSearchMatches = collectSearchMatches(vc.content, m.contentSearchQuery)
+	m.viewport.SetContent(vc.content)
 	m.contentMessageID = rep.ID
 	m.contentDraftID = 0
-	m.contentLines, m.contentLineLinks = contentDisplayLines(content)
+	m.contentLines, m.contentLineLinks = vc.lines, vc.lineLinks
 	m.contentLineCount = len(m.contentLines)
-	m.contentFocusable = messageFocusableLines(content)
+	m.contentFocusable = vc.focusable
 	m.contentFocusLine = clamp(m.contentFocusLine, 0, max(0, m.contentLineCount-1))
 	if !sameMsg {
 		m.contentFocusLine = firstFocusableLine(m.contentFocusable)

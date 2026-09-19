@@ -220,6 +220,15 @@ type Model struct {
 	activeTheme    int
 	styles         Styles
 	themeCursor    int
+	// bodyCache memoises rendered message bodies and viewportCache the
+	// finished reading-pane content. Held by pointer so writes survive
+	// Model's value receivers.
+	bodyCache     *boundedCache[bodyCacheKey, messageRenderResult]
+	viewportCache *boundedCache[viewportCacheKey, viewportContent]
+	// draftCounts holds the sidebar drafts badge per mailbox. Computed on
+	// data change in rebuildSidebar, because working it out costs two SQLite
+	// queries and the renderer must not touch the database.
+	draftCounts map[int64]int64
 	// omarchySig is the last-seen Omarchy theme signature, used by the
 	// "match-omarchy" live-follow poll to detect desktop theme changes.
 	omarchySig string
@@ -372,6 +381,8 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		omarchySig:             omarchySignature(),
 		omarchyWatchGeneration: 1,
 		styles:                 BuildStyles(merged, cfg.Display.Density, cfg.Display.PaneCorners),
+		bodyCache:              newBoundedCache[bodyCacheKey, messageRenderResult](defaultBodyCacheLimit),
+		viewportCache:          newBoundedCache[viewportCacheKey, viewportContent](defaultViewportCacheLimit),
 		accountManager:         NewAccountManager(database),
 		searchInput:            si,
 		helpSearchInput:        hsi,
@@ -2143,17 +2154,17 @@ func (m Model) focusPane(next pane) (tea.Model, tea.Cmd) {
 		m.focused = paneMessages
 		return m, nil
 	}
+	// No re-render on a focus change. The body is identical in both focus
+	// states — the focus-dependent chrome (rails, focus line) is drawn from
+	// m.focused at render time — and re-rendering it made Tab pay for a full
+	// HTML render of every message in the thread.
 	if wasMessages && next == paneContent {
 		if msg := m.currentRowMessage(); msg != nil {
-			// Re-render so focus-dependent chrome (rails, focus line) updates.
-			// The body itself renders identically in both focus states.
-			m.setViewportForCurrentRow()
 			return m, m.openedMessageCmd(*msg)
 		}
 	}
 	if !wasMessages && next == paneMessages {
 		if msg := m.currentRowMessage(); msg != nil {
-			m.setViewportForCurrentRow()
 			return m, m.focusedMessageChangedCmd(*msg)
 		}
 	}
@@ -2352,7 +2363,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.themeCursor > 0 {
 				m.themeCursor--
 				m.activeTheme = m.themeCursor
-				m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners)
+				m.setStyles(BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners))
 				if m.activeMessageRowCount() > 0 {
 					m.setViewportForCurrentRow()
 				}
@@ -2361,7 +2372,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.themeCursor < len(PickableThemes())-1 {
 				m.themeCursor++
 				m.activeTheme = m.themeCursor
-				m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners)
+				m.setStyles(BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners))
 				if m.activeMessageRowCount() > 0 {
 					m.setViewportForCurrentRow()
 				}
@@ -2377,7 +2388,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case keyMatches(msg, m.keys.Cancel):
 			m.activeTheme = m.confirmedTheme
-			m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners)
+			m.setStyles(BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners))
 			m.overlay = overlayNone
 			if m.activeMessageRowCount() > 0 {
 				m.setViewportForCurrentRow()
@@ -2572,7 +2583,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, cfgThemeIdx := ThemeByName(m.cfg.Theme)
 	previewingTheme := m.settings.themeIdx != cfgThemeIdx
 	if tickChanged && !done {
-		m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.settings.themeIdx), m.cfg.Display.Density, m.cfg.Display.PaneCorners)
+		m.setStyles(BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.settings.themeIdx), m.cfg.Display.Density, m.cfg.Display.PaneCorners))
 		if m.activeMessageRowCount() > 0 {
 			m.setViewportForCurrentRow()
 		}
@@ -2644,7 +2655,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Apply the vim toggle to future compose editors (read in newEditorArea).
 			setEditorVimMode(m.cfg.Display.ComposeVim)
 			merged, _ := MergedThemeFromConfig(m.cfg)
-			m.styles = BuildStyles(merged, m.cfg.Display.Density, m.cfg.Display.PaneCorners)
+			m.setStyles(BuildStyles(merged, m.cfg.Display.Density, m.cfg.Display.PaneCorners))
 			if ThemeUsesASCII(merged.Name) {
 				m.spinner.Spinner = spinner.Line
 			} else {
@@ -2666,7 +2677,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.overlay = overlayNone
 		if previewingTheme {
 			merged, _ := MergedThemeFromConfig(m.cfg)
-			m.styles = BuildStyles(merged, m.cfg.Display.Density, m.cfg.Display.PaneCorners)
+			m.setStyles(BuildStyles(merged, m.cfg.Display.Density, m.cfg.Display.PaneCorners))
 			if m.activeMessageRowCount() > 0 {
 				m.setViewportForCurrentRow()
 			}
@@ -3222,11 +3233,43 @@ func (m *Model) ensureSpinner() tea.Cmd {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// refreshDraftCounts recomputes the sidebar drafts badges. It runs on data
+// change rather than during rendering: each count is two SQLite queries, one
+// of them a correlated subquery, and the pool is a single connection — so
+// doing this per frame put database round-trips on the draw path.
+func (m *Model) refreshDraftCounts() {
+	if m.db == nil {
+		m.draftCounts = nil
+		return
+	}
+	counts := make(map[int64]int64, 4)
+	for _, mb := range m.mailboxes {
+		if !m.isDraftsMailbox(mb) {
+			continue
+		}
+		if n := m.draftsSidebarCount(mb); n > 0 {
+			counts[mb.ID] = n
+		}
+	}
+	m.draftCounts = counts
+}
+
+// setStyles swaps the active styles and drops the render caches. Their keys
+// carry the theme name, but a theme can change without changing its name —
+// the Omarchy live-follow rebuilds colours under a fixed name — so the name
+// alone cannot catch it, and density or corner changes reshape layout too.
+func (m *Model) setStyles(s Styles) {
+	m.styles = s
+	m.bodyCache.clear()
+	m.viewportCache.clear()
+}
+
 func (m *Model) rebuildSidebar() {
 	// config.toml order is the one order everything shows; the database's
 	// position column is only insertion order.
 	m.accounts = sortAccountsByConfigOrder(m.accounts, m.cfg.Accounts)
 	m.sidebarRows = buildSidebarRows(m.accounts, m.mailboxes, m.collapsedAccounts, m.collapsedSections)
+	m.refreshDraftCounts()
 	m.sidebarCursor = clamp(m.sidebarCursor, 0, max(0, len(m.sidebarRows)-1))
 	m.clampSidebarOffset()
 }

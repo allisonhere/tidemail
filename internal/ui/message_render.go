@@ -25,6 +25,27 @@ type messageRenderResult struct {
 type messageRenderer func(messageRenderContext) messageRenderResult
 
 func (m Model) renderMessageForDisplay(msg db.Message, width int) messageRenderResult {
+	key := bodyCacheKey{
+		messageID:   msg.ID,
+		width:       width,
+		theme:       m.styles.Theme.Name,
+		plainUI:     m.styles.PlainUI,
+		filterLinks: m.cfg.Display.FilterLinks,
+		fingerprint: len(msg.BodyHTML) + len(msg.BodyText),
+	}
+	// A message with no ID has no stable identity to cache under — a preview
+	// of something not yet stored — so it always renders fresh.
+	cacheable := msg.ID != 0
+	if cacheable {
+		if res, ok := m.bodyCache.get(key); ok {
+			// Hand back a copy of the links: callers merge and filter them,
+			// and a shared backing array would let one caller's edits reach
+			// the cached result.
+			res.links = append([]string(nil), res.links...)
+			return res
+		}
+	}
+
 	ctx := messageRenderContext{
 		msg:         msg,
 		width:       width,
@@ -36,6 +57,11 @@ func (m Model) renderMessageForDisplay(msg db.Message, width int) messageRenderR
 	result := renderMessageWithContext(ctx)
 	if len(result.links) == 0 {
 		result.links = collectMessageLinks(msg)
+	}
+	if cacheable {
+		stored := result
+		stored.links = append([]string(nil), result.links...)
+		m.bodyCache.put(key, stored)
 	}
 	return result
 }

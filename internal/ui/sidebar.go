@@ -567,7 +567,7 @@ func (m Model) renderUnifiedInboxRow(selected bool, width int) string {
 func (m Model) renderSidebarMailboxRow(mb db.Mailbox, selected bool, width int) string {
 	badge := ""
 	if m.isDraftsMailbox(mb) {
-		if count := m.draftsSidebarCount(mb); count > 0 {
+		if count := m.draftCounts[mb.ID]; count > 0 {
 			badge = m.mailboxBadgeStyle(mb, selected).Render(fmt.Sprintf("(%d)", count))
 		}
 	} else if unread := m.displayMailboxUnreadCount(mb); unread > 0 {
