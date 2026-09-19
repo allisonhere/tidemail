@@ -89,7 +89,7 @@ func TestComposeActionsWrapInNarrowView(t *testing.T) {
 }
 
 func TestComposeTabAdvancesAfterAcceptingRecipientSuggestion(t *testing.T) {
-	c := NewCompose(config.AccountConfig{}, nil, []string{"Alice <alice@example.com>"})
+	c := focusToField(NewCompose(config.AccountConfig{}, nil, []string{"Alice <alice@example.com>"}))
 
 	var cmd tea.Cmd
 	c, cmd, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ali"), Paste: true}, DefaultKeys)
@@ -111,7 +111,7 @@ func TestComposeTabAdvancesAfterAcceptingRecipientSuggestion(t *testing.T) {
 }
 
 func TestComposeTabAdvancesAfterAcceptingCCSuggestion(t *testing.T) {
-	c := NewCompose(config.AccountConfig{}, nil, []string{"Carol <carol@example.com>"})
+	c := focusToField(NewCompose(config.AccountConfig{}, nil, []string{"Carol <carol@example.com>"}))
 	c.advanceField(1)
 
 	var cmd tea.Cmd
@@ -130,7 +130,7 @@ func TestComposeTabAdvancesAfterAcceptingCCSuggestion(t *testing.T) {
 }
 
 func TestComposeMultiRecipientSegmentCompletion(t *testing.T) {
-	c := NewCompose(config.AccountConfig{}, nil, []string{"Bob <bob@example.com>"})
+	c := focusToField(NewCompose(config.AccountConfig{}, nil, []string{"Bob <bob@example.com>"}))
 
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("alice@x.com, bo"), Paste: true}, DefaultKeys)
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyTab}, DefaultKeys)
@@ -145,7 +145,7 @@ func TestComposeMultiRecipientSegmentCompletion(t *testing.T) {
 
 func TestComposeDropdownNavigationEnterSelectsAndStays(t *testing.T) {
 	book := []string{"Alice <alice@example.com>", "Alicia <alicia@example.com>"}
-	c := NewCompose(config.AccountConfig{}, nil, book)
+	c := focusToField(NewCompose(config.AccountConfig{}, nil, book))
 
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ali"), Paste: true}, DefaultKeys)
 	if len(c.suggestions) != 2 {
@@ -172,7 +172,7 @@ func TestComposeDropdownNavigationEnterSelectsAndStays(t *testing.T) {
 }
 
 func TestComposeEscDismissesDropdownWithoutClosing(t *testing.T) {
-	c := NewCompose(config.AccountConfig{}, nil, []string{"Alice <alice@example.com>"})
+	c := focusToField(NewCompose(config.AccountConfig{}, nil, []string{"Alice <alice@example.com>"}))
 
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ali"), Paste: true}, DefaultKeys)
 	if !c.suggestionsVisible() {
@@ -195,7 +195,7 @@ func TestComposeEscDismissesDropdownWithoutClosing(t *testing.T) {
 }
 
 func TestComposeNoSuggestionsForEmptySegmentOrExactMatch(t *testing.T) {
-	c := NewCompose(config.AccountConfig{}, nil, []string{"Alice <alice@example.com>"})
+	c := focusToField(NewCompose(config.AccountConfig{}, nil, []string{"Alice <alice@example.com>"}))
 	if c.suggestionsVisible() {
 		t.Fatal("expected no dropdown before typing")
 	}
@@ -204,6 +204,12 @@ func TestComposeNoSuggestionsForEmptySegmentOrExactMatch(t *testing.T) {
 	if c.suggestionsVisible() {
 		t.Fatalf("expected no dropdown for an exact match, got %v", c.suggestions)
 	}
+}
+
+// focusToField steps from the From row compose now opens on to the To field.
+func focusToField(c ComposeModel) ComposeModel {
+	c.advanceField(1)
+	return c
 }
 
 func composeSenderAccounts() []config.AccountConfig {
@@ -217,11 +223,9 @@ func TestComposeSenderDropdownSelectsAndCancels(t *testing.T) {
 	accounts := composeSenderAccounts()
 	c := NewCompose(accounts[0], accounts, nil)
 
-	// From is immediately before To, so reverse-tab reaches it without making
-	// new-message compose start anywhere other than the recipient field.
-	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyShiftTab}, DefaultKeys)
+	// Compose opens on From, so the picker is one keypress away.
 	if c.focusedField != composeFieldFrom {
-		t.Fatalf("expected shift+tab from To to focus From, got %v", c.focusedField)
+		t.Fatalf("expected compose to open on From, got %v", c.focusedField)
 	}
 
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyEnter}, DefaultKeys)
@@ -345,10 +349,12 @@ func TestSenderPickerIsAvailableAcrossComposeModes(t *testing.T) {
 func TestComposeLayoutBudgetsSenderDropdownRows(t *testing.T) {
 	accounts := composeSenderAccounts()
 	c := NewCompose(accounts[0], accounts, nil)
-	_, _, closedH, _ := c.composeLayout(74, 32, BuildStyles(CatppuccinMocha, "compact", "square"))
-	c.focusedField = composeFieldFrom
+	// Measure wide enough that the From row's hints stay on one line: at 74 the
+	// extra "enter pick sender" wraps the footer, and the wrap — not the
+	// dropdown — would account for a row of the difference.
+	_, _, closedH, _ := c.composeLayout(100, 32, BuildStyles(CatppuccinMocha, "compact", "square"))
 	c.openSenderPicker()
-	_, _, openH, _ := c.composeLayout(74, 32, BuildStyles(CatppuccinMocha, "compact", "square"))
+	_, _, openH, _ := c.composeLayout(100, 32, BuildStyles(CatppuccinMocha, "compact", "square"))
 	if closedH-openH != len(accounts) {
 		t.Fatalf("expected dropdown to reserve %d rows, closed=%d open=%d", len(accounts), closedH, openH)
 	}
@@ -1083,16 +1089,11 @@ func TestReplyOpensOnTheFromRow(t *testing.T) {
 	}
 }
 
-func TestReplyWithOneAccountStillLandsInTheBody(t *testing.T) {
-	only := composeSenderAccounts()[:1]
-	msg := db.Message{From: "alice@example.com", MessageID: "<x>", Subject: "S", BodyText: "hello"}
+func TestComposeOpensOnTheFromRow(t *testing.T) {
+	accounts := composeSenderAccounts()
 
-	c := NewReply(msg, only[0], only, nil)
-
-	// advanceField skips From when there is nothing to choose between, so
-	// landing there would strand the caret on an unreachable row.
-	if c.focusedField != composeFieldBody {
-		t.Fatalf("focus = %v, want the body for a single-account reply", c.focusedField)
+	if got := NewCompose(accounts[1], accounts, nil).focusedField; got != composeFieldFrom {
+		t.Fatalf("new message focus = %v, want the From row", got)
 	}
 }
 
@@ -1116,14 +1117,11 @@ func TestMultiAccountReplyStillTypesAboveTheQuote(t *testing.T) {
 	}
 }
 
-func TestForwardStillOpensOnTo(t *testing.T) {
+func TestForwardOpensOnTheFromRow(t *testing.T) {
 	accounts := composeSenderAccounts()
 	msg := db.Message{From: "alice@example.com", MessageID: "<x>", Subject: "S", BodyText: "hello"}
 
-	c := NewForward(msg, accounts[1], accounts, nil)
-
-	// A forward has no recipient yet, so that is still the first thing to fill.
-	if c.focusedField != composeFieldTo {
-		t.Fatalf("focus = %v, want the To row on a forward", c.focusedField)
+	if got := NewForward(msg, accounts[1], accounts, nil).focusedField; got != composeFieldFrom {
+		t.Fatalf("forward focus = %v, want the From row", got)
 	}
 }
