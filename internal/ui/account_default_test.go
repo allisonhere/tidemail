@@ -48,12 +48,12 @@ func TestDefaultAccountIsStarredOnce(t *testing.T) {
 	m = openAccounts(t, m)
 
 	view := ansiEscapes.ReplaceAllString(m.View(), "")
-	if got := strings.Count(view, "★"); got != 1 {
-		t.Fatalf("star count = %d, want exactly 1:\n%s", got, view)
+	if got := strings.Count(view, "★ [default]"); got != 1 {
+		t.Fatalf("default badge count = %d, want exactly 1:\n%s", got, view)
 	}
 	for _, line := range strings.Split(view, "\n") {
-		if strings.Contains(line, "★") && !strings.Contains(line, "Work") {
-			t.Fatalf("the star is on the wrong account: %q", strings.TrimSpace(line))
+		if strings.Contains(line, "[default]") && !strings.Contains(line, "Work") {
+			t.Fatalf("the default badge is on the wrong account: %q", strings.TrimSpace(line))
 		}
 	}
 }
@@ -65,8 +65,8 @@ func TestNoStarWithoutAnExplicitDefault(t *testing.T) {
 	m = openAccounts(t, m)
 
 	view := ansiEscapes.ReplaceAllString(m.View(), "")
-	if strings.Contains(view, "★") {
-		t.Fatalf("the list starred an account nobody chose:\n%s", view)
+	if strings.Contains(view, "★") || strings.Contains(view, "[default]") {
+		t.Fatalf("the list marked an account nobody chose as the default:\n%s", view)
 	}
 }
 

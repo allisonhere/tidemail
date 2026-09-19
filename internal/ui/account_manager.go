@@ -1513,13 +1513,16 @@ func (am AccountManager) renderAccountCard(width int, acc db.Account, selected b
 		dot = lipgloss.NewStyle().Background(bg).Render(" ") +
 			lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color(acc.Color)).Render(dotGlyph)
 	}
+	// The default sender is the one thing you scan this list for, so it gets a
+	// bold accent star and the word spelled out, not a glyph you have to know.
 	star := ""
 	if isDefault {
-		glyph := " ★"
+		glyph := "★ [default]"
 		if chrome.plainUI {
-			glyph = " (default)"
+			glyph = "* [default]"
 		}
-		star = lipgloss.NewStyle().Background(bg).Foreground(chrome.successFg).Render(glyph)
+		star = lipgloss.NewStyle().Background(bg).Render(" ") +
+			lipgloss.NewStyle().Background(bg).Foreground(chrome.accent).Bold(true).Render(glyph)
 	}
 	nameCell := lipgloss.NewStyle().Background(bg).Foreground(nameFg).Bold(true).Render(name) + star + dot
 	emailCell := lipgloss.NewStyle().Background(bg).Foreground(emailFg).Render(email)
