@@ -51,6 +51,38 @@ func accountConfigFor(configs []config.AccountConfig, acc db.Account) (config.Ac
 	return found, nil
 }
 
+// sortAccountsByConfigOrder re-derives account row order from config.toml,
+// which is the single source of truth for the order accounts appear in. The
+// database's own position column is only ever an insertion-order artifact, so
+// leaning on it let the sidebar disagree with the order compose and the
+// account manager used. Rows with no reachable config block keep their
+// relative order, at the end.
+func sortAccountsByConfigOrder(accounts []db.Account, configs []config.AccountConfig) []db.Account {
+	if len(accounts) < 2 || len(configs) == 0 {
+		return accounts
+	}
+	rank := make(map[int64]int, len(accounts))
+	for i, acc := range accounts {
+		acfg, err := accountConfigFor(configs, acc)
+		if err != nil {
+			rank[acc.ID] = len(configs) + i
+			continue
+		}
+		rank[acc.ID] = len(configs)
+		for j, c := range configs {
+			if c.ID == acfg.ID {
+				rank[acc.ID] = j
+				break
+			}
+		}
+	}
+	sorted := append([]db.Account(nil), accounts...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return rank[sorted[i].ID] < rank[sorted[j].ID]
+	})
+	return sorted
+}
+
 // accountConfigFor is the Model-scoped form of the resolver above.
 func (m Model) accountConfigFor(acc db.Account) (config.AccountConfig, error) {
 	return accountConfigFor(m.cfg.Accounts, acc)

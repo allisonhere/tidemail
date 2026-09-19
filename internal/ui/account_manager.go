@@ -319,6 +319,11 @@ type AccountManager struct {
 	oauthCtx          context.Context
 	oauthCancel       context.CancelFunc
 
+	// defaultConfigID is the stable config ID of the default sender, or "" when
+	// the user has not picked one. Only an explicit choice is starred, so the
+	// list never claims a default nobody set.
+	defaultConfigID string
+
 	busy      bool
 	busyMsg   string
 	statusMsg string
@@ -367,12 +372,16 @@ func newAMInput(placeholder string, password bool) textinput.Model {
 	return ti
 }
 
-func (am *AccountManager) setData(accounts []db.Account, mailboxes []db.Mailbox, configs []config.AccountConfig, oauthCfg config.OAuthConfig) {
-	am.accounts = accounts
+func (am *AccountManager) setData(accounts []db.Account, mailboxes []db.Mailbox, configs []config.AccountConfig, oauthCfg config.OAuthConfig, defaultConfigID string) {
+	// Row order is always derived from config order, never held independently.
+	// That is what lets an optimistic reorder revert for free when the config
+	// write fails: re-running setData with the unchanged config restores it.
+	am.accounts = sortAccountsByConfigOrder(accounts, configs)
 	am.mailboxes = mailboxes
 	am.configs = configs
 	am.oauthCfg = oauthCfg
-	am.cursor = clamp(am.cursor, 0, max(0, len(accounts)-1))
+	am.defaultConfigID = defaultConfigID
+	am.cursor = clamp(am.cursor, 0, max(0, len(am.accounts)-1))
 }
 
 func (am *AccountManager) focusField(f amField) {
@@ -511,6 +520,98 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 	return cfg
 }
 
+// focusConfigID puts the highlight on the row owned by the given config block,
+// so the cursor follows a moved account through both a successful write and a
+// reverted one.
+func (am *AccountManager) focusConfigID(id string) {
+	if id == "" {
+		return
+	}
+	for i, acc := range am.accounts {
+		if acfg, ok := am.configForAccount(acc); ok && acfg.ID == id {
+			am.cursor = i
+			return
+		}
+	}
+}
+
+// orderedConfigIDs is the manager's current account order as stable IDs.
+func (am AccountManager) orderedConfigIDs() []string {
+	ids := make([]string, 0, len(am.configs))
+	for _, c := range am.configs {
+		ids = append(ids, c.ID)
+	}
+	return ids
+}
+
+// moveSelected reorders the highlighted account by delta and reports the new
+// order upward. It mutates only the manager's own copy of the config list; the
+// Model owns config.toml and writes it, and re-syncs this model either way.
+func (am AccountManager) moveSelected(delta int) (AccountManager, tea.Cmd, bool) {
+	target := am.cursor + delta
+	if am.cursor < 0 || am.cursor >= len(am.accounts) || target < 0 || target >= len(am.accounts) {
+		return am, nil, false
+	}
+	fromCfg, okFrom := am.configForAccount(am.accounts[am.cursor])
+	toCfg, okTo := am.configForAccount(am.accounts[target])
+	if !okFrom || !okTo {
+		// An account row with no reachable [[account]] block has no position in
+		// config order to swap, so there is nothing to persist.
+		am.statusMsg = "no settings for this account — re-enter its server details"
+		return am, nil, false
+	}
+	configs := append([]config.AccountConfig(nil), am.configs...)
+	i, j := -1, -1
+	for k, c := range configs {
+		switch c.ID {
+		case fromCfg.ID:
+			i = k
+		case toCfg.ID:
+			j = k
+		}
+	}
+	if i < 0 || j < 0 {
+		return am, nil, false
+	}
+	configs[i], configs[j] = configs[j], configs[i]
+	am.configs = configs
+	am.accounts = sortAccountsByConfigOrder(am.accounts, am.configs)
+	am.cursor = target
+	am.statusMsg = ""
+	ids := am.orderedConfigIDs()
+	moved := fromCfg.ID
+	return am, func() tea.Msg {
+		return AccountOrderChangedMsg{OrderedIDs: ids, FocusConfigID: moved}
+	}, false
+}
+
+// setSelectedDefault marks the highlighted account as the default sender.
+// There is no toggle-off: a mail client always sends from some account, so
+// clearing the default would only fall back to an implicit one.
+func (am AccountManager) setSelectedDefault() (AccountManager, tea.Cmd, bool) {
+	acc := am.selectedAccount()
+	if acc == nil {
+		return am, nil, false
+	}
+	acfg, ok := am.configForAccount(*acc)
+	if !ok {
+		am.statusMsg = "no settings for this account — re-enter its server details"
+		return am, nil, false
+	}
+	if acfg.ID == am.defaultConfigID {
+		return am, nil, false
+	}
+	am.defaultConfigID = acfg.ID
+	name := acc.Name
+	if name == "" {
+		name = acfg.Name
+	}
+	am.statusMsg = "default sender: " + name
+	return am, func() tea.Msg {
+		return AccountDefaultChangedMsg{ConfigID: acfg.ID, Name: name}
+	}, false
+}
+
 func (am AccountManager) selectedAccount() *db.Account {
 	if am.cursor < 0 || am.cursor >= len(am.accounts) {
 		return nil
@@ -555,7 +656,8 @@ func (am AccountManager) statusForeground(chrome managerChrome) lipgloss.Color {
 	msg := strings.ToUpper(strings.TrimSpace(am.statusMsg))
 	switch {
 	case strings.HasPrefix(msg, "CONNECTED:"), strings.HasPrefix(msg, "SAVED:"), strings.HasPrefix(msg, "DELETED"),
-		strings.HasPrefix(msg, "SIGNED IN"), strings.HasPrefix(msg, "SIGN-IN URL"):
+		strings.HasPrefix(msg, "SIGNED IN"), strings.HasPrefix(msg, "SIGN-IN URL"),
+		strings.HasPrefix(msg, "DEFAULT SENDER"):
 		return chrome.successFg
 	default:
 		return chrome.errorFg
@@ -607,6 +709,12 @@ func (am AccountManager) updateList(msg tea.Msg, keys KeyMap) (AccountManager, t
 		if am.cursor < len(am.accounts)-1 {
 			am.cursor++
 		}
+	case keyMatches(km, keys.MoveAccountUp):
+		return am.moveSelected(-1)
+	case keyMatches(km, keys.MoveAccountDown):
+		return am.moveSelected(1)
+	case keyMatches(km, keys.Space):
+		return am.setSelectedDefault()
 	case keyMatches(km, keys.Add):
 		am.mode = amAdd
 		am.editAccountID = 0
@@ -1312,16 +1420,16 @@ func (am AccountManager) viewList(width, height int, chrome managerChrome, style
 	for _, mb := range am.mailboxes {
 		mailboxCounts[mb.AccountID]++
 	}
-	cfgByName := make(map[string]config.AccountConfig, len(am.configs))
-	for _, c := range am.configs {
-		cfgByName[c.Name] = c
-	}
-
 	blank := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
 	rows := []string{blank}
 	for i, acc := range am.accounts {
 		selected := i == am.cursor
-		rows = append(rows, am.renderAccountCard(width, acc, selected, chrome, styles, mailboxCounts[acc.ID], cfgByName[acc.Name]), blank)
+		// Join on the stable config ID, never on the display name: two
+		// accounts may share a name, and pairing by name showed each of them
+		// the other's servers.
+		acfg, _ := am.configForAccount(acc)
+		isDefault := acfg.ID != "" && acfg.ID == am.defaultConfigID
+		rows = append(rows, am.renderAccountCard(width, acc, selected, chrome, styles, mailboxCounts[acc.ID], acfg, isDefault), blank)
 	}
 
 	if len(am.accounts) == 0 {
@@ -1353,7 +1461,9 @@ func (am AccountManager) viewList(width, height int, chrome managerChrome, style
 
 	var actionPairs []string
 	if len(am.accounts) > 0 {
-		actionPairs = []string{"a", "add", "e", "edit", "d", "delete", "esc", "close"}
+		// renderSoftHints lowercases keys, so spell the shifted pair out rather
+		// than passing "J/K", which would render as a misleading "j/k".
+		actionPairs = []string{"a", "add", "e", "edit", "d", "delete", "shift+j/k", "move", "space", "default", "esc", "close"}
 	} else {
 		actionPairs = []string{"a", "add", "esc", "close"}
 	}
@@ -1367,7 +1477,7 @@ func (am AccountManager) viewList(width, height int, chrome managerChrome, style
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
-func (am AccountManager) renderAccountCard(width int, acc db.Account, selected bool, chrome managerChrome, styles Styles, mailboxCount int, acfg config.AccountConfig) string {
+func (am AccountManager) renderAccountCard(width int, acc db.Account, selected bool, chrome managerChrome, styles Styles, mailboxCount int, acfg config.AccountConfig, isDefault bool) string {
 	name := acc.Name
 	if name == "" {
 		name = fmt.Sprintf("Account %d", acc.ID)
@@ -1403,7 +1513,15 @@ func (am AccountManager) renderAccountCard(width int, acc db.Account, selected b
 		dot = lipgloss.NewStyle().Background(bg).Render(" ") +
 			lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color(acc.Color)).Render(dotGlyph)
 	}
-	nameCell := lipgloss.NewStyle().Background(bg).Foreground(nameFg).Bold(true).Render(name) + dot
+	star := ""
+	if isDefault {
+		glyph := " ★"
+		if chrome.plainUI {
+			glyph = " (default)"
+		}
+		star = lipgloss.NewStyle().Background(bg).Foreground(chrome.successFg).Render(glyph)
+	}
+	nameCell := lipgloss.NewStyle().Background(bg).Foreground(nameFg).Bold(true).Render(name) + star + dot
 	emailCell := lipgloss.NewStyle().Background(bg).Foreground(emailFg).Render(email)
 	nameLine := rail() + nameCell
 	gap := width - lipgloss.Width(nameLine) - lipgloss.Width(emailCell) - 2

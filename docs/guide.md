@@ -305,6 +305,8 @@ open **Accounts** and re-enter that account's server details.
 | `C` | Contacts manager |
 | `c` in Contacts | Compose to selected contact(s) |
 | `M` | Account manager |
+| `Space` in Accounts | Set the highlighted account as the default sender (★) |
+| `Shift+J` / `Shift+K` in Accounts | Move the highlighted account down / up the list |
 | `s` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
 | `Enter` on a folder | Fetch that folder now |
 | `F` | Sync all mailboxes |
@@ -369,6 +371,12 @@ Global message search uses a dedicated row above message subjects while active.
 - Display: theme, icons, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, and quit confirmation
 - Editor: compose keys, send delay, and maximum delivery attempts
 - Accounts: connection details, From address, signature, color, and sync interval
+- The ★ account is the default: `c` composes from it, and TideMail opens on its
+  inbox at startup. Without one, compose uses the first account and TideMail
+  opens on the Unified Inbox as before.
+- The account order you set with `Shift+J`/`Shift+K` is the order used by the
+  sidebar and by `Ctrl+U` in compose; it is stored as the order of the
+  `[[account]]` blocks in `config.toml`.
 - Updates: check, install, restart, or copy a manual install command
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings
 - Advanced: logs and feed max body size

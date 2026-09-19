@@ -14,7 +14,14 @@ import (
 )
 
 type Config struct {
-	Theme    string          `toml:"theme"`
+	Theme string `toml:"theme"`
+	// DefaultAccountID is the stable ID of the account a brand-new message is
+	// sent from, and the account focused at startup. Empty means "not chosen":
+	// DefaultAccount then falls back to the first account, which is what
+	// tidemail did before the setting existed, and startup keeps landing on
+	// the unified inbox.
+	DefaultAccountID string `toml:"default_account"`
+
 	Display  DisplayConfig   `toml:"display"`
 	Feed     FeedConfig      `toml:"feed"`
 	Updates  UpdatesConfig   `toml:"updates"`
@@ -317,6 +324,76 @@ func (c Config) AccountByID(id string) (AccountConfig, bool) {
 	return AccountConfig{}, false
 }
 
+// DefaultAccount returns the account a new message is sent from: the one
+// marked default, else the first configured account.
+func (c Config) DefaultAccount() (AccountConfig, bool) {
+	if a, ok := c.AccountByID(c.DefaultAccountID); ok {
+		return a, true
+	}
+	if len(c.Accounts) > 0 {
+		return c.Accounts[0], true
+	}
+	return AccountConfig{}, false
+}
+
+// ExplicitDefaultAccountID returns DefaultAccountID only while it still
+// resolves to a configured account, and "" otherwise. The UI stars and focuses
+// a default only when the user actually picked one, so an unset config keeps
+// behaving exactly as it did before.
+func (c Config) ExplicitDefaultAccountID() string {
+	if _, ok := c.AccountByID(c.DefaultAccountID); ok {
+		return c.DefaultAccountID
+	}
+	return ""
+}
+
+// SetDefaultAccount marks the account with the given stable ID as the default
+// sender. An unknown ID clears the setting rather than storing a dangling one.
+func (c *Config) SetDefaultAccount(id string) {
+	if _, ok := c.AccountByID(id); !ok {
+		c.DefaultAccountID = ""
+		return
+	}
+	c.DefaultAccountID = id
+}
+
+// ReorderAccounts rearranges Accounts to match orderedIDs. Unknown IDs are
+// ignored and accounts missing from orderedIDs keep their relative order at the
+// end, so a stale order can never drop an account.
+func (c *Config) ReorderAccounts(orderedIDs []string) {
+	if len(c.Accounts) < 2 {
+		return
+	}
+	next := make([]AccountConfig, 0, len(c.Accounts))
+	taken := make(map[int]bool, len(c.Accounts))
+	for _, id := range orderedIDs {
+		if strings.TrimSpace(id) == "" {
+			continue
+		}
+		for i, a := range c.Accounts {
+			if taken[i] || a.ID != id {
+				continue
+			}
+			next = append(next, a)
+			taken[i] = true
+			break
+		}
+	}
+	for i, a := range c.Accounts {
+		if !taken[i] {
+			next = append(next, a)
+		}
+	}
+	c.Accounts = next
+}
+
+// normalizeDefaultAccount drops a default_account that no longer names a
+// configured account, so the fallback takes over instead of the setting
+// silently pointing at nothing.
+func normalizeDefaultAccount(cfg *Config) {
+	cfg.DefaultAccountID = cfg.ExplicitDefaultAccountID()
+}
+
 func DefaultAccountConfig() AccountConfig {
 	return AccountConfig{
 		ID:       newAccountID(),
@@ -393,6 +470,7 @@ func Load() (Config, error) {
 	cfg.Display.Density = NormalizeDisplayDensity(cfg.Display.Density)
 	cfg.Display.PaneCorners = NormalizePaneCorners(cfg.Display.PaneCorners)
 	idsChanged := ensureAccountIDs(&cfg)
+	normalizeDefaultAccount(&cfg)
 	migrateAuthMethod(&cfg, GetAccountPassword, GetOAuth2RefreshToken)
 	fillSecrets(&cfg)
 	if idsChanged {

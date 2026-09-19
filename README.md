@@ -236,6 +236,9 @@ server that has disabled basic auth and requires NTLM or Kerberos (GSSAPI).
 
 ```toml
 theme = "lavender-fields-forever"
+# The account new messages are sent from, and the one focused at startup.
+# Omit it and TideMail uses the first account below.
+default_account = "8f43c9e644384bd5a25a27ff0d9c2701"
 
 [display]
 send_delay_seconds = 5
@@ -256,6 +259,10 @@ from = "Mira Chen <mira@example.com>"
 signature = "Mira\nSent with TideMail"
 sync_minutes = 0  # push via IMAP IDLE; N polls every N min, -1 is manual only
 ```
+
+The order of the `[[account]]` blocks is the order accounts appear everywhere:
+the sidebar, the account manager, and the `ctrl+u` sender picker in compose.
+Reorder them here or with `Shift+J`/`Shift+K` in the account manager.
 
 Config lives at `~/.config/tidemail/config.toml`. TideMail puts its SQLite cache
 at `~/.local/share/tidemail/mail.db` unless `XDG_DATA_HOME` points elsewhere.
