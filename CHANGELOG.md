@@ -4,6 +4,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.0.24
+
 ## v1.0.23
 
 ### Fixed
