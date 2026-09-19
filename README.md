@@ -171,6 +171,8 @@ AI stays off until you configure a provider.
 | `Ctrl+U` | Unsubscribe while reading; cycle sender while composing |
 | `Ctrl+E` | Show or hide full headers |
 | `M` / `S` / `T` | Accounts, settings, or themes |
+| `Space` in Accounts | Mark the highlighted account `★ [default]` — the sender for new messages |
+| `Shift+J` / `Shift+K` in Accounts | Move the highlighted account down or up the list |
 | `:` / `Ctrl+P` | Command palette |
 | `?` | Searchable help |
 | `q` | Quit |
@@ -237,7 +239,8 @@ server that has disabled basic auth and requires NTLM or Kerberos (GSSAPI).
 ```toml
 theme = "lavender-fields-forever"
 # The account new messages are sent from, and the one focused at startup.
-# Omit it and TideMail uses the first account below.
+# Holds an account id, so renaming or reordering never moves it. Omit it and
+# TideMail uses the first account below. Set it with Space in Accounts.
 default_account = "8f43c9e644384bd5a25a27ff0d9c2701"
 
 [display]
@@ -261,8 +264,8 @@ sync_minutes = 0  # push via IMAP IDLE; N polls every N min, -1 is manual only
 ```
 
 The order of the `[[account]]` blocks is the order accounts appear everywhere:
-the sidebar, the account manager, and the `ctrl+u` sender picker in compose.
-Reorder them here or with `Shift+J`/`Shift+K` in the account manager.
+the sidebar, the account list, and the `Ctrl+U` sender picker in compose.
+Reorder them here, or with `Shift+J` and `Shift+K` in **Accounts**.
 
 Config lives at `~/.config/tidemail/config.toml`. TideMail puts its SQLite cache
 at `~/.local/share/tidemail/mail.db` unless `XDG_DATA_HOME` points elsewhere.
