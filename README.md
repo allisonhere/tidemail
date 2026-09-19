@@ -171,6 +171,8 @@ AI stays off until you configure a provider.
 | `Ctrl+Z` | Cancel a queued send or undo a queued message action |
 | `O` | Open the Outbox |
 | `Ctrl+U` | Unsubscribe while reading; cycle sender while composing |
+| `Alt+F` / `Ctrl+R` | Attach a file while composing; remove the last attachment |
+| `Ctrl+D` | Save attachments from the open message |
 | `Ctrl+E` | Show or hide full headers |
 | `M` / `S` / `T` | Accounts, settings, or themes |
 | `Space` in Accounts | Mark the highlighted account `★ [default]` — the sender for new messages |

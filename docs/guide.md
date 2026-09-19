@@ -325,6 +325,7 @@ open **Accounts** and re-enter that account's server details.
 | `M` | Account manager |
 | `Space` in Accounts | Mark the highlighted account `★ [default]` — the sender for new messages |
 | `Shift+J` / `Shift+K` in Accounts | Move the highlighted account down / up the list |
+| `Ctrl+T` in the account form | Test the connection without saving |
 | `s` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
 | `Enter` on a folder | Fetch that folder now |
 | `F` | Sync all mailboxes |
@@ -353,8 +354,11 @@ open **Accounts** and re-enter that account's server details.
 | `Ctrl+F` | Find in message |
 | `v` / `V` | Visual select line range / whole message |
 | `` ` `` | AI summary |
+| In the summary overlay | `C` copies, `M` saves a `.md` file to the AI save path, `z` toggles quoted text, `Esc` closes |
 | `S` | Settings |
 | `T` | Theme picker |
+| `Alt+F` in compose | Attach a file (opens the file picker) |
+| `Ctrl+R` in compose | Remove the last attachment |
 | `Ctrl+D` | Save attachments to folder |
 | `Ctrl+G` | AI grammar & spell check (compose) |
 | Standard compose editor | Selection, system clipboard, undo/redo, word movement, and Home/End |
