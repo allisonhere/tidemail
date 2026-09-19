@@ -234,3 +234,32 @@ func TestSetDefaultOnAnUnconfiguredRowIsRejected(t *testing.T) {
 		t.Fatalf("status = %q, want it to explain the account has no settings", m.accountManager.statusMsg)
 	}
 }
+
+// TestReplyKeyOpensOnTheFromRow drives the real `r` path through Model, not
+// NewReply directly, so the wiring between the message list and compose is
+// covered too.
+func TestReplyKeyOpensOnTheFromRow(t *testing.T) {
+	m, _, _ := newOrderedModel(t, nil, "")
+
+	mailbox := m.mailboxes[0]
+	m.messages = []db.Message{{
+		ID: 1, MailboxID: mailbox.ID, UID: 1,
+		From: "alice@example.com", Subject: "Plans", MessageID: "<p@x>", BodyText: "quoted line",
+	}}
+	m.filteredMessages = m.messages
+	m.messageCursor = 0
+	m.focused = paneMessages
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	m = next.(Model)
+
+	if m.overlay != overlayCompose {
+		t.Fatalf("overlay = %v, want compose", m.overlay)
+	}
+	if m.compose.focusedField != composeFieldFrom {
+		t.Fatalf("focus = %v, want the From row", m.compose.focusedField)
+	}
+	if got := m.compose.toInput.Value(); got != "alice@example.com" {
+		t.Fatalf("To = %q, want the sender prefilled", got)
+	}
+}
