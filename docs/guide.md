@@ -97,6 +97,12 @@ Focus it with `Shift+Tab` from the To row, then press `Enter` or `Space` and
 choose the account. `Ctrl+U` cycles through the same list. TideMail uses that
 account's SMTP settings, From address, and signature.
 
+A new message starts from your default account — the one marked `★ [default]`
+in **Accounts**. Set it by highlighting an account there and pressing `Space`.
+Replies and forwards ignore the default and use the account the message
+arrived on. Without a default, a new message starts from the first account in
+your config.
+
 After delivery, TideMail saves a copy to the sending account's server-side Sent
 folder. Gmail already files SMTP submissions itself, so TideMail does not append
 a duplicate there. Other providers use the server's `\Sent` folder flag, with
@@ -246,6 +252,7 @@ Example configuration:
 
 ```toml
 theme = "catppuccin-mocha"
+default_account = "8f43c9e644384bd5a25a27ff0d9c2701"
 
 [display]
 send_delay_seconds = 5
@@ -283,6 +290,17 @@ Sent with TideMail"""
 sign-in for a Gmail/Outlook account, otherwise `"password"`. The refresh token
 and password live in the system keychain, not this file. An account never
 switches to OAuth on its own — a leftover keychain token cannot promote it.
+
+`default_account` names the account a new message is sent from, and the account
+TideMail focuses at startup. It holds an account `id`, not a position, so
+renaming or reordering accounts never moves it. Delete it, or the account it
+names, and TideMail falls back to the first account and opens on the Unified
+Inbox. `Space` in **Accounts** writes this line for you.
+
+The order of the `[[account]]` blocks is the order accounts appear in: the
+sidebar, the account list, and the `Ctrl+U` sender picker in compose. Reorder
+them here, or with `Shift+J` and `Shift+K` in **Accounts**.
+
 The generated account `id` links this block to cached mail, drafts, queued mail,
 and keychain credentials. It stays fixed when the display name changes. TideMail
 adds missing IDs on upgrade and first saves the original file as
@@ -305,6 +323,8 @@ open **Accounts** and re-enter that account's server details.
 | `C` | Contacts manager |
 | `c` in Contacts | Compose to selected contact(s) |
 | `M` | Account manager |
+| `Space` in Accounts | Mark the highlighted account `★ [default]` — the sender for new messages |
+| `Shift+J` / `Shift+K` in Accounts | Move the highlighted account down / up the list |
 | `s` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
 | `Enter` on a folder | Fetch that folder now |
 | `F` | Sync all mailboxes |

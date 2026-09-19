@@ -106,6 +106,22 @@ type AccountDatabaseDeletedMsg struct {
 	Err         error
 }
 
+// AccountOrderChangedMsg carries the account manager's new list order as
+// stable config IDs. Account order lives in config.toml only, so this is a
+// config-only write: no database row and no IMAP round trip.
+type AccountOrderChangedMsg struct {
+	OrderedIDs []string
+	// FocusConfigID is the account that moved, so the highlight follows it
+	// whether the write lands or is reverted.
+	FocusConfigID string
+}
+
+// AccountDefaultChangedMsg marks one account as the default sender.
+type AccountDefaultChangedMsg struct {
+	ConfigID string
+	Name     string // for the status line only
+}
+
 type MessageReadUpdatedMsg struct {
 	MessageID int64
 	MailboxID int64

@@ -437,10 +437,14 @@ func (m Model) filterFolderCreationNotice() string {
 }
 
 // filterScopeAccountID picks the account whose folders are offered to the AI for
-// "move" targets: the selected mailbox's account, else the first account.
+// "move" targets: the selected mailbox's account, else the default account,
+// else the first one.
 func (m Model) filterScopeAccountID() int64 {
 	if mb := m.selectedMailbox(); mb != nil {
 		return mb.AccountID
+	}
+	if acc, ok := m.defaultAccountRow(); ok {
+		return acc.ID
 	}
 	if len(m.accounts) > 0 {
 		return m.accounts[0].ID

@@ -386,6 +386,7 @@ func TestAccountManagerListShowsCompactAccountCards(t *testing.T) {
 			User:     "alice@example.com",
 		}},
 		config.OAuthConfig{},
+		"",
 	)
 
 	view := am.View(80, 24, BuildStyles(CatppuccinMocha, "compact", "square"))
@@ -516,6 +517,7 @@ func TestAccountManagerEditPreloadsConfigForSelectedAccount(t *testing.T) {
 			From:     "Alice <alice@example.com>",
 		}},
 		config.OAuthConfig{},
+		"",
 	)
 
 	next, _, _ := am.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}}, DefaultKeys)

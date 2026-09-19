@@ -97,11 +97,25 @@ type ComposeModel struct {
 func NewCompose(acfg config.AccountConfig, accounts []config.AccountConfig, addressBook []string) ComposeModel {
 	c := ComposeModel{accountCfg: acfg, accounts: accounts}
 	if len(accounts) > 1 {
-		// Find the given acfg in the list; default to 0 if not found
-		for i, a := range accounts {
-			if a.IMAPHost == acfg.IMAPHost && a.User == acfg.User {
-				c.accountIndex = i
-				break
+		// Find the given acfg in the list; default to 0 if not found. Match on
+		// the stable ID first: two accounts can share a host and login (an
+		// alias setup), and the sender that actually sends is accounts[index].
+		matched := false
+		if acfg.ID != "" {
+			for i, a := range accounts {
+				if a.ID == acfg.ID {
+					c.accountIndex = i
+					matched = true
+					break
+				}
+			}
+		}
+		if !matched {
+			for i, a := range accounts {
+				if a.IMAPHost == acfg.IMAPHost && a.User == acfg.User {
+					c.accountIndex = i
+					break
+				}
 			}
 		}
 	}
@@ -113,8 +127,7 @@ func NewCompose(acfg config.AccountConfig, accounts []config.AccountConfig, addr
 	c.subjectInput = newComposeInput("Subject")
 	c.bodyInput = newEditorArea()
 	c.bodyInput.SetPlaceholder("Write your message here...")
-	c.focusedField = composeFieldTo
-	c.toInput.Focus()
+	c.focusedField = composeFieldFrom
 	c.SetAddressBook(addressBook)
 	return c
 }
@@ -196,9 +209,9 @@ func NewReply(original db.Message, acfg config.AccountConfig, accounts []config.
 		c.bodyInput.SetValue(quoted)
 	}
 
-	// To/Subject are already filled for a reply, so land in the body with the
-	// caret at the top (above the quote), ready to type — and showing a cursor.
-	c.focusBodyAtStart()
+	// Park the body caret above the quote so typing lands there once focus
+	// reaches the body.
+	c.moveBodyCursorToStart()
 	return c
 }
 

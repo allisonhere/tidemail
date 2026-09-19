@@ -60,12 +60,14 @@ type KeyMap struct {
 	SaveAttach    key.Binding
 
 	// Account manager specific
-	Add         key.Binding
-	Edit        key.Binding
-	Delete      key.Binding
-	Save        key.Binding
-	TestAccount key.Binding
-	OAuthSignIn key.Binding
+	Add             key.Binding
+	Edit            key.Binding
+	Delete          key.Binding
+	Save            key.Binding
+	TestAccount     key.Binding
+	OAuthSignIn     key.Binding
+	MoveAccountUp   key.Binding
+	MoveAccountDown key.Binding
 
 	AttachFile   key.Binding
 	RemoveAttach key.Binding
@@ -145,6 +147,10 @@ var DefaultKeys = KeyMap{
 	Save:        key.NewBinding(key.WithKeys("ctrl+s", "f2"), key.WithHelp("ctrl+s", "save")),
 	TestAccount: key.NewBinding(key.WithKeys("ctrl+t", "f5"), key.WithHelp("ctrl+t", "test")),
 	OAuthSignIn: key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "sign in")),
+	// Shift-cased J/K: key.Matches compares msg.String() verbatim, so these
+	// never shadow the lowercase Up/Down movement keys.
+	MoveAccountUp:   key.NewBinding(key.WithKeys("K"), key.WithHelp("shift+k", "move account up")),
+	MoveAccountDown: key.NewBinding(key.WithKeys("J"), key.WithHelp("shift+j", "move account down")),
 
 	AttachFile: key.NewBinding(key.WithKeys("alt+f"), key.WithHelp("alt+f", "attach file")),
 

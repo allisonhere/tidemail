@@ -595,7 +595,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			statusCmd = m.clearStatusCmd()
 		}
 		m.rebuildSidebar()
-		m.accountManager.setData(m.accounts, m.mailboxes, m.cfg.Accounts, m.cfg.OAuth)
+		m.accountManager.setData(m.accounts, m.mailboxes, m.cfg.Accounts, m.cfg.OAuth, m.cfg.ExplicitDefaultAccountID())
 		openAccountManagerOnEmptyFirstLoad := m.firstLoad && msg.Err == nil && len(m.accounts) == 0
 		if m.firstLoad {
 			m.loadCollapseState()
@@ -627,6 +627,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// and again whenever accounts are added, edited, or deleted, so watcher
 		// credentials and inbox targets never go stale.
 		statusCmd = tea.Batch(statusCmd, m.startIdleWatchers())
+		wasFirstLoad := m.firstLoad
 		m.firstLoad = false
 		if prevID == 0 && prevKind == rowKindMailbox {
 			m.sidebarCursor = 0
@@ -640,29 +641,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.pendingSelectMailboxID = 0
 		} else if prevID != 0 {
-			for i, row := range m.sidebarRows {
-				if row.kind == prevKind {
-					if row.kind == rowKindUnified {
-						m.sidebarCursor = i
-						break
-					}
-					if row.kind == rowKindMailbox && row.mailboxID == prevID {
-						m.sidebarCursor = i
-						break
-					}
-					if row.kind == rowKindAccount && row.accountID == prevID {
-						m.sidebarCursor = i
-						break
-					}
-					if row.kind == rowKindSysFolderHeader && row.accountID == prevID {
-						m.sidebarCursor = i
-						break
-					}
-					if row.kind == rowKindPersonalFolderHeader && row.accountID == prevID {
-						m.sidebarCursor = i
-						break
-					}
-				}
+			m.restoreSidebarSelection(prevKind, prevID)
+		} else if wasFirstLoad && prevKind == rowKindMailbox {
+			// Startup lands on the default account's inbox — but only when one
+			// was explicitly chosen, so everybody else keeps opening on the
+			// unified inbox as before.
+			if row, ok := m.defaultAccountSidebarRow(); ok {
+				m.sidebarCursor = row
 			}
 		}
 		m.sidebarCursor = clamp(m.sidebarCursor, 0, max(0, len(m.sidebarRows)-1))
@@ -1155,6 +1140,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					nextCfg.Accounts = append(nextCfg.Accounts, a)
 				}
 			}
+			if nextCfg.DefaultAccountID == id {
+				// The default sender is going away; fall back to "first
+				// account" rather than leaving a dangling ID behind.
+				nextCfg.DefaultAccountID = ""
+			}
 			if err := m.persistConfig(nextCfg); err != nil {
 				m.accountManager.busy = false
 				m.accountManager.busyMsg = ""
@@ -1166,6 +1156,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.accountManager.busy = true
 		m.accountManager.busyMsg = "DELETING..."
 		return m, deleteAccountDatabaseCmd(m.db, msg, previousCfg, nextCfg)
+
+	case AccountOrderChangedMsg:
+		return m.persistAccountConfigChange(
+			func(c *config.Config) { c.ReorderAccounts(msg.OrderedIDs) },
+			"account order saved",
+			msg.FocusConfigID,
+		)
+
+	case AccountDefaultChangedMsg:
+		return m.persistAccountConfigChange(
+			func(c *config.Config) { c.SetDefaultAccount(msg.ConfigID) },
+			"default sender: "+msg.Name,
+			msg.ConfigID,
+		)
 
 	case AccountDatabaseDeletedMsg:
 		m.accountManager.busy = false
@@ -1979,10 +1983,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.Compose):
-		var acfg config.AccountConfig
-		if len(m.cfg.Accounts) > 0 {
-			acfg = m.cfg.Accounts[0]
-		}
+		acfg, _ := m.cfg.DefaultAccount()
 		m.compose = NewCompose(acfg, m.cfg.Accounts, m.addressBook)
 		m.overlay = overlayCompose
 		return m, nil
@@ -2712,10 +2713,7 @@ func (m Model) handleContactManager(msg tea.Msg) (tea.Model, tea.Cmd) {
 	newCM, cmd, exit := m.contactManager.Update(msg, m.keys)
 	m.contactManager = newCM
 	if len(m.contactManager.composeTo) > 0 {
-		var acfg config.AccountConfig
-		if len(m.cfg.Accounts) > 0 {
-			acfg = m.cfg.Accounts[0]
-		}
+		acfg, _ := m.cfg.DefaultAccount()
 		to := strings.Join(m.contactManager.composeTo, ", ")
 		m.contactManager.composeTo = nil
 		m.contactManager.clearMarks()
@@ -3225,6 +3223,9 @@ func (m *Model) ensureSpinner() tea.Cmd {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 func (m *Model) rebuildSidebar() {
+	// config.toml order is the one order everything shows; the database's
+	// position column is only insertion order.
+	m.accounts = sortAccountsByConfigOrder(m.accounts, m.cfg.Accounts)
 	m.sidebarRows = buildSidebarRows(m.accounts, m.mailboxes, m.collapsedAccounts, m.collapsedSections)
 	m.sidebarCursor = clamp(m.sidebarCursor, 0, max(0, len(m.sidebarRows)-1))
 	m.clampSidebarOffset()
@@ -3257,7 +3258,7 @@ func (m *Model) clampSidebarOffset() {
 func (m Model) newAccountManager() AccountManager {
 	am := NewAccountManager(m.db)
 	am.mode = amList
-	am.setData(m.accounts, m.mailboxes, m.cfg.Accounts, m.cfg.OAuth)
+	am.setData(m.accounts, m.mailboxes, m.cfg.Accounts, m.cfg.OAuth, m.cfg.ExplicitDefaultAccountID())
 	am.oauthBrowser = m.cfg.Display.Browser
 	return am
 }
@@ -3298,6 +3299,84 @@ func (m Model) handleSearchCharacter(newValue string) (tea.Model, tea.Cmd) {
 }
 
 // effectiveManualCommand is the command shown in Settings (real install result, or suggested script when an update is available but the install path is not writable).
+
+// restoreSidebarSelection puts the cursor back on the row that was selected
+// before the sidebar was rebuilt, matching on the identity of the row rather
+// than its index.
+func (m *Model) restoreSidebarSelection(kind sidebarRowKind, id int64) {
+	for i, row := range m.sidebarRows {
+		if row.kind != kind {
+			continue
+		}
+		switch kind {
+		case rowKindUnified:
+			m.sidebarCursor = i
+			return
+		case rowKindMailbox:
+			if row.mailboxID == id {
+				m.sidebarCursor = i
+				return
+			}
+		case rowKindAccount, rowKindSysFolderHeader, rowKindPersonalFolderHeader:
+			if row.accountID == id {
+				m.sidebarCursor = i
+				return
+			}
+		}
+	}
+}
+
+// defaultAccountRow resolves the account row for the explicitly configured
+// default sender, joining on the stable config ID.
+func (m Model) defaultAccountRow() (db.Account, bool) {
+	id := m.cfg.ExplicitDefaultAccountID()
+	if id == "" {
+		return db.Account{}, false
+	}
+	for _, acc := range m.accounts {
+		acfg, err := m.accountConfigFor(acc)
+		if err == nil && acfg.ID == id {
+			return acc, true
+		}
+	}
+	return db.Account{}, false
+}
+
+// defaultAccountSidebarRow is the index of the default account's INBOX row,
+// falling back to its first mailbox and then its account header. It reports
+// false when no default is explicitly configured, which leaves the selection
+// where it already was.
+func (m Model) defaultAccountSidebarRow() (int, bool) {
+	acc, ok := m.defaultAccountRow()
+	if !ok {
+		return 0, false
+	}
+	fallback := -1
+	for i, row := range m.sidebarRows {
+		// A mailbox row carries only its mailbox ID, so its account comes from
+		// the mailbox itself; every other row carries the account ID directly.
+		if row.kind == rowKindMailbox {
+			mb := m.mailboxByID(row.mailboxID)
+			if mb == nil || mb.AccountID != acc.ID {
+				continue
+			}
+			if strings.EqualFold(mb.Name, "INBOX") {
+				return i, true
+			}
+			if fallback < 0 {
+				fallback = i
+			}
+			continue
+		}
+		if row.kind == rowKindAccount && row.accountID == acc.ID && fallback < 0 {
+			fallback = i
+		}
+	}
+	if fallback >= 0 {
+		return fallback, true
+	}
+	return 0, false
+}
 
 func (m Model) currentSidebarSelection() (sidebarRowKind, int64) {
 	if m.sidebarCursor < 0 || m.sidebarCursor >= len(m.sidebarRows) {
@@ -3462,6 +3541,40 @@ func deleteAccountDatabaseCmd(database *db.DB, request AccountDeletedMsg, previo
 		}
 		return result
 	}
+}
+
+// persistAccountConfigChange applies mutate to a copy of the config and writes
+// it straight away. Reordering accounts and choosing a default sender touch
+// config.toml only — no IMAP round trip and no database row — so they need
+// none of the two-phase save-then-rollback dance the account form uses. A
+// failed write leaves m.cfg untouched and re-syncs the account manager, which
+// reverts its optimistic row order because that order is derived from the
+// config list.
+func (m Model) persistAccountConfigChange(mutate func(*config.Config), okStatus, focusConfigID string) (tea.Model, tea.Cmd) {
+	next := m.cfg
+	next.Accounts = append([]config.AccountConfig(nil), m.cfg.Accounts...)
+	mutate(&next)
+
+	if err := m.persistConfig(next); err != nil {
+		m.accountManager.statusMsg = "SAVE FAILED: " + err.Error()
+		m.accountManager.setData(m.accounts, m.mailboxes, m.cfg.Accounts, m.cfg.OAuth, m.cfg.ExplicitDefaultAccountID())
+		m.accountManager.focusConfigID(focusConfigID)
+		m.setStatus("couldn't save accounts: "+err.Error(), true)
+		return m, m.clearStatusCmd()
+	}
+
+	prevKind, prevID := m.currentSidebarSelection()
+	m.cfg = next
+	m.rebuildSidebar()
+	if prevID != 0 || prevKind == rowKindUnified {
+		m.restoreSidebarSelection(prevKind, prevID)
+	}
+	m.sidebarCursor = clamp(m.sidebarCursor, 0, max(0, len(m.sidebarRows)-1))
+	m.clampSidebarOffset()
+	m.accountManager.setData(m.accounts, m.mailboxes, m.cfg.Accounts, m.cfg.OAuth, m.cfg.ExplicitDefaultAccountID())
+	m.accountManager.focusConfigID(focusConfigID)
+	m.setStatus(okStatus, false)
+	return m, m.clearStatusCmd()
 }
 
 // saveConfig persists the config and surfaces any failure on the status line, so a

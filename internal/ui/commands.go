@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -156,10 +155,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		m.openOutbox()
 		return m, nil
 	case "compose":
-		var acfg config.AccountConfig
-		if len(m.cfg.Accounts) > 0 {
-			acfg = m.cfg.Accounts[0]
-		}
+		acfg, _ := m.cfg.DefaultAccount()
 		m.compose = NewCompose(acfg, m.cfg.Accounts, m.addressBook)
 		m.overlay = overlayCompose
 		return m, nil
