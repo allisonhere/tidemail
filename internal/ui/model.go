@@ -2046,7 +2046,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.focused == paneContent && m.contentMessageID != 0 && len(m.contentAttachments) > 0 {
 			home, err := os.UserHomeDir()
 			if err != nil {
-				return m, saveAttachmentsCmd(m.contentAttachments)
+				return m, saveAttachmentsCmd(m.db, m.contentAttachments)
 			}
 			m.openSaveAttachPicker(filepath.Join(home, "Downloads"))
 			m.overlay = overlaySaveAttach

@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -238,5 +240,126 @@ func TestFocusPaneKeepsContentWithoutRerendering(t *testing.T) {
 	}
 	if got := strings.Join(m.contentLines, "\n"); got != before {
 		t.Fatal("Tab changed the reading pane content")
+	}
+}
+
+// seedThreadAttachment stores a real message with an attachment and returns it.
+func seedThreadAttachment(t *testing.T, m Model, uid uint32, filename, body string) db.Message {
+	t.Helper()
+	accountID, err := m.db.AddAccount(fmt.Sprintf("cfg%d", uid), "Acct", "")
+	if err != nil {
+		accountID = 1
+	}
+	mailboxID, err := m.db.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: fmt.Sprintf("BOX%d", uid)})
+	if err != nil {
+		t.Fatalf("UpsertMailbox: %v", err)
+	}
+	msg := cacheTestMessage(0, body)
+	msg.MailboxID = mailboxID
+	msg.UID = uid
+	msg.HasAttachment = filename != ""
+	if err := m.db.UpsertMessage(msg); err != nil {
+		t.Fatalf("UpsertMessage: %v", err)
+	}
+	stored, err := m.db.ListMessages(mailboxID)
+	if err != nil || len(stored) != 1 {
+		t.Fatalf("ListMessages: %v (%d rows)", err, len(stored))
+	}
+	if filename != "" {
+		if _, err := m.db.SaveAttachment(stored[0].ID, db.Attachment{
+			Filename: filename, ContentType: "application/pdf", Data: []byte("%PDF fake"),
+		}); err != nil {
+			t.Fatalf("SaveAttachment: %v", err)
+		}
+	}
+	return stored[0]
+}
+
+// Threaded reading used to drop attachments entirely: setViewportThread cleared
+// contentAttachments and never loaded any, so the list never rendered and
+// ctrl+d — which is gated on that slice — silently did nothing.
+func TestThreadedViewLoadsAttachments(t *testing.T) {
+	m := cacheTestModel(t)
+	msg := seedThreadAttachment(t, m, 1, "report.pdf", "here is the report")
+
+	m.setViewportThread(messageThread{
+		Key: "t1", Representative: msg, Messages: []db.Message{msg}, Count: 1,
+	})
+
+	if len(m.contentAttachments) != 1 {
+		t.Fatalf("contentAttachments = %d, want 1 — ctrl+d is gated on this", len(m.contentAttachments))
+	}
+	if got := m.contentAttachments[0].Filename; got != "report.pdf" {
+		t.Fatalf("attachment = %q, want report.pdf", got)
+	}
+	if !strings.Contains(strings.Join(m.contentLines, "\n"), "report.pdf") {
+		t.Fatalf("the reading pane does not list the attachment:\n%s", strings.Join(m.contentLines, "\n"))
+	}
+}
+
+func TestThreadedViewCollectsAttachmentsFromEveryMessage(t *testing.T) {
+	m := cacheTestModel(t)
+	first := seedThreadAttachment(t, m, 1, "", "no attachment here")
+	second := seedThreadAttachment(t, m, 2, "later.pdf", "the file is on this reply")
+
+	m.setViewportThread(messageThread{
+		Key: "t1", Representative: first, Messages: []db.Message{first, second}, Count: 2,
+	})
+
+	// An attachment on a later reply must still be reachable — the thread
+	// reads as one document.
+	if len(m.contentAttachments) != 1 {
+		t.Fatalf("contentAttachments = %d, want 1 from the second message", len(m.contentAttachments))
+	}
+	if got := m.contentAttachments[0].Filename; got != "later.pdf" {
+		t.Fatalf("attachment = %q, want later.pdf", got)
+	}
+}
+
+func TestThreadedAndFlatViewsAgreeOnAttachments(t *testing.T) {
+	m := cacheTestModel(t)
+	msg := seedThreadAttachment(t, m, 1, "report.pdf", "here is the report")
+
+	m.setViewportMessage(msg)
+	flat := len(m.contentAttachments)
+
+	m.setViewportThread(messageThread{
+		Key: "t1", Representative: msg, Messages: []db.Message{msg}, Count: 1,
+	})
+	threaded := len(m.contentAttachments)
+
+	if flat != threaded {
+		t.Fatalf("flat view found %d attachments, threaded found %d", flat, threaded)
+	}
+}
+
+// The reading pane holds attachment metadata only, so saving has to fetch the
+// contents itself. If it ever writes what is in memory, files come out empty.
+func TestSavingAttachmentsLoadsContentsFromTheDatabase(t *testing.T) {
+	m := cacheTestModel(t)
+	msg := seedThreadAttachment(t, m, 1, "report.pdf", "here is the report")
+
+	m.setViewportThread(messageThread{
+		Key: "t1", Representative: msg, Messages: []db.Message{msg}, Count: 1,
+	})
+	if len(m.contentAttachments) != 1 {
+		t.Fatalf("contentAttachments = %d, want 1", len(m.contentAttachments))
+	}
+	if len(m.contentAttachments[0].Data) != 0 {
+		t.Fatal("the reading pane loaded attachment contents; it should hold metadata only")
+	}
+
+	dir := t.TempDir()
+	res := saveAttachmentsCmdTo(m.db, m.contentAttachments, dir)().(AttachmentsSavedMsg)
+	if res.Err != nil || res.Count != 1 {
+		t.Fatalf("save: %+v", res)
+	}
+
+	written, err := os.ReadFile(filepath.Join(dir, "report.pdf"))
+	if err != nil {
+		t.Fatalf("read saved file: %v", err)
+	}
+	if string(written) != "%PDF fake" {
+		t.Fatalf("saved file contains %q, want the real attachment bytes", string(written))
 	}
 }

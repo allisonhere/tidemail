@@ -276,7 +276,9 @@ func (m *Model) setViewportMessage(msg db.Message) {
 		m.contentQuotesCollapsed = false
 	}
 	if msg.HasAttachment {
-		if atts, err := m.db.GetAttachments(msg.ID); err == nil {
+		// Metadata only: the pane shows names and sizes, and the contents are
+		// loaded at save time. This runs on every cursor move.
+		if atts, err := m.db.GetAttachmentsMeta(msg.ID); err == nil {
 			m.contentAttachments = atts
 		}
 	}
@@ -398,7 +400,8 @@ func (m *Model) setViewportThread(thread messageThread) {
 	if !sameMsg {
 		m.contentQuotesCollapsed = false
 	}
-	fingerprint := len(thread.Messages)
+	m.contentAttachments = m.threadAttachments(thread)
+	fingerprint := len(thread.Messages) + len(m.contentAttachments)
 	for _, tm := range thread.Messages {
 		fingerprint += len(tm.BodyHTML) + len(tm.BodyText)
 	}
@@ -417,6 +420,28 @@ func (m *Model) setViewportThread(thread messageThread) {
 		m.viewport.GotoTop()
 	}
 	m.ensureContentFocusVisible()
+}
+
+// threadAttachments collects the attachments of every message in a thread. A
+// thread reads as one document in the pane, so an attachment on the third
+// reply has to be reachable too — and ctrl+d saving the whole conversation is
+// what "save attachments" means there.
+func (m Model) threadAttachments(thread messageThread) []db.Attachment {
+	if m.db == nil {
+		return nil
+	}
+	var atts []db.Attachment
+	for _, msg := range thread.Messages {
+		if !msg.HasAttachment {
+			continue
+		}
+		got, err := m.db.GetAttachmentsMeta(msg.ID)
+		if err != nil {
+			continue
+		}
+		atts = append(atts, got...)
+	}
+	return atts
 }
 
 func (m *Model) setViewportForCurrentRow() {
@@ -483,6 +508,9 @@ func (m Model) renderThreadContent(thread messageThread) string {
 	body := collapseQuoteBlocks(strings.Join(blocks, "\n\n"), m.contentQuotesCollapsed)
 	if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
 		body += "\n\n" + m.renderContentLinks(contentWidth)
+	}
+	if len(m.contentAttachments) > 0 {
+		body += "\n\n" + m.renderAttachmentList(contentWidth)
 	}
 	content := title + "\n\n" + body
 	content = normalizeHardBreaks(content)
