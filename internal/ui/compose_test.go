@@ -1064,3 +1064,66 @@ func TestSendKeepsSignatureLinesInTheHTMLPart(t *testing.T) {
 		}
 	}
 }
+
+func TestReplyOpensOnTheFromRow(t *testing.T) {
+	accounts := composeSenderAccounts()
+	msg := db.Message{From: "alice@example.com", MessageID: "<x>", Subject: "S", BodyText: "hello"}
+
+	c := NewReply(msg, accounts[1], accounts, nil)
+
+	// To and Subject come prefilled, so the open question on a reply is which
+	// account it goes out from.
+	if c.focusedField != composeFieldFrom {
+		t.Fatalf("focus = %v, want the From row", c.focusedField)
+	}
+	// The row is live: enter opens the sender picker on the current account.
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyEnter}, DefaultKeys)
+	if !c.senderPickerOpen || c.senderCursor != 1 {
+		t.Fatalf("enter on From did not open the picker at the current account (open=%v cursor=%d)", c.senderPickerOpen, c.senderCursor)
+	}
+}
+
+func TestReplyWithOneAccountStillLandsInTheBody(t *testing.T) {
+	only := composeSenderAccounts()[:1]
+	msg := db.Message{From: "alice@example.com", MessageID: "<x>", Subject: "S", BodyText: "hello"}
+
+	c := NewReply(msg, only[0], only, nil)
+
+	// advanceField skips From when there is nothing to choose between, so
+	// landing there would strand the caret on an unreachable row.
+	if c.focusedField != composeFieldBody {
+		t.Fatalf("focus = %v, want the body for a single-account reply", c.focusedField)
+	}
+}
+
+func TestMultiAccountReplyStillTypesAboveTheQuote(t *testing.T) {
+	accounts := composeSenderAccounts()
+	c := NewReply(db.Message{
+		From:      "alice@example.com",
+		Subject:   "Plans",
+		MessageID: "<plans@example.com>",
+		BodyText:  "quoted line",
+	}, accounts[1], accounts, nil)
+
+	// Starting on From must not cost the caret its place above the quote.
+	for c.focusedField != composeFieldBody {
+		c.advanceField(1)
+	}
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("H")}, DefaultKeys)
+
+	if got := c.bodyInput.Value(); !strings.HasPrefix(got, "H\n\nOn alice@example.com wrote:\n> quoted line") {
+		t.Fatalf("expected typed reply text above the quoted original, got %q", got)
+	}
+}
+
+func TestForwardStillOpensOnTo(t *testing.T) {
+	accounts := composeSenderAccounts()
+	msg := db.Message{From: "alice@example.com", MessageID: "<x>", Subject: "S", BodyText: "hello"}
+
+	c := NewForward(msg, accounts[1], accounts, nil)
+
+	// A forward has no recipient yet, so that is still the first thing to fill.
+	if c.focusedField != composeFieldTo {
+		t.Fatalf("focus = %v, want the To row on a forward", c.focusedField)
+	}
+}

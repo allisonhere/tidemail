@@ -210,9 +210,16 @@ func NewReply(original db.Message, acfg config.AccountConfig, accounts []config.
 		c.bodyInput.SetValue(quoted)
 	}
 
-	// To/Subject are already filled for a reply, so land in the body with the
-	// caret at the top (above the quote), ready to type — and showing a cursor.
-	c.focusBodyAtStart()
+	// To and Subject are already filled for a reply, so the one thing left to
+	// decide is which account it goes out from — land there when there is a
+	// choice. With a single account that row is skipped in the tab cycle, so
+	// fall back to the body with the caret above the quote, ready to type.
+	if len(c.accounts) > 1 {
+		c.moveBodyCursorToStart()
+		c.focusFrom()
+	} else {
+		c.focusBodyAtStart()
+	}
 	return c
 }
 
@@ -254,6 +261,18 @@ func (c *ComposeModel) moveBodyCursorToStart() {
 	c.bodyInput.Focus()
 	c.bodyInput, _ = c.bodyInput.Update(tea.KeyMsg{Type: tea.KeyCtrlHome})
 	c.bodyInput.Blur()
+}
+
+// focusFrom puts focus on the From row, where enter or space opens the sender
+// picker. Only meaningful with more than one account; advanceField skips the
+// row otherwise.
+func (c *ComposeModel) focusFrom() {
+	c.toInput.Blur()
+	c.ccInput.Blur()
+	c.bccInput.Blur()
+	c.subjectInput.Blur()
+	c.bodyInput.Blur()
+	c.focusedField = composeFieldFrom
 }
 
 // focusBodyAtStart moves focus into the message body with the caret at the top
