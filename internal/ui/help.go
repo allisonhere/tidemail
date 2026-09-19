@@ -159,11 +159,13 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.Edit.Help().Key, "edit selected account from the account list"},
 				{keys.Delete.Help().Key, "delete selected account from the account list"},
 				{keys.Space.Help().Key, "mark the selected account ★ [default] from the account list"},
-				{keys.MoveAccountUp.Help().Key + "/" + keys.MoveAccountDown.Help().Key, "move the selected account up or down the list"},
+				// Down first, so the pair reads the way it is spoken and matches
+				// the shift+j/k hint under the account list.
+				{keys.MoveAccountDown.Help().Key + "/" + keys.MoveAccountUp.Help().Key, "reorder accounts: move the selected account down or up"},
 				{"Default sender", "the ★ [default] account: From for a new message, and focused at startup"},
 				{"No default", "compose uses the first account; TideMail opens on the Unified Inbox"},
 				{"Replies", "reply and forward send from the account the message arrived on"},
-				{"Account order", "the list order is the sidebar and ctrl+u order, saved in config.toml"},
+				{"Account order", "reordering also reorders the sidebar and the ctrl+u sender list"},
 				{keys.Tab.Help().Key, "next form field"},
 				{keys.Left.Help().Key + "/" + keys.Right.Help().Key, "change provider, color, or the Auth method"},
 				{keys.Save.Help().Key, "save account form"},
