@@ -665,6 +665,46 @@ func (am AccountManager) statusForeground(chrome managerChrome) lipgloss.Color {
 	}
 }
 
+// statusIsFailure reports whether the status message is something that stopped
+// the action, as opposed to a confirmation or a remark. A NOTE — the
+// duplicate-name warning — is deliberately excluded: the save went through, so
+// it should not be dressed as a failure.
+func (am AccountManager) statusIsFailure(chrome managerChrome) bool {
+	if am.statusForeground(chrome) != chrome.errorFg {
+		return false
+	}
+	return !strings.HasPrefix(strings.ToUpper(strings.TrimSpace(am.statusMsg)), "NOTE:")
+}
+
+// renderStatusBar draws the message under the account manager. A failure is a
+// filled badge rather than red text: it is the reason a save did not happen,
+// and on a form this dense one more line of colored text is easy to read past.
+// Everything else stays plain, so the fill keeps meaning "this stopped".
+func (am AccountManager) renderStatusBar(width int, chrome managerChrome) string {
+	if am.statusMsg == "" {
+		return ""
+	}
+	text := am.redactSensitive(am.statusMsg)
+	if !am.statusIsFailure(chrome) {
+		return lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Foreground(am.statusForeground(chrome)).
+			Width(width).
+			Padding(0, 1).
+			Render(text)
+	}
+	// The badge hugs its text and sits one cell in, lining up with the padded
+	// rows above it rather than flooding the whole width with red.
+	badge := lipgloss.NewStyle().
+		Background(chrome.errorFg).
+		Foreground(contrastFg(chrome.errorFg)).
+		Bold(true).
+		Padding(0, 1).
+		Render(truncate(text, max(1, width-4)))
+	indent := lipgloss.NewStyle().Background(chrome.baseBg).Render(" ")
+	return padStyled(indent+badge, width, chrome.baseBg)
+}
+
 func (am AccountManager) redactSensitive(s string) string {
 	return am.redactSensitiveWithAccounts(s, nil)
 }
@@ -1459,15 +1499,7 @@ func (am AccountManager) viewList(width, height int, chrome managerChrome, style
 		width, bodyH, chrome.baseBg,
 	)
 
-	statusLine := ""
-	if am.statusMsg != "" {
-		statusLine = lipgloss.NewStyle().
-			Background(chrome.baseBg).
-			Foreground(am.statusForeground(chrome)).
-			Width(width).
-			Padding(0, 1).
-			Render(am.statusMsg)
-	}
+	statusLine := am.renderStatusBar(width, chrome)
 
 	var actionPairs []string
 	if len(am.accounts) > 0 {
@@ -1887,15 +1919,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	addHint("0 = push (IMAP IDLE) · -1 = manual only")
 	addHint("N = poll every N minutes")
 
-	statusLine := ""
-	if am.statusMsg != "" {
-		statusLine = lipgloss.NewStyle().
-			Background(chrome.baseBg).
-			Foreground(am.statusForeground(chrome)).
-			Width(width).
-			Padding(0, 1).
-			Render(am.redactSensitive(am.statusMsg))
-	}
+	statusLine := am.renderStatusBar(width, chrome)
 	if am.busyMsg != "" {
 		statusLine = lipgloss.NewStyle().
 			Background(chrome.baseBg).
