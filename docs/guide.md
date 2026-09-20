@@ -133,10 +133,15 @@ that window to cancel delivery and reopen the draft. Change the delay under
 Settings → Editor, or set it to `0` to send at once.
 
 The **Outbox** has a row of its own in the accounts pane, under the Unified
-Inbox — outgoing mail spans accounts the same way. `Enter` or `Space` opens it,
-`O` opens it from anywhere, and its badge counts the sends that need you. A
-message passing through on its way out adds nothing to that count. Inside, use
-`r` to retry a failed message or `e` to move an unsent one back into compose.
+Inbox — outgoing mail spans accounts the same way. Its badge counts the sends
+that need you; a message passing through on its way out adds nothing to it.
+Resting on the row lists what is waiting and why, and `Enter`, `Space`, or `O`
+from anywhere opens the Outbox itself, where `r` retries a failed message and
+`e` moves an unsent one back into compose.
+
+The row is a doorway rather than a folder: the message pane previews it, but
+archiving, starring and the other folder keys do not apply to a message that
+has not been sent yet.
 
 A send that fails does not go quiet. The status bar reports it — `retrying 1 in
 Outbox` while automatic retries run, then `1 failed send in Outbox (2m)` once

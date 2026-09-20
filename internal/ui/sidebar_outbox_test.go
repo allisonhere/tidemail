@@ -146,3 +146,64 @@ func TestSidebarOutboxSelectionSurvivesARebuild(t *testing.T) {
 		t.Fatalf("expected the cursor back on the Outbox row, got row %d", m.sidebarCursor)
 	}
 }
+
+// A badge reading (1) beside a message pane reading "no messages" is a
+// contradiction, and reads as a bug rather than as "this row is a doorway".
+func TestMessagePaneDescribesTheOutboxRow(t *testing.T) {
+	item := agedOutboxItem(db.OutboxFailed, 1, 34*time.Hour)
+	item.Subject = "quarterly numbers"
+
+	m := newSidebarOutboxModel(t, item, outboxItem(db.OutboxSent, 1))
+	m.sidebarCursor = outboxRowIndex(t, m)
+	m.initialLoading = false
+	m.width, m.height = 110, 24
+
+	pane := ansi.Strip(m.renderMessagesPane())
+	if strings.Contains(pane, "no messages") {
+		t.Fatalf("expected the Outbox row not to claim there are no messages, got %q", pane)
+	}
+	if !strings.Contains(pane, "failed") || !strings.Contains(pane, "quarterly numbers") {
+		t.Fatalf("expected the waiting send to be named, got %q", pane)
+	}
+	if !strings.Contains(pane, "opens the Outbox") {
+		t.Fatalf("expected the pane to say how to get in, got %q", pane)
+	}
+	// A message already delivered is not waiting to go out.
+	if strings.Contains(pane, "sent") {
+		t.Fatalf("expected delivered mail to stay out of the preview, got %q", pane)
+	}
+	if got := m.messagesPaneTitle(); got != "Outbox" {
+		t.Fatalf("pane title = %q, want Outbox", got)
+	}
+}
+
+func TestMessagePaneSaysWhenTheOutboxIsClear(t *testing.T) {
+	m := newSidebarOutboxModel(t, outboxItem(db.OutboxSent, 1))
+	m.sidebarCursor = outboxRowIndex(t, m)
+	m.initialLoading = false
+	m.width, m.height = 110, 24
+
+	pane := ansi.Strip(m.renderMessagesPane())
+	if !strings.Contains(pane, "nothing waiting to go out") {
+		t.Fatalf("expected a clear Outbox to say so, got %q", pane)
+	}
+	if strings.Contains(pane, "no messages") {
+		t.Fatalf("expected the folder wording to stay out of the Outbox, got %q", pane)
+	}
+}
+
+// None of the folder verbs apply to a queued message.
+func TestMessagePaneHintOnTheOutboxRowOffersOnlyWhatWorks(t *testing.T) {
+	m := newSidebarOutboxModel(t, outboxItem(db.OutboxFailed, 3))
+	m.sidebarCursor = outboxRowIndex(t, m)
+
+	hint := ansi.Strip(m.renderPaneHint(paneMessages))
+	if !strings.Contains(hint, "open Outbox") {
+		t.Fatalf("expected the hint to offer the Outbox, got %q", hint)
+	}
+	for _, verb := range []string{"archive", "star", "delete", "move"} {
+		if strings.Contains(hint, verb) {
+			t.Fatalf("expected no %q on the Outbox row, got %q", verb, hint)
+		}
+	}
+}

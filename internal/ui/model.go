@@ -2905,6 +2905,12 @@ func (m Model) renderPaneHint(p pane) string {
 		hint = m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " move  " +
 			m.keyHint(m.keys.Enter) + " toggle/sync  " + m.keyHint(m.keys.Sync) + " sync"
 	case paneMessages:
+		if m.selectedOutboxRow() {
+			// None of the folder verbs apply to a queued message, and the
+			// pane is a preview of the Outbox rather than a list it can act
+			// on, so offer the one key that does something.
+			return m.keyHint(m.keys.Enter) + " open Outbox  " + m.keyHint(m.keys.Command) + " command"
+		}
 		hint = m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " move  " +
 			m.keyHint(m.keys.Space) + " select  " +
 			m.keyHint(m.keys.MarkRead) + " read  " +
