@@ -83,3 +83,35 @@ func TestAccountManagerFormLabelsFromAsAddress(t *testing.T) {
 		t.Fatalf("expected the From row to say blank falls back to the username, got %q", view)
 	}
 }
+
+// That fallback only exists when the login is an address. When it is not, the
+// hint has to say the field is required, because validation now says so.
+func TestAccountManagerFormHintTracksNonAddressLogin(t *testing.T) {
+	am := newFromFormAccountManager()
+	am.userInput.SetValue("alice+example.com")
+	am.focusField(amFieldFrom)
+	chrome := newManagerChrome(80, CatppuccinMocha, false)
+
+	view := ansi.Strip(am.viewForm(80, 40, chrome))
+
+	if !strings.Contains(view, "Required: the login is not an address") {
+		t.Fatalf("expected the From row to say it is required, got %q", view)
+	}
+	if strings.Contains(view, "Blank sends as the username") {
+		t.Fatalf("expected the fallback hint to be replaced, got %q", view)
+	}
+}
+
+// An untouched login must not make a brand-new form look like it has an error.
+func TestAccountManagerFormHintDefaultsOnEmptyLogin(t *testing.T) {
+	am := NewAccountManager(nil)
+	am.mode = amAdd
+	am.focusField(amFieldFrom)
+	chrome := newManagerChrome(80, CatppuccinMocha, false)
+
+	view := ansi.Strip(am.viewForm(80, 40, chrome))
+
+	if !strings.Contains(view, "Blank sends as the username") {
+		t.Fatalf("expected an empty form to keep the default hint, got %q", view)
+	}
+}

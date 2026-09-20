@@ -1329,6 +1329,15 @@ func hostFormatError(label, host string) string {
 	return ""
 }
 
+// isEmailAddress reports whether s parses as one RFC 5322 address, with or
+// without a display name. It is the single address test the form uses, so the
+// From row, the preset providers' Email row, and the sender fallback all agree
+// on what counts.
+func isEmailAddress(s string) bool {
+	_, err := mail.ParseAddress(s)
+	return err == nil
+}
+
 // hashForAtError catches an address typed with "#" where "@" belongs —
 // info#example.com. On a Nordic layout "@" is AltGr+2 and "#" is Shift+3, so
 // it is an easy slip, and nothing downstream can recover from it: "#" is
@@ -1430,10 +1439,8 @@ func validateAccountForConnect(acfg config.AccountConfig) string {
 	// The preset providers authenticate with the full address; a bare login is
 	// rejected at sign-in, so catch it here. Custom stays free-form beyond the
 	// typo check — plenty of hosts issue logins that are not addresses at all.
-	if _, preset := providerPresets[acfg.Provider]; preset {
-		if _, err := mail.ParseAddress(acfg.User); err != nil {
-			return "EMAIL MUST BE A FULL ADDRESS, LIKE YOU@EXAMPLE.COM"
-		}
+	if _, preset := providerPresets[acfg.Provider]; preset && !isEmailAddress(acfg.User) {
+		return "EMAIL MUST BE A FULL ADDRESS, LIKE YOU@EXAMPLE.COM"
 	}
 	if acfg.IMAPPort < 1 || acfg.IMAPPort > 65535 {
 		return "IMAP PORT MUST BE 1-65535"
@@ -1444,17 +1451,25 @@ func validateAccountForConnect(acfg config.AccountConfig) string {
 	if (acfg.Provider == "Gmail" || acfg.Provider == "Outlook") && acfg.Password == "" && acfg.RefreshToken == "" {
 		return "SIGN IN WITH " + strings.ToUpper(oauthVendor(acfg.Provider)) + " (CTRL+O) OR ENTER AN APP PASSWORD"
 	}
-	// From is optional — a blank one sends as the username — but a display
-	// name with no address ("Alice") is not a From at all. SMTP only discovers
-	// that at send time, by which point the value is already baked into a
-	// queued message, so the form has to be where it fails.
+	// A display name with no address ("Alice") is not a From at all, and SMTP
+	// only discovers that at send time, by which point the value is baked into
+	// a queued message — so the form has to be where it fails. Blank is the
+	// one way out, and only when the login can stand in for it.
 	if from := strings.TrimSpace(acfg.From); from != "" {
 		if status := hashForAtError("FROM", from); status != "" {
 			return status
 		}
-		if _, err := mail.ParseAddress(from); err != nil {
+		if !isEmailAddress(from) {
 			return "FROM NEEDS AN EMAIL ADDRESS, LIKE NAME <YOU@EXAMPLE.COM>"
 		}
+	} else if !isEmailAddress(acfg.User) {
+		// A blank From sends as the login: smtp.senderAddress falls back to
+		// cfg.User and cleanEmail passes a bare token straight through, so
+		// nothing downstream rejects it — the server does, after the message
+		// is queued. Logins that are not addresses are ordinary (cPanel's
+		// "alice+example.com", an Exchange "DOMAIN\alice", a bare ISP login),
+		// and those accounts have nothing sendable to fall back to.
+		return "FROM ADDRESS IS REQUIRED WHEN THE LOGIN IS NOT AN ADDRESS"
 	}
 	return ""
 }
@@ -2020,7 +2035,14 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	addSection("Sending identity")
 	addControl(amFieldFrom, row("From address", am.fromInput, am.focusedField == amFieldFrom))
 	addHint("Format: Name <you@example.com>")
-	addHint("Blank sends as the username")
+	// The fallback the second hint describes only exists when the login is
+	// itself an address; otherwise validation requires this field, so the hint
+	// says that instead. An untouched login stays on the default wording.
+	if user := strings.TrimSpace(am.userInput.Value()); user != "" && !isEmailAddress(user) {
+		addHint("Required: the login is not an address")
+	} else {
+		addHint("Blank sends as the username")
+	}
 	addControl(amFieldSignature, sigRow("Signature", am.sigArea, am.focusedField == amFieldSignature))
 	addSection("Sync")
 	addControl(amFieldSyncInterval, row("Refresh", am.syncInput, am.focusedField == amFieldSyncInterval))

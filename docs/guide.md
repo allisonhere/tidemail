@@ -53,7 +53,11 @@ and are hostnames, not URLs, paths, or `host:port` pairs — the port belongs in
 its own field, where it must be a number between 1 and 65535. Leave a port
 blank to take the standard one. On the Gmail, Outlook, Yahoo, and iCloud
 providers the **Email** row must be a full address; a **Custom** account's
-**Username** is whatever your host issues, which need not be an address at all.
+**Username** is whatever your host issues, which need not be an address at all
+— cPanel's `alice+example.com`, an Exchange `DOMAIN\alice`, a bare ISP login.
+When it is not an address, the **From address** row becomes required: there is
+no address to send as otherwise, and the form says so rather than leaving the
+first send to be refused by the server.
 
 Any field holding an address rejects `#` typed where `@` belongs —
 `info#example.com`. On a Nordic layout `@` is AltGr+2 and `#` is Shift+3, and
@@ -289,11 +293,12 @@ signature = "Alice\nSent with TideMail"
 sync_minutes = 0  # 0 = push (IDLE), N = poll every N min, -1 = manual only
 ```
 
-`from` is the **From address** row in the account form. Leave it blank to send
-as `user`, or give it an address — `alice@example.com` or
-`Alice <alice@example.com>`. A display name on its own is not enough: the
-account form refuses to save one, because SMTP has no address to send from and
-would only fail once the message was already queued.
+`from` is the **From address** row in the account form. Give it an address —
+`alice@example.com` or `Alice <alice@example.com>` — or leave it blank to send
+as `user`, which works only when `user` is itself an address. A display name on
+its own is not enough: the account form refuses to save one, because SMTP has
+no address to send from and would only fail once the message was already
+queued.
 
 The signature is a multi-line box in the account form — press `Enter` for a new
 line, `Tab` to move on, and `Ctrl+S` to save without leaving it. Arrow keys walk

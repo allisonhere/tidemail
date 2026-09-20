@@ -124,18 +124,68 @@ func TestValidateFormRequiresFullAddressForPresetProviders(t *testing.T) {
 }
 
 // Custom hosts issue logins that are not addresses at all, so that field stays
-// free-form apart from the "#" typo check below.
+// free-form apart from the "#" typo check below. Such an account needs a From
+// of its own, which the fixture supplies — see the next test.
 func TestValidateFormAcceptsNonAddressCustomLogins(t *testing.T) {
 	for _, user := range []string{
 		"alice",
+		"alice+example.com", // cPanel's alternate separator for IMAP/SMTP auth
+		"alice%example.com",
 		"DOMAIN\\alice",
 		"svc#prod", // a "#" with nothing domain-shaped after it
 		"alice@example.com",
 	} {
 		am := newFromFormAccountManager()
 		am.userInput.SetValue(user)
+		am.fromInput.SetValue("Alice <alice@example.com>")
 		if got := am.validateForm(am.buildCfg()); got != "" {
 			t.Fatalf("expected Custom login %q to validate, got %q", user, got)
+		}
+	}
+}
+
+// A blank From sends as the login, so an account whose login is not an address
+// has nothing sendable to fall back to. Saving it would queue a message the
+// server refuses — the same late failure as issue #25, one layer down.
+func TestValidateFormRequiresFromForNonAddressLogins(t *testing.T) {
+	const want = "FROM ADDRESS IS REQUIRED WHEN THE LOGIN IS NOT AN ADDRESS"
+
+	for _, user := range []string{"alice", "alice+example.com", "DOMAIN\\alice"} {
+		am := newFromFormAccountManager()
+		am.userInput.SetValue(user)
+		am.fromInput.SetValue("")
+		if got := am.validateForm(am.buildCfg()); got != want {
+			t.Fatalf("login %q with no From: got %q, want %q", user, got, want)
+		}
+
+		am.fromInput.SetValue("alice@example.com")
+		if got := am.validateForm(am.buildCfg()); got != "" {
+			t.Fatalf("login %q with a From: got %q, want it to validate", user, got)
+		}
+	}
+
+	// A login that is already an address keeps the fallback, so From stays
+	// optional for the common case.
+	am := newFromFormAccountManager()
+	am.userInput.SetValue("alice@example.com")
+	am.fromInput.SetValue("")
+	if got := am.validateForm(am.buildCfg()); got != "" {
+		t.Fatalf("expected an address login to keep From optional, got %q", got)
+	}
+}
+
+// The "#" check is a typo check, never a separator policy. cPanel documents
+// "alice+example.com" for IMAP/SMTP auth, and other hosts use "%" or a
+// backslash; widening the check to those would lock out every one of them.
+func TestHashCheckLeavesAlternateLoginSeparatorsAlone(t *testing.T) {
+	for _, user := range []string{
+		"alice+example.com",
+		"alice%example.com",
+		"alice_example.com",
+		"DOMAIN\\alice",
+	} {
+		if got := hashForAtError("USERNAME", user); got != "" {
+			t.Fatalf("expected login %q to pass the # check, got %q", user, got)
 		}
 	}
 }
