@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/lipgloss"
@@ -32,7 +33,14 @@ func newStatusBarModel(t *testing.T, items ...db.OutboxItem) Model {
 }
 
 func outboxItem(state string, attempts int) db.OutboxItem {
-	return db.OutboxItem{State: state, Attempts: attempts}
+	return db.OutboxItem{State: state, Attempts: attempts, UpdatedAt: time.Now().Unix()}
+}
+
+// agedOutboxItem is one that entered its state a while ago.
+func agedOutboxItem(state string, attempts int, age time.Duration) db.OutboxItem {
+	item := outboxItem(state, attempts)
+	item.UpdatedAt = time.Now().Add(-age).Unix()
+	return item
 }
 
 func TestOutboxTroubleCountsOnlyWhatNeedsAttention(t *testing.T) {
@@ -45,15 +53,57 @@ func TestOutboxTroubleCountsOnlyWhatNeedsAttention(t *testing.T) {
 		outboxItem(db.OutboxSending, 1), // in flight right now
 	)
 
-	failed, uncertain, retrying := m.outboxTrouble()
-	if failed != 1 {
-		t.Fatalf("failed = %d, want 1", failed)
+	got := m.summarizeOutbox()
+	if got.failed != 1 {
+		t.Fatalf("failed = %d, want 1", got.failed)
 	}
-	if uncertain != 1 {
-		t.Fatalf("uncertain = %d, want 1 — it must not be folded into failed", uncertain)
+	if got.uncertain != 1 {
+		t.Fatalf("uncertain = %d, want 1 — it must not be folded into failed", got.uncertain)
 	}
-	if retrying != 1 {
-		t.Fatalf("retrying = %d, want 1 (queued after a failed attempt)", retrying)
+	if got.retrying != 1 {
+		t.Fatalf("retrying = %d, want 1 (queued after a failed attempt)", got.retrying)
+	}
+	if got.needsAttention() != 2 {
+		t.Fatalf("needsAttention = %d, want 2", got.needsAttention())
+	}
+}
+
+// The warning appears the moment a "message sent" toast clears, so without an
+// age a failure from yesterday reads as though the send that just succeeded
+// had failed. That is a real report, not a hypothetical.
+func TestStatusBarShowsHowOldTheTroubleIs(t *testing.T) {
+	m := newStatusBarModel(t, agedOutboxItem(db.OutboxFailed, 3, 30*time.Hour))
+
+	if got := ansi.Strip(m.renderStatusBar()); !strings.Contains(got, "1 failed send in Outbox (1d)  O") {
+		t.Fatalf("expected the age of the failure, got %q", got)
+	}
+
+	m = newStatusBarModel(t, outboxItem(db.OutboxFailed, 3))
+	if got := ansi.Strip(m.renderStatusBar()); !strings.Contains(got, "1 failed send in Outbox (now)  O") {
+		t.Fatalf("expected a fresh failure to read as fresh, got %q", got)
+	}
+}
+
+// A retry in flight is current by definition, so its age is not news.
+func TestStatusBarOmitsAgeForRetries(t *testing.T) {
+	m := newStatusBarModel(t, agedOutboxItem(db.OutboxQueued, 1, 30*time.Hour))
+
+	if got := ansi.Strip(m.renderStatusBar()); !strings.Contains(got, "retrying 1 in Outbox  O") {
+		t.Fatalf("expected no age on a retry, got %q", got)
+	}
+}
+
+// "none" turns dates off everywhere; the warning still has to render.
+func TestStatusBarWarningSurvivesDatesOff(t *testing.T) {
+	m := newStatusBarModel(t, agedOutboxItem(db.OutboxFailed, 3, 30*time.Hour))
+	m.cfg.Display.DateFormat = "none"
+
+	got := ansi.Strip(m.renderStatusBar())
+	if !strings.Contains(got, "1 failed send in Outbox  O") {
+		t.Fatalf("expected the warning without an age, got %q", got)
+	}
+	if strings.Contains(got, "()") {
+		t.Fatalf("expected no empty parentheses, got %q", got)
 	}
 }
 
@@ -70,7 +120,7 @@ func TestStatusBarDoesNotCallAnUncertainSendFailed(t *testing.T) {
 	if strings.Contains(bar, "failed") {
 		t.Fatalf("expected an uncertain delivery not to be called failed, got %q", bar)
 	}
-	if !strings.Contains(bar, "1 unconfirmed send in Outbox  O") {
+	if !strings.Contains(bar, "1 unconfirmed send in Outbox (now)  O") {
 		t.Fatalf("expected the uncertain delivery to be reported in its own words, got %q", bar)
 	}
 	if !strings.Contains(m.renderStatusBar(), foreground(t, statusErrorFg(m.styles))) {
@@ -92,7 +142,7 @@ func TestStatusBarCombinesFailedAndUncertainNeutrally(t *testing.T) {
 	)
 
 	got := ansi.Strip(m.renderStatusBar())
-	if !strings.Contains(got, "2 sends need attention in Outbox  O") {
+	if !strings.Contains(got, "2 sends need attention in Outbox (now)  O") {
 		t.Fatalf("expected a neutral combined count, got %q", got)
 	}
 	if strings.Contains(got, "failed send") || strings.Contains(got, "unconfirmed send") {
@@ -106,7 +156,7 @@ func TestStatusBarReportsFailedSends(t *testing.T) {
 	m := newStatusBarModel(t, outboxItem(db.OutboxFailed, 3))
 	bar := m.renderStatusBar()
 
-	if !strings.Contains(ansi.Strip(bar), "1 failed send in Outbox  O") {
+	if !strings.Contains(ansi.Strip(bar), "1 failed send in Outbox (now)  O") {
 		t.Fatalf("expected the failure and its key in the status bar, got %q", ansi.Strip(bar))
 	}
 	if !strings.Contains(bar, foreground(t, statusErrorFg(m.styles))) {
@@ -170,7 +220,7 @@ func TestStatusBarOutboxHintFollowsTheKeybinding(t *testing.T) {
 	m := newStatusBarModel(t, outboxItem(db.OutboxFailed, 3))
 	m.keys.Outbox = key.NewBinding(key.WithKeys("ctrl+b"), key.WithHelp("ctrl+b", "outbox"))
 
-	if got := ansi.Strip(m.renderStatusBar()); !strings.Contains(got, "1 failed send in Outbox  ctrl+b") {
+	if got := ansi.Strip(m.renderStatusBar()); !strings.Contains(got, "1 failed send in Outbox (now)  ctrl+b") {
 		t.Fatalf("expected the rebound key in the hint, got %q", got)
 	}
 }

@@ -3151,29 +3151,37 @@ func (m Model) renderStatusBar() string {
 // automatically — so calling it a failed send would tell someone their mail
 // did not go out when it probably did.
 func (m Model) outboxTroublePart() string {
-	failed, uncertain, retrying := m.outboxTrouble()
+	t := m.summarizeOutbox()
 	// Read the key through the binding: it is rebindable, and a hint naming a
 	// key the reader does not have is worse than no hint.
 	key := m.keys.Outbox.Help().Key
 	text := ""
 	switch {
-	case failed > 0 && uncertain > 0:
+	case t.failed > 0 && t.uncertain > 0:
 		// Two different problems needing two different actions. Rather than
 		// pick one word for both, count them together and let the Outbox say
 		// which is which.
-		text = fmt.Sprintf("%d sends need attention in Outbox  %s", failed+uncertain, key)
-	case failed > 0:
-		text = fmt.Sprintf("%s in Outbox  %s", countOf(failed, "failed send"), key)
-	case uncertain > 0:
-		text = fmt.Sprintf("%s in Outbox  %s", countOf(uncertain, "unconfirmed send"), key)
-	case retrying > 0:
+		text = fmt.Sprintf("%d sends need attention in Outbox", t.needsAttention())
+	case t.failed > 0:
+		text = countOf(t.failed, "failed send") + " in Outbox"
+	case t.uncertain > 0:
+		text = countOf(t.uncertain, "unconfirmed send") + " in Outbox"
+	case t.retrying > 0:
 		// Still in flight and handled automatically: worth saying, not worth
-		// alarming about.
-		return m.statusBarInlineText(m.styles.StatusBar, fmt.Sprintf("retrying %d in Outbox  %s", retrying, key))
+		// alarming about, and its age is not news.
+		return m.statusBarInlineText(m.styles.StatusBar, fmt.Sprintf("retrying %d in Outbox  %s", t.retrying, key))
 	default:
 		return ""
 	}
-	return m.statusBarInlineText(m.styles.StatusError, text)
+	// How long it has been waiting. Without this the warning appears the
+	// moment a "message sent" toast clears and reads as though it were about
+	// that send, which is how a day-old failure gets mistaken for a fresh one.
+	if !t.since.IsZero() {
+		if age := m.formatTime(t.since); age != "" {
+			text += " (" + age + ")"
+		}
+	}
+	return m.statusBarInlineText(m.styles.StatusError, text+"  "+key)
 }
 
 // countOf renders "1 failed send" / "2 failed sends".

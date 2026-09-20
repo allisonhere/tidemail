@@ -135,9 +135,14 @@ Outbox. Use `r` to retry a failed message or `e` to move an unsent message back
 into compose.
 
 A send that fails does not go quiet. The status bar reports it — `retrying 1 in
-Outbox` while automatic retries run, then `1 failed send in Outbox` once they
-are spent — and keeps reporting it until the Outbox has nothing left needing
-you. A message still inside its undo window is not a failure and says nothing.
+Outbox` while automatic retries run, then `1 failed send in Outbox (2m)` once
+they are spent — and keeps reporting it until the Outbox has nothing left
+needing you. A message still inside its undo window is not a failure and says
+nothing.
+
+The time in brackets is how long that message has been waiting, which is what
+tells you whether the warning is about the message you just sent or one that
+has been stuck since yesterday. Both look the same otherwise.
 
 A delivery interrupted mid-flight, which TideMail finds when it starts up
 again, reads `1 unconfirmed send in Outbox` instead. That wording is the point:
