@@ -1329,6 +1329,36 @@ func hostFormatError(label, host string) string {
 	return ""
 }
 
+// hashForAtError catches an address typed with "#" where "@" belongs —
+// info#example.com. On a Nordic layout "@" is AltGr+2 and "#" is Shift+3, so
+// it is an easy slip, and nothing downstream can recover from it: "#" is
+// ordinary local-part text, so the value stays a syntactically fine string
+// that no server can route. It fires only when there is no "@" anywhere and
+// what follows the "#" is domain-shaped, which leaves logins that genuinely
+// contain one (user#tag@host, or an internal "svc#prod") alone.
+func hashForAtError(label, value string) string {
+	if strings.Contains(value, "@") {
+		return ""
+	}
+	hash := strings.LastIndex(value, "#")
+	if hash < 0 || hash == 0 || hash == len(value)-1 {
+		return ""
+	}
+	if !strings.Contains(value[hash+1:], ".") {
+		return ""
+	}
+	return label + " HAS # WHERE @ BELONGS"
+}
+
+// userFieldLabel matches what the form prints beside the field, so a failure
+// names the row the reader is looking at.
+func userFieldLabel(provider string) string {
+	if _, ok := providerPresets[provider]; ok {
+		return "EMAIL"
+	}
+	return "USERNAME"
+}
+
 func parseSyncMinutes(raw string) (int, bool) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
@@ -1388,13 +1418,18 @@ func validateAccountForConnect(acfg config.AccountConfig) string {
 	if status := hostFormatError("SMTP HOST", acfg.SMTPHost); status != "" {
 		return status
 	}
+	userLabel := userFieldLabel(acfg.Provider)
 	if acfg.User == "" {
-		return "USERNAME IS REQUIRED"
+		return userLabel + " IS REQUIRED"
 	}
-	// The preset providers label this field "Email" and authenticate with the
-	// full address; a bare login is rejected at sign-in, so catch it here.
-	// Custom stays free-form — plenty of hosts issue logins that are not
-	// addresses at all, including the "user#domain.com" convention.
+	// Checked for every provider: a Custom login is otherwise free-form, but
+	// "#" for "@" is a typo under any of them.
+	if status := hashForAtError(userLabel, acfg.User); status != "" {
+		return status
+	}
+	// The preset providers authenticate with the full address; a bare login is
+	// rejected at sign-in, so catch it here. Custom stays free-form beyond the
+	// typo check — plenty of hosts issue logins that are not addresses at all.
 	if _, preset := providerPresets[acfg.Provider]; preset {
 		if _, err := mail.ParseAddress(acfg.User); err != nil {
 			return "EMAIL MUST BE A FULL ADDRESS, LIKE YOU@EXAMPLE.COM"
@@ -1414,6 +1449,9 @@ func validateAccountForConnect(acfg config.AccountConfig) string {
 	// that at send time, by which point the value is already baked into a
 	// queued message, so the form has to be where it fails.
 	if from := strings.TrimSpace(acfg.From); from != "" {
+		if status := hashForAtError("FROM", from); status != "" {
+			return status
+		}
 		if _, err := mail.ParseAddress(from); err != nil {
 			return "FROM NEEDS AN EMAIL ADDRESS, LIKE NAME <YOU@EXAMPLE.COM>"
 		}

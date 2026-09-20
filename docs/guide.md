@@ -53,8 +53,13 @@ and are hostnames, not URLs, paths, or `host:port` pairs — the port belongs in
 its own field, where it must be a number between 1 and 65535. Leave a port
 blank to take the standard one. On the Gmail, Outlook, Yahoo, and iCloud
 providers the **Email** row must be a full address; a **Custom** account's
-**Username** is whatever your host issues, including logins like
-`alice#example.com` that are not addresses at all.
+**Username** is whatever your host issues, which need not be an address at all.
+
+Any field holding an address rejects `#` typed where `@` belongs —
+`info#example.com`. On a Nordic layout `@` is AltGr+2 and `#` is Shift+3, and
+nothing downstream can recover from the slip: `#` is legal inside an address,
+so the value stays a perfectly good string that no server can route. An address
+that really contains one, like `info#sales@example.com`, is untouched.
 
 After you add an account, press `s` to sync the selected mailbox. Press `s` on
 the Unified Inbox to sync every account's inbox, or `F` to sync all mailboxes.

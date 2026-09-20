@@ -123,19 +123,68 @@ func TestValidateFormRequiresFullAddressForPresetProviders(t *testing.T) {
 	}
 }
 
-// Custom hosts issue logins that are not addresses at all, including the
-// "user#domain.com" convention, so that field stays free-form.
+// Custom hosts issue logins that are not addresses at all, so that field stays
+// free-form apart from the "#" typo check below.
 func TestValidateFormAcceptsNonAddressCustomLogins(t *testing.T) {
 	for _, user := range []string{
 		"alice",
-		"alice#example.com",
 		"DOMAIN\\alice",
+		"svc#prod", // a "#" with nothing domain-shaped after it
 		"alice@example.com",
 	} {
 		am := newFromFormAccountManager()
 		am.userInput.SetValue(user)
 		if got := am.validateForm(am.buildCfg()); got != "" {
 			t.Fatalf("expected Custom login %q to validate, got %q", user, got)
+		}
+	}
+}
+
+// "@" is AltGr+2 on a Nordic layout and "#" is Shift+3, so an address typed
+// with "#" in place of "@" is an easy slip — and an unrecoverable one, since
+// "#" is legal local-part text, so the value stays a fine string that no
+// server can route. Every field that holds an address says so by name.
+func TestValidateFormCatchesHashTypedForAt(t *testing.T) {
+	for _, tc := range []struct {
+		field, provider, value, want string
+	}{
+		{"user", "Custom", "info#thebeautyanswer.com", "USERNAME HAS # WHERE @ BELONGS"},
+		{"user", "Gmail", "alice#gmail.com", "EMAIL HAS # WHERE @ BELONGS"},
+		{"from", "Custom", "info#thebeautyanswer.com", "FROM HAS # WHERE @ BELONGS"},
+		{"from", "Custom", "Alice <alice#example.com>", "FROM HAS # WHERE @ BELONGS"},
+	} {
+		am := newFromFormAccountManager()
+		am.provider = tc.provider
+		switch tc.field {
+		case "user":
+			am.userInput.SetValue(tc.value)
+		case "from":
+			am.fromInput.SetValue(tc.value)
+		}
+		if got := am.validateForm(am.buildCfg()); got != tc.want {
+			t.Fatalf("%s %q: got %q, want %q", tc.field, tc.value, got, tc.want)
+		}
+	}
+}
+
+func TestHashForAtError(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  bool
+	}{
+		{"info#thebeautyanswer.com", true},
+		{"a#b.c", true},
+		{"alice#work@example.com", false}, // an "@" is present, so nothing is missing
+		{"#alice@example.com", false},
+		{"svc#prod", false},     // nothing domain-shaped after the "#"
+		{"#example.com", false}, // no local part; not a mistyped address
+		{"alice#", false},
+		{"alice", false},
+		{"alice.example.com", false},
+	} {
+		got := hashForAtError("USERNAME", tc.value) != ""
+		if got != tc.want {
+			t.Fatalf("hashForAtError(%q) fired = %v, want %v", tc.value, got, tc.want)
 		}
 	}
 }
