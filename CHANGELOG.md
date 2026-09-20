@@ -1,8 +1,23 @@
 # Changelog
+## v1.0.25
+
+
+087c5fc fix: describe the Outbox in the message pane instead of "no messages"
+940bde0 feat: give the Outbox a row in the accounts pane
+f4bfbc2 fix: say how long an Outbox failure has been waiting
+398ac28 fix: stop calling an interrupted delivery a failed send
+a015e4c feat: keep a failed send visible in the status bar
+b659f30 fix: resolve the Outbox sender per attempt, not at queue time
+4b9113e feat: turn the rejected row's label red
+85218d0 fix: require a From address when the login is not one
+35d98a9 fix: catch "#" typed where "@" belongs in Username and From
+c1cb309 fix: check every account field's format before connecting
 
 All notable changes to TideMail are documented in this file.
 
 ## Unreleased
+
+## v1.0.25
 
 ## v1.0.24
 
