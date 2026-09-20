@@ -262,7 +262,7 @@ smtp_host = "smtp.example.com"
 smtp_port = 587
 smtp_tls = true
 user = "mira@example.com"
-from = "Mira Chen <mira@example.com>"
+from = "Mira Chen <mira@example.com>"  # optional, but a name alone is not an address
 signature = """
 Mira
 Sent with TideMail"""

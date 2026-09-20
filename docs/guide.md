@@ -275,6 +275,12 @@ signature = "Alice\nSent with TideMail"
 sync_minutes = 0  # 0 = push (IDLE), N = poll every N min, -1 = manual only
 ```
 
+`from` is the **From address** row in the account form. Leave it blank to send
+as `user`, or give it an address — `alice@example.com` or
+`Alice <alice@example.com>`. A display name on its own is not enough: the
+account form refuses to save one, because SMTP has no address to send from and
+would only fail once the message was already queued.
+
 The signature is a multi-line box in the account form — press `Enter` for a new
 line, `Tab` to move on, and `Ctrl+S` to save without leaving it. Arrow keys walk
 its lines and step to the next field at the top and bottom. Editing the file by

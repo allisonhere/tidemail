@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"net/mail"
 	"strconv"
 	"strings"
 	"time"
@@ -1298,6 +1299,15 @@ func validateAccountForConnect(acfg config.AccountConfig) string {
 	if (acfg.Provider == "Gmail" || acfg.Provider == "Outlook") && acfg.Password == "" && acfg.RefreshToken == "" {
 		return "SIGN IN WITH " + strings.ToUpper(oauthVendor(acfg.Provider)) + " (CTRL+O) OR ENTER AN APP PASSWORD"
 	}
+	// From is optional — a blank one sends as the username — but a display
+	// name with no address ("Alice") is not a From at all. SMTP only discovers
+	// that at send time, by which point the value is already baked into a
+	// queued message, so the form has to be where it fails.
+	if from := strings.TrimSpace(acfg.From); from != "" {
+		if _, err := mail.ParseAddress(from); err != nil {
+			return "FROM NEEDS AN EMAIL ADDRESS, LIKE NAME <YOU@EXAMPLE.COM>"
+		}
+	}
 	return ""
 }
 
@@ -1868,7 +1878,9 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	}
 
 	addSection("Sending identity")
-	addControl(amFieldFrom, row("From", am.fromInput, am.focusedField == amFieldFrom))
+	addControl(amFieldFrom, row("From address", am.fromInput, am.focusedField == amFieldFrom))
+	addHint("Format: Name <you@example.com>")
+	addHint("Blank sends as the username")
 	addControl(amFieldSignature, sigRow("Signature", am.sigArea, am.focusedField == amFieldSignature))
 	addSection("Sync")
 	addControl(amFieldSyncInterval, row("Refresh", am.syncInput, am.focusedField == amFieldSyncInterval))
