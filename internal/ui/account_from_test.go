@@ -35,7 +35,7 @@ func TestValidateFormRejectsFromWithoutAddress(t *testing.T) {
 	} {
 		am := newFromFormAccountManager()
 		am.fromInput.SetValue(from)
-		status := am.validateForm(am.buildCfg())
+		status := am.validateForm(am.buildCfg()).msg
 		if status == "" {
 			t.Fatalf("expected From %q to fail validation", from)
 		}
@@ -58,7 +58,7 @@ func TestValidateFormAcceptsUsableFrom(t *testing.T) {
 	} {
 		am := newFromFormAccountManager()
 		am.fromInput.SetValue(from)
-		if status := am.validateForm(am.buildCfg()); status != "" {
+		if status := am.validateForm(am.buildCfg()).msg; status != "" {
 			t.Fatalf("expected From %q to validate, got %q", from, status)
 		}
 	}

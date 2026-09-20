@@ -48,7 +48,9 @@ TideMail can discover common server settings from your email address. If your
 provider requires an app password, create one before saving the account.
 
 `Ctrl+S` and `Ctrl+T` check the form before anything connects, so a typo comes
-back as a labeled field rather than a login failure. Both hosts are required
+back as a labeled field rather than a login failure. A rejected row turns red
+and takes the cursor, with the reason on the status line; editing it clears the
+mark. Both hosts are required
 and are hostnames, not URLs, paths, or `host:port` pairs — the port belongs in
 its own field, where it must be a number between 1 and 65535. Leave a port
 blank to take the standard one. On the Gmail, Outlook, Yahoo, and iCloud

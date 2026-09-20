@@ -201,7 +201,7 @@ func TestDisabledGoogleOAuthPreservesExistingOAuthAccountOnSave(t *testing.T) {
 func TestGmailFormRejectsSaveWithoutCredentials(t *testing.T) {
 	am := gmailFormManager()
 	cfg := am.buildCfg()
-	if got := validateAccountForConnect(cfg); !strings.Contains(got, "SIGN IN WITH GOOGLE") {
+	if got := validateAccountForConnect(cfg).msg; !strings.Contains(got, "SIGN IN WITH GOOGLE") {
 		t.Fatalf("validation = %q, want a sign-in-or-password hint", got)
 	}
 }
@@ -405,7 +405,7 @@ func TestOutlookOAuthDoneSuccess(t *testing.T) {
 
 func TestOutlookRejectsSaveWithoutCredentials(t *testing.T) {
 	am := outlookFormManager(config.ThunderbirdMSClientID)
-	if got := validateAccountForConnect(am.buildCfg()); !strings.Contains(got, "SIGN IN WITH MICROSOFT") {
+	if got := validateAccountForConnect(am.buildCfg()).msg; !strings.Contains(got, "SIGN IN WITH MICROSOFT") {
 		t.Fatalf("validation = %q", got)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
@@ -66,6 +67,63 @@ func TestAccountManagerFailureStatusIsFilledRed(t *testing.T) {
 	// background rather than becoming a full-width red bar.
 	if !strings.Contains(line, background(t, chrome.baseBg)) {
 		t.Fatalf("expected the failure label to stop short of the full width, got %q", line)
+	}
+}
+
+// The status bar says what is wrong; the label says where. Both, because a
+// long form scrolls and the reason alone does not point at a row.
+func TestAccountManagerRejectedFieldLabelTurnsRed(t *testing.T) {
+	trueColor(t)
+
+	am := newFromFormAccountManager()
+	am.imapHostInput.SetValue("imaps://imap.example.com")
+	am, _, _ = am.submitForm()
+	chrome := newManagerChrome(80, CatppuccinMocha, false)
+
+	view := am.viewForm(80, 40, chrome)
+	if !strings.Contains(ansi.Strip(view), "IMAP HOST IS A HOSTNAME, NOT A URL") {
+		t.Fatalf("expected the reason in the status bar, got %q", ansi.Strip(view))
+	}
+
+	rejected := lineContaining(t, view, "IMAP Host")
+	if !strings.Contains(rejected, foreground(t, chrome.errorFg)) {
+		t.Fatalf("expected the IMAP Host label to be red, got %q", rejected)
+	}
+	// Only that row: a neighbour keeps its ordinary label color.
+	if other := lineContaining(t, view, "SMTP Host"); strings.Contains(other, foreground(t, chrome.errorFg)) {
+		t.Fatalf("expected only the rejected row to be red, got %q", other)
+	}
+}
+
+// Rejecting a row focuses it, so the red label is on screen even when the form
+// was scrolled somewhere else.
+func TestAccountManagerRejectionFocusesTheField(t *testing.T) {
+	am := newFromFormAccountManager()
+	am.focusField(amFieldName)
+	am.fromInput.SetValue("David Blangstrup")
+
+	am, _, _ = am.submitForm()
+
+	if am.focusedField != amFieldFrom {
+		t.Fatalf("expected focus to move to the rejected From row, got %v", am.focusedField)
+	}
+	if !am.hasInvalidField || am.invalidField != amFieldFrom {
+		t.Fatalf("expected the From row to be marked, got %v/%v", am.hasInvalidField, am.invalidField)
+	}
+}
+
+// Typing in the rejected row clears the mark — the next save re-checks it.
+func TestAccountManagerEditingRejectedFieldClearsTheMark(t *testing.T) {
+	am := newFromFormAccountManager()
+	am.fromInput.SetValue("David Blangstrup")
+	am, _, _ = am.submitForm()
+
+	if !am.hasInvalidField {
+		t.Fatal("expected the From row to be marked after a failed save")
+	}
+	am.updateFocusedInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	if am.hasInvalidField {
+		t.Fatal("expected editing the rejected row to clear the mark")
 	}
 }
 

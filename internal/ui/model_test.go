@@ -847,7 +847,7 @@ func TestScrollingMessageListKeepsPaneHeadersVisible(t *testing.T) {
 
 func TestValidateAccountForConnect(t *testing.T) {
 	base := config.AccountConfig{Name: "Acct", IMAPHost: "imap.x", SMTPHost: "smtp.x", User: "u", From: "u@example.com", IMAPPort: 993, SMTPPort: 587}
-	if got := validateAccountForConnect(base); got != "" {
+	if got := validateAccountForConnect(base).msg; got != "" {
 		t.Fatalf("valid config rejected: %q", got)
 	}
 	cases := []struct {
@@ -868,7 +868,7 @@ func TestValidateAccountForConnect(t *testing.T) {
 	for _, tc := range cases {
 		cfg := base
 		tc.mut(&cfg)
-		if got := validateAccountForConnect(cfg); got == "" {
+		if got := validateAccountForConnect(cfg).msg; got == "" {
 			t.Errorf("%s: expected a validation error, got none", tc.name)
 		}
 	}

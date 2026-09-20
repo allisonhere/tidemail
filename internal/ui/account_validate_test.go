@@ -54,7 +54,7 @@ func TestValidateFormChecksPortFields(t *testing.T) {
 		am := newFromFormAccountManager()
 		am.imapPortInput.SetValue(tc.imap)
 		am.smtpPortInput.SetValue(tc.smtp)
-		if got := am.validateForm(am.buildCfg()); got != tc.wantErr {
+		if got := am.validateForm(am.buildCfg()).msg; got != tc.wantErr {
 			t.Fatalf("ports %q/%q: got %q, want %q", tc.imap, tc.smtp, got, tc.wantErr)
 		}
 	}
@@ -102,7 +102,7 @@ func TestHostFormatError(t *testing.T) {
 func TestValidateFormRequiresSMTPHost(t *testing.T) {
 	am := newFromFormAccountManager()
 	am.smtpHostInput.SetValue("")
-	if got := am.validateForm(am.buildCfg()); got != "SMTP HOST IS REQUIRED" {
+	if got := am.validateForm(am.buildCfg()).msg; got != "SMTP HOST IS REQUIRED" {
 		t.Fatalf("expected a missing SMTP host to fail validation, got %q", got)
 	}
 }
@@ -113,12 +113,12 @@ func TestValidateFormRequiresFullAddressForPresetProviders(t *testing.T) {
 	am := newFromFormAccountManager()
 	am.provider = "Gmail"
 	am.userInput.SetValue("alice")
-	if got := am.validateForm(am.buildCfg()); !strings.Contains(got, "FULL ADDRESS") {
+	if got := am.validateForm(am.buildCfg()).msg; !strings.Contains(got, "FULL ADDRESS") {
 		t.Fatalf("expected a bare Gmail login to fail validation, got %q", got)
 	}
 
 	am.userInput.SetValue("alice@gmail.com")
-	if got := am.validateForm(am.buildCfg()); strings.Contains(got, "FULL ADDRESS") {
+	if got := am.validateForm(am.buildCfg()).msg; strings.Contains(got, "FULL ADDRESS") {
 		t.Fatalf("expected a full Gmail address to pass the address check, got %q", got)
 	}
 }
@@ -138,7 +138,7 @@ func TestValidateFormAcceptsNonAddressCustomLogins(t *testing.T) {
 		am := newFromFormAccountManager()
 		am.userInput.SetValue(user)
 		am.fromInput.SetValue("Alice <alice@example.com>")
-		if got := am.validateForm(am.buildCfg()); got != "" {
+		if got := am.validateForm(am.buildCfg()).msg; got != "" {
 			t.Fatalf("expected Custom login %q to validate, got %q", user, got)
 		}
 	}
@@ -154,12 +154,12 @@ func TestValidateFormRequiresFromForNonAddressLogins(t *testing.T) {
 		am := newFromFormAccountManager()
 		am.userInput.SetValue(user)
 		am.fromInput.SetValue("")
-		if got := am.validateForm(am.buildCfg()); got != want {
+		if got := am.validateForm(am.buildCfg()).msg; got != want {
 			t.Fatalf("login %q with no From: got %q, want %q", user, got, want)
 		}
 
 		am.fromInput.SetValue("alice@example.com")
-		if got := am.validateForm(am.buildCfg()); got != "" {
+		if got := am.validateForm(am.buildCfg()).msg; got != "" {
 			t.Fatalf("login %q with a From: got %q, want it to validate", user, got)
 		}
 	}
@@ -169,7 +169,7 @@ func TestValidateFormRequiresFromForNonAddressLogins(t *testing.T) {
 	am := newFromFormAccountManager()
 	am.userInput.SetValue("alice@example.com")
 	am.fromInput.SetValue("")
-	if got := am.validateForm(am.buildCfg()); got != "" {
+	if got := am.validateForm(am.buildCfg()).msg; got != "" {
 		t.Fatalf("expected an address login to keep From optional, got %q", got)
 	}
 }
@@ -211,7 +211,7 @@ func TestValidateFormCatchesHashTypedForAt(t *testing.T) {
 		case "from":
 			am.fromInput.SetValue(tc.value)
 		}
-		if got := am.validateForm(am.buildCfg()); got != tc.want {
+		if got := am.validateForm(am.buildCfg()).msg; got != tc.want {
 			t.Fatalf("%s %q: got %q, want %q", tc.field, tc.value, got, tc.want)
 		}
 	}
@@ -251,7 +251,7 @@ func TestValidateFormAcceptsHashInsideAddresses(t *testing.T) {
 	} {
 		am := newFromFormAccountManager()
 		am.fromInput.SetValue(from)
-		if got := am.validateForm(am.buildCfg()); got != "" {
+		if got := am.validateForm(am.buildCfg()).msg; got != "" {
 			t.Fatalf("expected From %q to validate, got %q", from, got)
 		}
 	}
