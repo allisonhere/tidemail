@@ -41,6 +41,11 @@ const (
 	rowKindSysFolderHeader
 	rowKindPersonalFolderHeader
 	rowKindMailbox
+	// rowKindOutbox is a standing entry beside the Unified Inbox: outgoing mail
+	// spans accounts the same way. It exists mostly so the Outbox can be found
+	// at all — it used to be reachable only by knowing the "O" shortcut, so a
+	// message stuck there was invisible to anyone who did not.
+	rowKindOutbox
 )
 
 type sidebarRow struct {
@@ -1778,6 +1783,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keyMatches(msg, m.keys.Enter):
 		if m.focused == paneAccounts {
+			if m.selectedOutboxRow() {
+				m.openOutbox()
+				return m, nil
+			}
 			if m.toggleSelectedAccount() {
 				return m, nil
 			}
@@ -2102,6 +2111,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keyMatches(msg, m.keys.Space):
 		if m.focused == paneAccounts {
+			if m.selectedOutboxRow() {
+				m.openOutbox()
+				return m, nil
+			}
 			if m.toggleSelectedAccount() {
 				return m, nil
 			}
@@ -3407,7 +3420,7 @@ func (m *Model) restoreSidebarSelection(kind sidebarRowKind, id int64) {
 			continue
 		}
 		switch kind {
-		case rowKindUnified:
+		case rowKindUnified, rowKindOutbox:
 			m.sidebarCursor = i
 			return
 		case rowKindMailbox:
@@ -3481,8 +3494,8 @@ func (m Model) currentSidebarSelection() (sidebarRowKind, int64) {
 		return rowKindMailbox, 0
 	}
 	row := m.sidebarRows[m.sidebarCursor]
-	if row.kind == rowKindUnified {
-		return rowKindUnified, 0
+	if row.kind == rowKindUnified || row.kind == rowKindOutbox {
+		return row.kind, 0
 	}
 	if row.kind == rowKindAccount {
 		return rowKindAccount, row.accountID
@@ -3491,6 +3504,15 @@ func (m Model) currentSidebarSelection() (sidebarRowKind, int64) {
 		return row.kind, row.accountID
 	}
 	return rowKindMailbox, row.mailboxID
+}
+
+// selectedOutboxRow reports whether the cursor is on the sidebar's Outbox
+// entry, which Enter and Space open rather than treating as a folder.
+func (m Model) selectedOutboxRow() bool {
+	if m.sidebarCursor < 0 || m.sidebarCursor >= len(m.sidebarRows) {
+		return false
+	}
+	return m.sidebarRows[m.sidebarCursor].kind == rowKindOutbox
 }
 
 func (m Model) selectedUnifiedInbox() bool {

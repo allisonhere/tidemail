@@ -50,10 +50,10 @@ provider requires an app password, create one before saving the account.
 `Ctrl+S` and `Ctrl+T` check the form before anything connects, so a typo comes
 back as a labeled field rather than a login failure. A rejected row turns red
 and takes the cursor, with the reason on the status line; editing it clears the
-mark. Both hosts are required
-and are hostnames, not URLs, paths, or `host:port` pairs — the port belongs in
-its own field, where it must be a number between 1 and 65535. Leave a port
-blank to take the standard one. On the Gmail, Outlook, Yahoo, and iCloud
+mark. Both hosts are required and are hostnames, not URLs, paths, or
+`host:port` pairs — the port belongs in its own field, where it must be a
+number between 1 and 65535. Leave a port blank to take the standard one. On
+the Gmail, Outlook, Yahoo, and iCloud
 providers the **Email** row must be a full address; a **Custom** account's
 **Username** is whatever your host issues, which need not be an address at all
 — cPanel's `alice+example.com`, an Exchange `DOMAIN\alice`, a bare ISP login.
@@ -130,9 +130,13 @@ common names such as `Sent`, `Sent Items`, and `INBOX.Sent` as fallbacks.
 
 TideMail waits five seconds before sending by default. Press `Ctrl+Z` during
 that window to cancel delivery and reopen the draft. Change the delay under
-Settings → Editor, or set it to `0` to send at once. Press `O` to open the
-Outbox. Use `r` to retry a failed message or `e` to move an unsent message back
-into compose.
+Settings → Editor, or set it to `0` to send at once.
+
+The **Outbox** has a row of its own in the accounts pane, under the Unified
+Inbox — outgoing mail spans accounts the same way. `Enter` or `Space` opens it,
+`O` opens it from anywhere, and its badge counts the sends that need you. A
+message passing through on its way out adds nothing to that count. Inside, use
+`r` to retry a failed message or `e` to move an unsent one back into compose.
 
 A send that fails does not go quiet. The status bar reports it — `retrying 1 in
 Outbox` while automatic retries run, then `1 failed send in Outbox (2m)` once

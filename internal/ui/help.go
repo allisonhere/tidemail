@@ -58,6 +58,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 			entries: []entry{
 				{keys.Enter.Help().Key + "/" + keys.Space.Help().Key, "expand or collapse selected account/section"},
 				{keys.Enter.Help().Key, "on a folder row, fetch that folder now"},
+				{"Outbox row", "sits under Unified Inbox; enter/space opens it, its badge counts sends needing you"},
 				{keys.Sync.Help().Key, "sync selected mailbox; on Unified Inbox, sync all inboxes"},
 				bind(keys.SyncAll),
 				{"pause", "rest on a stale folder to refresh it silently; scrolling past does not queue work"},
