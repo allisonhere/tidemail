@@ -49,12 +49,9 @@ func (m Model) handleSendQueued(msg SendQueuedMsg) (Model, tea.Cmd) {
 		m.compose.isErr = true
 		return m, nil
 	}
-	if msg.Msg.From == "" {
-		msg.Msg.From = msg.Account.From
-		if msg.Msg.From == "" {
-			msg.Msg.From = msg.Account.User
-		}
-	}
+	// The sender is deliberately not baked in here. It is resolved from the
+	// account on every attempt (see outboxMessage), so correcting a bad From
+	// and retrying works instead of replaying the value that failed.
 	payload, err := json.Marshal(msg.Msg)
 	if err != nil {
 		m.compose = snapshot
@@ -172,6 +169,20 @@ func (rt *sendRuntime) run() tea.Msg {
 	return rt.result
 }
 
+// outboxMessage reads a queued item's message and resolves its sender from the
+// account as it stands now, discarding whatever was current when the message
+// was queued. Without this, an account whose From was wrong at queue time kept
+// failing every retry even after the account was fixed (#25) — the bad value
+// was serialized into message_json and won over the corrected config.
+func outboxMessage(item db.OutboxItem, account config.AccountConfig) (smtp.OutgoingMessage, error) {
+	var msg smtp.OutgoingMessage
+	if err := json.Unmarshal(item.MessageJSON, &msg); err != nil {
+		return msg, err
+	}
+	msg.From = smtp.AccountSender(account)
+	return msg, nil
+}
+
 func newOutboxRuntime(database *db.DB, sessions *imapClient.SessionPool, id int64, account config.AccountConfig, cleanup tea.Cmd) *sendRuntime {
 	return &sendRuntime{command: func() tea.Msg {
 		result := MessageSentMsg{PendingID: uint64(id)}
@@ -180,8 +191,8 @@ func newOutboxRuntime(database *db.DB, sessions *imapClient.SessionPool, id int6
 			result.Err = err
 			return result
 		}
-		var msg smtp.OutgoingMessage
-		if err = json.Unmarshal(item.MessageJSON, &msg); err != nil {
+		msg, err := outboxMessage(item, account)
+		if err != nil {
 			result.Err = err
 			return result
 		}
@@ -196,7 +207,7 @@ func newOutboxRuntime(database *db.DB, sessions *imapClient.SessionPool, id int6
 		}
 		// Stamp Date and Message-ID once, so the copy appended to Sent is
 		// byte-identical to what goes out over SMTP.
-		msg.EnsureIdentity(account.From)
+		msg.EnsureIdentity(msg.From)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		err = smtp.Send(ctx, account, msg)
 		cancel()

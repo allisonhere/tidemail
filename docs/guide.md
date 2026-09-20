@@ -134,6 +134,12 @@ Settings → Editor, or set it to `0` to send at once. Press `O` to open the
 Outbox. Use `r` to retry a failed message or `e` to move an unsent message back
 into compose.
 
+Every attempt takes the sending address from the account as it stands at that
+moment, not from a copy saved when the message was queued. So if a send failed
+because the account's **From address** was wrong, correcting it and pressing
+`r` is enough — the queued message does not have to be rewritten or composed
+again.
+
 Failed deliveries retry after one minute. The maximum attempt setting includes
 the first try; it defaults to `3`, and `1` disables automatic retries. An
 interrupted delivery is marked uncertain because the server may have accepted

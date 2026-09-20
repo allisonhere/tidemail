@@ -84,9 +84,9 @@ func (m *Model) scheduleOutbox(id int64) tea.Cmd {
 		m.refreshOutbox()
 		return nil
 	}
-	var msg smtp.OutgoingMessage
 	var draft db.Draft
-	if err = json.Unmarshal(item.MessageJSON, &msg); err == nil {
+	msg, err := outboxMessage(item, account)
+	if err == nil {
 		err = json.Unmarshal(item.DraftJSON, &draft)
 	}
 	if err != nil {

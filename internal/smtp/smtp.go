@@ -105,16 +105,24 @@ func BuildRaw(cfg config.AccountConfig, msg OutgoingMessage) []byte {
 	return buildRaw(senderAddress(cfg, msg), msg)
 }
 
-// senderAddress resolves the From: header value the same way Send does.
+// AccountSender resolves an account's own sending identity, independent of
+// anything a message carries. Callers that must not honour a stale per-message
+// From — an Outbox retry, whose message was serialized before the account was
+// corrected — resolve through this instead.
+func AccountSender(cfg config.AccountConfig) string {
+	if cfg.From != "" {
+		return cfg.From
+	}
+	return cfg.User
+}
+
+// senderAddress resolves the From: header value the same way Send does. A
+// message that names its own From wins, so a caller can override per message.
 func senderAddress(cfg config.AccountConfig, msg OutgoingMessage) string {
-	from := msg.From
-	if from == "" {
-		from = cfg.From
+	if msg.From != "" {
+		return msg.From
 	}
-	if from == "" {
-		from = cfg.User
-	}
-	return from
+	return AccountSender(cfg)
 }
 
 func Send(ctx context.Context, cfg config.AccountConfig, msg OutgoingMessage) error {
