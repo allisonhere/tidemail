@@ -134,6 +134,11 @@ Settings → Editor, or set it to `0` to send at once. Press `O` to open the
 Outbox. Use `r` to retry a failed message or `e` to move an unsent message back
 into compose.
 
+A send that fails does not go quiet. The status bar reports it — `retrying 1 in
+Outbox` while automatic retries run, then `1 failed send in Outbox` once they
+are spent — and keeps reporting it until the Outbox has nothing left needing
+you. A message still inside its undo window is not a failure and says nothing.
+
 Every attempt takes the sending address from the account as it stands at that
 moment, not from a copy saved when the message was queued. So if a send failed
 because the account's **From address** was wrong, correcting it and pressing

@@ -33,6 +33,26 @@ func (m *Model) refreshOutbox() {
 	m.outboxCursor = clamp(m.outboxCursor, 0, max(0, len(items)-1))
 }
 
+// outboxTrouble counts the Outbox entries a person would want to know about:
+// ones that failed outright, ones whose delivery is uncertain, and ones still
+// cycling through automatic retries after a first failure. ClaimOutbox bumps
+// attempts on the way to "sending", so a queued item with attempts > 0 has
+// already failed once, while a fresh one inside its undo window has not.
+//
+// It reads m.outboxItems, which refreshOutbox keeps current after every
+// enqueue, send result, retry and cancel, so the count costs no query.
+func (m Model) outboxTrouble() (failed, retrying int) {
+	for _, item := range m.outboxItems {
+		switch {
+		case item.State == db.OutboxFailed, item.State == db.OutboxUncertain:
+			failed++
+		case item.State == db.OutboxQueued && item.Attempts > 0:
+			retrying++
+		}
+	}
+	return failed, retrying
+}
+
 func (m *Model) openOutbox() {
 	m.outboxStatus = ""
 	m.outboxConfirmID = 0

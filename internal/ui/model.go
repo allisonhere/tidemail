@@ -3097,6 +3097,11 @@ func (m Model) renderStatusBar() string {
 	sb := m.styles.StatusBar
 	parts := []string{}
 
+	// First, so it survives truncation: statusLine clamps the left side to the
+	// terminal width by dropping what does not fit off the end.
+	if outboxPart := m.outboxTroublePart(); outboxPart != "" {
+		parts = append(parts, outboxPart)
+	}
 	if updateInfoPart != "" {
 		parts = append(parts, updateInfoPart)
 	}
@@ -3135,6 +3140,26 @@ func (m Model) renderStatusBar() string {
 	parts = append(parts, m.statusBarContextHintStrip())
 
 	return m.styles.StatusBar.Width(w).Render(m.statusLine(m.statusBarJoin(parts...), updateActionPart))
+}
+
+// outboxTroublePart is the standing counterpart to the four-second "send
+// failed" toast: it stays up for as long as something in the Outbox needs a
+// person, which the toast never did. Red is reserved for "you have to act" —
+// a retry still in flight is reported in the ordinary bar style.
+func (m Model) outboxTroublePart() string {
+	failed, retrying := m.outboxTrouble()
+	// Read the key through the binding: it is rebindable, and a hint naming a
+	// key the reader does not have is worse than no hint.
+	key := m.keys.Outbox.Help().Key
+	switch {
+	case failed > 1:
+		return m.statusBarInlineText(m.styles.StatusError, fmt.Sprintf("%d failed sends in Outbox  %s", failed, key))
+	case failed == 1:
+		return m.statusBarInlineText(m.styles.StatusError, "1 failed send in Outbox  "+key)
+	case retrying > 0:
+		return m.statusBarInlineText(m.styles.StatusBar, fmt.Sprintf("retrying %d in Outbox  %s", retrying, key))
+	}
+	return ""
 }
 
 func (m Model) statusUpdateInfoPart() string {
