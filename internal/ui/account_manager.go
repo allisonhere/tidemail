@@ -436,10 +436,10 @@ func (am *AccountManager) populateFormFrom(acfg config.AccountConfig) {
 	am.editConfigID = acfg.ID
 	am.nameInput.SetValue(acfg.Name)
 	am.imapHostInput.SetValue(acfg.IMAPHost)
-	am.imapPortInput.SetValue(strconv.Itoa(acfg.IMAPPort))
+	am.imapPortInput.SetValue(portFieldValue(acfg.IMAPPort))
 	am.imapTLS = acfg.IMAPTLS
 	am.smtpHostInput.SetValue(acfg.SMTPHost)
-	am.smtpPortInput.SetValue(strconv.Itoa(acfg.SMTPPort))
+	am.smtpPortInput.SetValue(portFieldValue(acfg.SMTPPort))
 	am.smtpTLS = acfg.SMTPTLS
 	am.userInput.SetValue(acfg.User)
 	am.passInput.SetValue(acfg.Password)
@@ -460,14 +460,8 @@ func (am *AccountManager) populateFormFrom(acfg config.AccountConfig) {
 }
 
 func (am AccountManager) buildCfg() config.AccountConfig {
-	imapPort, _ := strconv.Atoi(am.imapPortInput.Value())
-	if imapPort == 0 {
-		imapPort = 993
-	}
-	smtpPort, _ := strconv.Atoi(am.smtpPortInput.Value())
-	if smtpPort == 0 {
-		smtpPort = 587
-	}
+	imapPort, _ := parsePort(am.imapPortInput.Value(), defaultIMAPPort)
+	smtpPort, _ := parsePort(am.smtpPortInput.Value(), defaultSMTPPort)
 	cfg := config.AccountConfig{
 		ID:          am.editConfigID,
 		Provider:    am.provider,
@@ -1283,6 +1277,58 @@ func (am AccountManager) focusedIsTextInput() bool {
 // than off, so a typo would silently opt an account into a persistent
 // connection. An empty field is the exception — that is a new account taking
 // the push default, not a mistake.
+const (
+	defaultIMAPPort = 993
+	defaultSMTPPort = 587
+)
+
+// parsePort reads a port field. An empty field takes the standard port — a new
+// account accepting the default — but text that is not a number has to fail
+// instead of falling back to it, the way "abc" used to become 993: the form
+// looked accepted and the account then connected somewhere nobody asked for.
+// Range is checked separately, against the built config.
+func parsePort(raw string, def int) (int, bool) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return def, true
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// portFieldValue renders a stored port back into its field. A zero means the
+// config never set one, so the field shows empty and its placeholder offers
+// the default, rather than a literal "0" that validation would then reject.
+func portFieldValue(port int) string {
+	if port == 0 {
+		return ""
+	}
+	return strconv.Itoa(port)
+}
+
+// hostFormatError rejects what people paste into a host field instead of a
+// hostname — a URL copied from webmail docs, a host:port pair, an address.
+// Each one dials as an opaque connection failure, so the form names it.
+func hostFormatError(label, host string) string {
+	bracketedIPv6 := strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]")
+	switch {
+	case strings.Contains(host, "://"):
+		return label + " IS A HOSTNAME, NOT A URL"
+	case strings.ContainsAny(host, " \t"):
+		return label + " CANNOT CONTAIN SPACES"
+	case strings.ContainsAny(host, `/\`):
+		return label + " IS A HOSTNAME, NOT A PATH"
+	case strings.Contains(host, "@"):
+		return label + " IS A HOSTNAME, NOT AN EMAIL ADDRESS"
+	case strings.Contains(host, ":") && !bracketedIPv6:
+		return label + " TAKES NO PORT — USE THE PORT FIELD"
+	}
+	return ""
+}
+
 func parseSyncMinutes(raw string) (int, bool) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
@@ -1298,6 +1344,12 @@ func parseSyncMinutes(raw string) (int, bool) {
 // validateForm checks the raw form text that buildCfg has to collapse into
 // typed fields, then defers to the connection-level checks.
 func (am AccountManager) validateForm(acfg config.AccountConfig) string {
+	if _, ok := parsePort(am.imapPortInput.Value(), defaultIMAPPort); !ok {
+		return "IMAP PORT MUST BE A NUMBER"
+	}
+	if _, ok := parsePort(am.smtpPortInput.Value(), defaultSMTPPort); !ok {
+		return "SMTP PORT MUST BE A NUMBER"
+	}
 	if _, ok := parseSyncMinutes(am.syncInput.Value()); !ok {
 		return "REFRESH MUST BE -1 (MANUAL), 0 (PUSH), OR MINUTES"
 	}
@@ -1327,8 +1379,26 @@ func validateAccountForConnect(acfg config.AccountConfig) string {
 	if acfg.IMAPHost == "" {
 		return "IMAP HOST IS REQUIRED"
 	}
+	if status := hostFormatError("IMAP HOST", acfg.IMAPHost); status != "" {
+		return status
+	}
+	if acfg.SMTPHost == "" {
+		return "SMTP HOST IS REQUIRED"
+	}
+	if status := hostFormatError("SMTP HOST", acfg.SMTPHost); status != "" {
+		return status
+	}
 	if acfg.User == "" {
 		return "USERNAME IS REQUIRED"
+	}
+	// The preset providers label this field "Email" and authenticate with the
+	// full address; a bare login is rejected at sign-in, so catch it here.
+	// Custom stays free-form — plenty of hosts issue logins that are not
+	// addresses at all, including the "user#domain.com" convention.
+	if _, preset := providerPresets[acfg.Provider]; preset {
+		if _, err := mail.ParseAddress(acfg.User); err != nil {
+			return "EMAIL MUST BE A FULL ADDRESS, LIKE YOU@EXAMPLE.COM"
+		}
 	}
 	if acfg.IMAPPort < 1 || acfg.IMAPPort > 65535 {
 		return "IMAP PORT MUST BE 1-65535"
