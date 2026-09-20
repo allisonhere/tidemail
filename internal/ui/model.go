@@ -3146,20 +3146,42 @@ func (m Model) renderStatusBar() string {
 // failed" toast: it stays up for as long as something in the Outbox needs a
 // person, which the toast never did. Red is reserved for "you have to act" —
 // a retry still in flight is reported in the ordinary bar style.
+// Failed and uncertain are never merged under one word. An uncertain entry may
+// well have been delivered — that is the whole reason it is not retried
+// automatically — so calling it a failed send would tell someone their mail
+// did not go out when it probably did.
 func (m Model) outboxTroublePart() string {
-	failed, retrying := m.outboxTrouble()
+	failed, uncertain, retrying := m.outboxTrouble()
 	// Read the key through the binding: it is rebindable, and a hint naming a
 	// key the reader does not have is worse than no hint.
 	key := m.keys.Outbox.Help().Key
+	text := ""
 	switch {
-	case failed > 1:
-		return m.statusBarInlineText(m.styles.StatusError, fmt.Sprintf("%d failed sends in Outbox  %s", failed, key))
-	case failed == 1:
-		return m.statusBarInlineText(m.styles.StatusError, "1 failed send in Outbox  "+key)
+	case failed > 0 && uncertain > 0:
+		// Two different problems needing two different actions. Rather than
+		// pick one word for both, count them together and let the Outbox say
+		// which is which.
+		text = fmt.Sprintf("%d sends need attention in Outbox  %s", failed+uncertain, key)
+	case failed > 0:
+		text = fmt.Sprintf("%s in Outbox  %s", countOf(failed, "failed send"), key)
+	case uncertain > 0:
+		text = fmt.Sprintf("%s in Outbox  %s", countOf(uncertain, "unconfirmed send"), key)
 	case retrying > 0:
+		// Still in flight and handled automatically: worth saying, not worth
+		// alarming about.
 		return m.statusBarInlineText(m.styles.StatusBar, fmt.Sprintf("retrying %d in Outbox  %s", retrying, key))
+	default:
+		return ""
 	}
-	return ""
+	return m.statusBarInlineText(m.styles.StatusError, text)
+}
+
+// countOf renders "1 failed send" / "2 failed sends".
+func countOf(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 func (m Model) statusUpdateInfoPart() string {

@@ -45,12 +45,58 @@ func TestOutboxTroubleCountsOnlyWhatNeedsAttention(t *testing.T) {
 		outboxItem(db.OutboxSending, 1), // in flight right now
 	)
 
-	failed, retrying := m.outboxTrouble()
-	if failed != 2 {
-		t.Fatalf("failed = %d, want 2 (failed + uncertain)", failed)
+	failed, uncertain, retrying := m.outboxTrouble()
+	if failed != 1 {
+		t.Fatalf("failed = %d, want 1", failed)
+	}
+	if uncertain != 1 {
+		t.Fatalf("uncertain = %d, want 1 — it must not be folded into failed", uncertain)
 	}
 	if retrying != 1 {
 		t.Fatalf("retrying = %d, want 1 (queued after a failed attempt)", retrying)
+	}
+}
+
+// An interrupted delivery may well have arrived — RecoverOutbox marks anything
+// caught mid-flight at startup uncertain, and CanRetry refuses to retry it
+// rather than risk a duplicate. Reporting that as a failed send tells someone
+// their mail did not go out when it probably did.
+func TestStatusBarDoesNotCallAnUncertainSendFailed(t *testing.T) {
+	trueColor(t)
+
+	m := newStatusBarModel(t, outboxItem(db.OutboxUncertain, 1))
+	bar := ansi.Strip(m.renderStatusBar())
+
+	if strings.Contains(bar, "failed") {
+		t.Fatalf("expected an uncertain delivery not to be called failed, got %q", bar)
+	}
+	if !strings.Contains(bar, "1 unconfirmed send in Outbox  O") {
+		t.Fatalf("expected the uncertain delivery to be reported in its own words, got %q", bar)
+	}
+	if !strings.Contains(m.renderStatusBar(), foreground(t, statusErrorFg(m.styles))) {
+		t.Fatalf("expected an uncertain delivery to still stand out, got %q", m.renderStatusBar())
+	}
+
+	m = newStatusBarModel(t, outboxItem(db.OutboxUncertain, 1), outboxItem(db.OutboxUncertain, 2))
+	if got := ansi.Strip(m.renderStatusBar()); !strings.Contains(got, "2 unconfirmed sends in Outbox") {
+		t.Fatalf("expected a plural count, got %q", got)
+	}
+}
+
+// Two problems needing two different actions get a neutral count rather than
+// one of the two words applied to both.
+func TestStatusBarCombinesFailedAndUncertainNeutrally(t *testing.T) {
+	m := newStatusBarModel(t,
+		outboxItem(db.OutboxFailed, 3),
+		outboxItem(db.OutboxUncertain, 1),
+	)
+
+	got := ansi.Strip(m.renderStatusBar())
+	if !strings.Contains(got, "2 sends need attention in Outbox  O") {
+		t.Fatalf("expected a neutral combined count, got %q", got)
+	}
+	if strings.Contains(got, "failed send") || strings.Contains(got, "unconfirmed send") {
+		t.Fatalf("expected neither word to be applied to both, got %q", got)
 	}
 }
 
@@ -67,7 +113,7 @@ func TestStatusBarReportsFailedSends(t *testing.T) {
 		t.Fatalf("expected the failure to use the theme error color, got %q", bar)
 	}
 
-	m = newStatusBarModel(t, outboxItem(db.OutboxFailed, 3), outboxItem(db.OutboxUncertain, 1))
+	m = newStatusBarModel(t, outboxItem(db.OutboxFailed, 3), outboxItem(db.OutboxFailed, 3))
 	if got := ansi.Strip(m.renderStatusBar()); !strings.Contains(got, "2 failed sends in Outbox") {
 		t.Fatalf("expected a plural count, got %q", got)
 	}

@@ -33,24 +33,32 @@ func (m *Model) refreshOutbox() {
 	m.outboxCursor = clamp(m.outboxCursor, 0, max(0, len(items)-1))
 }
 
-// outboxTrouble counts the Outbox entries a person would want to know about:
-// ones that failed outright, ones whose delivery is uncertain, and ones still
-// cycling through automatic retries after a first failure. ClaimOutbox bumps
-// attempts on the way to "sending", so a queued item with attempts > 0 has
-// already failed once, while a fresh one inside its undo window has not.
+// outboxTrouble counts the Outbox entries a person would want to know about.
+//
+// Failed and uncertain are counted apart, and must stay apart. An uncertain
+// entry is one RecoverOutbox found mid-flight at startup: the server may well
+// have taken the message, which is why CanRetry refuses to retry it on its own
+// rather than risk a duplicate. Calling that a failed send tells someone their
+// mail did not go out when it probably did.
+//
+// Retrying is a queued entry that has already had an attempt — ClaimOutbox
+// bumps attempts on the way to "sending" — as opposed to a fresh one sitting
+// in its undo window, which is the normal path for every message.
 //
 // It reads m.outboxItems, which refreshOutbox keeps current after every
 // enqueue, send result, retry and cancel, so the count costs no query.
-func (m Model) outboxTrouble() (failed, retrying int) {
+func (m Model) outboxTrouble() (failed, uncertain, retrying int) {
 	for _, item := range m.outboxItems {
 		switch {
-		case item.State == db.OutboxFailed, item.State == db.OutboxUncertain:
+		case item.State == db.OutboxFailed:
 			failed++
+		case item.State == db.OutboxUncertain:
+			uncertain++
 		case item.State == db.OutboxQueued && item.Attempts > 0:
 			retrying++
 		}
 	}
-	return failed, retrying
+	return failed, uncertain, retrying
 }
 
 func (m *Model) openOutbox() {

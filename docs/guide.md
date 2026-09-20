@@ -139,6 +139,12 @@ Outbox` while automatic retries run, then `1 failed send in Outbox` once they
 are spent — and keeps reporting it until the Outbox has nothing left needing
 you. A message still inside its undo window is not a failure and says nothing.
 
+A delivery interrupted mid-flight, which TideMail finds when it starts up
+again, reads `1 unconfirmed send in Outbox` instead. That wording is the point:
+the server may have taken the message before the connection went, so it is not
+a failure and TideMail will not retry it on its own. Check Sent mail before
+you retry one by hand.
+
 Every attempt takes the sending address from the account as it stands at that
 moment, not from a copy saved when the message was queued. So if a send failed
 because the account's **From address** was wrong, correcting it and pressing
