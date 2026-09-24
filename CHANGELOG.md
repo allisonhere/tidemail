@@ -1,6 +1,4 @@
 # Changelog
-## v1.0.25
-
 
 087c5fc fix: describe the Outbox in the message pane instead of "no messages"
 940bde0 feat: give the Outbox a row in the accounts pane
@@ -16,6 +14,8 @@ c1cb309 fix: check every account field's format before connecting
 All notable changes to TideMail are documented in this file.
 
 ## Unreleased
+
+## v1.0.26
 
 ## v1.0.25
 
