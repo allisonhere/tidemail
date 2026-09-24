@@ -180,7 +180,7 @@ func TestDisabledGoogleOAuthHidesSelectorAndShowsUserMessage(t *testing.T) {
 	if strings.Contains(view, "OAuth · sign in with Google") || strings.Contains(view, "Sign in with Google") {
 		t.Fatalf("disabled Google OAuth still rendered sign-in controls:\n%s", view)
 	}
-	if !strings.Contains(view, "Google OAuth is unavailable") || !strings.Contains(view, "Use a Google App Password instead") {
+	if !strings.Contains(view, "Google OAuth is waiting for Google's approval") || !strings.Contains(view, "Use a Google App Password instead") {
 		t.Fatalf("disabled Google OAuth message missing:\n%s", view)
 	}
 }
@@ -195,6 +195,44 @@ func TestDisabledGoogleOAuthPreservesExistingOAuthAccountOnSave(t *testing.T) {
 	cfg := am.buildCfg()
 	if cfg.AuthMethod != config.AuthOAuth2 || cfg.RefreshToken != "refresh-1" {
 		t.Fatalf("disabled preview converted existing OAuth account: auth=%q refresh=%q", cfg.AuthMethod, cfg.RefreshToken)
+	}
+}
+
+func pausedGoogleOAuthAccountManager() AccountManager {
+	return editFormManager(config.AccountConfig{
+		Name: "Gmail", Provider: "Gmail", AuthMethod: config.AuthOAuth2,
+		IMAPHost: "imap.gmail.com", IMAPPort: 993, SMTPHost: "smtp.gmail.com", SMTPPort: 587,
+		User: "me@gmail.com", RefreshToken: "refresh-1",
+	}, config.OAuthConfig{GoogleDisabled: true})
+}
+
+func TestDisabledGoogleOAuthAccountSwitchesToTypedAppPassword(t *testing.T) {
+	am := pausedGoogleOAuthAccountManager()
+	am.passInput.SetValue("abcd efgh ijkl mnop")
+
+	cfg := am.buildCfg()
+	if cfg.AuthMethod != config.AuthPassword || cfg.RefreshToken != "" || cfg.Password != "abcd efgh ijkl mnop" {
+		t.Fatalf("typed app password did not switch the account: auth=%q refresh=%q password=%q", cfg.AuthMethod, cfg.RefreshToken, cfg.Password)
+	}
+	if f := am.validateForm(cfg); f.msg != "" {
+		t.Fatalf("switched account failed validation: %q", f.msg)
+	}
+}
+
+func TestDisabledGoogleOAuthAccountShowsSwitchHint(t *testing.T) {
+	am := pausedGoogleOAuthAccountManager()
+	view := ansi.Strip(am.viewForm(72, 30, newManagerChrome(72, CatppuccinMocha, false)))
+	if !strings.Contains(view, "Enter a Google App Password to switch") {
+		t.Fatalf("paused OAuth account missing switch hint:\n%s", view)
+	}
+}
+
+func TestDisabledGoogleOAuthRejectsEmptyPasswordOnPasswordField(t *testing.T) {
+	am := gmailFormManager()
+	am.oauthCfg.GoogleDisabled = true
+	f := am.validateForm(am.buildCfg())
+	if f.field != amFieldPass || f.msg != "ENTER A GOOGLE APP PASSWORD" {
+		t.Fatalf("validation = %v %q, want Password field asking for an app password", f.field, f.msg)
 	}
 }
 

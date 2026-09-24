@@ -1,7 +1,8 @@
 # Google OAuth registration and release setup
 
-This setup is for TideMail maintainers. Users of configured release builds only
-choose **Sign in with Google** and approve access.
+This setup is for TideMail maintainers. Gmail OAuth sign-in is temporarily
+disabled in TideMail while the Google app awaits approval; users should use a
+Google App Password until that changes.
 
 ## Initial testing
 
@@ -29,10 +30,11 @@ same client. Nonempty environment values take precedence over saved custom
 credentials; otherwise the app uses bundled defaults. A different client ID
 does not inherit another client's secret.
 
-Use `M` → Gmail → OAuth → `Ctrl+O`, approve in the browser, then `Ctrl+S`.
-Verify inbox loading, send a test message to yourself, and restart TideMail to
-confirm the saved refresh token works. In Testing, Google generally expires
-these Gmail refresh tokens after seven days.
+After Google approves the app and Gmail OAuth is re-enabled, use `M` → Gmail →
+OAuth → `Ctrl+O`, approve in the browser, then `Ctrl+S`. Verify inbox loading,
+send a test message to yourself, and restart TideMail to confirm the saved
+refresh token works. In Testing, Google generally expires these Gmail refresh
+tokens after seven days.
 
 ## Release credentials
 

@@ -126,7 +126,7 @@ func TestRenderHelpDocumentsCurrentHeaderSearchAndOAuthBehavior(t *testing.T) {
 		"off restores one row",
 		"focused pane title and shortcuts",
 		"dedicated row above message subjects",
-		"--disable-google-oauth",
+		"paused pending Google approval",
 	} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expected help to document current behavior %q, got %q", want, view)

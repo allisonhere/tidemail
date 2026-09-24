@@ -210,7 +210,7 @@ If `secret-tool` is unavailable on Linux, TideMail writes these secrets to
 
 If you expose an app password, revoke it and create a new one.
 
-Gmail requires either an app password or an OAuth sign-in. For a password, turn
+Gmail currently requires an app password while Google approval is pending. Turn
 on 2-Step Verification, generate one at
 [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords),
 then paste it into the password field in the account manager (`M`) and save with
@@ -218,29 +218,9 @@ then paste it into the password field in the account manager (`M`) and save with
 
 ### Gmail OAuth sign-in
 
-Official builds supply TideMail's Google app credentials; there is no user
-configuration step.
-
-1. Press `M`, add an account, choose **Gmail**, and enter the account details.
-2. Leave **Auth** on **OAuth** and press `Ctrl+O` or Enter on **Sign in with Google**.
-3. Approve Google access in the browser. The browser shows a confirmation and
-   TideMail finishes signing in automatically.
-4. Return to TideMail and save with `Ctrl+S`.
-
-For SSH or manual sign-in, press `Ctrl+P` while waiting for browser approval.
-TideMail displays the URL and a **Code** field. Open the URL, approve access, and
-paste the full redirect URL back into TideMail, then press Enter. If the browser
-is on another computer, its redirect may show a connection error; copy that URL
-anyway. This fallback also appears if TideMail cannot launch the browser. With a
-working local callback, approval can still finish automatically during manual entry.
-
-`Esc` cancels sign-in, and attempts expire after five minutes. Denied access or
-an expired attempt can be retried with `Ctrl+O`. If a refresh token expires or is
-revoked, open the account and sign in again.
-
-Existing app-password accounts keep working; use the **Auth** selector to switch
-methods deliberately. For maintainer registration, developer overrides, and
-Google verification requirements, see [Google OAuth setup](google-oauth.md).
+Google OAuth is temporarily unavailable while TideMail's Google app awaits
+approval. The account form and installer both call this out. Use a Google App
+Password instead; existing saved Gmail OAuth accounts are left unchanged.
 
 Developers can preview the Gmail App Password-only account form without changing
 saved credentials:

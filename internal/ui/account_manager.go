@@ -498,9 +498,9 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 	// (the password from am.passInput is kept). ClientID/Secret are toml:"-" —
 	// they only feed the live connect on save/test; fillSecrets re-fills them on
 	// later loads from the app-level [oauth] config.
-	if am.googleOAuthDisabled() && am.origProvider == "Gmail" && am.origAuthMethod == config.AuthOAuth2 && am.oauthRefreshToken != "" {
-		// The preview flag hides Google OAuth controls but must not convert an
-		// existing OAuth account to password auth if its form is saved.
+	if am.keepsPausedGoogleOAuth() {
+		// Google OAuth is paused, but an existing OAuth account saved without
+		// an app password keeps its sign-in rather than losing all credentials.
 		cfg.AuthMethod = config.AuthOAuth2
 		cfg.RefreshToken = am.oauthRefreshToken
 		cfg.Password = ""
@@ -1083,6 +1083,18 @@ func (am AccountManager) providerSupportsOAuth() bool {
 	return (am.provider == "Gmail" && !am.googleOAuthDisabled()) || am.provider == "Outlook"
 }
 
+// pausedGoogleOAuthAccount reports whether this form edits a Gmail account that
+// signed in with OAuth before Google OAuth was paused.
+func (am AccountManager) pausedGoogleOAuthAccount() bool {
+	return am.googleOAuthDisabled() && am.origProvider == "Gmail" && am.origAuthMethod == config.AuthOAuth2 && am.oauthRefreshToken != ""
+}
+
+// keepsPausedGoogleOAuth reports whether saving keeps that account on OAuth:
+// only until the user types an app password, which switches it over.
+func (am AccountManager) keepsPausedGoogleOAuth() bool {
+	return am.pausedGoogleOAuthAccount() && strings.TrimSpace(am.passInput.Value()) == ""
+}
+
 func (am AccountManager) googleOAuthDisabled() bool {
 	return am.provider == "Gmail" && am.oauthCfg.GoogleDisabled
 }
@@ -1445,7 +1457,12 @@ func (am AccountManager) validateForm(acfg config.AccountConfig) formFailure {
 	if _, ok := parseSyncMinutes(am.syncInput.Value()); !ok {
 		return fail(amFieldSyncInterval, "REFRESH MUST BE -1 (MANUAL), 0 (PUSH), OR MINUTES")
 	}
-	return validateAccountForConnect(acfg)
+	f := validateAccountForConnect(acfg)
+	if f.field == amFieldAuthMethod && am.googleOAuthDisabled() {
+		// The Auth row and Ctrl+O are hidden while Google OAuth is paused.
+		return fail(amFieldPass, "ENTER A GOOGLE APP PASSWORD")
+	}
+	return f
 }
 
 // duplicateNameWarning reports a display name another account already uses.
@@ -1943,8 +1960,11 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	if !am.providerSupportsOAuth() {
 		// Providers without an OAuth path: app password only.
 		addControl(amFieldPass, row("Password", passInput, amFieldPass))
-		if am.googleOAuthDisabled() {
-			addHint("Google OAuth is unavailable.")
+		if am.pausedGoogleOAuthAccount() {
+			addHint("This account uses Google sign-in, which is paused.")
+			addHint("Enter a Google App Password to switch.")
+		} else if am.googleOAuthDisabled() {
+			addHint("Google OAuth is waiting for Google's approval.")
 			addHint("Use a Google App Password instead.")
 		}
 	} else {

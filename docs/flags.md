@@ -8,16 +8,16 @@ go run . --disable-google-oauth
 
 | Flag | Purpose |
 | --- | --- |
-| `--disable-google-oauth` | Hides Gmail OAuth controls and shows the App Password-only experience. The flag changes runtime state only; it does not rewrite `config.toml` or disable Outlook OAuth. |
+| `--disable-google-oauth` | Developer/test flag that additionally clears Gmail OAuth client credentials for this run. Gmail OAuth controls are already hidden while Google approval is pending. It does not rewrite `config.toml` or disable Outlook OAuth. |
 | `--preview-manual-update` | Opens the update window a package-managed install gets — the one that explains why TideMail cannot replace its own binary and offers the command to run. |
 | `--preview-update-progress` | Previews the in-app update progress state. |
 | `--prototype-forms` | Runs the standalone form prototype instead of the mail client. |
 
-With `--disable-google-oauth`, a Gmail account form omits the Auth selector and
-Google sign-in button. It shows this guidance under Password:
+While Google approval is pending, a Gmail account form omits the Auth selector
+and Google sign-in button. It shows this guidance under Password:
 
 ```text
-Google OAuth is unavailable.
+Google OAuth is waiting for Google's approval.
 Use a Google App Password instead.
 ```
 

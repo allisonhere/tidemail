@@ -184,8 +184,9 @@ AI stays off until you configure a provider.
 ## First account
 
 Press `M`, add your incoming and outgoing mail settings, then save with
-`Ctrl+S`. Gmail, Yahoo, and iCloud require an app password; Gmail and Outlook can
-sign in with OAuth instead (see below). Any other IMAP/SMTP server — including an
+`Ctrl+S`. Gmail, Yahoo, and iCloud require an app password. Outlook can sign in
+with OAuth; Gmail OAuth is temporarily unavailable while Google approval is
+pending (see below). Any other IMAP/SMTP server — including an
 on-premises Microsoft Exchange server — uses the **Custom** provider with a
 username and password.
 
@@ -195,31 +196,12 @@ back to `~/.config/tidemail/config.toml`, so protect that file.
 
 ### Gmail with OAuth
 
-Official TideMail builds include a Google Desktop app registration. Users do not
-need Google Cloud credentials, environment variables, or config-file edits.
-
-1. Press `M` → add account → provider **Gmail**, and enter your account details.
-2. Leave **Auth** on **OAuth** and press `Ctrl+O` (or Enter on **Sign in with Google**).
-3. Approve access in your browser. TideMail receives the result automatically;
-   return to TideMail and save with `Ctrl+S`.
-
-If the browser cannot open, TideMail shows a sign-in URL and manual entry steps.
-For SSH use, press `Ctrl+P` while waiting for browser approval, open the displayed
-URL on your own computer, and paste the full redirect URL into the **Code** field.
-A connection error at that redirect is expected when using another computer.
-Press Enter to finish, then `Ctrl+S` to save. `Esc` cancels an attempt; attempts
-expire after five minutes.
-
-Refresh tokens use the existing keychain storage (with the config-file fallback
-described above) and refresh access for IMAP and SMTP. If access expires or is
-revoked, open the account with `M` and press `Ctrl+O` again. Existing app-password
-accounts keep their authentication method; the **Auth** selector still offers
-**App password**.
+Google OAuth is temporarily unavailable while TideMail's Google app awaits
+approval. The account form and installer both call this out. Use a Google App
+Password instead; existing saved Gmail OAuth accounts are left unchanged.
 
 Maintainers and source-build developers: see [Google OAuth registration and
-release setup](docs/google-oauth.md). A source build without credentials explains
-that Google sign-in is unavailable; official release builds reject missing
-credentials before publishing.
+release setup](docs/google-oauth.md) for the approval and release checklist.
 
 ### Outlook
 
