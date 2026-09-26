@@ -64,6 +64,12 @@ Content-Location privacy, duplicate fetch suppression, and terminal cleanup.
   separate layout tables are only grouped when a wrapping cell contains them;
   a card split across sibling rows of one table is not recognised.
 - Complex row-spanning data tables use the simpler text fallback.
+- Image uploads are asynchronous: `applyImages` only queues, `Model.Update`
+  collects `takeUploadCmd`, and the command encodes after a 90 ms debounce.
+  Uploaded images stay resident in the terminal under an LRU budget and are
+  deleted by `ReleaseTerminalImages` on exit. Milestone 2's backend rebuild on
+  resize must call `clearImages` first so resident IDs are not reused with
+  stale geometry, and must not swap `backend` while an upload command runs.
 - Image layout records height hints but currently sizes primarily from width;
   terminal cell geometry is detected only when the image store is created.
 

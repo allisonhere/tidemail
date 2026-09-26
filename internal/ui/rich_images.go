@@ -5,9 +5,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
 	"github.com/PuerkitoBio/goquery"
@@ -104,10 +106,54 @@ type uiImageStore struct {
 	activeIDs   []uint32
 	activeKey   string
 	generation  uint64
-	tty         *os.File
+
+	// Uploads are encoded off the event loop after the cursor settles.
+	// uploadSeq identifies the current image set; results for an older set
+	// are discarded. queued holds images waiting for takeUploadCmd.
+	uploadSeq uint64
+	queued    []renderImage
+	debounce  time.Duration
+
+	// resident tracks images the terminal still holds, so returning to a
+	// message reuses them instead of re-encoding and re-sending.
+	resident      map[uint32]*residentImage
+	residentBytes int
+	useSeq        uint64
+	tty           *os.File
 	// sink, when non-nil, receives terminal escape bytes instead of /dev/tty.
 	// Tests set it to assert uploads without touching a real terminal.
 	sink func([]byte)
+}
+
+// imageUploadDebounce lets the cursor settle before any image is encoded, so
+// holding j/k over image-heavy mail never waits on uploads it would discard.
+const imageUploadDebounce = 90 * time.Millisecond
+
+// Terminal-resident images are bounded by count and by decoded RGBA size,
+// which is what the terminal itself keeps in memory.
+const maxResidentImages = 48
+const maxResidentBytes = 64 << 20
+
+// residentImage is one image held by the terminal.
+type residentImage struct {
+	geometry string
+	bytes    int
+	lastUse  uint64
+}
+
+// imageUpload is one encoded image ready to write to the terminal.
+type imageUpload struct {
+	id       uint32
+	geometry string
+	bytes    int
+	data     []byte
+}
+
+// imageUploadMsg carries encoded images back to the event loop, which alone
+// writes to the terminal.
+type imageUploadMsg struct {
+	seq     uint64
+	uploads []imageUpload
 }
 
 // maxDecodedCacheEntries bounds decoded-image memory across a large mailbox.
@@ -142,6 +188,8 @@ func newUIImageStore(imagesSetting string) *uiImageStore {
 		pending:    map[string]bool{},
 		allowed:    map[int64]bool{},
 		idFor:      map[string]uint32{},
+		debounce:   imageUploadDebounce,
+		resident:   map[uint32]*residentImage{},
 	}
 }
 
@@ -344,8 +392,15 @@ func (s *uiImageStore) imageSetKey(images []renderImage) string {
 	return b.String()
 }
 
-// applyImages uploads the current view's images and deletes the previous set,
-// so switching messages cannot leak terminal image memory.
+func uploadGeometry(im renderImage) string {
+	p := im.placement
+	return fmt.Sprintf("%d:%d:%d:%d", p.Cols, p.Rows, p.PixelWidth, p.PixelHeight)
+}
+
+// applyImages makes images the current view's set. Images the terminal
+// already holds at the same geometry are reused; the rest are queued for a
+// debounced background upload collected by takeUploadCmd. Nothing is encoded
+// or written here, so moving the cursor never blocks on image data.
 func (s *uiImageStore) applyImages(images []renderImage) {
 	if !s.graphics() {
 		return
@@ -353,36 +408,139 @@ func (s *uiImageStore) applyImages(images []renderImage) {
 	key := s.imageSetKey(images)
 
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	if key == s.activeKey {
-		s.mu.Unlock()
 		return
 	}
-	old := s.activeIDs
-	s.activeIDs = nil
 	s.activeKey = key
-	s.mu.Unlock()
-
-	var buf bytes.Buffer
-	for _, id := range old {
-		buf.Write(s.backend.Delete(id))
-	}
-	var active []uint32
+	s.activeIDs = nil
+	s.queued = nil
+	s.uploadSeq++
 	for _, im := range images {
 		if im.image == nil {
 			continue
 		}
-		data, ok := s.backend.Transmit(im.id, im.image.Image, im.placement.Cols, im.placement.Rows, im.placement.PixelWidth, im.placement.PixelHeight)
-		if !ok {
+		s.activeIDs = append(s.activeIDs, im.id)
+		if r, ok := s.resident[im.id]; ok && r.geometry == uploadGeometry(im) {
+			s.useSeq++
+			r.lastUse = s.useSeq
 			continue
 		}
-		buf.Write(data)
-		active = append(active, im.id)
+		s.queued = append(s.queued, im)
 	}
+}
 
+// takeUploadCmd returns a command that waits for the cursor to settle, then
+// encodes the queued images off the event loop. It returns nil when nothing
+// is queued. A newer image set makes the command give up early.
+func (s *uiImageStore) takeUploadCmd() tea.Cmd {
+	if s == nil {
+		return nil
+	}
 	s.mu.Lock()
-	s.activeIDs = active
+	images, seq, delay := s.queued, s.uploadSeq, s.debounce
+	s.queued = nil
+	s.mu.Unlock()
+	if len(images) == 0 {
+		return nil
+	}
+	backend := s.backend
+	return func() tea.Msg {
+		if delay > 0 {
+			time.Sleep(delay)
+		}
+		uploads := make([]imageUpload, 0, len(images))
+		for _, im := range images {
+			if !s.uploadCurrent(seq) {
+				return nil
+			}
+			p := im.placement
+			data, ok := backend.Transmit(im.id, im.image.Image, p.Cols, p.Rows, p.PixelWidth, p.PixelHeight)
+			if !ok {
+				continue
+			}
+			uploads = append(uploads, imageUpload{
+				id:       im.id,
+				geometry: uploadGeometry(im),
+				bytes:    max(1, p.PixelWidth) * max(1, p.PixelHeight) * 4,
+				data:     data,
+			})
+		}
+		return imageUploadMsg{seq: seq, uploads: uploads}
+	}
+}
+
+func (s *uiImageStore) uploadCurrent(seq uint64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return seq == s.uploadSeq
+}
+
+// applyUploads writes encoded images for the current set to the terminal and
+// evicts the least recently used images beyond the resident budget.
+func (s *uiImageStore) applyUploads(msg imageUploadMsg) {
+	if !s.graphics() {
+		return
+	}
+	var buf bytes.Buffer
+	s.mu.Lock()
+	if msg.seq != s.uploadSeq {
+		s.mu.Unlock()
+		return
+	}
+	for _, up := range msg.uploads {
+		if old, ok := s.resident[up.id]; ok {
+			s.residentBytes -= old.bytes
+		}
+		s.useSeq++
+		s.resident[up.id] = &residentImage{geometry: up.geometry, bytes: up.bytes, lastUse: s.useSeq}
+		s.residentBytes += up.bytes
+		buf.Write(up.data)
+	}
+	for _, id := range s.evictResidentLocked() {
+		buf.Write(s.backend.Delete(id))
+	}
 	s.mu.Unlock()
 	s.writeTTY(buf.Bytes())
+}
+
+// evictResidentLocked drops least recently used images, never the ones on
+// screen, until the resident set fits its budget.
+func (s *uiImageStore) evictResidentLocked() []uint32 {
+	var evicted []uint32
+	for len(s.resident) > maxResidentImages || s.residentBytes > maxResidentBytes {
+		var victim uint32
+		var oldest uint64
+		for id, r := range s.resident {
+			if slices.Contains(s.activeIDs, id) {
+				continue
+			}
+			if victim == 0 || r.lastUse < oldest {
+				victim, oldest = id, r.lastUse
+			}
+		}
+		if victim == 0 {
+			break
+		}
+		s.residentBytes -= s.resident[victim].bytes
+		delete(s.resident, victim)
+		evicted = append(evicted, victim)
+	}
+	return evicted
+}
+
+// deactivateImages marks that no images are on screen and cancels pending
+// uploads. Resident images stay in the terminal for a quick return.
+func (s *uiImageStore) deactivateImages() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.activeIDs = nil
+	s.activeKey = ""
+	s.queued = nil
+	s.uploadSeq++
 }
 
 // clearImages removes every transmitted image from the terminal.
@@ -391,9 +549,16 @@ func (s *uiImageStore) clearImages() {
 		return
 	}
 	s.mu.Lock()
-	ids := s.activeIDs
+	ids := make([]uint32, 0, len(s.resident))
+	for id := range s.resident {
+		ids = append(ids, id)
+	}
+	s.resident = map[uint32]*residentImage{}
+	s.residentBytes = 0
 	s.activeIDs = nil
 	s.activeKey = ""
+	s.queued = nil
+	s.uploadSeq++
 	s.mu.Unlock()
 	if len(ids) == 0 {
 		return
@@ -869,8 +1034,8 @@ func goqueryDocument(html string) (*goquery.Document, error) {
 	return goquery.NewDocumentFromReader(strings.NewReader(html))
 }
 
-// applyViewportImages uploads the images of the currently shown content,
-// replacing whatever was shown before.
+// applyViewportImages makes images the currently shown set. Missing images
+// upload in the background; see takeUploadCmd.
 func (m *Model) applyViewportImages(images []renderImage) {
 	if m.images == nil {
 		return
@@ -878,8 +1043,15 @@ func (m *Model) applyViewportImages(images []renderImage) {
 	m.images.applyImages(images)
 }
 
-// clearViewportImages removes every image TideMail previously transmitted.
+// clearViewportImages marks that no images are shown. Resident images stay
+// in the terminal, bounded by the resident budget.
 func (m *Model) clearViewportImages() {
+	m.images.deactivateImages()
+}
+
+// ReleaseTerminalImages deletes every image TideMail left in the terminal.
+// Call it once the program has exited.
+func (m Model) ReleaseTerminalImages() {
 	if m.images == nil {
 		return
 	}

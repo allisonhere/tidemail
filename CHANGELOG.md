@@ -48,6 +48,11 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Moving through the message list no longer stalls on messages with loaded
+  images. Images upload in the background once the cursor settles, and
+  recently shown images stay in the terminal (up to 48 images or 64 MiB of
+  pixels), so returning to a message is instant. TideMail removes its images
+  from the terminal on exit.
 - MIME image parts now have a byte and entry cache budget, and clearing a
   terminal image also releases its stored pixel data.
 - Remote images reuse decoded pixels after download-cache eviction. If both

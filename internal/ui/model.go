@@ -460,7 +460,19 @@ func (m Model) Init() tea.Cmd {
 // ── Update ───────────────────────────────────────────────────────────────────
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Update handles async results before key routing so completed commands cannot be swallowed by modal focus. -allie
+	next, cmd := m.update(msg)
+	// Any update may change the images on screen. Their upload is collected
+	// here so no individual handler has to thread the command through.
+	if m.images != nil {
+		if upload := m.images.takeUploadCmd(); upload != nil {
+			cmd = tea.Batch(cmd, upload)
+		}
+	}
+	return next, cmd
+}
+
+func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// update handles async results before key routing so completed commands cannot be swallowed by modal focus. -allie
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
@@ -501,6 +513,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case StatusClearMsg:
 		m.statusMsg = ""
 		m.statusErr = false
+		return m, nil
+
+	case imageUploadMsg:
+		m.images.applyUploads(msg)
 		return m, nil
 
 	case remoteImagesLoadedMsg:

@@ -144,6 +144,7 @@ func run() (code int, restartExec string) {
 	// A finished session may ask to re-exec the freshly installed binary (in-app
 	// update restart). main does the exec after this function's defers run.
 	if um, ok := finalModel.(ui.Model); ok {
+		um.ReleaseTerminalImages()
 		restartExec = um.RestartExecPath()
 		if restartExec == "" && (um.QuitActivated() || um.HasPendingDestructiveActions() || um.HasPendingSends()) {
 			quitIndicator = startShutdownIndicator()

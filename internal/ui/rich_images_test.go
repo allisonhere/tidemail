@@ -33,8 +33,23 @@ func graphicsModel(t *testing.T) (Model, *bytes.Buffer) {
 	})
 	buf := &bytes.Buffer{}
 	store.sink = func(b []byte) { buf.Write(b) }
+	store.debounce = 0
 	m.images = store
 	return m, buf
+}
+
+// flushImageUploads runs the queued background upload to completion, as the
+// Bubble Tea runtime would, and reports whether one was queued.
+func flushImageUploads(t *testing.T, m *Model) bool {
+	t.Helper()
+	cmd := m.images.takeUploadCmd()
+	if cmd == nil {
+		return false
+	}
+	if msg, ok := cmd().(imageUploadMsg); ok {
+		m.images.applyUploads(msg)
+	}
+	return true
 }
 
 func pngDataURI(t *testing.T, w, h int) string {
@@ -87,6 +102,10 @@ func TestGraphicsRendersRasterPlaceholders(t *testing.T) {
 	}
 
 	m.applyViewportImages(res.images)
+	if sink.Len() != 0 {
+		t.Fatalf("upload must not run on the event loop, got %q", sink.String())
+	}
+	flushImageUploads(t, &m)
 	if !bytes.Contains(sink.Bytes(), []byte("\x1b_Ga=T,f=100,i=")) {
 		t.Fatalf("expected a kitty upload, got %q", sink.String())
 	}
@@ -216,16 +235,87 @@ func TestResizeReflowsImages(t *testing.T) {
 	}
 }
 
-func TestSwitchingMessagesClearsImages(t *testing.T) {
+func TestSwitchingMessagesKeepsResidentImages(t *testing.T) {
 	m, sink := graphicsModel(t)
 	html := `<img src="` + pngDataURI(t, 120, 60) + `" alt="Hero">`
 	res := m.renderMessageForDisplay(db.Message{ID: 8, BodyHTML: html}, 70)
 	m.applyViewportImages(res.images)
+	flushImageUploads(t, &m)
 	sink.Reset()
 
+	// Moving away and back reuses the image the terminal already holds.
 	m.clearViewportImages()
+	m.applyViewportImages(res.images)
+	if flushImageUploads(t, &m) || sink.Len() != 0 {
+		t.Fatalf("returning to a message re-sent its image: %q", sink.String())
+	}
+
+	// A new geometry (pane resize) must replace the resident image.
+	narrow := m.renderMessageForDisplay(db.Message{ID: 8, BodyHTML: html}, 10)
+	m.applyViewportImages(narrow.images)
+	flushImageUploads(t, &m)
+	if !bytes.Contains(sink.Bytes(), []byte("a=T")) {
+		t.Fatalf("resized image was not re-uploaded: %q", sink.String())
+	}
+	sink.Reset()
+
+	m.ReleaseTerminalImages()
 	if !bytes.Contains(sink.Bytes(), []byte("a=d,d=I")) {
-		t.Fatalf("expected image deletion escape, got %q", sink.String())
+		t.Fatalf("expected image deletion escape on release, got %q", sink.String())
+	}
+}
+
+func TestStaleImageUploadIsDiscarded(t *testing.T) {
+	m, sink := graphicsModel(t)
+	first := m.renderMessageForDisplay(db.Message{ID: 81, BodyHTML: `<img src="` + pngDataURI(t, 120, 60) + `" alt="A">`}, 70)
+	second := m.renderMessageForDisplay(db.Message{ID: 82, BodyHTML: `<img src="` + pngDataURI(t, 120, 60) + `" alt="B">`}, 70)
+
+	m.applyViewportImages(first.images)
+	stale := m.images.takeUploadCmd()
+	m.applyViewportImages(second.images)
+	if msg, ok := stale().(imageUploadMsg); ok {
+		m.images.applyUploads(msg)
+	}
+	if sink.Len() != 0 {
+		t.Fatalf("upload for a message the cursor left was written: %q", sink.String())
+	}
+	flushImageUploads(t, &m)
+	if !strings.Contains(sink.String(), fmt.Sprintf("i=%d,", second.images[0].id)) {
+		t.Fatalf("current message image not uploaded: %q", sink.String())
+	}
+}
+
+func TestResidentImagesStayWithinBudget(t *testing.T) {
+	m, sink := graphicsModel(t)
+	uri := pngDataURI(t, 64, 64)
+	var last []renderImage
+	for i := 0; i < maxResidentImages+10; i++ {
+		res := m.renderMessageForDisplay(db.Message{ID: int64(1000 + i), BodyHTML: `<img src="` + uri + `" alt="Pic">`}, 70)
+		m.applyViewportImages(res.images)
+		flushImageUploads(t, &m)
+		last = res.images
+	}
+	if n := len(m.images.resident); n > maxResidentImages {
+		t.Fatalf("resident images = %d, want <= %d", n, maxResidentImages)
+	}
+	if !strings.Contains(sink.String(), "a=d,d=I") {
+		t.Fatal("expected least recently used images to be deleted")
+	}
+	if _, ok := m.images.resident[last[0].id]; !ok {
+		t.Fatal("the image on screen was evicted")
+	}
+}
+
+func TestUpdateCollectsImageUploadCmd(t *testing.T) {
+	m, _ := graphicsModel(t)
+	res := m.renderMessageForDisplay(db.Message{ID: 90, BodyHTML: `<img src="` + pngDataURI(t, 120, 60) + `" alt="Hero">`}, 70)
+	m.applyViewportImages(res.images)
+	type unrelatedMsg struct{}
+	if _, cmd := m.Update(unrelatedMsg{}); cmd == nil {
+		t.Fatal("Update did not return the queued image upload")
+	}
+	if m.images.takeUploadCmd() != nil {
+		t.Fatal("upload was queued twice")
 	}
 }
 
@@ -574,6 +664,7 @@ func TestImageSettingClearsAndRestoresGraphics(t *testing.T) {
 	msg := db.Message{ID: 990, BodyHTML: `<img src="` + pngDataURI(t, 120, 60) + `" alt="Chart">`}
 	res := m.renderMessageForDisplay(msg, 70)
 	m.applyViewportImages(res.images)
+	flushImageUploads(t, &m)
 	sink.Reset()
 	m.cfg.Display.Images = "off"
 	m.applyImageSetting()
