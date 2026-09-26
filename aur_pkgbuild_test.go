@@ -12,6 +12,8 @@ const (
 	testSHAx86     = "0a602f190553bacfc34206c0d7c5787d22963a8a9610550de5837ca195055412"
 	testSHAarm     = "59c5ed07b258a193e5c090878b9f4abbf8953798183db3761886697cbb3fdfbb"
 	testSHALicense = "7ded3abde5f4be92306e0ee24c6db97b1825e4eaa1b8fd473669c521f5a409dd"
+	testSHAIcon    = "3c1f6e0a9d2b4c5e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e"
+	testSHADesktop = "8e2d4c6a1b3f5e7d9c0a2b4d6f8e1a3c5b7d9f0e2a4c6b8d1f3e5a7c9b0d2f4a"
 )
 
 func renderPKGBUILD(t *testing.T, args ...string) (string, string, error) {
@@ -36,6 +38,8 @@ func validRenderArgs() []string {
 		"--sha256-x86_64", testSHAx86,
 		"--sha256-aarch64", testSHAarm,
 		"--sha256-license", testSHALicense,
+		"--sha256-icon", testSHAIcon,
+		"--sha256-desktop", testSHADesktop,
 	}
 }
 
@@ -49,7 +53,7 @@ func TestRenderPKGBUILDFillsEveryPlaceholder(t *testing.T) {
 	if !strings.Contains(rendered, "pkgver=1.0.16") {
 		t.Errorf("expected pkgver=1.0.16 in:\n%s", rendered)
 	}
-	for _, want := range []string{"pkgrel=1", testSHAx86, testSHAarm, testSHALicense} {
+	for _, want := range []string{"pkgrel=1", testSHAx86, testSHAarm, testSHALicense, testSHAIcon, testSHADesktop} {
 		if !strings.Contains(rendered, want) {
 			t.Errorf("rendered PKGBUILD missing %q", want)
 		}
@@ -61,6 +65,17 @@ func TestRenderPKGBUILDFillsEveryPlaceholder(t *testing.T) {
 	if !strings.Contains(rendered, "/releases/download/v$pkgver/tidemail-linux-x86_64.tar.gz") {
 		t.Errorf("expected tag-prefixed download URL in:\n%s", rendered)
 	}
+	// The icon and desktop entry come from the tag and land where launchers look.
+	for _, want := range []string{
+		"/raw/v$pkgver/images/tidemail-icon.svg",
+		"/raw/v$pkgver/packaging/linux/tidemail.desktop",
+		"/usr/share/icons/hicolor/scalable/apps/tidemail.svg",
+		"/usr/share/applications/tidemail.desktop",
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("rendered PKGBUILD missing %q", want)
+		}
+	}
 }
 
 // A bad value must fail loudly rather than publish a PKGBUILD that cannot build.
@@ -71,6 +86,7 @@ func TestRenderPKGBUILDRejectsInvalidInput(t *testing.T) {
 		"zero pkgrel":         {"--pkgrel", "0"},
 		"truncated sha":       {"--sha256-x86_64", "0a602f19"},
 		"non-hex sha":         {"--sha256-aarch64", strings.Repeat("z", 64)},
+		"truncated icon sha":  {"--sha256-icon", "3c1f6e0a"},
 	}
 
 	for name, override := range cases {

@@ -1177,11 +1177,11 @@ act_aur_status() {
 # aur_render_into writes PKGBUILD and .SRCINFO for one pkgrel into an AUR
 # checkout. Both are produced together so they can never disagree.
 aur_render_into() {
-  local dir=$1 rel=$2 x86=$3 arm=$4 lic=$5
+  local dir=$1 rel=$2 x86=$3 arm=$4 lic=$5 icon=$6 desktop=$7
   if ! bash "$PROJECT_DIR/packaging/aur/render-pkgbuild.sh" \
       --version "$VERSION" --pkgrel "$rel" \
       --sha256-x86_64 "$x86" --sha256-aarch64 "$arm" \
-      --sha256-license "$lic" \
+      --sha256-license "$lic" --sha256-icon "$icon" --sha256-desktop "$desktop" \
       --output "$dir/PKGBUILD"; then
     log_err "rendering the PKGBUILD failed"
     return 1
@@ -1203,15 +1203,15 @@ sha_for_asset() {
   awk -v want="$asset" '$2 == want { print $1; exit }' "$sums_file"
 }
 
-# license_sha256 hashes the LICENSE blob at the tag, which is exactly what the
+# tag_file_sha256 hashes one file's blob at the tag, which is exactly what the
 # PKGBUILD's raw.githubusercontent source URL serves.
-license_sha256() {
-  local tag=$1 tmp hash
-  tmp=$(mktemp "${TMPDIR:-/tmp}/license-XXXXXX")
+tag_file_sha256() {
+  local tag=$1 path=$2 tmp hash
+  tmp=$(mktemp "${TMPDIR:-/tmp}/tagfile-XXXXXX")
   # Piping git straight into sha256sum hides a missing file: the pipeline still
   # succeeds and hashes empty input, yielding e3b0c442… — a digest that looks
   # real and would publish a PKGBUILD nobody can build. Capture, check, then hash.
-  if ! git -C "$PROJECT_DIR" show "${tag}:LICENSE" > "$tmp" 2>/dev/null || [ ! -s "$tmp" ]; then
+  if ! git -C "$PROJECT_DIR" show "${tag}:${path}" > "$tmp" 2>/dev/null || [ ! -s "$tmp" ]; then
     rm -f "$tmp"
     return 1
   fi
@@ -1256,10 +1256,12 @@ act_aur_publish() {
     return 1
   fi
 
-  local sha_x86 sha_arm sha_license
+  local sha_x86 sha_arm sha_license sha_icon sha_desktop
   sha_x86=$(sha_for_asset "$work/SHA256SUMS" "tidemail-linux-x86_64.tar.gz")
   sha_arm=$(sha_for_asset "$work/SHA256SUMS" "tidemail-linux-aarch64.tar.gz")
-  sha_license=$(license_sha256 "$VERSION")
+  sha_license=$(tag_file_sha256 "$VERSION" LICENSE)
+  sha_icon=$(tag_file_sha256 "$VERSION" images/tidemail-icon.svg)
+  sha_desktop=$(tag_file_sha256 "$VERSION" packaging/linux/tidemail.desktop)
 
   if [ -z "$sha_x86" ] || [ -z "$sha_arm" ]; then
     log_err "SHA256SUMS does not list both Linux tarballs"
@@ -1269,6 +1271,12 @@ act_aur_publish() {
   if [ -z "$sha_license" ]; then
     log_err "no LICENSE at $VERSION — the tag must carry one, and be fetched locally"
     log_detail "the PKGBUILD installs the licence from $VERSION, so it has to exist there"
+    rm -rf "$work"
+    return 1
+  fi
+  if [ -z "$sha_icon" ] || [ -z "$sha_desktop" ]; then
+    log_err "no icon or desktop entry at $VERSION — the tag must carry both, and be fetched locally"
+    log_detail "the PKGBUILD installs images/tidemail-icon.svg and packaging/linux/tidemail.desktop from $VERSION"
     rm -rf "$work"
     return 1
   fi
@@ -1297,7 +1305,7 @@ act_aur_publish() {
   fi
 
   # 3. Render the PKGBUILD and its .SRCINFO.
-  if ! aur_render_into "$repo_dir" "$pkgrel" "$sha_x86" "$sha_arm" "$sha_license"; then
+  if ! aur_render_into "$repo_dir" "$pkgrel" "$sha_x86" "$sha_arm" "$sha_license" "$sha_icon" "$sha_desktop"; then
     rm -rf "$work"
     return 1
   fi
@@ -1312,7 +1320,7 @@ act_aur_publish() {
     fi
     pkgrel=$((pkgrel + 1))
     log_info "same pkgver, changed package — bumping pkgrel to $pkgrel"
-    if ! aur_render_into "$repo_dir" "$pkgrel" "$sha_x86" "$sha_arm" "$sha_license"; then
+    if ! aur_render_into "$repo_dir" "$pkgrel" "$sha_x86" "$sha_arm" "$sha_license" "$sha_icon" "$sha_desktop"; then
       rm -rf "$work"
       return 1
     fi
@@ -1325,6 +1333,8 @@ act_aur_publish() {
   log_detail "x86_64  tidemail-linux-x86_64.tar.gz  $sha_x86"
   log_detail "aarch64 tidemail-linux-aarch64.tar.gz $sha_arm"
   log_detail "LICENSE at tag $VERSION               $sha_license"
+  log_detail "icon at tag $VERSION                  $sha_icon"
+  log_detail "desktop entry at tag $VERSION         $sha_desktop"
 
   # `git add -N` registers the new files so `git diff` also renders the very
   # first publish, where both files are still untracked.

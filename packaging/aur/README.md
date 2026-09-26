@@ -17,9 +17,11 @@ working out of the box.
 | --- | --- |
 | `PKGBUILD.in` | The template. Edit this, never a rendered `PKGBUILD`. |
 | `render-pkgbuild.sh` | Substitutes version, `pkgrel`, and checksums into the template. |
+| `../linux/tidemail.desktop` | Desktop entry the package installs to `/usr/share/applications`. |
+| `../../images/tidemail-icon.svg` | Icon the package installs to `/usr/share/icons/hicolor/scalable/apps/tidemail.svg`. |
 
 Placeholders: `@PKGVER@`, `@PKGREL@`, `@SHA256_X86_64@`, `@SHA256_AARCH64@`,
-`@SHA256_LICENSE@`. Rendering fails if any placeholder survives, so a typo can
+`@SHA256_LICENSE@`, `@SHA256_ICON@`, `@SHA256_DESKTOP@`. Rendering fails if any placeholder survives, so a typo can
 never publish a PKGBUILD that cannot build.
 
 ## Publishing
@@ -30,8 +32,10 @@ Use `./deploy.sh` → **AUR → Publish tidemail-bin**. It:
 2. Reads the checksums from that published `SHA256SUMS`. **Checksums must come
    from the release assets, not a local `go build`** — local builds lack the
    OAuth credentials and hash differently.
-3. Hashes the `LICENSE` blob at the tag, which is what the PKGBUILD's
-   `raw.githubusercontent.com` source URL serves.
+3. Hashes the `LICENSE`, icon, and desktop entry blobs at the tag, which is
+   what the PKGBUILD's `raw.githubusercontent.com` source URLs serve. Tags
+   older than the icon do not carry these files, so they can no longer be
+   published.
 4. Clones the AUR repo and picks `pkgrel`: `1` for a new `pkgver`, otherwise
    one more than what is published.
 5. Renders the PKGBUILD, generates `.SRCINFO` with `makepkg --printsrcinfo`,
@@ -60,6 +64,7 @@ accepted, and **AUR → AUR setup help** prints these steps with your key.
 bash packaging/aur/render-pkgbuild.sh \
   --version v1.0.16 --pkgrel 1 \
   --sha256-x86_64 <hash> --sha256-aarch64 <hash> --sha256-license <hash> \
+  --sha256-icon <hash> --sha256-desktop <hash> \
   --output /tmp/aur/PKGBUILD
 cd /tmp/aur && makepkg --printsrcinfo > .SRCINFO && makepkg -f
 ```
