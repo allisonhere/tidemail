@@ -40,6 +40,10 @@ install -Dm644 packaging/linux/tidemail.desktop ~/.local/share/applications/tide
 The entry runs `tidemail` in your default terminal, so `tidemail` must be on
 your `PATH`.
 
+If your launcher or installer wants a PNG instead (for example, Omarchy's TUI
+installer asks for an icon URL), use the 1024×1024 transparent PNG:
+`https://raw.githubusercontent.com/allisonhere/tidemail/main/images/tidemail-icon.png`
+
 ### Build from source
 
 ```bash
