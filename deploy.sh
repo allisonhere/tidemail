@@ -935,15 +935,25 @@ draw_menu() {
   done
 }
 
+# LOG_GUTTER runs down the left of the output, so a line of it can never be
+# read as a menu row, however close the two sit on a short terminal.
+LOG_GUTTER=""
+
 draw_log() {
   local height=$1
   [ "$height" -lt 1 ] && return 0
-  frame_line " ${DIM}$(repeat_char '─' $((COLS - 2)))${NC}"
+  LOG_GUTTER="  ${ACCENT}${DIM}│${NC}"
+  # A clear break from the menu: a blank row, then a labelled divider.
+  frame_blank
+  local label=" output "
+  local rule=$((COLS - ${#label} - 5))
+  [ "$rule" -lt 0 ] && rule=0
+  frame_line "  ${ACCENT}╭─${NC}${DIM}${label}$(repeat_char '─' "$rule")${NC}"
 
   if [ -n "$BUSY_MSG" ]; then
     local elapsed=""
     [ "$BUSY_START" -gt 0 ] && elapsed=" ${DIM}$(format_time $(($(date +%s) - BUSY_START)))${NC}"
-    frame_line "  ${ACCENT}${SPIN_FRAMES:$SPIN_I:1}${NC} ${BUSY_MSG}…${elapsed}"
+    frame_line "${LOG_GUTTER} ${ACCENT}${SPIN_FRAMES:$SPIN_I:1}${NC} ${BUSY_MSG}…${elapsed}"
     height=$((height - 1))
   fi
   [ "$height" -lt 1 ] && return 0
@@ -954,7 +964,7 @@ draw_log() {
   fi
   local i
   for ((i = start; i < total; i++)); do
-    frame_line "${LOG[$i]}"
+    frame_line "${LOG_GUTTER}${LOG[$i]}"
   done
 }
 
@@ -992,9 +1002,9 @@ draw_frame() {
   FRAME_ROWS=0
   draw_header
   draw_pipeline
-  # The header's rows, the tracker's, the log separator and the footer are
-  # fixed overhead.
-  local overhead=6
+  # The header's rows, the tracker's, the gap and divider above the log, the
+  # gap above the footer, and the footer are fixed overhead.
+  local overhead=8
   [ "$PIPE_ACTIVE" -eq 1 ] && overhead=$((overhead + 1))
   [ -n "$PROMPT_TEXT" ] && overhead=$((overhead + 1))
   local available=$((ROWS - overhead))
@@ -1012,9 +1022,12 @@ draw_frame() {
   local log_height=$((available - menu_height))
   draw_log "$log_height"
   # Push the prompt and footer onto the last rows so they never float mid-screen.
-  local tail_rows=1
-  [ -n "$PROMPT_TEXT" ] && tail_rows=2
+  # A blank row always sits between the output and the footer, so the last
+  # line of output never runs into the key hints.
+  local tail_rows=2
+  [ -n "$PROMPT_TEXT" ] && tail_rows=3
   while [ "$FRAME_ROWS" -lt $((ROWS - tail_rows)) ]; do frame_blank; done
+  frame_blank
   draw_prompt
   draw_footer
   frame_flush
