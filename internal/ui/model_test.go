@@ -1207,3 +1207,39 @@ func createKeyMsg(s string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 	}
 }
+
+// Issue #29: a background update that emptied the message view (a failed
+// account reload, a mailbox reload with nothing selected) cleared content
+// search, and clearing content search closed whatever overlay was open,
+// throwing away a half-filled account form along with its status line.
+func TestBackgroundViewResetKeepsOpenOverlay(t *testing.T) {
+	for _, overlay := range []overlayMode{overlayAccountManager, overlaySettings, overlayCompose} {
+		m := NewModel(nil, config.DefaultConfig(), "dev", false)
+		m.overlay = overlay
+		m.accountManager.mode = amAdd
+		m.accountManager.nameInput.SetValue("Work")
+
+		next, _ := m.Update(AccountsLoadedMsg{Err: errors.New("sync failed: dial tcp: connection refused")})
+		m = next.(Model)
+		if m.overlay != overlay {
+			t.Fatalf("overlay %d closed by a background accounts reload", overlay)
+		}
+		next, _ = m.Update(MessageReadUpdatedMsg{MessageID: 1, Read: true})
+		m = next.(Model)
+		if m.overlay != overlay {
+			t.Fatalf("overlay %d closed by a background read-state update", overlay)
+		}
+		if overlay == overlayAccountManager && m.accountManager.nameInput.Value() != "Work" {
+			t.Fatalf("account form lost its input: %q", m.accountManager.nameInput.Value())
+		}
+	}
+}
+
+func TestClearContentSearchClosesOnlyContentSearch(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.overlay = overlayContentSearch
+	m.clearContentSearch()
+	if m.overlay != overlayNone {
+		t.Fatalf("expected content search overlay closed, got %d", m.overlay)
+	}
+}

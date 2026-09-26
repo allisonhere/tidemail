@@ -15,6 +15,11 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- **Background updates no longer close the window you are working in.** When a
+  sync or reload left the message view empty, the cleanup that followed also
+  closed whatever window was open, so an account form you were halfway through
+  could vanish the moment a notification appeared, taking what you had typed
+  with it. Only the in-message search bar is closed now. (#29)
 - **The account manager scrolls to the account you select.** With more
   accounts than fit in the window (about eight on a typical screen), moving
   down past the last visible one left the selection off screen, so the rest
