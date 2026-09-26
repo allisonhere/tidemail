@@ -4,6 +4,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.0.27
+
 ### Added
 
 - **TideMail has an icon.** A white envelope inside a curling blue wave on a
