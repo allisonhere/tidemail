@@ -491,7 +491,12 @@ func (m Model) renderFullHeaders(msg db.Message, width int) string {
 }
 
 func (m *Model) clearContentSearch() {
-	m.overlay = overlayNone
+	// Background updates reach here through clearViewportMessage, so close
+	// only the search bar itself — never an account form or other overlay the
+	// user is working in.
+	if m.overlay == overlayContentSearch {
+		m.overlay = overlayNone
+	}
 	m.contentSearchQuery = ""
 	m.contentSearchMatches = nil
 	m.contentSearchIdx = -1
