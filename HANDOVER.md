@@ -4,22 +4,22 @@ Updated: 2026-09-26
 
 ## Repository state
 
-- Branch: `main`
-- Local `main` is ahead of `origin/main` and has not been pushed:
+- Branch: `main`, pushed to `origin/main`.
+- The changelog is promoted to v1.0.28 (`chore: release v1.0.28`), but the
+  `v1.0.28` tag has not been pushed. Run `./deploy.sh` and choose "Tag and
+  release" to build the GitHub release and publish the AUR package.
+- Email-rendering commits since v1.0.27:
   - `c66b7c7` fixes image cache bounds, remote reload state,
     Content-Location resolution, and terminal image cleanup.
   - `f6c6d85` adds receipt detection, aligned numeric columns, merged totals,
     and narrow labelled rows.
-  - `fa46050` separates `deploy.sh` output from its menu rows (unrelated to
-    email rendering).
-  - `c5d6bef` adds this handover and `PLAN.md` and corrects the release number
-    in `STATUS.md` to v1.0.27.
   - `9d960f1` keeps newsletter cards together (Milestone 1) and adds the
     synthetic fixtures in `internal/ui/testdata/mail/`.
   - `4c25652` moves image uploads off the event loop and keeps uploaded images
     resident, fixing message-list lag on image-heavy mail.
   - `b5eb396` honours image height hints and refreshes cell geometry on resize
     (Milestone 2).
+  - `f5c4aa8` adds `docs/architecture.md` and closes out the milestones.
 
 ## What is working
 

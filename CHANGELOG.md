@@ -4,6 +4,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.0.28
+
 ### Added
 
 - Receipt tables retain item/price columns and merged-cell totals, including
