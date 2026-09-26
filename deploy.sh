@@ -1260,7 +1260,7 @@ act_aur_publish() {
   sha_x86=$(sha_for_asset "$work/SHA256SUMS" "tidemail-linux-x86_64.tar.gz")
   sha_arm=$(sha_for_asset "$work/SHA256SUMS" "tidemail-linux-aarch64.tar.gz")
   sha_license=$(tag_file_sha256 "$VERSION" LICENSE)
-  sha_icon=$(tag_file_sha256 "$VERSION" images/tidemail-icon.svg)
+  sha_icon=$(tag_file_sha256 "$VERSION" images/tidemail-icon.png)
   sha_desktop=$(tag_file_sha256 "$VERSION" packaging/linux/tidemail.desktop)
 
   if [ -z "$sha_x86" ] || [ -z "$sha_arm" ]; then
@@ -1276,7 +1276,7 @@ act_aur_publish() {
   fi
   if [ -z "$sha_icon" ] || [ -z "$sha_desktop" ]; then
     log_err "no icon or desktop entry at $VERSION — the tag must carry both, and be fetched locally"
-    log_detail "the PKGBUILD installs images/tidemail-icon.svg and packaging/linux/tidemail.desktop from $VERSION"
+    log_detail "the PKGBUILD installs images/tidemail-icon.png and packaging/linux/tidemail.desktop from $VERSION"
     rm -rf "$work"
     return 1
   fi

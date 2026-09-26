@@ -6,8 +6,9 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
-- **TideMail has an icon.** A blue wave curling around an envelope, saved as
-  `images/tidemail-icon.svg`. It heads the README, and a new desktop entry
+- **TideMail has an icon.** A white envelope inside a curling blue wave on a
+  rounded tile, saved as a 1024×1024 PNG with a transparent background
+  (`images/tidemail-icon.png`). It heads the README, and a new desktop entry
   (`packaging/linux/tidemail.desktop`) uses it, so TideMail can appear in app
   launchers. The `tidemail-bin` AUR package installs both, starting with the
   first release that includes them. The guide shows how to install them by hand.

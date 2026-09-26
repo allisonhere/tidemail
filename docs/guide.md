@@ -33,12 +33,16 @@ TideMail icon for you. With the install script or a source build, you can add
 them yourself from a checkout of the repository:
 
 ```bash
-install -Dm644 images/tidemail-icon.svg ~/.local/share/icons/hicolor/scalable/apps/tidemail.svg
+install -Dm644 images/tidemail-icon.png ~/.local/share/icons/tidemail.png
 install -Dm644 packaging/linux/tidemail.desktop ~/.local/share/applications/tidemail.desktop
 ```
 
 The entry runs `tidemail` in your default terminal, so `tidemail` must be on
 your `PATH`.
+
+If your launcher or installer asks for an icon URL instead (Omarchy's TUI
+installer does), use the 1024×1024 PNG with a transparent background:
+`https://raw.githubusercontent.com/allisonhere/tidemail/main/images/tidemail-icon.png`
 
 ### Build from source
 

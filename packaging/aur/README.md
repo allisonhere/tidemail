@@ -18,7 +18,7 @@ working out of the box.
 | `PKGBUILD.in` | The template. Edit this, never a rendered `PKGBUILD`. |
 | `render-pkgbuild.sh` | Substitutes version, `pkgrel`, and checksums into the template. |
 | `../linux/tidemail.desktop` | Desktop entry the package installs to `/usr/share/applications`. |
-| `../../images/tidemail-icon.svg` | Icon the package installs to `/usr/share/icons/hicolor/scalable/apps/tidemail.svg`. |
+| `../../images/tidemail-icon.png` | Icon (1024×1024 PNG) the package installs to `/usr/share/pixmaps/tidemail.png`. |
 
 Placeholders: `@PKGVER@`, `@PKGREL@`, `@SHA256_X86_64@`, `@SHA256_AARCH64@`,
 `@SHA256_LICENSE@`, `@SHA256_ICON@`, `@SHA256_DESKTOP@`. Rendering fails if any placeholder survives, so a typo can

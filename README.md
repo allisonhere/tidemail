@@ -1,4 +1,4 @@
-<p align="center"><img src="images/tidemail-icon.svg" alt="TideMail icon" width="128"></p>
+<p align="center"><img src="images/tidemail-icon.png" alt="TideMail icon" width="128"></p>
 
 # TideMail
 
