@@ -788,8 +788,10 @@ func normalizeEmailTables(doc *goquery.Document) {
 		tables = append(tables, table)
 	})
 	for i := len(tables) - 1; i >= 0; i-- {
-		if isDataTable(tables[i]) && tables[i].Find("[colspan],[rowspan]").Length() == 0 {
-			continue
+		if isDataTable(tables[i]) {
+			if _, ok := emailTableRows(tables[i]); ok {
+				continue
+			}
 		}
 		flattenLayoutTable(tables[i])
 	}
@@ -807,7 +809,7 @@ func isDataTable(table *goquery.Selection) bool {
 		foundHeader = selectionBelongsToTable(header, table)
 		return !foundHeader
 	})
-	return foundHeader
+	return foundHeader || isReceiptTable(table)
 }
 
 func flattenLayoutTable(table *goquery.Selection) {
@@ -844,30 +846,25 @@ func tableTextRule(width int) md.Rule {
 				return &content
 			}
 
-			var rows [][]string
-			selec.Find("tr").Each(func(_ int, tr *goquery.Selection) {
-				if !selectionBelongsToTable(tr, selec) {
-					return
-				}
-				var row []string
-				tr.ChildrenFiltered("th,td").Each(func(_ int, cell *goquery.Selection) {
-					row = append(row, tableCellText(cell))
-				})
-				if len(row) > 0 {
-					rows = append(rows, row)
-				}
-			})
+			rows, ok := emailTableRows(selec)
+			if !ok {
+				return &content
+			}
 			if len(rows) == 0 {
 				return md.String("")
 			}
 
-			tableWidth := max(1, width-4)
-			firstRow := selec.Find("tr").FilterFunction(func(_ int, row *goquery.Selection) bool {
-				return selectionBelongsToTable(row, selec)
-			}).First()
-			lines := renderTextTable(rows, tableWidth, firstRow.ChildrenFiltered("th").Length() > 0)
-			lines = append([]string{"```"}, lines...)
-			lines = append(lines, "```")
+			// Plain Markdown rendering reserves document padding as well as
+			// code-block indentation. Leave room for both so it cannot wrap
+			// already aligned columns a second time.
+			tableWidth := max(1, width-6)
+			lines := renderTextTable(rows, tableWidth, emailTableHasHeader(selec, rows))
+			fence := "```"
+			for strings.Contains(strings.Join(lines, "\n"), fence) {
+				fence += "`"
+			}
+			lines = append([]string{fence}, lines...)
+			lines = append(lines, fence)
 			caption := normalizeInlineSpacing(selec.ChildrenFiltered("caption").Text())
 			if caption != "" {
 				lines = append([]string{"**" + caption + "**", ""}, lines...)
@@ -930,21 +927,36 @@ func renderTextTable(rows [][]string, width int, header bool) []string {
 	}
 
 	separatorWidth := 3 * (cols - 1)
-	if width <= separatorWidth+cols {
-		var lines []string
-		for _, row := range rows {
-			lines = append(lines, strings.Split(wrapWords(strings.Join(row, " | "), width), "\n")...)
-		}
-		return lines
-	}
-
 	desired := make([]int, cols)
+	numeric := tableNumericColumns(rows, cols, header)
 	for _, row := range rows {
 		for col, cell := range row {
 			desired[col] = max(desired[col], lipgloss.Width(cell))
 		}
 	}
-	columnWidths := allocateColumnWidths(desired, width-separatorWidth)
+	minimum := make([]int, cols)
+	needed := separatorWidth
+	for col := range desired {
+		minimum[col] = max(1, min(12, desired[col]))
+		if numeric[col] {
+			minimum[col] = max(1, desired[col])
+		}
+		needed += minimum[col]
+	}
+	if width < needed {
+		return renderStackedTable(rows, max(1, width), header)
+	}
+	// Reserve enough room for complete amounts and readable descriptions,
+	// then distribute spare columns without expanding beyond the content.
+	remaining := make([]int, cols)
+	for col := range desired {
+		remaining[col] = desired[col] - minimum[col] + 1
+	}
+	extra := allocateColumnWidths(remaining, width-needed+cols)
+	columnWidths := make([]int, cols)
+	for col := range desired {
+		columnWidths[col] = minimum[col] + extra[col] - 1
+	}
 	var lines []string
 	for rowIdx, row := range rows {
 		wrapped := make([][]string, cols)
@@ -955,7 +967,7 @@ func renderTextTable(rows [][]string, width int, header bool) []string {
 				cell = row[col]
 			}
 			for _, line := range strings.Split(cell, "\n") {
-				wrapped[col] = append(wrapped[col], strings.Split(ansi.Hardwrap(wrapWords(line, columnWidths[col]), columnWidths[col], true), "\n")...)
+				wrapped[col] = append(wrapped[col], strings.Split(ansi.Hardwrap(ansi.Wordwrap(line, columnWidths[col], ""), columnWidths[col], true), "\n")...)
 			}
 			rowHeight = max(rowHeight, len(wrapped[col]))
 		}
@@ -966,7 +978,11 @@ func renderTextTable(rows [][]string, width int, header bool) []string {
 				if lineIdx < len(wrapped[col]) {
 					cell = wrapped[col][lineIdx]
 				}
-				cells[col] = cell + strings.Repeat(" ", columnWidths[col]-lipgloss.Width(cell))
+				pad := strings.Repeat(" ", max(0, columnWidths[col]-lipgloss.Width(cell)))
+				cells[col] = cell + pad
+				if numeric[col] {
+					cells[col] = pad + cell
+				}
 			}
 			lines = append(lines, strings.TrimRight(strings.Join(cells, " | "), " "))
 		}

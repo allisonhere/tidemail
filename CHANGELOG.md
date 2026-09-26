@@ -6,6 +6,9 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- Receipt tables retain item/price columns and merged-cell totals, including
+  simple receipts without semantic headers. Amounts align on the right; narrow
+  panes switch automatically to labelled records or label/value pairs.
 - Add an Auto/Off image selector under Settings → Display → Reading, with
   terminal capability information. Saving applies the preference immediately.
 

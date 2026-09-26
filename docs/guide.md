@@ -119,6 +119,13 @@ account and folder, and matches as you type. In the content pane, `Ctrl+E` shows
 the full headers and authentication results. `Ctrl+U` opens the mailing list's
 unsubscribe option when the message provides one.
 
+Receipt tables keep item descriptions, quantities, and prices together, even
+when the sender uses ordinary cells for headings or merges cells for totals.
+Amounts align on the right. When columns would be too cramped, each row becomes
+a labelled record; tables without headings use label/value pairs for two-column
+rows. This adapts automatically as you resize the reading pane. Complex tables
+with row-spanning cells retain the simpler text fallback.
+
 On a terminal with Kitty graphics support — Ghostty, Kitty, foot —
 images embedded in the message (CID parts, inline data URIs, and
 content-location references) are drawn as real raster images inside the reading

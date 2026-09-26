@@ -44,6 +44,9 @@ Current release: **v1.0.23**.
   rendering with inline raster images (Kitty graphics on Ghostty/Kitty,
   text placeholders elsewhere; remote images blocked until `i`), attachment
   saving, contacts manager.
+- **Receipt tables**: detect simple item/amount tables without semantic headers,
+  preserve merged-cell totals, align amounts, and use labelled records in narrow
+  panes. Complex row-spanning tables retain the text fallback.
 - **Image settings**: Settings → Display → Reading → Images offers Auto/Off,
   terminal capability information, and immediate application on save.
 - **WezTerm limitation**: inline images are currently unsupported. TideMail uses

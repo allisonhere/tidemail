@@ -146,6 +146,10 @@ Global search stays active while you move through results. The content pane can
 find text inside the open message, walk links, copy a visual selection, and save
 attachments to a folder you choose.
 
+Receipts keep item descriptions, quantities, and amounts in aligned columns,
+including totals with merged cells. Narrow reading panes show labelled records
+instead, so prices stay associated with their items.
+
 TideMail renders HTML mail as terminal text. On terminals with Kitty graphics support
 (Ghostty, Kitty, foot), images embedded in the message — CID parts, inline data
 URIs, and content-location references — are drawn as real raster images inline in
