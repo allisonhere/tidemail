@@ -15,7 +15,7 @@
 # redraw, not exit mid-frame. Every step reports its own status instead.
 set -uo pipefail
 
-DEPLOY_SCRIPT_VERSION="2.1.0"
+DEPLOY_SCRIPT_VERSION="2.2.0"
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SELF="$PROJECT_DIR/$(basename "${BASH_SOURCE[0]}")"
@@ -461,6 +461,40 @@ aur_probe_read() {
 # upstream does not, as of the last fetch; nothing when there is no upstream.
 ahead_of_origin() {
   git -C "$PROJECT_DIR" rev-list --count '@{u}..HEAD' 2>/dev/null
+}
+
+# git_remote runs a read-only git command against origin without ever
+# prompting: an SSH passphrase or credential prompt would hang behind the
+# frame. An agent-held key still works; anything else fails fast instead.
+git_remote() {
+  local cmd=(git -C "$PROJECT_DIR" "$@")
+  command -v timeout >/dev/null 2>&1 && cmd=(timeout 15 "${cmd[@]}")
+  GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes" "${cmd[@]}"
+}
+
+# fetch_tags brings local tags up to date with origin. Every version decision
+# reads local tags, so a clone that last fetched before a release made
+# elsewhere would suggest, and try to publish, a version that already exists.
+fetch_tags() {
+  if run_quiet "fetching tags from origin" git_remote fetch --quiet --tags origin; then
+    return 0
+  fi
+  log_warn "could not fetch tags from origin — local tags may be out of date"
+  return 1
+}
+
+# remote_has_tag reports whether origin already has TAG.
+remote_has_tag() {
+  git_remote ls-remote --exit-code --tags --refs origin "refs/tags/$1" >/dev/null 2>&1
+}
+
+# remote_latest_tag prints the highest vX.Y.Z tag on origin (nothing when it
+# has none), or fails when origin cannot be read.
+remote_latest_tag() {
+  local refs
+  refs=$(git_remote ls-remote --tags --refs origin 2>/dev/null) || return 1
+  printf '%s\n' "$refs" | awk -F'refs/tags/' 'NF > 1 { print $2 }' |
+    grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
 }
 
 refresh_status() {
@@ -1087,6 +1121,14 @@ readiness_checks() {
   else
     check_line ok "the latest release $ST_VERSION is in $ST_BRANCH"
   fi
+  local remote_tag
+  if ! remote_tag=$(remote_latest_tag); then
+    check_line warn "could not read tags from origin — local tags may be out of date"
+  elif [ -n "$remote_tag" ] && semver_gt "$remote_tag" "$ST_VERSION"; then
+    check_line fail "origin has $remote_tag but the newest local tag is $ST_VERSION — run 'git fetch --tags'"
+  else
+    check_line ok "local tags are current with origin"
+  fi
   case "$ST_BRANCH" in
     main | master) check_line ok "on $ST_BRANCH" ;;
     *) check_line warn "on $ST_BRANCH — releases usually come from main" ;;
@@ -1164,6 +1206,7 @@ act_check() {
 
 act_bump() {
   log_step "Bump version"
+  fetch_tags
   read_current_tag
   log_info "latest release: ${GREEN}${CURRENT_TAG}${NC}"
 
@@ -1213,6 +1256,10 @@ act_bump() {
   # would make the AUR go backwards. Neither is what a bump means.
   if git -C "$PROJECT_DIR" rev-parse -q --verify "refs/tags/$choice" >/dev/null; then
     log_err "$choice is already tagged — pick a new version"
+    return 1
+  fi
+  if remote_has_tag "$choice"; then
+    log_err "$choice is already released on origin — pick a new version"
     return 1
   fi
   if [ "$CURRENT_TAG" != "v0.0.0" ] && ! semver_gt "$choice" "$CURRENT_TAG"; then
@@ -1341,10 +1388,30 @@ act_notes() {
 
 # ── Actions: verification ────────────────────────────────────────────────────
 
+# act_test runs what CI enforces on every push, so a release cannot pass here
+# and then fail CI on its own tagged commit.
 act_test() {
   log_step "Run tests"
-  local start=$(date +%s)
-  if run_streamed "go test ./..." go test ./...; then
+  local start=$(date +%s) unformatted line
+  unformatted=$(gofmt -l . 2>&1)
+  if [ -n "$unformatted" ]; then
+    log_err "gofmt would change these files:"
+    while IFS= read -r line; do log_detail "$line"; done <<<"$unformatted"
+    return 1
+  fi
+  log_ok "gofmt clean"
+  if ! run_streamed "go vet ./..." go vet ./...; then
+    log_err "go vet reported problems"
+    return 1
+  fi
+  log_ok "go vet clean"
+  # The race detector needs cgo; without it, test as before rather than fail.
+  local test_cmd=(go test -race ./...)
+  if [ "$(go env CGO_ENABLED 2>/dev/null)" != "1" ]; then
+    log_warn "cgo is off — running tests without the race detector CI uses"
+    test_cmd=(go test ./...)
+  fi
+  if run_streamed "${test_cmd[*]}" "${test_cmd[@]}"; then
     log_ok "tests passed ${DIM}($(format_time $(($(date +%s) - start))))${NC}"
     return 0
   fi
@@ -1483,6 +1550,7 @@ require_gh() {
 act_release() {
   log_step "Tag and release"
   require_gh || return 1
+  fetch_tags
 
   # Run straight from the menu, "Tag and release" used to fall back to the
   # latest tag and offer to delete and recreate it. Re-releasing is now
@@ -1530,17 +1598,20 @@ act_release() {
     fi
   fi
 
-  if git -C "$PROJECT_DIR" rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
-    log_warn "tag $VERSION already exists"
+  local recreate=0 local_tag=0 origin_tag=0
+  git -C "$PROJECT_DIR" rev-parse -q --verify "refs/tags/$VERSION" >/dev/null && local_tag=1
+  remote_has_tag "$VERSION" && origin_tag=1
+  if [ "$local_tag" -eq 1 ] || [ "$origin_tag" -eq 1 ]; then
+    if [ "$origin_tag" -eq 1 ]; then
+      log_warn "tag $VERSION already exists on origin"
+    else
+      log_warn "tag $VERSION already exists locally"
+    fi
     if ! tui_confirm "Delete and recreate tag $VERSION?" n; then
       log_info "keeping the existing tag"
       return 1
     fi
-    if ! dry_run_blocks "delete tag $VERSION locally and on origin"; then
-      git -C "$PROJECT_DIR" tag -d "$VERSION" >/dev/null 2>&1
-      git -C "$PROJECT_DIR" push origin --delete "$VERSION" >/dev/null 2>&1
-      log_ok "old tag removed"
-    fi
+    recreate=1
   fi
 
   # Point of no return: pushing the tag is what makes the release public and
@@ -1551,7 +1622,26 @@ act_release() {
       log_info "nothing published"
       return 1
     fi
-    git -C "$PROJECT_DIR" tag -a "$VERSION" -m "Release $VERSION"
+  fi
+
+  # An old tag is deleted only after the final yes, so answering no above
+  # leaves a published release's tag exactly where it was.
+  if [ "$recreate" -eq 1 ]; then
+    if [ "$local_tag" -eq 1 ] &&
+        ! mutate "delete the local tag $VERSION" git -C "$PROJECT_DIR" tag -d "$VERSION"; then
+      log_err "could not delete the local tag $VERSION"
+      return 1
+    fi
+    if [ "$origin_tag" -eq 1 ] &&
+        ! mutate "delete tag $VERSION on origin" git -C "$PROJECT_DIR" push origin --delete "$VERSION"; then
+      log_err "could not delete tag $VERSION on origin"
+      return 1
+    fi
+    log_result "old tag $VERSION removed"
+  fi
+  if [ "$DRY_RUN" -eq 0 ] && ! git -C "$PROJECT_DIR" tag -a "$VERSION" -m "Release $VERSION"; then
+    log_err "could not create tag $VERSION"
+    return 1
   fi
   if ! mutate_streamed "push tag $VERSION to origin, publishing the release" \
       git -C "$PROJECT_DIR" push origin "$VERSION"; then
@@ -1571,6 +1661,13 @@ act_release() {
 # release_asset_names lists the assets currently attached to a release.
 release_asset_names() {
   gh release view "$1" --repo "$REPO" --json assets -q '.assets[].name' 2>/dev/null
+}
+
+# release_run_state prints "status:conclusion" of the latest release workflow
+# run for a tag, or nothing when it cannot be read.
+release_run_state() {
+  gh run list --repo "$REPO" --workflow release.yml --branch "$1" --limit 1 \
+    --json status,conclusion -q '.[0] | "\(.status):\(.conclusion)"' 2>/dev/null
 }
 
 release_has_all_assets() {
@@ -1609,6 +1706,18 @@ act_wait_assets() {
       log_ok "all Linux assets are published"
       return 0
     fi
+    # A failed workflow will never upload, so stop instead of waiting out the
+    # timeout. An unreadable state just keeps polling.
+    local run_state
+    run_state=$(release_run_state "$VERSION")
+    case "$run_state" in
+      completed:failure | completed:cancelled | completed:timed_out | completed:startup_failure)
+        clear_busy
+        log_err "the release workflow for $VERSION ended with ${run_state#completed:}"
+        log_detail "https://github.com/${REPO}/actions/workflows/release.yml"
+        return 1
+        ;;
+    esac
     # Animate between API polls: ~8s of spinner per poll.
     local tick=0
     while [ "$tick" -lt 40 ]; do
@@ -2070,6 +2179,10 @@ main() {
 
   log_raw "  ${DIM}${APP_NAME} release console — select an action and press enter.${NC}"
   [ "$DRY_RUN" -eq 1 ] && log_warn "dry run ${BOLD}on${NC} — nothing will be committed, pushed, or published"
+  draw_frame
+  # Read-only, so it runs in a dry run too: the status line and every version
+  # suggestion should describe origin, not a stale clone.
+  fetch_tags && refresh_status
   draw_frame
 
   local key
