@@ -177,7 +177,7 @@ func (m Model) handleOmarchyThemeTick(msg omarchyThemeTickMsg) (tea.Model, tea.C
 	}
 	m.omarchySig = sig
 	merged, _ := MergedThemeFromConfig(m.cfg)
-	m.styles = BuildStyles(merged, m.cfg.Display.Density, m.cfg.Display.PaneCorners)
+	m.setStyles(BuildStyles(merged, m.cfg.Display.Density, m.cfg.Display.PaneCorners))
 	if m.activeMessageRowCount() > 0 {
 		m.setViewportForCurrentRow()
 	}

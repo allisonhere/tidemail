@@ -447,6 +447,7 @@ func TestAccountManagerCtrlTStartsConnectionTestWithoutSaving(t *testing.T) {
 	am.mode = amAdd
 	am.nameInput.SetValue("Personal")
 	am.imapHostInput.SetValue("imap.example.com")
+	am.smtpHostInput.SetValue("smtp.example.com")
 	am.userInput.SetValue("alice@example.com")
 
 	next, cmd, exit := am.Update(tea.KeyMsg{Type: tea.KeyCtrlT}, DefaultKeys)
@@ -482,6 +483,7 @@ func testAccountManagerSaveKey(t *testing.T, msg tea.KeyMsg) {
 	am.mode = amAdd
 	am.nameInput.SetValue("Personal")
 	am.imapHostInput.SetValue("imap.example.com")
+	am.smtpHostInput.SetValue("smtp.example.com")
 	am.userInput.SetValue("alice@example.com")
 
 	next, cmd, exit := am.Update(tea.KeyMsg{Type: tea.KeyCtrlS}, DefaultKeys)

@@ -89,7 +89,7 @@ func (m Model) handleSaveAttachPicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// "select this folder" entry or a file — choose current directory
 		m.saveAttachPicker.active = false
 		m.overlay = overlayNone
-		return m, saveAttachmentsCmdTo(m.contentAttachments, m.saveAttachPicker.currentDir)
+		return m, saveAttachmentsCmdTo(m.db, m.contentAttachments, m.saveAttachPicker.currentDir)
 
 	case keyMatches(msg, m.keys.Left), keyMatches(msg, m.keys.Back):
 		m.saveAttachPickerUpDir()
@@ -115,13 +115,23 @@ func (m Model) handleSaveAttachPicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func saveAttachmentsCmdTo(atts []db.Attachment, dir string) tea.Cmd {
+// saveAttachmentsCmdTo writes attachments to dir. The reading pane holds only
+// their metadata, so each one's contents are read here, at the point of use.
+// database may be nil in tests that pass fully populated attachments.
+func saveAttachmentsCmdTo(database *db.DB, atts []db.Attachment, dir string) tea.Cmd {
 	return func() tea.Msg {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return AttachmentsSavedMsg{Err: fmt.Errorf("create dir: %w", err)}
 		}
 		saved := 0
 		for _, a := range atts {
+			if len(a.Data) == 0 && database != nil && a.ID != 0 {
+				data, err := database.GetAttachmentData(a.ID)
+				if err != nil {
+					return AttachmentsSavedMsg{Err: fmt.Errorf("read %s: %w", a.Filename, err)}
+				}
+				a.Data = data
+			}
 			if err := saveAttachmentFile(dir, a); err != nil {
 				return AttachmentsSavedMsg{Err: fmt.Errorf("write %s: %w", a.Filename, err)}
 			}
@@ -208,14 +218,14 @@ func (m Model) renderSaveAttachPicker(width, height int, chrome managerChrome) s
 	return lipgloss.JoinVertical(lipgloss.Left, dirLine, body, hints)
 }
 
-func saveAttachmentsCmd(atts []db.Attachment) tea.Cmd {
+func saveAttachmentsCmd(database *db.DB, atts []db.Attachment) tea.Cmd {
 	return func() tea.Msg {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return AttachmentsSavedMsg{Err: fmt.Errorf("home dir: %w", err)}
 		}
 		dir := filepath.Join(home, "Downloads", "tidemail-attachments")
-		return saveAttachmentsCmdTo(atts, dir)()
+		return saveAttachmentsCmdTo(database, atts, dir)()
 	}
 }
 

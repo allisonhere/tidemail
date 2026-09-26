@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"net/mail"
 	"strconv"
 	"strings"
 	"time"
@@ -327,6 +328,12 @@ type AccountManager struct {
 	busy      bool
 	busyMsg   string
 	statusMsg string
+
+	// The row the last save or test rejected, marked red until it is edited or
+	// the next attempt replaces it. Tracked separately from statusMsg because
+	// the zero amField is a real row and cannot double as "nothing".
+	invalidField    amField
+	hasInvalidField bool
 }
 
 func NewAccountManager(database *db.DB) AccountManager {
@@ -435,10 +442,10 @@ func (am *AccountManager) populateFormFrom(acfg config.AccountConfig) {
 	am.editConfigID = acfg.ID
 	am.nameInput.SetValue(acfg.Name)
 	am.imapHostInput.SetValue(acfg.IMAPHost)
-	am.imapPortInput.SetValue(strconv.Itoa(acfg.IMAPPort))
+	am.imapPortInput.SetValue(portFieldValue(acfg.IMAPPort))
 	am.imapTLS = acfg.IMAPTLS
 	am.smtpHostInput.SetValue(acfg.SMTPHost)
-	am.smtpPortInput.SetValue(strconv.Itoa(acfg.SMTPPort))
+	am.smtpPortInput.SetValue(portFieldValue(acfg.SMTPPort))
 	am.smtpTLS = acfg.SMTPTLS
 	am.userInput.SetValue(acfg.User)
 	am.passInput.SetValue(acfg.Password)
@@ -459,14 +466,8 @@ func (am *AccountManager) populateFormFrom(acfg config.AccountConfig) {
 }
 
 func (am AccountManager) buildCfg() config.AccountConfig {
-	imapPort, _ := strconv.Atoi(am.imapPortInput.Value())
-	if imapPort == 0 {
-		imapPort = 993
-	}
-	smtpPort, _ := strconv.Atoi(am.smtpPortInput.Value())
-	if smtpPort == 0 {
-		smtpPort = 587
-	}
+	imapPort, _ := parsePort(am.imapPortInput.Value(), defaultIMAPPort)
+	smtpPort, _ := parsePort(am.smtpPortInput.Value(), defaultSMTPPort)
 	cfg := config.AccountConfig{
 		ID:          am.editConfigID,
 		Provider:    am.provider,
@@ -497,9 +498,9 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 	// (the password from am.passInput is kept). ClientID/Secret are toml:"-" —
 	// they only feed the live connect on save/test; fillSecrets re-fills them on
 	// later loads from the app-level [oauth] config.
-	if am.googleOAuthDisabled() && am.origProvider == "Gmail" && am.origAuthMethod == config.AuthOAuth2 && am.oauthRefreshToken != "" {
-		// The preview flag hides Google OAuth controls but must not convert an
-		// existing OAuth account to password auth if its form is saved.
+	if am.keepsPausedGoogleOAuth() {
+		// Google OAuth is paused, but an existing OAuth account saved without
+		// an app password keeps its sign-in rather than losing all credentials.
 		cfg.AuthMethod = config.AuthOAuth2
 		cfg.RefreshToken = am.oauthRefreshToken
 		cfg.Password = ""
@@ -664,6 +665,60 @@ func (am AccountManager) statusForeground(chrome managerChrome) lipgloss.Color {
 	}
 }
 
+// fieldLabelFg picks a row label's color: red when validation rejected that
+// row, bright while it is focused, muted otherwise. Red outranks focus, since
+// rejecting a row also focuses it and the point is to show which one.
+func (am AccountManager) fieldLabelFg(field amField, chrome managerChrome) lipgloss.Color {
+	switch {
+	case am.hasInvalidField && am.invalidField == field:
+		return chrome.errorFg
+	case am.focusedField == field:
+		return chrome.text
+	default:
+		return chrome.muted
+	}
+}
+
+// statusIsFailure reports whether the status message is something that stopped
+// the action, as opposed to a confirmation or a remark. A NOTE — the
+// duplicate-name warning — is deliberately excluded: the save went through, so
+// it should not be dressed as a failure.
+func (am AccountManager) statusIsFailure(chrome managerChrome) bool {
+	if am.statusForeground(chrome) != chrome.errorFg {
+		return false
+	}
+	return !strings.HasPrefix(strings.ToUpper(strings.TrimSpace(am.statusMsg)), "NOTE:")
+}
+
+// renderStatusBar draws the message under the account manager. A failure is a
+// filled badge rather than red text: it is the reason a save did not happen,
+// and on a form this dense one more line of colored text is easy to read past.
+// Everything else stays plain, so the fill keeps meaning "this stopped".
+func (am AccountManager) renderStatusBar(width int, chrome managerChrome) string {
+	if am.statusMsg == "" {
+		return ""
+	}
+	text := am.redactSensitive(am.statusMsg)
+	if !am.statusIsFailure(chrome) {
+		return lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Foreground(am.statusForeground(chrome)).
+			Width(width).
+			Padding(0, 1).
+			Render(text)
+	}
+	// The badge hugs its text and sits one cell in, lining up with the padded
+	// rows above it rather than flooding the whole width with red.
+	badge := lipgloss.NewStyle().
+		Background(chrome.errorFg).
+		Foreground(contrastFg(chrome.errorFg)).
+		Bold(true).
+		Padding(0, 1).
+		Render(truncate(text, max(1, width-4)))
+	indent := lipgloss.NewStyle().Background(chrome.baseBg).Render(" ")
+	return padStyled(indent+badge, width, chrome.baseBg)
+}
+
 func (am AccountManager) redactSensitive(s string) string {
 	return am.redactSensitiveWithAccounts(s, nil)
 }
@@ -753,6 +808,11 @@ func (am AccountManager) updateList(msg tea.Msg, keys KeyMap) (AccountManager, t
 
 func (am *AccountManager) updateFocusedInput(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
+	// Typing in the rejected row means it is being addressed; the next save
+	// re-checks it, so the mark does not outlive the edit.
+	if am.hasInvalidField && am.invalidField == am.focusedField {
+		am.clearInvalidField()
+	}
 	switch am.focusedField {
 	case amFieldName:
 		am.nameInput, cmd = am.nameInput.Update(msg)
@@ -968,13 +1028,29 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 	return am, nil, false
 }
 
+// rejectField reports a validation failure: the reason goes to the status bar
+// and the row itself turns red. Focus moves there too — on a short terminal
+// the offending row is often scrolled out of sight, and the red label is no
+// use to someone who cannot see it.
+func (am AccountManager) rejectField(f formFailure) AccountManager {
+	am.statusMsg = f.msg
+	am.invalidField = f.field
+	am.hasInvalidField = true
+	am.focusField(f.field)
+	return am
+}
+
+func (am *AccountManager) clearInvalidField() {
+	am.hasInvalidField = false
+}
+
 func (am AccountManager) submitForm() (AccountManager, tea.Cmd, bool) {
 	acfg := am.buildCfg()
 	color := accountColorList[am.colorIdx].Hex
-	if status := am.validateForm(acfg); status != "" {
-		am.statusMsg = status
-		return am, nil, false
+	if f := am.validateForm(acfg); !f.ok() {
+		return am.rejectField(f), nil, false
 	}
+	am.clearInvalidField()
 	am.busy = true
 	am.busyMsg = "CONNECTING TO IMAP..."
 	am.statusMsg = am.duplicateNameWarning(acfg)
@@ -983,10 +1059,10 @@ func (am AccountManager) submitForm() (AccountManager, tea.Cmd, bool) {
 
 func (am AccountManager) testForm() (AccountManager, tea.Cmd, bool) {
 	acfg := am.buildCfg()
-	if status := am.validateForm(acfg); status != "" {
-		am.statusMsg = status
-		return am, nil, false
+	if f := am.validateForm(acfg); !f.ok() {
+		return am.rejectField(f), nil, false
 	}
+	am.clearInvalidField()
 	am.busy = true
 	am.busyMsg = "TESTING ACCOUNT..."
 	am.statusMsg = ""
@@ -1005,6 +1081,18 @@ type authCodeExchanger interface {
 // providerSupportsOAuth reports whether the current provider has an OAuth path.
 func (am AccountManager) providerSupportsOAuth() bool {
 	return (am.provider == "Gmail" && !am.googleOAuthDisabled()) || am.provider == "Outlook"
+}
+
+// pausedGoogleOAuthAccount reports whether this form edits a Gmail account that
+// signed in with OAuth before Google OAuth was paused.
+func (am AccountManager) pausedGoogleOAuthAccount() bool {
+	return am.googleOAuthDisabled() && am.origProvider == "Gmail" && am.origAuthMethod == config.AuthOAuth2 && am.oauthRefreshToken != ""
+}
+
+// keepsPausedGoogleOAuth reports whether saving keeps that account on OAuth:
+// only until the user types an app password, which switches it over.
+func (am AccountManager) keepsPausedGoogleOAuth() bool {
+	return am.pausedGoogleOAuthAccount() && strings.TrimSpace(am.passInput.Value()) == ""
 }
 
 func (am AccountManager) googleOAuthDisabled() bool {
@@ -1242,6 +1330,97 @@ func (am AccountManager) focusedIsTextInput() bool {
 // than off, so a typo would silently opt an account into a persistent
 // connection. An empty field is the exception — that is a new account taking
 // the push default, not a mistake.
+const (
+	defaultIMAPPort = 993
+	defaultSMTPPort = 587
+)
+
+// parsePort reads a port field. An empty field takes the standard port — a new
+// account accepting the default — but text that is not a number has to fail
+// instead of falling back to it, the way "abc" used to become 993: the form
+// looked accepted and the account then connected somewhere nobody asked for.
+// Range is checked separately, against the built config.
+func parsePort(raw string, def int) (int, bool) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return def, true
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// portFieldValue renders a stored port back into its field. A zero means the
+// config never set one, so the field shows empty and its placeholder offers
+// the default, rather than a literal "0" that validation would then reject.
+func portFieldValue(port int) string {
+	if port == 0 {
+		return ""
+	}
+	return strconv.Itoa(port)
+}
+
+// hostFormatError rejects what people paste into a host field instead of a
+// hostname — a URL copied from webmail docs, a host:port pair, an address.
+// Each one dials as an opaque connection failure, so the form names it.
+func hostFormatError(label, host string) string {
+	bracketedIPv6 := strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]")
+	switch {
+	case strings.Contains(host, "://"):
+		return label + " IS A HOSTNAME, NOT A URL"
+	case strings.ContainsAny(host, " \t"):
+		return label + " CANNOT CONTAIN SPACES"
+	case strings.ContainsAny(host, `/\`):
+		return label + " IS A HOSTNAME, NOT A PATH"
+	case strings.Contains(host, "@"):
+		return label + " IS A HOSTNAME, NOT AN EMAIL ADDRESS"
+	case strings.Contains(host, ":") && !bracketedIPv6:
+		return label + " TAKES NO PORT — USE THE PORT FIELD"
+	}
+	return ""
+}
+
+// isEmailAddress reports whether s parses as one RFC 5322 address, with or
+// without a display name. It is the single address test the form uses, so the
+// From row, the preset providers' Email row, and the sender fallback all agree
+// on what counts.
+func isEmailAddress(s string) bool {
+	_, err := mail.ParseAddress(s)
+	return err == nil
+}
+
+// hashForAtError catches an address typed with "#" where "@" belongs —
+// info#example.com. On a Nordic layout "@" is AltGr+2 and "#" is Shift+3, so
+// it is an easy slip, and nothing downstream can recover from it: "#" is
+// ordinary local-part text, so the value stays a syntactically fine string
+// that no server can route. It fires only when there is no "@" anywhere and
+// what follows the "#" is domain-shaped, which leaves logins that genuinely
+// contain one (user#tag@host, or an internal "svc#prod") alone.
+func hashForAtError(label, value string) string {
+	if strings.Contains(value, "@") {
+		return ""
+	}
+	hash := strings.LastIndex(value, "#")
+	if hash < 0 || hash == 0 || hash == len(value)-1 {
+		return ""
+	}
+	if !strings.Contains(value[hash+1:], ".") {
+		return ""
+	}
+	return label + " HAS # WHERE @ BELONGS"
+}
+
+// userFieldLabel matches what the form prints beside the field, so a failure
+// names the row the reader is looking at.
+func userFieldLabel(provider string) string {
+	if _, ok := providerPresets[provider]; ok {
+		return "EMAIL"
+	}
+	return "USERNAME"
+}
+
 func parseSyncMinutes(raw string) (int, bool) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
@@ -1254,13 +1433,36 @@ func parseSyncMinutes(raw string) (int, bool) {
 	return n, true
 }
 
+// formFailure is a rejected value and the row it came from, so the form can
+// mark the field as well as print the reason. A zero msg means "no failure";
+// the zero amField is a real row, so it cannot carry that meaning itself.
+type formFailure struct {
+	field amField
+	msg   string
+}
+
+func fail(field amField, msg string) formFailure { return formFailure{field: field, msg: msg} }
+
+func (f formFailure) ok() bool { return f.msg == "" }
+
 // validateForm checks the raw form text that buildCfg has to collapse into
 // typed fields, then defers to the connection-level checks.
-func (am AccountManager) validateForm(acfg config.AccountConfig) string {
-	if _, ok := parseSyncMinutes(am.syncInput.Value()); !ok {
-		return "REFRESH MUST BE -1 (MANUAL), 0 (PUSH), OR MINUTES"
+func (am AccountManager) validateForm(acfg config.AccountConfig) formFailure {
+	if _, ok := parsePort(am.imapPortInput.Value(), defaultIMAPPort); !ok {
+		return fail(amFieldIMAPPort, "IMAP PORT MUST BE A NUMBER")
 	}
-	return validateAccountForConnect(acfg)
+	if _, ok := parsePort(am.smtpPortInput.Value(), defaultSMTPPort); !ok {
+		return fail(amFieldSMTPPort, "SMTP PORT MUST BE A NUMBER")
+	}
+	if _, ok := parseSyncMinutes(am.syncInput.Value()); !ok {
+		return fail(amFieldSyncInterval, "REFRESH MUST BE -1 (MANUAL), 0 (PUSH), OR MINUTES")
+	}
+	f := validateAccountForConnect(acfg)
+	if f.field == amFieldAuthMethod && am.googleOAuthDisabled() {
+		// The Auth row and Ctrl+O are hidden while Google OAuth is paused.
+		return fail(amFieldPass, "ENTER A GOOGLE APP PASSWORD")
+	}
+	return f
 }
 
 // duplicateNameWarning reports a display name another account already uses.
@@ -1279,26 +1481,69 @@ func (am AccountManager) duplicateNameWarning(acfg config.AccountConfig) string 
 	return ""
 }
 
-func validateAccountForConnect(acfg config.AccountConfig) string {
+func validateAccountForConnect(acfg config.AccountConfig) formFailure {
 	if acfg.Name == "" {
-		return "NAME IS REQUIRED"
+		return fail(amFieldName, "NAME IS REQUIRED")
 	}
 	if acfg.IMAPHost == "" {
-		return "IMAP HOST IS REQUIRED"
+		return fail(amFieldIMAPHost, "IMAP HOST IS REQUIRED")
 	}
+	if status := hostFormatError("IMAP HOST", acfg.IMAPHost); status != "" {
+		return fail(amFieldIMAPHost, status)
+	}
+	if acfg.SMTPHost == "" {
+		return fail(amFieldSMTPHost, "SMTP HOST IS REQUIRED")
+	}
+	if status := hostFormatError("SMTP HOST", acfg.SMTPHost); status != "" {
+		return fail(amFieldSMTPHost, status)
+	}
+	userLabel := userFieldLabel(acfg.Provider)
 	if acfg.User == "" {
-		return "USERNAME IS REQUIRED"
+		return fail(amFieldUser, userLabel+" IS REQUIRED")
+	}
+	// Checked for every provider: a Custom login is otherwise free-form, but
+	// "#" for "@" is a typo under any of them.
+	if status := hashForAtError(userLabel, acfg.User); status != "" {
+		return fail(amFieldUser, status)
+	}
+	// The preset providers authenticate with the full address; a bare login is
+	// rejected at sign-in, so catch it here. Custom stays free-form beyond the
+	// typo check — plenty of hosts issue logins that are not addresses at all.
+	if _, preset := providerPresets[acfg.Provider]; preset && !isEmailAddress(acfg.User) {
+		return fail(amFieldUser, "EMAIL MUST BE A FULL ADDRESS, LIKE YOU@EXAMPLE.COM")
 	}
 	if acfg.IMAPPort < 1 || acfg.IMAPPort > 65535 {
-		return "IMAP PORT MUST BE 1-65535"
+		return fail(amFieldIMAPPort, "IMAP PORT MUST BE 1-65535")
 	}
 	if acfg.SMTPPort < 1 || acfg.SMTPPort > 65535 {
-		return "SMTP PORT MUST BE 1-65535"
+		return fail(amFieldSMTPPort, "SMTP PORT MUST BE 1-65535")
 	}
 	if (acfg.Provider == "Gmail" || acfg.Provider == "Outlook") && acfg.Password == "" && acfg.RefreshToken == "" {
-		return "SIGN IN WITH " + strings.ToUpper(oauthVendor(acfg.Provider)) + " (CTRL+O) OR ENTER AN APP PASSWORD"
+		// The Auth row, not one of the two credentials under it: either an app
+		// password or a completed sign-in satisfies this.
+		return fail(amFieldAuthMethod, "SIGN IN WITH "+strings.ToUpper(oauthVendor(acfg.Provider))+" (CTRL+O) OR ENTER AN APP PASSWORD")
 	}
-	return ""
+	// A display name with no address ("Alice") is not a From at all, and SMTP
+	// only discovers that at send time, by which point the value is baked into
+	// a queued message — so the form has to be where it fails. Blank is the
+	// one way out, and only when the login can stand in for it.
+	if from := strings.TrimSpace(acfg.From); from != "" {
+		if status := hashForAtError("FROM", from); status != "" {
+			return fail(amFieldFrom, status)
+		}
+		if !isEmailAddress(from) {
+			return fail(amFieldFrom, "FROM NEEDS AN EMAIL ADDRESS, LIKE NAME <YOU@EXAMPLE.COM>")
+		}
+	} else if !isEmailAddress(acfg.User) {
+		// A blank From sends as the login: smtp.senderAddress falls back to
+		// cfg.User and cleanEmail passes a bare token straight through, so
+		// nothing downstream rejects it — the server does, after the message
+		// is queued. Logins that are not addresses are ordinary (cPanel's
+		// "alice+example.com", an Exchange "DOMAIN\alice", a bare ISP login),
+		// and those accounts have nothing sendable to fall back to.
+		return fail(amFieldFrom, "FROM ADDRESS IS REQUIRED WHEN THE LOGIN IS NOT AN ADDRESS")
+	}
+	return formFailure{}
 }
 
 func (am AccountManager) updateConfirmDelete(msg tea.Msg, keys KeyMap) (AccountManager, tea.Cmd, bool) {
@@ -1387,6 +1632,7 @@ func (am *AccountManager) resetForm() {
 	am.statusMsg = ""
 	am.busy = false
 	am.busyMsg = ""
+	am.clearInvalidField()
 }
 
 func (am AccountManager) View(width, height int, styles Styles) string {
@@ -1458,15 +1704,7 @@ func (am AccountManager) viewList(width, height int, chrome managerChrome, style
 		width, bodyH, chrome.baseBg,
 	)
 
-	statusLine := ""
-	if am.statusMsg != "" {
-		statusLine = lipgloss.NewStyle().
-			Background(chrome.baseBg).
-			Foreground(am.statusForeground(chrome)).
-			Width(width).
-			Padding(0, 1).
-			Render(am.statusMsg)
-	}
+	statusLine := am.renderStatusBar(width, chrome)
 
 	var actionPairs []string
 	if len(am.accounts) > 0 {
@@ -1577,7 +1815,8 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	fieldW := max(12, width-20)
 	labelW := max(10, width-fieldW-2)
 	rail := func(focused bool) string { return softRail(chrome, focused, chrome.baseBg) }
-	row := func(label string, ti textinput.Model, focused bool) string {
+	row := func(label string, ti textinput.Model, field amField) string {
+		focused := am.focusedField == field
 		bg := chrome.surfaceBg
 		if focused {
 			bg = chrome.fieldBg
@@ -1592,10 +1831,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 			_ = ti.Cursor.SetMode(cursor.CursorHide)
 		}
 		ti.Width = fieldW
-		labelFg := chrome.muted
-		if focused {
-			labelFg = chrome.text
-		}
+		labelFg := am.fieldLabelFg(field, chrome)
 		left := rail(focused) + lipgloss.NewStyle().Background(chrome.baseBg).Foreground(labelFg).Width(max(1, labelW-2)).Padding(0, 1).Render(label)
 		var fieldView string
 		if focused {
@@ -1620,16 +1856,15 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 		right := lipgloss.NewStyle().Background(bg).Width(fieldW).Render(truncateStyled(fieldView, fieldW, bg))
 		return lipgloss.JoinHorizontal(lipgloss.Left, left, right)
 	}
-	labelCell := func(label string, focused bool) string {
-		labelFg := chrome.muted
-		if focused {
-			labelFg = chrome.text
-		}
+	labelCell := func(label string, field amField) string {
+		focused := am.focusedField == field
+		labelFg := am.fieldLabelFg(field, chrome)
 		return rail(focused) + lipgloss.NewStyle().Background(chrome.baseBg).Foreground(labelFg).Width(max(1, labelW-2)).Padding(0, 1).Render(label)
 	}
-	tlsRow := func(label string, on bool, focused bool) string {
+	tlsRow := func(label string, on bool, field amField) string {
+		focused := am.focusedField == field
 		right := lipgloss.NewStyle().Background(chrome.baseBg).Render(" ") + renderSoftToggle(on, focused, chrome)
-		return padStyled(labelCell(label, focused)+right, width, chrome.baseBg)
+		return padStyled(labelCell(label, field)+right, width, chrome.baseBg)
 	}
 
 	pickerVal := func(value, swatch string, focused bool) string {
@@ -1645,7 +1880,8 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 		return val
 	}
 
-	providerRow := func(focused bool) string {
+	providerRow := func(field amField) string {
+		focused := am.focusedField == field
 		idx := 0
 		for i, p := range providerList {
 			if p == am.provider {
@@ -1653,10 +1889,11 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 				break
 			}
 		}
-		return padStyled(labelCell("Provider", focused)+pickerVal(providerList[idx], "", focused), width, chrome.baseBg)
+		return padStyled(labelCell("Provider", field)+pickerVal(providerList[idx], "", focused), width, chrome.baseBg)
 	}
 
-	colorRow := func(focused bool) string {
+	colorRow := func(field amField) string {
+		focused := am.focusedField == field
 		c := accountColorList[am.colorIdx]
 		swatch := ""
 		if c.Hex != "" {
@@ -1669,7 +1906,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 				Foreground(lipgloss.Color(c.Hex)).
 				Render(dotGlyph)
 		}
-		return padStyled(labelCell("Color", focused)+pickerVal(c.Name, swatch, focused), width, chrome.baseBg)
+		return padStyled(labelCell("Color", field)+pickerVal(c.Name, swatch, focused), width, chrome.baseBg)
 	}
 
 	blank := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
@@ -1699,19 +1936,19 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	}
 
 	addSection("Account")
-	addControl(amFieldProvider, providerRow(am.focusedField == amFieldProvider))
+	addControl(amFieldProvider, providerRow(amFieldProvider))
 	addBlank()
-	addControl(amFieldName, row("Name", am.nameInput, am.focusedField == amFieldName))
-	addControl(amFieldColor, colorRow(am.focusedField == amFieldColor))
+	addControl(amFieldName, row("Name", am.nameInput, amFieldName))
+	addControl(amFieldColor, colorRow(amFieldColor))
 	if am.provider == "Custom" {
 		addSection("Incoming mail")
-		addControl(amFieldIMAPHost, row("IMAP Host", am.imapHostInput, am.focusedField == amFieldIMAPHost))
-		addControl(amFieldIMAPPort, row("IMAP Port", am.imapPortInput, am.focusedField == amFieldIMAPPort))
-		addControl(amFieldIMAPTLS, tlsRow("IMAP TLS", am.imapTLS, am.focusedField == amFieldIMAPTLS))
+		addControl(amFieldIMAPHost, row("IMAP Host", am.imapHostInput, amFieldIMAPHost))
+		addControl(amFieldIMAPPort, row("IMAP Port", am.imapPortInput, amFieldIMAPPort))
+		addControl(amFieldIMAPTLS, tlsRow("IMAP TLS", am.imapTLS, amFieldIMAPTLS))
 		addSection("Outgoing mail")
-		addControl(amFieldSMTPHost, row("SMTP Host", am.smtpHostInput, am.focusedField == amFieldSMTPHost))
-		addControl(amFieldSMTPPort, row("SMTP Port", am.smtpPortInput, am.focusedField == amFieldSMTPPort))
-		addControl(amFieldSMTPTLS, tlsRow("SMTP TLS", am.smtpTLS, am.focusedField == amFieldSMTPTLS))
+		addControl(amFieldSMTPHost, row("SMTP Host", am.smtpHostInput, amFieldSMTPHost))
+		addControl(amFieldSMTPPort, row("SMTP Port", am.smtpPortInput, amFieldSMTPPort))
+		addControl(amFieldSMTPTLS, tlsRow("SMTP TLS", am.smtpTLS, amFieldSMTPTLS))
 	}
 	userLabel := "Username"
 	passInput := am.passInput
@@ -1727,13 +1964,16 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	}
 
 	addSection("Credentials")
-	addControl(amFieldUser, row(userLabel, am.userInput, am.focusedField == amFieldUser))
+	addControl(amFieldUser, row(userLabel, am.userInput, amFieldUser))
 
 	if !am.providerSupportsOAuth() {
 		// Providers without an OAuth path: app password only.
-		addControl(amFieldPass, row("Password", passInput, am.focusedField == amFieldPass))
-		if am.googleOAuthDisabled() {
-			addHint("Google OAuth is unavailable.")
+		addControl(amFieldPass, row("Password", passInput, amFieldPass))
+		if am.pausedGoogleOAuthAccount() {
+			addHint("This account uses Google sign-in, which is paused.")
+			addHint("Enter a Google App Password to switch.")
+		} else if am.googleOAuthDisabled() {
+			addHint("Google OAuth is waiting for Google's approval.")
 			addHint("Use a Google App Password instead.")
 		}
 	} else {
@@ -1746,7 +1986,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 			methodVal = "OAuth · sign in with " + vendor
 		}
 		authRow := padStyled(
-			labelCell("Auth", am.focusedField == amFieldAuthMethod)+
+			labelCell("Auth", amFieldAuthMethod)+
 				pickerVal(methodVal, "", am.focusedField == amFieldAuthMethod),
 			width, chrome.baseBg)
 		addControl(amFieldAuthMethod, authRow)
@@ -1758,7 +1998,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 			am.focusedField == amFieldOAuthCode
 
 		if !am.useOAuth {
-			addControl(amFieldPass, row("Password", passInput, am.focusedField == amFieldPass))
+			addControl(amFieldPass, row("Password", passInput, amFieldPass))
 			if authFocused {
 				if am.provider == "Outlook" {
 					addHint("Outlook.com dropped password login.")
@@ -1789,9 +2029,9 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 				}
 			}
 			signRight := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(signFg).Width(max(1, fieldW-2)).Padding(0, 1).Render(signVal)
-			addControl(amFieldOAuthSignIn, padStyled(labelCell("", am.focusedField == amFieldOAuthSignIn)+signRight, width, chrome.baseBg))
+			addControl(amFieldOAuthSignIn, padStyled(labelCell("", amFieldOAuthSignIn)+signRight, width, chrome.baseBg))
 			if am.oauthAwaitingCode {
-				addControl(amFieldOAuthCode, row("Code", am.oauthCodeInput, am.focusedField == amFieldOAuthCode))
+				addControl(amFieldOAuthCode, row("Code", am.oauthCodeInput, amFieldOAuthCode))
 			}
 			if authFocused {
 				switch {
@@ -1831,15 +2071,13 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	}
 	// sigRow is row()'s multi-line sibling: the label column repeats down the
 	// left of the box so the field reads as one control rather than four rows.
-	sigRow := func(label string, ta textarea.Model, focused bool) string {
+	sigRow := func(label string, ta textarea.Model, field amField) string {
+		focused := am.focusedField == field
 		bg := chrome.surfaceBg
 		if focused {
 			bg = chrome.fieldBg
 		}
-		labelFg := chrome.muted
-		if focused {
-			labelFg = chrome.text
-		}
+		labelFg := am.fieldLabelFg(field, chrome)
 		style := func(base lipgloss.Style) lipgloss.Style { return base.Background(bg) }
 		for _, st := range []*textarea.Style{&ta.FocusedStyle, &ta.BlurredStyle} {
 			st.Base = style(lipgloss.NewStyle())
@@ -1877,22 +2115,23 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	}
 
 	addSection("Sending identity")
-	addControl(amFieldFrom, row("From", am.fromInput, am.focusedField == amFieldFrom))
-	addControl(amFieldSignature, sigRow("Signature", am.sigArea, am.focusedField == amFieldSignature))
+	addControl(amFieldFrom, row("From address", am.fromInput, amFieldFrom))
+	addHint("Format: Name <you@example.com>")
+	// The fallback the second hint describes only exists when the login is
+	// itself an address; otherwise validation requires this field, so the hint
+	// says that instead. An untouched login stays on the default wording.
+	if user := strings.TrimSpace(am.userInput.Value()); user != "" && !isEmailAddress(user) {
+		addHint("Required: the login is not an address")
+	} else {
+		addHint("Blank sends as the username")
+	}
+	addControl(amFieldSignature, sigRow("Signature", am.sigArea, amFieldSignature))
 	addSection("Sync")
-	addControl(amFieldSyncInterval, row("Refresh", am.syncInput, am.focusedField == amFieldSyncInterval))
+	addControl(amFieldSyncInterval, row("Refresh", am.syncInput, amFieldSyncInterval))
 	addHint("0 = push (IMAP IDLE) · -1 = manual only")
 	addHint("N = poll every N minutes")
 
-	statusLine := ""
-	if am.statusMsg != "" {
-		statusLine = lipgloss.NewStyle().
-			Background(chrome.baseBg).
-			Foreground(am.statusForeground(chrome)).
-			Width(width).
-			Padding(0, 1).
-			Render(am.redactSensitive(am.statusMsg))
-	}
+	statusLine := am.renderStatusBar(width, chrome)
 	if am.busyMsg != "" {
 		statusLine = lipgloss.NewStyle().
 			Background(chrome.baseBg).

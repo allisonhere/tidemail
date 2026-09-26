@@ -846,8 +846,8 @@ func TestScrollingMessageListKeepsPaneHeadersVisible(t *testing.T) {
 }
 
 func TestValidateAccountForConnect(t *testing.T) {
-	base := config.AccountConfig{Name: "Acct", IMAPHost: "imap.x", User: "u", IMAPPort: 993, SMTPPort: 587}
-	if got := validateAccountForConnect(base); got != "" {
+	base := config.AccountConfig{Name: "Acct", IMAPHost: "imap.x", SMTPHost: "smtp.x", User: "u", From: "u@example.com", IMAPPort: 993, SMTPPort: 587}
+	if got := validateAccountForConnect(base).msg; got != "" {
 		t.Fatalf("valid config rejected: %q", got)
 	}
 	cases := []struct {
@@ -856,6 +856,10 @@ func TestValidateAccountForConnect(t *testing.T) {
 	}{
 		{"missing name", func(c *config.AccountConfig) { c.Name = "" }},
 		{"missing imap host", func(c *config.AccountConfig) { c.IMAPHost = "" }},
+		{"missing smtp host", func(c *config.AccountConfig) { c.SMTPHost = "" }},
+		{"imap host as url", func(c *config.AccountConfig) { c.IMAPHost = "imaps://imap.x" }},
+		{"smtp host with port", func(c *config.AccountConfig) { c.SMTPHost = "smtp.x:587" }},
+		{"non-address login with no from", func(c *config.AccountConfig) { c.From = "" }},
 		{"missing user", func(c *config.AccountConfig) { c.User = "" }},
 		{"imap port too high", func(c *config.AccountConfig) { c.IMAPPort = 70000 }},
 		{"smtp port zero", func(c *config.AccountConfig) { c.SMTPPort = 0 }},
@@ -864,7 +868,7 @@ func TestValidateAccountForConnect(t *testing.T) {
 	for _, tc := range cases {
 		cfg := base
 		tc.mut(&cfg)
-		if got := validateAccountForConnect(cfg); got == "" {
+		if got := validateAccountForConnect(cfg).msg; got == "" {
 			t.Errorf("%s: expected a validation error, got none", tc.name)
 		}
 	}

@@ -103,6 +103,12 @@ func (m Model) renderMessagesPane() string {
 				rows = append(rows, msgRead.Render("  "+m.spinner.View()+" Loading messages…"))
 			case m.searchMode:
 				rows = append(rows, msgRead.Render("  no results"))
+			case m.selectedOutboxRow():
+				// The Outbox row is a doorway, not a folder — its entries are
+				// not db.Message rows and this pane cannot act on them. Saying
+				// "no messages" next to a badge reading (1) reads as a bug, so
+				// show what is in there and where to go.
+				rows = append(rows, m.outboxPreviewRows(w, msgRead)...)
 			default:
 				rows = append(rows, msgRead.Render("  no messages"))
 			}
@@ -138,10 +144,45 @@ func (m Model) renderMessagesPane() string {
 		Render(content)
 }
 
+// outboxPreviewRows summarizes the Outbox for the message pane: what is in it
+// and how to get at it. Read-only on purpose — retrying and editing live in
+// the overlay, and offering half of that here would be worse than pointing at
+// the whole of it.
+func (m Model) outboxPreviewRows(width int, style lipgloss.Style) []string {
+	rows := []string{}
+	for _, item := range m.outboxItems {
+		label := ""
+		switch {
+		case item.State == db.OutboxFailed:
+			label = "failed"
+		case item.State == db.OutboxUncertain:
+			label = "unconfirmed"
+		case item.State == db.OutboxQueued && item.Attempts > 0:
+			label = "retrying"
+		default:
+			continue
+		}
+		subject := item.Subject
+		if subject == "" {
+			subject = "(no subject)"
+		}
+		rows = append(rows, style.Render(truncate(fmt.Sprintf("  %-12s %s", label, subject), width)))
+	}
+	if len(rows) == 0 {
+		rows = append(rows, style.Render("  nothing waiting to go out"))
+	}
+	rows = append(rows, style.Render(""))
+	rows = append(rows, style.Render(truncate("  "+m.keys.Enter.Help().Key+" opens the Outbox to retry or edit", width)))
+	return rows
+}
+
 func (m Model) messagesPaneTitle() string {
 	title := "Messages"
 	if m.selectedUnifiedInbox() {
 		title = "Unified Inbox"
+	}
+	if m.selectedOutboxRow() {
+		title = "Outbox"
 	}
 	if m.showUnreadOnly {
 		title += " (unread)"
