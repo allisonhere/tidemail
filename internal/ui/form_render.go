@@ -166,6 +166,42 @@ func renderFormHintLines(text string, width int, chrome managerChrome) []string 
 	return out
 }
 
+// renderFormHintLinesColored renders a hint whose leading marker carries a
+// color, for status lines where the marker itself is the good/bad signal (for
+// example terminal image support). The body text stays muted; only the marker
+// is colored.
+func renderFormHintLinesColored(text string, width int, chrome managerChrome, marker string, markerFg lipgloss.Color) []string {
+	text = strings.TrimRight(text, " \t\r\n")
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return []string{lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")}
+	}
+	indent := text[:len(text)-len(strings.TrimLeft(text, " \t"))]
+	markerStyle := lipgloss.NewStyle().Background(chrome.baseBg)
+	if markerFg != "" {
+		markerStyle = markerStyle.Foreground(markerFg)
+	} else {
+		markerStyle = markerStyle.Foreground(chrome.muted)
+	}
+	firstPrefix := indent + "  " + markerStyle.Render(marker) + " "
+	contPrefix := strings.Repeat(" ", lipgloss.Width(firstPrefix))
+	textW := max(1, width-lipgloss.Width(firstPrefix))
+	lines := wrapShellCommand(trimmed, textW)
+	hintStyle := lipgloss.NewStyle().
+		Background(chrome.baseBg).
+		Foreground(chrome.muted)
+	out := make([]string, 0, len(lines))
+	for i, line := range lines {
+		linePrefix := firstPrefix
+		if i > 0 {
+			linePrefix = contPrefix
+		}
+		rendered := hintStyle.Render(linePrefix + line)
+		out = append(out, padStyled(rendered, width, chrome.baseBg))
+	}
+	return out
+}
+
 func renderFormInlineStatus(text string, width int, chrome managerChrome) string {
 	text = strings.TrimSpace(text)
 	if text == "" {

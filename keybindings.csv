@@ -41,6 +41,7 @@ DiscardDraft,d,d,discard draft,compose
 ContentSearch,ctrl+f,ctrl+f,find in content,content
 ToggleQuote,z,z,toggle quoted text,content
 ToggleHeaders,ctrl+e,ctrl+e,toggle full headers,content
+ToggleImages,i,i,load remote images (unsupported in WezTerm),content
 SaveAttach,ctrl+d,ctrl+d,save attachments,content
 Add,a,a,add account,account_manager
 Edit,e,e,edit account,account_manager

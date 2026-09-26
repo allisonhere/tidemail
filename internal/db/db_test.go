@@ -1019,3 +1019,134 @@ func openSQLite(path string) (*DB, error) {
 	conn.SetMaxOpenConns(1)
 	return &DB{conn}, nil
 }
+
+func TestAttachmentImageMetadataRoundTrip(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+
+	accountID, _ := database.AddAccount("", "Work", "")
+	mailboxID, _ := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
+	if err := database.UpsertMessage(Message{MailboxID: mailboxID, UID: 1, Subject: "Hi", Date: time.Unix(1, 0)}); err != nil {
+		t.Fatal(err)
+	}
+
+	want := Attachment{
+		Filename:        "hero.png",
+		ContentType:     "image/png",
+		ContentID:       "hero-image-123",
+		Disposition:     "inline",
+		ContentLocation: "hero.png",
+		Inline:          true,
+		Data:            []byte("PNGDATA"),
+	}
+	if _, err := database.SaveAttachment(1, want); err != nil {
+		t.Fatal(err)
+	}
+
+	atts, err := database.GetAttachments(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(atts) != 1 {
+		t.Fatalf("expected 1 attachment, got %d", len(atts))
+	}
+	got := atts[0]
+	if got.ContentID != want.ContentID || got.Disposition != want.Disposition ||
+		got.ContentLocation != want.ContentLocation || !got.Inline || string(got.Data) != string(want.Data) {
+		t.Fatalf("round trip mismatch: %+v", got)
+	}
+	if !got.IsInlineImage() {
+		t.Error("expected IsInlineImage true")
+	}
+
+	meta, err := database.GetAttachmentsMeta(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(meta) != 1 || meta[0].ContentID != want.ContentID || !meta[0].Inline {
+		t.Fatalf("metadata mismatch: %+v", meta)
+	}
+}
+
+func TestGetImagePartsSkipsNonImages(t *testing.T) {
+	tmp := t.TempDir()
+	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+
+	accountID, _ := database.AddAccount("", "Work", "")
+	mailboxID, _ := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
+	_ = database.UpsertMessage(Message{MailboxID: mailboxID, UID: 1, Subject: "Hi", Date: time.Unix(1, 0)})
+
+	for _, a := range []Attachment{
+		{Filename: "doc.pdf", ContentType: "application/pdf", Data: []byte("PDF")},
+		{Filename: "pic.png", ContentType: "image/png", ContentID: "p1", Inline: true, Data: []byte("PNG")},
+		{Filename: "note.bin", ContentType: "application/octet-stream", ContentID: "cid-only", Data: []byte("BIN")},
+	} {
+		if _, err := database.SaveAttachment(1, a); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	parts, err := database.GetImageParts(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parts) != 2 {
+		t.Fatalf("expected image + cid parts, got %d: %+v", len(parts), parts)
+	}
+	for _, p := range parts {
+		if p.Filename == "doc.pdf" {
+			t.Fatalf("image parts should exclude PDF: %+v", p)
+		}
+	}
+}
+
+func TestAttachmentLegacySchemaMigrates(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "mail.db")
+	legacy, err := openSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.Exec(`
+		CREATE TABLE attachments (
+			id           INTEGER PRIMARY KEY AUTOINCREMENT,
+			message_id   INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+			filename     TEXT    NOT NULL,
+			content_type TEXT    NOT NULL DEFAULT '',
+			data         BLOB   NOT NULL,
+			size         INTEGER NOT NULL DEFAULT 0
+		)`); err != nil {
+		t.Fatal(err)
+	}
+	legacy.Close()
+
+	database, err := openSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.init(); err != nil {
+		t.Fatalf("init on legacy attachments schema failed: %v", err)
+	}
+	// The new columns must be writable after migration.
+	accountID, _ := database.AddAccount("", "Work", "")
+	mailboxID, _ := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
+	_ = database.UpsertMessage(Message{MailboxID: mailboxID, UID: 1, Subject: "Hi", Date: time.Unix(1, 0)})
+	if _, err := database.SaveAttachment(1, Attachment{Filename: "x.png", ContentType: "image/png", ContentID: "c", Inline: true, Data: []byte("d")}); err != nil {
+		t.Fatalf("save after migration failed: %v", err)
+	}
+}

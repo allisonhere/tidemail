@@ -64,6 +64,11 @@ func (m Model) renderContentPane() string {
 }
 
 func (m Model) renderMessageContent(msg db.Message) string {
+	content, _ := m.renderMessageContentImages(msg)
+	return content
+}
+
+func (m Model) renderMessageContentImages(msg db.Message) (string, []renderImage) {
 	paneWidth := m.contentPaneContentWidth()
 	contentWidth := m.contentBodyWidth()
 	bodyWidth := m.contentBodyWidth()
@@ -84,7 +89,7 @@ func (m Model) renderMessageContent(msg db.Message) string {
 		}
 	}
 
-	body := m.renderMessageBody(msg, bodyWidth)
+	body, images := m.renderMessageBodyImages(msg, bodyWidth)
 
 	body = collapseQuoteBlocks(body, m.contentQuotesCollapsed)
 
@@ -92,17 +97,26 @@ func (m Model) renderMessageContent(msg db.Message) string {
 		body += "\n\n" + m.renderContentLinks(bodyWidth)
 	}
 
-	if len(m.contentAttachments) > 0 {
-		body += "\n\n" + m.renderAttachmentList(bodyWidth)
+	// The attachment list hides inline images that were drawn in the body, but
+	// m.contentAttachments (used for saving) keeps them, so hiding never
+	// removes access.
+	if visible := filterRenderedInline(m.contentAttachments, images); len(visible) > 0 {
+		body += "\n\n" + m.renderAttachmentListFor(visible, bodyWidth)
 	}
 
 	content := title + "\n" + meta + "\n\n" + fullHeaders + body
 	content = normalizeHardBreaks(content)
-	return fillViewWidth(content, paneWidth, m.styles.Theme.Bg)
+	return fillViewWidth(content, paneWidth, m.styles.Theme.Bg), images
 }
 
 func (m Model) renderMessageBody(msg db.Message, bodyWidth int) string {
-	return m.renderMessageForDisplay(msg, bodyWidth).body
+	body, _ := m.renderMessageBodyImages(msg, bodyWidth)
+	return body
+}
+
+func (m Model) renderMessageBodyImages(msg db.Message, bodyWidth int) (string, []renderImage) {
+	res := m.renderMessageForDisplay(msg, bodyWidth)
+	return res.body, res.images
 }
 
 func isRedditMessage(msg db.Message) bool {
@@ -111,7 +125,11 @@ func isRedditMessage(msg db.Message) bool {
 }
 
 func (m Model) renderAttachmentList(width int) string {
-	if len(m.contentAttachments) == 0 {
+	return m.renderAttachmentListFor(m.contentAttachments, width)
+}
+
+func (m Model) renderAttachmentListFor(atts []db.Attachment, width int) string {
+	if len(atts) == 0 {
 		return ""
 	}
 	th := m.styles.Theme
@@ -124,12 +142,12 @@ func (m Model) renderAttachmentList(width int) string {
 		header + dimmed.Render(strings.Repeat("─", max(0, width-ansi.StringWidth(header)))),
 	}
 	maxSizeLen := 0
-	for _, a := range m.contentAttachments {
+	for _, a := range atts {
 		if l := len(formatFileSize(a.Size)); l > maxSizeLen {
 			maxSizeLen = l
 		}
 	}
-	for _, a := range m.contentAttachments {
+	for _, a := range atts {
 		icon := fileTypeIcon(a.Filename, a.ContentType)
 		sizeStr := formatFileSize(a.Size)
 		iconStyled := accent.Render(" " + icon + " ")
@@ -192,6 +210,9 @@ func (m Model) actionableLinksEnabled() bool {
 // attributing a link to the wrong row.
 func contentDisplayLines(content string) (lines, lineLinks []string) {
 	lines = strings.Split(ansi.Strip(content), "\n")
+	for i, line := range lines {
+		lines[i] = stripImagePlaceholders(line)
+	}
 	raw := strings.Split(content, "\n")
 	if len(raw) != len(lines) {
 		return lines, nil
@@ -229,7 +250,7 @@ func (m Model) focusedLineLink() (string, bool) {
 // viewportContentKey builds the cache key for the reading pane. It covers the
 // item shown plus every setting that changes how it is laid out, so a hit is
 // only ever returned for an identical render.
-func (m Model) viewportContentKey(id string, fingerprint int) viewportCacheKey {
+func (m Model) viewportContentKey(id string, fingerprint int, imageKey string) viewportCacheKey {
 	return viewportCacheKey{
 		id:              id,
 		width:           m.contentBodyWidth(),
@@ -241,6 +262,7 @@ func (m Model) viewportContentKey(id string, fingerprint int) viewportCacheKey {
 		quotesCollapsed: m.contentQuotesCollapsed,
 		actionableLinks: m.actionableLinksEnabled(),
 		fingerprint:     fingerprint,
+		imageKey:        imageKey,
 	}
 }
 
@@ -249,17 +271,18 @@ func (m Model) viewportContentKey(id string, fingerprint int) viewportCacheKey {
 // costs milliseconds even with its body already rendered — mostly ansi width
 // scans over the whole content — and moving the cursor back onto a message
 // should not pay for it twice.
-func (m *Model) viewportContentFor(key viewportCacheKey, render func() string) viewportContent {
+func (m *Model) viewportContentFor(key viewportCacheKey, render func() (string, []renderImage)) viewportContent {
 	if vc, ok := m.viewportCache.get(key); ok {
 		return vc
 	}
-	content := render()
+	content, images := render()
 	lines, lineLinks := contentDisplayLines(content)
 	vc := viewportContent{
 		content:   content,
 		lines:     lines,
 		lineLinks: lineLinks,
 		focusable: focusableFromLines(lines),
+		images:    images,
 	}
 	m.viewportCache.put(key, vc)
 	return vc
@@ -277,7 +300,9 @@ func (m *Model) setViewportMessage(msg db.Message) {
 	}
 	if msg.HasAttachment {
 		// Metadata only: the pane shows names and sizes, and the contents are
-		// loaded at save time. This runs on every cursor move.
+		// loaded at save time. This runs on every cursor move. The full list is
+		// kept — including inline images — so saving always has something to
+		// work with even when those images cannot be drawn.
 		if atts, err := m.db.GetAttachmentsMeta(msg.ID); err == nil {
 			m.contentAttachments = atts
 		}
@@ -285,10 +310,12 @@ func (m *Model) setViewportMessage(msg db.Message) {
 	key := m.viewportContentKey(
 		fmt.Sprintf("msg:%d", msg.ID),
 		len(msg.BodyHTML)+len(msg.BodyText)+len(m.contentAttachments),
+		m.imageRenderKey(msg.ID),
 	)
-	vc := m.viewportContentFor(key, func() string { return m.renderMessageContent(msg) })
+	vc := m.viewportContentFor(key, func() (string, []renderImage) { return m.renderMessageContentImages(msg) })
 	m.contentSearchMatches = collectSearchMatches(vc.content, m.contentSearchQuery)
 	m.viewport.SetContent(vc.content)
+	m.applyViewportImages(vc.images)
 	m.contentMessageID = msg.ID
 	m.contentDraftID = 0
 	m.contentLines, m.contentLineLinks = vc.lines, vc.lineLinks
@@ -405,10 +432,11 @@ func (m *Model) setViewportThread(thread messageThread) {
 	for _, tm := range thread.Messages {
 		fingerprint += len(tm.BodyHTML) + len(tm.BodyText)
 	}
-	key := m.viewportContentKey("thread:"+thread.Key, fingerprint)
-	vc := m.viewportContentFor(key, func() string { return m.renderThreadContent(thread) })
+	key := m.viewportContentKey("thread:"+thread.Key, fingerprint, m.threadImageRenderKey(thread))
+	vc := m.viewportContentFor(key, func() (string, []renderImage) { return m.renderThreadContentImages(thread) })
 	m.contentSearchMatches = collectSearchMatches(vc.content, m.contentSearchQuery)
 	m.viewport.SetContent(vc.content)
+	m.applyViewportImages(vc.images)
 	m.contentMessageID = rep.ID
 	m.contentDraftID = 0
 	m.contentLines, m.contentLineLinks = vc.lines, vc.lineLinks
@@ -467,6 +495,7 @@ func (m *Model) setViewportForCurrentRow() {
 }
 
 func (m *Model) clearViewportMessage() {
+	m.clearViewportImages()
 	m.viewport.SetContent("")
 	m.contentLinks = nil
 	m.contentLinkIdx = -1
@@ -484,8 +513,13 @@ func (m *Model) clearViewportMessage() {
 }
 
 func (m Model) renderThreadContent(thread messageThread) string {
+	content, _ := m.renderThreadContentImages(thread)
+	return content
+}
+
+func (m Model) renderThreadContentImages(thread messageThread) (string, []renderImage) {
 	if len(thread.Messages) == 0 {
-		return ""
+		return "", nil
 	}
 	paneWidth := m.contentPaneContentWidth()
 	contentWidth := m.contentBodyWidth()
@@ -497,24 +531,26 @@ func (m Model) renderThreadContent(thread messageThread) string {
 	title := m.styles.ContentTitle.Width(paneWidth).Render(truncate(titleText, titleWidth))
 
 	var blocks []string
+	var images []renderImage
 	for _, msg := range thread.Messages {
 		header := m.threadMessageHeader(msg, contentWidth)
-		body := m.renderMessageBody(msg, contentWidth)
+		body, msgImages := m.renderMessageBodyImages(msg, contentWidth)
 		if strings.TrimSpace(body) == "" {
 			body = "No message body."
 		}
+		images = append(images, msgImages...)
 		blocks = append(blocks, header+"\n\n"+body)
 	}
 	body := collapseQuoteBlocks(strings.Join(blocks, "\n\n"), m.contentQuotesCollapsed)
 	if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
 		body += "\n\n" + m.renderContentLinks(contentWidth)
 	}
-	if len(m.contentAttachments) > 0 {
-		body += "\n\n" + m.renderAttachmentList(contentWidth)
+	if visible := filterRenderedInline(m.contentAttachments, images); len(visible) > 0 {
+		body += "\n\n" + m.renderAttachmentListFor(visible, contentWidth)
 	}
 	content := title + "\n\n" + body
 	content = normalizeHardBreaks(content)
-	return fillViewWidth(content, paneWidth, m.styles.Theme.Bg)
+	return fillViewWidth(content, paneWidth, m.styles.Theme.Bg), images
 }
 
 func (m Model) threadMessageHeader(msg db.Message, width int) string {
@@ -719,6 +755,11 @@ func (m Model) renderContentFocusLine(body string, width, height int, focused bo
 	styleLine := func(lineIdx int, style lipgloss.Style) {
 		viewIdx := lineIdx - m.viewport.YOffset
 		if viewIdx < 0 || viewIdx >= height || viewIdx >= len(lines) {
+			return
+		}
+		// Re-styling a raster placeholder row would strip the foreground color
+		// that carries the image id, so leave those cells untouched.
+		if lineHasImagePlaceholder(lines[viewIdx]) {
 			return
 		}
 		l := ansi.Truncate(ansi.Strip(lines[viewIdx]), width, "")

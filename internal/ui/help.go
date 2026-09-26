@@ -101,6 +101,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{"y/ctrl+c", "copy selected message text; ctrl+c copies focus line without selection"},
 				{keys.ToggleHeaders.Help().Key, "toggle full email headers"},
 				{keys.SaveAttach.Help().Key, "save all attachments to folder"},
+				{keys.ToggleImages.Help().Key, "load remote images (unsupported in WezTerm)"},
 				{keys.ToggleQuote.Help().Key, "toggle quoted text collapse"},
 				{keys.Summary.Help().Key, "open AI summary overlay"},
 				bind(keys.Reply),

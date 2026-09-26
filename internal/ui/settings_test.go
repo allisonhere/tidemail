@@ -1760,3 +1760,72 @@ func TestSettingsAtMaxWidthDoesNotTruncate(t *testing.T) {
 		}
 	}
 }
+
+func TestSettingsImagesPicker(t *testing.T) {
+	for _, initial := range []string{"", "auto", "off"} {
+		t.Run(initial, func(t *testing.T) {
+			cfg := config.DefaultConfig()
+			cfg.Display.Images = initial
+			s := newSettings(cfg, settingsUpdateState{})
+			s.setFocusedPane(settingsPaneDetail)
+			s.setFocusedField(sfImages)
+			view := s.View(80, 30, newManagerChrome(80, CatppuccinMocha, false))
+			if !strings.Contains(view, "Images") {
+				t.Fatal("Images picker missing")
+			}
+			s, _, _ = s.Update(tea.KeyMsg{Type: tea.KeyRight}, DefaultKeys)
+			want := "off"
+			if initial == "off" {
+				want = "auto"
+			}
+			if got := s.ApplyTo(cfg).Display.Images; got != want {
+				t.Fatalf("got %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestSettingsImagesCapabilityMarker(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+
+	render := func(supported bool, chrome managerChrome) string {
+		s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+		s.setFocusedPane(settingsPaneDetail)
+		s.setFocusedField(sfImages)
+		s.imagesSupported = supported
+		return s.View(80, 40, chrome)
+	}
+
+	chrome := newManagerChrome(80, CatppuccinMocha, false)
+	supported := lineContaining(t, render(true, chrome), "Terminal: inline images supported.")
+	if !strings.Contains(supported, foreground(t, chrome.successFg)) {
+		t.Fatalf("expected a green marker on the supported line, got %q", supported)
+	}
+
+	unsupported := lineContaining(t, render(false, chrome), "Terminal: inline images unsupported")
+	if !strings.Contains(unsupported, foreground(t, chrome.errorFg)) {
+		t.Fatalf("expected a red marker on the unsupported line, got %q", unsupported)
+	}
+
+	plain := newManagerChrome(80, CatppuccinMocha, true)
+	plainLine := lineContaining(t, render(true, plain), "Terminal: inline images supported.")
+	if !strings.Contains(plainLine, "OK") {
+		t.Fatalf("expected an ASCII marker in plain UI, got %q", plainLine)
+	}
+}
+
+func TestImageSupportMarker(t *testing.T) {
+	if got := imageSupportMarker(true, aiConnectionSuccess); got != "OK" {
+		t.Fatalf("plain success marker = %q, want OK", got)
+	}
+	if got := imageSupportMarker(true, aiConnectionError); got != "ERR" {
+		t.Fatalf("plain error marker = %q, want ERR", got)
+	}
+	if got := imageSupportMarker(false, aiConnectionSuccess); got != "●" {
+		t.Fatalf("unicode success marker = %q, want ●", got)
+	}
+	if got := imageSupportMarker(false, aiConnectionIdle); got != "○" {
+		t.Fatalf("unicode neutral marker = %q, want ○", got)
+	}
+}

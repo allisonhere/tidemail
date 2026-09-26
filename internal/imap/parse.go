@@ -25,9 +25,13 @@ import (
 )
 
 type bodyAttachment struct {
-	Filename    string
-	ContentType string
-	Data        []byte
+	Filename        string
+	ContentType     string
+	ContentID       string
+	Disposition     string
+	ContentLocation string
+	Inline          bool
+	Data            []byte
 }
 
 func (c *Client) fetchMessages(ctx context.Context, mailboxName string, limit int, since time.Time) ([]db.Message, error) {
@@ -213,10 +217,14 @@ func parseIMAPMessage(msg *imapclient.FetchMessageBuffer) (db.Message, error) {
 			m.AttachmentData = make([]db.Attachment, len(atts))
 			for i, a := range atts {
 				m.AttachmentData[i] = db.Attachment{
-					Filename:    sanitizeControl(a.Filename),
-					ContentType: a.ContentType,
-					Data:        a.Data,
-					Size:        int64(len(a.Data)),
+					Filename:        sanitizeControl(a.Filename),
+					ContentType:     a.ContentType,
+					ContentID:       sanitizeControl(a.ContentID),
+					Disposition:     a.Disposition,
+					ContentLocation: sanitizeControl(a.ContentLocation),
+					Inline:          a.Inline,
+					Data:            a.Data,
+					Size:            int64(len(a.Data)),
 				}
 			}
 		}
@@ -377,15 +385,66 @@ func parseBody(raw []byte) (text, html string, attachments []bodyAttachment) {
 			}
 		default:
 			if ct != "" && !strings.HasPrefix(ct, "multipart/") {
+				contentID := normalizeCID(part.Header.Get("Content-ID"))
+				disposition := contentDisposition(part)
 				attachments = append(attachments, bodyAttachment{
-					Filename:    filenameFromPart(part, params, ct),
-					ContentType: ct,
-					Data:        data,
+					Filename:        filenameFromPart(part, params, ct),
+					ContentType:     ct,
+					ContentID:       contentID,
+					Disposition:     disposition,
+					ContentLocation: normalizeContentLocation(part.Header.Get("Content-Location")),
+					Inline:          disposition == "inline" || (contentID != "" && disposition != "attachment"),
+					Data:            data,
 				})
 			}
 		}
 	}
 	return text, html, attachments
+}
+
+// normalizeCID strips the RFC 2045 angle brackets and surrounding whitespace
+// from a Content-ID header. HTML addresses these parts as src="cid:<id>",
+// where the id is the bare form, so the stored value must be the bare form too.
+// Returns "" for missing or empty values.
+func normalizeCID(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return ""
+	}
+	// A malformed header can name several ids; the first is the part's own.
+	if i := strings.IndexAny(s, " \t\r\n,"); i >= 0 {
+		s = s[:i]
+	}
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 && s[0] == '<' && s[len(s)-1] == '>' {
+		s = s[1 : len(s)-1]
+	}
+	s = strings.Trim(s, "<>")
+	return strings.TrimSpace(s)
+}
+
+// contentDisposition returns the lower-cased disposition type of a part, with
+// parameters stripped ("inline", "attachment", or "" when absent).
+func contentDisposition(part *mail.Part) string {
+	raw := strings.TrimSpace(part.Header.Get("Content-Disposition"))
+	if raw == "" {
+		return ""
+	}
+	disp, _, err := mime.ParseMediaType(raw)
+	if err != nil {
+		// A malformed parameter list still has a usable leading token.
+		disp = strings.TrimSpace(strings.SplitN(raw, ";", 2)[0])
+	}
+	return strings.ToLower(strings.TrimSpace(disp))
+}
+
+// normalizeContentLocation trims whitespace and quotes from a Content-Location
+// header so it can be matched against an HTML src value.
+func normalizeContentLocation(raw string) string {
+	s := strings.TrimSpace(raw)
+	s = strings.Trim(s, "<>")
+	s = strings.Trim(s, `"`)
+	return strings.TrimSpace(s)
 }
 
 // filenameFromPart extracts a filename from a MIME part's Content-Disposition

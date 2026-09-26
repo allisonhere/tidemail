@@ -4,6 +4,59 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Add an Auto/Off image selector under Settings → Display → Reading, with
+  terminal capability information. Saving applies the preference immediately.
+
+- **Real inline images in the reading pane.** On terminals with Kitty graphics
+  support (Ghostty, Kitty, foot), images embedded in HTML mail — CID
+  parts, inline `data:` URIs, and content-location references — are now decoded
+  and drawn as raster images inside the reading pane, scaled to the pane width,
+  aspect-ratio preserved, and scrolling/clipping/reflowing with the document.
+  Remote images stay blocked until the reader presses `i` in the content pane,
+  which loads them for the current message (or the whole conversation in
+  threaded view). `[display] images = "off"` forces text placeholders
+  everywhere.
+
+  *Architecture*: a new `internal/richmail` package owns image parsing,
+  resolution (CID/data/remote), decode limits, layout, and the URL/SSRF policy;
+  `internal/termimage` owns terminal capability detection and the Kitty Unicode
+  placeholder backend; `internal/ui/rich_images.go` wires them into the existing
+  HTML pipeline. Images render by emitting Kitty Unicode placeholder cells into
+  the text, so the viewport moves them like ordinary document text rather than
+  fighting Bubble Tea for cursor control. The historic `[image: alt]`
+  placeholders remain the fallback and are unchanged on unsupported terminals.
+  MIME parsing now preserves `Content-ID`, `Content-Disposition`,
+  `Content-Location`, and inline status (`attachments` gains four
+  backwards-compatible columns). Remote fetches have a timeout, redirect cap,
+  byte cap, content-type validation, and reject loopback/private/link-local
+  hosts at both URL-parse and dial time. Decoded images are bounded by bytes,
+  dimensions, and pixel count, and are cached per message. An image-heavy
+  message is no longer mistaken for an empty HTML body.
+
+  *Known limitations*: animated GIFs show only the first frame; side-by-side
+  table-cell image rows stack vertically rather than forming a two-column grid;
+  WezTerm is unsupported and uses text placeholders.
+
+### Fixed
+
+- **WezTerm inline images are currently unsupported.** Use text placeholders
+  automatically: basic Kitty graphics support does not provide the Unicode
+  placeholders and virtual placements TideMail requires. Email text and
+  attachment saving still work.
+- A malformed private-use marker sequence (adjacent `U+E000`/`U+E001`) in a
+  message body can no longer panic the renderer.
+- Pressing `i` in a threaded conversation now loads remote images for every
+  message in the thread, not just the representative one, so each reply's
+  images appear.
+- Inline images that cannot be drawn — no graphics terminal, `images = "off"`,
+  plain UI, or a decode failure — stay in the attachment list and remain
+  saveable. Images that *are* drawn inline are hidden from the displayed list
+  but still included when saving attachments.
+- Remote image data is now evicted under a bounded byte/entry budget instead of
+  being retained for the life of the process.
+
 ## v1.0.27
 
 ### Added

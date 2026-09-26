@@ -230,6 +230,10 @@ type Model struct {
 	// Model's value receivers.
 	bodyCache     *boundedCache[bodyCacheKey, messageRenderResult]
 	viewportCache *boundedCache[viewportCacheKey, viewportContent]
+	// images owns the terminal graphics backend, decoded-image cache, and
+	// remote-fetch consent/state. Pointer-typed for the same reason as the
+	// caches: writes through Model's value receivers must persist.
+	images *uiImageStore
 	// draftCounts holds the sidebar drafts badge per mailbox. Computed on
 	// data change in rebuildSidebar, because working it out costs two SQLite
 	// queries and the renderer must not touch the database.
@@ -388,6 +392,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		styles:                 BuildStyles(merged, cfg.Display.Density, cfg.Display.PaneCorners),
 		bodyCache:              newBoundedCache[bodyCacheKey, messageRenderResult](defaultBodyCacheLimit),
 		viewportCache:          newBoundedCache[viewportCacheKey, viewportContent](defaultViewportCacheLimit),
+		images:                 newUIImageStore(cfg.Display.Images),
 		accountManager:         NewAccountManager(database),
 		searchInput:            si,
 		helpSearchInput:        hsi,
@@ -496,6 +501,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case StatusClearMsg:
 		m.statusMsg = ""
 		m.statusErr = false
+		return m, nil
+
+	case remoteImagesLoadedMsg:
+		if m.images != nil {
+			m.images.applyRemoteResults(msg)
+		}
+		m.bodyCache.clear()
+		m.viewportCache.clear()
+		if m.contentMessageID != 0 || m.contentDraftID != 0 {
+			m.setViewportForCurrentRow()
+		}
+		if failed := countRemoteFailures(msg.results); failed > 0 {
+			m.setStatus(fmt.Sprintf("%d remote image(s) could not be loaded", failed), true)
+			return m, m.clearStatusCmd()
+		}
 		return m, nil
 
 	case CommitDestructiveActionMsg:
@@ -2104,8 +2124,32 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case msg.String() == "i":
+		// An available-update prompt keeps its existing i-to-dismiss meaning.
 		if m.showAvailableUpdatePrompt() {
 			return m, m.dismissAvailableUpdate()
+		}
+		// Otherwise, in the reading pane, i loads the remote images the sender
+		// embedded but TideMail blocked by default.
+		if m.focused == paneContent && m.contentMessageID != 0 && m.images != nil && m.images.graphics() {
+			if !m.images.enabled {
+				m.setStatus("image display is off in config ([display] images = \"auto\")", true)
+				return m, m.clearStatusCmd()
+			}
+			// Consent covers every message the pane is showing, not just the
+			// thread representative, or a reply's images stay blocked.
+			for _, id := range m.imageConsentMessageIDs() {
+				m.images.allow(id)
+			}
+			m.bodyCache.clear()
+			m.viewportCache.clear()
+			m.setViewportForCurrentRow()
+			urls := m.remoteImageURLsForCurrent()
+			if len(urls) > 0 {
+				m.setStatus(fmt.Sprintf("loading %d remote image(s)…", len(urls)), false)
+				return m, tea.Batch(m.clearStatusCmd(), fetchRemoteImagesCmd(m.images, m.contentMessageID, urls))
+			}
+			m.setStatus("remote images loaded", false)
+			return m, m.clearStatusCmd()
 		}
 		return m, nil
 
@@ -2660,6 +2704,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.pendingSelectMessageID = msg.ID
 			}
 			m.cfg = m.settings.ApplyTo(m.cfg)
+			m.applyImageSetting()
 			m.showUnreadOnly = m.cfg.Display.DefaultUnreadOnly
 			m.starredFirst = m.cfg.Display.StarredFirst
 			// ctrl+e is a session-scoped override; a settings save is the
@@ -2931,6 +2976,9 @@ func (m Model) renderPaneHint(p pane) string {
 			m.keyHint(m.keys.Search) + " find  " +
 			m.keyHint(m.keys.ToggleHeaders) + " headers  " +
 			m.keyHint(m.keys.Back) + " back"
+		if m.images != nil && m.images.graphics() {
+			hint += "  " + m.keyHint(m.keys.ToggleImages) + " images"
+		}
 		if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
 			hint += "  " + m.keyHint(m.keys.PrevLink) + "/" + m.keyHint(m.keys.NextLink) + " links"
 		}

@@ -95,6 +95,10 @@ type bodyCacheKey struct {
 	// change in place once stored, so their length tells versions apart
 	// without hashing the whole string on every lookup.
 	fingerprint int
+	// imageKey captures the image-rendering state (enabled/disabled, remote
+	// consent for this message, remote-load generation) so a body rendered
+	// before or after images arrived is not reused.
+	imageKey string
 }
 
 // viewportCacheKey identifies the finished content of the reading pane. The
@@ -113,6 +117,7 @@ type viewportCacheKey struct {
 	quotesCollapsed bool
 	actionableLinks bool
 	fingerprint     int
+	imageKey        string
 }
 
 // viewportContent is everything setViewportMessage/setViewportThread derives
@@ -123,6 +128,7 @@ type viewportContent struct {
 	lines     []string
 	lineLinks []string
 	focusable []bool
+	images    []renderImage
 }
 
 const (

@@ -13,6 +13,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	xhtml "golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
+
+	"github.com/allisonhere/tidemail/internal/richmail"
 )
 
 var (
@@ -499,30 +501,67 @@ func renderHTMLBody(html string, width int, th Theme, plainUI bool) string {
 // styling and before any OSC 8 hyperlink is emitted. Running a URL regex over
 // the finished output would gut the URI out of its own escape sequence.
 func renderHTMLBodyOpts(html string, width int, th Theme, plainUI, filterLinks bool) string {
+	rendered, _ := renderHTMLBodyWithImages(html, width, th, plainUI, filterLinks, nil)
+	return rendered
+}
+
+// renderHTMLBodyWithImages is renderHTMLBodyOpts extended with rich raster
+// images. When ictx is non-nil, images that resolve and fit are replaced with
+// raster placeholder rows reserved in the text, and the returned slice carries
+// what the caller must upload to the terminal. When ictx is nil the function is
+// byte-for-byte the historic text renderer, which keeps the fallback path and
+// every existing regression test intact.
+func renderHTMLBodyWithImages(html string, width int, th Theme, plainUI, filterLinks bool, ictx *imageRenderContext) (string, []renderImage) {
 	html = normalizeHTMLForRendering(html)
+
+	var plans map[int]imagePlan
+	var manifest *richmail.Manifest
+	// Skip the second DOM parse entirely for documents with no images, which is
+	// the overwhelming majority of mail.
+	if ictx != nil && strings.Contains(strings.ToLower(html), "<img") {
+		if doc, err := goquery.NewDocumentFromReader(strings.NewReader(html)); err == nil {
+			manifest = richmail.ExtractImages(doc)
+			plans = buildImagePlans(manifest, ictx)
+			if out, err := doc.Find("body").Html(); err == nil {
+				html = out
+			}
+		}
+	}
+
 	converter := md.NewConverter("", true, nil)
 	converter.AddRules(spanStyleRule())
-	converter.AddRules(buttonLinkRule())
-	converter.AddRules(imagePlaceholderRule())
+	converter.AddRules(buttonLinkRuleWithPlans(plans))
+	converter.AddRules(imagePlaceholderRuleWithPlans(plans))
 	converter.AddRules(preformattedRule(width))
 	converter.AddRules(tableTextRule(width))
 	markdown, err := converter.ConvertString(html)
 	if err != nil || strings.TrimSpace(markdown) == "" {
-		return ""
+		return "", nil
 	}
 	markdown = stripEmailInvisibles(markdown)
 	if filterLinks {
 		markdown = filterLinksFromMarkdown(markdown)
 	}
 	rendered := renderMarkdown(markdown, width, th, plainUI)
+
+	var images []renderImage
+	if len(plans) > 0 {
+		rendered, images = expandImageMarkers(rendered, plans, ictx)
+	}
 	rendered = styleImagePlaceholders(rendered, th, plainUI)
 	if width > 0 {
 		rendered = ansi.Hardwrap(rendered, width, false)
 	}
-	if !hasMeaningfulRenderedHTML(rendered) {
-		return ""
+	if len(images) > 0 {
+		return rendered, images
 	}
-	return rendered
+	if manifest != nil && manifest.HasMeaningfulImageContent() && len(plans) > 0 {
+		return rendered, images
+	}
+	if !hasMeaningfulRenderedHTML(rendered) {
+		return "", nil
+	}
+	return rendered, nil
 }
 
 func messageHeadingColor(th Theme) lipgloss.Color {
@@ -989,10 +1028,16 @@ func preformattedRule(width int) md.Rule {
 	}
 }
 
-func imagePlaceholderRule() md.Rule {
+// imagePlaceholderRuleWithPlans turns <img> elements into either a rich-image// marker (consumed by expandImageMarkers) or the historic alt-text placeholder.
+// The marker path is only taken for images the plan decided to show, so a
+// decorated or tracking image still disappears exactly as before.
+func imagePlaceholderRuleWithPlans(plans map[int]imagePlan) md.Rule {
 	return md.Rule{
 		Filter: []string{"img"},
 		Replacement: func(_ string, selec *goquery.Selection, _ *md.Options) *string {
+			if marker, ok := planMarkerForImage(selec, plans); ok {
+				return md.String("\n\n" + marker + "\n\n")
+			}
 			label := strings.TrimSpace(attrFirst(selec, "alt", "title", "aria-label"))
 			if label == "" {
 				return md.String(" ")
@@ -1005,6 +1050,36 @@ func imagePlaceholderRule() md.Rule {
 			return md.String("\n\n" + placeholder + "\n\n")
 		},
 	}
+}
+
+// planMarkerForImage returns the marker for an image the plan accepted. The
+// data-tidemail-image attribute was stamped by richmail.ExtractImages, so the
+// index addresses the matching plan exactly.
+func planMarkerForImage(selec *goquery.Selection, plans map[int]imagePlan) (string, bool) {
+	if len(plans) == 0 {
+		return "", false
+	}
+	idxStr, ok := selec.Attr("data-tidemail-image")
+	if !ok {
+		return "", false
+	}
+	idx, err := strconv.Atoi(idxStr)
+	if err != nil {
+		return "", false
+	}
+	plan, ok := plans[idx]
+	if !ok {
+		return "", false
+	}
+	switch {
+	case plan.emit:
+		return imageMarker(imageMarkerImage, idx), true
+	case plan.blocked:
+		return imageMarker(imageMarkerBlock, idx), true
+	case plan.loading:
+		return imageMarker(imageMarkerLoad, idx), true
+	}
+	return "", false
 }
 
 func isDecorativeImageLabel(label string) bool {
@@ -1035,10 +1110,15 @@ func isDecorativeImageLabel(label string) bool {
 	return false
 }
 
-func buttonLinkRule() md.Rule {
+func buttonLinkRuleWithPlans(plans map[int]imagePlan) md.Rule {
 	return md.Rule{
 		Filter: []string{"a"},
 		Replacement: func(content string, selec *goquery.Selection, _ *md.Options) *string {
+			// A linked image with no text of its own is a hero/CTA banner.
+			// Emit its block marker rather than collapsing it to "alt text".
+			if marker, ok := anchorImageMarker(selec, plans); ok {
+				return md.String("\n\n" + marker + "\n\n")
+			}
 			href := strings.TrimSpace(attrFirst(selec, "href"))
 			text := normalizeInlineSpacing(htmlstd.UnescapeString(selec.Text()))
 			imageLabel := firstUsefulImageLabel(selec)
@@ -1078,6 +1158,29 @@ func buttonLinkRule() md.Rule {
 			return md.String("[" + text + "]")
 		},
 	}
+}
+
+// anchorImageMarker returns a block marker for a purely visual anchor (an
+// image link with no text of its own) so a hero banner stays a real image
+// rather than collapsing to alt text. An anchor that also carries prose keeps
+// normal link rendering, with any image marker inline.
+func anchorImageMarker(selec *goquery.Selection, plans map[int]imagePlan) (string, bool) {
+	if len(plans) == 0 {
+		return "", false
+	}
+	if strings.TrimSpace(htmlstd.UnescapeString(selec.Text())) != "" {
+		return "", false
+	}
+	var marker string
+	selec.Find("img").EachWithBreak(func(_ int, img *goquery.Selection) bool {
+		m, ok := planMarkerForImage(img, plans)
+		if !ok {
+			return true
+		}
+		marker = m
+		return false
+	})
+	return marker, marker != ""
 }
 
 func firstUsefulImageLabel(selec *goquery.Selection) string {

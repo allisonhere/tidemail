@@ -125,12 +125,16 @@ func (db *DB) migrate() error {
 			WHERE message_id != '';
 
 		CREATE TABLE IF NOT EXISTS attachments (
-			id           INTEGER PRIMARY KEY AUTOINCREMENT,
-			message_id   INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-			filename     TEXT    NOT NULL,
-			content_type TEXT    NOT NULL DEFAULT '',
-			data         BLOB   NOT NULL,
-			size         INTEGER NOT NULL DEFAULT 0
+			id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+			message_id          INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+			filename            TEXT    NOT NULL,
+			content_type        TEXT    NOT NULL DEFAULT '',
+			content_id          TEXT    NOT NULL DEFAULT '',
+			content_disposition TEXT    NOT NULL DEFAULT '',
+			content_location    TEXT    NOT NULL DEFAULT '',
+			inline              INTEGER NOT NULL DEFAULT 0,
+			data                BLOB   NOT NULL,
+			size                INTEGER NOT NULL DEFAULT 0
 		);
 		CREATE INDEX IF NOT EXISTS idx_attachments_message_id ON attachments(message_id);
 
@@ -236,6 +240,14 @@ func (db *DB) migrate() error {
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_drafts_account_config
 		ON drafts(account_config_id)`)
 	db.Exec(`ALTER TABLE outbox ADD COLUMN account_config_id TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
+	// Inline image identity: Content-ID lets HTML src="cid:..." resolve to the
+	// exact MIME part, and the disposition/location columns let the reader tell
+	// an embedded image from a real downloadable attachment.
+	db.Exec(`ALTER TABLE attachments ADD COLUMN content_id TEXT NOT NULL DEFAULT ''`)           //nolint:errcheck
+	db.Exec(`ALTER TABLE attachments ADD COLUMN content_disposition TEXT NOT NULL DEFAULT ''`)  //nolint:errcheck
+	db.Exec(`ALTER TABLE attachments ADD COLUMN content_location TEXT NOT NULL DEFAULT ''`)     //nolint:errcheck
+	db.Exec(`ALTER TABLE attachments ADD COLUMN inline INTEGER NOT NULL DEFAULT 0`)             //nolint:errcheck
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_attachments_content_id ON attachments(content_id)`) //nolint:errcheck
 	// Enforce one local mirror per remote draft. Drop any duplicates a previous
 	// build's check-then-insert race may have created before adding the index.
 	_, _ = db.Exec(`DELETE FROM drafts WHERE remote_uid != 0 AND id NOT IN (

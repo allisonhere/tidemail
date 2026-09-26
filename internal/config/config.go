@@ -111,6 +111,7 @@ type DisplayConfig struct {
 	ComposeVim            bool               `toml:"compose_vim"`
 	SendMaxAttempts       int                `toml:"send_max_attempts"`  // total tries, including the first
 	SendDelaySeconds      int                `toml:"send_delay_seconds"` // undo grace period; 0 = send immediately
+	Images                string             `toml:"images"`
 	VT52                  RetroTerminalTweak `toml:"vt52"`
 	VT100                 RetroTerminalTweak `toml:"vt100"`
 }
@@ -419,6 +420,7 @@ func DefaultConfig() Config {
 			Density:               "compact",
 			PaneCorners:           "square",
 			Shadow:                true,
+			Images:                "auto",
 			ConfirmQuit:           true,
 			ShowHeaders:           true,
 			Notifications:         true,

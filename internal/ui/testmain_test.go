@@ -30,6 +30,12 @@ func TestMain(m *testing.M) {
 	os.Setenv("XDG_DATA_HOME", dataDir)
 	os.Setenv("HOME", homeDir)
 	os.Setenv("TIDEMAIL_DISABLE_KEYRING", "1")
+	// Force the text-placeholder path for the whole UI suite. Terminal graphics
+	// detection is deliberately environment-driven, and the CI/dev terminal may
+	// advertise Kitty support; pinning it keeps rendered-output assertions
+	// deterministic. Tests for the graphics path construct capabilities
+	// directly.
+	os.Setenv("TIDEMAIL_IMAGE_PROTOCOL", "none")
 
 	code := m.Run()
 

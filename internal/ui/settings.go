@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/allisonhere/tidemail/internal/config"
+	"github.com/allisonhere/tidemail/internal/termimage"
 	"github.com/allisonhere/tidemail/internal/update"
 )
 
@@ -42,6 +43,7 @@ const (
 	sfStarredFirst
 	sfActionableLinks
 	sfFilterLinks
+	sfImages
 	sfReadingWidth
 	sfDisplayDensity
 	sfPaneCorners
@@ -241,6 +243,8 @@ type Settings struct {
 	unreadFirst           bool
 	starredFirst          bool
 	actionableLinks       bool
+	imagesOff             bool
+	imagesSupported       bool
 	filterLinks           bool
 	confirmQuit           bool
 	showHeaders           bool
@@ -347,6 +351,8 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		starredFirst:          cfg.Display.StarredFirst,
 		actionableLinks:       cfg.Display.ActionableLinks,
 		filterLinks:           cfg.Display.FilterLinks,
+		imagesOff:             strings.EqualFold(strings.TrimSpace(cfg.Display.Images), "off"),
+		imagesSupported:       termimage.DetectFromEnv().GraphicsEnabled(),
 		confirmQuit:           cfg.Display.ConfirmQuit,
 		showHeaders:           cfg.Display.ShowHeaders,
 		notifications:         cfg.Display.Notifications,
@@ -420,6 +426,10 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.UnreadFirst = s.unreadFirst
 	cfg.Display.StarredFirst = s.starredFirst
 	cfg.Display.ActionableLinks = s.actionableLinks
+	cfg.Display.Images = "auto"
+	if s.imagesOff {
+		cfg.Display.Images = "off"
+	}
 	cfg.Display.FilterLinks = s.filterLinks
 	cfg.Display.ConfirmQuit = s.confirmQuit
 	cfg.Display.ShowHeaders = s.showHeaders
@@ -663,7 +673,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
 		fields = append(fields, sfShowSender, sfThreadedConversations, sfDefaultUnreadOnly, sfUnreadFirst, sfStarredFirst)
-		fields = append(fields, sfReadingWidth, sfShowHeaders, sfMarkReadOnOpen, sfMarkReadOnFocus, sfActionableLinks, sfFilterLinks)
+		fields = append(fields, sfReadingWidth, sfShowHeaders, sfMarkReadOnOpen, sfMarkReadOnFocus, sfActionableLinks, sfFilterLinks, sfImages)
 		return append(fields, sfBrowser, sfConfirmQuit, sfNotifications)
 	case ssEditor:
 		return []settingsField{sfBackToSections, sfComposeVim, sfSendDelay, sfSendMaxAttempts}
@@ -909,7 +919,7 @@ func (s Settings) focusedTextInputCursorPosition() int {
 
 func (s Settings) isPickerField() bool {
 	switch s.focusedField {
-	case sfProvider, sfDisplayDensity, sfPaneCorners, sfTheme, sfDateFormat,
+	case sfProvider, sfDisplayDensity, sfPaneCorners, sfImages, sfTheme, sfDateFormat,
 		sfOpenAIModel, sfClaudeModel, sfGeminiModel, sfOllamaModel:
 		return true
 	}
@@ -1211,6 +1221,16 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 		} else if keyMatches(key, keys.Down) {
 			s.setFocusedField(s.nextField())
 		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
+	case sfImages:
+		switch {
+		case keyMatches(key, keys.Left), keyMatches(key, keys.Right), keyMatches(key, keys.Space), keyMatches(key, keys.Enter):
+			s.imagesOff = !s.imagesOff
+		case keyMatches(key, keys.Down):
+			s.setFocusedField(s.nextField())
+		case keyMatches(key, keys.Up):
 			s.setFocusedField(s.prevField())
 		}
 
@@ -1634,6 +1654,20 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addToggle("Mark read on focus", s.markReadOnFocus, sfMarkReadOnFocus)
 		b.addToggle("Actionable article links", s.actionableLinks, sfActionableLinks)
 		b.addToggle("Filter links from articles", s.filterLinks, sfFilterLinks)
+		b.markAnchor(sfImages)
+		b.addLine(s.renderImagesSelector(b.width, b.chrome))
+		b.addHint(s.fieldHint(sfImages))
+		if !s.imagesSupported {
+			b.addHintMarked("Terminal: inline images unsupported; using text placeholders.",
+				imageSupportMarker(b.chrome.plainUI, aiConnectionError), b.chrome.errorFg)
+		} else if ThemeUsesASCII(s.themeName) {
+			b.addHintMarked("Plain theme: using text placeholders.",
+				imageSupportMarker(b.chrome.plainUI, aiConnectionIdle), b.chrome.pendingFg)
+		} else {
+			b.addHintMarked("Terminal: inline images supported.",
+				imageSupportMarker(b.chrome.plainUI, aiConnectionSuccess), b.chrome.successFg)
+		}
+		b.addBlank()
 		b.addGroup("Behavior")
 		b.addInput("Browser command", s.browserInput, sfBrowser)
 		b.addToggle("Confirm before quitting", s.confirmQuit, sfConfirmQuit)
@@ -1740,6 +1774,14 @@ func (b *settingsFormBuilder) addLine(line string) {
 
 func (b *settingsFormBuilder) addHint(text string) {
 	for _, line := range renderFormHintLines(b.hintIndent+text, b.contentW, b.chrome) {
+		b.addLine(line)
+	}
+}
+
+// addHintMarked renders a hint whose leading marker is colored, used for
+// status lines where the marker carries the good/bad signal.
+func (b *settingsFormBuilder) addHintMarked(text, marker string, markerFg lipgloss.Color) {
+	for _, line := range renderFormHintLinesColored(b.hintIndent+text, b.contentW, b.chrome, marker, markerFg) {
 		b.addLine(line)
 	}
 }
@@ -2431,6 +2473,17 @@ func (s Settings) renderPaneCornersSelector(width int, chrome managerChrome) str
 	return renderSoftRow("Pane corners", focused, renderSettingsPicker(pickerW, name, focused, chrome), width, labelW, chrome)
 }
 
+func (s Settings) renderImagesSelector(width int, chrome managerChrome) string {
+	focused := s.focusedField == sfImages
+	name := "Auto"
+	if s.imagesOff {
+		name = "Off"
+	}
+	labelW := formLabelWidth(width)
+	pickerW := max(1, width-labelW-2)
+	return renderSoftRow("Images", focused, renderSettingsPicker(pickerW, name, focused, chrome), width, labelW, chrome)
+}
+
 func (s Settings) renderThemeSelector(width int, chrome managerChrome) string {
 	focused := s.focusedField == sfTheme
 	name := pickableThemeNameAt(s.themeIdx)
@@ -2445,6 +2498,9 @@ func renderSettingsPicker(width int, value string, focused bool, chrome managerC
 
 func (s Settings) fieldHint(field settingsField) string {
 	switch field {
+	case sfImages:
+		return "Auto shows embedded images where supported; Off uses text placeholders. Remote images stay blocked until i."
+
 	case sfBrowser:
 		return "leave blank to use the system default browser"
 	case sfFeedMaxBody:

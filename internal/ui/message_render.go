@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/allisonhere/tidemail/internal/db"
@@ -14,12 +15,14 @@ type messageRenderContext struct {
 	plainUI     bool
 	filterLinks bool
 	bodyStyle   lipgloss.Style
+	images      *imageRenderContext
 }
 
 type messageRenderResult struct {
-	body  string
-	links []string
-	ok    bool
+	body   string
+	links  []string
+	images []renderImage
+	ok     bool
 }
 
 type messageRenderer func(messageRenderContext) messageRenderResult
@@ -32,6 +35,7 @@ func (m Model) renderMessageForDisplay(msg db.Message, width int) messageRenderR
 		plainUI:     m.styles.PlainUI,
 		filterLinks: m.cfg.Display.FilterLinks,
 		fingerprint: len(msg.BodyHTML) + len(msg.BodyText),
+		imageKey:    m.imageRenderKey(msg.ID),
 	}
 	// A message with no ID has no stable identity to cache under — a preview
 	// of something not yet stored — so it always renders fresh.
@@ -42,6 +46,7 @@ func (m Model) renderMessageForDisplay(msg db.Message, width int) messageRenderR
 			// and a shared backing array would let one caller's edits reach
 			// the cached result.
 			res.links = append([]string(nil), res.links...)
+			res.images = append([]renderImage(nil), res.images...)
 			return res
 		}
 	}
@@ -53,6 +58,7 @@ func (m Model) renderMessageForDisplay(msg db.Message, width int) messageRenderR
 		plainUI:     m.styles.PlainUI,
 		filterLinks: m.cfg.Display.FilterLinks,
 		bodyStyle:   m.styles.ContentBody.Width(width),
+		images:      m.imageContext(msg, width),
 	}
 	result := renderMessageWithContext(ctx)
 	if len(result.links) == 0 {
@@ -61,9 +67,24 @@ func (m Model) renderMessageForDisplay(msg db.Message, width int) messageRenderR
 	if cacheable {
 		stored := result
 		stored.links = append([]string(nil), result.links...)
+		stored.images = append([]renderImage(nil), result.images...)
 		m.bodyCache.put(key, stored)
 	}
 	return result
+}
+
+// imageRenderKey folds every image-state input that changes a body's bytes
+// into the body cache key: whether raster images are enabled, whether remote
+// images were allowed for this message, and the store's generation (bumped
+// when a remote fetch lands).
+func (m Model) imageRenderKey(messageID int64) string {
+	if m.images == nil {
+		return "off"
+	}
+	if !m.images.graphics() {
+		return "none"
+	}
+	return fmt.Sprintf("%t:%d", m.images.isAllowed(messageID), m.images.gen())
 }
 
 func renderMessageWithContext(ctx messageRenderContext) messageRenderResult {
@@ -102,14 +123,15 @@ func renderHTMLMessage(ctx messageRenderContext) messageRenderResult {
 	if ctx.msg.BodyHTML == "" {
 		return messageRenderResult{}
 	}
-	body := renderHTMLBodyOpts(ctx.msg.BodyHTML, ctx.width, ctx.theme, ctx.plainUI, ctx.filterLinks)
+	body, images := renderHTMLBodyWithImages(ctx.msg.BodyHTML, ctx.width, ctx.theme, ctx.plainUI, ctx.filterLinks, ctx.images)
 	if strings.TrimSpace(body) == "" {
 		return messageRenderResult{}
 	}
 	return messageRenderResult{
-		body:  body,
-		links: collectMessageLinks(ctx.msg),
-		ok:    true,
+		body:   body,
+		links:  collectMessageLinks(ctx.msg),
+		images: images,
+		ok:     true,
 	}
 }
 

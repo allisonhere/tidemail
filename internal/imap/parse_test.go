@@ -351,3 +351,200 @@ func TestParseAuthHeadersKeepsListUnsubscribe(t *testing.T) {
 		t.Fatalf("parseAuthHeaders = %q, want %q", got, want)
 	}
 }
+
+func TestParseBody_MultipartRelatedCIDImage(t *testing.T) {
+	raw := []byte("Content-Type: multipart/related; boundary=rel\r\n\r\n" +
+		"--rel\r\n" +
+		"Content-Type: text/html\r\n\r\n" +
+		`<img src="cid:hero-image-123" alt="Hero">` + "\r\n" +
+		"--rel\r\n" +
+		"Content-Type: image/png\r\n" +
+		"Content-ID: <hero-image-123>\r\n" +
+		"Content-Disposition: inline\r\n" +
+		"Content-Transfer-Encoding: binary\r\n\r\n" +
+		"\x89PNGdata\r\n" +
+		"--rel--")
+
+	_, html, atts := parseBody(raw)
+	if html != `<img src="cid:hero-image-123" alt="Hero">` {
+		t.Fatalf("html = %q", html)
+	}
+	if len(atts) != 1 {
+		t.Fatalf("expected 1 image part, got %d", len(atts))
+	}
+	a := atts[0]
+	if a.ContentID != "hero-image-123" {
+		t.Errorf("ContentID = %q, want %q", a.ContentID, "hero-image-123")
+	}
+	if !a.Inline {
+		t.Error("expected inline image")
+	}
+	if a.ContentType != "image/png" {
+		t.Errorf("ContentType = %q", a.ContentType)
+	}
+	if a.Disposition != "inline" {
+		t.Errorf("Disposition = %q", a.Disposition)
+	}
+	if string(a.Data) != "\x89PNGdata" {
+		t.Errorf("data = %q", string(a.Data))
+	}
+}
+
+func TestParseBody_AlternativeInsideRelated(t *testing.T) {
+	raw := []byte("Content-Type: multipart/related; boundary=outer\r\n\r\n" +
+		"--outer\r\n" +
+		"Content-Type: multipart/alternative; boundary=inner\r\n\r\n" +
+		"--inner\r\n" +
+		"Content-Type: text/plain\r\n\r\n" +
+		"plain\r\n" +
+		"--inner\r\n" +
+		"Content-Type: text/html\r\n\r\n" +
+		`<img src="cid:logo">` + "\r\n" +
+		"--inner--\r\n" +
+		"--outer\r\n" +
+		"Content-Type: image/gif\r\n" +
+		"Content-ID: <logo>\r\n\r\n" +
+		"GIF89a\r\n" +
+		"--outer--")
+
+	text, html, atts := parseBody(raw)
+	if text != "plain" {
+		t.Errorf("text = %q", text)
+	}
+	if html != `<img src="cid:logo">` {
+		t.Errorf("html = %q", html)
+	}
+	if len(atts) != 1 || atts[0].ContentID != "logo" {
+		t.Fatalf("atts = %+v", atts)
+	}
+}
+
+func TestParseBody_NormalImageAttachment(t *testing.T) {
+	raw := []byte("Content-Type: multipart/mixed; boundary=mix\r\n\r\n" +
+		"--mix\r\n" +
+		"Content-Type: text/html\r\n\r\n" +
+		"<p>see attached</p>\r\n" +
+		"--mix\r\n" +
+		"Content-Type: image/jpeg\r\n" +
+		"Content-Disposition: attachment; filename=\"photo.jpg\"\r\n\r\n" +
+		"JPEGDATA\r\n" +
+		"--mix--")
+
+	_, _, atts := parseBody(raw)
+	if len(atts) != 1 {
+		t.Fatalf("expected 1 attachment, got %d", len(atts))
+	}
+	a := atts[0]
+	if a.Filename != "photo.jpg" {
+		t.Errorf("Filename = %q", a.Filename)
+	}
+	if a.Inline {
+		t.Error("a Content-Disposition: attachment must not be inline")
+	}
+	if a.ContentID != "" {
+		t.Errorf("ContentID = %q, want empty", a.ContentID)
+	}
+}
+
+func TestParseBody_InlineImageWithFilename(t *testing.T) {
+	raw := []byte("Content-Type: multipart/related; boundary=r\r\n\r\n" +
+		"--r\r\n" +
+		"Content-Type: image/png\r\n" +
+		"Content-ID: <img1>\r\n" +
+		"Content-Disposition: inline; filename=\"banner.png\"\r\n" +
+		"Content-Location: banner.png\r\n\r\n" +
+		"PNG\r\n" +
+		"--r--")
+
+	_, _, atts := parseBody(raw)
+	if len(atts) != 1 {
+		t.Fatalf("expected 1 part, got %d", len(atts))
+	}
+	a := atts[0]
+	if a.Filename != "banner.png" {
+		t.Errorf("Filename = %q", a.Filename)
+	}
+	if a.ContentLocation != "banner.png" {
+		t.Errorf("ContentLocation = %q", a.ContentLocation)
+	}
+	if !a.Inline {
+		t.Error("expected inline")
+	}
+}
+
+func TestNormalizeCID(t *testing.T) {
+	cases := map[string]string{
+		"<hero-image-123>": "hero-image-123",
+		"hero-image-123":   "hero-image-123",
+		"  <Foo@Bar>  ":    "Foo@Bar",
+		"<a> <b>":          "a",
+		"":                 "",
+		"<>":               "",
+	}
+	for in, want := range cases {
+		if got := normalizeCID(in); got != want {
+			t.Errorf("normalizeCID(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestParseBody_MalformedContentID(t *testing.T) {
+	// Missing Content-ID on an inline part and an empty Content-ID must both
+	// parse without panicking and without inventing an id.
+	raw := []byte("Content-Type: multipart/related; boundary=r\r\n\r\n" +
+		"--r\r\n" +
+		"Content-Type: image/png\r\n\r\n" +
+		"PNG1\r\n" +
+		"--r\r\n" +
+		"Content-Type: image/png\r\n" +
+		"Content-ID: <>\r\n\r\n" +
+		"PNG2\r\n" +
+		"--r--")
+
+	_, _, atts := parseBody(raw)
+	if len(atts) != 2 {
+		t.Fatalf("expected 2 parts, got %d", len(atts))
+	}
+	for _, a := range atts {
+		if a.ContentID != "" {
+			t.Errorf("expected empty ContentID, got %q", a.ContentID)
+		}
+	}
+}
+
+func TestParseBody_DuplicateCID(t *testing.T) {
+	raw := []byte("Content-Type: multipart/related; boundary=r\r\n\r\n" +
+		"--r\r\n" +
+		"Content-Type: image/png\r\n" +
+		"Content-ID: <dup>\r\n\r\n" +
+		"FIRST\r\n" +
+		"--r\r\n" +
+		"Content-Type: image/png\r\n" +
+		"Content-ID: <dup>\r\n\r\n" +
+		"SECOND\r\n" +
+		"--r--")
+
+	_, _, atts := parseBody(raw)
+	if len(atts) != 2 {
+		t.Fatalf("expected 2 parts, got %d", len(atts))
+	}
+	if atts[0].ContentID != "dup" || atts[1].ContentID != "dup" {
+		t.Fatalf("both parts should keep the duplicate id: %+v", atts)
+	}
+}
+
+func TestParseBody_NonUTF8Unaffected(t *testing.T) {
+	raw := []byte("Content-Type: multipart/alternative; boundary=x\r\n\r\n" +
+		"--x\r\n" +
+		"Content-Type: text/plain; charset=iso-8859-1\r\n" +
+		"Content-Transfer-Encoding: 8bit\r\n\r\n" +
+		"caf\xe9\r\n" +
+		"--x--")
+	text, _, atts := parseBody(raw)
+	if text != "café" {
+		t.Errorf("text = %q, want %q", text, "café")
+	}
+	if len(atts) != 0 {
+		t.Errorf("expected no attachments, got %d", len(atts))
+	}
+}
