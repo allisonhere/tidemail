@@ -33,6 +33,51 @@ func (m *Model) refreshOutbox() {
 	m.outboxCursor = clamp(m.outboxCursor, 0, max(0, len(items)-1))
 }
 
+// outboxTrouble summarizes the Outbox entries that need a person.
+//
+// Failed and uncertain are counted apart, and must stay apart. An uncertain
+// entry is one RecoverOutbox found mid-flight at startup: the server may well
+// have taken the message, which is why CanRetry refuses to retry it on its own
+// rather than risk a duplicate. Calling that a failed send tells someone their
+// mail did not go out when it probably did.
+//
+// retrying is a queued entry that has already had an attempt — ClaimOutbox
+// bumps attempts on the way to "sending" — as opposed to a fresh one sitting
+// in its undo window, which is the normal path for every message.
+type outboxTrouble struct {
+	failed    int
+	uncertain int
+	retrying  int
+	// since is when the most recent of them last changed state. The status bar
+	// reports it, because a standing warning with no age reads as though it
+	// were about whatever the reader just did.
+	since time.Time
+}
+
+func (t outboxTrouble) needsAttention() int { return t.failed + t.uncertain }
+
+// summarizeOutbox reads m.outboxItems, which refreshOutbox keeps current after
+// every enqueue, send result, retry and cancel, so this costs no query.
+func (m Model) summarizeOutbox() outboxTrouble {
+	var t outboxTrouble
+	for _, item := range m.outboxItems {
+		switch {
+		case item.State == db.OutboxFailed:
+			t.failed++
+		case item.State == db.OutboxUncertain:
+			t.uncertain++
+		case item.State == db.OutboxQueued && item.Attempts > 0:
+			t.retrying++
+		default:
+			continue
+		}
+		if at := time.Unix(item.UpdatedAt, 0); item.UpdatedAt > 0 && at.After(t.since) {
+			t.since = at
+		}
+	}
+	return t
+}
+
 func (m *Model) openOutbox() {
 	m.outboxStatus = ""
 	m.outboxConfirmID = 0
@@ -84,9 +129,9 @@ func (m *Model) scheduleOutbox(id int64) tea.Cmd {
 		m.refreshOutbox()
 		return nil
 	}
-	var msg smtp.OutgoingMessage
 	var draft db.Draft
-	if err = json.Unmarshal(item.MessageJSON, &msg); err == nil {
+	msg, err := outboxMessage(item, account)
+	if err == nil {
 		err = json.Unmarshal(item.DraftJSON, &draft)
 	}
 	if err != nil {

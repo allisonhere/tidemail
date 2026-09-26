@@ -28,13 +28,18 @@ func newSendTestModel(t *testing.T, delaySeconds int) Model {
 
 func queueTestSend(t *testing.T, m Model) (Model, tea.Cmd) {
 	t.Helper()
-	c := NewCompose(config.AccountConfig{}, nil, nil)
+	return queueTestSendFrom(t, m, config.AccountConfig{})
+}
+
+func queueTestSendFrom(t *testing.T, m Model, account config.AccountConfig) (Model, tea.Cmd) {
+	t.Helper()
+	c := NewCompose(account, nil, nil)
 	c.toInput.SetValue("bob@example.com")
 	c.subjectInput.SetValue("hello")
 	m.compose = c
 	m.overlay = overlayCompose
 	next, cmd := m.Update(SendQueuedMsg{
-		Account: config.AccountConfig{},
+		Account: account,
 		Msg:     smtp.OutgoingMessage{To: []string{"bob@example.com"}, Subject: "hello"},
 	})
 	return next.(Model), cmd

@@ -15,6 +15,7 @@ fi
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
+YELLOW='\033[0;33m'
 BOLD='\033[1m'
 DIM='\033[2m'
 NC='\033[0m'
@@ -22,6 +23,7 @@ NC='\033[0m'
 info()    { printf "  ${CYAN}→${NC} %s\n" "$1"; }
 success() { printf "  ${GREEN}✓${NC} %s\n" "$1"; }
 warn()    { printf "  ${DIM}!${NC} %s\n" "$1"; }
+notice()  { printf "  ${YELLOW}${BOLD}! %s${NC}\n" "$1"; }
 error()   { printf "  ${RED}✗${NC} %s\n" "$1" >&2; exit 1; }
 
 quote_path() {
@@ -137,6 +139,7 @@ INSTALL_TMP=""
 
 # ── Verify ────────────────────────────────────────────────────────────────
 success "Installed ${VERSION} to ${INSTALL_DIR}/${BINARY}"
+notice "Google OAuth is waiting for Google's approval. Use a Google App Password for Gmail."
 
 # Resolve a directory to its canonical, symlink-free form so alternate
 # spellings of the same directory on PATH ("..", symlinks, trailing slashes)

@@ -249,7 +249,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 	case "save-attach-save":
 		m.saveAttachPicker.active = false
 		m.overlay = overlayNone
-		return m, saveAttachmentsCmdTo(m.contentAttachments, m.saveAttachPicker.currentDir)
+		return m, saveAttachmentsCmdTo(m.db, m.contentAttachments, m.saveAttachPicker.currentDir)
 	case "save-attach-up":
 		m.saveAttachPickerUpDir()
 		return m, nil

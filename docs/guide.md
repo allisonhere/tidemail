@@ -65,6 +65,26 @@ Press `M` to open the account manager, then add your IMAP and SMTP details.
 TideMail can discover common server settings from your email address. If your
 provider requires an app password, create one before saving the account.
 
+`Ctrl+S` and `Ctrl+T` check the form before anything connects, so a typo comes
+back as a labeled field rather than a login failure. A rejected row turns red
+and takes the cursor, with the reason on the status line; editing it clears the
+mark. Both hosts are required and are hostnames, not URLs, paths, or
+`host:port` pairs — the port belongs in its own field, where it must be a
+number between 1 and 65535. Leave a port blank to take the standard one. On
+the Gmail, Outlook, Yahoo, and iCloud
+providers the **Email** row must be a full address; a **Custom** account's
+**Username** is whatever your host issues, which need not be an address at all
+— cPanel's `alice+example.com`, an Exchange `DOMAIN\alice`, a bare ISP login.
+When it is not an address, the **From address** row becomes required: there is
+no address to send as otherwise, and the form says so rather than leaving the
+first send to be refused by the server.
+
+Any field holding an address rejects `#` typed where `@` belongs —
+`info#example.com`. On a Nordic layout `@` is AltGr+2 and `#` is Shift+3, and
+nothing downstream can recover from the slip: `#` is legal inside an address,
+so the value stays a perfectly good string that no server can route. An address
+that really contains one, like `info#sales@example.com`, is untouched.
+
 After you add an account, press `s` to sync the selected mailbox. Press `s` on
 the Unified Inbox to sync every account's inbox, or `F` to sync all mailboxes.
 When you stop on a non-inbox folder, TideMail silently refreshes it if its cache
@@ -128,9 +148,40 @@ common names such as `Sent`, `Sent Items`, and `INBOX.Sent` as fallbacks.
 
 TideMail waits five seconds before sending by default. Press `Ctrl+Z` during
 that window to cancel delivery and reopen the draft. Change the delay under
-Settings → Editor, or set it to `0` to send at once. Press `O` to open the
-Outbox. Use `r` to retry a failed message or `e` to move an unsent message back
-into compose.
+Settings → Editor, or set it to `0` to send at once.
+
+The **Outbox** has a row of its own in the accounts pane, under the Unified
+Inbox — outgoing mail spans accounts the same way. Its badge counts the sends
+that need you; a message passing through on its way out adds nothing to it.
+Resting on the row lists what is waiting and why, and `Enter`, `Space`, or `O`
+from anywhere opens the Outbox itself, where `r` retries a failed message and
+`e` moves an unsent one back into compose.
+
+The row is a doorway rather than a folder: the message pane previews it, but
+archiving, starring and the other folder keys do not apply to a message that
+has not been sent yet.
+
+A send that fails does not go quiet. The status bar reports it — `retrying 1 in
+Outbox` while automatic retries run, then `1 failed send in Outbox (2m)` once
+they are spent — and keeps reporting it until the Outbox has nothing left
+needing you. A message still inside its undo window is not a failure and says
+nothing.
+
+The time in brackets is how long that message has been waiting, which is what
+tells you whether the warning is about the message you just sent or one that
+has been stuck since yesterday. Both look the same otherwise.
+
+A delivery interrupted mid-flight, which TideMail finds when it starts up
+again, reads `1 unconfirmed send in Outbox` instead. That wording is the point:
+the server may have taken the message before the connection went, so it is not
+a failure and TideMail will not retry it on its own. Check Sent mail before
+you retry one by hand.
+
+Every attempt takes the sending address from the account as it stands at that
+moment, not from a copy saved when the message was queued. So if a send failed
+because the account's **From address** was wrong, correcting it and pressing
+`r` is enough — the queued message does not have to be rewritten or composed
+again.
 
 Failed deliveries retry after one minute. The maximum attempt setting includes
 the first try; it defaults to `3`, and `1` disables automatic retries. An
@@ -177,7 +228,7 @@ If `secret-tool` is unavailable on Linux, TideMail writes these secrets to
 
 If you expose an app password, revoke it and create a new one.
 
-Gmail requires either an app password or an OAuth sign-in. For a password, turn
+Gmail currently requires an app password while Google approval is pending. Turn
 on 2-Step Verification, generate one at
 [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords),
 then paste it into the password field in the account manager (`M`) and save with
@@ -185,29 +236,9 @@ then paste it into the password field in the account manager (`M`) and save with
 
 ### Gmail OAuth sign-in
 
-Official builds supply TideMail's Google app credentials; there is no user
-configuration step.
-
-1. Press `M`, add an account, choose **Gmail**, and enter the account details.
-2. Leave **Auth** on **OAuth** and press `Ctrl+O` or Enter on **Sign in with Google**.
-3. Approve Google access in the browser. The browser shows a confirmation and
-   TideMail finishes signing in automatically.
-4. Return to TideMail and save with `Ctrl+S`.
-
-For SSH or manual sign-in, press `Ctrl+P` while waiting for browser approval.
-TideMail displays the URL and a **Code** field. Open the URL, approve access, and
-paste the full redirect URL back into TideMail, then press Enter. If the browser
-is on another computer, its redirect may show a connection error; copy that URL
-anyway. This fallback also appears if TideMail cannot launch the browser. With a
-working local callback, approval can still finish automatically during manual entry.
-
-`Esc` cancels sign-in, and attempts expire after five minutes. Denied access or
-an expired attempt can be retried with `Ctrl+O`. If a refresh token expires or is
-revoked, open the account and sign in again.
-
-Existing app-password accounts keep working; use the **Auth** selector to switch
-methods deliberately. For maintainer registration, developer overrides, and
-Google verification requirements, see [Google OAuth setup](google-oauth.md).
+Google OAuth is temporarily unavailable while TideMail's Google app awaits
+approval. The account form and installer both call this out. Use a Google App
+Password instead; existing saved Gmail OAuth accounts are left unchanged.
 
 Developers can preview the Gmail App Password-only account form without changing
 saved credentials:
@@ -293,6 +324,13 @@ signature = "Alice\nSent with TideMail"
 sync_minutes = 0  # 0 = push (IDLE), N = poll every N min, -1 = manual only
 ```
 
+`from` is the **From address** row in the account form. Give it an address —
+`alice@example.com` or `Alice <alice@example.com>` — or leave it blank to send
+as `user`, which works only when `user` is itself an address. A display name on
+its own is not enough: the account form refuses to save one, because SMTP has
+no address to send from and would only fail once the message was already
+queued.
+
 The signature is a multi-line box in the account form — press `Enter` for a new
 line, `Tab` to move on, and `Ctrl+S` to save without leaving it. Arrow keys walk
 its lines and step to the next field at the top and bottom. Editing the file by
@@ -343,6 +381,7 @@ open **Accounts** and re-enter that account's server details.
 | `M` | Account manager |
 | `Space` in Accounts | Mark the highlighted account `★ [default]` — the sender for new messages |
 | `Shift+J` / `Shift+K` in Accounts | Move the highlighted account down / up the list |
+| `Ctrl+T` in the account form | Test the connection without saving |
 | `s` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
 | `Enter` on a folder | Fetch that folder now |
 | `F` | Sync all mailboxes |
@@ -371,8 +410,11 @@ open **Accounts** and re-enter that account's server details.
 | `Ctrl+F` | Find in message |
 | `v` / `V` | Visual select line range / whole message |
 | `` ` `` | AI summary |
+| In the summary overlay | `C` copies, `M` saves a `.md` file to the AI save path, `z` toggles quoted text, `Esc` closes |
 | `S` | Settings |
 | `T` | Theme picker |
+| `Alt+F` in compose | Attach a file (opens the file picker) |
+| `Ctrl+R` in compose | Remove the last attachment |
 | `Ctrl+D` | Save attachments to folder |
 | `Ctrl+G` | AI grammar & spell check (compose) |
 | Standard compose editor | Selection, system clipboard, undo/redo, word movement, and Home/End |

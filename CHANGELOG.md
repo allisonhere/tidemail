@@ -4,8 +4,6 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
-## v1.0.25
-
 ### Added
 
 - **TideMail has an icon.** A white envelope inside a curling blue wave on a
@@ -33,6 +31,10 @@ All notable changes to TideMail are documented in this file.
   off with `…`, and changing the font size or display scaling did not help. It
   now grows with the terminal, up to 96 columns, so they fit on one line. Small
   terminals keep the same size as before. (#30)
+
+## v1.0.26
+
+## v1.0.25
 
 ## v1.0.24
 

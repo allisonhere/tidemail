@@ -27,7 +27,7 @@ func TestSaveAttachmentsPreservesExistingFiles(t *testing.T) {
 	if err := os.Symlink(original, filepath.Join(dir, "report (1).txt")); err != nil {
 		t.Fatal(err)
 	}
-	result := saveAttachmentsCmdTo([]db.Attachment{
+	result := saveAttachmentsCmdTo(nil, []db.Attachment{
 		{Filename: "report.txt", Data: []byte("first")},
 		{Filename: "report.txt", Data: []byte("second")},
 	}, dir)().(AttachmentsSavedMsg)
@@ -45,12 +45,12 @@ func TestSaveAttachmentsPreservesExistingFiles(t *testing.T) {
 func TestSaveAttachmentsDefaultDirectoryAvoidsOverwrite(t *testing.T) {
 	name := fmt.Sprintf("review-%d.txt", time.Now().UnixNano())
 	atts := []db.Attachment{{Filename: name, Data: []byte("original")}}
-	result := saveAttachmentsCmd(atts)().(AttachmentsSavedMsg)
+	result := saveAttachmentsCmd(nil, atts)().(AttachmentsSavedMsg)
 	if result.Err != nil {
 		t.Fatal(result.Err)
 	}
 	atts[0].Data = []byte("second")
-	if got := saveAttachmentsCmd(atts)().(AttachmentsSavedMsg); got.Err != nil {
+	if got := saveAttachmentsCmd(nil, atts)().(AttachmentsSavedMsg); got.Err != nil {
 		t.Fatal(got.Err)
 	}
 	original, err := os.ReadFile(filepath.Join(result.Path, name))

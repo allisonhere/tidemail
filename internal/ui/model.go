@@ -41,6 +41,11 @@ const (
 	rowKindSysFolderHeader
 	rowKindPersonalFolderHeader
 	rowKindMailbox
+	// rowKindOutbox is a standing entry beside the Unified Inbox: outgoing mail
+	// spans accounts the same way. It exists mostly so the Outbox can be found
+	// at all — it used to be reachable only by knowing the "O" shortcut, so a
+	// message stuck there was invisible to anyone who did not.
+	rowKindOutbox
 )
 
 type sidebarRow struct {
@@ -220,6 +225,15 @@ type Model struct {
 	activeTheme    int
 	styles         Styles
 	themeCursor    int
+	// bodyCache memoises rendered message bodies and viewportCache the
+	// finished reading-pane content. Held by pointer so writes survive
+	// Model's value receivers.
+	bodyCache     *boundedCache[bodyCacheKey, messageRenderResult]
+	viewportCache *boundedCache[viewportCacheKey, viewportContent]
+	// draftCounts holds the sidebar drafts badge per mailbox. Computed on
+	// data change in rebuildSidebar, because working it out costs two SQLite
+	// queries and the renderer must not touch the database.
+	draftCounts map[int64]int64
 	// omarchySig is the last-seen Omarchy theme signature, used by the
 	// "match-omarchy" live-follow poll to detect desktop theme changes.
 	omarchySig string
@@ -372,6 +386,8 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		omarchySig:             omarchySignature(),
 		omarchyWatchGeneration: 1,
 		styles:                 BuildStyles(merged, cfg.Display.Density, cfg.Display.PaneCorners),
+		bodyCache:              newBoundedCache[bodyCacheKey, messageRenderResult](defaultBodyCacheLimit),
+		viewportCache:          newBoundedCache[viewportCacheKey, viewportContent](defaultViewportCacheLimit),
 		accountManager:         NewAccountManager(database),
 		searchInput:            si,
 		helpSearchInput:        hsi,
@@ -1767,6 +1783,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keyMatches(msg, m.keys.Enter):
 		if m.focused == paneAccounts {
+			if m.selectedOutboxRow() {
+				m.openOutbox()
+				return m, nil
+			}
 			if m.toggleSelectedAccount() {
 				return m, nil
 			}
@@ -2035,7 +2055,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.focused == paneContent && m.contentMessageID != 0 && len(m.contentAttachments) > 0 {
 			home, err := os.UserHomeDir()
 			if err != nil {
-				return m, saveAttachmentsCmd(m.contentAttachments)
+				return m, saveAttachmentsCmd(m.db, m.contentAttachments)
 			}
 			m.openSaveAttachPicker(filepath.Join(home, "Downloads"))
 			m.overlay = overlaySaveAttach
@@ -2091,6 +2111,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keyMatches(msg, m.keys.Space):
 		if m.focused == paneAccounts {
+			if m.selectedOutboxRow() {
+				m.openOutbox()
+				return m, nil
+			}
 			if m.toggleSelectedAccount() {
 				return m, nil
 			}
@@ -2143,17 +2167,17 @@ func (m Model) focusPane(next pane) (tea.Model, tea.Cmd) {
 		m.focused = paneMessages
 		return m, nil
 	}
+	// No re-render on a focus change. The body is identical in both focus
+	// states — the focus-dependent chrome (rails, focus line) is drawn from
+	// m.focused at render time — and re-rendering it made Tab pay for a full
+	// HTML render of every message in the thread.
 	if wasMessages && next == paneContent {
 		if msg := m.currentRowMessage(); msg != nil {
-			// Re-render so focus-dependent chrome (rails, focus line) updates.
-			// The body itself renders identically in both focus states.
-			m.setViewportForCurrentRow()
 			return m, m.openedMessageCmd(*msg)
 		}
 	}
 	if !wasMessages && next == paneMessages {
 		if msg := m.currentRowMessage(); msg != nil {
-			m.setViewportForCurrentRow()
 			return m, m.focusedMessageChangedCmd(*msg)
 		}
 	}
@@ -2352,7 +2376,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.themeCursor > 0 {
 				m.themeCursor--
 				m.activeTheme = m.themeCursor
-				m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners)
+				m.setStyles(BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners))
 				if m.activeMessageRowCount() > 0 {
 					m.setViewportForCurrentRow()
 				}
@@ -2361,7 +2385,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.themeCursor < len(PickableThemes())-1 {
 				m.themeCursor++
 				m.activeTheme = m.themeCursor
-				m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners)
+				m.setStyles(BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners))
 				if m.activeMessageRowCount() > 0 {
 					m.setViewportForCurrentRow()
 				}
@@ -2377,7 +2401,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case keyMatches(msg, m.keys.Cancel):
 			m.activeTheme = m.confirmedTheme
-			m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners)
+			m.setStyles(BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners))
 			m.overlay = overlayNone
 			if m.activeMessageRowCount() > 0 {
 				m.setViewportForCurrentRow()
@@ -2572,7 +2596,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, cfgThemeIdx := ThemeByName(m.cfg.Theme)
 	previewingTheme := m.settings.themeIdx != cfgThemeIdx
 	if tickChanged && !done {
-		m.styles = BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.settings.themeIdx), m.cfg.Display.Density, m.cfg.Display.PaneCorners)
+		m.setStyles(BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.settings.themeIdx), m.cfg.Display.Density, m.cfg.Display.PaneCorners))
 		if m.activeMessageRowCount() > 0 {
 			m.setViewportForCurrentRow()
 		}
@@ -2644,7 +2668,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Apply the vim toggle to future compose editors (read in newEditorArea).
 			setEditorVimMode(m.cfg.Display.ComposeVim)
 			merged, _ := MergedThemeFromConfig(m.cfg)
-			m.styles = BuildStyles(merged, m.cfg.Display.Density, m.cfg.Display.PaneCorners)
+			m.setStyles(BuildStyles(merged, m.cfg.Display.Density, m.cfg.Display.PaneCorners))
 			if ThemeUsesASCII(merged.Name) {
 				m.spinner.Spinner = spinner.Line
 			} else {
@@ -2666,7 +2690,7 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.overlay = overlayNone
 		if previewingTheme {
 			merged, _ := MergedThemeFromConfig(m.cfg)
-			m.styles = BuildStyles(merged, m.cfg.Display.Density, m.cfg.Display.PaneCorners)
+			m.setStyles(BuildStyles(merged, m.cfg.Display.Density, m.cfg.Display.PaneCorners))
 			if m.activeMessageRowCount() > 0 {
 				m.setViewportForCurrentRow()
 			}
@@ -2881,6 +2905,12 @@ func (m Model) renderPaneHint(p pane) string {
 		hint = m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " move  " +
 			m.keyHint(m.keys.Enter) + " toggle/sync  " + m.keyHint(m.keys.Sync) + " sync"
 	case paneMessages:
+		if m.selectedOutboxRow() {
+			// None of the folder verbs apply to a queued message, and the
+			// pane is a preview of the Outbox rather than a list it can act
+			// on, so offer the one key that does something.
+			return m.keyHint(m.keys.Enter) + " open Outbox  " + m.keyHint(m.keys.Command) + " command"
+		}
 		hint = m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " move  " +
 			m.keyHint(m.keys.Space) + " select  " +
 			m.keyHint(m.keys.MarkRead) + " read  " +
@@ -3086,6 +3116,11 @@ func (m Model) renderStatusBar() string {
 	sb := m.styles.StatusBar
 	parts := []string{}
 
+	// First, so it survives truncation: statusLine clamps the left side to the
+	// terminal width by dropping what does not fit off the end.
+	if outboxPart := m.outboxTroublePart(); outboxPart != "" {
+		parts = append(parts, outboxPart)
+	}
 	if updateInfoPart != "" {
 		parts = append(parts, updateInfoPart)
 	}
@@ -3124,6 +3159,56 @@ func (m Model) renderStatusBar() string {
 	parts = append(parts, m.statusBarContextHintStrip())
 
 	return m.styles.StatusBar.Width(w).Render(m.statusLine(m.statusBarJoin(parts...), updateActionPart))
+}
+
+// outboxTroublePart is the standing counterpart to the four-second "send
+// failed" toast: it stays up for as long as something in the Outbox needs a
+// person, which the toast never did. Red is reserved for "you have to act" —
+// a retry still in flight is reported in the ordinary bar style.
+// Failed and uncertain are never merged under one word. An uncertain entry may
+// well have been delivered — that is the whole reason it is not retried
+// automatically — so calling it a failed send would tell someone their mail
+// did not go out when it probably did.
+func (m Model) outboxTroublePart() string {
+	t := m.summarizeOutbox()
+	// Read the key through the binding: it is rebindable, and a hint naming a
+	// key the reader does not have is worse than no hint.
+	key := m.keys.Outbox.Help().Key
+	text := ""
+	switch {
+	case t.failed > 0 && t.uncertain > 0:
+		// Two different problems needing two different actions. Rather than
+		// pick one word for both, count them together and let the Outbox say
+		// which is which.
+		text = fmt.Sprintf("%d sends need attention in Outbox", t.needsAttention())
+	case t.failed > 0:
+		text = countOf(t.failed, "failed send") + " in Outbox"
+	case t.uncertain > 0:
+		text = countOf(t.uncertain, "unconfirmed send") + " in Outbox"
+	case t.retrying > 0:
+		// Still in flight and handled automatically: worth saying, not worth
+		// alarming about, and its age is not news.
+		return m.statusBarInlineText(m.styles.StatusBar, fmt.Sprintf("retrying %d in Outbox  %s", t.retrying, key))
+	default:
+		return ""
+	}
+	// How long it has been waiting. Without this the warning appears the
+	// moment a "message sent" toast clears and reads as though it were about
+	// that send, which is how a day-old failure gets mistaken for a fresh one.
+	if !t.since.IsZero() {
+		if age := m.formatTime(t.since); age != "" {
+			text += " (" + age + ")"
+		}
+	}
+	return m.statusBarInlineText(m.styles.StatusError, text+"  "+key)
+}
+
+// countOf renders "1 failed send" / "2 failed sends".
+func countOf(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 func (m Model) statusUpdateInfoPart() string {
@@ -3222,11 +3307,43 @@ func (m *Model) ensureSpinner() tea.Cmd {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// refreshDraftCounts recomputes the sidebar drafts badges. It runs on data
+// change rather than during rendering: each count is two SQLite queries, one
+// of them a correlated subquery, and the pool is a single connection — so
+// doing this per frame put database round-trips on the draw path.
+func (m *Model) refreshDraftCounts() {
+	if m.db == nil {
+		m.draftCounts = nil
+		return
+	}
+	counts := make(map[int64]int64, 4)
+	for _, mb := range m.mailboxes {
+		if !m.isDraftsMailbox(mb) {
+			continue
+		}
+		if n := m.draftsSidebarCount(mb); n > 0 {
+			counts[mb.ID] = n
+		}
+	}
+	m.draftCounts = counts
+}
+
+// setStyles swaps the active styles and drops the render caches. Their keys
+// carry the theme name, but a theme can change without changing its name —
+// the Omarchy live-follow rebuilds colours under a fixed name — so the name
+// alone cannot catch it, and density or corner changes reshape layout too.
+func (m *Model) setStyles(s Styles) {
+	m.styles = s
+	m.bodyCache.clear()
+	m.viewportCache.clear()
+}
+
 func (m *Model) rebuildSidebar() {
 	// config.toml order is the one order everything shows; the database's
 	// position column is only insertion order.
 	m.accounts = sortAccountsByConfigOrder(m.accounts, m.cfg.Accounts)
 	m.sidebarRows = buildSidebarRows(m.accounts, m.mailboxes, m.collapsedAccounts, m.collapsedSections)
+	m.refreshDraftCounts()
 	m.sidebarCursor = clamp(m.sidebarCursor, 0, max(0, len(m.sidebarRows)-1))
 	m.clampSidebarOffset()
 }
@@ -3309,7 +3426,7 @@ func (m *Model) restoreSidebarSelection(kind sidebarRowKind, id int64) {
 			continue
 		}
 		switch kind {
-		case rowKindUnified:
+		case rowKindUnified, rowKindOutbox:
 			m.sidebarCursor = i
 			return
 		case rowKindMailbox:
@@ -3383,8 +3500,8 @@ func (m Model) currentSidebarSelection() (sidebarRowKind, int64) {
 		return rowKindMailbox, 0
 	}
 	row := m.sidebarRows[m.sidebarCursor]
-	if row.kind == rowKindUnified {
-		return rowKindUnified, 0
+	if row.kind == rowKindUnified || row.kind == rowKindOutbox {
+		return row.kind, 0
 	}
 	if row.kind == rowKindAccount {
 		return rowKindAccount, row.accountID
@@ -3393,6 +3510,15 @@ func (m Model) currentSidebarSelection() (sidebarRowKind, int64) {
 		return row.kind, row.accountID
 	}
 	return rowKindMailbox, row.mailboxID
+}
+
+// selectedOutboxRow reports whether the cursor is on the sidebar's Outbox
+// entry, which Enter and Space open rather than treating as a folder.
+func (m Model) selectedOutboxRow() bool {
+	if m.sidebarCursor < 0 || m.sidebarCursor >= len(m.sidebarRows) {
+		return false
+	}
+	return m.sidebarRows[m.sidebarCursor].kind == rowKindOutbox
 }
 
 func (m Model) selectedUnifiedInbox() bool {

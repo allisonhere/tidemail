@@ -29,6 +29,8 @@ func (m Model) renderAccountsPane() string {
 			rows = append(rows, m.renderAccountHeader(row.accountID, selected, innerW))
 		case rowKindUnified:
 			rows = append(rows, m.renderUnifiedInboxRow(selected, innerW))
+		case rowKindOutbox:
+			rows = append(rows, m.renderOutboxRow(selected, innerW))
 		case rowKindMailbox:
 			if mb := m.mailboxByID(row.mailboxID); mb != nil {
 				rows = append(rows, m.renderSidebarMailboxRow(*mb, selected, innerW))
@@ -73,9 +75,12 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 			return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 		})
 	}
-	rows := make([]sidebarRow, 0, len(accounts)+len(mailboxes)+1)
+	rows := make([]sidebarRow, 0, len(accounts)+len(mailboxes)+2)
 	if len(accounts) > 0 {
 		rows = append(rows, sidebarRow{kind: rowKindUnified})
+		// Beside the Unified Inbox, because outgoing mail spans accounts the
+		// same way — and because a stuck message needs somewhere to be seen.
+		rows = append(rows, sidebarRow{kind: rowKindOutbox})
 	}
 	for _, acc := range accounts {
 		rows = append(rows, sidebarRow{kind: rowKindAccount, accountID: acc.ID})
@@ -564,10 +569,34 @@ func (m Model) renderUnifiedInboxRow(selected bool, width int) string {
 	return style.Width(width).Render(row)
 }
 
+// renderOutboxRow draws the standing Outbox entry. Its badge counts only what
+// needs a person — a failed or unconfirmed send — in the error color, so the
+// row is quiet during the seconds every normal message spends queued.
+func (m Model) renderOutboxRow(selected bool, width int) string {
+	badge := ""
+	if t := m.summarizeOutbox(); t.needsAttention() > 0 {
+		style := m.accountBadgeStyle(0, selected)
+		if !selected {
+			style = style.Foreground(m.styles.Theme.Error)
+		}
+		badge = style.Render(fmt.Sprintf("(%d)", t.needsAttention()))
+	}
+	prefix := "↑ "
+	if !m.iconsEnabled() {
+		prefix = "^ "
+	}
+	row := renderFeedRow(prefix, "Outbox", badge, width)
+	style := m.styles.FeedItem
+	if selected {
+		style = m.sidebarSelectedStyle("")
+	}
+	return style.Width(width).Render(row)
+}
+
 func (m Model) renderSidebarMailboxRow(mb db.Mailbox, selected bool, width int) string {
 	badge := ""
 	if m.isDraftsMailbox(mb) {
-		if count := m.draftsSidebarCount(mb); count > 0 {
+		if count := m.draftCounts[mb.ID]; count > 0 {
 			badge = m.mailboxBadgeStyle(mb, selected).Render(fmt.Sprintf("(%d)", count))
 		}
 	} else if unread := m.displayMailboxUnreadCount(mb); unread > 0 {

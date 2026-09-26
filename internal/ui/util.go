@@ -107,7 +107,14 @@ func deleteLastRune(s string) string {
 }
 
 func messageFocusableLines(content string) []bool {
-	lines := strings.Split(ansi.Strip(content), "\n")
+	return focusableFromLines(strings.Split(ansi.Strip(content), "\n"))
+}
+
+// focusableFromLines is messageFocusableLines over lines that have already been
+// stripped. Callers that also need the display lines pass them in rather than
+// paying for a second ansi.Strip of the whole message — at a 21KB body those
+// full-content scans were half the cost of a keystroke.
+func focusableFromLines(lines []string) []bool {
 	focusable := make([]bool, len(lines))
 	nonEmpty := 0
 	pastHeader := false

@@ -216,17 +216,17 @@ func TestValidateFormRejectsBadSyncMinutes(t *testing.T) {
 	am.userInput.SetValue("alice@example.com")
 
 	am.syncInput.SetValue("abc")
-	if status := am.validateForm(am.buildCfg()); status == "" {
+	if status := am.validateForm(am.buildCfg()).msg; status == "" {
 		t.Fatal("expected an unparseable refresh value to fail validation")
 	}
 
 	am.syncInput.SetValue("0")
-	if status := am.validateForm(am.buildCfg()); status != "" {
+	if status := am.validateForm(am.buildCfg()).msg; status != "" {
 		t.Fatalf("expected push mode to validate, got %q", status)
 	}
 
 	am.syncInput.SetValue("-1")
-	if status := am.validateForm(am.buildCfg()); status != "" {
+	if status := am.validateForm(am.buildCfg()).msg; status != "" {
 		t.Fatalf("expected manual-only mode to validate, got %q", status)
 	}
 }
