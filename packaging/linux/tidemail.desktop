@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=TideMail
+GenericName=Mail Client
+Comment=Keyboard-first terminal email client
+Exec=tidemail
+Icon=tidemail
+Terminal=true
+Categories=Network;Email;ConsoleOnly;
+Keywords=mail;email;imap;smtp;inbox;terminal;

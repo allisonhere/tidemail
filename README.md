@@ -1,3 +1,5 @@
+<p align="center"><img src="images/tidemail-icon.svg" alt="TideMail icon" width="128"></p>
+
 # TideMail
 
 **Mail for people who live in a terminal.**
@@ -48,7 +50,9 @@ Linux and macOS builds are available for Intel and ARM machines.
 ### Arch Linux
 
 TideMail is on the AUR as [`tidemail-bin`](https://aur.archlinux.org/packages/tidemail-bin),
-which packages the official release binary:
+which packages the official release binary along with the TideMail icon and a
+desktop entry, so TideMail shows up in your app launcher (it opens in your
+default terminal):
 
 ```bash
 yay -S tidemail-bin

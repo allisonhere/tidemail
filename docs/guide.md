@@ -26,6 +26,20 @@ curl -fsSL https://raw.githubusercontent.com/allisonhere/tidemail/main/install.s
 You can also download a binary from the
 [latest release](https://github.com/allisonhere/tidemail/releases/latest).
 
+### App launcher entry (optional)
+
+The Arch Linux package (`tidemail-bin`) installs a desktop entry and the
+TideMail icon for you. With the install script or a source build, you can add
+them yourself from a checkout of the repository:
+
+```bash
+install -Dm644 images/tidemail-icon.svg ~/.local/share/icons/hicolor/scalable/apps/tidemail.svg
+install -Dm644 packaging/linux/tidemail.desktop ~/.local/share/applications/tidemail.desktop
+```
+
+The entry runs `tidemail` in your default terminal, so `tidemail` must be on
+your `PATH`.
+
 ### Build from source
 
 ```bash

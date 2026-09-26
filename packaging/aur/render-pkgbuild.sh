@@ -13,6 +13,7 @@ usage() {
   cat >&2 <<'USAGE'
 Usage: render-pkgbuild.sh --version VERSION --pkgrel N \
          --sha256-x86_64 HASH --sha256-aarch64 HASH --sha256-license HASH \
+         --sha256-icon HASH --sha256-desktop HASH \
          [--template PATH] --output PATH
 
 VERSION accepts either v1.2.3 or 1.2.3; the rendered pkgver never has the "v".
@@ -20,7 +21,7 @@ USAGE
   exit 2
 }
 
-version="" pkgrel="" sha_x86="" sha_arm="" sha_license="" output=""
+version="" pkgrel="" sha_x86="" sha_arm="" sha_license="" sha_icon="" sha_desktop="" output=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --version)         version="${2:?--version needs a value}"; shift 2 ;;
@@ -28,6 +29,8 @@ while [ $# -gt 0 ]; do
     --sha256-x86_64)   sha_x86="${2:?--sha256-x86_64 needs a value}"; shift 2 ;;
     --sha256-aarch64)  sha_arm="${2:?--sha256-aarch64 needs a value}"; shift 2 ;;
     --sha256-license)  sha_license="${2:?--sha256-license needs a value}"; shift 2 ;;
+    --sha256-icon)     sha_icon="${2:?--sha256-icon needs a value}"; shift 2 ;;
+    --sha256-desktop)  sha_desktop="${2:?--sha256-desktop needs a value}"; shift 2 ;;
     --template)        TEMPLATE="${2:?--template needs a value}"; shift 2 ;;
     --output)          output="${2:?--output needs a value}"; shift 2 ;;
     -h|--help)         usage ;;
@@ -35,7 +38,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-for required in version pkgrel sha_x86 sha_arm sha_license output; do
+for required in version pkgrel sha_x86 sha_arm sha_license sha_icon sha_desktop output; do
   if [ -z "${!required}" ]; then
     echo "render-pkgbuild.sh: missing required value for $required" >&2
     usage
@@ -52,7 +55,7 @@ if [[ ! "$pkgrel" =~ ^[1-9][0-9]*$ ]]; then
   echo "render-pkgbuild.sh: pkgrel '$pkgrel' must be a positive integer" >&2
   exit 1
 fi
-for name in sha_x86 sha_arm sha_license; do
+for name in sha_x86 sha_arm sha_license sha_icon sha_desktop; do
   if [[ ! "${!name}" =~ ^[0-9a-f]{64}$ ]]; then
     echo "render-pkgbuild.sh: $name is not a sha256 digest: '${!name}'" >&2
     exit 1
@@ -71,6 +74,8 @@ rendered=$(
     -e "s|@SHA256_X86_64@|$sha_x86|g" \
     -e "s|@SHA256_AARCH64@|$sha_arm|g" \
     -e "s|@SHA256_LICENSE@|$sha_license|g" \
+    -e "s|@SHA256_ICON@|$sha_icon|g" \
+    -e "s|@SHA256_DESKTOP@|$sha_desktop|g" \
     "$TEMPLATE"
 )
 
