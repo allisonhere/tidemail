@@ -1,0 +1,76 @@
+# TideMail architecture
+
+A map of the packages and the main flows between them. For user-facing
+behaviour see [`guide.md`](guide.md); for contribution rules see
+[`../CONTRIBUTING.md`](../CONTRIBUTING.md) and [`../AGENTS.md`](../AGENTS.md).
+
+## Packages
+
+| Package | Responsibility |
+| --- | --- |
+| `.` (`main.go`) | Startup options, config and database loading, running the Bubble Tea program, and post-exit work (flushing pending actions and sends, releasing terminal images, in-app update restart). |
+| `internal/ui` | The whole TUI: the `Model`, key handling, panes, overlays, compose, settings, account and contact managers, sync orchestration, and message rendering. |
+| `internal/db` | SQLite storage for accounts, messages, attachments, drafts, outbox, contacts, and filter rules, plus folder reconciliation. |
+| `internal/imap` | IMAP client, connection pool, IDLE push, message parsing, and XOAUTH2. |
+| `internal/smtp` | Message assembly (including attachments) and SMTP/STARTTLS sending with password or XOAUTH2 auth. |
+| `internal/auth` | Google and Microsoft OAuth flows and token refresh. |
+| `internal/config` | Config file load/save, account IDs, and secret storage in the system keyring (`TIDEMAIL_DISABLE_KEYRING` opts out). |
+| `internal/filter` | Deterministic mail rules. |
+| `internal/ai` | Summary providers: Claude, OpenAI, Gemini, and Ollama. |
+| `internal/richmail` | Email image model: source parsing, MIME-part resolution, decode limits, remote-fetch SSRF policy, and cell layout. |
+| `internal/termimage` | Terminal graphics: protocol detection, cell geometry, and the Kitty Unicode-placeholder backend. |
+| `internal/clipboard` | System clipboard access. |
+| `internal/omarchy` | Reads the active Omarchy desktop palette for the matching theme. |
+| `internal/update` | Release checks, verified downloads, and system-package detection for in-app updates. |
+| `cmd/editortest`, `cmd/kittytest` | Manual test harnesses for the editor and Kitty graphics. |
+
+Shared UI primitives come from the separate `github.com/allisonhere/tideui`
+module. Email-specific rendering stays in TideMail.
+
+## Key flows
+
+### Model and updates
+
+`ui.Model` is a Bubble Tea model passed by value. Long-running work (sync,
+sends, fetches, image uploads) runs in `tea.Cmd`s and reports back as messages
+defined mostly in `internal/ui/msgs.go`. `Model.Update` wraps the main
+`update` switch and attaches any queued terminal-image upload command.
+
+### Sync
+
+`internal/ui/sync.go` drives mailbox refresh through `internal/imap` and writes
+results to `internal/db`. `internal/ui/idle.go` and `internal/imap/idle.go`
+handle push via IMAP IDLE.
+
+### Sending
+
+Compose (`internal/ui/compose.go`) hands messages to the outbox
+(`internal/ui/outbox.go`, `internal/db/outbox.go`), which supports undo send
+and scheduled send before `internal/smtp` delivers them.
+
+### Rendering a message
+
+`internal/ui/message_render.go` picks a renderer: Reddit digest, HTML, or plain
+text. For HTML:
+
+1. `normalizeHTMLForRendering` (`html_normalize.go`) removes hidden content,
+   tracking pixels, and spacers; converts quoted replies to blockquotes; marks
+   newsletter content groups (`email_groups.go`); and flattens layout tables
+   while keeping data tables and receipts (`email_tables.go`).
+2. When graphics are available, `richmail` builds an image manifest and
+   `rich_images.go` plans each image: resolve, decode, and lay out.
+3. `html-to-markdown` converts the DOM with TideMail's rules in `format.go`,
+   then glamour renders it (`render_markdown.go`).
+4. Private-use sentinels are expanded after rendering: image markers become
+   Kitty placeholder rows or text placeholders, and group markers become rules.
+
+Rendered bodies and viewport content are cached (`render_cache.go`); cache keys
+include the image store's generation.
+
+### Terminal images
+
+`rich_images.go` owns the image store. Moving the cursor only records which
+images are visible. Encoding and upload happen in a debounced background
+command, and uploaded images stay resident in the terminal under an LRU budget.
+Cell geometry is re-read on every resize. Remote images require per-message
+consent (`i`) and are fetched through `richmail`'s SSRF-checked client.

@@ -2,7 +2,7 @@
 
 Thanks for helping out! A few quick notes:
 
-- **Architecture**: see [`CLAUDE.md`](CLAUDE.md) for the package map and key flows.
+- **Architecture**: see [`docs/architecture.md`](docs/architecture.md) for the package map and key flows.
 - **Before pushing**, run the same checks CI does:
   ```bash
   gofmt -w .

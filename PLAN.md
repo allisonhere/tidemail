@@ -22,7 +22,7 @@ styling only where it improves comprehension.
 ## Milestone 1: newsletter content groups
 
 Status: implemented in `internal/ui/email_groups.go` with tests in
-`email_groups_test.go`. Live-terminal inspection is still pending.
+`email_groups_test.go`. Checked in a live terminal on 2026-09-26.
 
 Keep an image, heading, description, and call-to-action together when flattening
 presentation tables.
@@ -67,7 +67,7 @@ Acceptance criteria:
 Status: implemented. `richmail.Layout` applies one scale factor to both axes.
 Rather than rebuilding the backend (the Kitty backend never reads the cell
 size), the image store keeps the current geometry and `refreshGeometry` runs on
-every `tea.WindowSizeMsg`. Live-terminal inspection is still pending.
+every `tea.WindowSizeMsg`. Checked in a live terminal on 2026-09-26.
 
 Honor height hints and refresh terminal cell geometry after a resize.
 
@@ -96,6 +96,8 @@ Acceptance criteria:
   dimensions and releases the previous terminal image data.
 
 ## Milestone 3: visual verification and release
+
+Status: fixtures, automated width checks, and the live-terminal pass are done.
 
 Create a small, synthetic fixture set under `internal/ui/testdata/` containing a
 receipt, newsletter, reply thread, image-heavy message, malformed HTML, and long

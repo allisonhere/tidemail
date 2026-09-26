@@ -12,8 +12,14 @@ Updated: 2026-09-26
     and narrow labelled rows.
   - `fa46050` separates `deploy.sh` output from its menu rows (unrelated to
     email rendering).
-  - A docs commit adding this handover and `PLAN.md` and correcting the
-    release number in `STATUS.md` to v1.0.27.
+  - `c5d6bef` adds this handover and `PLAN.md` and corrects the release number
+    in `STATUS.md` to v1.0.27.
+  - `9d960f1` keeps newsletter cards together (Milestone 1) and adds the
+    synthetic fixtures in `internal/ui/testdata/mail/`.
+  - `4c25652` moves image uploads off the event loop and keeps uploaded images
+    resident, fixing message-list lag on image-heavy mail.
+  - `b5eb396` honours image height hints and refreshes cell geometry on resize
+    (Milestone 2).
 
 ## What is working
 
@@ -35,7 +41,7 @@ normalization and HTML-to-Markdown rules remain in `internal/ui/format.go`.
 
 ## Validation completed
 
-After `f6c6d85`, all repository checks passed:
+After `b5eb396`, all repository checks passed:
 
 ```sh
 gofmt -w .
@@ -53,8 +59,8 @@ Content-Location privacy, duplicate fetch suppression, and terminal cleanup.
 
 ## Known limitations and risks
 
-- Live terminal image placement has not received a final visual pass after the
-  cache fixes. Test it in Ghostty or Kitty before release.
+- Milestones 1 and 2 and the upload fix were checked by hand in a live
+  terminal on 2026-09-26.
 - WezTerm uses text placeholders because this backend requires Kitty Unicode
   placeholders and virtual placements.
 - Animated GIFs show their first frame. SVG and remote CSS backgrounds are not
@@ -76,21 +82,24 @@ Content-Location privacy, duplicate fetch suppression, and terminal cleanup.
 
 ## Recommended next step
 
-Milestone 1 is implemented and the shared fixtures live in
-`internal/ui/testdata/mail/`; `TestMailFixturesRenderBounded` renders every
-fixture at 24, 40, 80, and 120 columns in plain and styled modes. A live
-terminal pass over the newsletter fixture is still outstanding.
+All three milestones in `PLAN.md` are complete. The shared fixtures live in
+`internal/ui/testdata/mail/`, and `TestMailFixturesRenderBounded` renders every
+fixture at 24, 40, 80, and 120 columns in plain and styled modes.
 
-Milestone 2 (image geometry) is also implemented. Next, run Milestone 3's live
-terminal pass in Ghostty or Kitty, including a font-size change. Avoid coupling this
-work to `tideui`; it is specific to email HTML and belongs in TideMail.
+Candidates for further work, only if real mail shows the need:
+
+- Group cards whose image, heading, and button sit in sibling rows of one
+  table.
+- Revisit height-hint handling if senders with mismatched width/height hints
+  render noticeably smaller than in a browser.
+
+Avoid coupling this work to `tideui`; it is specific to email HTML and belongs
+in TideMail.
 
 Before editing, confirm the working tree is clean. After implementation, run the full
 quality gate above and manually inspect at least one narrow and one wide frame.
 
-## Documentation debt
+## Architecture reference
 
-`STATUS.md` and `CONTRIBUTING.md` refer to a root `CLAUDE.md`, but that file is
-not present on this branch. Restore an accurate package map or update both links
-in a separate documentation change; do not treat the email-rendering handover as
-a complete architecture guide for the rest of TideMail.
+`docs/architecture.md` holds the package map and key flows for the whole
+application. `CONTRIBUTING.md` and `STATUS.md` link to it.
