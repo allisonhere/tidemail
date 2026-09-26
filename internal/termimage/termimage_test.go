@@ -154,7 +154,7 @@ func TestKittyTransmitAndDelete(t *testing.T) {
 	}
 
 	del := b.Delete(id)
-	if !bytes.Contains(del, []byte("a=d,d=i")) || !bytes.Contains(del, []byte("i=")) {
+	if !bytes.Contains(del, []byte("a=d,d=I")) || !bytes.Contains(del, []byte("i=")) {
 		t.Fatalf("bad delete escape: %q", del)
 	}
 }

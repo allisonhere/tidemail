@@ -93,7 +93,7 @@ func (b *KittyBackend) Delete(id uint32) []byte {
 	if _, _, ok := idParts(id); !ok {
 		return nil
 	}
-	return []byte(fmt.Sprintf("\x1b_Ga=d,d=i,i=%d,q=2\x1b\\", id))
+	return []byte(fmt.Sprintf("\x1b_Ga=d,d=I,i=%d,q=2\x1b\\", id))
 }
 
 // PlaceholderRows builds the text rows that display an already-transmitted

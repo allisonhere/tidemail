@@ -2142,11 +2142,12 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.bodyCache.clear()
 			m.viewportCache.clear()
-			m.setViewportForCurrentRow()
 			urls := m.remoteImageURLsForCurrent()
+			fetch := fetchRemoteImagesCmd(m.images, m.contentMessageID, urls)
+			m.setViewportForCurrentRow()
 			if len(urls) > 0 {
 				m.setStatus(fmt.Sprintf("loading %d remote image(s)…", len(urls)), false)
-				return m, tea.Batch(m.clearStatusCmd(), fetchRemoteImagesCmd(m.images, m.contentMessageID, urls))
+				return m, tea.Batch(m.clearStatusCmd(), fetch)
 			}
 			m.setStatus("remote images loaded", false)
 			return m, m.clearStatusCmd()

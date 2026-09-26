@@ -130,6 +130,10 @@ text placeholder such as `[image: Fall sale]`, and the message stays readable.
 Set `[display] images = "off"` to use placeholders everywhere, including on a
 graphics-capable terminal.
 
+Images supplied as MIME parts stay local even when their Content-Location is
+an HTTPS URL. If a previously loaded remote image has left the image cache,
+press `i` again when prompted to reload it.
+
 Choose **Settings → Display → Reading → Images** (`Auto` or `Off`) and press
 `Ctrl+S` to save. The change takes effect immediately; remote images still require
 `i` to load. The setting also shows whether inline images are supported.

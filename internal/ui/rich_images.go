@@ -92,10 +92,13 @@ type uiImageStore struct {
 
 	mu          sync.Mutex
 	partStores  map[int64]*richmail.PartStore
+	partOrder   []int64
+	partBytes   int
 	decoded     map[string]*richmail.Decoded
 	remote      map[string]*remoteEntry
 	remoteOrder []string
 	remoteBytes int
+	pending     map[string]bool
 	allowed     map[int64]bool
 	idFor       map[string]uint32
 	activeIDs   []uint32
@@ -109,6 +112,11 @@ type uiImageStore struct {
 
 // maxDecodedCacheEntries bounds decoded-image memory across a large mailbox.
 const maxDecodedCacheEntries = 128
+
+// Bound both large MIME payloads and empty indexes. Oversized stores remain
+// usable by the current render but are not retained in the cache.
+const maxPartCacheBytes = 32 << 20
+const maxPartCacheEntries = 64
 
 // maxRemoteCacheBytes bounds the bytes of remote image data retained for
 // redraws. Remote payloads are capped at 8 MiB each, so an entry count alone
@@ -131,6 +139,7 @@ func newUIImageStore(imagesSetting string) *uiImageStore {
 		partStores: map[int64]*richmail.PartStore{},
 		decoded:    map[string]*richmail.Decoded{},
 		remote:     map[string]*remoteEntry{},
+		pending:    map[string]bool{},
 		allowed:    map[int64]bool{},
 		idFor:      map[string]uint32{},
 	}
@@ -198,7 +207,7 @@ func (s *uiImageStore) gen() uint64 {
 	return s.generation
 }
 
-// partsFor returns the cached MIME part index for a message, loading it once.
+// partsFor returns a MIME part index, reloading it after cache eviction.
 func (s *uiImageStore) partsFor(messageID int64, load func() []richmail.Part) *richmail.PartStore {
 	if s == nil {
 		return nil
@@ -213,8 +222,23 @@ func (s *uiImageStore) partsFor(messageID int64, load func() []richmail.Part) *r
 	store := richmail.NewPartStore(load())
 
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Another caller may have loaded this message while the lock was released.
+	if cached, ok := s.partStores[messageID]; ok {
+		return cached
+	}
+	if store.ByteSize() > maxPartCacheBytes {
+		return store
+	}
+	for len(s.partOrder) > 0 && (len(s.partStores) >= maxPartCacheEntries || s.partBytes+store.ByteSize() > maxPartCacheBytes) {
+		oldest := s.partOrder[0]
+		s.partOrder = s.partOrder[1:]
+		s.partBytes -= s.partStores[oldest].ByteSize()
+		delete(s.partStores, oldest)
+	}
 	s.partStores[messageID] = store
-	s.mu.Unlock()
+	s.partOrder = append(s.partOrder, messageID)
+	s.partBytes += store.ByteSize()
 	return store
 }
 
@@ -267,6 +291,7 @@ func (s *uiImageStore) remoteResult(url string) (*remoteEntry, bool) {
 func (s *uiImageStore) recordRemote(url string, e *remoteEntry) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	delete(s.pending, url)
 	if old, ok := s.remote[url]; ok {
 		s.remoteBytes -= len(old.data)
 		delete(s.remote, url)
@@ -472,7 +497,11 @@ func buildImagePlans(manifest *richmail.Manifest, ictx *imageRenderContext) map[
 
 		switch im.Source.Kind {
 		case richmail.SourceRemote:
-			plan = planRemoteImage(im, ictx, plan)
+			if ictx.parts.HasLocation(im.Source.Raw) {
+				plan = planEmbeddedImage(im, ictx, plan)
+			} else {
+				plan = planRemoteImage(im, ictx, plan)
+			}
 		case richmail.SourceCID, richmail.SourceData, richmail.SourceUnknown:
 			plan = planEmbeddedImage(im, ictx, plan)
 		default:
@@ -510,19 +539,24 @@ func planRemoteImage(im richmail.Image, ictx *imageRenderContext, plan imagePlan
 		plan.blocked = true
 		return plan
 	}
-	entry, ok := ictx.store.remoteResult(im.Source.URL)
-	if !ok || !entry.done {
-		plan.loading = true
-		return plan
-	}
-	if entry.err != nil {
-		plan.blocked = true
-		return plan
-	}
 	key := "remote:" + im.Source.URL
 	if d, ok := ictx.store.cachedDecode(key); ok {
 		plan.resolved = richmail.Resolved{Status: richmail.ResolveOK, Decoded: d}
 		return finalizeImagePlan(im, ictx, plan, d)
+	}
+	ictx.store.mu.Lock()
+	pending := ictx.store.pending[im.Source.URL]
+	ictx.store.mu.Unlock()
+	if pending {
+		plan.loading = true
+		return plan
+	}
+	entry, ok := ictx.store.remoteResult(im.Source.URL)
+	if !ok || !entry.done || entry.err != nil {
+		// An evicted result has no fetch running. Offer an explicit reload
+		// instead of leaving the reader waiting on a permanent spinner.
+		plan.blocked = true
+		return plan
 	}
 	plan.resolved = richmail.DecodeRemote(entry.data, ictx.store.limits)
 	if plan.resolved.Status != richmail.ResolveOK || plan.resolved.Decoded == nil {
@@ -758,10 +792,25 @@ func fetchRemoteImagesCmd(store *uiImageStore, messageID int64, urls []string) t
 	if store == nil || len(urls) == 0 {
 		return nil
 	}
+	store.mu.Lock()
+	var pending []string
+	for _, u := range urls {
+		if !store.pending[u] {
+			store.pending[u] = true
+			pending = append(pending, u)
+		}
+	}
+	if len(pending) > 0 {
+		store.generation++
+	}
+	store.mu.Unlock()
+	if len(pending) == 0 {
+		return nil
+	}
 	opts := store.remoteOpts
 	return func() tea.Msg {
-		results := make([]remoteFetchResult, 0, len(urls))
-		for _, u := range urls {
+		results := make([]remoteFetchResult, 0, len(pending))
+		for _, u := range pending {
 			data, ctype, err := opts.Fetch(context.Background(), u)
 			results = append(results, remoteFetchResult{url: u, data: data, ctype: ctype, err: err})
 		}
@@ -783,7 +832,7 @@ func (s *uiImageStore) applyRemoteResults(msg remoteImagesLoadedMsg) bool {
 
 // remoteURLs returns the distinct, non-decorative remote image URLs in an HTML
 // body, used when the reader presses i.
-func remoteURLs(html string) []string {
+func remoteURLs(html string, parts *richmail.PartStore) []string {
 	if strings.TrimSpace(html) == "" {
 		return nil
 	}
@@ -798,6 +847,9 @@ func remoteURLs(html string) []string {
 	var urls []string
 	for _, im := range manifest.Images {
 		if im.Source.Kind != richmail.SourceRemote || im.Source.URL == "" {
+			continue
+		}
+		if im.Tracking || parts.HasLocation(im.Source.Raw) {
 			continue
 		}
 		if im.Decorative && !hasLargeHint(im) {
@@ -889,7 +941,11 @@ func (m Model) imageConsentMessageIDs() []int64 {
 func (m Model) remoteImageURLsForCurrent() []string {
 	var urls []string
 	for _, msg := range m.currentViewMessages() {
-		urls = append(urls, remoteURLs(msg.BodyHTML)...)
+		var parts *richmail.PartStore
+		if ctx := m.imageContext(msg, m.contentBodyWidth()); ctx != nil {
+			parts = ctx.parts
+		}
+		urls = append(urls, remoteURLs(msg.BodyHTML, parts)...)
 	}
 	return dedupeStrings(urls)
 }

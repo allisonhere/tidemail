@@ -21,6 +21,7 @@ type PartStore struct {
 	mu         sync.RWMutex
 	byCID      map[string][]byte
 	byLocation map[string][]byte
+	bytes      int
 }
 
 // NewPartStore builds an index from one message's parts. Entries are keyed by
@@ -32,18 +33,40 @@ func NewPartStore(parts []Part) *PartStore {
 		byLocation: make(map[string][]byte, len(parts)),
 	}
 	for _, p := range parts {
+		retained := false
 		if key := CIDKey(p.ContentID); key != "" {
 			if _, exists := s.byCID[key]; !exists {
 				s.byCID[key] = p.Data
+				retained = true
 			}
 		}
 		if loc := normalizeLocationKey(p.ContentLocation); loc != "" {
 			if _, exists := s.byLocation[loc]; !exists {
 				s.byLocation[loc] = p.Data
+				retained = true
 			}
+		}
+		if retained {
+			s.bytes += len(p.Data)
 		}
 	}
 	return s
+}
+
+// ByteSize reports retained payload bytes, counting a part indexed by both CID
+// and location only once. Part stores are immutable after construction.
+func (s *PartStore) ByteSize() int {
+	if s == nil {
+		return 0
+	}
+	return s.bytes
+}
+
+// HasLocation reports whether a source is already supplied by a MIME part,
+// including absolute HTTP URLs that must not be fetched from the network.
+func (s *PartStore) HasLocation(raw string) bool {
+	_, ok := s.lookupLocation(raw)
+	return ok
 }
 
 // Len reports how many addressable parts the store holds.
@@ -118,9 +141,9 @@ type Resolved struct {
 }
 
 // ResolveEmbedded resolves locally-available sources: CID references against
-// the message's parts, Content-Location references, and data URIs. Remote URLs
-// are reported as ResolveRemoteBlocked and must be fetched by the caller under
-// its privacy policy.
+// the message's parts, Content-Location references, and data URIs. HTTP URLs
+// without a matching MIME part are reported as ResolveRemoteBlocked and must
+// be fetched by the caller under its privacy policy.
 func ResolveEmbedded(im Image, store *PartStore, limits Limits) Resolved {
 	src := im.Source
 	switch src.Kind {
@@ -145,6 +168,9 @@ func ResolveEmbedded(im Image, store *PartStore, limits Limits) Resolved {
 		return Resolved{Status: ResolveUnsupported, Reason: "unsupported image source"}
 
 	case SourceRemote:
+		if data, ok := store.lookupLocation(src.Raw); ok {
+			return decodeBytes(data, limits)
+		}
 		return Resolved{Status: ResolveRemoteBlocked, Reason: "remote image blocked"}
 
 	default:

@@ -41,6 +41,13 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- MIME image parts now have a byte and entry cache budget, and clearing a
+  terminal image also releases its stored pixel data.
+- Remote images reuse decoded pixels after download-cache eviction. If both
+  copies have been evicted, the reader offers `i` to reload instead of staying
+  on a loading placeholder without an active fetch.
+- Absolute Content-Location references resolve from embedded MIME parts before
+  considering a remote download, including when `i` is pressed.
 - **WezTerm inline images are currently unsupported.** Use text placeholders
   automatically: basic Kitty graphics support does not provide the Unicode
   placeholders and virtual placements TideMail requires. Email text and

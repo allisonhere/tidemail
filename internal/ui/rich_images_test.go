@@ -144,8 +144,11 @@ func TestRemoteImageBlockedThenLoaded(t *testing.T) {
 		t.Fatal("blocked remote image must not be rendered")
 	}
 
-	// Consent alone, before bytes arrive, shows a loading placeholder.
+	// A scheduled fetch, before bytes arrive, shows a loading placeholder.
 	m.images.allow(4)
+	if fetchRemoteImagesCmd(m.images, 4, []string{url}) == nil {
+		t.Fatal("expected a fetch command")
+	}
 	m.bodyCache.clear()
 	res = m.renderMessageForDisplay(db.Message{ID: 4, BodyHTML: html}, 70)
 	if !strings.Contains(ansi.Strip(res.body), "loading remote image") {
@@ -221,7 +224,7 @@ func TestSwitchingMessagesClearsImages(t *testing.T) {
 	sink.Reset()
 
 	m.clearViewportImages()
-	if !bytes.Contains(sink.Bytes(), []byte("a=d,d=i")) {
+	if !bytes.Contains(sink.Bytes(), []byte("a=d,d=I")) {
 		t.Fatalf("expected image deletion escape, got %q", sink.String())
 	}
 }
@@ -584,5 +587,111 @@ func TestImageSettingClearsAndRestoresGraphics(t *testing.T) {
 	m.applyImageSetting()
 	if got := m.renderMessageForDisplay(msg, 70); len(got.images) != 1 {
 		t.Fatal("reenabling did not restore images")
+	}
+}
+
+func TestPartCacheBoundsAndReload(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		size  int
+		count int
+	}{
+		{"bytes", 1 << 20, 40},
+		{"entries", 1, maxPartCacheEntries + 1},
+		{"oversized", maxPartCacheBytes + 1, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newUIImageStore("auto")
+			loads := 0
+			load := func() []richmail.Part {
+				loads++
+				return []richmail.Part{{ContentID: "hero", ContentLocation: "hero.png", Data: make([]byte, tc.size)}}
+			}
+			for i := 1; i <= tc.count; i++ {
+				parts := store.partsFor(int64(i), load)
+				if !parts.HasLocation("hero.png") || parts.ByteSize() != tc.size {
+					t.Fatal("cache must return usable parts, even above its budget")
+				}
+			}
+			if store.partBytes > maxPartCacheBytes || len(store.partStores) > maxPartCacheEntries {
+				t.Fatalf("cache exceeds budget: bytes=%d entries=%d", store.partBytes, len(store.partStores))
+			}
+			if _, ok := store.partStores[1]; ok {
+				t.Fatal("oldest/oversized store should not be retained")
+			}
+			before := loads
+			if !store.partsFor(1, load).HasLocation("hero.png") || loads != before+1 {
+				t.Fatal("evicted store was not reloaded")
+			}
+		})
+	}
+}
+
+func TestRemoteEvictionUsesDecodedImageOrOffersReload(t *testing.T) {
+	m, _ := graphicsModel(t)
+	u := "https://example.com/hero.png"
+	msg := db.Message{ID: 123, BodyHTML: `<img src="` + u + `" alt="Hero">`}
+	m.images.allow(msg.ID)
+	m.images.recordRemote(u, &remoteEntry{data: pngBytes(t, 80, 40), done: true})
+	if len(m.renderMessageForDisplay(msg, 60).images) != 1 {
+		t.Fatal("initial image did not render")
+	}
+	for i := 0; i < maxRemoteCacheEntries; i++ {
+		m.images.recordRemote(fmt.Sprint(i), &remoteEntry{done: true})
+	}
+	if len(m.renderMessageForDisplay(msg, 60).images) != 1 {
+		t.Fatal("encoded-byte eviction must not discard available decoded pixels")
+	}
+	// Also evict the decoded copy and rendered bodies: this time the user must
+	// be offered a reload, with no network request made by rendering.
+	m.images.mu.Lock()
+	clear(m.images.decoded)
+	m.images.mu.Unlock()
+	m.bodyCache.clear()
+	res := m.renderMessageForDisplay(msg, 60)
+	if strings.Contains(res.body, "loading remote image") || !strings.Contains(res.body, "press i to load") {
+		t.Fatalf("expected reload prompt after eviction: %q", res.body)
+	}
+	cmd := fetchRemoteImagesCmd(m.images, msg.ID, []string{u, u})
+	if cmd == nil || fetchRemoteImagesCmd(m.images, msg.ID, []string{u}) != nil {
+		t.Fatal("only one fetch should be scheduled for a pending URL")
+	}
+	res = m.renderMessageForDisplay(msg, 60)
+	if !strings.Contains(res.body, "loading remote image") {
+		t.Fatal("scheduled fetch should display loading")
+	}
+	m.images.applyRemoteResults(remoteImagesLoadedMsg{messageID: msg.ID, results: []remoteFetchResult{{url: u, data: pngBytes(t, 80, 40)}}})
+	if len(m.images.pending) != 0 || len(m.renderMessageForDisplay(msg, 60).images) != 1 {
+		t.Fatal("completion should clear pending state and restore the image")
+	}
+}
+
+func TestAbsoluteContentLocationRendersWithoutRemoteFetch(t *testing.T) {
+	for _, malformed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("malformed=%t", malformed), func(t *testing.T) {
+			m, _ := graphicsModel(t)
+			u := "https://example.com/embedded.png"
+			data := pngBytes(t, 80, 40)
+			if malformed {
+				data = []byte("not an image")
+			}
+			m.images.partsFor(1, func() []richmail.Part {
+				return []richmail.Part{{ContentLocation: u, ContentType: "image/png", Data: data}}
+			})
+			msg := db.Message{ID: 1, HasAttachment: true, BodyHTML: `<img src="` + u + `" alt="Embedded">`}
+			res := m.renderMessageForDisplay(msg, 60)
+			if !malformed && len(res.images) != 1 {
+				t.Fatalf("local image should render without consent: %q", res.body)
+			}
+			if strings.Contains(res.body, "remote image") {
+				t.Fatalf("local MIME part was treated as remote: %q", res.body)
+			}
+			m.cfg.Display.ThreadedConversations = true
+			m.messageThreads = []messageThread{{Key: "local", Messages: []db.Message{msg}}}
+			m.messageCursor = 0
+			if urls := m.remoteImageURLsForCurrent(); len(urls) != 0 {
+				t.Fatalf("local part must never be fetched, even if malformed: %v", urls)
+			}
+		})
 	}
 }
