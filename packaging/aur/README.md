@@ -32,8 +32,10 @@ Use `./deploy.sh` → **AUR → Publish tidemail-bin**. It:
 2. Reads the checksums from that published `SHA256SUMS`. **Checksums must come
    from the release assets, not a local `go build`** — local builds lack the
    OAuth credentials and hash differently.
-3. Hashes the `LICENSE`, icon, and desktop entry blobs at the tag, which is
-   what the PKGBUILD's `raw.githubusercontent.com` source URLs serve. Tags
+3. Hashes the `LICENSE` blob at the tag, plus every file listed in
+   `AUR_TAG_FILES` in `deploy.conf` (the icon and the desktop entry), which is
+   what the PKGBUILD's `raw.githubusercontent.com` source URLs serve. Each one
+   reaches `render-pkgbuild.sh` as `--sha256-<name>`. Tags
    older than the icon do not carry these files, so they can no longer be
    published.
 4. Clones the AUR repo and picks `pkgrel`: `1` for a new `pkgver`, otherwise

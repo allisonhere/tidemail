@@ -15,7 +15,7 @@
 # redraw, not exit mid-frame. Every step reports its own status instead.
 set -uo pipefail
 
-DEPLOY_SCRIPT_VERSION="2.0.0"
+DEPLOY_SCRIPT_VERSION="2.1.0"
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SELF="$PROJECT_DIR/$(basename "${BASH_SOURCE[0]}")"
@@ -91,17 +91,21 @@ asset_name() { printf '%s-%s-%s.tar.gz' "$BINARY_NAME" "$1" "$2"; }
 # ── Command line ─────────────────────────────────────────────────────────────
 
 DRY_RUN=0
+PRESET_VERSION=""
 MODE="console"
 SYNC_TARGETS=()
 
 usage() {
   cat <<'USAGE'
-Usage: ./deploy.sh [--dry-run]
+Usage: ./deploy.sh [--dry-run] [--release vX.Y.Z]
        ./deploy.sh --check
        ./deploy.sh --sync DIR [DIR...]
 
   -n, --dry-run   Rehearse: no commit, push, tag, or file is written.
                   Toggle it from inside the console with `d`.
+      --release vX.Y.Z
+                  Start the console with this version chosen, as if it had
+                  been picked with Bump: build, notes and tag all use it.
       --check     Print the release-readiness checklist and exit:
                   0 when nothing fails, 1 otherwise. No terminal needed.
       --sync      Copy this console into other Tide repositories, each of
@@ -114,6 +118,14 @@ parse_args() {
   while [ $# -gt 0 ]; do
     case "$1" in
       -n | --dry-run) DRY_RUN=1 ;;
+      --release)
+        if [ $# -lt 2 ] || [[ ! $2 =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "deploy.sh: --release needs a vMAJOR.MINOR.PATCH version, e.g. --release v1.2.3" >&2
+          exit 2
+        fi
+        PRESET_VERSION=$2
+        shift
+        ;;
       --check) MODE="check" ;;
       --sync)
         MODE="sync"
@@ -160,6 +172,9 @@ sync_into() {
 # until the console exits. CURRENT_TAG is whatever git already has; keeping them
 # apart is what stops a status refresh from silently undoing a version bump.
 VERSION=""
+# Where VERSION came from, so a step never falls back silently:
+# "bumped", "--release", or "latest tag".
+VERSION_SOURCE=""
 CURRENT_TAG=""
 NEXT_VERSION=""
 
@@ -356,11 +371,25 @@ frame_flush() {
 
 # ── Status probes ────────────────────────────────────────────────────────────
 
-ST_VERSION="" ST_NEXT="" ST_BRANCH="" ST_DIRTY="" ST_GO="" ST_GH="" ST_AUR="" ST_AHEAD=""
+ST_VERSION="" ST_NEXT="" ST_BRANCH="" ST_DIRTY="" ST_GO="" ST_GH="" ST_AUR="" ST_AHEAD="" ST_IN_HISTORY=""
 AUR_PROBE_FILE=""
 
+# read_current_tag finds the latest release: the highest vX.Y.Z tag in the
+# repository. `git describe` would give the nearest tag behind HEAD instead,
+# which on a branch that is missing a release is an older version — and every
+# bump suggestion, "is this newer?" check and build fallback went wrong with it.
 read_current_tag() {
-  CURRENT_TAG=$(git -C "$PROJECT_DIR" describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || echo "v0.0.0")
+  CURRENT_TAG=$(git -C "$PROJECT_DIR" tag --list 'v[0-9]*' --sort=-v:refname 2>/dev/null |
+    grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+  [ -n "$CURRENT_TAG" ] || CURRENT_TAG="v0.0.0"
+}
+
+# release_in_history reports whether the latest release is part of HEAD. When
+# it is not, the release was cut from another branch, and releasing from here
+# would ship without its changes.
+release_in_history() {
+  [ "$CURRENT_TAG" = "v0.0.0" ] && return 0
+  git -C "$PROJECT_DIR" merge-base --is-ancestor "$CURRENT_TAG" HEAD 2>/dev/null
 }
 
 # semver_parts TAG sets MAJ MIN PAT, or fails for a tag that is not vX.Y.Z.
@@ -439,6 +468,7 @@ refresh_status() {
   suggest_next_patch
   ST_VERSION="$CURRENT_TAG"
   ST_NEXT="$NEXT_VERSION"
+  if release_in_history; then ST_IN_HISTORY=1; else ST_IN_HISTORY=0; fi
   ST_BRANCH=$(git -C "$PROJECT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
   ST_DIRTY=$(git -C "$PROJECT_DIR" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
   ST_AHEAD=$(ahead_of_origin)
@@ -816,7 +846,11 @@ draw_header() {
   # A long feature-branch name would otherwise eat the whole status row.
   short_branch="$ST_BRANCH"
   if [ "${#short_branch}" -gt 18 ]; then short_branch="${short_branch:0:17}…"; fi
-  ver_cell=$(status_cell "version" "$GREEN" "${ST_VERSION:-?}")
+  if [ "$ST_IN_HISTORY" = 0 ]; then
+    ver_cell=$(status_cell "version" "$YELLOW" "${ST_VERSION:-?} ⚠ not in this branch")
+  else
+    ver_cell=$(status_cell "version" "$GREEN" "${ST_VERSION:-?}")
+  fi
   if [ -n "$VERSION" ] && [ "$VERSION" != "$ST_VERSION" ]; then
     # A bump has been made: show what is actually going to be released, so a
     # pending version is never invisible on the way to the tag step.
@@ -1033,6 +1067,13 @@ readiness_checks() {
     check_line warn "golangci-lint is missing — the lint step will be skipped"
   fi
 
+  if [ "$ST_VERSION" = "v0.0.0" ]; then
+    check_line ok "no release yet"
+  elif [ "$ST_IN_HISTORY" = 0 ]; then
+    check_line fail "the latest release $ST_VERSION is not in $ST_BRANCH — merge the branch it was tagged on first, or this release drops its changes"
+  else
+    check_line ok "the latest release $ST_VERSION is in $ST_BRANCH"
+  fi
   case "$ST_BRANCH" in
     main | master) check_line ok "on $ST_BRANCH" ;;
     *) check_line warn "on $ST_BRANCH — releases usually come from main" ;;
@@ -1111,7 +1152,15 @@ act_check() {
 act_bump() {
   log_step "Bump version"
   read_current_tag
-  log_info "current tag: ${GREEN}${CURRENT_TAG}${NC}"
+  log_info "latest release: ${GREEN}${CURRENT_TAG}${NC}"
+
+  # A version given with --release is the choice already; check it like any
+  # other instead of asking again and quietly replacing it.
+  local choice=""
+  if [ "$VERSION_SOURCE" = "--release" ]; then
+    choice=$VERSION
+    log_info "using ${GREEN}${choice}${NC} from --release"
+  fi
 
   local patch="" minor="" major=""
   if semver_parts "$CURRENT_TAG"; then
@@ -1120,8 +1169,9 @@ act_bump() {
     major="v$((MAJ + 1)).0.0"
   fi
 
-  local choice=""
-  if [ -n "$patch" ]; then
+  if [ -n "$choice" ]; then
+    :
+  elif [ -n "$patch" ]; then
     PROMPT_KEYS="p patch · m minor · M major · c custom · enter patch · esc cancel"
     while [ -z "$choice" ]; do
       ask "Release which version?" "p $patch · m $minor · M $major · c custom"
@@ -1156,6 +1206,7 @@ act_bump() {
     log_warn "$choice is not later than $CURRENT_TAG"
     tui_confirm "Release $choice anyway?" n || return 1
   fi
+  [ "$VERSION_SOURCE" = "--release" ] && [ "$choice" = "$VERSION" ] || VERSION_SOURCE="bumped"
   VERSION=$choice
   log_ok "version set to ${GREEN}${VERSION}${NC}"
   refresh_status
@@ -1167,6 +1218,7 @@ ensure_version() {
   if [ -z "$VERSION" ] || [ "$VERSION" = "v0.0.0" ]; then
     read_current_tag
     VERSION="$CURRENT_TAG"
+    VERSION_SOURCE="latest tag"
   fi
   [ -n "$VERSION" ] && [ "$VERSION" != "v0.0.0" ]
 }
@@ -1304,6 +1356,10 @@ act_lint() {
 act_build() {
   log_step "Build binaries locally"
   ensure_version
+  log_info "building as ${GREEN}${VERSION:-dev}${NC} ${DIM}(${VERSION_SOURCE:-no version})${NC}"
+  if [ "$VERSION_SOURCE" = "latest tag" ]; then
+    log_detail "no version chosen this session — use 'Bump version' or --release to build a new one"
+  fi
   log_info "local builds are a compile check — release assets come from CI"
   [ -n "$BUILD_NOTE" ] && log_detail "$BUILD_NOTE"
 
@@ -1427,6 +1483,7 @@ act_release() {
     log_warn "no version was bumped this session"
     tui_confirm "Re-release the existing $CURRENT_TAG?" n || { log_info "run 'Bump version' first"; return 1; }
     VERSION=$CURRENT_TAG
+    VERSION_SOURCE="latest tag"
   fi
 
   # A tag is made from the last commit, so uncommitted work would be missing
@@ -1960,6 +2017,10 @@ main() {
   load_config
   setup_colors
   cd "$PROJECT_DIR" || exit 1
+  if [ -n "$PRESET_VERSION" ]; then
+    VERSION=$PRESET_VERSION
+    VERSION_SOURCE="--release"
+  fi
 
   if [ "$MODE" = "check" ]; then
     printf '%s release readiness\n' "$(gradient " ${APP_GLYPH} ${APP_NAME} ")"
