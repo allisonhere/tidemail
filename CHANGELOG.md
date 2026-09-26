@@ -6,6 +6,12 @@ All notable changes to TideMail are documented in this file.
 
 ## v1.0.28
 
+**Release highlights:** images in HTML mail now render inline in the reading
+pane on Ghostty, Kitty, and foot, sized to fit without distortion and loaded in
+the background so moving through the list stays quick. Remote images stay
+blocked until you press `i`. Receipts keep their item and price columns, and
+newsletter cards stay together with a rule between them.
+
 ### Added
 
 - Receipt tables retain item/price columns and merged-cell totals, including

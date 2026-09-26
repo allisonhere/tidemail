@@ -35,6 +35,11 @@ One inbox, several built-in themes.
   clipboard, undo and redo, and word movement. You can switch on Vim motions
   and commands instead. Optional AI tools can summarize mail, proofread a
   draft, and build local filters from plain English.
+- **See the pictures, not just the alt text.** On Ghostty, Kitty, and foot,
+  images in HTML mail render inline in the reading pane, sized to fit and
+  loaded in the background so browsing stays quick. Remote images wait until
+  you press `i`. Receipts keep their columns and newsletter cards stay
+  together.
 - **Readable by design, in every theme.** Text, selection highlights, and the
   focused-pane border are all checked against WCAG-style contrast minimums
   (4.5:1 for text, 3:1+ for large text and UI elements like borders) across
@@ -156,7 +161,10 @@ and button — with a thin rule between neighbouring cards.
 TideMail renders HTML mail as terminal text. On terminals with Kitty graphics support
 (Ghostty, Kitty, foot), images embedded in the message — CID parts, inline data
 URIs, and content-location references — are drawn as real raster images inline in
-the reading pane, scaled to the pane and scrolling with the document. Remote images
+the reading pane, scrolling with the document. They fit the pane and the sender's
+width and height without being stretched or enlarged, and are laid out again when
+you change the terminal font size. Images load in the background once you stop on
+a message, so moving through the list stays quick. Remote images
 stay blocked for privacy until you press `i`, which loads them for the message you
 are reading; `[display] images = "off"` forces text placeholders everywhere. On
 terminals without graphics support every image becomes a labelled text placeholder.
