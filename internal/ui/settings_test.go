@@ -1706,3 +1706,57 @@ func TestSettingsManualInstallCopyKeySetsAction(t *testing.T) {
 		t.Fatalf("expected copy manual install action, got %v", got)
 	}
 }
+
+// settingsOverlayWidth returns the outer width of the Settings box in a
+// rendered screen, measured along its top border.
+func settingsOverlayWidth(t *testing.T, screen string) int {
+	t.Helper()
+	for _, line := range strings.Split(ansi.Strip(screen), "\n") {
+		if !strings.Contains(line, "tidemail · settings") {
+			continue
+		}
+		start := strings.Index(line, "╭")
+		end := strings.LastIndex(line, "╮")
+		if start < 0 || end < start {
+			break
+		}
+		return lipgloss.Width(line[start : end+len("╮")])
+	}
+	t.Fatalf("settings overlay not found in:\n%s", ansi.Strip(screen))
+	return 0
+}
+
+// Issue #30: on a wide terminal Settings stayed 62 columns wide, leaving
+// controls so little room that theme names and hints were cut off.
+func TestSettingsOverlayGrowsWithTerminal(t *testing.T) {
+	cases := []struct {
+		termW, want int
+	}{
+		{termW: 200, want: 96 + 2}, // + the panel border
+		{termW: 70, want: 70 - 4 + 2},
+	}
+	for _, tc := range cases {
+		m := NewModel(nil, config.DefaultConfig(), "dev", false)
+		m.width, m.height = tc.termW, 50
+		m.overlay = overlaySettings
+		if got := settingsOverlayWidth(t, m.View()); got != tc.want {
+			t.Errorf("terminal %d cols: settings box is %d wide, want %d", tc.termW, got, tc.want)
+		}
+	}
+}
+
+func TestSettingsAtMaxWidthDoesNotTruncate(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Theme = "catppuccin-mocha"
+	w := settingsOverlayMaxW
+	chrome := newManagerChrome(w, CatppuccinMocha, false)
+	for _, section := range []settingsSection{ssDisplay, ssAdvanced, ssAbout} {
+		s := newSettings(cfg, settingsUpdateState{})
+		s.setActiveSection(section)
+		s.setFocusedPane(settingsPaneDetail)
+		view := ansi.Strip(s.View(w, 40, chrome))
+		if strings.Contains(view, "…") {
+			t.Errorf("section %d truncated at width %d:\n%s", section, w, view)
+		}
+	}
+}

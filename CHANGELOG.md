@@ -13,6 +13,15 @@ All notable changes to TideMail are documented in this file.
   launchers. The `tidemail-bin` AUR package installs both, starting with the
   first release that includes them. The guide shows how to install them by hand.
 
+### Fixed
+
+- **Settings uses the room a wide terminal gives it.** The Settings window was
+  capped at 62 columns however wide the terminal was, which left each control
+  about 17 columns: theme names, the View Logs hint and other values were cut
+  off with `…`, and changing the font size or display scaling did not help. It
+  now grows with the terminal, up to 96 columns, so they fit on one line. Small
+  terminals keep the same size as before. (#30)
+
 ## v1.0.24
 
 ## v1.0.23

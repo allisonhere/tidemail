@@ -9,6 +9,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// settingsOverlayMaxW caps how wide Settings grows on a large terminal. Narrower
+// caps left controls ~17 columns, cutting off theme names, action hints and
+// picker values however much room the terminal had.
+const settingsOverlayMaxW = 96
+
 func (m Model) renderOverlay(base string) string {
 	var box string
 
@@ -183,7 +188,7 @@ func (m Model) renderOverlay(base string) string {
 		box = renderSoftPanelBox(inner, winW, "tidemail", "help", chrome)
 
 	case overlaySettings:
-		winW := min(m.width-4, 62)
+		winW := min(m.width-4, settingsOverlayMaxW)
 		winH := min(m.height-4, 36)
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		inner := m.settings.View(winW, winH, chrome)
