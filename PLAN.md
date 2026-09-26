@@ -64,6 +64,11 @@ Acceptance criteria:
 
 ## Milestone 2: image geometry
 
+Status: implemented. `richmail.Layout` applies one scale factor to both axes.
+Rather than rebuilding the backend (the Kitty backend never reads the cell
+size), the image store keeps the current geometry and `refreshGeometry` runs on
+every `tea.WindowSizeMsg`. Live-terminal inspection is still pending.
+
 Honor height hints and refresh terminal cell geometry after a resize.
 
 Implementation:

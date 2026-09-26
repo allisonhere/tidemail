@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 	"net"
 	"net/url"
 	"strings"
@@ -318,5 +319,63 @@ func TestStripControl(t *testing.T) {
 	}
 	if !strings.Contains(got, "a") || !strings.Contains(got, "b") {
 		t.Fatalf("visible text lost: %q", got)
+	}
+}
+
+// assertProportional checks a placement keeps the source aspect ratio to
+// within one cell of rounding on the shorter side.
+func assertProportional(t *testing.T, p Placement, w, h int, geom CellGeometry) {
+	t.Helper()
+	wantRows := float64(p.Cols) * geom.CellWidthPx * float64(h) / float64(w) / geom.CellHeightPx
+	wantCols := float64(p.Rows) * geom.CellHeightPx * float64(w) / float64(h) / geom.CellWidthPx
+	if math.Abs(float64(p.Rows)-wantRows) > 1 && math.Abs(float64(p.Cols)-wantCols) > 1 {
+		t.Fatalf("placement %+v distorts %dx%d (want rows~%.1f or cols~%.1f)", p, w, h, wantRows, wantCols)
+	}
+}
+
+func TestLayoutGeometryCases(t *testing.T) {
+	geom := CellGeometry{CellWidthPx: 8, CellHeightPx: 16}
+	for _, tc := range []struct {
+		name       string
+		in         Intrinsic
+		avail      int
+		cols, rows int // 0 means "only check proportion"
+	}{
+		{"landscape", Intrinsic{PixelWidth: 800, PixelHeight: 400}, 200, 100, 25},
+		{"portrait", Intrinsic{PixelWidth: 400, PixelHeight: 800}, 200, 50, 50},
+		{"heightHintOnly", Intrinsic{PixelWidth: 2400, PixelHeight: 1200, HintHeight: 300}, 200, 75, 19},
+		{"widthHintOnly", Intrinsic{PixelWidth: 2400, PixelHeight: 1200, HintWidth: 600}, 200, 75, 19},
+		{"hintBoxHeightWins", Intrinsic{PixelWidth: 1000, PixelHeight: 500, HintWidth: 800, HintHeight: 100}, 200, 25, 6},
+		{"hintBoxWidthWins", Intrinsic{PixelWidth: 1000, PixelHeight: 500, HintWidth: 160, HintHeight: 400}, 200, 20, 5},
+		{"hintsNeverEnlarge", Intrinsic{PixelWidth: 80, PixelHeight: 40, HintWidth: 800, HintHeight: 400}, 200, 10, 3},
+		{"paneLimits", Intrinsic{PixelWidth: 1600, PixelHeight: 800}, 50, 50, 13},
+		{"extremeTall", Intrinsic{PixelWidth: 1000, PixelHeight: 100000}, 200, 0, 0},
+		{"extremeWide", Intrinsic{PixelWidth: 100000, PixelHeight: 1000}, 70, 70, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p, ok := Layout(tc.in, tc.avail, geom)
+			if !ok {
+				t.Fatal("layout rejected")
+			}
+			if p.Cols < 1 || p.Cols > tc.avail || p.Rows < 1 || p.Rows > maxImageRows {
+				t.Fatalf("placement out of bounds: %+v", p)
+			}
+			if tc.cols > 0 && p.Cols != tc.cols {
+				t.Fatalf("cols = %d, want %d (%+v)", p.Cols, tc.cols, p)
+			}
+			if tc.rows > 0 && p.Rows != tc.rows {
+				t.Fatalf("rows = %d, want %d (%+v)", p.Rows, tc.rows, p)
+			}
+			assertProportional(t, p, tc.in.PixelWidth, tc.in.PixelHeight, geom)
+		})
+	}
+}
+
+func TestLayoutUnknownGeometryUsesDefault(t *testing.T) {
+	in := Intrinsic{PixelWidth: 400, PixelHeight: 200}
+	got, _ := Layout(in, 100, CellGeometry{})
+	want, _ := Layout(in, 100, DefaultCellGeometry())
+	if got != want {
+		t.Fatalf("unknown geometry = %+v, want default %+v", got, want)
 	}
 }

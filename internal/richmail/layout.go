@@ -66,35 +66,35 @@ const maxImageRows = 512
 // It returns ok=false when there is nothing to lay out (no intrinsic size or no
 // available width), in which case the caller shows the text placeholder.
 //
-// The rules mirror how a browser approximates an email image:
+// Every constraint yields a scale factor and the smallest one applies to both
+// axes, which mirrors how a browser approximates an email image without ever
+// distorting it:
 //   - never enlarge beyond the decoded pixel size
-//   - honour an author width hint as a ceiling
+//   - fit within the author's width and height hints; either alone is a
+//     proportional ceiling, both together a box
 //   - honour CSS max-width as a ceiling
-//   - never exceed the available column width
-//   - preserve aspect ratio exactly
+//   - never exceed the available column width or the row cap
 func Layout(in Intrinsic, availCols int, geom CellGeometry) (Placement, bool) {
 	if availCols <= 0 || in.PixelWidth <= 0 || in.PixelHeight <= 0 {
 		return Placement{}, false
 	}
 	geom = geom.normalized()
 
-	targetW := float64(in.PixelWidth)
-	if in.HintWidth > 0 && float64(in.HintWidth) < targetW {
-		targetW = float64(in.HintWidth)
+	w, h := float64(in.PixelWidth), float64(in.PixelHeight)
+	scale := 1.0
+	limit := func(ceiling, size float64) {
+		if ceiling > 0 {
+			scale = math.Min(scale, ceiling/size)
+		}
 	}
-	if in.MaxWidth > 0 && float64(in.MaxWidth) < targetW {
-		targetW = float64(in.MaxWidth)
-	}
-	availPx := float64(availCols) * geom.CellWidthPx
-	if targetW > availPx {
-		targetW = availPx
-	}
-	if targetW < 1 {
-		targetW = 1
-	}
+	limit(float64(in.HintWidth), w)
+	limit(float64(in.HintHeight), h)
+	limit(float64(in.MaxWidth), w)
+	limit(float64(availCols)*geom.CellWidthPx, w)
+	limit(float64(maxImageRows)*geom.CellHeightPx, h)
 
-	aspect := float64(in.PixelHeight) / float64(in.PixelWidth)
-	targetH := targetW * aspect
+	targetW := math.Max(1, w*scale)
+	targetH := math.Max(1, h*scale)
 
 	cols := int(math.Round(targetW / geom.CellWidthPx))
 	rows := int(math.Round(targetH / geom.CellHeightPx))

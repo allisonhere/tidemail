@@ -48,6 +48,9 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Inline images honour the sender's height as well as width, fitting inside
+  both without distortion, and are re-laid out when the terminal font size
+  changes instead of keeping placements sized for the old cells.
 - Moving through the message list no longer stalls on messages with loaded
   images. Images upload in the background once the cursor settles, and
   recently shown images stay in the terminal (up to 48 images or 64 MiB of

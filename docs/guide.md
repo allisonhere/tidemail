@@ -134,8 +134,9 @@ and then top to bottom. Quoted and forwarded messages are not grouped.
 On a terminal with Kitty graphics support — Ghostty, Kitty, foot —
 images embedded in the message (CID parts, inline data URIs, and
 content-location references) are drawn as real raster images inside the reading
-pane. They are scaled to the pane width, keep their aspect ratio, and scroll,
-clip, and reflow with the surrounding text. Remote images are blocked for
+pane. They are scaled to the pane width and to the sender's width and height,
+never stretched or enlarged, and scroll, clip, and reflow with the surrounding
+text. Changing the terminal font size re-lays them out for the new cell size. Remote images are blocked for
 privacy: press `i` in the content pane to load them for the message you are
 reading. On terminals without graphics support, every image becomes a labelled
 text placeholder such as `[image: Fall sale]`, and the message stays readable.

@@ -480,6 +480,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.viewport = viewport.New(m.contentBodyWidth(), m.contentBodyHeight())
 		m.viewport.Style = lipgloss.NewStyle()
+		if m.images.refreshGeometry() {
+			m.bodyCache.clear()
+			m.viewportCache.clear()
+		}
 		if m.activeMessageRowCount() > 0 {
 			m.setViewportForCurrentRow()
 			m.ensureContentFocusVisible()

@@ -67,11 +67,12 @@ Content-Location privacy, duplicate fetch suppression, and terminal cleanup.
 - Image uploads are asynchronous: `applyImages` only queues, `Model.Update`
   collects `takeUploadCmd`, and the command encodes after a 90 ms debounce.
   Uploaded images stay resident in the terminal under an LRU budget and are
-  deleted by `ReleaseTerminalImages` on exit. Milestone 2's backend rebuild on
-  resize must call `clearImages` first so resident IDs are not reused with
-  stale geometry, and must not swap `backend` while an upload command runs.
-- Image layout records height hints but currently sizes primarily from width;
-  terminal cell geometry is detected only when the image store is created.
+  deleted by `ReleaseTerminalImages` on exit. A cell-geometry change calls
+  `clearImages` before updating the store's geometry; the backend is never
+  swapped, so in-flight upload commands stay safe.
+- Image layout fits width and height hints with one scale factor. Cell
+  geometry is re-read on each resize; terminals that report no pixel size keep
+  the default or last valid geometry.
 
 ## Recommended next step
 
@@ -80,7 +81,8 @@ Milestone 1 is implemented and the shared fixtures live in
 fixture at 24, 40, 80, and 120 columns in plain and styled modes. A live
 terminal pass over the newsletter fixture is still outstanding.
 
-Next, implement Milestone 2 in `PLAN.md` (image geometry). Avoid coupling this
+Milestone 2 (image geometry) is also implemented. Next, run Milestone 3's live
+terminal pass in Ghostty or Kitty, including a font-size change. Avoid coupling this
 work to `tideui`; it is specific to email HTML and belongs in TideMail.
 
 Before editing, confirm the working tree is clean. After implementation, run the full

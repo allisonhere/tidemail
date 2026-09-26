@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"slices"
 	"strconv"
@@ -119,7 +120,13 @@ type uiImageStore struct {
 	resident      map[uint32]*residentImage
 	residentBytes int
 	useSeq        uint64
-	tty           *os.File
+
+	// cell is the terminal's current cell size in pixels. It is re-read on
+	// every resize because changing the font size keeps the protocol but
+	// changes the pixels per cell. detectGeometry is swapped out by tests.
+	cell           richmail.CellGeometry
+	detectGeometry func() richmail.CellGeometry
+	tty            *os.File
 	// sink, when non-nil, receives terminal escape bytes instead of /dev/tty.
 	// Tests set it to assert uploads without touching a real terminal.
 	sink func([]byte)
@@ -190,7 +197,44 @@ func newUIImageStore(imagesSetting string) *uiImageStore {
 		idFor:      map[string]uint32{},
 		debounce:   imageUploadDebounce,
 		resident:   map[uint32]*residentImage{},
+
+		cell:           caps.Cell,
+		detectGeometry: termimage.DetectGeometry,
 	}
+}
+
+// refreshGeometry re-reads the terminal's cell size. When it changed, every
+// terminal image is released, since its placement was sized in the old cells,
+// and the generation moves so bodies re-render. A terminal that reports no
+// pixel size keeps the last valid geometry. It reports whether anything
+// changed.
+func (s *uiImageStore) refreshGeometry() bool {
+	if !s.graphics() || s.detectGeometry == nil {
+		return false
+	}
+	geom := s.detectGeometry()
+	if geom.CellWidthPx <= 0 || geom.CellHeightPx <= 0 {
+		return false
+	}
+	s.mu.Lock()
+	same := math.Abs(geom.CellWidthPx-s.cell.CellWidthPx) < 0.01 &&
+		math.Abs(geom.CellHeightPx-s.cell.CellHeightPx) < 0.01
+	s.mu.Unlock()
+	if same {
+		return false
+	}
+	s.clearImages()
+	s.mu.Lock()
+	s.cell = geom
+	s.generation++
+	s.mu.Unlock()
+	return true
+}
+
+func (s *uiImageStore) cellGeometry() richmail.CellGeometry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cell
 }
 
 // graphics returns whether real raster images can be placed.
@@ -641,7 +685,7 @@ func (m Model) imageContext(msg db.Message, width int) *imageRenderContext {
 		messageID:   messageID,
 		allowRemote: store.isAllowed(messageID),
 		availCols:   width,
-		cellGeom:    store.backend.Capabilities().Cell,
+		cellGeom:    store.cellGeometry(),
 		parts:       parts,
 	}
 }

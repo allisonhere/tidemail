@@ -34,6 +34,8 @@ func graphicsModel(t *testing.T) (Model, *bytes.Buffer) {
 	buf := &bytes.Buffer{}
 	store.sink = func(b []byte) { buf.Write(b) }
 	store.debounce = 0
+	store.cell = richmail.CellGeometry{CellWidthPx: 8, CellHeightPx: 16}
+	store.detectGeometry = func() richmail.CellGeometry { return store.cell }
 	m.images = store
 	return m, buf
 }
@@ -784,5 +786,46 @@ func TestAbsoluteContentLocationRendersWithoutRemoteFetch(t *testing.T) {
 				t.Fatalf("local part must never be fetched, even if malformed: %v", urls)
 			}
 		})
+	}
+}
+
+func TestResizeRefreshesCellGeometry(t *testing.T) {
+	m, sink := graphicsModel(t)
+	msg := db.Message{ID: 95, BodyHTML: `<img src="` + pngDataURI(t, 400, 200) + `" alt="Hero">`}
+	before := m.renderMessageForDisplay(msg, 70)
+	m.applyViewportImages(before.images)
+	flushImageUploads(t, &m)
+	sink.Reset()
+	gen := m.images.gen()
+
+	// A terminal that reports no pixel size keeps the last valid geometry.
+	m.images.detectGeometry = func() richmail.CellGeometry { return richmail.CellGeometry{} }
+	if m.images.refreshGeometry() || sink.Len() != 0 {
+		t.Fatal("zero geometry must not replace a valid one")
+	}
+
+	// Unchanged geometry is a no-op, so ordinary resizes keep their images.
+	m.images.detectGeometry = func() richmail.CellGeometry { return richmail.CellGeometry{CellWidthPx: 8, CellHeightPx: 16} }
+	if m.images.refreshGeometry() || sink.Len() != 0 {
+		t.Fatal("unchanged geometry released images")
+	}
+
+	// A font-size change doubles the cell size.
+	m.images.detectGeometry = func() richmail.CellGeometry { return richmail.CellGeometry{CellWidthPx: 16, CellHeightPx: 32} }
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = next.(Model)
+	if !bytes.Contains(sink.Bytes(), []byte(fmt.Sprintf("a=d,d=I,i=%d,", before.images[0].id))) {
+		t.Fatalf("old placement not released: %q", sink.String())
+	}
+	if len(m.images.resident) != 0 || m.images.gen() == gen {
+		t.Fatal("geometry change must clear resident images and invalidate renders")
+	}
+	after := m.renderMessageForDisplay(msg, 70)
+	if len(after.images) != 1 {
+		t.Fatal("image missing after geometry change")
+	}
+	b, a := before.images[0].placement, after.images[0].placement
+	if a.Cols*2 != b.Cols || a.Rows*2 < b.Rows-1 || a.Rows*2 > b.Rows+1 {
+		t.Fatalf("placement not rebuilt for larger cells: before %+v after %+v", b, a)
 	}
 }
