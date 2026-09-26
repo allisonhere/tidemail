@@ -8,6 +8,8 @@ import (
 )
 
 func normalizeHTMLForRendering(raw string) string {
+	// The group sentinel is TideMail's own marker; mail must not forge one.
+	raw = stripGroupSentinels(raw)
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(raw))
 	if err != nil {
 		return raw
@@ -32,7 +34,9 @@ func normalizeHTMLForRendering(raw string) string {
 	removeZeroFontText(doc)
 	removeEmailSpacerElements(doc)
 	normalizeEmailQuotes(doc)
+	markNewsletterGroups(doc)
 	normalizeEmailTables(doc)
+	insertGroupSentinels(doc)
 	body := doc.Find("body")
 	if body.Length() > 0 {
 		if out, err := body.Html(); err == nil {

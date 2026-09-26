@@ -126,6 +126,11 @@ a labelled record; tables without headings use label/value pairs for two-column
 rows. This adapts automatically as you resize the reading pane. Complex tables
 with row-spanning cells retain the simpler text fallback.
 
+Newsletters keep each card together: an image stays next to its heading,
+description, and button, and a thin rule separates one card from the next.
+Cards that sit side by side in a browser stack in reading order, left to right
+and then top to bottom. Quoted and forwarded messages are not grouped.
+
 On a terminal with Kitty graphics support — Ghostty, Kitty, foot —
 images embedded in the message (CID parts, inline data URIs, and
 content-location references) are drawn as real raster images inside the reading

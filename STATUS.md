@@ -47,6 +47,9 @@ Current release: **v1.0.27**.
 - **Receipt tables**: detect simple item/amount tables without semantic headers,
   preserve merged-cell totals, align amounts, and use labelled records in narrow
   panes. Complex row-spanning tables retain the text fallback.
+- **Newsletter cards**: layout cells holding an image, heading, description, or
+  button stay together and are separated by a thin rule. Side-by-side cards
+  stack in reading order; quoted mail is not grouped.
 - **Image settings**: Settings → Display → Reading → Images offers Auto/Off,
   terminal capability information, and immediate application on save.
 - **WezTerm limitation**: inline images are currently unsupported. TideMail uses

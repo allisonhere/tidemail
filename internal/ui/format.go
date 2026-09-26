@@ -543,6 +543,7 @@ func renderHTMLBodyWithImages(html string, width int, th Theme, plainUI, filterL
 		markdown = filterLinksFromMarkdown(markdown)
 	}
 	rendered := renderMarkdown(markdown, width, th, plainUI)
+	rendered = expandGroupSeparators(rendered, width, th, plainUI)
 
 	var images []renderImage
 	if len(plans) > 0 {
@@ -788,13 +789,21 @@ func normalizeEmailTables(doc *goquery.Document) {
 		tables = append(tables, table)
 	})
 	for i := len(tables) - 1; i >= 0; i-- {
-		if isDataTable(tables[i]) {
-			if _, ok := emailTableRows(tables[i]); ok {
-				continue
-			}
+		if isRenderedDataTable(tables[i]) {
+			continue
 		}
 		flattenLayoutTable(tables[i])
 	}
+}
+
+// isRenderedDataTable reports whether the table survives normalization as a
+// data table rather than being flattened as layout.
+func isRenderedDataTable(table *goquery.Selection) bool {
+	if !isDataTable(table) {
+		return false
+	}
+	_, ok := emailTableRows(table)
+	return ok
 }
 
 func isDataTable(table *goquery.Selection) bool {

@@ -150,6 +150,9 @@ Receipts keep item descriptions, quantities, and amounts in aligned columns,
 including totals with merged cells. Narrow reading panes show labelled records
 instead, so prices stay associated with their items.
 
+Newsletter cards stay together — each image next to its heading, description,
+and button — with a thin rule between neighbouring cards.
+
 TideMail renders HTML mail as terminal text. On terminals with Kitty graphics support
 (Ghostty, Kitty, foot), images embedded in the message — CID parts, inline data
 URIs, and content-location references — are drawn as real raster images inline in

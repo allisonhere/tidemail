@@ -59,18 +59,23 @@ Content-Location privacy, duplicate fetch suppression, and terminal cleanup.
   placeholders and virtual placements.
 - Animated GIFs show their first frame. SVG and remote CSS backgrounds are not
   rendered.
-- Newsletter presentation tables are flattened in DOM order. Side-by-side cards
-  stack, and boundaries between adjacent cards can still be weak.
+- Newsletter content groups (Milestone 1) are detected in
+  `internal/ui/email_groups.go`. Cards made of several rows spread across
+  separate layout tables are only grouped when a wrapping cell contains them;
+  a card split across sibling rows of one table is not recognised.
 - Complex row-spanning data tables use the simpler text fallback.
 - Image layout records height hints but currently sizes primarily from width;
   terminal cell geometry is detected only when the image store is created.
 
 ## Recommended next step
 
-Implement Milestone 1 in `PLAN.md`: preserve newsletter content-group boundaries
-through layout-table flattening. Start with normalization and rendering tests,
-then change the DOM pass. Avoid coupling this work to `tideui`; it is specific to
-email HTML and belongs in TideMail.
+Milestone 1 is implemented and the shared fixtures live in
+`internal/ui/testdata/mail/`; `TestMailFixturesRenderBounded` renders every
+fixture at 24, 40, 80, and 120 columns in plain and styled modes. A live
+terminal pass over the newsletter fixture is still outstanding.
+
+Next, implement Milestone 2 in `PLAN.md` (image geometry). Avoid coupling this
+work to `tideui`; it is specific to email HTML and belongs in TideMail.
 
 Before editing, confirm the working tree is clean. After implementation, run the full
 quality gate above and manually inspect at least one narrow and one wide frame.

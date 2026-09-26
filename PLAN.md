@@ -21,6 +21,9 @@ styling only where it improves comprehension.
 
 ## Milestone 1: newsletter content groups
 
+Status: implemented in `internal/ui/email_groups.go` with tests in
+`email_groups_test.go`. Live-terminal inspection is still pending.
+
 Keep an image, heading, description, and call-to-action together when flattening
 presentation tables.
 
@@ -92,6 +95,8 @@ Acceptance criteria:
 Create a small, synthetic fixture set under `internal/ui/testdata/` containing a
 receipt, newsletter, reply thread, image-heavy message, malformed HTML, and long
 international text. Fixtures must contain no private mail or live tracking URLs.
+The set now exists in `internal/ui/testdata/mail/` (plus a forwarded
+newsletter), and `TestMailFixturesRenderBounded` covers every file in it.
 
 For each milestone, verify plain and styled rendering at 24, 40, 80, and 120
 columns; run `gofmt -w .`, `go build ./...`, `go vet ./...`,

@@ -9,6 +9,10 @@ All notable changes to TideMail are documented in this file.
 - Receipt tables retain item/price columns and merged-cell totals, including
   simple receipts without semantic headers. Amounts align on the right; narrow
   panes switch automatically to labelled records or label/value pairs.
+- Newsletter cards stay together. Each card's image, heading, description, and
+  button render as one block, and a thin rule separates neighbouring cards.
+  Side-by-side cards stack left to right, then top to bottom. Quoted and
+  forwarded mail is left as is.
 - Add an Auto/Off image selector under Settings → Display → Reading, with
   terminal capability information. Saving applies the preference immediately.
 
