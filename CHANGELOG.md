@@ -15,6 +15,11 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- **The account manager scrolls to the account you select.** With more
+  accounts than fit in the window (about eight on a typical screen), moving
+  down past the last visible one left the selection off screen, so the rest
+  could not be reached to edit, delete, reorder or make default. The list now
+  scrolls to keep the selected account in view. (#28)
 - **Settings uses the room a wide terminal gives it.** The Settings window was
   capped at 62 columns however wide the terminal was, which left each control
   about 17 columns: theme names, the View Logs hint and other values were cut

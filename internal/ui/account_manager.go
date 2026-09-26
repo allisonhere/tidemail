@@ -1422,8 +1422,12 @@ func (am AccountManager) viewList(width, height int, chrome managerChrome, style
 	}
 	blank := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
 	rows := []string{blank}
+	selectedLine := 0
 	for i, acc := range am.accounts {
 		selected := i == am.cursor
+		if selected {
+			selectedLine = viewLineCount(rows)
+		}
 		// Join on the stable config ID, never on the display name: two
 		// accounts may share a name, and pairing by name showed each of them
 		// the other's servers.
@@ -1442,9 +1446,14 @@ func (am AccountManager) viewList(width, height int, chrome managerChrome, style
 	}
 
 	bodyH := max(1, height-2)
+	// Scroll so the selected card stays on screen. Centre on its middle line
+	// so all three of its lines show, not just the name.
+	lines := strings.Split(strings.Join(rows, "\n"), "\n")
+	offset := settingsScrollOffset(len(lines), selectedLine+1, bodyH)
+	end := min(len(lines), offset+bodyH)
 	body := clampView(
 		lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(
-			strings.Join(rows, "\n"),
+			strings.Join(lines[offset:end], "\n"),
 		),
 		width, bodyH, chrome.baseBg,
 	)

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -700,5 +701,45 @@ func TestLoadMailboxMessagesIncludesReadMessages(t *testing.T) {
 	}
 	if len(msg.Messages) != 2 {
 		t.Fatalf("expected read and unread messages, got %d", len(msg.Messages))
+	}
+}
+
+// Issue #28: with more accounts than fit in the window, moving past the last
+// visible card left it off screen, so accounts 9+ could not be reached.
+func TestAccountManagerListScrollsToSelectedAccount(t *testing.T) {
+	var accounts []db.Account
+	var configs []config.AccountConfig
+	for i := 1; i <= 11; i++ {
+		id := fmt.Sprintf("acct-%02d", i)
+		accounts = append(accounts, db.Account{ID: int64(i), ConfigID: id, Name: fmt.Sprintf("Mailbox %02d", i)})
+		configs = append(configs, config.AccountConfig{ID: id, Name: fmt.Sprintf("Mailbox %02d", i), User: fmt.Sprintf("user%02d@example.com", i)})
+	}
+	am := NewAccountManager(nil)
+	am.setData(accounts, nil, configs, config.OAuthConfig{}, "")
+	styles := BuildStyles(CatppuccinMocha, "compact", "square")
+
+	// The window the overlay gives the list on a typical terminal: 36 body lines.
+	const w, h = 74, 38
+	for step := 0; step < len(accounts); step++ {
+		view := ansi.Strip(am.View(w, h, styles))
+		want := accounts[am.cursor].Name
+		if !strings.Contains(view, want) {
+			t.Fatalf("cursor on %q but it is not on screen:\n%s", want, view)
+		}
+		if got := strings.Count(view, "\n") + 1; got > h {
+			t.Fatalf("list view is %d lines, taller than the %d-line window", got, h)
+		}
+		am, _, _ = am.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}, DefaultKeys)
+	}
+	if am.cursor != len(accounts)-1 {
+		t.Fatalf("cursor stopped at %d, want %d", am.cursor, len(accounts)-1)
+	}
+
+	// Back at the top, the first account is visible again.
+	for range accounts {
+		am, _, _ = am.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}, DefaultKeys)
+	}
+	if view := ansi.Strip(am.View(w, h, styles)); !strings.Contains(view, "Mailbox 01") {
+		t.Fatalf("expected first account visible after moving back up:\n%s", view)
 	}
 }
