@@ -67,9 +67,9 @@ func TestRenderPKGBUILDFillsEveryPlaceholder(t *testing.T) {
 	}
 	// The icon and desktop entry come from the tag and land where launchers look.
 	for _, want := range []string{
-		"/raw/v$pkgver/images/tidemail-icon.svg",
+		"/raw/v$pkgver/images/tidemail-icon.png",
 		"/raw/v$pkgver/packaging/linux/tidemail.desktop",
-		"/usr/share/icons/hicolor/scalable/apps/tidemail.svg",
+		"/usr/share/pixmaps/tidemail.png",
 		"/usr/share/applications/tidemail.desktop",
 	} {
 		if !strings.Contains(rendered, want) {

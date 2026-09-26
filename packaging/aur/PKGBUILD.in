@@ -24,7 +24,7 @@ optdepends=(
 options=('!strip' '!debug')
 
 source=("LICENSE-$pkgver::$url/raw/v$pkgver/LICENSE"
-        "tidemail-$pkgver.svg::$url/raw/v$pkgver/images/tidemail-icon.svg"
+        "tidemail-$pkgver.png::$url/raw/v$pkgver/images/tidemail-icon.png"
         "tidemail-$pkgver.desktop::$url/raw/v$pkgver/packaging/linux/tidemail.desktop")
 source_x86_64=("$pkgname-$pkgver-x86_64.tar.gz::$url/releases/download/v$pkgver/tidemail-linux-x86_64.tar.gz")
 source_aarch64=("$pkgname-$pkgver-aarch64.tar.gz::$url/releases/download/v$pkgver/tidemail-linux-aarch64.tar.gz")
@@ -37,6 +37,6 @@ sha256sums_aarch64=('@SHA256_AARCH64@')
 package() {
   install -Dm755 "$srcdir/tidemail-linux-$CARCH" "$pkgdir/usr/bin/tidemail"
   install -Dm644 "$srcdir/LICENSE-$pkgver" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-  install -Dm644 "$srcdir/tidemail-$pkgver.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/tidemail.svg"
+  install -Dm644 "$srcdir/tidemail-$pkgver.png" "$pkgdir/usr/share/pixmaps/tidemail.png"
   install -Dm644 "$srcdir/tidemail-$pkgver.desktop" "$pkgdir/usr/share/applications/tidemail.desktop"
 }
