@@ -98,7 +98,7 @@ func TestPluginRunTargets(t *testing.T) {
 	m, _, msgs := newEventModel(t, root, 5)
 
 	// No selection: the current message, with the familiar label.
-	if m.pluginRunLabel() != "Reclassify current message…" {
+	if m.pluginRunLabel() != "Run plugin on current message…" {
 		t.Fatalf("label = %q", m.pluginRunLabel())
 	}
 	current := m.commandMessage().ID
@@ -115,7 +115,7 @@ func TestPluginRunTargets(t *testing.T) {
 
 	// One selected message (not the cursor row) runs that message.
 	want := selectIDs(&m, msgs, 3)
-	if m.pluginRunLabel() != "Reclassify selected message…" {
+	if m.pluginRunLabel() != "Run plugin on selected message…" {
 		t.Fatalf("label = %q", m.pluginRunLabel())
 	}
 	_, run = pickPlugin(t, m, "smart")
@@ -134,7 +134,7 @@ func TestBulkRunsEverySelectedMessageOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := selectIDs(&m, msgs, 0, 2, 4)
-	if m.pluginRunLabel() != "Reclassify 3 selected messages…" {
+	if m.pluginRunLabel() != "Run plugin on 3 selected messages…" {
 		t.Fatalf("label = %q", m.pluginRunLabel())
 	}
 
@@ -295,7 +295,7 @@ func TestLargeSelectionConfirmsOnce(t *testing.T) {
 	// Cancel: nothing runs.
 	_, run := pickPlugin(t, m, "smart")
 	m = run()
-	if m.overlay != overlayPluginConfirm || !strings.Contains(m.View(), fmt.Sprintf("Reclassify %d selected messages with", bulkConfirmThreshold)) {
+	if m.overlay != overlayPluginConfirm || !strings.Contains(m.View(), fmt.Sprintf("Run Plugin smart on %d selected messages", bulkConfirmThreshold)) {
 		t.Fatalf("overlay = %v", m.overlay)
 	}
 	if !strings.Contains(m.View(), "never message bodies") {

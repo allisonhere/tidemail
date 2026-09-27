@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/allisonhere/tidemail/internal/attention"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidemail/internal/plugin"
 	"github.com/charmbracelet/lipgloss"
@@ -42,6 +43,10 @@ func loadMessageAnnotations(database *db.DB, msgs []db.Message) map[int64][]db.P
 		return nil
 	}
 	return anns
+}
+
+func loadMessageClassification(database *db.DB, msgs []db.Message) (map[int64][]db.PluginAnnotation, map[int64]map[string]db.ClassificationOverride) {
+	return loadMessageAnnotations(database, msgs), loadMessageClassificationOverrides(database, msgs)
 }
 
 // annotationNote describes what happened to a run's annotations.
@@ -78,6 +83,7 @@ func (m Model) annotationLines(width int, chrome managerChrome) ([]string, []int
 	muted := base.Foreground(chrome.muted)
 
 	anns := m.plugins.annotations[m.plugins.annotationsFor]
+	overrides := m.plugins.overrides[m.plugins.annotationsFor]
 	lines := m.needsYouExplanationLines(m.plugins.annotationsFor, chrome)
 	for _, l := range m.waitingExplanationLines(m.plugins.annotationsFor, time.Now()) {
 		lines = append(lines, text.Render(truncate(l, width)))
@@ -85,7 +91,7 @@ func (m Model) annotationLines(width int, chrome managerChrome) ([]string, []int
 	for _, l := range m.snoozeExplanationLines(m.plugins.annotationsFor) {
 		lines = append(lines, text.Render(truncate(l, width)))
 	}
-	if len(anns) == 0 {
+	if len(anns) == 0 && len(overrides) == 0 {
 		if len(lines) == 0 {
 			return []string{muted.Render("no annotations")}, nil
 		}
@@ -131,5 +137,40 @@ func (m Model) annotationLines(width int, chrome managerChrome) ([]string, []int
 		lines = append(lines, blankRail+text.Render(row))
 	}
 	lines = append(lines, "", muted.Render("annotations never change your mail; clearing them never deletes mail"))
+	if len(overrides) > 0 {
+		lines = append(lines, "", head.Render("User overrides"))
+		for _, key := range []string{db.ClassificationNeedsReply, db.ClassificationUrgency, db.ClassificationImportance, db.ClassificationCategory} {
+			if o, ok := overrides[key]; ok {
+				lines = append(lines, blankRail+text.Render("  "+key+"  "+sanitizePluginLine(o.Value)+"  [user]"))
+			}
+		}
+	}
+	effective := m.effectiveClassification(m.plugins.annotationsFor)
+	lines = append(lines, "", head.Render("Effective"))
+	lines = append(lines,
+		blankRail+text.Render(fmt.Sprintf("  needs_reply  %t", effective.NeedsReply)),
+		blankRail+text.Render(fmt.Sprintf("  urgency      %s", effectiveUrgency(effective))),
+		blankRail+text.Render(fmt.Sprintf("  importance   %s", effectiveImportance(effective))),
+		blankRail+text.Render("  category     "+fallbackCategory(effective.Category, "none")),
+	)
 	return lines, starts
+}
+
+func effectiveUrgency(c attention.EffectiveClassification) string {
+	if c.Urgent {
+		return "high"
+	}
+	return "normal"
+}
+func effectiveImportance(c attention.EffectiveClassification) string {
+	if c.Important {
+		return "high"
+	}
+	return "normal"
+}
+func fallbackCategory(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }

@@ -153,6 +153,9 @@ func (m Model) renderOverlay(base string) string {
 	case overlayTagColors:
 		box = m.renderTagColors()
 
+	case overlayClassification:
+		box = m.renderClassificationOverlay()
+
 	case overlayPlugins, overlayPluginPicker, overlayPluginResult, overlayPluginAnnotations, overlayPluginConfirm, overlayPluginSettings:
 		box = m.renderPluginOverlay()
 

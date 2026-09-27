@@ -90,6 +90,18 @@ tea.Cmd (manual Reclassify)        EventManager worker (message.received)
       Update patches the annotation cache → tags, Needs You refresh
 ```
 
+### Effective classification
+
+Plugin annotations and local user corrections are separate stores. The
+canonical interpretation is in `internal/attention/effective.go`; it resolves
+the four supported semantic fields with user overrides taking precedence.
+Needs You's SQL applies the same precedence for filtering and ranking, while
+the UI uses the effective result for tags and explanations. Corrections are
+keyed by the cached message row ID, cascade when that message is deleted, and
+remain when plugin annotations are refreshed, cleared, or uninstalled. They
+are local-only and are never sent to plugins or remote classification
+services.
+
 ### Reclassify
 
 `internal/ui/plugin_bulk.go` turns one palette action into a run over the

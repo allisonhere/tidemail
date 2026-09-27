@@ -85,7 +85,7 @@ func (m Model) pluginTargets() []db.Message {
 
 // pluginRunLabel names the palette command for the current targets.
 func (m Model) pluginRunLabel() string {
-	return "Reclassify " + m.contextScope(len(m.pluginTargets())) + "…"
+	return "Run plugin on " + m.contextScope(len(m.pluginTargets())) + "…"
 }
 
 // contextScope describes the context targets: the selection or the current
@@ -171,7 +171,7 @@ func (m Model) startPluginRun(p plugin.Plugin) (tea.Model, tea.Cmd) {
 	case len(metas) == 1:
 		m.plugins.pickerMetas = nil
 		m.plugins.running = p.Manifest.ID
-		m.setStatus("Reclassifying "+m.plugins.pickerScope.label+" with "+m.pluginDisplayName(p.Manifest.ID)+"…", false)
+		m.setStatus("Running "+m.pluginDisplayName(p.Manifest.ID)+" on "+m.plugins.pickerScope.label+"…", false)
 		m.plugins.pickerScope = reclassifyScope{}
 		return m, runPluginCmd(m.plugins.ctx, m.plugins.manager, m.db, p.Manifest.ID, metas[0])
 	}
@@ -232,7 +232,7 @@ func runBulkStepCmd(ctx context.Context, mgr *plugin.Manager, database *db.DB, p
 // entry per message.
 func (m *Model) showBulkProgress() {
 	r := m.plugins.bulk
-	m.statusMsg = fmt.Sprintf("%s: Reclassifying %s… %d / %d", r.name, r.scope, r.done, r.total)
+	m.statusMsg = fmt.Sprintf("%s: running on %s… %d / %d", r.name, r.scope, r.done, r.total)
 	m.statusErr = false
 }
 

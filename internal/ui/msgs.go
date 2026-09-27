@@ -45,6 +45,7 @@ type MessagesLoadedMsg struct {
 	// Annotations holds plugin annotations for Messages, loaded in the same
 	// command so rendering never queries the database.
 	Annotations map[int64][]db.PluginAnnotation
+	Overrides   map[int64]map[string]db.ClassificationOverride
 	// NeedsYou marks the Needs You view's list.
 	NeedsYou bool
 	// Waiting marks the Waiting on Them view's list.

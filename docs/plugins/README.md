@@ -56,7 +56,7 @@ A complete, tested example lives in
 
 ## How a call flows
 
-Manual run (**Reclassify** in the command palette):
+Manual run (**Run plugin** in the command palette):
 
 ```text
 TideMail
@@ -79,6 +79,11 @@ annotation storage         replaces this plugin's set for this message
    ▼
 TideMail UI                tags in message rows, Needs You, Message annotations
 ```
+
+Annotations are recommendations. TideMail may apply a local user correction
+for the conventional semantic fields; re-running the plugin does not clear
+that correction, and the correction is never sent back to the plugin or to a
+remote classifier.
 
 Automatic run (new mail, when the plugin declares `message.received` and the
 user switches it on):
@@ -103,5 +108,5 @@ startup; restart it after installing or updating one. See
 ## What users see
 
 Users find plugins in the command palette (`:`): **Plugins (experimental)**,
-**Reclassify…**, and **Message annotations**. The user guide describes them:
+**Run plugin…**, and **Message annotations**. The user guide describes them:
 [guide.md › Plugins](../guide.md#plugins-experimental).

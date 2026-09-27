@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/allisonhere/tidemail/internal/attention"
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/charmbracelet/lipgloss"
@@ -90,18 +91,14 @@ const maxAnnotationTags = 3
 // plugin set it. The value lists are shared with Needs You, so a tag and
 // Needs You always agree. It never queries the database.
 func (m Model) annotationTags(messageIDs ...int64) []annotationTag {
-	var anns []db.PluginAnnotation
-	for _, id := range messageIDs {
-		anns = append(anns, m.plugins.annotations[id]...)
-	}
-	return tagsFromAnnotations(anns)
+	return tagsFromEffective(m.effectiveClassificationFor(messageIDs...))
 }
 
 func tagsFromAnnotations(anns []db.PluginAnnotation) []annotationTag {
-	if len(anns) == 0 {
-		return nil
-	}
-	att := db.AttentionOf(anns)
+	return tagsFromEffective(attention.FromDB(anns, nil))
+}
+
+func tagsFromEffective(att attention.EffectiveClassification) []annotationTag {
 	var tags []annotationTag
 	if att.NeedsReply {
 		tags = append(tags, annotationTag{kind: tagReply})
@@ -112,14 +109,8 @@ func tagsFromAnnotations(anns []db.PluginAnnotation) []annotationTag {
 	if att.Important {
 		tags = append(tags, annotationTag{kind: tagImportant})
 	}
-	for _, a := range anns {
-		if a.Key != "category" {
-			continue
-		}
-		if v := strings.ToLower(strings.TrimSpace(a.Value)); categoryTagPattern.MatchString(v) {
-			tags = append(tags, annotationTag{kind: tagCategory, category: v})
-			break
-		}
+	if categoryTagPattern.MatchString(att.Category) {
+		tags = append(tags, annotationTag{kind: tagCategory, category: att.Category})
 	}
 	if len(tags) > maxAnnotationTags {
 		tags = tags[:maxAnnotationTags]

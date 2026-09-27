@@ -255,6 +255,18 @@ func (db *DB) migrate() error {
 			dismissed  INTEGER NOT NULL DEFAULT 0,
 			updated_at INTEGER NOT NULL
 		);
+
+		-- Explicit user corrections are separate from plugin judgments. One
+		-- value per supported semantic field; absence means use plugins.
+		CREATE TABLE IF NOT EXISTS classification_overrides (
+			message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+			key        TEXT    NOT NULL,
+			value      TEXT    NOT NULL,
+			updated_at INTEGER NOT NULL,
+			PRIMARY KEY (message_id, key)
+		);
+		CREATE INDEX IF NOT EXISTS idx_classification_overrides_message
+			ON classification_overrides(message_id);
 	`)
 	if err != nil {
 		return err

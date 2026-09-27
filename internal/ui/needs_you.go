@@ -58,7 +58,8 @@ func (m *Model) loadNeedsYouCmd() tea.Cmd {
 		if err != nil {
 			return MessagesLoadedMsg{NeedsYou: true, Err: err}
 		}
-		return MessagesLoadedMsg{NeedsYou: true, Messages: msgs, Annotations: loadMessageAnnotations(database, msgs)}
+		anns, overrides := loadMessageClassification(database, msgs)
+		return MessagesLoadedMsg{NeedsYou: true, Messages: msgs, Annotations: anns, Overrides: overrides}
 	}
 }
 
@@ -212,7 +213,7 @@ func (m Model) executeNeedsYouCommand(id string) (tea.Model, tea.Cmd) {
 
 // needsYouReasons explains, deterministically, why a message is in Needs You.
 func (m Model) needsYouReasons(messageID int64) []string {
-	a := db.AttentionOf(m.plugins.annotations[messageID])
+	a := m.effectiveClassification(messageID)
 	if !a.Any() {
 		return nil
 	}
@@ -250,6 +251,17 @@ func (m Model) needsYouExplanationLines(messageID int64, chrome managerChrome) [
 	lines := []string{base.Foreground(chrome.text).Bold(true).Render(head)}
 	for _, r := range reasons {
 		lines = append(lines, base.Foreground(chrome.text).Render("  "+r))
+	}
+	if overrides := m.plugins.overrides[messageID]; len(overrides) > 0 {
+		for _, key := range []string{db.ClassificationNeedsReply, db.ClassificationUrgency, db.ClassificationImportance, db.ClassificationCategory} {
+			if override, ok := overrides[key]; ok {
+				value := override.Value
+				if value == db.ClassificationPlugin {
+					continue
+				}
+				lines = append(lines, base.Foreground(chrome.muted).Render("  user override: "+key+" → "+sanitizePluginLine(value)))
+			}
+		}
 	}
 	return append(lines, "")
 }

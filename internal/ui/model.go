@@ -98,6 +98,7 @@ const (
 	overlayPluginSettings
 	overlaySnooze
 	overlayTagColors
+	overlayClassification
 	overlaySyncAllConfirm
 )
 
@@ -228,10 +229,11 @@ type Model struct {
 
 	logBuffer []logEntry
 
-	needsYou  needsYouState  // see needs_you.go
-	waiting   waitingState   // see waiting.go
-	snooze    snoozeState    // see snooze.go
-	tagColors tagColorEditor // see tag_colors.go
+	needsYou       needsYouState  // see needs_you.go
+	waiting        waitingState   // see waiting.go
+	snooze         snoozeState    // see snooze.go
+	tagColors      tagColorEditor // see tag_colors.go
+	classification classificationEditor
 
 	plugins pluginUI // experimental; see plugins.go
 
@@ -798,6 +800,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.messages = msg.Messages
 			m.plugins.annotations = msg.Annotations
+			m.plugins.overrides = msg.Overrides
 			m.applyFilter()
 			if idx := m.indexOfFilteredMessage(currentID); idx >= 0 {
 				m.messageCursor = idx
@@ -837,6 +840,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.messages = msg.Messages
 			m.plugins.annotations = msg.Annotations
+			m.plugins.overrides = msg.Overrides
 			if msg.NeedsYou || msg.Waiting || msg.Snoozed {
 				// Rows can leave a virtual view as their state changes.
 				m.pruneSelection()
@@ -1402,6 +1406,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pluginSecretPresenceMsg, pluginSecretSavedMsg, pluginTestResultMsg:
 		return m.handlePluginSettingsMsg(msg)
+
+	case classificationOverrideMsg:
+		return m.handleClassificationMsg(msg)
 
 	case needsYouCountMsg, needsYouDismissMsg:
 		return m.handleNeedsYouMsg(msg)
@@ -2599,6 +2606,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case overlayTagColors:
 		return m.handleTagColorsKey(msg)
+
+	case overlayClassification:
+		return m.handleClassificationKey(msg)
 
 	case overlayOutbox:
 		return m.handleOutboxKey(msg)

@@ -252,7 +252,7 @@ func TestPluginTestRunsAsyncAndMasksSecret(t *testing.T) {
 		}
 	}
 	// The plugin received its settings, resolved.
-	if !strings.Contains(m.plugins.result.body, `"mode": "hybrid"`) {
+	if !strings.Contains(m.plugins.result.body, "Mode: hybrid") {
 		t.Fatalf("result = %s", m.plugins.result.body)
 	}
 }

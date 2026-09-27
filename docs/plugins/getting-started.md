@@ -200,11 +200,11 @@ If the manifest or executable is wrong, the list says why instead.
 ## 10. Run it by hand
 
 Select a message whose subject contains "invoice", open the palette, and
-choose **Reclassify current message…**, then your plugin. The result window
+choose **Run plugin on current message…**, then your plugin. The result window
 shows the response, and the row gains a `BILLING` tag. **Message annotations**
 lists what was stored.
 
-To rerun it on a whole folder, choose **Reclassify all N messages in …**
+To run it on a whole folder, choose **Run plugin on all N messages in …**
 instead. TideMail asks once, shows progress, and ends with how many messages
 succeeded, failed, changed, and stayed the same.
 

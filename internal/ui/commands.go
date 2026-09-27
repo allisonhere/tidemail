@@ -226,7 +226,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		m.settings.pluginsAvailable = m.pluginsVisible()
 		m.overlay = overlaySettings
 		return m, nil
-	case "plugins", "plugin-run", "plugin-reclassify-view", "plugin-cancel", "plugin-annotations":
+	case "plugins", "plugin-run", "plugin-reclassify-view", "plugin-cancel", "plugin-annotations", "classification-correct", "classification-reset":
 		return m.executePluginCommand(id)
 	case "needs-you-why", "needs-you-dismiss", "needs-you-restore":
 		return m.executeNeedsYouCommand(id)

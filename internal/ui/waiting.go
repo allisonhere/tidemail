@@ -56,6 +56,7 @@ type (
 		Stopped        map[int64]string
 		Messages       []db.Message // full rows for the view, in order
 		Annotations    map[int64][]db.PluginAnnotation
+		Overrides      map[int64]map[string]db.ClassificationOverride
 		Err            error
 	}
 	waitingStopMsg struct {
@@ -291,7 +292,8 @@ func (m *Model) loadWaitingCmd() tea.Cmd {
 		if err != nil {
 			return waitingLoadedMsg{Err: err}
 		}
-		return waitingLoadedMsg{Threads: threads, Stopped: stopped, Messages: msgs, Annotations: loadMessageAnnotations(database, msgs), SnoozesChanged: snoozesChanged}
+		anns, overrides := loadMessageClassification(database, msgs)
+		return waitingLoadedMsg{Threads: threads, Stopped: stopped, Messages: msgs, Annotations: anns, Overrides: overrides, SnoozesChanged: snoozesChanged}
 	}
 }
 
@@ -341,7 +343,7 @@ func (m Model) handleWaitingMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.selectedWaiting() && !m.searchActive() {
 			// Reuse the normal list path: cursor, selection, and threads.
-			next, cmd := m.update(MessagesLoadedMsg{Waiting: true, Messages: msg.Messages, Annotations: msg.Annotations})
+			next, cmd := m.update(MessagesLoadedMsg{Waiting: true, Messages: msg.Messages, Annotations: msg.Annotations, Overrides: msg.Overrides})
 			m = next.(Model)
 			cmds = append(cmds, cmd)
 		}

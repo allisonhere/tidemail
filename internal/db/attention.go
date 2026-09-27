@@ -6,11 +6,9 @@ import (
 	"time"
 )
 
-// Needs You: inbox messages that some plugin annotation marks as actionable.
-// Qualification is provider-neutral: it looks at the conventional annotation
-// keys from any plugin, installed or removed, and ignores which plugin said
-// so. A positive signal from any plugin wins; there is no voting or plugin
-// priority. category alone never qualifies.
+// Needs You: inbox messages whose effective classification is actionable.
+// User classification overrides suppress or add signals without changing the
+// plugin annotations that produced them.
 
 // Conventional annotation values that mark a message as actionable. They are
 // compared case-insensitively after trimming. The UI's row badges use the same
@@ -78,12 +76,30 @@ func signalExists(key string, values []string) (string, []any) {
 		AND lower(trim(pa.value)) IN (` + placeholders + `))`, args
 }
 
+// effectiveSignalExists applies a user override to one plugin-derived signal.
+// The same expression is reused for filtering and ranking.
+func effectiveSignalExists(key string, values []string, overrideValues []string) (string, []any) {
+	pluginExpr, pluginArgs := signalExists(key, values)
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(overrideValues)), ",")
+	args := []any{key}
+	for _, value := range overrideValues {
+		args = append(args, value)
+	}
+	args = append(args, key)
+	args = append(args, pluginArgs...)
+	return `(EXISTS (SELECT 1 FROM classification_overrides co
+		WHERE co.message_id = messages.id AND co.key = ? AND co.value IN (` + placeholders + `))
+		OR (NOT EXISTS (SELECT 1 FROM classification_overrides co
+			WHERE co.message_id = messages.id AND co.key = ?)
+			AND ` + pluginExpr + `))`, args
+}
+
 // needsYouFilter returns the WHERE clause, the ranking expression, and their
 // arguments in order: WHERE args first, then ORDER BY args.
 func needsYouFilter(unreadOnly bool) (where string, order string, whereArgs, orderArgs []any) {
-	urgent, ua := signalExists(AttentionUrgency, UrgencyValues)
-	reply, ra := signalExists(AttentionNeedsReply, NeedsReplyValues)
-	important, ia := signalExists(AttentionImportance, ImportanceValues)
+	urgent, ua := effectiveSignalExists(AttentionUrgency, UrgencyValues, []string{"high"})
+	reply, ra := effectiveSignalExists(AttentionNeedsReply, NeedsReplyValues, []string{"true"})
+	important, ia := effectiveSignalExists(AttentionImportance, ImportanceValues, []string{"high"})
 
 	where = inboxMailboxPredicate + `
 		AND NOT EXISTS (SELECT 1 FROM message_attention_overrides o

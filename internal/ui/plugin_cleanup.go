@@ -317,6 +317,8 @@ func (m Model) handleAnnotationsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		})
 	case msg.String() == "C" && len(groups) > 0:
 		m.confirmPluginAction(pluginConfirmAction{kind: clearAllOnMessage, messageID: m.plugins.annotationsFor})
+	case msg.String() == "e":
+		return m.openClassificationEditorFor(m.plugins.annotationsFor)
 	}
 	return m, nil
 }
@@ -391,15 +393,15 @@ func (m Model) renderPluginConfirm() string {
 	var text string
 	title, verb := "clear annotations?", "clear"
 	if a := m.plugins.confirm; a != nil && a.kind == runPluginBulk {
-		title, verb = "reclassify?", "run"
+		title, verb = "run plugin?", "run"
 		scope := a.scope
 		if scope == "" {
 			scope = fmt.Sprintf("%d messages", a.count)
 		}
-		text = fmt.Sprintf("Reclassify %s with %s?\n\n"+
-			"This will run the plugin once for each message. Existing annotations from this plugin may be replaced.\n\n"+
-			"Only the metadata this plugin is permitted to receive will be sent (sender, recipients, subject, date, flags), never message bodies.",
-			scope, a.label)
+		text = fmt.Sprintf("Run %s on %s?\n\n",
+			a.label, scope) +
+			"This will run the plugin once for each message. Existing annotations from this plugin may be replaced.\n\n" +
+			"Only the metadata this plugin is permitted to receive will be sent (sender, recipients, subject, date, flags), never message bodies."
 	} else if a != nil && a.kind == enableAutoEvents {
 		title, verb = "auto-process new mail?", "enable"
 		text = "Let " + a.label + " process new mail automatically?\n\n" +

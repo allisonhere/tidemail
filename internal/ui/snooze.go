@@ -59,6 +59,7 @@ type (
 	snoozeLoadedMsg struct {
 		Items       []db.SnoozedMessage
 		Annotations map[int64][]db.PluginAnnotation
+		Overrides   map[int64]map[string]db.ClassificationOverride
 		Next        time.Time
 		HasNext     bool
 		Expired     int
@@ -318,7 +319,8 @@ func loadSnoozeState(database *db.DB, clock snoozeClock) snoozeLoadedMsg {
 	for i, it := range items {
 		msgs[i] = it.Message
 	}
-	return snoozeLoadedMsg{Items: items, Annotations: loadMessageAnnotations(database, msgs), Next: next, HasNext: ok}
+	anns, overrides := loadMessageClassification(database, msgs)
+	return snoozeLoadedMsg{Items: items, Annotations: anns, Overrides: overrides, Next: next, HasNext: ok}
 }
 
 func (m Model) handleSnoozeMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -344,7 +346,7 @@ func (m Model) handleSnoozeMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 			for i, it := range msg.Items {
 				msgs[i] = it.Message
 			}
-			next, cmd := m.update(MessagesLoadedMsg{Snoozed: true, Messages: msgs, Annotations: msg.Annotations})
+			next, cmd := m.update(MessagesLoadedMsg{Snoozed: true, Messages: msgs, Annotations: msg.Annotations, Overrides: msg.Overrides})
 			m = next.(Model)
 			cmds = append(cmds, cmd)
 		}

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -62,6 +63,7 @@ type pluginUI struct {
 	// keyed by message ID. It is filled by the message load commands and by
 	// plugin runs, so rendering never touches the database.
 	annotations map[int64][]db.PluginAnnotation
+	overrides   map[int64]map[string]db.ClassificationOverride
 	// annotationsFor is the message shown in the annotations overlay.
 	annotationsFor int64
 
@@ -143,7 +145,7 @@ func (m *Model) SetPlugins(mgr *plugin.Manager, dir string, discoveryErr error) 
 	ctx, cancel := context.WithCancel(context.Background())
 	m.plugins = pluginUI{
 		manager: mgr, dir: dir, discoveryErr: discoveryErr, ctx: ctx, cancel: cancel,
-		annotations: m.plugins.annotations, counts: m.plugins.counts, countsLoaded: m.plugins.countsLoaded,
+		annotations: m.plugins.annotations, overrides: m.plugins.overrides, counts: m.plugins.counts, countsLoaded: m.plugins.countsLoaded,
 		settingsSrc: &pluginSettingsSource{},
 	}
 	m.plugins.settingsSrc.update(m.cfg)
@@ -178,13 +180,19 @@ func (m Model) pluginCommandItems(hasMessage bool) []commandItem {
 		// The explicit whole-view scope (plugin_bulk.go).
 		if n := len(m.viewTargets()); n > 0 {
 			items = append(items, commandItem{
-				id: "plugin-reclassify-view", label: "Reclassify all " + m.viewScopeLabel(n) + "…", enabled: true,
+				id: "plugin-reclassify-view", label: "Run plugin on all " + m.viewScopeLabel(n) + "…", enabled: true,
 			})
 		}
 		if r := m.plugins.bulk; r != nil && !r.cancelled {
 			items = append(items, commandItem{
-				id: "plugin-cancel", label: fmt.Sprintf("Cancel reclassify (%d / %d)", r.done, r.total), enabled: true,
+				id: "plugin-cancel", label: fmt.Sprintf("Cancel plugin run (%d / %d)", r.done, r.total), enabled: true,
 			})
+		}
+	}
+	if msg := m.commandMessage(); msg != nil {
+		items = append(items, commandItem{id: "classification-correct", label: "Correct classification", enabled: true})
+		if len(m.plugins.overrides[msg.ID]) > 0 {
+			items = append(items, commandItem{id: "classification-reset", label: "Reset all corrections", enabled: true})
 		}
 	}
 	// Stored annotations stay inspectable even if their plugin was removed.
@@ -214,6 +222,12 @@ func (m Model) executePluginCommand(id string) (tea.Model, tea.Cmd) {
 			m.overlay = overlayPluginAnnotations
 		}
 		return m, nil
+	case "classification-correct":
+		return m.openClassificationEditor()
+	case "classification-reset":
+		if msg := m.commandMessage(); msg != nil {
+			return m, classificationOverrideCmd(m.db, msg.ID, "", "", true)
+		}
 	}
 	return m, nil
 }
@@ -486,7 +500,7 @@ func (m Model) renderPluginOverlay() string {
 	var inner, title string
 	switch m.overlay {
 	case overlayPluginPicker:
-		inner, title = m.renderPluginPicker(winW, winH, chrome), "reclassify"
+		inner, title = m.renderPluginPicker(winW, winH, chrome), "run plugin"
 	case overlayPluginResult:
 		inner = m.renderPluginScroll(m.pluginResultLines(winW-4, chrome), winW, winH, chrome, "↑↓", "scroll", "esc", "close")
 		title = "plugin result"
@@ -498,7 +512,9 @@ func (m Model) renderPluginOverlay() string {
 		lines, _ := m.annotationLines(winW-4, chrome)
 		pairs := []string{"esc", "close"}
 		if len(m.annotationGroups()) > 0 {
-			pairs = []string{"↑↓", "select", "c", "clear plugin", "C", "clear all", "esc", "close"}
+			pairs = []string{"↑↓", "select", "e", "correct", "c", "clear plugin", "C", "clear all", "esc", "close"}
+		} else if len(m.plugins.overrides[m.plugins.annotationsFor]) > 0 {
+			pairs = []string{"e", "correct", "esc", "close"}
 		}
 		inner = m.renderPluginScroll(lines, winW, winH, chrome, pairs...)
 		title = "message annotations"
@@ -759,8 +775,9 @@ func sanitizePluginLine(s string) string {
 	return strings.Join(strings.Fields(sanitizePluginText(s)), " ")
 }
 
-// formatPluginData pretty-prints a response's JSON data for display, then
-// sanitizes and caps it. The data is informational only.
+// formatPluginData turns response JSON into a readable key/value tree. The
+// data is informational only; formatting it here keeps plugin output from
+// looking like source code in the result overlay.
 func formatPluginData(raw json.RawMessage) string {
 	if len(bytes.TrimSpace(raw)) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		return ""
@@ -770,13 +787,9 @@ func formatPluginData(raw json.RawMessage) string {
 	dec.UseNumber()
 	var v any
 	if err := dec.Decode(&v); err == nil {
-		var buf bytes.Buffer
-		enc := json.NewEncoder(&buf)
-		enc.SetEscapeHTML(false)
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(v); err == nil {
-			text = strings.TrimRight(buf.String(), "\n")
-		}
+		var lines []string
+		appendPluginValue(&lines, v, 0, "")
+		text = strings.Join(lines, "\n")
 	}
 	text = sanitizePluginText(text)
 
@@ -795,17 +808,105 @@ func formatPluginData(raw json.RawMessage) string {
 	return text
 }
 
+func appendPluginValue(lines *[]string, value any, depth int, label string) {
+	indent := strings.Repeat("  ", depth)
+	switch v := value.(type) {
+	case map[string]any:
+		if label != "" {
+			*lines = append(*lines, indent+humanPluginLabel(label)+":")
+			depth++
+			indent = strings.Repeat("  ", depth)
+		}
+		keys := make([]string, 0, len(v))
+		for key := range v {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		if len(keys) == 0 {
+			if label == "" {
+				*lines = append(*lines, indent+"None")
+			} else {
+				(*lines)[len(*lines)-1] += " None"
+			}
+			return
+		}
+		for _, key := range keys {
+			appendPluginValue(lines, v[key], depth, key)
+		}
+	case []any:
+		if label != "" {
+			*lines = append(*lines, indent+humanPluginLabel(label)+":")
+			depth++
+			indent = strings.Repeat("  ", depth)
+		}
+		if len(v) == 0 {
+			*lines = append(*lines, indent+"None")
+			return
+		}
+		for _, item := range v {
+			if isPluginComposite(item) {
+				*lines = append(*lines, indent+"-")
+				appendPluginValue(lines, item, depth+1, "")
+			} else {
+				*lines = append(*lines, indent+"- "+pluginScalar(item))
+			}
+		}
+	default:
+		if label == "" {
+			*lines = append(*lines, indent+pluginScalar(v))
+		} else {
+			*lines = append(*lines, indent+humanPluginLabel(label)+": "+pluginScalar(v))
+		}
+	}
+}
+
+func isPluginComposite(value any) bool {
+	switch value.(type) {
+	case map[string]any, []any:
+		return true
+	default:
+		return false
+	}
+}
+
+func pluginScalar(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return "none"
+	case string:
+		return v
+	case bool:
+		if v {
+			return "yes"
+		}
+		return "no"
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
+func humanPluginLabel(value string) string {
+	words := strings.Fields(strings.NewReplacer("_", " ", "-", " ").Replace(value))
+	for i, word := range words {
+		if word == "" {
+			continue
+		}
+		words[i] = strings.ToUpper(word[:1]) + word[1:]
+	}
+	return strings.Join(words, " ")
+}
+
 // pickerTargetLine says what the picked plugin will run on.
 func (m Model) pickerTargetLine() string {
 	metas := m.plugins.pickerMetas
 	if len(metas) == 1 && !m.plugins.pickerScope.view {
-		return "Reclassify message: " + sanitizePluginLine(metas[0].Subject)
+		return "Run plugin on message: " + sanitizePluginLine(metas[0].Subject)
 	}
 	if scope := m.plugins.pickerScope.label; scope != "" {
-		return "Reclassify " + scope
+		return "Run plugin on " + scope
 	}
 	if len(metas) > 0 {
-		return fmt.Sprintf("Reclassify %d messages", len(metas))
+		return fmt.Sprintf("Run plugin on %d messages", len(metas))
 	}
 	return ""
 }

@@ -173,7 +173,7 @@ func TestReclassifyCurrentMessage(t *testing.T) {
 	store(t, database, "other", current, "category", "github")
 	setAnswer(t, dir, `[{"key":"urgency","value":"high"}]`)
 
-	if got := commandLabel(m, "plugin-run"); got != "Reclassify current message…" {
+	if got := commandLabel(m, "plugin-run"); got != "Run plugin on current message…" {
 		t.Fatalf("label = %q", got)
 	}
 	m = runPlugin(t, m, "rules")
@@ -222,7 +222,7 @@ func TestReclassifyViewCountsAndSemantics(t *testing.T) {
 	// confidence: unchanged.
 	setAnswer(t, dir, `[{"key":"urgency","value":" High ","confidence":0.7},{"key":"category","value":"billing"}]`)
 
-	if got := commandLabel(m, "plugin-reclassify-view"); got != "Reclassify all 4 messages in INBOX…" {
+	if got := commandLabel(m, "plugin-reclassify-view"); got != "Run plugin on all 4 messages in INBOX…" {
 		t.Fatalf("view label = %q", got)
 	}
 	next, _ := m.executeCommand("plugin-reclassify-view")
@@ -232,7 +232,7 @@ func TestReclassifyViewCountsAndSemantics(t *testing.T) {
 			t.Fatal("plugins without message_metadata must not be offered")
 		}
 	}
-	if !strings.Contains(m.View(), "Reclassify 4 messages in INBOX") {
+	if !strings.Contains(m.View(), "Run plugin on 4 messages in INBOX") {
 		t.Fatal("the picker should state the scope")
 	}
 	m.overlay = overlayNone
@@ -240,7 +240,7 @@ func TestReclassifyViewCountsAndSemantics(t *testing.T) {
 
 	m = pickView(t, m, "rules")
 	view := m.View()
-	for _, want := range []string{"Reclassify 4 messages in INBOX with Plugin rules?", "Existing annotations from this plugin may be", "never message bodies"} {
+	for _, want := range []string{"Run Plugin rules on 4 messages in INBOX?", "Existing annotations from this plugin may be", "never message bodies"} {
 		if !strings.Contains(strings.Join(strings.Fields(view), " "), want) {
 			t.Fatalf("confirmation lacks %q", want)
 		}
@@ -251,7 +251,7 @@ func TestReclassifyViewCountsAndSemantics(t *testing.T) {
 
 	// Step through, watching progress.
 	m, cmd := press(t, m, "y")
-	if !strings.Contains(m.statusMsg, "Plugin rules: Reclassifying 4 messages in INBOX… 0 / 4") {
+	if !strings.Contains(m.statusMsg, "Plugin rules: running on 4 messages in INBOX… 0 / 4") {
 		t.Fatalf("status = %q", m.statusMsg)
 	}
 	for i := 1; i < 4; i++ {
@@ -333,14 +333,14 @@ func TestReclassifySelectionScope(t *testing.T) {
 	dir := installRulesPlugin(t, root, "rules", permMetaAndAnnotations)
 	m, _, msgs := newEventModel(t, root, 4)
 	want := selectIDs(&m, msgs, 1, 3)
-	if got := commandLabel(m, "plugin-run"); got != "Reclassify 2 selected messages…" {
+	if got := commandLabel(m, "plugin-run"); got != "Run plugin on 2 selected messages…" {
 		t.Fatalf("label = %q", got)
 	}
 	m, cmd := pickPluginNoRun(t, m, "rules")
 	if m.overlay == overlayPluginConfirm {
 		t.Fatal("two selected messages should not confirm")
 	}
-	if !strings.Contains(m.statusMsg, "Reclassifying 2 selected messages… 0 / 2") {
+	if !strings.Contains(m.statusMsg, "running on 2 selected messages… 0 / 2") {
 		t.Fatalf("status = %q", m.statusMsg)
 	}
 	m = settle(t, m, cmd)
@@ -359,7 +359,7 @@ func TestReclassifyViewAlwaysConfirms(t *testing.T) {
 	dir := installRulesPlugin(t, root, "rules", permMetaAndAnnotations)
 	m, _, _ := newEventModel(t, root, 1)
 	m = pickView(t, m, "rules")
-	if !strings.Contains(m.View(), "Reclassify 1 message in INBOX") {
+	if !strings.Contains(m.View(), "Run Plugin rules on 1 message in INBOX?") {
 		t.Fatal("confirmation should show the count")
 	}
 	m, cmd := press(t, m, "n")
@@ -539,7 +539,7 @@ func startHangingRun(t *testing.T) (Model, string, chan tea.Msg) {
 func TestReclassifyCancelKillsProcess(t *testing.T) {
 	m, dir, got := startHangingRun(t)
 	pid := waitForPID(t, dir)
-	if commandLabel(m, "plugin-cancel") != "Cancel reclassify (0 / 3)" {
+	if commandLabel(m, "plugin-cancel") != "Cancel plugin run (0 / 3)" {
 		t.Fatalf("cancel label = %q", commandLabel(m, "plugin-cancel"))
 	}
 	next, _ := m.executeCommand("plugin-cancel")

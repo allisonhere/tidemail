@@ -96,6 +96,11 @@ func TestPluginCommandsShownWithPluginsOrErrors(t *testing.T) {
 	if ids := strings.Join(commandIDs(m), " "); !strings.Contains(ids, "plugins") || !strings.Contains(ids, "plugin-run") {
 		t.Fatalf("commands = %s", ids)
 	}
+	for _, item := range m.mainCommandItems() {
+		if item.id == "plugin-run" && strings.Contains(strings.ToLower(item.label), "reclassif") {
+			t.Fatalf("new plugin command should not imply prior classification: %q", item.label)
+		}
+	}
 
 	// A plugins directory that could not be read still gets the list, so the
 	// user can see why.
@@ -153,7 +158,7 @@ func TestPluginRunEndToEndSendsOnlyMetadata(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("confirming the picker should return a command")
 	}
-	if m.plugins.running != "hello" || m.overlay != overlayNone || !strings.Contains(m.statusMsg, "Reclassifying current message with Plugin hello") {
+	if m.plugins.running != "hello" || m.overlay != overlayNone || !strings.Contains(m.statusMsg, "Running Plugin hello on current message") {
 		t.Fatalf("running=%q overlay=%v status=%q", m.plugins.running, m.overlay, m.statusMsg)
 	}
 
@@ -196,7 +201,7 @@ func TestPluginRunEndToEndSendsOnlyMetadata(t *testing.T) {
 	if !strings.Contains(m.statusMsg, "plugin hello completed") {
 		t.Fatalf("status = %q", m.statusMsg)
 	}
-	if !strings.Contains(m.plugins.result.body, `"category": "notification"`) {
+	if !strings.Contains(m.plugins.result.body, "Category: notification") || strings.Contains(m.plugins.result.body, `"category"`) {
 		t.Fatalf("result body = %q", m.plugins.result.body)
 	}
 	if view := m.View(); !strings.Contains(view, "notification") {
@@ -309,8 +314,8 @@ func TestFormatPluginDataSanitizesAndCaps(t *testing.T) {
 			t.Fatalf("%U survived: %q", bad, got)
 		}
 	}
-	if !strings.Contains(got, `"summary"`) {
-		t.Fatalf("not pretty-printed: %q", got)
+	if !strings.Contains(got, "Summary: a[31m") || strings.Contains(got, "{") {
+		t.Fatalf("not human-readable: %q", got)
 	}
 	if formatPluginData(nil) != "" || formatPluginData(json.RawMessage("null")) != "" {
 		t.Fatal("empty data should format as empty")

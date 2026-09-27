@@ -115,14 +115,23 @@ have meaning in TideMail's own views:
   `notification`, `personal`. Any other valid category (say `project`) gets
   the generic category color.
 
+TideMail may apply a local user correction on top of these annotations. A
+correction for `needs_reply`, `urgency`, `importance`, or `category` wins over
+all plugin judgments for that field, but never rewrites or deletes the stored
+plugin rows. Re-running a plugin does not clear corrections, and corrections
+remain after plugin annotations are cleared or the plugin is removed. Plugin
+authors should treat annotations as recommendations, not authoritative final
+presentation state.
+
 ### Needs You
 
 A message in an inbox folder appears in **Needs You** when any plugin's
 annotation carries `needs_reply`, `urgency`, or `importance` with one of the
 values above. A positive signal from any plugin wins; TideMail has no plugin
-priority or voting. `category` alone never qualifies. Reclassifying updates
-Needs You live: a new signal may bring a message in, a removed one may take it
-out. Snoozed and dismissed messages stay out until the user brings them back.
+priority or voting. `category` alone never qualifies. User corrections are
+applied before qualification and ranking. Reclassifying updates Needs You
+live: a new signal may bring a message in, a removed one may take it out.
+Snoozed and dismissed messages stay out until the user brings them back.
 
 ## Presentation belongs to TideMail
 

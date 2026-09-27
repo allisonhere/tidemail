@@ -19,7 +19,7 @@ plugin returns is treated as an instruction.
 
 ## For users
 
-How to run plugins (**Reclassify**), read and clear annotations, turn on
+How to run plugins (**Run plugin**), read and clear annotations, turn on
 automatic processing, change plugin settings, and pick tag styles and colors:
 see the user guide, [guide.md › Plugins](guide.md#plugins-experimental).
 
@@ -47,7 +47,7 @@ A small, tested example plugin is in
 
 The runtime is `internal/plugin` (discovery, manifest and protocol validation,
 process handling, permissions, annotation parsing, automatic events). The UI
-side is in `internal/ui` (`plugins.go`, `plugin_bulk.go` for Reclassify,
+side is in `internal/ui` (`plugins.go`, `plugin_bulk.go` for multi-message runs,
 `plugin_annotations.go`, `tags.go` for tag rendering, `plugin_events.go`,
 `plugin_settings.go`), and annotation storage is `internal/db`. See
 [architecture.md](architecture.md#plugins). Tests in

@@ -510,29 +510,30 @@ open **Accounts** and re-enter that account's server details.
 
 TideMail can run external plugins placed in `~/.config/tidemail/plugins/`.
 When any are installed, the command palette (`:`) gains **Plugins
-(experimental)**, a read-only list of installed plugins, and **Reclassify**.
+(experimental)**, a read-only list of installed plugins, and **Run plugin**.
 Plugins receive a message's sender, recipients, subject, date, and flags, never
 its body, and they never change your mail.
 
-**Reclassify** runs a plugin you choose on existing mail, for example after
+**Run plugin** runs a plugin you choose on mail, whether or not it has already
+been classified—for example after
 updating a plugin or changing its settings. You pick the plugin once:
 
-- **Reclassify current message…** runs it on the message you are on, and
+- **Run plugin on current message…** runs it on the message you are on, and
   shows the plugin's reply.
-- With messages selected (`Space`), the same command reads **Reclassify N
+- With messages selected (`Space`), the same command reads **Run plugin on N
   selected messages…** and runs on the selection (asking first for 10 or
   more).
-- **Reclassify all N messages in Inbox…** (or the current folder, Unified
+- **Run plugin on all N messages in Inbox…** (or the current folder, Unified
   Inbox, search results, Needs You, Waiting on Them, or Snoozed) runs on every
   message the list currently shows. It always asks first, with the count.
   Only mail already in TideMail's cache is used; nothing is downloaded.
 
 Several messages run one at a time, with progress on the status line
-(`Reclassifying 312 messages in Inbox… 87 / 312`), and end with one summary:
+(`running on 312 messages in Inbox… 87 / 312`), and end with one summary:
 how many succeeded and failed, and how many messages' classifications changed
 or stayed the same. A failing message does not stop the run, and its earlier
-annotations are kept. **Cancel reclassify** in the palette stops a run; quitting
-TideMail stops it too. Reclassify works whether or not the plugin processes new
+annotations are kept. **Cancel plugin run** in the palette stops a run; quitting
+TideMail stops it too. The run works whether or not the plugin processes new
 mail automatically, and does not affect that.
 
 A plugin that also declares the `annotations` permission can attach short
@@ -543,8 +544,16 @@ the category name (`GITHUB`). On narrow screens tags shrink to their symbols
 (`↩ ◆ #github`) or disappear before the subject does. Each plugin run replaces
 that plugin's notes on the message; a successful run with nothing to say
 clears them. **Message annotations** in the palette lists all of a message's
-annotations. Reclassifying can move messages into or out of Needs You at once;
+annotations. Running a plugin can move messages into or out of Needs You at once;
 snoozed messages stay snoozed, and Waiting on Them does not use annotations.
+
+Choose **Correct classification** from the command palette or the Message
+annotations view to record a local decision for needs reply, urgency,
+importance, or category. A correction overrides every plugin for that field,
+while the original plugin annotations remain visible. **Use plugin decision**
+or **Reset all corrections** removes the local decision. Corrections survive
+plugin reruns, annotation cleanup, and plugin removal; they never leave the
+local database or get sent to Jev, TypeSafe, or a plugin.
 
 Choose how tags look under **Settings → Display → Appearance → Annotation
 Tags**:
