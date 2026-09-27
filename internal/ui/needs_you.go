@@ -87,6 +87,8 @@ func (m *Model) virtualViewCmd() tea.Cmd {
 		return m.loadNeedsYouCmd()
 	case m.selectedWaiting():
 		return m.requestWaitingRefresh()
+	case m.selectedSnoozed():
+		return loadSnoozeStateCmd(m.db)
 	}
 	return nil
 }

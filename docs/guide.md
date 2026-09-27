@@ -181,6 +181,41 @@ you sent the latest message and who you're waiting for.
 Waiting on Them and Needs You are independent. After you reply, an old plugin
 tag may still keep the message in Needs You until you dismiss it there.
 
+### Snooze
+
+Press `Z` (or **Snooze** in the palette) to hide something from Needs You or
+Waiting on Them until later. In Needs You it snoozes the message (or every
+selected message); in Waiting on Them it snoozes the conversation; elsewhere it
+snoozes messages so they stay out of Needs You. With several messages selected,
+the picker opens once and snoozes them all to the same time.
+
+| Choice | Wakes at |
+| --- | --- |
+| Later today | 7:00 PM today; after 5:00 PM, three hours after the next full hour |
+| Tomorrow morning | 8:00 AM tomorrow |
+| Tomorrow evening | 7:00 PM tomorrow |
+| This weekend | 9:00 AM Saturday (next Saturday once this Saturday's has passed) |
+| Next week | 9:00 AM next Monday |
+| Pick date/time | any future time, typed as `YYYY-MM-DD HH:MM` (past times are refused) |
+
+Times are your local time (daylight-saving changes keep 9:00 AM at 9:00 AM)
+and are stored as absolute times.
+
+Snooze is local to TideMail. It creates no folder on the server, doesn't move
+or archive anything, doesn't change read state, and leaves plugin tags alone:
+the mail stays in its normal folders. **Snoozed**, below Waiting on Them, lists
+what's snoozed, soonest to wake first, with the wake time in place of the date;
+`Z` there unsnoozes, and **Why is this snoozed?** shows until when.
+
+When a snooze ends, TideMail checks the item again: it comes back only if it
+still needs you or is still waiting, using whatever plugin tags it has by then.
+A dismissal or Stop waiting still applies after a snooze ends; snoozing never
+clears them. If someone replies to a snoozed waiting conversation, the snooze
+ends at once (the conversation isn't waiting any more, though the reply may
+show up in Needs You). If you write again, that's a new wait and it shows
+normally. Snoozes that came due while TideMail was closed end when it starts.
+There's no notification when a snooze ends; the item simply reappears.
+
 Receipt tables keep item descriptions, quantities, and prices together, even
 when the sender uses ordinary cells for headings or merges cells for totals.
 Amounts align on the right. When columns would be too cramped, each row becomes
@@ -544,6 +579,7 @@ Plugin support is experimental. Only install plugins you trust; see
 | `u` | Toggle unread-only view |
 | `t` | Toggle starred-first sort (starred messages float to the top) |
 | `X` | In Needs You: dismiss the message; in Waiting on Them: stop waiting (mail and tags untouched) |
+| `Z` | Snooze from Needs You / Waiting on Them (local only); in Snoozed: unsnooze |
 | `Ctrl+Z` | Cancel a queued send; in Needs You or Waiting on Them, undo the latest dismiss or stop; otherwise undo the latest pending delete, archive, or move |
 | `O` | Open the Outbox |
 | `o` or `Enter` | Open link on the focus line (falls back to the selected content link) |

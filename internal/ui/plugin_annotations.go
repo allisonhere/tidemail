@@ -173,6 +173,9 @@ func (m Model) annotationLines(width int, chrome managerChrome) ([]string, []int
 	for _, l := range m.waitingExplanationLines(m.plugins.annotationsFor, time.Now()) {
 		lines = append(lines, text.Render(truncate(l, width)))
 	}
+	for _, l := range m.snoozeExplanationLines(m.plugins.annotationsFor) {
+		lines = append(lines, text.Render(truncate(l, width)))
+	}
 	if len(anns) == 0 {
 		if len(lines) == 0 {
 			return []string{muted.Render("no annotations")}, nil

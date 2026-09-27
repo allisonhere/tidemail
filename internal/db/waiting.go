@@ -168,13 +168,7 @@ func (db *DB) ListMessagesByIDs(ids []int64) ([]Message, error) {
 // WaitingKey identifies a waiting cycle by its message: the normalized
 // Message-ID, which is shared by every folder copy of the message, or the row
 // ID when a message has none.
-func WaitingKey(m Message) string {
-	id := strings.ToLower(strings.Trim(strings.TrimSpace(m.MessageID), "<>"))
-	if id != "" && !strings.ContainsAny(id, " \t\r\n") {
-		return "<" + id + ">"
-	}
-	return "row:" + strconv.FormatInt(m.ID, 10)
-}
+func WaitingKey(m Message) string { return MessageKey(m) }
 
 // SetWaitingStopped records or clears "Stop waiting" for waiting cycles.
 func (db *DB) SetWaitingStopped(keys []string, stopped bool) (err error) {

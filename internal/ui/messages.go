@@ -63,7 +63,11 @@ func (m Model) renderMessagesPane() string {
 			}
 			// Threaded rows show the representative message's badges, except
 			// in Needs You, where they combine every message of the thread.
-			age := m.withAnnotationBadges(m.formatTime(msg2.Date), m.rowBadgeIDs(msg2, thread)...)
+			timeText := m.formatTime(msg2.Date)
+			if wake, ok := m.snoozedRowTime(msg2); ok {
+				timeText = wake
+			}
+			age := m.withAnnotationBadges(timeText, m.rowBadgeIDs(msg2, thread)...)
 			style := msgRead
 			if threadUnread > 0 {
 				style = msgUnread
@@ -95,6 +99,8 @@ func (m Model) renderMessagesPane() string {
 				sender := senderDisplay(msg2.From)
 				if waitingFor, ok := m.waitingSender(msg2); ok {
 					sender = waitingFor
+				} else if waitingFor, ok := m.snoozedSender(msg2); ok {
+					sender = waitingFor
 				}
 				line = style.Width(w).Render(renderArticleRowWithSender(dot, star, sender, subject, age, w, senderW))
 			} else {
@@ -113,6 +119,8 @@ func (m Model) renderMessagesPane() string {
 				rows = append(rows, msgRead.Render("  Nothing needs your attention."))
 			case m.selectedWaiting():
 				rows = append(rows, msgRead.Render("  You're not waiting on any replies."))
+			case m.selectedSnoozed():
+				rows = append(rows, msgRead.Render("  Nothing is snoozed."))
 			case m.selectedOutboxRow():
 				// The Outbox row is a doorway, not a folder — its entries are
 				// not db.Message rows and this pane cannot act on them. Saying
@@ -196,6 +204,9 @@ func (m Model) messagesPaneTitle() string {
 	}
 	if m.selectedWaiting() {
 		title = "Waiting on Them"
+	}
+	if m.selectedSnoozed() {
+		title = "Snoozed"
 	}
 	if m.selectedOutboxRow() {
 		title = "Outbox"

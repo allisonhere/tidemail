@@ -50,11 +50,13 @@ type waitingState struct {
 
 type (
 	waitingLoadedMsg struct {
-		Threads     []waitingThread
-		Stopped     map[int64]string
-		Messages    []db.Message // full rows for the view, in order
-		Annotations map[int64][]db.PluginAnnotation
-		Err         error
+		// SnoozesChanged means ended waiting cycles' snoozes were removed.
+		SnoozesChanged bool
+		Threads        []waitingThread
+		Stopped        map[int64]string
+		Messages       []db.Message // full rows for the view, in order
+		Annotations    map[int64][]db.PluginAnnotation
+		Err            error
 	}
 	waitingStopMsg struct {
 		Keys    []string
@@ -179,9 +181,19 @@ func meaningful(msg db.Message) bool {
 // real person who is not the user; stopped cycles are left out. The oldest
 // wait comes first.
 func computeWaiting(candidates []db.Message, me map[string]bool, stoppedKeys map[string]bool) ([]waitingThread, map[int64]string) {
+	threads, stopped, _ := computeWaitingWithSnoozes(candidates, me, stoppedKeys, nil)
+	return threads, stopped
+}
+
+// computeWaitingWithSnoozes also hides snoozed waiting cycles and reports
+// snoozes whose cycle has ended: someone replied, or the user wrote again. A
+// snooze belongs to one wait, like Stop waiting, so those are deleted rather
+// than left to hide a new wait.
+func computeWaitingWithSnoozes(candidates []db.Message, me, stoppedKeys, snoozedKeys map[string]bool) ([]waitingThread, map[int64]string, []string) {
 	stopped := map[int64]string{}
+	var stale []string
 	if len(me) == 0 {
-		return nil, stopped
+		return nil, stopped, nil
 	}
 	var out []waitingThread
 	for _, thread := range buildMessageThreads(candidates) {
@@ -190,6 +202,15 @@ func computeWaiting(candidates []db.Message, me map[string]bool, stoppedKeys map
 			if meaningful(thread.Messages[i]) {
 				latest = &thread.Messages[i]
 				break
+			}
+		}
+		currentKey := ""
+		if latest != nil && me[bareAddress(latest.From)] {
+			currentKey = db.WaitingKey(*latest)
+		}
+		for _, msg := range thread.Messages {
+			if key := db.WaitingKey(msg); snoozedKeys[key] && key != currentKey {
+				stale = append(stale, key)
 			}
 		}
 		if latest == nil || !me[bareAddress(latest.From)] {
@@ -207,9 +228,12 @@ func computeWaiting(candidates []db.Message, me map[string]bool, stoppedKeys map
 		if len(waitingFor) == 0 {
 			continue // self-mail, or only robots and lists
 		}
-		key := db.WaitingKey(*latest)
+		key := currentKey
 		if stoppedKeys[key] {
 			stopped[latest.ID] = key
+		}
+		// Snoozed and stopped both hide the wait; neither clears the other.
+		if stoppedKeys[key] || snoozedKeys[key] {
 			continue
 		}
 		out = append(out, waitingThread{message: *latest, key: key, since: latest.Date, waitingFor: waitingFor})
@@ -220,7 +244,7 @@ func computeWaiting(candidates []db.Message, me map[string]bool, stoppedKeys map
 		}
 		return out[i].message.ID < out[j].message.ID
 	})
-	return out, stopped
+	return out, stopped, stale
 }
 
 func displayParticipant(p participant) string {
@@ -246,7 +270,19 @@ func (m *Model) loadWaitingCmd() tea.Cmd {
 		if err != nil {
 			return waitingLoadedMsg{Err: err}
 		}
-		threads, stopped := computeWaiting(candidates, me, stoppedKeys)
+		snoozes, err := database.ListSnoozes()
+		if err != nil {
+			return waitingLoadedMsg{Err: err}
+		}
+		snoozedKeys := map[string]bool{}
+		for _, sn := range snoozes {
+			if sn.TargetType == db.SnoozeThread {
+				snoozedKeys[sn.TargetKey] = true
+			}
+		}
+		threads, stopped, stale := computeWaitingWithSnoozes(candidates, me, stoppedKeys, snoozedKeys)
+		// Snoozes of waits that ended (a reply, or a new message of mine) go.
+		snoozesChanged := len(stale) > 0 && database.DeleteSnoozeKeys(db.SnoozeThread, stale) == nil
 		ids := make([]int64, len(threads))
 		for i, t := range threads {
 			ids[i] = t.message.ID
@@ -255,7 +291,7 @@ func (m *Model) loadWaitingCmd() tea.Cmd {
 		if err != nil {
 			return waitingLoadedMsg{Err: err}
 		}
-		return waitingLoadedMsg{Threads: threads, Stopped: stopped, Messages: msgs, Annotations: loadMessageAnnotations(database, msgs)}
+		return waitingLoadedMsg{Threads: threads, Stopped: stopped, Messages: msgs, Annotations: loadMessageAnnotations(database, msgs), SnoozesChanged: snoozesChanged}
 	}
 }
 
@@ -291,6 +327,9 @@ func (m Model) handleWaitingMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.Err != nil {
 			return m, tea.Batch(cmds...)
+		}
+		if msg.SnoozesChanged {
+			cmds = append(cmds, loadSnoozeStateCmd(m.db))
 		}
 		m.waiting.threads = msg.Threads
 		m.waiting.stopped = msg.Stopped

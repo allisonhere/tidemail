@@ -101,6 +101,7 @@ func (m Model) mainCommandItems() []commandItem {
 	}
 	items = append(items, m.needsYouCommandItems()...)
 	items = append(items, m.waitingCommandItems()...)
+	items = append(items, m.snoozeCommandItems()...)
 	return append(items, m.pluginCommandItems(hasMessage)...)
 }
 
@@ -235,6 +236,8 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		return m.executeNeedsYouCommand(id)
 	case "waiting-why", "waiting-stop", "waiting-resume":
 		return m.executeWaitingCommand(id)
+	case "snooze", "snooze-unsnooze", "snooze-why":
+		return m.executeSnoozeCommand(id)
 	case "compose-send":
 		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlS})
 	case "compose-schedule":

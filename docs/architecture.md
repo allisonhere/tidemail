@@ -128,6 +128,21 @@ the stored copy starts the wait. "Stop waiting" is stored in
 current wait (`db.WaitingKey`), which scopes it to one waiting cycle. It uses
 no annotations or plugins.
 
+### Snooze
+
+`internal/db/snooze.go` stores snoozes (`snoozes`: target type, target key,
+absolute wake time). Message snoozes are keyed by `db.MessageKey` (normalized
+Message-ID, else row ID, so every folder copy shares one key and moves keep
+it); waiting-conversation snoozes are keyed by the waiting cycle's key, so a
+reply or a new message of the user's ends them (Waiting's refresh deletes
+those). A snooze is active while its row exists: Needs You's query excludes
+snoozed message keys, and Waiting's computation skips snoozed cycles.
+`internal/ui/snooze_timer.go` keeps one cancellable wait for the nearest wake
+time; when it fires, or at startup, due rows are deleted, the cache reloads,
+the attention views re-evaluate, and the next wait is scheduled. A clock seam
+lets tests control time. Threaded rows in the virtual views keep the views'
+own order (`keepListOrder`).
+
 ### Plugin settings
 
 Manifests may declare `[[settings]]` (bool, select, secret) and

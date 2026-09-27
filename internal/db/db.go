@@ -241,6 +241,15 @@ func (db *DB) migrate() error {
 			dismissed_at INTEGER NOT NULL
 		);
 
+		-- Local snoozes (see db/snooze.go): absolute Unix wake times.
+		CREATE TABLE IF NOT EXISTS snoozes (
+			target_type  TEXT    NOT NULL,
+			target_key   TEXT    NOT NULL,
+			snooze_until INTEGER NOT NULL,
+			created_at   INTEGER NOT NULL,
+			PRIMARY KEY (target_type, target_key)
+		);
+
 		CREATE TABLE IF NOT EXISTS message_attention_overrides (
 			message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
 			dismissed  INTEGER NOT NULL DEFAULT 0,
@@ -298,6 +307,9 @@ func (db *DB) migrate() error {
 		return err
 	}
 	if err := db.PruneWaitingDismissals(); err != nil {
+		return err
+	}
+	if err := db.PruneStaleSnoozes(); err != nil {
 		return err
 	}
 	return nil

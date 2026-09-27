@@ -33,6 +33,8 @@ func (m Model) renderAccountsPane() string {
 			rows = append(rows, m.renderNeedsYouRow(selected, innerW))
 		case rowKindWaiting:
 			rows = append(rows, m.renderWaitingRow(selected, innerW))
+		case rowKindSnoozed:
+			rows = append(rows, m.renderSnoozedRow(selected, innerW))
 		case rowKindOutbox:
 			rows = append(rows, m.renderOutboxRow(selected, innerW))
 		case rowKindMailbox:
@@ -84,6 +86,7 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 		rows = append(rows, sidebarRow{kind: rowKindUnified})
 		rows = append(rows, sidebarRow{kind: rowKindNeedsYou})
 		rows = append(rows, sidebarRow{kind: rowKindWaiting})
+		rows = append(rows, sidebarRow{kind: rowKindSnoozed})
 		// Beside the Unified Inbox, because outgoing mail spans accounts the
 		// same way — and because a stuck message needs somewhere to be seen.
 		rows = append(rows, sidebarRow{kind: rowKindOutbox})
@@ -367,7 +370,7 @@ func (m Model) accountColor(accountID int64) lipgloss.Color {
 }
 
 func (m Model) selectedMailboxAccountColor() lipgloss.Color {
-	if m.selectedUnifiedInbox() || m.selectedNeedsYou() || m.selectedWaiting() {
+	if m.selectedUnifiedInbox() || m.selectedNeedsYou() || m.selectedWaiting() || m.selectedSnoozed() {
 		return ""
 	}
 	if mb := m.selectedMailbox(); mb != nil {

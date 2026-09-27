@@ -52,6 +52,8 @@ const (
 	// rowKindWaiting is the standing Waiting on Them entry: conversations
 	// awaiting someone else's reply (see waiting.go).
 	rowKindWaiting
+	// rowKindSnoozed is the standing Snoozed entry (see snooze.go).
+	rowKindSnoozed
 )
 
 type sidebarRow struct {
@@ -94,6 +96,7 @@ const (
 	overlayPluginAnnotations
 	overlayPluginConfirm
 	overlayPluginSettings
+	overlaySnooze
 )
 
 type commandPaletteContext int
@@ -225,6 +228,7 @@ type Model struct {
 
 	needsYou needsYouState // see needs_you.go
 	waiting  waitingState  // see waiting.go
+	snooze   snoozeState   // see snooze.go
 
 	plugins pluginUI // experimental; see plugins.go
 
@@ -344,6 +348,7 @@ type Model struct {
 func (m Model) CloseSessions() {
 	m.stopIdleWatchers()
 	m.closePlugins()
+	m.stopSnoozeTimer()
 	if m.sessions != nil {
 		m.sessions.Close()
 	}
@@ -434,6 +439,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		contentSearchInput:     csi,
 		contentSearchIdx:       -1,
 		selectedMessages:       make(map[int64]bool),
+		snooze:                 newSnoozeState(),
 	}
 	m.restoreCachedUpdateState()
 	if previewManualUpdate {
@@ -476,6 +482,10 @@ func (m Model) Init() tea.Cmd {
 		cmds = append(cmds, cmd)
 	}
 	if cmd := loadNeedsYouCountCmd(m.db); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	// Overdue snoozes (TideMail was closed past their time) end now.
+	if cmd := expireSnoozesCmd(m.db); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
 	return tea.Batch(cmds...)
@@ -809,7 +819,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setStatus(msg.Err.Error(), true)
 			return m, m.clearStatusCmd()
 		}
-		if (msg.NeedsYou && m.selectedNeedsYou()) || (msg.Waiting && m.selectedWaiting()) || (!msg.NeedsYou && !msg.Waiting && msg.MailboxID == 0 && m.selectedUnifiedInbox()) || (!msg.NeedsYou && !msg.Waiting && func() bool {
+		if (msg.NeedsYou && m.selectedNeedsYou()) || (msg.Waiting && m.selectedWaiting()) || (msg.Snoozed && m.selectedSnoozed()) || (!msg.NeedsYou && !msg.Waiting && !msg.Snoozed && msg.MailboxID == 0 && m.selectedUnifiedInbox()) || (!msg.NeedsYou && !msg.Waiting && !msg.Snoozed && func() bool {
 			selected := m.selectedMailbox()
 			return selected != nil && msg.MailboxID == selected.ID
 		}()) {
@@ -824,7 +834,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.messages = msg.Messages
 			m.plugins.annotations = msg.Annotations
-			if msg.NeedsYou || msg.Waiting {
+			if msg.NeedsYou || msg.Waiting || msg.Snoozed {
 				// Rows can leave a virtual view as their state changes.
 				m.pruneSelection()
 			}
@@ -1396,6 +1406,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case waitingLoadedMsg, waitingStopMsg:
 		return m.handleWaitingMsg(msg)
 
+	case snoozeLoadedMsg, snoozeAppliedMsg:
+		return m.handleSnoozeMsg(msg)
+
+	case snoozeTickMsg:
+		return m.handleSnoozeTick(msg)
+
 	case FolderCreatedMsg:
 		if msg.Err != nil {
 			m.setStatus("create folder failed: "+msg.Err.Error(), true)
@@ -1679,6 +1695,8 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.dismissCurrent()
 	case keyMatches(msg, m.keys.NeedsYouDismiss) && m.selectedWaiting() && m.focused != paneAccounts:
 		return m.stopWaitingCurrent()
+	case keyMatches(msg, m.keys.Snooze) && m.focused != paneAccounts:
+		return m.handleSnoozeKeyPress()
 
 	case keyMatches(msg, m.keys.Undo):
 		// A queued send is the most recent (and most urgent) thing to take
@@ -2424,7 +2442,7 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 		// sync only caches the most recent window, so without this the archive
 		// just stops. Search results and the unified inbox span mailboxes and
 		// have no single paging cursor, so they are left alone.
-		if !m.searchActive() && !m.selectedUnifiedInbox() && !m.selectedNeedsYou() && !m.selectedWaiting() && !m.selectedDraftsMailbox() {
+		if !m.searchActive() && !m.selectedUnifiedInbox() && !m.selectedNeedsYou() && !m.selectedWaiting() && !m.selectedSnoozed() && !m.selectedDraftsMailbox() {
 			if selected := m.selectedMailbox(); selected != nil {
 				return m, m.loadOlderMessagesCmd(selected.ID)
 			}
@@ -2573,6 +2591,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case overlayPlugins, overlayPluginPicker, overlayPluginResult, overlayPluginAnnotations, overlayPluginConfirm, overlayPluginSettings:
 		return m.handlePluginKey(msg)
+
+	case overlaySnooze:
+		return m.handleSnoozeKey(msg)
 
 	case overlayOutbox:
 		return m.handleOutboxKey(msg)
@@ -3282,7 +3303,9 @@ func (m Model) renderStatusBar() string {
 	}
 
 	if m.cfg.Display.ShowPaneHeaders && len(m.mailboxes) > 0 {
-		if m.selectedWaiting() {
+		if m.selectedSnoozed() {
+			parts = append(parts, m.statusBarInlineText(sb, "Snoozed"))
+		} else if m.selectedWaiting() {
 			parts = append(parts, m.statusBarInlineText(sb, "Waiting on Them"))
 		} else if m.selectedNeedsYou() {
 			parts = append(parts, m.statusBarInlineText(sb, "Needs You"))
@@ -3583,7 +3606,7 @@ func (m *Model) restoreSidebarSelection(kind sidebarRowKind, id int64) {
 			continue
 		}
 		switch kind {
-		case rowKindUnified, rowKindOutbox, rowKindNeedsYou, rowKindWaiting:
+		case rowKindUnified, rowKindOutbox, rowKindNeedsYou, rowKindWaiting, rowKindSnoozed:
 			m.sidebarCursor = i
 			return
 		case rowKindMailbox:
@@ -3657,7 +3680,7 @@ func (m Model) currentSidebarSelection() (sidebarRowKind, int64) {
 		return rowKindMailbox, 0
 	}
 	row := m.sidebarRows[m.sidebarCursor]
-	if row.kind == rowKindUnified || row.kind == rowKindOutbox || row.kind == rowKindNeedsYou || row.kind == rowKindWaiting {
+	if row.kind == rowKindUnified || row.kind == rowKindOutbox || row.kind == rowKindNeedsYou || row.kind == rowKindWaiting || row.kind == rowKindSnoozed {
 		return row.kind, 0
 	}
 	if row.kind == rowKindAccount {
@@ -3849,7 +3872,7 @@ func (m Model) persistAccountConfigChange(mutate func(*config.Config), okStatus,
 	prevKind, prevID := m.currentSidebarSelection()
 	m.cfg = next
 	m.rebuildSidebar()
-	if prevID != 0 || prevKind == rowKindUnified || prevKind == rowKindNeedsYou || prevKind == rowKindWaiting {
+	if prevID != 0 || prevKind == rowKindUnified || prevKind == rowKindNeedsYou || prevKind == rowKindWaiting || prevKind == rowKindSnoozed {
 		m.restoreSidebarSelection(prevKind, prevID)
 	}
 	m.sidebarCursor = clamp(m.sidebarCursor, 0, max(0, len(m.sidebarRows)-1))

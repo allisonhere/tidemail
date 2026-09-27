@@ -20,6 +20,7 @@ type KeyMap struct {
 	SyncAll         key.Binding
 	MarkRead        key.Binding
 	NeedsYouDismiss key.Binding
+	Snooze          key.Binding
 	MarkAllRead     key.Binding
 	ToggleStar      key.Binding
 	OpenBrowser     key.Binding
@@ -107,22 +108,25 @@ var DefaultKeys = KeyMap{
 	// NeedsYouDismiss only acts in Needs You (dismiss) and Waiting on Them
 	// (stop waiting).
 	NeedsYouDismiss: key.NewBinding(key.WithKeys("X"), key.WithHelp("X", "dismiss / stop waiting")),
-	MarkAllRead:     key.NewBinding(key.WithKeys("R", "ctrl+x"), key.WithHelp("R/ctrl+x", "mark all read")),
-	ToggleStar:      key.NewBinding(key.WithKeys("*"), key.WithHelp("*", "star")),
-	OpenBrowser:     key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser")),
-	Unsubscribe:     key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "unsubscribe")),
-	NextLink:        key.NewBinding(key.WithKeys("ctrl+n", "alt+n"), key.WithHelp("ctrl+n", "next link")),
-	PrevLink:        key.NewBinding(key.WithKeys("alt+p"), key.WithHelp("alt+p", "prev link")),
-	Search:          key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
-	UnreadOnly:      key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "toggle unread only")),
-	StarredFirst:    key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "starred first")),
-	ToggleThreads:   key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "threads")),
-	Compose:         key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "compose")),
-	Reply:           key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reply")),
-	Forward:         key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "forward")),
-	Archive:         key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),
-	Move:            key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move")),
-	Command:         key.NewBinding(key.WithKeys(":", "ctrl+p"), key.WithHelp(":/ctrl+p", "command")),
+	// Snooze hides messages or waiting conversations from the attention
+	// views until later (in Snoozed it unsnoozes). z is quoted-text toggling.
+	Snooze:        key.NewBinding(key.WithKeys("Z"), key.WithHelp("Z", "snooze")),
+	MarkAllRead:   key.NewBinding(key.WithKeys("R", "ctrl+x"), key.WithHelp("R/ctrl+x", "mark all read")),
+	ToggleStar:    key.NewBinding(key.WithKeys("*"), key.WithHelp("*", "star")),
+	OpenBrowser:   key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser")),
+	Unsubscribe:   key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "unsubscribe")),
+	NextLink:      key.NewBinding(key.WithKeys("ctrl+n", "alt+n"), key.WithHelp("ctrl+n", "next link")),
+	PrevLink:      key.NewBinding(key.WithKeys("alt+p"), key.WithHelp("alt+p", "prev link")),
+	Search:        key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
+	UnreadOnly:    key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "toggle unread only")),
+	StarredFirst:  key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "starred first")),
+	ToggleThreads: key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "threads")),
+	Compose:       key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "compose")),
+	Reply:         key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reply")),
+	Forward:       key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "forward")),
+	Archive:       key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),
+	Move:          key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move")),
+	Command:       key.NewBinding(key.WithKeys(":", "ctrl+p"), key.WithHelp(":/ctrl+p", "command")),
 
 	AccountManager: key.NewBinding(key.WithKeys("M"), key.WithHelp("M", "accounts")),
 	ContactManager: key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "contacts")),

@@ -88,6 +88,8 @@ func needsYouFilter(unreadOnly bool) (where string, order string, whereArgs, ord
 	where = inboxMailboxPredicate + `
 		AND NOT EXISTS (SELECT 1 FROM message_attention_overrides o
 			WHERE o.message_id = messages.id AND o.dismissed = 1)
+		AND NOT EXISTS (SELECT 1 FROM snoozes s
+			WHERE s.target_type = 'message' AND s.target_key = ` + messageKeySQL + `)
 		AND (` + urgent + ` OR ` + reply + ` OR ` + important + `)`
 	if unreadOnly {
 		where += " AND messages.read = 0"

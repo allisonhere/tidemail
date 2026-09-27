@@ -133,6 +133,9 @@ func (m Model) renderOverlay(base string) string {
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderSoftPanelBox(inner, winW, "tidemail", "move to", chrome)
 
+	case overlaySnooze:
+		box = m.renderSnoozePicker()
+
 	case overlayPlugins, overlayPluginPicker, overlayPluginResult, overlayPluginAnnotations, overlayPluginConfirm, overlayPluginSettings:
 		box = m.renderPluginOverlay()
 

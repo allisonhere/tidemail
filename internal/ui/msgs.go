@@ -49,6 +49,8 @@ type MessagesLoadedMsg struct {
 	NeedsYou bool
 	// Waiting marks the Waiting on Them view's list.
 	Waiting bool
+	// Snoozed marks the Snoozed view's list.
+	Snoozed bool
 }
 
 type MailboxSyncedMsg struct {

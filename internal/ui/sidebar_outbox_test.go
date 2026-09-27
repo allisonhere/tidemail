@@ -44,9 +44,9 @@ func TestSidebarShowsAnOutboxRow(t *testing.T) {
 		t.Fatalf("expected an Outbox row in the sidebar, got %q", got)
 	}
 	// With the other cross-account entries: Unified Inbox, Needs You,
-	// Waiting on Them, Outbox.
-	if i := outboxRowIndex(t, m); i != 3 || m.sidebarRows[0].kind != rowKindUnified || m.sidebarRows[1].kind != rowKindNeedsYou || m.sidebarRows[2].kind != rowKindWaiting {
-		t.Fatalf("expected Unified Inbox, Needs You, Waiting on Them, Outbox at the top, got %v", m.sidebarRows)
+	// Waiting on Them, Snoozed, Outbox.
+	if i := outboxRowIndex(t, m); i != 4 || m.sidebarRows[0].kind != rowKindUnified || m.sidebarRows[1].kind != rowKindNeedsYou || m.sidebarRows[2].kind != rowKindWaiting || m.sidebarRows[3].kind != rowKindSnoozed {
+		t.Fatalf("expected Unified Inbox, Needs You, Waiting on Them, Snoozed, Outbox at the top, got %v", m.sidebarRows)
 	}
 }
 

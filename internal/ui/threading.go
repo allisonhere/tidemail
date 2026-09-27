@@ -121,6 +121,11 @@ func (m Model) threadedMessagesEnabled() bool {
 func (m *Model) rebuildMessageThreads() {
 	if m.threadedMessagesEnabled() {
 		threads := buildMessageThreads(m.filteredMessages)
+		if m.selectedNeedsYou() || m.selectedWaiting() || m.selectedSnoozed() {
+			// These views arrive in their own order (attention rank, longest
+			// wait, wake time); keep it instead of newest-first.
+			keepListOrder(threads, m.filteredMessages)
+		}
 		if m.starredFirst {
 			// buildMessageThreads orders by date; float threads containing a
 			// starred message to the top while preserving that date order among
@@ -280,4 +285,24 @@ func strconvFormatInt(v int64) string {
 		buf[i] = '-'
 	}
 	return string(buf[i:])
+}
+
+// keepListOrder sorts threads by where their first message appears in list.
+func keepListOrder(threads []messageThread, list []db.Message) {
+	pos := make(map[int64]int, len(list))
+	for i, msg := range list {
+		if _, ok := pos[msg.ID]; !ok {
+			pos[msg.ID] = i
+		}
+	}
+	first := func(t messageThread) int {
+		best := len(list)
+		for _, msg := range t.Messages {
+			if p, ok := pos[msg.ID]; ok && p < best {
+				best = p
+			}
+		}
+		return best
+	}
+	sort.SliceStable(threads, func(i, j int) bool { return first(threads[i]) < first(threads[j]) })
 }
