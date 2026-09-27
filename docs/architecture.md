@@ -112,6 +112,22 @@ Inbox (annotations batched in the same command), caches the count, and
 refreshes both after syncs, annotation writes and cleanups, and dismissals.
 Qualification never refers to a specific plugin.
 
+### Waiting on Them
+
+`internal/ui/waiting.go` computes the view in a background command:
+`db.ListWaitingCandidates` loads header-only rows from every folder except
+Trash, Junk, and Drafts; the existing `buildMessageThreads` groups them by
+Message-ID, In-Reply-To, and References (no subject matching); and a thread
+qualifies when its newest meaningful message (not a draft, not from a robot) is
+from one of the user's configured addresses and went to someone else. Refreshes
+are coalesced (one computation at a time, one queued) and run after every sync,
+at startup and account changes, after archive/delete/move, and after Stop or
+Resume; a successful send triggers a sync of that account's Sent folder, so
+the stored copy starts the wait. "Stop waiting" is stored in
+`waiting_dismissals` keyed by the Message-ID of the message that started the
+current wait (`db.WaitingKey`), which scopes it to one waiting cycle. It uses
+no annotations or plugins.
+
 ### Plugin settings
 
 Manifests may declare `[[settings]]` (bool, select, secret) and

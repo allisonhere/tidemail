@@ -234,6 +234,13 @@ func (db *DB) migrate() error {
 
 		-- TideMail's own per-message attention state. dismissed = 1 keeps a
 		-- message out of Needs You regardless of plugin annotations.
+		-- "Stop waiting" choices for Waiting on Them, one per waiting cycle,
+		-- keyed by the message that started the wait (see db.WaitingKey).
+		CREATE TABLE IF NOT EXISTS waiting_dismissals (
+			message_key  TEXT PRIMARY KEY,
+			dismissed_at INTEGER NOT NULL
+		);
+
 		CREATE TABLE IF NOT EXISTS message_attention_overrides (
 			message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
 			dismissed  INTEGER NOT NULL DEFAULT 0,
@@ -288,6 +295,9 @@ func (db *DB) migrate() error {
 		return err
 	}
 	if err := db.PruneDeletedMessageTombstones(); err != nil {
+		return err
+	}
+	if err := db.PruneWaitingDismissals(); err != nil {
 		return err
 	}
 	return nil

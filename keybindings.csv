@@ -10,7 +10,7 @@ Back,esc,esc,back,global
 Sync,s,s,sync mailbox,main
 SyncAll,"F,ctrl+s",F/ctrl+s,sync all,main
 MarkRead,x,x,mark read,main
-NeedsYouDismiss,X,X,dismiss from Needs You,main
+NeedsYouDismiss,X,X,dismiss from Needs You / stop waiting,main
 MarkAllRead,"R,ctrl+x",R/ctrl+x,mark all read,main
 OpenBrowser,o,o,open in browser,main
 Unsubscribe,ctrl+u,ctrl+u,unsubscribe,content

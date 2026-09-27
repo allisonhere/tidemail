@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidemail/internal/plugin"
@@ -168,10 +169,19 @@ func (m Model) annotationLines(width int, chrome managerChrome) ([]string, []int
 	muted := base.Foreground(chrome.muted)
 
 	anns := m.plugins.annotations[m.plugins.annotationsFor]
-	if len(anns) == 0 {
-		return []string{muted.Render("no annotations")}, nil
-	}
 	lines := m.needsYouExplanationLines(m.plugins.annotationsFor, chrome)
+	for _, l := range m.waitingExplanationLines(m.plugins.annotationsFor, time.Now()) {
+		lines = append(lines, text.Render(truncate(l, width)))
+	}
+	if len(anns) == 0 {
+		if len(lines) == 0 {
+			return []string{muted.Render("no annotations")}, nil
+		}
+		return append(lines, "", muted.Render("no plugin annotations")), nil
+	}
+	if len(lines) > 0 && lines[len(lines)-1] != "" {
+		lines = append(lines, "")
+	}
 	blankRail := softRail(chrome, false, chrome.baseBg)
 	var starts []int
 	keyW := 0

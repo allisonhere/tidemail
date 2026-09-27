@@ -176,6 +176,12 @@ func (m *Model) resumeOutbox() tea.Cmd {
 }
 
 func (m Model) handleOutboxSent(msg MessageSentMsg) (tea.Model, tea.Cmd) {
+	sentFrom := ""
+	for _, p := range m.pendingSends {
+		if p.ID == msg.PendingID {
+			sentFrom = p.Account.ID
+		}
+	}
 	m.removePendingSend(msg.PendingID)
 	m.refreshOutbox()
 	if msg.Skipped {
@@ -194,14 +200,17 @@ func (m Model) handleOutboxSent(msg MessageSentMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmd, m.clearStatusCmd())
 	}
+	// Delivered: fetch the Sent folder so the stored copy (the earliest
+	// reliable record of the message) can start a Waiting on Them wait.
+	syncSent := m.syncSentAfterSendCmd(sentFrom)
 	if msg.SentCopyErr != nil {
 		// The message was delivered — only the Sent-folder copy failed, so this
 		// is not an error state.
 		m.setStatus("message sent (no copy saved to Sent: "+msg.SentCopyErr.Error()+")", false)
-		return m, m.clearStatusCmd()
+		return m, tea.Batch(m.clearStatusCmd(), syncSent)
 	}
 	m.setStatus("message sent", false)
-	return m, m.clearStatusCmd()
+	return m, tea.Batch(m.clearStatusCmd(), syncSent)
 }
 
 func (m Model) outboxSending(id int64) bool {

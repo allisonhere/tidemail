@@ -146,6 +146,41 @@ its normal folder. **Why is this in Needs You?** lists the reasons and the
 annotations behind them. All the usual actions (reply, archive, delete, move,
 star, mark read) work on messages here.
 
+### Waiting on Them
+
+**Waiting on Them**, below Needs You, lists conversations where you sent the
+latest message and are waiting for someone else to answer, across every
+account. It is worked out from the conversation itself, not from plugins:
+nothing is classified and nothing goes online.
+
+- A conversation appears when its newest real message is from you (from any of
+  your configured accounts' addresses; display names don't count) and went to
+  at least one other person. First messages count; a reply beforehand is not
+  needed.
+- It leaves as soon as someone else's reply arrives, and returns when you
+  answer again.
+- Mail in Inbox, Sent, Archive, and other folders counts, so archiving a
+  conversation doesn't hide it. Trash, Spam, and Drafts are ignored.
+- Mail between your own addresses, and mail only to robots or lists
+  (`noreply@`, `notifications@`, `mailer-daemon@`, obvious mailing lists), is
+  left out. Bounces and drafts don't change a conversation's state.
+- Mail you send from TideMail appears once TideMail has fetched your Sent
+  folder, which it does right after sending. Mail sent from your phone or
+  webmail appears after your next sync of Sent (`s` in Waiting on Them syncs
+  inboxes and Sent folders).
+- The longest wait comes first. The sender column shows who you're waiting
+  for (`↗ Sarah +1`); the number beside the entry counts conversations.
+
+Press `X` (or **Stop waiting** in the palette) to stop tracking a
+conversation; `Ctrl+Z` right after, or **Resume waiting**, brings it back. This
+only affects the current wait: if they reply and you answer again, or you send
+another nudge, the conversation appears again. Stopping never changes your
+mail or any plugin annotations. **Why is this in Waiting on Them?** says when
+you sent the latest message and who you're waiting for.
+
+Waiting on Them and Needs You are independent. After you reply, an old plugin
+tag may still keep the message in Needs You until you dismiss it there.
+
 Receipt tables keep item descriptions, quantities, and prices together, even
 when the sender uses ordinary cells for headings or merges cells for totals.
 Amounts align on the right. When columns would be too cramped, each row becomes
@@ -508,8 +543,8 @@ Plugin support is experimental. Only install plugins you trust; see
 | `Shift+Up` / `Shift+Down` | Resize the messages/content split |
 | `u` | Toggle unread-only view |
 | `t` | Toggle starred-first sort (starred messages float to the top) |
-| `X` | In Needs You: dismiss the selected message (mail and tags untouched) |
-| `Ctrl+Z` | Cancel a queued send; in Needs You, restore the latest dismissal; otherwise undo the latest pending delete, archive, or move |
+| `X` | In Needs You: dismiss the message; in Waiting on Them: stop waiting (mail and tags untouched) |
+| `Ctrl+Z` | Cancel a queued send; in Needs You or Waiting on Them, undo the latest dismiss or stop; otherwise undo the latest pending delete, archive, or move |
 | `O` | Open the Outbox |
 | `o` or `Enter` | Open link on the focus line (falls back to the selected content link) |
 | `Ctrl+U` | Unsubscribe from the mailing list for the open message |

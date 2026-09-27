@@ -47,6 +47,8 @@ type MessagesLoadedMsg struct {
 	Annotations map[int64][]db.PluginAnnotation
 	// NeedsYou marks the Needs You view's list.
 	NeedsYou bool
+	// Waiting marks the Waiting on Them view's list.
+	Waiting bool
 }
 
 type MailboxSyncedMsg struct {

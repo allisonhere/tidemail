@@ -100,6 +100,7 @@ func (m Model) mainCommandItems() []commandItem {
 		{id: "settings", label: "Open settings", enabled: true},
 	}
 	items = append(items, m.needsYouCommandItems()...)
+	items = append(items, m.waitingCommandItems()...)
 	return append(items, m.pluginCommandItems(hasMessage)...)
 }
 
@@ -232,6 +233,8 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		return m.executePluginCommand(id)
 	case "needs-you-why", "needs-you-dismiss", "needs-you-restore":
 		return m.executeNeedsYouCommand(id)
+	case "waiting-why", "waiting-stop", "waiting-resume":
+		return m.executeWaitingCommand(id)
 	case "compose-send":
 		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlS})
 	case "compose-schedule":

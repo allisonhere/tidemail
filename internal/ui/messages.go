@@ -92,7 +92,11 @@ func (m Model) renderMessagesPane() string {
 			var line string
 			if m.cfg.Display.ShowSender {
 				senderW := min(22, max(0, w/3))
-				line = style.Width(w).Render(renderArticleRowWithSender(dot, star, senderDisplay(msg2.From), subject, age, w, senderW))
+				sender := senderDisplay(msg2.From)
+				if waitingFor, ok := m.waitingSender(msg2); ok {
+					sender = waitingFor
+				}
+				line = style.Width(w).Render(renderArticleRowWithSender(dot, star, sender, subject, age, w, senderW))
 			} else {
 				line = style.Width(w).Render(renderArticleRow(dot, star, subject, age, w))
 			}
@@ -107,6 +111,8 @@ func (m Model) renderMessagesPane() string {
 				rows = append(rows, msgRead.Render("  no results"))
 			case m.selectedNeedsYou():
 				rows = append(rows, msgRead.Render("  Nothing needs your attention."))
+			case m.selectedWaiting():
+				rows = append(rows, msgRead.Render("  You're not waiting on any replies."))
 			case m.selectedOutboxRow():
 				// The Outbox row is a doorway, not a folder — its entries are
 				// not db.Message rows and this pane cannot act on them. Saying
@@ -187,6 +193,9 @@ func (m Model) messagesPaneTitle() string {
 	}
 	if m.selectedNeedsYou() {
 		title = "Needs You"
+	}
+	if m.selectedWaiting() {
+		title = "Waiting on Them"
 	}
 	if m.selectedOutboxRow() {
 		title = "Outbox"

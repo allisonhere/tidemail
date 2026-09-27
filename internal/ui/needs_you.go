@@ -85,6 +85,8 @@ func (m *Model) virtualViewCmd() tea.Cmd {
 		return m.loadUnifiedInboxCmd()
 	case m.selectedNeedsYou():
 		return m.loadNeedsYouCmd()
+	case m.selectedWaiting():
+		return m.requestWaitingRefresh()
 	}
 	return nil
 }
