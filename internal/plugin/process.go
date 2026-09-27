@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -47,7 +48,11 @@ func pluginEnv() []string {
 // invoke runs the plugin once: it writes req to stdin, waits for the process
 // to exit, and parses stdout as the response. The executable runs directly,
 // never through a shell.
-func invoke(ctx context.Context, p Plugin, req Request, timeout time.Duration) (Response, error) {
+//
+// secrets are the plugin's own secret settings, keyed by setting key. They go
+// into this process's environment only, and any copy of them in the plugin's
+// stdout or stderr is masked before TideMail parses or displays it.
+func invoke(ctx context.Context, p Plugin, req Request, timeout time.Duration, secrets map[string]string) (Response, error) {
 	if err := req.validate(); err != nil {
 		return Response{}, fmt.Errorf("plugin %q: %w", p.Manifest.ID, err)
 	}
@@ -65,6 +70,9 @@ func invoke(ctx context.Context, p Plugin, req Request, timeout time.Duration) (
 	cmd := exec.CommandContext(ctx, p.Executable)
 	cmd.Dir = p.Dir
 	cmd.Env = pluginEnv()
+	for key, value := range secrets {
+		cmd.Env = append(cmd.Env, SecretEnvVar(key)+"="+value)
+	}
 	cmd.Stdin = strings.NewReader(string(payload))
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
@@ -72,6 +80,8 @@ func invoke(ctx context.Context, p Plugin, req Request, timeout time.Duration) (
 	configureProcessGroup(cmd)
 
 	runErr := cmd.Run()
+	stdout.buf = redactSecrets(stdout.buf, secrets)
+	stderr.buf = redactSecrets(stderr.buf, secrets)
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		if errors.Is(ctxErr, context.DeadlineExceeded) {
 			return Response{}, fmt.Errorf("plugin %q timed out after %s%s", p.Manifest.ID, timeout, stderrSuffix(stderr))
@@ -89,6 +99,20 @@ func invoke(ctx context.Context, p Plugin, req Request, timeout time.Duration) (
 		return Response{}, fmt.Errorf("plugin %q: %w", p.Manifest.ID, err)
 	}
 	return resp, nil
+}
+
+// minRedactLen skips masking very short secrets, which would otherwise mask
+// ordinary text.
+const minRedactLen = 6
+
+// redactSecrets replaces every copy of a secret value with asterisks.
+func redactSecrets(b []byte, secrets map[string]string) []byte {
+	for _, v := range secrets {
+		if len(v) >= minRedactLen {
+			b = bytes.ReplaceAll(b, []byte(v), []byte("********"))
+		}
+	}
+	return b
 }
 
 // cappedBuffer keeps the first max bytes written and discards the rest. It

@@ -47,6 +47,10 @@ type Manifest struct {
 	// Events lists the automatic events the plugin wants. Declaring one only
 	// makes the plugin eligible; the user still has to enable it.
 	Events []string `toml:"events"`
+	// Capabilities lists optional protocol features, e.g. plugin.test.
+	Capabilities []string `toml:"capabilities"`
+	// Settings declares user settings TideMail renders generically.
+	Settings []SettingSpec `toml:"settings"`
 }
 
 // EventMessageReceived is sent automatically for newly received mail. It is
@@ -126,6 +130,8 @@ func (m Manifest) Validate() error {
 		}
 		seenEvents[e] = true
 	}
+	errs = append(errs, validateCapabilities(m.Capabilities)...)
+	errs = append(errs, validateSettings(m.Settings)...)
 	if len(errs) > 0 {
 		return fmt.Errorf("invalid manifest: %w", errors.Join(errs...))
 	}

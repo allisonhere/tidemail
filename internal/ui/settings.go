@@ -59,6 +59,7 @@ const (
 	sfAboutRepo
 	sfAboutIssues
 	sfViewLogs
+	sfPluginSettings // Advanced; only when plugins are installed
 	sfProvider
 	sfAPIKey    // visible when provider is openai/claude/gemini
 	sfOllamaURL // visible when provider is ollama
@@ -115,6 +116,7 @@ const (
 	settingsActionOpenRepo
 	settingsActionOpenIssues
 	settingsActionViewLogs
+	settingsActionPluginSettings
 	settingsActionCopyManualInstall
 )
 
@@ -229,6 +231,9 @@ func ollamaModelIndex(s string) int {
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 type Settings struct {
+	// pluginsAvailable shows the experimental Plugins group in Advanced.
+	pluginsAvailable bool
+
 	// Display
 	icons                 bool
 	showPaneHeaders       bool
@@ -707,7 +712,11 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		fields = append(fields, sfTestAIConnection, sfSavePath, sfMarkReadOnSummarize)
 		return fields
 	case ssAdvanced:
-		return []settingsField{sfBackToSections, sfViewLogs, sfFeedMaxBody}
+		fields := []settingsField{sfBackToSections, sfViewLogs}
+		if s.pluginsAvailable {
+			fields = append(fields, sfPluginSettings)
+		}
+		return append(fields, sfFeedMaxBody)
 
 	case ssAbout:
 		return []settingsField{sfBackToSections, sfAboutHeart, sfAboutRepo, sfAboutIssues}
@@ -1368,6 +1377,16 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfPluginSettings:
+		switch {
+		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter):
+			s.action = settingsActionPluginSettings
+		case keyMatches(key, keys.Down):
+			s.setFocusedField(s.nextField())
+		case keyMatches(key, keys.Up):
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfViewLogs:
 		switch {
 		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter):
@@ -1938,6 +1957,10 @@ func (b *settingsFormBuilder) addAITestConnection() {
 func (b *settingsFormBuilder) addAdvancedSection() {
 	b.addGroup("Logs")
 	b.addAction("View Logs", "review errors and status messages", sfViewLogs)
+	if b.s.pluginsAvailable {
+		b.addGroup("Plugins")
+		b.addAction("Plugin settings", "experimental; configure installed plugins", sfPluginSettings)
+	}
 	b.addGroup("Storage")
 	b.addInput("Max body size (MiB)", b.s.feedMaxBodyInput, sfFeedMaxBody)
 }

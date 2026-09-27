@@ -32,6 +32,8 @@ var helpers = map[string]func(){
 	"tidemail-plugin-echo":       helperEcho,
 	"tidemail-plugin-marker":     helperMarker,
 	"tidemail-plugin-hangpid":    helperHangPID,
+	"tidemail-plugin-leak":       helperLeak,
+	"tidemail-plugin-tester":     helperTester,
 	"tidemail-plugin-annotate":   helperAnnotate(`[{"key":"needs_reply","value":"true","confidence":0.94},{"key":"urgency","value":"high"}]`),
 	"tidemail-plugin-badconf":    helperAnnotate(`[{"key":"urgency","value":"high","confidence":2.0}]`),
 	"tidemail-plugin-noanns":     helperAnnotate(`[]`),
@@ -122,6 +124,24 @@ func helperMarker() {
 }
 
 const markerFile = "RAN"
+
+// helperLeak echoes its secret on stdout inside a valid response, and on
+// stderr when asked to fail.
+func helperLeak() {
+	req := readRequest()
+	secret := os.Getenv("TIDEMAIL_SECRET_API_KEY")
+	if req.Method == "fail" {
+		fmt.Fprint(os.Stderr, "auth failed for key "+secret)
+		os.Exit(1)
+	}
+	respond(req, map[string]any{"echo": "key=" + secret, "settings": req.Settings})
+}
+
+// helperTester answers plugin.test.
+func helperTester() {
+	req := readRequest()
+	respond(req, map[string]any{"ok": true, "message": "connection ok (" + req.Method + ")"})
+}
 
 // helperHangPID records its PID in its working directory, then hangs.
 func helperHangPID() {

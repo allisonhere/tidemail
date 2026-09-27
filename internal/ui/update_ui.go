@@ -224,6 +224,7 @@ func (m *Model) applyManualUpdatePreview() {
 	}
 	m.cfg.Updates.LastCheckedUnix = now.Unix()
 	m.settings = newSettings(m.cfg, m.settingsUpdateState())
+	m.settings.pluginsAvailable = m.pluginsVisible()
 	m.settings.setFocusedPane(settingsPaneDetail)
 	m.settings.setActiveSection(ssUpdates)
 	m.settings.setFocusedField(sfUpdateManualCommand)

@@ -78,6 +78,14 @@ type pluginUI struct {
 	// rendering instead of the manager itself.
 	events      *plugin.EventManager
 	eventStatus map[string]plugin.RuntimeStatus
+
+	// settings is the plugin settings form (plugin_settings.go);
+	// settingsSrc hands stored settings to the manager.
+	settings    pluginSettingsState
+	settingsSrc *pluginSettingsSource
+	// listOrigin is where Esc from the plugin list returns (Settings or
+	// nothing).
+	listOrigin overlayMode
 }
 
 type pluginResult struct {
@@ -127,6 +135,11 @@ func (m *Model) SetPlugins(mgr *plugin.Manager, dir string, discoveryErr error) 
 	m.plugins = pluginUI{
 		manager: mgr, dir: dir, discoveryErr: discoveryErr, ctx: ctx, cancel: cancel,
 		annotations: m.plugins.annotations, counts: m.plugins.counts, countsLoaded: m.plugins.countsLoaded,
+		settingsSrc: &pluginSettingsSource{},
+	}
+	m.plugins.settingsSrc.update(m.cfg)
+	if mgr != nil {
+		mgr.Settings = m.plugins.settingsSrc
 	}
 	m.startPluginEvents()
 }
@@ -164,11 +177,7 @@ func (m Model) pluginCommandItems(hasMessage bool) []commandItem {
 func (m Model) executePluginCommand(id string) (tea.Model, tea.Cmd) {
 	switch id {
 	case "plugins":
-		m.plugins.scroll = 0
-		m.plugins.listCursor = 0
-		m.overlay = overlayPlugins
-		// Counts are refreshed each time the list opens, never while drawing.
-		return m, loadPluginAnnotationCountsCmd(m.db)
+		return m.openPluginList(overlayNone)
 	case "plugin-run":
 		return m.openPluginPicker()
 	case "plugin-annotations":
@@ -181,6 +190,17 @@ func (m Model) executePluginCommand(id string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
+}
+
+// openPluginList shows the plugin list; Esc returns to origin.
+func (m Model) openPluginList(origin overlayMode) (tea.Model, tea.Cmd) {
+	m.plugins.scroll = 0
+	m.plugins.listCursor = 0
+	m.plugins.listOrigin = origin
+	m.overlay = overlayPlugins
+	m.refreshPluginEventStatus()
+	// Counts are refreshed each time the list opens, never while drawing.
+	return m, loadPluginAnnotationCountsCmd(m.db)
 }
 
 // metadataPlugins lists the plugins allowed to receive message metadata.
@@ -367,6 +387,8 @@ func (m Model) handlePluginKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleAnnotationsKey(msg)
 	case overlayPluginConfirm:
 		return m.handlePluginConfirm(msg)
+	case overlayPluginSettings:
+		return m.handlePluginSettingsKey(msg)
 	case overlayPluginResult:
 		switch {
 		case keyMatches(msg, m.keys.Cancel, m.keys.Back):
@@ -410,6 +432,8 @@ func (m Model) renderPluginOverlay() string {
 		title = "plugin result"
 	case overlayPluginConfirm:
 		return m.renderPluginConfirm()
+	case overlayPluginSettings:
+		return m.renderPluginSettings()
 	case overlayPluginAnnotations:
 		lines, _ := m.annotationLines(winW-4, chrome)
 		pairs := []string{"esc", "close"}
@@ -426,6 +450,9 @@ func (m Model) renderPluginOverlay() string {
 			e := entries[clamp(m.plugins.listCursor, 0, len(entries)-1)]
 			eventHints := m.pluginEventHints(e)
 			pairs = append(pairs, eventHints...)
+			if e.installed && m.hasPluginSettingsPage(e.pluginID) {
+				pairs = append(pairs, "s", "settings")
+			}
 			resumable = len(eventHints) > 2 // includes "r resume"
 			// Only offer clearing when the selected plugin has stored data.
 			if e.count > 0 {

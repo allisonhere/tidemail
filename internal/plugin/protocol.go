@@ -52,11 +52,15 @@ type MessageMetadata struct {
 
 // Request is the envelope TideMail writes to a plugin's stdin.
 type Request struct {
-	API       int             `json:"api"`
-	Type      string          `json:"type"`
-	RequestID string          `json:"request_id"`
-	Method    string          `json:"method"`
-	Data      json.RawMessage `json:"data,omitempty"`
+	API       int    `json:"api"`
+	Type      string `json:"type"`
+	RequestID string `json:"request_id"`
+	Method    string `json:"method"`
+	// Settings carries the plugin's own resolved non-secret settings. Secrets
+	// are never in the request: they reach the plugin only through its process
+	// environment (see SecretEnvVar).
+	Settings map[string]any  `json:"settings,omitempty"`
+	Data     json.RawMessage `json:"data,omitempty"`
 }
 
 // Response is the envelope a plugin writes to stdout. Exactly one of Data

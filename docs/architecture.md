@@ -101,6 +101,18 @@ enqueues work from `MailboxSyncedMsg.NewMessages`, which sync fills with
 stored row IDs, and skips syncs marked `Cold` (first sync or cache rebuild).
 Rendering reads a cached status snapshot.
 
+### Plugin settings
+
+Manifests may declare `[[settings]]` (bool, select, secret) and
+`capabilities` (`plugin.test`), validated in `internal/plugin/settings.go`.
+`internal/ui/plugin_settings.go` renders a generic form, stores non-secret
+values in `config.toml` (`[plugins.<id>.settings]`) and secrets in the keychain
+(`config.StorePluginSecret`, keyed by plugin ID and setting key). The manager
+reads both through a `plugin.SettingsSource`: each request carries the
+plugin's own resolved settings, and its secrets are set only in that plugin's
+process environment and masked out of its output. Plugins such as TideMail
+Smart, which may call external services, live outside this repository.
+
 ### Terminal images
 
 `rich_images.go` owns the image store. Moving the cursor only records which

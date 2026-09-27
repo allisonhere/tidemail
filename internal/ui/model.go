@@ -87,6 +87,7 @@ const (
 	overlayPluginResult
 	overlayPluginAnnotations
 	overlayPluginConfirm
+	overlayPluginSettings
 )
 
 type commandPaletteContext int
@@ -1357,6 +1358,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pluginAnnotationsRefreshedMsg:
 		return m.handlePluginAnnotationsRefreshed(msg)
 
+	case pluginSecretPresenceMsg, pluginSecretSavedMsg, pluginTestResultMsg:
+		return m.handlePluginSettingsMsg(msg)
+
 	case FolderCreatedMsg:
 		if msg.Err != nil {
 			m.setStatus("create folder failed: "+msg.Err.Error(), true)
@@ -2160,6 +2164,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keyMatches(msg, m.keys.Settings):
 		m.settings = newSettings(m.cfg, m.settingsUpdateState())
+		m.settings.pluginsAvailable = m.pluginsVisible()
 		m.overlay = overlaySettings
 		return m, nil
 
@@ -2519,7 +2524,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayMoveMessage:
 		return m.handleMovePicker(msg)
 
-	case overlayPlugins, overlayPluginPicker, overlayPluginResult, overlayPluginAnnotations, overlayPluginConfirm:
+	case overlayPlugins, overlayPluginPicker, overlayPluginResult, overlayPluginAnnotations, overlayPluginConfirm, overlayPluginSettings:
 		return m.handlePluginKey(msg)
 
 	case overlayOutbox:
@@ -2742,6 +2747,8 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case settingsActionViewLogs:
 		m.overlay = overlayLogViewer
 		return m, nil
+	case settingsActionPluginSettings:
+		return m.openPluginList(overlaySettings)
 	case settingsActionCopyManualInstall:
 		cmd := strings.TrimSpace(m.settings.update.manualCommand)
 		if cmd == "" {

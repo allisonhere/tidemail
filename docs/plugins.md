@@ -98,6 +98,98 @@ Validation rules:
   of silently leaving every permission off.
 - `events` may only list `message.received`, once. Any other name rejects the
   manifest.
+- `capabilities` may only list `plugin.test` (see
+  [Testing a configuration](#testing-a-configuration)).
+- `[[settings]]` entries follow the rules in [Settings](#settings).
+
+## Settings
+
+A plugin can declare user settings. TideMail renders them itself, in a generic
+form; plugins cannot supply their own UI.
+
+```toml
+[[settings]]
+key = "mode"                     # a-z, 0-9, _; starts with a letter; up to 32
+label = "Classification mode"    # required; up to 48 characters
+type = "select"                  # bool, select, or secret
+default = "hybrid"               # select: one of options; bool: true/false
+options = ["local", "hybrid", "jev"]
+help = "Shown under the setting." # optional; up to 240 characters
+
+[[settings]]
+key = "api_key"
+label = "API key"
+type = "secret"                  # no default allowed
+```
+
+Validation rejects duplicate keys, unknown types or fields, a select without
+options (or with duplicate options, or a default that is not an option), a
+bool default that is not `true`/`false`, any default on a secret, and labels or
+help with control characters. At most 32 settings.
+
+### Where values are stored
+
+- **bool and select** values go in `config.toml`, under the plugin's ID:
+
+  ```toml
+  [plugins.smart.settings]
+  mode = "hybrid"
+  jev_enabled = true
+  ```
+
+  A missing value uses the manifest default. A stored value of the wrong type,
+  or a select value that is no longer an option, also falls back to the
+  default. Values for removed plugins are ignored, and are used again if a
+  plugin with the same ID returns.
+- **secrets** go in the system keychain (the same one TideMail uses for
+  account passwords), under the plugin ID and setting key. There is no
+  plaintext fallback: without a usable keychain a secret is simply not saved.
+  The UI only learns whether a secret is set, never its value, and shows it as
+  `************`.
+
+### How a plugin receives them
+
+Every request to a plugin that declares settings carries its resolved
+non-secret settings, and only the keys it declared:
+
+```json
+{"api": 1, "type": "request", "request_id": "…", "method": "message.received",
+ "settings": {"mode": "hybrid", "jev_enabled": true}, "data": {…}}
+```
+
+Secrets are **not** in the request. Each declared secret is set as an
+environment variable for that plugin's process only, named
+`TIDEMAIL_SECRET_<KEY>` (for example `TIDEMAIL_SECRET_JEV_API_KEY`). Keeping
+secrets out of the JSON means TideMail never holds them in a structure that
+could be echoed, logged, or displayed. A plugin never receives another
+plugin's settings or secrets. If a plugin writes a secret's value to stdout or
+stderr, TideMail replaces it with `********` before parsing or showing
+anything.
+
+### The settings form
+
+Open **Settings → Advanced → Plugin settings** (shown only when plugins are
+installed), select a plugin, and press `s`; or press `s` on a plugin in
+**Plugins (experimental)**. A plugin with nothing to configure has no form.
+The form lists:
+
+- **Auto-process new mail**, for plugins that declare `message.received`
+  (turning it on asks for confirmation, as with `a` in the plugin list).
+- Each declared setting. `Enter` or `Space` toggles a bool and cycles a select
+  (`←`/`→` cycle too). On a secret, `Enter` asks for a new value (typed
+  characters are hidden, `Enter` saves, `Esc` cancels) and `x` clears a stored
+  one.
+- **Test plugin configuration**, for plugins that declare `plugin.test`.
+
+Changes are saved immediately.
+
+### Testing a configuration
+
+A plugin that declares `capabilities = ["plugin.test"]` gets a **Test plugin
+configuration** row. It sends method `plugin.test` (with the settings and
+secrets above) in the background. The plugin should answer with
+`{"ok": true|false, "message": "…"}`; TideMail shows the message on the status
+line and the full reply in the result window. The reply is informational only.
 
 ## Protocol v1
 
@@ -142,6 +234,7 @@ A non-zero exit status is also a failure.
 | `ping` | none | `{"message": "pong"}` |
 | `message.metadata` | one message's metadata (below) | a JSON object; `annotations` is read (below), everything else is shown and never acted on |
 | `message.received` | the same metadata, sent automatically for new mail (see [Automatic events](#automatic-events)) | the same as `message.metadata` |
+| `plugin.test` | none (settings and secrets as usual) | `{"ok": bool, "message": "…"}`, shown only |
 
 `message.metadata` is sent only to plugins whose manifest declares
 `message_metadata = true`. The check happens in `internal/plugin` before the
@@ -368,7 +461,8 @@ limits what it hands them:
   `LC_CTYPE`, `LC_MESSAGES`, `TMPDIR`, and `TZ`. `TIDEMAIL_*` client secrets
   and provider API keys are not passed on.
 - Plugins never receive database handles, account passwords, OAuth tokens, or
-  config secrets. They only see what a request carries.
+  TideMail's configuration. They see what a request carries, plus their own
+  declared settings and secrets (see [Settings](#settings)).
 - Each call has a timeout (5 seconds by default). On Unix, the plugin's whole
   process group is killed when the timeout expires. Automatic runs use the same
   restrictions as manual ones.
@@ -379,7 +473,9 @@ limits what it hands them:
   `annotations` are enforced: without the first, a plugin never receives
   message data; without both, nothing it returns is stored. The flags cannot
   limit what the plugin process itself does, so `network` in particular is
-  only a declaration.
+  only a declaration. A plugin that sends data to an online service (such as
+  TideMail Smart in its Jev modes) should declare `network = true` and say
+  in its settings help what it sends.
 - Annotations are stored through parameterized SQL, only after the whole set is
   validated. Keys and values are never used as code, commands, URLs, or file
   paths.

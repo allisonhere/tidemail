@@ -245,8 +245,12 @@ func (m Model) handlePluginListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	switch {
 	case keyMatches(msg, m.keys.Cancel, m.keys.Back):
-		m.overlay = overlayNone
+		m.overlay = m.plugins.listOrigin
 		m.plugins.scroll = 0
+	case msg.String() == "s" && len(entries) > 0:
+		if e := entries[clamp(m.plugins.listCursor, 0, len(entries)-1)]; e.installed {
+			return m.openPluginSettings(e.pluginID)
+		}
 	case keyMatches(msg, m.keys.Up):
 		if m.plugins.listCursor > 0 {
 			m.plugins.listCursor--

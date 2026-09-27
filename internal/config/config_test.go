@@ -410,3 +410,48 @@ func TestMalformedPluginSettingsDoNotBlockStartup(t *testing.T) {
 		t.Fatalf("plugins = %+v", cfg.Plugins)
 	}
 }
+
+func TestPluginNonSecretSettingsRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cfg := DefaultConfig()
+	cfg.SetPluginSetting("smart", "mode", "jev")
+	cfg.SetPluginSetting("smart", "jev_enabled", false)
+	cfg.SetPluginAutoEvents("smart", true)
+	if err := Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := loaded.PluginStoredSettings("smart")
+	if got["mode"] != "jev" || got["jev_enabled"] != false || !loaded.PluginAutoEvents("smart") {
+		t.Fatalf("settings = %v", got)
+	}
+	// Only bool and string values survive a hand-edited file.
+	path := filepath.Join(dir, "tidemail", "config.toml")
+	if err := os.WriteFile(path, []byte("[plugins.smart.settings]\nmode = \"local\"\nlevel = 5\nnested = { a = 1 }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := loaded.PluginStoredSettings("smart"); len(got) != 1 || got["mode"] != "local" {
+		t.Fatalf("settings = %v", got)
+	}
+}
+
+func TestPluginSecretsRefuseWithoutKeychain(t *testing.T) {
+	t.Setenv("TIDEMAIL_DISABLE_KEYRING", "1")
+	if err := StorePluginSecret("smart", "jev_api_key", "sk-test"); err == nil {
+		t.Fatal("storing a plugin secret without a keychain must fail, not fall back to plaintext")
+	}
+	if _, ok := GetPluginSecret("smart", "jev_api_key"); ok {
+		t.Fatal("no secret should be readable without a keychain")
+	}
+	if pluginSecretKey("a", "k") == pluginSecretKey("b", "k") {
+		t.Fatal("secret names must be namespaced by plugin")
+	}
+}

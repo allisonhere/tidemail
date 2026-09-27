@@ -43,6 +43,9 @@ func (e DiscoveryError) Unwrap() error { return e.Err }
 type Manager struct {
 	// Timeout bounds each invocation. Zero means DefaultTimeout.
 	Timeout time.Duration
+	// Settings supplies stored settings and secrets. When nil, plugins get
+	// their declared defaults and no secrets.
+	Settings SettingsSource
 
 	dir     string
 	plugins []Plugin
@@ -259,7 +262,8 @@ func (m *Manager) call(ctx context.Context, p Plugin, method string, data json.R
 	if err != nil {
 		return Response{}, err
 	}
-	resp, err := invoke(ctx, p, req, m.timeout())
+	secrets := m.applySettings(p, &req)
+	resp, err := invoke(ctx, p, req, m.timeout(), secrets)
 	if err != nil {
 		return Response{}, err
 	}
@@ -288,4 +292,47 @@ func (m *Manager) timeout() time.Duration {
 		return m.Timeout
 	}
 	return DefaultTimeout
+}
+
+// applySettings puts the plugin's own resolved settings on the request and
+// returns its own declared secrets for the process environment. Only keys the
+// plugin's manifest declares are ever read, and always under its own ID.
+func (m *Manager) applySettings(p Plugin, req *Request) map[string]string {
+	specs := p.Manifest.Settings
+	if len(specs) == 0 {
+		return nil
+	}
+	var stored map[string]any
+	if m.Settings != nil {
+		stored = m.Settings.StoredSettings(p.Manifest.ID)
+	}
+	req.Settings = ResolveSettings(specs, stored)
+	if m.Settings == nil {
+		return nil
+	}
+	secrets := map[string]string{}
+	for _, s := range specs {
+		if s.Type != SettingSecret {
+			continue
+		}
+		// A secret that cannot be read is simply absent; the plugin decides
+		// what to do without it.
+		if v, ok, err := m.Settings.Secret(p.Manifest.ID, s.Key); err == nil && ok && v != "" {
+			secrets[s.Key] = v
+		}
+	}
+	return secrets
+}
+
+// Test runs plugin.test for a plugin that declares the capability. The
+// response is informational only.
+func (m *Manager) Test(ctx context.Context, pluginID string) (Response, error) {
+	p, ok := m.Plugin(pluginID)
+	if !ok {
+		return Response{}, fmt.Errorf("%w %q", ErrUnknownPlugin, pluginID)
+	}
+	if !p.Manifest.HasCapability(CapabilityTest) {
+		return Response{}, fmt.Errorf("plugin %q: %w: %s is not declared", pluginID, ErrPermissionDenied, CapabilityTest)
+	}
+	return m.call(ctx, p, MethodTest, nil)
 }

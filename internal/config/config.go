@@ -38,6 +38,9 @@ type Config struct {
 type PluginSettings struct {
 	// AutoEvents lets the plugin receive message.received automatically.
 	AutoEvents bool `toml:"auto_events"`
+	// Settings holds the plugin's declared non-secret settings (bool and
+	// string values only). Secrets live in the keychain, never here.
+	Settings map[string]any `toml:"settings,omitempty"`
 }
 
 // PluginSettingsMap maps plugin IDs to their settings. It decodes leniently:
@@ -55,7 +58,19 @@ func (p *PluginSettingsMap) UnmarshalTOML(data any) error {
 				continue
 			}
 			auto, _ := table["auto_events"].(bool)
-			out[id] = PluginSettings{AutoEvents: auto}
+			ps := PluginSettings{AutoEvents: auto}
+			if values, ok := table["settings"].(map[string]any); ok {
+				for k, v := range values {
+					switch v.(type) {
+					case bool, string:
+						if ps.Settings == nil {
+							ps.Settings = map[string]any{}
+						}
+						ps.Settings[k] = v
+					}
+				}
+			}
+			out[id] = ps
 		}
 	}
 	*p = out
@@ -71,14 +86,43 @@ func (c Config) PluginAutoEvents(pluginID string) bool {
 // SetPluginAutoEvents records the automatic-events switch for a plugin. It
 // copies the map so a Config value shared elsewhere is not changed.
 func (c *Config) SetPluginAutoEvents(pluginID string, on bool) {
+	next, settings := c.clonePlugin(pluginID)
+	settings.AutoEvents = on
+	next[pluginID] = settings
+	c.Plugins = next
+}
+
+// PluginStoredSettings returns a copy of a plugin's stored non-secret
+// setting values (raw, unvalidated; resolve them against the manifest).
+func (c Config) PluginStoredSettings(pluginID string) map[string]any {
+	stored := c.Plugins[pluginID].Settings
+	out := make(map[string]any, len(stored))
+	for k, v := range stored {
+		out[k] = v
+	}
+	return out
+}
+
+// SetPluginSetting stores one non-secret setting value (bool or string). It
+// copies the maps so a Config value shared elsewhere is not changed.
+func (c *Config) SetPluginSetting(pluginID, key string, value any) {
+	next, settings := c.clonePlugin(pluginID)
+	values := make(map[string]any, len(settings.Settings)+1)
+	for k, v := range settings.Settings {
+		values[k] = v
+	}
+	values[key] = value
+	settings.Settings = values
+	next[pluginID] = settings
+	c.Plugins = next
+}
+
+func (c *Config) clonePlugin(pluginID string) (PluginSettingsMap, PluginSettings) {
 	next := make(PluginSettingsMap, len(c.Plugins)+1)
 	for id, s := range c.Plugins {
 		next[id] = s
 	}
-	settings := next[pluginID]
-	settings.AutoEvents = on
-	next[pluginID] = settings
-	c.Plugins = next
+	return next, next[pluginID]
 }
 
 type OAuthConfig struct {

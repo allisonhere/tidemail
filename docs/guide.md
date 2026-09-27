@@ -439,6 +439,14 @@ Automatic processing is off for every plugin until you enable it. A plugin that
 fails three times in a row is paused; select it and press `r` to resume. Running
 a plugin by hand works as before.
 
+Plugins can have their own settings. Open **Settings → Advanced → Plugin
+settings** (or press `s` on a plugin in **Plugins (experimental)**) to change
+them. Secret values such as API keys are stored in your system keychain, never
+in `config.toml`, and are shown only as `************`. Plugins are separate
+programs, not part of TideMail's mail handling: for example, TideMail Smart
+(an external plugin) can call TypeSafe's Jev model over the network, and its
+settings describe exactly what it sends.
+
 Plugin support is experimental. Only install plugins you trust; see
 [`plugins.md`](plugins.md) for the format and security details.
 

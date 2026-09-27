@@ -224,6 +224,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "settings":
 		m.settings = newSettings(m.cfg, m.settingsUpdateState())
+		m.settings.pluginsAvailable = m.pluginsVisible()
 		m.overlay = overlaySettings
 		return m, nil
 	case "plugins", "plugin-run", "plugin-annotations":
