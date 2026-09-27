@@ -202,7 +202,7 @@ tags and views such as **Needs You**, while keeping the original plugin output
 inspectable.
 
 To install TideMail Smart (JEV), build it from the
-[tidemail-plugin-smart](https://github.com/allisonhere/tidemail-plugin-smart)
+[TideMail plugin collection](https://github.com/allisonhere/tidemail-plugins/tree/main/plugins/smart)
 repository and copy its binary and `plugin.toml` into the plugins directory.
 The full user guide is in [docs/guide.md](docs/guide.md#plugins-experimental).
 
