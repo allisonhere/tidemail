@@ -102,6 +102,8 @@ type pluginResult struct {
 	// heading replaces the "message: subject" line (reports have no message).
 	heading string
 	body    string
+	// view is a report's structured view, drawn instead of body.
+	view *plugin.View
 	// annotationNote says what happened to the response's annotations.
 	annotationNote string
 }
@@ -488,6 +490,10 @@ func (m Model) pluginOverlaySize() (int, int) {
 	case overlayPluginPicker:
 		return max(1, min(m.width-4, 64)), max(1, min(m.height-4, 20))
 	case overlayPluginResult:
+		if r := m.plugins.result; r != nil && r.view != nil {
+			// Dashboards get the room they need.
+			return max(1, min(m.width-4, 110)), max(1, m.height-4)
+		}
 		return max(1, min(m.width-4, 84)), max(1, min(m.height-4, 32))
 	case overlayPluginAnnotations:
 		return max(1, min(m.width-4, 80)), max(1, min(m.height-4, 28))
@@ -719,6 +725,9 @@ func (m Model) pluginResultLines(bodyW int, chrome managerChrome) []string {
 		}
 	}
 	lines = append(lines, "")
+	if res.view != nil {
+		return append(lines, m.pluginViewLines(res.view, bodyW, chrome)...)
+	}
 	body := res.body
 	if body == "" {
 		body = "plugin completed with no data"

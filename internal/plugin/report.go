@@ -48,6 +48,9 @@ type ReportContext struct {
 	Now string `json:"now"`
 	// Timezone is the IANA name analytics buckets use.
 	Timezone string `json:"timezone"`
+	// Views is the structured-view version this TideMail draws (ViewVersion);
+	// 0 or absent means only text and data reports.
+	Views int `json:"views,omitempty"`
 }
 
 // ReportRequest is report.run's data.
@@ -62,13 +65,16 @@ type reportResponse struct {
 	Queries map[string]json.RawMessage `json:"queries"`
 	State   json.RawMessage            `json:"state"`
 	Report  json.RawMessage            `json:"report"`
+	View    json.RawMessage            `json:"view"`
 }
 
 // ReportResult is a finished report.
 type ReportResult struct {
 	// Report is the plugin's final output. It is display-only: TideMail
-	// sanitizes and draws it and never acts on it.
+	// sanitizes and draws it and never acts on it. When the plugin answered
+	// with a structured view instead, View is set and Report is nil.
 	Report  json.RawMessage
+	View    *View
 	Rounds  int
 	Queries int
 }
@@ -121,6 +127,7 @@ func RunReport(ctx context.Context, p Plugin, rc ReportContext, exec QueryExecut
 	defer cancel()
 
 	result := ReportResult{}
+	rc.Views = ViewVersion
 	next := ReportRequest{Round: 1, Context: rc}
 	for {
 		result.Rounds = next.Round
@@ -133,6 +140,14 @@ func RunReport(ctx context.Context, p Plugin, rc ReportContext, exec QueryExecut
 		}
 		if len(resp.Report) > 0 {
 			result.Report = resp.Report
+			return result, nil
+		}
+		if len(resp.View) > 0 {
+			v, err := ParseView(resp.View)
+			if err != nil {
+				return result, fmt.Errorf("plugin %q: %w", id, err)
+			}
+			result.View = &v
 			return result, nil
 		}
 		if next.Round >= MaxReportRounds {
@@ -183,10 +198,19 @@ func runReportRound(ctx context.Context, p Plugin, rr ReportRequest, timeout tim
 	if isJSONNull(out.Report) {
 		out.Report = nil
 	}
+	if isJSONNull(out.View) {
+		out.View = nil
+	}
+	answers := 0
+	for _, present := range []bool{len(out.Report) > 0, len(out.View) > 0, len(out.Queries) > 0} {
+		if present {
+			answers++
+		}
+	}
 	switch {
-	case len(out.Report) > 0 && len(out.Queries) > 0:
-		return reportResponse{}, fmt.Errorf("plugin %q: a report.run response has either queries or report, not both", id)
-	case len(out.Report) == 0 && len(out.Queries) == 0:
+	case answers > 1:
+		return reportResponse{}, fmt.Errorf("plugin %q: a report.run response has one of queries, report, or view, not both", id)
+	case answers == 0:
 		return reportResponse{}, fmt.Errorf("plugin %q: a report.run response needs queries or a report", id)
 	case len(out.State) > MaxReportStateBytes:
 		return reportResponse{}, fmt.Errorf("plugin %q: report state exceeds %d bytes", id, MaxReportStateBytes)

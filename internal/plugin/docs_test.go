@@ -227,6 +227,51 @@ func TestExamplePluginManifestParses(t *testing.T) {
 	}
 }
 
+// The view reference lists exactly the implemented blocks, tones, and limits.
+func TestDocsViews(t *testing.T) {
+	doc := readDoc(t, "views.md")
+	if got := lines(driftBlocks(t, doc, "block-types")[0]); !slices.Equal(got, BlockTypes) {
+		t.Fatalf("documented blocks %v, want %v", got, BlockTypes)
+	}
+	if got := lines(driftBlocks(t, doc, "tones")[0]); !slices.Equal(got, Tones) {
+		t.Fatalf("documented tones %v, want %v", got, Tones)
+	}
+	want := map[string]int{
+		"max_blocks": MaxViewBlocks, "max_title": MaxViewTitleLen, "max_label": MaxViewLabelLen,
+		"max_value": MaxViewValueLen, "max_stats": MaxViewStats, "max_series": MaxViewSeries,
+		"max_points": MaxViewPoints, "max_bars": MaxViewBars, "max_heat_rows": MaxViewHeatRows,
+		"max_heat_columns": MaxViewHeatColumns, "max_table_columns": MaxViewTableCols,
+		"max_table_rows": MaxViewTableRows, "max_cell": MaxViewCellLen, "max_text_bytes": MaxViewTextLen,
+	}
+	got := map[string]int{}
+	for _, l := range lines(driftBlocks(t, doc, "view-limits")[0]) {
+		k, v, _ := strings.Cut(l, "=")
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil {
+			t.Fatalf("bad limit line %q", l)
+		}
+		got[strings.TrimSpace(k)] = n
+	}
+	if len(got) != len(want) {
+		t.Fatalf("documented view limits %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Fatalf("documented %s = %d, code has %d", k, got[k], v)
+		}
+	}
+	// The documented example is a valid view.
+	if _, err := ParseView(json.RawMessage(`{"title": "Mail Analytics", "subtitle": "last 30 days", "blocks": [
+  {"type": "stats", "items": [{"label": "Received", "value": "428"}, {"label": "Needs you", "value": "12", "tone": "attention"}]},
+  {"type": "sparkline", "title": "Volume per day", "series": [{"label": "in", "values": [12, 18, 9, 22]}], "start": "Sep 24", "end": "Sep 27"}
+]}`)); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(doc, `"view": {"title": "Mail Analytics"`) {
+		t.Fatal("views.md example changed; update the copy in this test")
+	}
+}
+
 // The query reference lists exactly the implemented methods, fields, scopes,
 // and limits.
 func TestDocsQueries(t *testing.T) {

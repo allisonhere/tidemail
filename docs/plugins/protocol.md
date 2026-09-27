@@ -134,7 +134,7 @@ report.run
 | `message.metadata` | the user, by hand: **Reclassify** on the current message, a selection, or a whole view | `message_metadata` | one message's [metadata](#messagemetadata) | any object; `annotations` is stored (with the `annotations` permission), the rest is displayed |
 | `message.received` | TideMail, automatically, for newly arrived mail | `message_metadata`, `events = ["message.received"]`, and the user's opt-in | the same metadata | the same as `message.metadata` |
 | `plugin.test` | the user, from the plugin's settings form | `capabilities = ["plugin.test"]` | none | `{"ok": true, "message": "Connected"}`; shown only |
-| `report.run` | the user, with `enter` in the plugin list; once per round | `capabilities = ["report.run"]` | the round, context, your state, and query results | `{"queries": …, "state": …}` or `{"report": …}`; see [queries.md](queries.md) |
+| `report.run` | the user, with `enter` in the plugin list; once per round | `capabilities = ["report.run"]` | the round, context, your state, and query results | `{"queries": …, "state": …}`, `{"report": …}`, or `{"view": …}`; see [queries.md](queries.md) and [views.md](views.md) |
 
 `message.metadata` and `message.received` go through the same permission
 checks, validation, and storage. Treat them the same way; the method name

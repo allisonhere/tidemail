@@ -605,7 +605,11 @@ fails three times in a row is paused; select it and press `r` to resume.
 Some plugins are **reports**, such as mail analytics. The plugin list shows
 **enter  run report** for them: select one in **Plugins (experimental)** and
 press `enter`. The report opens in the plugin result window when it finishes,
-and `r` in the plugin list reopens the last result. To answer, a report asks
+and `r` in the plugin list reopens the last result. Reports can be charts as
+well as text: stat tiles, sparklines, bar charts, heatmaps, and tables, drawn
+in your theme. Category bars use your category tag colors, so changing those
+under **Settings → Display → Appearance** changes the charts too. Scroll with
+`↑`/`↓`. To answer, a report asks
 TideMail read-only questions, only those its permissions allow (the list shows
 them): for example message counts per day, category totals, or a list of
 conversations. TideMail answers from its local cache. A report never sees

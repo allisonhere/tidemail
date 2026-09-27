@@ -89,7 +89,7 @@ rounds in `state`: TideMail echoes it back verbatim and never reads it.
 | Field | Notes |
 | --- | --- |
 | `round` | 1 for the first call. |
-| `context` | Where the report was started: the folder or account selected in TideMail's sidebar (either may be absent), the report's fixed clock `now`, and the local `timezone`. The same in every round. |
+| `context` | Where the report was started: the folder or account selected in TideMail's sidebar (either may be absent), the report's fixed clock `now`, the local `timezone`, and `views`, the structured-view version TideMail draws (absent on builds without views). The same in every round. |
 | `state` | Whatever your previous response put in `state`; absent in round 1. |
 | `results` | Your previous round's queries' results, under the names you gave them; absent in round 1. |
 
@@ -107,11 +107,20 @@ or finish:
 {"report": "Last 30 days: 428 received, 73 sent"}
 ```
 
-- Exactly one of `queries` and `report`; neither, or both, fails the report.
+or finish with a **structured view** that TideMail draws in the user's theme
+(tiles, sparklines, bars, heatmaps, tables; see [views.md](views.md)):
+
+```json
+{"view": {"title": "Mail", "blocks": [{"type": "stats", "items": [{"label": "Received", "value": "428"}]}]}}
+```
+
+- Exactly one of `queries`, `report`, and `view`; none, or more than one,
+  fails the report.
 - Query names are yours: 1 to 32 characters of `a-z`, `0-9`, `_`, `.`, `-`.
 - `report` is display-only. A string is shown line by line as is; an object
   or array is shown as a readable key/value tree. TideMail strips control and
-  escape characters: **plugins cannot draw terminal UI or choose colors**.
+  escape characters: **plugins cannot draw terminal UI or choose colors**. For
+  color and charts, return a `view`; TideMail picks the colors.
 
 ### Limits
 

@@ -85,6 +85,7 @@ func (m Model) handlePluginReport(msg pluginReportMsg) (tea.Model, tea.Cmd) {
 		pluginName: sanitizePluginLine(m.pluginDisplayName(msg.PluginID)),
 		heading:    "report: " + plural(msg.Result.Rounds, "round") + ", " + queriesText(msg.Result.Queries),
 		body:       formatPluginData(msg.Result.Report),
+		view:       msg.Result.View,
 	}
 	status := fmt.Sprintf("report %s completed (%v)", msg.PluginID, msg.Elapsed.Round(time.Millisecond))
 	if m.overlay == overlayNone || m.overlay == overlayPlugins {

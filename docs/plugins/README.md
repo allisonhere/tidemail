@@ -25,7 +25,9 @@ A plugin can:
   form and hands back on every call;
 - run as a **report**: ask TideMail read-only, allowlisted **queries** (message
   and thread lists, stored annotations, aggregate **analytics** such as volume
-  and category counts) and return a report the user reads in TideMail.
+  and category counts) and return a report the user reads in TideMail, as
+  text or as a **structured view** (tiles, sparklines, bars, heatmaps,
+  tables) that TideMail draws in the user's theme colors.
 
 A plugin cannot change mail, send mail, trigger TideMail actions, add UI,
 choose colors, access TideMail's database directly, or read message bodies.
@@ -57,6 +59,7 @@ displayed.
 | [settings.md](settings.md) | bool/select/secret settings, storage, secrets, `plugin.test` |
 | [queries.md](queries.md) | `report.run`: rounds, read-only queries, fields, scopes, pagination, limits |
 | [analytics.md](analytics.md) | aggregate statistics: volume, categories, attention, response times, contacts |
+| [views.md](views.md) | structured report views: tiles, sparklines, bars, heatmaps, tables, drawn in the user's theme |
 | [security.md](security.md) | the trust model and every runtime restriction |
 | [compatibility.md](compatibility.md) | what API v1 promises, and what may change |
 

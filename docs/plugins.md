@@ -43,6 +43,7 @@ The developer documentation is in [`docs/plugins/`](plugins/README.md):
 | [settings](plugins/settings.md) | bool/select/secret settings and `plugin.test` |
 | [queries](plugins/queries.md) | `report.run` and read-only queries |
 | [analytics](plugins/analytics.md) | aggregate statistics |
+| [views](plugins/views.md) | structured report views drawn in the user's theme |
 | [security](plugins/security.md) | trust model and runtime restrictions |
 | [compatibility](plugins/compatibility.md) | what API v1 promises |
 

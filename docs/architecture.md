@@ -99,6 +99,8 @@ a plugin to more than one message, and they never write:
 enter in the plugin list → tea.Cmd → Manager.Report / RunReport
   round n: acquire slot → invoke report.run (state + results) → decode
            ├─ {report}  → formatPluginData → plugin result overlay
+           ├─ {view}    → ParseView (semantic blocks only) → pluginViewLines
+           │              (theme + tag colors, plugin_view.go) → overlay
            └─ {queries} → ParseQuery + QueryPermission for every query
                           (fail closed: a bad query runs nothing)
                         → pluginquery.Executor: db.ListHeaders (header

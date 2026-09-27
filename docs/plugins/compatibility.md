@@ -22,6 +22,8 @@ another `api` fails the call.
   `plugin.test`, `report.run`) and their payloads;
 - the report round protocol, and the query methods, parameters, fields, and
   result shapes in [queries.md](queries.md) and [analytics.md](analytics.md);
+- structured view format 1 ([views.md](views.md)); new block types or fields
+  come with a higher `context.views`;
 - the `message.metadata` fields;
 - the manifest fields, permission names, and setting types;
 - the annotation format, its validation limits, and replace-on-success;
@@ -56,7 +58,8 @@ These are additions or runtime policy, not protocol:
 
 These do not exist in API v1. Do not rely on them:
 
-- custom plugin panes, screens, or HTML UI;
+- custom plugin panes, screens, or HTML UI (structured views are drawn by
+  TideMail from semantic blocks);
 - plugin-defined colors, styles, or glyphs;
 - toolbar or menu extensions, or plugin-defined keybindings;
 - mutating mail (moving, deleting, flagging, sending), or any write through

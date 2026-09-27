@@ -27,6 +27,10 @@ func init() {
 		}),
 		"tidemail-plugin-report-many": reportHelper(func(ReportRequest) any { return queriesOf(manyQueries(MaxReportQueriesPerRound+1), nil) }),
 		"tidemail-plugin-report-ask":  helperReportAsk,
+		"tidemail-plugin-report-view": reportHelper(func(ReportRequest) any { return map[string]any{"view": rawJSON(testViewJSON)} }),
+		"tidemail-plugin-report-badview": reportHelper(func(ReportRequest) any {
+			return map[string]any{"view": rawJSON(`{"title":"x","blocks":[{"type":"bars","color":"#ff0000","items":[{"label":"a","count":1}]}]}`)}
+		}),
 		"tidemail-plugin-report-invalid": reportHelper(func(ReportRequest) any {
 			return queriesOf(`{"m":{"method":"query.messages","scope":"inbox","fields":["body"]}}`, nil)
 		}),
@@ -155,7 +159,9 @@ func TestReportRoundsEchoStateAndResults(t *testing.T) {
 	if err := json.Unmarshal(res.Report, &report); err != nil {
 		t.Fatal(err)
 	}
-	if report.Round != 2 || report.State["step"] != float64(1) || report.Context != testRC {
+	wantRC := testRC
+	wantRC.Views = ViewVersion // TideMail advertises structured views
+	if report.Round != 2 || report.State["step"] != float64(1) || report.Context != wantRC {
 		t.Fatalf("report = %s", res.Report)
 	}
 	if string(report.Results["vol"]) != `{"method":"analytics.volume"}` || string(report.Results["att"]) != `{"method":"analytics.attention"}` {
