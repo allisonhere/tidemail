@@ -27,3 +27,5 @@ cmd/editortest/editortest
 # Release tarballs. Built by deploy.sh and rebuilt by CI on the tag; GitHub
 # Releases hosts them. Committing them here only bloats the repo. -allie
 dist/
+# Example plugin build output.
+examples/plugins/example/tidemail-plugin-example

@@ -153,7 +153,7 @@ func TestPluginRunEndToEndSendsOnlyMetadata(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("confirming the picker should return a command")
 	}
-	if m.plugins.running != "hello" || m.overlay != overlayNone || !strings.Contains(m.statusMsg, "running plugin hello") {
+	if m.plugins.running != "hello" || m.overlay != overlayNone || !strings.Contains(m.statusMsg, "Reclassifying current message with Plugin hello") {
 		t.Fatalf("running=%q overlay=%v status=%q", m.plugins.running, m.overlay, m.statusMsg)
 	}
 

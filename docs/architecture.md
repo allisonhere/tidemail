@@ -17,7 +17,7 @@ behaviour see [`guide.md`](guide.md); for contribution rules see
 | `internal/config` | Config file load/save, account IDs, and secret storage in the system keyring (`TIDEMAIL_DISABLE_KEYRING` opts out). |
 | `internal/filter` | Deterministic mail rules. |
 | `internal/ai` | Summary providers: Claude, OpenAI, Gemini, and Ollama. |
-| `internal/plugin` | Experimental plugins: discovers plugins under the config dir, validates `plugin.toml`, runs one JSON request/response per process, enforces the `message_metadata` and `annotations` permissions, and validates annotations before handing them to an `AnnotationStore`. It does not import `internal/db`; `internal/ui/plugins.go` adapts the database and holds the manual UI hooks, the badge conventions, and the annotation cache. See [`plugins.md`](plugins.md). |
+| `internal/plugin` | Experimental plugins: discovers plugins under the config dir, validates `plugin.toml`, runs one JSON request/response per process, enforces the `message_metadata` and `annotations` permissions, and validates annotations before handing them to an `AnnotationStore`. It does not import `internal/db`; `internal/ui/plugins.go` adapts the database and holds the manual UI hooks and the annotation cache, and `internal/ui/tags.go` draws annotation tags. See [`plugins.md`](plugins.md) and the Plugin API v1 docs in [`plugins/`](plugins/README.md). |
 | `internal/richmail` | Email image model: source parsing, MIME-part resolution, decode limits, remote-fetch SSRF policy, and cell layout. |
 | `internal/termimage` | Terminal graphics: protocol detection, cell geometry, and the Kitty Unicode-placeholder backend. |
 | `internal/clipboard` | System clipboard access. |
@@ -68,6 +68,58 @@ text. For HTML:
 Rendered bodies and viewport content are cached (`render_cache.go`); cache keys
 include the image store's generation.
 
+### Plugins
+
+Plugins are external executables speaking Plugin API v1 (documented for plugin
+authors in [`plugins/`](plugins/README.md)). Every path from plugin output to
+storage runs through `plugin.Manager.runMetadata`:
+
+```text
+tea.Cmd (manual Reclassify)        EventManager worker (message.received)
+            │                                   │
+            └──────────► runMetadata ◄──────────┘
+                            │ permission check (message_metadata)
+                            │ acquire: 1 process per plugin, 3 overall
+                            │ invoke: exec, stdin/stdout JSON, timeout
+                            │ decodeResponse: envelope validation
+                            │ ParseAnnotations: all-or-nothing
+                            ▼
+              AnnotationStore.ReplaceAnnotations (one transaction)
+                            │
+                            ▼
+      Update patches the annotation cache → tags, Needs You refresh
+```
+
+### Reclassify
+
+`internal/ui/plugin_bulk.go` turns one palette action into a run over the
+current message, the selection, or the current view's loaded rows
+(`viewTargets`: `filteredMessages`, so virtual views use what they show, and
+nothing is fetched from the server). The plugin is chosen once. One message
+goes through the single-run path; several go through a queue that runs one
+`runPluginCmd` at a time on a per-run context, so the manager's slot limits
+apply and Cancel or quit kills the message in flight. `runPluginCmd` loads the
+message's annotations before the call and after a successful store, and
+`annotationSetChanged` compares the plugin's normalized `key=value` sets
+(order, case, and confidence ignored) to count changed and unchanged
+messages. Whole-view runs always confirm; selections confirm at 10. Manual
+runs never touch `EventManager` state.
+
+### Annotation tags
+
+`internal/ui/tags.go` is the only tag renderer. `annotationTags` derives up to
+three semantic tags (reply, urgent, important, category) from the cache using
+the same value lists as Needs You; `layoutTags` fits them into at most half of
+the subject's room, stepping from wide labels to glyphs to unpadded text and
+then dropping tags; `renderMessageRow` draws colored tags as self-styled
+segments so the row background survives. `display.tag_ends` picks the pill
+ends (square padding, rounded Nerd Font caps drawn in the pill color, or
+none); layout counts their width. Colors resolve per semantic key
+(`reply`, `urgent`, `important`, `category`, `category.<name>`): the user's
+`display.tag_colors` override, then the theme's value (`themeTagPalettes`, or
+one derived from the theme's colors), then TideMail's fallback; invalid values
+are skipped. No plugin text is ever used as a style.
+
 ### Plugin annotations
 
 A manual plugin run (`internal/ui/plugins.go`) calls
@@ -76,7 +128,7 @@ permissions, validates the whole annotation set, and only then asks the
 database adapter to replace the plugin's annotations on the message in one
 transaction. The command reloads that one message's annotations and returns
 them to `Update`, which patches the model's cache. Message list loads batch
-annotations for all loaded messages in the same command, so rows render badges
+annotations for all loaded messages in the same command, so rows render tags
 from the cache and never query SQLite.
 
 Cleanup (`internal/ui/plugin_cleanup.go`) follows the same pattern. The plugin
@@ -104,7 +156,7 @@ Rendering reads a cached status snapshot.
 ### Needs You
 
 `internal/db/attention.go` holds the qualification rules (conventional
-annotation values shared with the UI's badges), `ListNeedsYou` and
+annotation values shared with the UI's tags), `ListNeedsYou` and
 `CountNeedsYou` (one query each, `EXISTS` per signal, ranked by an internal
 attention score), and dismissals in `message_attention_overrides`.
 `internal/ui/needs_you.go` adds the sidebar entry, loads the view like Unified

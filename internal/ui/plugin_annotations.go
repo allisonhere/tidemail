@@ -7,8 +7,6 @@ package ui
 
 import (
 	"fmt"
-	"regexp"
-	"strings"
 	"time"
 
 	"github.com/allisonhere/tidemail/internal/db"
@@ -69,95 +67,6 @@ func annotationNote(r plugin.MessageMetadataResult) string {
 }
 
 // ── Annotations ──────────────────────────────────────────────────────────────
-
-// annotationBadgeRule maps one conventional annotation key to a row badge.
-// These keys are display conventions only: the protocol and storage accept
-// any key, and unknown keys never appear in rows (they stay inspectable in the
-// annotations overlay).
-type annotationBadgeRule struct {
-	key   string
-	icon  string
-	ascii string
-	// badge returns the badge text for a value, or "" for no badge.
-	badge func(rule annotationBadgeRule, value string, icons bool) string
-}
-
-func fixedBadge(values ...string) func(annotationBadgeRule, string, bool) string {
-	return func(rule annotationBadgeRule, value string, icons bool) string {
-		for _, v := range values {
-			if value == v {
-				if icons {
-					return rule.icon
-				}
-				return rule.ascii
-			}
-		}
-		return ""
-	}
-}
-
-// categoryBadgePattern limits the category tag to short, plain identifiers so
-// a row never carries free-form plugin text.
-var categoryBadgePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,11}$`)
-
-var annotationBadgeRules = []annotationBadgeRule{
-	// The value lists are shared with Needs You, so a badge and Needs You
-	// always agree on what counts.
-	{key: db.AttentionNeedsReply, icon: "↩", ascii: "R", badge: fixedBadge(db.NeedsReplyValues...)},
-	{key: db.AttentionUrgency, icon: "!", ascii: "!", badge: fixedBadge(db.UrgencyValues...)},
-	{key: db.AttentionImportance, icon: "◆", ascii: "^", badge: fixedBadge(db.ImportanceValues...)},
-	{key: "category", badge: func(_ annotationBadgeRule, value string, _ bool) string {
-		if categoryBadgePattern.MatchString(value) {
-			return "#" + value
-		}
-		return ""
-	}},
-}
-
-// maxAnnotationBadges caps badges per row.
-const maxAnnotationBadges = 3
-
-// annotationBadges renders the row badges for messages from the cache, in
-// rule order, at most one per key whichever plugin set it. It never queries
-// the database.
-func (m Model) annotationBadges(messageIDs ...int64) string {
-	var anns []db.PluginAnnotation
-	for _, id := range messageIDs {
-		anns = append(anns, m.plugins.annotations[id]...)
-	}
-	if len(anns) == 0 {
-		return ""
-	}
-	icons := m.iconsEnabled() && !m.styles.PlainUI
-	var badges []string
-	for _, rule := range annotationBadgeRules {
-		for _, a := range anns {
-			if a.Key != rule.key {
-				continue
-			}
-			if b := rule.badge(rule, strings.ToLower(strings.TrimSpace(a.Value)), icons); b != "" {
-				badges = append(badges, b)
-				break
-			}
-		}
-		if len(badges) == maxAnnotationBadges {
-			break
-		}
-	}
-	return strings.Join(badges, " ")
-}
-
-// withAnnotationBadges puts a message's badges in front of its age column.
-func (m Model) withAnnotationBadges(age string, messageIDs ...int64) string {
-	badges := m.annotationBadges(messageIDs...)
-	switch {
-	case badges == "":
-		return age
-	case age == "":
-		return badges
-	}
-	return badges + "  " + age
-}
 
 // annotationLines renders the annotations overlay: every stored annotation on
 // the message, grouped by plugin.

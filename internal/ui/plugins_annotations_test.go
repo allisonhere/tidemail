@@ -168,7 +168,7 @@ func TestAnnotationRunStoresAndRefreshesBadges(t *testing.T) {
 		t.Fatalf("overlay=%v note=%q", m.overlay, m.plugins.result.annotationNote)
 	}
 	m.overlay = overlayNone
-	if line := rowLine(t, m, "msg 1"); !strings.Contains(line, "↩ !") {
+	if line := rowLine(t, m, "msg 1"); !strings.Contains(line, "↩") || !strings.Contains(line, "!") {
 		t.Fatalf("row = %q", line)
 	}
 	// Only the run message was touched.
@@ -298,25 +298,28 @@ func TestAnnotationBadgesRenderFromCacheWithoutDatabase(t *testing.T) {
 	}
 }
 
-func TestAnnotationBadgesCompactAndConventionalOnly(t *testing.T) {
+// tagNames summarizes a message's row tags by semantic key.
+func tagNames(m Model, ids ...int64) string {
+	var out []string
+	for _, t := range m.annotationTags(ids...) {
+		out = append(out, t.colorKey())
+	}
+	return strings.Join(out, " ")
+}
+
+func TestAnnotationTagsConventionalOnly(t *testing.T) {
 	m, msgs := newMailboxListModel(7, 1)
 	id := msgs[0].ID
-	m.cfg.Display.Icons = true
 	m.plugins.annotations = map[int64][]db.PluginAnnotation{id: {
 		cacheAnn("a", "category", "receipt"),
 		cacheAnn("a", "importance", "High"),
 		cacheAnn("a", "needs_reply", "true"),
 		cacheAnn("b", "urgency", "urgent"),
-		cacheAnn("b", "mood", "high"),       // unknown key: never a badge
-		cacheAnn("b", "needs_reply", "yes"), // same key from another plugin: one badge
+		cacheAnn("b", "mood", "high"),       // unknown key: never a tag
+		cacheAnn("b", "needs_reply", "yes"), // same key from another plugin: one tag
 	}}
-	if got := m.annotationBadges(id); got != "↩ ! ◆" {
-		t.Fatalf("badges = %q, want at most three, in rule order", got)
-	}
-
-	m.cfg.Display.Icons = false
-	if got := m.annotationBadges(id); got != "R ! ^" {
-		t.Fatalf("ascii badges = %q", got)
+	if got := tagNames(m, id); got != "reply urgent important" {
+		t.Fatalf("tags = %q, want at most three, in priority order", got)
 	}
 
 	m.plugins.annotations[id] = []db.PluginAnnotation{
@@ -324,18 +327,18 @@ func TestAnnotationBadgesCompactAndConventionalOnly(t *testing.T) {
 		cacheAnn("a", "urgency", "low"),
 		cacheAnn("a", "mood", "high"),
 	}
-	if got := m.annotationBadges(id); got != "#receipt" {
-		t.Fatalf("badges = %q", got)
+	if got := tagNames(m, id); got != "category.receipt" {
+		t.Fatalf("tags = %q", got)
 	}
 	// Free-form or long category values never reach the row.
 	for _, v := range []string{"Receipts and bills", "averyveryverylongcategory", "rec\x1b[31m"} {
 		m.plugins.annotations[id] = []db.PluginAnnotation{cacheAnn("a", "category", v)}
-		if got := m.annotationBadges(id); got != "" {
-			t.Fatalf("category %q produced badge %q", v, got)
+		if got := tagNames(m, id); got != "" {
+			t.Fatalf("category %q produced tag %q", v, got)
 		}
 	}
 	m.plugins.annotations[id] = []db.PluginAnnotation{cacheAnn("a", "mood", "high")}
-	if got := m.annotationBadges(id); got != "" {
+	if got := tagNames(m, id); got != "" {
 		t.Fatalf("unknown key produced %q", got)
 	}
 }

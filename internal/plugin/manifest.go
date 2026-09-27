@@ -7,7 +7,8 @@
 // request carries. The package does not import internal/ui, so the application
 // can own a *Manager without plugins depending on UI code.
 //
-// Plugins are experimental and not yet wired into normal TideMail behavior.
+// Plugins are experimental. The contributor-facing protocol is documented in
+// docs/plugins/ (Plugin API v1); docs_test.go keeps those docs in step.
 package plugin
 
 import (

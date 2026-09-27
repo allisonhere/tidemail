@@ -97,6 +97,8 @@ const (
 	overlayPluginConfirm
 	overlayPluginSettings
 	overlaySnooze
+	overlayTagColors
+	overlaySyncAllConfirm
 )
 
 type commandPaletteContext int
@@ -226,9 +228,10 @@ type Model struct {
 
 	logBuffer []logEntry
 
-	needsYou needsYouState // see needs_you.go
-	waiting  waitingState  // see waiting.go
-	snooze   snoozeState   // see snooze.go
+	needsYou  needsYouState  // see needs_you.go
+	waiting   waitingState   // see waiting.go
+	snooze    snoozeState    // see snooze.go
+	tagColors tagColorEditor // see tag_colors.go
 
 	plugins pluginUI // experimental; see plugins.go
 
@@ -1989,11 +1992,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.clearStatusCmd()
 
 	case keyMatches(msg, m.keys.SyncAll):
-		var cmds []tea.Cmd
-		for _, mb := range m.mailboxes {
-			cmds = append(cmds, m.syncMailboxCmd(mb.ID, true))
-		}
-		return m, tea.Batch(cmds...)
+		return m.requestSyncAll()
 
 	case keyMatches(msg, m.keys.MarkRead):
 		if m.focused == paneMessages && m.activeMessageRowCount() > 0 {
@@ -2489,6 +2488,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case overlaySyncAllConfirm:
+		return m.handleSyncAllConfirmKey(msg)
+
 	case overlayUnsubscribeConfirm:
 		switch {
 		case keyMatches(msg, m.keys.Yes), keyMatches(msg, m.keys.Confirm):
@@ -2594,6 +2596,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case overlaySnooze:
 		return m.handleSnoozeKey(msg)
+
+	case overlayTagColors:
+		return m.handleTagColorsKey(msg)
 
 	case overlayOutbox:
 		return m.handleOutboxKey(msg)
@@ -2817,6 +2822,8 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case settingsActionPluginSettings:
 		return m.openPluginList(overlaySettings)
+	case settingsActionTagColors:
+		return m.openTagColors(overlaySettings)
 	case settingsActionCopyManualInstall:
 		cmd := strings.TrimSpace(m.settings.update.manualCommand)
 		if cmd == "" {

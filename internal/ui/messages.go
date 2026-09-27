@@ -67,7 +67,8 @@ func (m Model) renderMessagesPane() string {
 			if wake, ok := m.snoozedRowTime(msg2); ok {
 				timeText = wake
 			}
-			age := m.withAnnotationBadges(timeText, m.rowBadgeIDs(msg2, thread)...)
+			age := timeText
+			tags := m.annotationTags(m.rowBadgeIDs(msg2, thread)...)
 			style := msgRead
 			if threadUnread > 0 {
 				style = msgUnread
@@ -93,20 +94,18 @@ func (m Model) renderMessagesPane() string {
 			}
 			style = applyMessageRowState(style, msgSelected, msg2.Starred, cursor, m.styles.Theme)
 			star := m.messageRowStar(msg2.Starred)
-			var line string
+			var sender string
+			senderW := 0
 			if m.cfg.Display.ShowSender {
-				senderW := min(22, max(0, w/3))
-				sender := senderDisplay(msg2.From)
+				senderW = min(22, max(0, w/3))
+				sender = senderDisplay(msg2.From)
 				if waitingFor, ok := m.waitingSender(msg2); ok {
 					sender = waitingFor
 				} else if waitingFor, ok := m.snoozedSender(msg2); ok {
 					sender = waitingFor
 				}
-				line = style.Width(w).Render(renderArticleRowWithSender(dot, star, sender, subject, age, w, senderW))
-			} else {
-				line = style.Width(w).Render(renderArticleRow(dot, star, subject, age, w))
 			}
-			rows = append(rows, line)
+			rows = append(rows, m.renderMessageRow(style, dot, star, sender, m.cfg.Display.ShowSender, senderW, subject, tags, age, w))
 		}
 
 		if len(m.filteredMessages) == 0 {

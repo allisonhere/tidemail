@@ -212,11 +212,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		m.setStatus("no folder selected — pick one in the sidebar first", false)
 		return m, m.clearStatusCmd()
 	case "sync-all":
-		var cmds []tea.Cmd
-		for _, mb := range m.mailboxes {
-			cmds = append(cmds, m.syncMailboxCmd(mb.ID, true))
-		}
-		return m, tea.Batch(cmds...)
+		return m.requestSyncAll()
 	case "accounts":
 		m.overlay = overlayAccountManager
 		m.accountManager = m.newAccountManager()
@@ -230,7 +226,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		m.settings.pluginsAvailable = m.pluginsVisible()
 		m.overlay = overlaySettings
 		return m, nil
-	case "plugins", "plugin-run", "plugin-annotations":
+	case "plugins", "plugin-run", "plugin-reclassify-view", "plugin-cancel", "plugin-annotations":
 		return m.executePluginCommand(id)
 	case "needs-you-why", "needs-you-dismiss", "needs-you-restore":
 		return m.executeNeedsYouCommand(id)

@@ -41,8 +41,11 @@ type pluginConfirmAction struct {
 	messageID int64
 	// label is the display name used in the confirmation and status text.
 	label string
-	// count is the number of messages, for runPluginBulk.
+	// count is the number of messages, for runPluginBulk, scope what they
+	// are, and view whether they are a whole view.
 	count int
+	scope string
+	view  bool
 }
 
 // pluginAnnotationCountsMsg carries freshly loaded per-plugin counts.
@@ -346,6 +349,7 @@ func (m Model) handlePluginConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.No), keyMatches(msg, m.keys.Cancel):
 		if a := m.plugins.confirm; a != nil && a.kind == runPluginBulk {
 			m.plugins.pickerMetas = nil // nothing is launched
+			m.plugins.pickerScope = reclassifyScope{}
 		}
 		m.plugins.confirm = nil
 		m.overlay = m.plugins.confirmOrigin
@@ -387,8 +391,15 @@ func (m Model) renderPluginConfirm() string {
 	var text string
 	title, verb := "clear annotations?", "clear"
 	if a := m.plugins.confirm; a != nil && a.kind == runPluginBulk {
-		title, verb = "run plugin?", "run"
-		text = fmt.Sprintf("Run %s on %d messages?\n\nOnly the metadata this plugin is permitted to receive will be sent (sender, recipients, subject, date, flags), never message bodies.", a.label, a.count)
+		title, verb = "reclassify?", "run"
+		scope := a.scope
+		if scope == "" {
+			scope = fmt.Sprintf("%d messages", a.count)
+		}
+		text = fmt.Sprintf("Reclassify %s with %s?\n\n"+
+			"This will run the plugin once for each message. Existing annotations from this plugin may be replaced.\n\n"+
+			"Only the metadata this plugin is permitted to receive will be sent (sender, recipients, subject, date, flags), never message bodies.",
+			scope, a.label)
 	} else if a != nil && a.kind == enableAutoEvents {
 		title, verb = "auto-process new mail?", "enable"
 		text = "Let " + a.label + " process new mail automatically?\n\n" +

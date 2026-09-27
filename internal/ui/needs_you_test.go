@@ -449,7 +449,7 @@ func TestNeedsYouThreadBadgesCombineMembers(t *testing.T) {
 	if len(m.messageThreads) != 1 || m.messageThreads[0].Count != 2 {
 		t.Fatalf("threads = %+v", m.messageThreads)
 	}
-	if line := rowLine(t, m, "Re: Plan"); !strings.Contains(line, "↩ !") {
+	if line := rowLine(t, m, "Re: Plan"); !strings.Contains(line, "↩") || !strings.Contains(line, "!") {
 		t.Fatalf("thread row should combine its members' signals: %q", line)
 	}
 }

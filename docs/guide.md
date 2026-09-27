@@ -87,6 +87,8 @@ that really contains one, like `info#sales@example.com`, is untouched.
 
 After you add an account, press `s` to sync the selected mailbox. Press `s` on
 the Unified Inbox to sync every account's inbox, or `F` to sync all mailboxes.
+With more than 10 folders, `F` first asks for confirmation, since syncing them
+all can take a while.
 When you stop on a non-inbox folder, TideMail silently refreshes it if its cache
 is more than 15 minutes old. Scrolling past folders does not queue refreshes;
 press `Enter` on a folder row when you want to fetch it immediately. Manual-only
@@ -135,7 +137,7 @@ already stored: it never runs a plugin or goes online.
 The most pressing messages come first: urgent, then needing a reply, then
 important (a message with several of these ranks higher), newest first within
 each. With threaded conversations a whole thread appears if any of its
-messages qualifies, and its badges combine the thread's signals.
+messages qualifies, and its tags combine the thread's signals.
 
 If a message doesn't belong there, press `X` (or choose **Dismiss from Needs
 You** in the palette). The message and its tags are untouched; TideMail just
@@ -507,21 +509,63 @@ open **Accounts** and re-enter that account's server details.
 ### Plugins (experimental)
 
 TideMail can run external plugins placed in `~/.config/tidemail/plugins/`.
-When any are installed, the command palette gains **Plugins (experimental)**, a
-read-only list, and **Run plugin on current message**, which sends the
-message's sender, recipients, subject, date, and flags (never its body) to a
-plugin you choose and shows its reply. With several messages selected, the
-same command runs the plugin on all of them (asking first for 10 or more),
-shows progress, and ends with one summary. Plugins never change your mail.
+When any are installed, the command palette (`:`) gains **Plugins
+(experimental)**, a read-only list of installed plugins, and **Reclassify**.
+Plugins receive a message's sender, recipients, subject, date, and flags, never
+its body, and they never change your mail.
+
+**Reclassify** runs a plugin you choose on existing mail, for example after
+updating a plugin or changing its settings. You pick the plugin once:
+
+- **Reclassify current message…** runs it on the message you are on, and
+  shows the plugin's reply.
+- With messages selected (`Space`), the same command reads **Reclassify N
+  selected messages…** and runs on the selection (asking first for 10 or
+  more).
+- **Reclassify all N messages in Inbox…** (or the current folder, Unified
+  Inbox, search results, Needs You, Waiting on Them, or Snoozed) runs on every
+  message the list currently shows. It always asks first, with the count.
+  Only mail already in TideMail's cache is used; nothing is downloaded.
+
+Several messages run one at a time, with progress on the status line
+(`Reclassifying 312 messages in Inbox… 87 / 312`), and end with one summary:
+how many succeeded and failed, and how many messages' classifications changed
+or stayed the same. A failing message does not stop the run, and its earlier
+annotations are kept. **Cancel reclassify** in the palette stops a run; quitting
+TideMail stops it too. Reclassify works whether or not the plugin processes new
+mail automatically, and does not affect that.
 
 A plugin that also declares the `annotations` permission can attach short
-notes to that message, such as "needs reply" or "urgency: high". These are
-stored in TideMail's local cache and may show as small badges before the date
-(`↩` needs reply, `!` urgent, `◆` important, `#tag` category; `R ! ^` with icons
-off). **Message annotations** in the palette lists all of a message's
-annotations. Running the plugin again replaces its annotations on that message.
+notes to a message, such as "needs reply" or "category: github". TideMail
+stores them in its local cache and shows them as tags in message rows, the
+same way in every folder and view: `↩ REPLY`, `! URGENT`, `◆ IMPORTANT`, and
+the category name (`GITHUB`). On narrow screens tags shrink to their symbols
+(`↩ ◆ #github`) or disappear before the subject does. Each plugin run replaces
+that plugin's notes on the message; a successful run with nothing to say
+clears them. **Message annotations** in the palette lists all of a message's
+annotations. Reclassifying can move messages into or out of Needs You at once;
+snoozed messages stay snoozed, and Waiting on Them does not use annotations.
 
-Annotations stay after you remove a plugin, so its badges remain until you clear
+Choose how tags look under **Settings → Display → Appearance → Annotation
+Tags**:
+
+- **Tag style**: **Pills** (colored blocks, the default), **Compact** (colored
+  text such as `↩REPLY #github`), or **Plain** (uncolored `[REPLY] [github]`).
+  No special font is needed for any of them.
+- **Pill ends** (Pills only): **Square** pads each pill with a colored cell on
+  both sides (the default), **Round** draws rounded caps instead (needs a Nerd
+  Font in your terminal), and **None** drops the padding to save two columns
+  per tag.
+- **Tag colors** opens an editor for the background and foreground of each
+  tag: needs reply, urgency, importance, the default category color, and the
+  known categories (github, shipping, security, calendar, newsletter, support,
+  social, billing, receipt, notification, personal). Other categories use the
+  default category color. Select a tag, press `b` or `f`, and type a color as
+  `#rrggbb` (or `#rgb`); leave it empty to follow the theme again, or press
+  `r` to reset both. Changes apply and save at once. Colors you do not set
+  follow the theme; plugins can never choose colors.
+
+Annotations stay after you remove a plugin, so its tags remain until you clear
 them. In **Message annotations**, select a plugin and press `c` to clear its
 annotations from that message, or `C` to clear all of them. In **Plugins
 (experimental)**, select a plugin (including one listed under **Stored data from
@@ -531,11 +575,10 @@ before clearing, and clearing never deletes or changes your mail.
 A plugin can also process new mail automatically, if it supports that and you
 turn it on: in **Plugins (experimental)**, select it and press `a`, then
 confirm. It then receives the same metadata (never message bodies) for each
-newly arrived unread message, and its badges appear as mail comes in. Old mail,
+newly arrived unread message, and its tags appear as mail comes in. Old mail,
 first-time setup of an account, and loading older messages are never sent.
 Automatic processing is off for every plugin until you enable it. A plugin that
-fails three times in a row is paused; select it and press `r` to resume. Running
-a plugin by hand works as before.
+fails three times in a row is paused; select it and press `r` to resume.
 
 Plugins can have their own settings. Open **Settings → Advanced → Plugin
 settings** (or press `s` on a plugin in **Plugins (experimental)**) to change
@@ -545,8 +588,9 @@ programs, not part of TideMail's mail handling: for example, TideMail Smart
 (an external plugin) can call TypeSafe's Jev model over the network, and its
 settings describe exactly what it sends.
 
-Plugin support is experimental. Only install plugins you trust; see
-[`plugins.md`](plugins.md) for the format and security details.
+Plugin support is experimental. Only install plugins you trust. To write a
+plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
+[`plugins/`](plugins/README.md).
 
 ## Keyboard shortcuts
 
@@ -563,7 +607,7 @@ Plugin support is experimental. Only install plugins you trust; see
 | `Ctrl+T` in the account form | Test the connection without saving |
 | `s` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
 | `Enter` on a folder | Fetch that folder now |
-| `F` | Sync all mailboxes |
+| `F` | Sync all mailboxes (asks first when there are more than 10 folders) |
 | `Enter` in Drafts | Reopen selected draft in compose |
 | `d` in Drafts | Delete selected draft |
 | `r` | Toggle read/unread in message list, reply from content |
@@ -627,7 +671,7 @@ each pane. When disabled, those rows disappear to make more room for content;
 the focused pane's title and shortcuts appear in the bottom status line instead.
 Global message search uses a dedicated row above message subjects while active.
 
-- Display: theme, icons, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, and quit confirmation
+- Display: theme, icons, annotation tag style and colors, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, and quit confirmation
 - Editor: compose keys, send delay, and maximum delivery attempts
 - Accounts: connection details, From address, signature, color, and sync interval
 - Updates: check, install, restart, or copy a manual install command

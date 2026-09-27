@@ -159,7 +159,7 @@ func TestClearPluginOnMessageRemovesOnlyItsBadges(t *testing.T) {
 	}
 	m.overlay = overlayNone
 	line := rowLine(t, m, "msg 1")
-	if strings.Contains(line, "↩") || !strings.Contains(line, "#github") {
+	if strings.Contains(line, "↩") || !strings.Contains(line, "GITHUB") {
 		t.Fatalf("row = %q", line)
 	}
 	if !strings.Contains(m.statusMsg, "cleared echo annotations from this message") {
@@ -208,7 +208,7 @@ func TestClearAllOnMessage(t *testing.T) {
 		t.Fatalf("the message itself must survive: %v", err)
 	}
 	m.overlay = overlayNone
-	if line := rowLine(t, m, "msg 1"); strings.Contains(line, "↩") || strings.Contains(line, "#github") {
+	if line := rowLine(t, m, "msg 1"); strings.Contains(line, "↩") || strings.Contains(line, "GITHUB") {
 		t.Fatalf("row still has badges: %q", line)
 	}
 }
@@ -254,7 +254,7 @@ func TestRemovedPluginGlobalCleanup(t *testing.T) {
 	}
 	// Badges from echo vanish from every loaded message immediately.
 	m.overlay = overlayNone
-	if line := rowLine(t, m, "msg 1"); strings.Contains(line, "↩") || !strings.Contains(line, "#github") {
+	if line := rowLine(t, m, "msg 1"); strings.Contains(line, "↩") || !strings.Contains(line, "GITHUB") {
 		t.Fatalf("msg 1 row = %q", line)
 	}
 	if line := rowLine(t, m, "msg 2"); strings.Contains(line, "!") {

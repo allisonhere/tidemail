@@ -47,8 +47,10 @@ type pluginUI struct {
 
 	picker       []plugin.Plugin
 	pickerCursor int
-	// pickerMetas are the messages the picked plugin will run on.
+	// pickerMetas are the messages the picked plugin will run on, and
+	// pickerScope what they are (plugin_bulk.go).
 	pickerMetas []plugin.MessageMetadata
+	pickerScope reclassifyScope
 	// bulk is the manual multi-message run in progress (plugin_bulk.go).
 	bulk *pluginBulkRun
 
@@ -112,6 +114,10 @@ type pluginResultMsg struct {
 	// run, valid when RefreshedOK. It replaces the cache entry.
 	Refreshed   []db.PluginAnnotation
 	RefreshedOK bool
+	// Compared is set for a successful run whose before and after sets were
+	// both read; Changed then says whether this plugin's set differs.
+	Compared bool
+	Changed  bool
 }
 
 // LoadPlugins discovers plugins in the config directory. Failure is never
@@ -169,6 +175,17 @@ func (m Model) pluginCommandItems(hasMessage bool) []commandItem {
 			commandItem{id: "plugins", label: "Plugins (experimental)", enabled: true},
 			commandItem{id: "plugin-run", label: m.pluginRunLabel(), enabled: hasMessage || m.contentMessageID != 0},
 		)
+		// The explicit whole-view scope (plugin_bulk.go).
+		if n := len(m.viewTargets()); n > 0 {
+			items = append(items, commandItem{
+				id: "plugin-reclassify-view", label: "Reclassify all " + m.viewScopeLabel(n) + "…", enabled: true,
+			})
+		}
+		if r := m.plugins.bulk; r != nil && !r.cancelled {
+			items = append(items, commandItem{
+				id: "plugin-cancel", label: fmt.Sprintf("Cancel reclassify (%d / %d)", r.done, r.total), enabled: true,
+			})
+		}
 	}
 	// Stored annotations stay inspectable even if their plugin was removed.
 	if msg := m.commandMessage(); msg != nil && len(m.plugins.annotations[msg.ID]) > 0 {
@@ -182,7 +199,13 @@ func (m Model) executePluginCommand(id string) (tea.Model, tea.Cmd) {
 	case "plugins":
 		return m.openPluginList(overlayNone)
 	case "plugin-run":
-		return m.openPluginPicker()
+		targets := m.pluginTargets()
+		return m.openPluginPicker(targets, reclassifyScope{label: m.contextScope(len(targets))})
+	case "plugin-reclassify-view":
+		targets := m.viewTargets()
+		return m.openPluginPicker(targets, reclassifyScope{label: m.viewScopeLabel(len(targets)), view: true})
+	case "plugin-cancel":
+		return m.cancelBulk()
 	case "plugin-annotations":
 		if msg := m.commandMessage(); msg != nil {
 			m.plugins.annotationsFor = msg.ID
@@ -217,12 +240,12 @@ func (m Model) metadataPlugins() []plugin.Plugin {
 	return out
 }
 
-func (m Model) openPluginPicker() (tea.Model, tea.Cmd) {
+// openPluginPicker asks once which plugin to run on targets.
+func (m Model) openPluginPicker(targets []db.Message, scope reclassifyScope) (tea.Model, tea.Cmd) {
 	if m.plugins.running != "" {
 		m.setStatus("plugin "+m.plugins.running+" is still running", false)
 		return m, m.clearStatusCmd()
 	}
-	targets := m.pluginTargets()
 	if len(targets) == 0 {
 		m.setStatus("no message selected", false)
 		return m, m.clearStatusCmd()
@@ -234,6 +257,7 @@ func (m Model) openPluginPicker() (tea.Model, tea.Cmd) {
 	}
 	m.plugins.picker = eligible
 	m.plugins.pickerCursor = 0
+	m.plugins.pickerScope = scope
 	// Metadata is built once per message, the same way as a single run.
 	m.plugins.pickerMetas = make([]plugin.MessageMetadata, len(targets))
 	for i, t := range targets {
@@ -289,6 +313,14 @@ func runPluginCmd(ctx context.Context, mgr *plugin.Manager, database *db.DB, plu
 		if database != nil {
 			store = dbAnnotationStore{database}
 		}
+		// The set before the run, to tell whether Reclassify changed it.
+		var before []db.PluginAnnotation
+		beforeOK := false
+		if database != nil {
+			var beforeErr error
+			before, beforeErr = database.ListPluginAnnotations(meta.ID)
+			beforeOK = beforeErr == nil
+		}
 		result, err := mgr.MessageMetadata(ctx, pluginID, meta, store)
 		msg := pluginResultMsg{
 			PluginID:  pluginID,
@@ -298,11 +330,18 @@ func runPluginCmd(ctx context.Context, mgr *plugin.Manager, database *db.DB, plu
 			Err:       err,
 			Elapsed:   time.Since(start),
 		}
-		if err == nil && result.Outcome == plugin.AnnotationsStored {
+		switch {
+		case err != nil:
+		case result.Outcome == plugin.AnnotationsStored:
 			// Reload only this message's annotations for the cache.
 			if anns, loadErr := database.ListPluginAnnotations(meta.ID); loadErr == nil {
 				msg.Refreshed, msg.RefreshedOK = anns, true
+				msg.Compared = beforeOK
+				msg.Changed = annotationSetChanged(before, anns, pluginID)
 			}
+		case result.Outcome == plugin.AnnotationsNotPermitted:
+			// Nothing could be stored, so nothing changed.
+			msg.Compared = true
 		}
 		return msg
 	}
@@ -332,6 +371,9 @@ func (m Model) handlePluginResult(msg pluginResultMsg) (tea.Model, tea.Cmd) {
 		name = p.Manifest.Name
 	}
 	note := annotationNote(msg.Result)
+	if change := changeNote(msg); change != "" {
+		note = strings.TrimPrefix(note+"; "+change, "; ")
+	}
 	m.plugins.result = &pluginResult{
 		pluginID:       msg.PluginID,
 		pluginName:     sanitizePluginLine(name),
@@ -341,6 +383,9 @@ func (m Model) handlePluginResult(msg pluginResultMsg) (tea.Model, tea.Cmd) {
 	}
 	elapsed := msg.Elapsed.Round(time.Millisecond)
 	status := fmt.Sprintf("plugin %s completed (%v)", msg.PluginID, elapsed)
+	if change := changeNote(msg); change != "" {
+		status += "; " + change
+	}
 	isErr := msg.Result.Outcome == plugin.AnnotationsRejected || msg.Result.Outcome == plugin.AnnotationsNotStored
 	if isErr {
 		status += "; " + note
@@ -360,12 +405,26 @@ func (m Model) handlePluginResult(msg pluginResultMsg) (tea.Model, tea.Cmd) {
 	return m, m.clearStatusCmd()
 }
 
+// changeNote says whether a run changed the plugin's classification of the
+// message, when that is known.
+func changeNote(msg pluginResultMsg) string {
+	switch {
+	case !msg.Compared:
+		return ""
+	case msg.Changed:
+		return "classification changed"
+	}
+	return "classification unchanged"
+}
+
 func (m Model) handlePluginKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.overlay {
 	case overlayPluginPicker:
 		switch {
 		case keyMatches(msg, m.keys.Cancel, m.keys.Back):
 			m.plugins.picker = nil
+			m.plugins.pickerMetas = nil
+			m.plugins.pickerScope = reclassifyScope{}
 			m.overlay = overlayNone
 		case keyMatches(msg, m.keys.Up):
 			if m.plugins.pickerCursor > 0 {
@@ -427,7 +486,7 @@ func (m Model) renderPluginOverlay() string {
 	var inner, title string
 	switch m.overlay {
 	case overlayPluginPicker:
-		inner, title = m.renderPluginPicker(winW, winH, chrome), "run plugin"
+		inner, title = m.renderPluginPicker(winW, winH, chrome), "reclassify"
 	case overlayPluginResult:
 		inner = m.renderPluginScroll(m.pluginResultLines(winW-4, chrome), winW, winH, chrome, "↑↓", "scroll", "esc", "close")
 		title = "plugin result"
@@ -738,11 +797,15 @@ func formatPluginData(raw json.RawMessage) string {
 
 // pickerTargetLine says what the picked plugin will run on.
 func (m Model) pickerTargetLine() string {
-	if n := len(m.plugins.pickerMetas); n > 1 {
-		return fmt.Sprintf("%d selected messages", n)
+	metas := m.plugins.pickerMetas
+	if len(metas) == 1 && !m.plugins.pickerScope.view {
+		return "Reclassify message: " + sanitizePluginLine(metas[0].Subject)
 	}
-	if len(m.plugins.pickerMetas) == 1 {
-		return "message: " + sanitizePluginLine(m.plugins.pickerMetas[0].Subject)
+	if scope := m.plugins.pickerScope.label; scope != "" {
+		return "Reclassify " + scope
+	}
+	if len(metas) > 0 {
+		return fmt.Sprintf("Reclassify %d messages", len(metas))
 	}
 	return ""
 }

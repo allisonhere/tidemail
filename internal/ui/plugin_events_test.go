@@ -142,7 +142,7 @@ func TestAutoEventStoresAnnotationsAndUpdatesBadgeLive(t *testing.T) {
 	if !refreshed {
 		t.Fatal("no pluginAnnotationsRefreshedMsg followed the stored run")
 	}
-	if line := rowLine(t, m, "msg 1"); !strings.Contains(line, "↩ !") {
+	if line := rowLine(t, m, "msg 1"); !strings.Contains(line, "↩") || !strings.Contains(line, "!") {
 		t.Fatalf("row = %q", line)
 	}
 	if line := rowLine(t, m, "msg 2"); strings.Contains(line, "↩") {
