@@ -47,6 +47,9 @@ One inbox, several built-in themes.
 - **Match your desktop.** On [Omarchy](https://omarchy.org), the `match-omarchy`
   theme follows your current desktop theme — contrast-corrected to the same
   bar as the built-ins — and repaints live when you switch it.
+- **Experimental plugins.** Install trusted plugins such as TideMail Smart to
+  classify mail with local annotations, Needs You signals, and optional
+  TypeSafe/Jev analysis.
 
 ## Install
 
@@ -187,6 +190,25 @@ summaries and a compose proofread. TideMail can also turn a plain-language mail
 rule into a local filter that runs without an AI call for each message.
 
 AI stays off until you configure a provider.
+
+## Experimental plugins
+
+TideMail can run external plugins from `~/.config/tidemail/plugins/`. Plugins
+receive message metadata, never message bodies, and can add annotations such as
+`needs_reply=true` or `category=shipping`. TideMail uses those annotations for
+tags and views such as **Needs You**, while keeping the original plugin output
+inspectable.
+
+To install TideMail Smart, build it from the
+[tidemail-plugin-smart](https://github.com/allisonhere/tidemail-plugin-smart)
+repository and copy its binary and `plugin.toml` into the plugins directory.
+The full user guide is in [docs/guide.md](docs/guide.md#plugins-experimental).
+
+If you are writing a plugin, start with the
+[Plugin API getting-started guide](docs/plugins/getting-started.md), then see
+the [protocol](docs/plugins/protocol.md), [manifest](docs/plugins/manifest.md),
+and [permissions](docs/plugins/permissions.md) references. A complete local
+example is in [examples/plugins/example](examples/plugins/example/).
 
 ## Keys worth learning
 
