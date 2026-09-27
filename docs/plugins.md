@@ -1,10 +1,10 @@
 # Plugins (experimental, developer notes)
 
-> **Status:** experimental plugin support. TideMail loads plugins at startup,
-> but a plugin only ever runs when you start it by hand. Its only lasting
+> **Status:** experimental plugin support. A plugin runs when you start it by
+> hand, or automatically for new mail if the plugin declares
+> `message.received` **and** you switch that on for it. Its only lasting
 > output is annotations, and nothing it returns changes your mail. There are
-> no automatic events and no plugin actions yet. The format below may change
-> without notice.
+> no plugin actions. The format below may change without notice.
 
 The `internal/plugin` package discovers plugins on disk, validates their
 manifests, and exchanges one JSON request/response with a plugin process.
@@ -79,6 +79,7 @@ name = "Hello Plugin"              # required
 version = "0.1.0"                  # optional, informational
 api = 1                            # required; must equal plugin.APIVersion
 command = "tidemail-plugin-hello"  # required; relative to the plugin directory
+events = ["message.received"]      # optional; automatic events the plugin can take
 
 [permissions]                      # all default to false
 message_metadata = false
@@ -95,6 +96,8 @@ Validation rules:
   bare `command = "sh"` means `<plugin dir>/sh`.
 - Unknown keys are rejected, so a typo such as `[permisions]` is caught instead
   of silently leaving every permission off.
+- `events` may only list `message.received`, once. Any other name rejects the
+  manifest.
 
 ## Protocol v1
 
@@ -138,6 +141,7 @@ A non-zero exit status is also a failure.
 | --- | --- | --- |
 | `ping` | none | `{"message": "pong"}` |
 | `message.metadata` | one message's metadata (below) | a JSON object; `annotations` is read (below), everything else is shown and never acted on |
+| `message.received` | the same metadata, sent automatically for new mail (see [Automatic events](#automatic-events)) | the same as `message.metadata` |
 
 `message.metadata` is sent only to plugins whose manifest declares
 `message_metadata = true`. The check happens in `internal/plugin` before the
@@ -277,6 +281,81 @@ combined across a thread yet.
 All displayed annotation text is sanitized again before drawing, even though it
 was validated before storage.
 
+## Automatic events
+
+A plugin can process new mail automatically. This takes **two** opt-ins:
+
+1. The manifest declares `events = ["message.received"]` (and
+   `message_metadata = true`).
+2. You turn it on: in **Plugins (experimental)**, select the plugin and press
+   `a`. TideMail explains what the plugin will receive and asks you to confirm.
+   Press `a` again to turn it off (no confirmation). The switch is saved in
+   `config.toml`:
+
+   ```toml
+   [plugins.smart]
+   auto_events = true
+   ```
+
+   A missing or malformed entry means off, and a malformed entry never stops
+   TideMail from starting. Settings for removed plugins are ignored, and are
+   picked up again if a plugin with the same ID comes back.
+
+Every plugin starts **off**.
+
+### What is sent
+
+`message.received` carries exactly the `message.metadata` payload: header-level
+fields only, never the body, raw headers, attachments, or AI summary.
+Responses go through the same parser, permission check, validation, and
+replace-on-success storage as manual runs; annotations are stored only if the
+plugin also has `annotations = true`. A metadata-only plugin runs, but nothing
+it returns is kept.
+
+### Which mail counts as new
+
+Only messages a sync finds that TideMail did not already have, and that are
+unread. These never trigger events:
+
+- opening a mailbox or starting TideMail (cached mail is just reloaded)
+- loading older mail from the server
+- the first sync of a mailbox, or a sync that rebuilds the cache after the
+  server's UIDVALIDITY changed (that fetches a page of history, not new mail)
+- mail your filter rules move or delete on arrival
+
+Mail that arrived while TideMail was closed counts as new on the next sync.
+
+### Limits
+
+| Limit | Value |
+| --- | --- |
+| Waiting messages per plugin | 50; further events are **dropped** and counted |
+| Processes per plugin | 1 at a time |
+| Processes across all plugins | 3 at a time |
+| Calls per plugin | 30 per minute; extra work waits in the queue |
+
+A message already waiting or running for a plugin is not queued again.
+
+### Failures and pausing
+
+A run fails if the plugin times out, exits with an error, writes a bad
+response, returns invalid annotations, or its annotations cannot be saved.
+Failed runs never change stored annotations. After **3 consecutive failures**
+the plugin is **paused**: its queue is emptied, new events are dropped and
+counted, and the status line says why. A success resets the count.
+
+The plugin list shows, for each plugin with events: `auto: enabled`,
+`disabled`, or `paused` with the reason, plus `queued`, `running`,
+consecutive `failures`, and `dropped`. Select a paused plugin and press `r` to
+resume it. Resuming clears the pause and the failure count; the dropped count
+stays, and dropped messages are not replayed. (On any other plugin, `r` still
+reopens the last manual result.)
+
+Manual runs are separate: they work whether automatic mode is off, on, or
+paused, and they never change the failure count or pause state.
+
+Quitting TideMail cancels queued work and kills running plugin processes.
+
 ## Security boundary
 
 Plugins are ordinary programs that run with your user account's privileges.
@@ -291,7 +370,8 @@ limits what it hands them:
 - Plugins never receive database handles, account passwords, OAuth tokens, or
   config secrets. They only see what a request carries.
 - Each call has a timeout (5 seconds by default). On Unix, the plugin's whole
-  process group is killed when the timeout expires.
+  process group is killed when the timeout expires. Automatic runs use the same
+  restrictions as manual ones.
 - Plugin stderr is kept only for error messages. It is capped at 16 KiB, cut to
   512 characters in errors, and stripped of control characters so a plugin
   cannot inject terminal escape sequences.

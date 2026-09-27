@@ -172,8 +172,8 @@ func (m *Manager) Errors() []DiscoveryError {
 // Methods that carry mail data have their own permission-checked entry points
 // (MessageMetadata) and are refused here, so the check cannot be bypassed.
 func (m *Manager) Call(ctx context.Context, pluginID, method string, data json.RawMessage) (Response, error) {
-	if method == MethodMessageMetadata {
-		return Response{}, fmt.Errorf("plugin %q: %s must go through MessageMetadata", pluginID, method)
+	if method == MethodMessageMetadata || method == EventMessageReceived {
+		return Response{}, fmt.Errorf("plugin %q: %s must go through its permission-checked entry point", pluginID, method)
 	}
 	p, ok := m.Plugin(pluginID)
 	if !ok {
@@ -192,6 +192,26 @@ func (m *Manager) Call(ctx context.Context, pluginID, method string, data json.R
 // rest of the response is for display only. A failed run returns an error and
 // never touches store.
 func (m *Manager) MessageMetadata(ctx context.Context, pluginID string, meta MessageMetadata, store AnnotationStore) (MessageMetadataResult, error) {
+	return m.runMetadata(ctx, pluginID, MethodMessageMetadata, meta, store)
+}
+
+// messageEvent delivers message.received: the same payload, permission
+// checks, response parsing, and annotation storage as MessageMetadata, plus
+// the requirement that the plugin declared the event. Only EventManager calls
+// it.
+func (m *Manager) messageEvent(ctx context.Context, pluginID string, meta MessageMetadata, store AnnotationStore) (MessageMetadataResult, error) {
+	p, ok := m.Plugin(pluginID)
+	if !ok {
+		return MessageMetadataResult{}, fmt.Errorf("%w %q", ErrUnknownPlugin, pluginID)
+	}
+	if !p.Manifest.WantsEvent(EventMessageReceived) {
+		return MessageMetadataResult{}, fmt.Errorf("plugin %q: %w: %s is not declared", pluginID, ErrPermissionDenied, EventMessageReceived)
+	}
+	return m.runMetadata(ctx, pluginID, EventMessageReceived, meta, store)
+}
+
+// runMetadata is the single path from a metadata-bearing call to storage.
+func (m *Manager) runMetadata(ctx context.Context, pluginID, method string, meta MessageMetadata, store AnnotationStore) (MessageMetadataResult, error) {
 	p, ok := m.Plugin(pluginID)
 	if !ok {
 		return MessageMetadataResult{}, fmt.Errorf("%w %q", ErrUnknownPlugin, pluginID)
@@ -203,7 +223,7 @@ func (m *Manager) MessageMetadata(ctx context.Context, pluginID string, meta Mes
 	if err != nil {
 		return MessageMetadataResult{}, fmt.Errorf("plugin %q: encode metadata: %w", pluginID, err)
 	}
-	resp, err := m.call(ctx, p, MethodMessageMetadata, data)
+	resp, err := m.call(ctx, p, method, data)
 	if err != nil {
 		return MessageMetadataResult{}, err
 	}

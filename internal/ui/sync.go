@@ -952,7 +952,7 @@ func (m *Model) syncMailboxCmdWithMode(mailboxID int64, manual, passive bool) te
 				writeErr = e
 			}
 			logFetch(acc.Name, mailbox.Name, len(msgs), connectDur, fetchDur, time.Since(t0), writeErr)
-			result = MailboxSyncedMsg{MailboxID: mailboxID, NewCount: len(newMsgs), NewMessages: newMsgs, Manual: manual, Passive: passive, SyncedAt: syncedAt, Total: time.Since(t0)}
+			result = MailboxSyncedMsg{MailboxID: mailboxID, NewCount: len(newMsgs), NewMessages: newMsgs, Manual: manual, Passive: passive, Cold: cold, SyncedAt: syncedAt, Total: time.Since(t0)}
 			return nil
 		})
 		if err != nil {
@@ -990,6 +990,11 @@ func storeFetchedMessages(database *db.DB, mailboxID int64, msgs []db.Message) (
 			return newMsgs, err
 		}
 		if exErr == nil && !existed && !msg.Read {
+			// Carry the row ID so later consumers (plugin events) can reference
+			// the stored message.
+			if id, idErr := database.MessageIDByUID(mailboxID, msg.UID); idErr == nil {
+				msg.ID = id
+			}
 			newMsgs = append(newMsgs, msg)
 		}
 	}

@@ -86,7 +86,7 @@ const (
 	overlayPluginPicker
 	overlayPluginResult
 	overlayPluginAnnotations
-	overlayPluginClearConfirm
+	overlayPluginConfirm
 )
 
 type commandPaletteContext int
@@ -461,6 +461,9 @@ func (m Model) Init() tea.Cmd {
 	}
 	if m.updateInProgress() {
 		cmds = append(cmds, tickUpdateProgress())
+	}
+	if cmd := m.pluginEventListenCmd(); cmd != nil {
+		cmds = append(cmds, cmd)
 	}
 	return tea.Batch(cmds...)
 }
@@ -947,6 +950,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(msg.NewMessages) > 0 && !msg.Manual && m.cfg.Display.Notifications {
 			cmds = append(cmds, m.notifyCmd(msg.MailboxID, msg.NewMessages))
 		}
+		// Genuinely new mail only; cold syncs are skipped inside.
+		m.enqueuePluginEvents(msg)
 		if deferredFolderCmd != nil {
 			cmds = append(cmds, deferredFolderCmd)
 		}
@@ -1345,6 +1350,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pluginAnnotationCountsMsg, pluginAnnotationsClearedMsg:
 		return m.handlePluginCleanupMsg(msg)
+
+	case pluginEventMsg:
+		return m.handlePluginEvent(msg)
+
+	case pluginAnnotationsRefreshedMsg:
+		return m.handlePluginAnnotationsRefreshed(msg)
 
 	case FolderCreatedMsg:
 		if msg.Err != nil {
@@ -2508,7 +2519,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayMoveMessage:
 		return m.handleMovePicker(msg)
 
-	case overlayPlugins, overlayPluginPicker, overlayPluginResult, overlayPluginAnnotations, overlayPluginClearConfirm:
+	case overlayPlugins, overlayPluginPicker, overlayPluginResult, overlayPluginAnnotations, overlayPluginConfirm:
 		return m.handlePluginKey(msg)
 
 	case overlayOutbox:

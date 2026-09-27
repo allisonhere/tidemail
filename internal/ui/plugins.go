@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -71,8 +70,14 @@ type pluginUI struct {
 	annCursor  int
 	// confirm is the cleanup awaiting y/n, and confirmOrigin the overlay to
 	// return to afterwards.
-	confirm       *annotationClearAction
+	confirm       *pluginConfirmAction
 	confirmOrigin overlayMode
+
+	// events delivers message.received automatically (plugin_events.go); nil
+	// when no plugin can receive it. eventStatus is its last snapshot, read by
+	// rendering instead of the manager itself.
+	events      *plugin.EventManager
+	eventStatus map[string]plugin.RuntimeStatus
 }
 
 type pluginResult struct {
@@ -117,18 +122,22 @@ func (m *Model) SetPlugins(mgr *plugin.Manager, dir string, discoveryErr error) 
 	if m.plugins.cancel != nil {
 		m.plugins.cancel()
 	}
+	m.stopPluginEvents()
 	ctx, cancel := context.WithCancel(context.Background())
 	m.plugins = pluginUI{
 		manager: mgr, dir: dir, discoveryErr: discoveryErr, ctx: ctx, cancel: cancel,
 		annotations: m.plugins.annotations, counts: m.plugins.counts, countsLoaded: m.plugins.countsLoaded,
 	}
+	m.startPluginEvents()
 }
 
-// closePlugins kills any running plugin.
+// closePlugins kills any running plugin, manual or automatic, and stops the
+// event workers.
 func (m Model) closePlugins() {
 	if m.plugins.cancel != nil {
 		m.plugins.cancel()
 	}
+	m.stopPluginEvents()
 }
 
 // pluginsVisible reports whether plugin entry points should appear at all.
@@ -272,58 +281,6 @@ func runPluginCmd(ctx context.Context, mgr *plugin.Manager, database *db.DB, plu
 	}
 }
 
-// dbAnnotationStore adapts the database to plugin.AnnotationStore. It is only
-// ever handed to Manager.MessageMetadata, which checks permissions and
-// validates the set before calling it.
-type dbAnnotationStore struct{ db *db.DB }
-
-func (s dbAnnotationStore) ReplaceAnnotations(pluginID string, messageID int64, anns []plugin.Annotation) error {
-	rows := make([]db.PluginAnnotation, len(anns))
-	for i, a := range anns {
-		rows[i] = db.PluginAnnotation{Key: a.Key, Value: a.Value, Confidence: a.Confidence}
-	}
-	return s.db.ReplacePluginAnnotations(pluginID, messageID, rows)
-}
-
-// loadMessageAnnotations batch-loads annotations for a message list inside a
-// load command. Failure only costs the badges, never the message list.
-func loadMessageAnnotations(database *db.DB, msgs []db.Message) map[int64][]db.PluginAnnotation {
-	if database == nil || len(msgs) == 0 {
-		return nil
-	}
-	ids := make([]int64, len(msgs))
-	for i, msg := range msgs {
-		ids[i] = msg.ID
-	}
-	anns, err := database.ListPluginAnnotationsForMessages(ids)
-	if err != nil {
-		return nil
-	}
-	return anns
-}
-
-// annotationNote describes what happened to a run's annotations.
-func annotationNote(r plugin.MessageMetadataResult) string {
-	n := len(r.Annotations)
-	switch r.Outcome {
-	case plugin.AnnotationsStored:
-		if n == 0 {
-			return "annotations: none returned; this plugin's previous annotations were cleared"
-		}
-		return fmt.Sprintf("annotations: %d stored", n)
-	case plugin.AnnotationsNotPermitted:
-		if n == 0 {
-			return ""
-		}
-		return fmt.Sprintf("annotations: %d ignored; this plugin lacks the annotations permission", n)
-	case plugin.AnnotationsRejected:
-		return "annotations rejected, nothing changed: " + sanitizePluginLine(r.AnnotationErr.Error())
-	case plugin.AnnotationsNotStored:
-		return "annotations not saved, nothing changed: " + sanitizePluginLine(r.AnnotationErr.Error())
-	}
-	return ""
-}
-
 func (m Model) handlePluginResult(msg pluginResultMsg) (tea.Model, tea.Cmd) {
 	if m.plugins.running == msg.PluginID {
 		m.plugins.running = ""
@@ -408,8 +365,8 @@ func (m Model) handlePluginKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handlePluginListKey(msg)
 	case overlayPluginAnnotations:
 		return m.handleAnnotationsKey(msg)
-	case overlayPluginClearConfirm:
-		return m.handleAnnotationClearConfirm(msg)
+	case overlayPluginConfirm:
+		return m.handlePluginConfirm(msg)
 	case overlayPluginResult:
 		switch {
 		case keyMatches(msg, m.keys.Cancel, m.keys.Back):
@@ -451,8 +408,8 @@ func (m Model) renderPluginOverlay() string {
 	case overlayPluginResult:
 		inner = m.renderPluginScroll(m.pluginResultLines(winW-4, chrome), winW, winH, chrome, "↑↓", "scroll", "esc", "close")
 		title = "plugin result"
-	case overlayPluginClearConfirm:
-		return m.renderAnnotationClearConfirm()
+	case overlayPluginConfirm:
+		return m.renderPluginConfirm()
 	case overlayPluginAnnotations:
 		lines, _ := m.annotationLines(winW-4, chrome)
 		pairs := []string{"esc", "close"}
@@ -464,11 +421,19 @@ func (m Model) renderPluginOverlay() string {
 	default:
 		lines, _ := m.pluginListLines(winW-4, chrome)
 		pairs := []string{"↑↓", "select"}
-		// Only offer clearing when the selected plugin has stored data.
-		if entries := m.pluginListEntries(); len(entries) > 0 && entries[clamp(m.plugins.listCursor, 0, len(entries)-1)].count > 0 {
-			pairs = append(pairs, "c", "clear stored")
+		resumable := false
+		if entries := m.pluginListEntries(); len(entries) > 0 {
+			e := entries[clamp(m.plugins.listCursor, 0, len(entries)-1)]
+			eventHints := m.pluginEventHints(e)
+			pairs = append(pairs, eventHints...)
+			resumable = len(eventHints) > 2 // includes "r resume"
+			// Only offer clearing when the selected plugin has stored data.
+			if e.count > 0 {
+				pairs = append(pairs, "c", "clear stored")
+			}
 		}
-		if m.plugins.result != nil {
+		// r resumes a paused plugin; otherwise it reopens the last result.
+		if m.plugins.result != nil && !resumable {
 			pairs = append(pairs, "r", "last result")
 		}
 		pairs = append(pairs, "esc", "close")
@@ -591,6 +556,9 @@ func (m Model) pluginListLines(width int, chrome managerChrome) ([]string, []int
 			perms = "none"
 		}
 		add(muted, "permissions: "+perms, true, "")
+		for _, l := range m.pluginEventLines(man.ID) {
+			add(muted, l, true, "")
+		}
 		countLine(entries[i].count)
 		blank()
 		i++
@@ -666,146 +634,6 @@ func (m Model) renderPluginScroll(lines []string, width, height int, chrome mana
 	}
 	hints := renderSoftHints(width, chrome, hintPairs...)
 	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinVertical(lipgloss.Left, rows...), hints)
-}
-
-// ── Annotations ──────────────────────────────────────────────────────────────
-
-// annotationBadgeRule maps one conventional annotation key to a row badge.
-// These keys are display conventions only: the protocol and storage accept
-// any key, and unknown keys never appear in rows (they stay inspectable in the
-// annotations overlay).
-type annotationBadgeRule struct {
-	key   string
-	icon  string
-	ascii string
-	// badge returns the badge text for a value, or "" for no badge.
-	badge func(rule annotationBadgeRule, value string, icons bool) string
-}
-
-func fixedBadge(values ...string) func(annotationBadgeRule, string, bool) string {
-	return func(rule annotationBadgeRule, value string, icons bool) string {
-		for _, v := range values {
-			if value == v {
-				if icons {
-					return rule.icon
-				}
-				return rule.ascii
-			}
-		}
-		return ""
-	}
-}
-
-// categoryBadgePattern limits the category tag to short, plain identifiers so
-// a row never carries free-form plugin text.
-var categoryBadgePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,11}$`)
-
-var annotationBadgeRules = []annotationBadgeRule{
-	{key: "needs_reply", icon: "↩", ascii: "R", badge: fixedBadge("true", "yes", "1")},
-	{key: "urgency", icon: "!", ascii: "!", badge: fixedBadge("high", "urgent", "critical")},
-	{key: "importance", icon: "◆", ascii: "^", badge: fixedBadge("high")},
-	{key: "category", badge: func(_ annotationBadgeRule, value string, _ bool) string {
-		if categoryBadgePattern.MatchString(value) {
-			return "#" + value
-		}
-		return ""
-	}},
-}
-
-// maxAnnotationBadges caps badges per row.
-const maxAnnotationBadges = 3
-
-// annotationBadges renders the row badges for one message from the cache, in
-// rule order, at most one per key whichever plugin set it. It never queries
-// the database.
-func (m Model) annotationBadges(messageID int64) string {
-	anns := m.plugins.annotations[messageID]
-	if len(anns) == 0 {
-		return ""
-	}
-	icons := m.iconsEnabled() && !m.styles.PlainUI
-	var badges []string
-	for _, rule := range annotationBadgeRules {
-		for _, a := range anns {
-			if a.Key != rule.key {
-				continue
-			}
-			if b := rule.badge(rule, strings.ToLower(strings.TrimSpace(a.Value)), icons); b != "" {
-				badges = append(badges, b)
-				break
-			}
-		}
-		if len(badges) == maxAnnotationBadges {
-			break
-		}
-	}
-	return strings.Join(badges, " ")
-}
-
-// withAnnotationBadges puts a message's badges in front of its age column.
-func (m Model) withAnnotationBadges(messageID int64, age string) string {
-	badges := m.annotationBadges(messageID)
-	switch {
-	case badges == "":
-		return age
-	case age == "":
-		return badges
-	}
-	return badges + "  " + age
-}
-
-// annotationLines renders the annotations overlay: every stored annotation on
-// the message, grouped by plugin.
-func (m Model) annotationLines(width int, chrome managerChrome) ([]string, []int) {
-	width = max(1, width-2) // minus the rail
-	base := lipgloss.NewStyle().Background(chrome.baseBg)
-	head := base.Foreground(chrome.accent).Bold(true)
-	text := base.Foreground(chrome.text)
-	muted := base.Foreground(chrome.muted)
-
-	anns := m.plugins.annotations[m.plugins.annotationsFor]
-	if len(anns) == 0 {
-		return []string{muted.Render("no annotations")}, nil
-	}
-	blankRail := softRail(chrome, false, chrome.baseBg)
-	var starts []int
-	keyW := 0
-	for _, a := range anns {
-		keyW = max(keyW, len(a.Key))
-	}
-	keyW = min(keyW, 24)
-
-	var lines []string
-	prev := ""
-	for _, a := range anns { // sorted by plugin ID, then key
-		if a.PluginID != prev {
-			if prev != "" {
-				lines = append(lines, "")
-			}
-			prev = a.PluginID
-			title := sanitizePluginLine(a.PluginID) + " (not installed)"
-			if p, ok := m.plugins.manager.Plugin(a.PluginID); ok {
-				title = sanitizePluginLine(p.Manifest.Name) + "  (" + p.Manifest.ID + ")"
-			}
-			starts = append(starts, len(lines))
-			rail := softRail(chrome, len(starts)-1 == m.plugins.annCursor, chrome.baseBg)
-			lines = append(lines, rail+head.Render(truncate(title, width)))
-		}
-		confidence := ""
-		if a.Confidence != nil {
-			confidence = fmt.Sprintf("%3.0f%%", *a.Confidence*100)
-		}
-		key := padRight(truncate(sanitizePluginLine(a.Key), keyW), keyW)
-		valueW := max(1, width-2-keyW-2-lipgloss.Width(confidence)-2)
-		value := padRight(truncate(sanitizePluginLine(a.Value), valueW), valueW)
-		row := "  " + key + "  " + value
-		if confidence != "" {
-			row += "  " + confidence
-		}
-		lines = append(lines, blankRail+text.Render(row))
-	}
-	lines = append(lines, "", muted.Render("annotations never change your mail; clearing them never deletes mail"))
-	return lines, starts
 }
 
 // ── Sanitizing untrusted plugin text ─────────────────────────────────────────

@@ -53,9 +53,13 @@ type MailboxSyncedMsg struct {
 	NewMessages []db.Message // genuinely-new unread mail, for notification sender/subject
 	Err         error
 	Manual      bool
-	Passive     bool      // settled-folder refresh; never drives animated sync chrome
-	SyncedAt    time.Time // successful completion time, applied to in-memory freshness immediately
-	Total       time.Duration
+	Passive     bool // settled-folder refresh; never drives animated sync chrome
+	// Cold is true when the mailbox had no cached mail before this sync (first
+	// setup, or a cache reset after UIDVALIDITY changed). Its "new" messages
+	// are a history page, not fresh arrivals, so plugin events skip them.
+	Cold     bool
+	SyncedAt time.Time // successful completion time, applied to in-memory freshness immediately
+	Total    time.Duration
 }
 
 // OlderMessagesLoadedMsg reports the result of paging further back into a

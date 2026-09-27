@@ -428,8 +428,16 @@ them. In **Message annotations**, select a plugin and press `c` to clear its
 annotations from that message, or `C` to clear all of them. In **Plugins
 (experimental)**, select a plugin (including one listed under **Stored data from
 removed plugins**) and press `c` to clear everything it stored. TideMail asks
-before clearing, and clearing never deletes or changes your mail. Plugins still
-run only when you start them; there is no automatic processing yet.
+before clearing, and clearing never deletes or changes your mail.
+
+A plugin can also process new mail automatically, if it supports that and you
+turn it on: in **Plugins (experimental)**, select it and press `a`, then
+confirm. It then receives the same metadata (never message bodies) for each
+newly arrived unread message, and its badges appear as mail comes in. Old mail,
+first-time setup of an account, and loading older messages are never sent.
+Automatic processing is off for every plugin until you enable it. A plugin that
+fails three times in a row is paused; select it and press `r` to resume. Running
+a plugin by hand works as before.
 
 Plugin support is experimental. Only install plugins you trust; see
 [`plugins.md`](plugins.md) for the format and security details.

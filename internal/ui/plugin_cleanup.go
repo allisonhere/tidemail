@@ -16,22 +16,25 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// annotationClearKind says which rows a cleanup removes.
-type annotationClearKind int
+// pluginConfirmKind says which rows a cleanup removes.
+type pluginConfirmKind int
 
 const (
 	// clearPluginOnMessage removes one plugin's annotations from one message.
-	clearPluginOnMessage annotationClearKind = iota + 1
+	clearPluginOnMessage pluginConfirmKind = iota + 1
 	// clearAllOnMessage removes every plugin's annotations from one message.
 	clearAllOnMessage
 	// clearPluginEverywhere removes one plugin's annotations from all messages.
 	clearPluginEverywhere
+	// enableAutoEvents turns on automatic message.received for a plugin (see
+	// plugin_events.go). It shares this confirmation dialog.
+	enableAutoEvents
 )
 
-// annotationClearAction is a pending or finished cleanup. The plugin ID always
+// pluginConfirmAction is a pending or finished cleanup. The plugin ID always
 // comes from stored annotations or the plugin manager, never from typed input.
-type annotationClearAction struct {
-	kind      annotationClearKind
+type pluginConfirmAction struct {
+	kind      pluginConfirmKind
 	pluginID  string
 	messageID int64
 	// label is the display name used in the confirmation and status text.
@@ -47,7 +50,7 @@ type pluginAnnotationCountsMsg struct {
 // pluginAnnotationsClearedMsg reports a finished cleanup. Counts is the
 // reloaded per-plugin count map when CountsOK.
 type pluginAnnotationsClearedMsg struct {
-	Action   annotationClearAction
+	Action   pluginConfirmAction
 	Err      error
 	Counts   map[string]int64
 	CountsOK bool
@@ -67,7 +70,7 @@ func loadPluginAnnotationCountsCmd(database *db.DB) tea.Cmd {
 
 // clearAnnotationsCmd performs a confirmed cleanup off the Update loop, then
 // reloads the counts in the same command.
-func clearAnnotationsCmd(database *db.DB, action annotationClearAction) tea.Cmd {
+func clearAnnotationsCmd(database *db.DB, action pluginConfirmAction) tea.Cmd {
 	return func() tea.Msg {
 		if database == nil {
 			return pluginAnnotationsClearedMsg{Action: action, Err: errors.New("no database")}
@@ -127,7 +130,7 @@ func (m Model) handlePluginCleanupMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // patchAnnotationCache applies a finished cleanup to the in-memory cache only
 // for the affected entries; nothing is reloaded from SQLite.
-func (m *Model) patchAnnotationCache(action annotationClearAction) {
+func (m *Model) patchAnnotationCache(action pluginConfirmAction) {
 	switch action.kind {
 	case clearAllOnMessage:
 		delete(m.plugins.annotations, action.messageID)
@@ -155,7 +158,7 @@ func (m *Model) dropPluginAnnotations(messageID int64, pluginID string) {
 	}
 }
 
-func clearedStatus(a annotationClearAction) string {
+func clearedStatus(a pluginConfirmAction) string {
 	switch a.kind {
 	case clearPluginOnMessage:
 		return "cleared " + a.label + " annotations from this message"
@@ -235,6 +238,11 @@ func (m Model) pluginDisplayName(pluginID string) string {
 // plugins, and c asks to clear the selected plugin's stored annotations.
 func (m Model) handlePluginListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	entries := m.pluginListEntries()
+	if len(entries) > 0 {
+		if next, cmd, handled := m.handlePluginEventKey(msg, entries[clamp(m.plugins.listCursor, 0, len(entries)-1)]); handled {
+			return next, cmd
+		}
+	}
 	switch {
 	case keyMatches(msg, m.keys.Cancel, m.keys.Back):
 		m.overlay = overlayNone
@@ -265,7 +273,7 @@ func (m Model) handlePluginListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if e.count == 0 {
 			return m, nil
 		}
-		m.confirmAnnotationClear(annotationClearAction{kind: clearPluginEverywhere, pluginID: e.pluginID, label: e.label})
+		m.confirmPluginAction(pluginConfirmAction{kind: clearPluginEverywhere, pluginID: e.pluginID, label: e.label})
 	}
 	return m, nil
 }
@@ -293,24 +301,24 @@ func (m Model) handleAnnotationsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case msg.String() == "c" && len(groups) > 0:
 		id := groups[clamp(m.plugins.annCursor, 0, len(groups)-1)]
-		m.confirmAnnotationClear(annotationClearAction{
+		m.confirmPluginAction(pluginConfirmAction{
 			kind: clearPluginOnMessage, pluginID: id, messageID: m.plugins.annotationsFor, label: m.pluginDisplayName(id),
 		})
 	case msg.String() == "C" && len(groups) > 0:
-		m.confirmAnnotationClear(annotationClearAction{kind: clearAllOnMessage, messageID: m.plugins.annotationsFor})
+		m.confirmPluginAction(pluginConfirmAction{kind: clearAllOnMessage, messageID: m.plugins.annotationsFor})
 	}
 	return m, nil
 }
 
-func (m *Model) confirmAnnotationClear(action annotationClearAction) {
+func (m *Model) confirmPluginAction(action pluginConfirmAction) {
 	m.plugins.confirm = &action
 	m.plugins.confirmOrigin = m.overlay
-	m.overlay = overlayPluginClearConfirm
+	m.overlay = overlayPluginConfirm
 }
 
-// handleAnnotationClearConfirm runs the pending cleanup on y/enter and drops
+// handlePluginConfirm runs the pending cleanup on y/enter and drops
 // it on n/esc; either way it returns to the overlay it came from.
-func (m Model) handleAnnotationClearConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handlePluginConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case keyMatches(msg, m.keys.Yes), keyMatches(msg, m.keys.Confirm):
 		action := m.plugins.confirm
@@ -318,6 +326,10 @@ func (m Model) handleAnnotationClearConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd)
 		m.overlay = m.plugins.confirmOrigin
 		if action == nil {
 			return m, nil
+		}
+		if action.kind == enableAutoEvents {
+			m.setAutoEvents(action.pluginID, true)
+			return m, m.clearStatusCmd()
 		}
 		return m, clearAnnotationsCmd(m.db, *action)
 	case keyMatches(msg, m.keys.No), keyMatches(msg, m.keys.Cancel):
@@ -355,11 +367,17 @@ func (m *Model) revealLine(starts []int, cursor, winH int) {
 
 // ── Confirmation dialog ──────────────────────────────────────────────────────
 
-func (m Model) renderAnnotationClearConfirm() string {
+func (m Model) renderPluginConfirm() string {
 	winW := max(1, min(m.width-4, 58))
 	chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 	var text string
-	if a := m.plugins.confirm; a != nil {
+	title, verb := "clear annotations?", "clear"
+	if a := m.plugins.confirm; a != nil && a.kind == enableAutoEvents {
+		title, verb = "auto-process new mail?", "enable"
+		text = "Let " + a.label + " process new mail automatically?\n\n" +
+			"This plugin will automatically receive metadata (sender, recipients, subject, date, flags) for newly received messages. Message bodies are not sent.\n\n" +
+			"You can turn this off at any time with a in the plugin list."
+	} else if a != nil {
 		switch a.kind {
 		case clearPluginOnMessage:
 			text = "Clear " + a.label + " annotations from this message?"
@@ -379,8 +397,8 @@ func (m Model) renderAnnotationClearConfirm() string {
 		Width(winW).
 		Padding(1, 2).
 		Render(text)
-	hints := renderSoftHints(winW, chrome, "y/enter", "clear", "esc", "cancel")
+	hints := renderSoftHints(winW, chrome, "y/enter", verb, "esc", "cancel")
 	inner := lipgloss.JoinVertical(lipgloss.Left, body, hints)
 	inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-	return renderSoftPanelBox(inner, winW, "tidemail", "clear annotations?", chrome)
+	return renderSoftPanelBox(inner, winW, "tidemail", title, chrome)
 }

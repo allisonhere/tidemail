@@ -87,6 +87,20 @@ per-plugin counts (one `GROUP BY` query), and `Update` patches only the
 affected cache entries. Counts are loaded when the plugin list opens and after
 annotation writes, never while rendering.
 
+### Plugin events
+
+`plugin.EventManager` delivers `message.received` automatically. It starts one
+worker per plugin that declares the event (so one process per plugin), shares a
+semaphore that caps processes globally, and keeps bounded, de-duplicated
+per-plugin queues with a sliding-window rate limit and a pause after repeated
+failures. Each run goes through `Manager.messageEvent`, which shares
+`runMetadata` (permissions, parsing, validation, storage) with manual runs.
+Finished runs arrive on a channel that `internal/ui/plugin_events.go` reads
+with a re-armed `tea.Cmd`, so the model only changes inside `Update`. The UI
+enqueues work from `MailboxSyncedMsg.NewMessages`, which sync fills with
+stored row IDs, and skips syncs marked `Cold` (first sync or cache rebuild).
+Rendering reads a cached status snapshot.
+
 ### Terminal images
 
 `rich_images.go` owns the image store. Moving the cursor only records which

@@ -28,6 +28,57 @@ type Config struct {
 	AI       AIConfig        `toml:"ai"`
 	OAuth    OAuthConfig     `toml:"oauth"`
 	Accounts []AccountConfig `toml:"account"`
+
+	// Plugins holds per-plugin user settings for the experimental plugin
+	// system, keyed by plugin ID. A missing entry means every setting is off.
+	Plugins PluginSettingsMap `toml:"plugins,omitempty"`
+}
+
+// PluginSettings is one plugin's user settings.
+type PluginSettings struct {
+	// AutoEvents lets the plugin receive message.received automatically.
+	AutoEvents bool `toml:"auto_events"`
+}
+
+// PluginSettingsMap maps plugin IDs to their settings. It decodes leniently:
+// a malformed [plugins] entry reads as "all off" instead of stopping TideMail
+// from starting, since these settings only ever turn optional features on.
+type PluginSettingsMap map[string]PluginSettings
+
+// UnmarshalTOML implements toml.Unmarshaler.
+func (p *PluginSettingsMap) UnmarshalTOML(data any) error {
+	out := PluginSettingsMap{}
+	if tables, ok := data.(map[string]any); ok {
+		for id, raw := range tables {
+			table, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			auto, _ := table["auto_events"].(bool)
+			out[id] = PluginSettings{AutoEvents: auto}
+		}
+	}
+	*p = out
+	return nil
+}
+
+// PluginAutoEvents reports whether the user enabled automatic events for a
+// plugin. Unknown plugins are disabled.
+func (c Config) PluginAutoEvents(pluginID string) bool {
+	return c.Plugins[pluginID].AutoEvents
+}
+
+// SetPluginAutoEvents records the automatic-events switch for a plugin. It
+// copies the map so a Config value shared elsewhere is not changed.
+func (c *Config) SetPluginAutoEvents(pluginID string, on bool) {
+	next := make(PluginSettingsMap, len(c.Plugins)+1)
+	for id, s := range c.Plugins {
+		next[id] = s
+	}
+	settings := next[pluginID]
+	settings.AutoEvents = on
+	next[pluginID] = settings
+	c.Plugins = next
 }
 
 type OAuthConfig struct {

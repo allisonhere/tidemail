@@ -115,7 +115,7 @@ func TestClearPluginOnMessageNeedsConfirmationAndCancelChangesNothing(t *testing
 	if cmd != nil {
 		t.Fatal("c must not delete anything by itself")
 	}
-	if m.overlay != overlayPluginClearConfirm || m.plugins.confirm == nil || m.plugins.confirm.kind != clearPluginOnMessage || m.plugins.confirm.pluginID != "echo" {
+	if m.overlay != overlayPluginConfirm || m.plugins.confirm == nil || m.plugins.confirm.kind != clearPluginOnMessage || m.plugins.confirm.pluginID != "echo" {
 		t.Fatalf("overlay=%v confirm=%+v", m.overlay, m.plugins.confirm)
 	}
 	if view := m.View(); !strings.Contains(view, "Clear echo annotations from this message?") || !strings.Contains(view, "does not delete") {
@@ -232,7 +232,7 @@ func TestRemovedPluginGlobalCleanup(t *testing.T) {
 	m = openPluginList(t, m)
 	m, _ = press(t, m, "down") // echo
 	m, cmd := press(t, m, "c")
-	if cmd != nil || m.overlay != overlayPluginClearConfirm {
+	if cmd != nil || m.overlay != overlayPluginConfirm {
 		t.Fatalf("overlay = %v", m.overlay)
 	}
 	view := m.View()
@@ -314,7 +314,7 @@ func TestCleanupResultNeverChangesOverlay(t *testing.T) {
 	for _, err := range []error{nil, errors.New("disk I/O error")} {
 		m.overlay = overlaySettings
 		next, _ := m.Update(pluginAnnotationsClearedMsg{
-			Action: annotationClearAction{kind: clearAllOnMessage, messageID: msgs[1].ID},
+			Action: pluginConfirmAction{kind: clearAllOnMessage, messageID: msgs[1].ID},
 			Err:    err,
 		})
 		if got := next.(Model).overlay; got != overlaySettings {
@@ -328,7 +328,7 @@ func TestCleanupFailureKeepsCacheAndCounts(t *testing.T) {
 	m = openPluginList(t, m)
 	before := fmt.Sprint(m.plugins.annotations[msgs[0].ID], m.plugins.counts)
 	next, _ := m.Update(pluginAnnotationsClearedMsg{
-		Action: annotationClearAction{kind: clearPluginEverywhere, pluginID: "echo", label: "echo"},
+		Action: pluginConfirmAction{kind: clearPluginEverywhere, pluginID: "echo", label: "echo"},
 		Err:    errors.New("database is locked"),
 	})
 	m = next.(Model)

@@ -31,6 +31,7 @@ var helpers = map[string]func(){
 	"tidemail-plugin-silent":     func() { readRequest() },
 	"tidemail-plugin-echo":       helperEcho,
 	"tidemail-plugin-marker":     helperMarker,
+	"tidemail-plugin-hangpid":    helperHangPID,
 	"tidemail-plugin-annotate":   helperAnnotate(`[{"key":"needs_reply","value":"true","confidence":0.94},{"key":"urgency","value":"high"}]`),
 	"tidemail-plugin-badconf":    helperAnnotate(`[{"key":"urgency","value":"high","confidence":2.0}]`),
 	"tidemail-plugin-noanns":     helperAnnotate(`[]`),
@@ -122,6 +123,13 @@ func helperMarker() {
 
 const markerFile = "RAN"
 
+// helperHangPID records its PID in its working directory, then hangs.
+func helperHangPID() {
+	readRequest()
+	_ = os.WriteFile("PID", []byte(strconv.Itoa(os.Getpid())), 0o644)
+	time.Sleep(time.Minute)
+}
+
 func helperTrailing() {
 	req := readRequest()
 	respond(req, PingResult{Message: "pong"})
@@ -205,7 +213,7 @@ annotations = true
 		ID: "hello", Name: "Hello Plugin", Version: "0.1.0", API: 1, Command: "tidemail-plugin-hello",
 		Permissions: Permissions{MessageMetadata: true, Annotations: true},
 	}
-	if m != want {
+	if !reflect.DeepEqual(m, want) {
 		t.Fatalf("got %+v, want %+v", m, want)
 	}
 }
@@ -688,5 +696,25 @@ func TestPermissionNames(t *testing.T) {
 	got := Permissions{MessageMetadata: true, Network: true}.Names()
 	if want := []string{"metadata", "network"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("names = %v, want %v", got, want)
+	}
+}
+
+func TestManifestEvents(t *testing.T) {
+	base := "id = \"a\"\nname = \"A\"\napi = 1\ncommand = \"a\"\n"
+	m, err := ParseManifest([]byte(base + "events = [\"message.received\"]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.WantsEvent(EventMessageReceived) {
+		t.Fatal("declared event not recognized")
+	}
+	m, err = ParseManifest([]byte(base))
+	if err != nil || m.WantsEvent(EventMessageReceived) {
+		t.Fatalf("no declaration must mean no events: %v %v", m.Events, err)
+	}
+	for _, bad := range []string{`events = ["message.sent"]`, `events = ["message.received", "message.received"]`, `events = "message.received"`} {
+		if _, err := ParseManifest([]byte(base + bad + "\n")); err == nil {
+			t.Errorf("%s: expected rejection", bad)
+		}
 	}
 }

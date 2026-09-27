@@ -44,6 +44,26 @@ type Manifest struct {
 	// Command is the plugin executable, relative to the plugin directory.
 	Command     string      `toml:"command"`
 	Permissions Permissions `toml:"permissions"`
+	// Events lists the automatic events the plugin wants. Declaring one only
+	// makes the plugin eligible; the user still has to enable it.
+	Events []string `toml:"events"`
+}
+
+// EventMessageReceived is sent automatically for newly received mail. It is
+// the only automatic event in API v1.
+const EventMessageReceived = "message.received"
+
+// knownEvents are the event names a manifest may declare.
+var knownEvents = map[string]bool{EventMessageReceived: true}
+
+// WantsEvent reports whether the manifest declares event.
+func (m Manifest) WantsEvent(event string) bool {
+	for _, e := range m.Events {
+		if e == event {
+			return true
+		}
+	}
+	return false
 }
 
 // ParseManifest decodes and validates manifest TOML. Unknown keys are
@@ -95,6 +115,16 @@ func (m Manifest) Validate() error {
 	}
 	if err := validateCommand(m.Command); err != nil {
 		errs = append(errs, err)
+	}
+	seenEvents := map[string]bool{}
+	for _, e := range m.Events {
+		switch {
+		case !knownEvents[e]:
+			errs = append(errs, fmt.Errorf("unknown event %q (supported: %s)", e, EventMessageReceived))
+		case seenEvents[e]:
+			errs = append(errs, fmt.Errorf("event %q is listed twice", e))
+		}
+		seenEvents[e] = true
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("invalid manifest: %w", errors.Join(errs...))

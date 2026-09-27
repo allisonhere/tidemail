@@ -367,6 +367,14 @@ func (db *DB) DeleteMessage(id int64) error {
 	return err
 }
 
+// MessageIDByUID returns the cached row ID of the message with uid in
+// mailboxID.
+func (db *DB) MessageIDByUID(mailboxID int64, uid uint32) (int64, error) {
+	var id int64
+	err := db.QueryRow(`SELECT id FROM messages WHERE mailbox_id = ? AND uid = ?`, mailboxID, uid).Scan(&id)
+	return id, err
+}
+
 func (db *DB) MoveMessage(id, mailboxID int64) error {
 	_, err := db.Exec(`UPDATE messages SET mailbox_id = ? WHERE id = ?`, mailboxID, id)
 	return err
