@@ -1,12 +1,40 @@
 # Plugins (experimental, developer notes)
 
-> **Status:** experimental groundwork. TideMail does not load or run plugins
-> yet. Nothing in this document changes how TideMail handles mail. The format
-> below may change without notice until plugins ship.
+> **Status:** experimental. TideMail loads plugins at startup, but a plugin
+> only ever runs when you start it by hand, and nothing it returns changes your
+> mail. The format below may change without notice until plugins ship.
 
-The `internal/plugin` package can discover plugins on disk, validate their
-manifests, and exchange one JSON request/response with a plugin process. The
-only method so far is `ping`.
+The `internal/plugin` package discovers plugins on disk, validates their
+manifests, and exchanges one JSON request/response with a plugin process.
+TideMail uses it for one manual action: sending the current message's metadata
+to a plugin and showing what comes back.
+
+## Using plugins in TideMail
+
+With no `plugins/` directory, TideMail looks exactly as before: the plugin
+commands appear in the command palette (`:`) only when at least one plugin, or
+a plugin problem, was found at startup.
+
+- **Plugins (experimental)** opens a read-only list. Each valid plugin shows its
+  ID, name, version, API version, and declared permissions. Each broken plugin
+  shows why it was skipped. Press `r` there to reopen the last result.
+- **Run plugin on current message** opens a picker listing only plugins that
+  declare `message_metadata = true`. Choosing one sends that message's metadata
+  (see `message.metadata` below) and never its body. The plugin runs in the
+  background, so TideMail stays responsive. The status line shows
+  `running plugin <id>…` and then the outcome.
+- A successful response opens a read-only result window with the response data
+  pretty-printed. If another window (compose, settings) was opened meanwhile,
+  the status line says the result is ready instead of interrupting it.
+- Only one plugin runs at a time. A plugin still running when TideMail quits is
+  killed.
+- Results and failures are also written to the in-app log (**Settings → Advanced →
+  View Logs**). The log records status lines only, never metadata or response data,
+  and is not written to disk.
+
+Nothing in a response is treated as an instruction. TideMail never moves,
+deletes, or marks mail, sends mail, opens URLs, runs commands, or changes
+settings because of plugin output.
 
 ## Directory layout
 
@@ -95,6 +123,37 @@ A non-zero exit status is also a failure.
 | Method | Data sent | Expected `data` |
 | --- | --- | --- |
 | `ping` | none | `{"message": "pong"}` |
+| `message.metadata` | one message's metadata (below) | anything; shown to the user, never acted on |
+
+`message.metadata` is sent only to plugins whose manifest declares
+`message_metadata = true`. The check happens in `internal/plugin` before the
+process starts, not just in the picker. A plugin without the permission is
+never launched, and `Manager.Call` refuses this method outright so the check
+cannot be bypassed. The data is:
+
+```json
+{
+  "id": 1234,
+  "message_id": "<abc@example.com>",
+  "from": "Ann <ann@example.com>",
+  "to": "me@example.com",
+  "cc": "",
+  "reply_to": "",
+  "subject": "Your build passed",
+  "date": "2026-09-26T10:00:00Z",
+  "read": false,
+  "starred": false,
+  "has_attachment": false,
+  "flags": ["\\Seen"],
+  "account_name": "Work",
+  "mailbox_name": "INBOX"
+}
+```
+
+`id` is TideMail's own message number, only for matching a result to its
+message. Empty fields are omitted. The body, HTML, raw headers, attachments,
+and the AI summary are never sent, and neither are passwords, tokens, API keys,
+or file paths.
 
 ## Security boundary
 
@@ -114,14 +173,29 @@ limits what it hands them:
 - Plugin stderr is kept only for error messages. It is capped at 16 KiB, cut to
   512 characters in errors, and stripped of control characters so a plugin
   cannot inject terminal escape sequences.
-- `[permissions]` is capability metadata. It records what a plugin asks for so
-  later milestones can decide what to send it. TideMail cannot enforce it on
-  the plugin process. The `network` flag, in particular, is only a
+- `[permissions]` decides what TideMail sends. `message_metadata` is enforced:
+  without it, a plugin never receives message data. The flags cannot limit
+  what the plugin process itself does, so `network` in particular is only a
   declaration.
+- Response data is displayed, never interpreted. Before display it is
+  pretty-printed, stripped of control and format characters (terminal escapes,
+  bidi overrides, zero-width characters), and capped at 16 KiB and 200 lines.
+  Displayed errors replace the plugin directory path with `plugins/`.
 
 ## Writing a test plugin
 
-A `ping` plugin needs only a few lines in any language. The package tests use
-the Go test binary itself as the plugin: `internal/plugin/plugin_test.go`
-symlinks it into a temporary plugin directory, and `TestMain` chooses a
-behavior from the name it was started as.
+A plugin needs only a few lines in any language. This one echoes each request
+back, which is handy for seeing exactly what TideMail sends. Save it as
+`~/.config/tidemail/plugins/echo/run`, make it executable, and add a manifest
+with `command = "run"` and `message_metadata = true`:
+
+```sh
+#!/bin/sh
+read -r line
+id=$(printf '%s' "$line" | sed -n 's/.*"request_id":"\([^"]*\)".*/\1/p')
+printf '{"api":1,"type":"response","request_id":"%s","ok":true,"data":{"request":%s}}\n' "$id" "$line"
+```
+
+The package tests use the Go test binary itself as the plugin:
+`internal/plugin/plugin_test.go` symlinks it into a temporary plugin directory,
+and `TestMain` chooses a behavior from the name it was started as.

@@ -29,6 +29,8 @@ var helpers = map[string]func(){
 	"tidemail-plugin-trailing":   helperTrailing,
 	"tidemail-plugin-errresp":    helperErrResp,
 	"tidemail-plugin-silent":     func() { readRequest() },
+	"tidemail-plugin-echo":       helperEcho,
+	"tidemail-plugin-marker":     helperMarker,
 	// If a shell ever interpreted this name, it would create PWNED files.
 	shellName: helperPong,
 }
@@ -90,6 +92,21 @@ func helperIntrospect() {
 	respond(req, map[string]any{"env": os.Environ(), "cwd": cwd})
 }
 
+// helperEcho returns the method and data it received.
+func helperEcho() {
+	req := readRequest()
+	respond(req, map[string]any{"method": req.Method, "data": req.Data})
+}
+
+// helperMarker leaves a file in its working directory to prove it ran.
+func helperMarker() {
+	req := readRequest()
+	_ = os.WriteFile(markerFile, nil, 0o644)
+	respond(req, PingResult{Message: "pong"})
+}
+
+const markerFile = "RAN"
+
 func helperTrailing() {
 	req := readRequest()
 	respond(req, PingResult{Message: "pong"})
@@ -106,7 +123,7 @@ func helperErrResp() {
 
 // installPlugin creates root/dirName with a manifest for id whose command is
 // a symlink to this test binary. The command's base name selects the helper.
-func installPlugin(t *testing.T, root, dirName, id, command string) string {
+func installPlugin(t *testing.T, root, dirName, id, command string, extraTOML ...string) string {
 	t.Helper()
 	dir := filepath.Join(root, dirName)
 	exePath := filepath.Join(dir, command)
@@ -120,14 +137,14 @@ func installPlugin(t *testing.T, root, dirName, id, command string) string {
 	if err := os.Symlink(self, exePath); err != nil {
 		t.Fatal(err)
 	}
-	writeManifest(t, dir, id, command)
+	writeManifest(t, dir, id, command, extraTOML...)
 	return dir
 }
 
-func writeManifest(t *testing.T, dir, id, command string) {
+func writeManifest(t *testing.T, dir, id, command string, extraTOML ...string) {
 	t.Helper()
 	manifest := fmt.Sprintf("id = %s\nname = \"Test %s\"\nversion = \"0.1.0\"\napi = 1\ncommand = %s\n",
-		strconv.Quote(id), id, strconv.Quote(command))
+		strconv.Quote(id), id, strconv.Quote(command)) + strings.Join(extraTOML, "\n")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -570,5 +587,90 @@ func TestNewRequestIDsAreUnique(t *testing.T) {
 	}
 	if err := a.validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+const metadataPermission = "[permissions]\nmessage_metadata = true\n"
+
+func TestMessageMetadataSendsPayload(t *testing.T) {
+	root := t.TempDir()
+	installPlugin(t, root, "p", "p", "tidemail-plugin-echo", metadataPermission)
+	m, err := Discover(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta := MessageMetadata{
+		ID: 42, MessageID: "<a@b>", From: "Ann <ann@example.com>", Subject: "Hi",
+		Date: "2026-09-26T10:00:00Z", Starred: true, Flags: []string{"\\Seen"},
+		AccountName: "Work", MailboxName: "INBOX",
+	}
+	resp, err := m.MessageMetadata(context.Background(), "p", meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Method string          `json:"method"`
+		Data   MessageMetadata `json:"data"`
+	}
+	if err := json.Unmarshal(resp.Data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Method != MethodMessageMetadata || !reflect.DeepEqual(got.Data, meta) {
+		t.Fatalf("plugin received %+v", got)
+	}
+}
+
+func TestMessageMetadataRequiresPermission(t *testing.T) {
+	root := t.TempDir()
+	dir := installPlugin(t, root, "p", "p", "tidemail-plugin-marker")
+	m, err := Discover(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = m.MessageMetadata(context.Background(), "p", MessageMetadata{ID: 1, Subject: "secret"})
+	if !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("err = %v, want ErrPermissionDenied", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, markerFile)); statErr == nil {
+		t.Fatal("plugin without message_metadata was started")
+	}
+	// The same plugin does run for methods that need no permission.
+	if _, err := m.Ping(context.Background(), "p"); err != nil {
+		t.Fatal(err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, markerFile)); statErr != nil {
+		t.Fatal("marker helper did not run for ping; the check above proves nothing")
+	}
+}
+
+func TestCallRefusesPermissionGatedMethod(t *testing.T) {
+	root := t.TempDir()
+	dir := installPlugin(t, root, "p", "p", "tidemail-plugin-marker", metadataPermission)
+	m, err := Discover(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Call(context.Background(), "p", MethodMessageMetadata, json.RawMessage(`{"subject":"x"}`)); err == nil {
+		t.Fatal("Call should refuse message.metadata")
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, markerFile)); statErr == nil {
+		t.Fatal("plugin was started through Call")
+	}
+}
+
+func TestMessageMetadataUnknownPlugin(t *testing.T) {
+	var m *Manager
+	if _, err := m.MessageMetadata(context.Background(), "x", MessageMetadata{}); !errors.Is(err, ErrUnknownPlugin) {
+		t.Fatalf("err = %v, want ErrUnknownPlugin", err)
+	}
+}
+
+func TestPermissionNames(t *testing.T) {
+	if got := (Permissions{}).Names(); got != nil {
+		t.Fatalf("no permissions = %v", got)
+	}
+	got := Permissions{MessageMetadata: true, Network: true}.Names()
+	if want := []string{"metadata", "network"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("names = %v, want %v", got, want)
 	}
 }

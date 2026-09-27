@@ -84,7 +84,7 @@ func (m Model) commandItems() []commandItem {
 func (m Model) mainCommandItems() []commandItem {
 	hasMessage := m.activeMessageRowCount() > 0 && m.focused != paneAccounts
 	hasMailbox := m.selectedMailbox() != nil
-	return []commandItem{
+	items := []commandItem{
 		{id: "outbox", label: "Open Outbox (queued, failed, and sent mail)", enabled: true},
 		{id: "compose", label: "Compose new message", enabled: len(m.cfg.Accounts) > 0},
 		{id: "reply", label: "Reply to current message", enabled: m.contentMessageID != 0 || hasMessage},
@@ -99,6 +99,7 @@ func (m Model) mainCommandItems() []commandItem {
 		{id: "filters", label: "Manage filters (AI rules)", enabled: true},
 		{id: "settings", label: "Open settings", enabled: true},
 	}
+	return append(items, m.pluginCommandItems(hasMessage)...)
 }
 
 func (m Model) composeCommandItems() []commandItem {
@@ -225,6 +226,8 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		m.settings = newSettings(m.cfg, m.settingsUpdateState())
 		m.overlay = overlaySettings
 		return m, nil
+	case "plugins", "plugin-run":
+		return m.executePluginCommand(id)
 	case "compose-send":
 		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlS})
 	case "compose-schedule":

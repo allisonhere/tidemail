@@ -168,11 +168,40 @@ func (m *Manager) Errors() []DiscoveryError {
 // Call runs one request against a plugin. The manager fills in the envelope
 // (API version, type, and a fresh request ID). A response with ok=false is
 // returned together with its *Error.
+//
+// Methods that carry mail data have their own permission-checked entry points
+// (MessageMetadata) and are refused here, so the check cannot be bypassed.
 func (m *Manager) Call(ctx context.Context, pluginID, method string, data json.RawMessage) (Response, error) {
+	if method == MethodMessageMetadata {
+		return Response{}, fmt.Errorf("plugin %q: %s must go through MessageMetadata", pluginID, method)
+	}
 	p, ok := m.Plugin(pluginID)
 	if !ok {
 		return Response{}, fmt.Errorf("%w %q", ErrUnknownPlugin, pluginID)
 	}
+	return m.call(ctx, p, method, data)
+}
+
+// MessageMetadata sends one message's metadata to a plugin. It refuses, without
+// starting the plugin, unless the manifest declares message_metadata. The
+// response data is for display only.
+func (m *Manager) MessageMetadata(ctx context.Context, pluginID string, meta MessageMetadata) (Response, error) {
+	p, ok := m.Plugin(pluginID)
+	if !ok {
+		return Response{}, fmt.Errorf("%w %q", ErrUnknownPlugin, pluginID)
+	}
+	if !p.Manifest.Permissions.MessageMetadata {
+		return Response{}, fmt.Errorf("plugin %q: %w: message_metadata is not declared", pluginID, ErrPermissionDenied)
+	}
+	data, err := json.Marshal(meta)
+	if err != nil {
+		return Response{}, fmt.Errorf("plugin %q: encode metadata: %w", pluginID, err)
+	}
+	return m.call(ctx, p, MethodMessageMetadata, data)
+}
+
+func (m *Manager) call(ctx context.Context, p Plugin, method string, data json.RawMessage) (Response, error) {
+	pluginID := p.Manifest.ID
 	req, err := NewRequest(method, data)
 	if err != nil {
 		return Response{}, err

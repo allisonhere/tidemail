@@ -407,6 +407,16 @@ permission problem to fix. If an account's cached folders no longer have a
 matching config block, affected actions stop with a status-line explanation;
 open **Accounts** and re-enter that account's server details.
 
+### Plugins (experimental)
+
+TideMail can run external plugins placed in `~/.config/tidemail/plugins/`.
+When any are installed, the command palette gains **Plugins (experimental)**, a
+read-only list, and **Run plugin on current message**, which sends the
+message's sender, recipients, subject, date, and flags (never its body) to a
+plugin you choose and shows its reply. Plugins only run when you start them,
+and their replies never change your mail. Only install plugins you trust; see
+[`plugins.md`](plugins.md) for the format and security details.
+
 ## Keyboard shortcuts
 
 | Key | Action |

@@ -1,5 +1,11 @@
 package plugin
 
+import "errors"
+
+// ErrPermissionDenied is returned, before the plugin is started, when a call
+// needs a permission the plugin's manifest does not declare.
+var ErrPermissionDenied = errors.New("permission denied")
+
 // Permissions lists the capabilities a plugin asks for in its manifest.
 //
 // This is capability metadata, not a sandbox. A plugin runs as an ordinary
@@ -20,4 +26,24 @@ type Permissions struct {
 	// Annotations allows the plugin to return annotations for TideMail to
 	// store and display.
 	Annotations bool `toml:"annotations"`
+}
+
+// Names lists the granted permissions with short display names, in a fixed
+// order.
+func (p Permissions) Names() []string {
+	var names []string
+	for _, perm := range []struct {
+		on   bool
+		name string
+	}{
+		{p.MessageMetadata, "metadata"},
+		{p.MessageBody, "body"},
+		{p.Network, "network"},
+		{p.Annotations, "annotations"},
+	} {
+		if perm.on {
+			names = append(names, perm.name)
+		}
+	}
+	return names
 }

@@ -82,6 +82,9 @@ const (
 	overlayBulkDeleteConfirm
 	overlayUnsubscribeConfirm
 	overlayScheduleSend
+	overlayPlugins
+	overlayPluginPicker
+	overlayPluginResult
 )
 
 type commandPaletteContext int
@@ -211,6 +214,8 @@ type Model struct {
 
 	logBuffer []logEntry
 
+	plugins pluginUI // experimental; see plugins.go
+
 	helpVP                viewport.Model
 	helpSearchInput       textinput.Model
 	helpSearchActive      bool
@@ -326,6 +331,7 @@ type Model struct {
 // watchers; called on shutdown.
 func (m Model) CloseSessions() {
 	m.stopIdleWatchers()
+	m.closePlugins()
 	if m.sessions != nil {
 		m.sessions.Close()
 	}
@@ -1329,6 +1335,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setViewportForCurrentRow()
 		}
 		return m, nil
+
+	case pluginResultMsg:
+		return m.handlePluginResult(msg)
 
 	case FolderCreatedMsg:
 		if msg.Err != nil {
@@ -2491,6 +2500,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case overlayMoveMessage:
 		return m.handleMovePicker(msg)
+
+	case overlayPlugins, overlayPluginPicker, overlayPluginResult:
+		return m.handlePluginKey(msg)
 
 	case overlayOutbox:
 		return m.handleOutboxKey(msg)

@@ -16,9 +16,39 @@ const (
 	TypeResponse = "response"
 )
 
-// MethodPing is the only method in API v1. A plugin answers it with
-// {"message": "pong"}.
-const MethodPing = "ping"
+// Methods in API v1.
+const (
+	// MethodPing checks that a plugin runs. A plugin answers it with
+	// {"message": "pong"}.
+	MethodPing = "ping"
+	// MethodMessageMetadata sends one message's metadata (a MessageMetadata).
+	// Only plugins with the message_metadata permission receive it. The
+	// response data is informational: TideMail displays it and never acts on
+	// it.
+	MethodMessageMetadata = "message.metadata"
+)
+
+// MessageMetadata is the data of a message.metadata request. It holds only
+// header-level facts about one message: never its body, raw headers,
+// attachments, AI summary, or anything about the account beyond its display
+// name.
+type MessageMetadata struct {
+	// ID is TideMail's identifier for the message, for correlating results.
+	ID            int64    `json:"id"`
+	MessageID     string   `json:"message_id,omitempty"`
+	From          string   `json:"from,omitempty"`
+	To            string   `json:"to,omitempty"`
+	CC            string   `json:"cc,omitempty"`
+	ReplyTo       string   `json:"reply_to,omitempty"`
+	Subject       string   `json:"subject,omitempty"`
+	Date          string   `json:"date,omitempty"` // RFC 3339
+	Read          bool     `json:"read"`
+	Starred       bool     `json:"starred"`
+	HasAttachment bool     `json:"has_attachment"`
+	Flags         []string `json:"flags,omitempty"`
+	AccountName   string   `json:"account_name,omitempty"`
+	MailboxName   string   `json:"mailbox_name,omitempty"`
+}
 
 // Request is the envelope TideMail writes to a plugin's stdin.
 type Request struct {

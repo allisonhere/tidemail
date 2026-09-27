@@ -17,7 +17,7 @@ behaviour see [`guide.md`](guide.md); for contribution rules see
 | `internal/config` | Config file load/save, account IDs, and secret storage in the system keyring (`TIDEMAIL_DISABLE_KEYRING` opts out). |
 | `internal/filter` | Deterministic mail rules. |
 | `internal/ai` | Summary providers: Claude, OpenAI, Gemini, and Ollama. |
-| `internal/plugin` | Experimental, not wired in: discovers plugins under the config dir, validates `plugin.toml`, and runs one JSON request/response per process. See [`plugins.md`](plugins.md). |
+| `internal/plugin` | Experimental plugins: discovers plugins under the config dir, validates `plugin.toml`, enforces the `message_metadata` permission, and runs one JSON request/response per process. `internal/ui/plugins.go` holds the manual, read-only UI hooks. See [`plugins.md`](plugins.md). |
 | `internal/richmail` | Email image model: source parsing, MIME-part resolution, decode limits, remote-fetch SSRF policy, and cell layout. |
 | `internal/termimage` | Terminal graphics: protocol detection, cell geometry, and the Kitty Unicode-placeholder backend. |
 | `internal/clipboard` | System clipboard access. |
