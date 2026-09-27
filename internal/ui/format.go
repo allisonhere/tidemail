@@ -21,6 +21,7 @@ var (
 	urlRe          = regexp.MustCompile(`https?://[^\s<>"']+`)
 	emailRe        = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
 	imageLabelRe   = regexp.MustCompile(`\[image: [^\]\n]+\]`)
+	sgrRe          = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 	imageIDLabelRe = regexp.MustCompile(`^[a-fA-F0-9]{8}(-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}$`)
 	dimensionRe    = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)(?:px|pt|pc|in|cm|mm|q|em|rem|ex|ch|%|vw|vh|vmin|vmax)?$`)
 )
@@ -608,9 +609,40 @@ func styleImagePlaceholders(rendered string, th Theme, plainUI bool) string {
 		Background(th.Bg).
 		Foreground(messageImageColor(th)).
 		Italic(true)
-	return imageLabelRe.ReplaceAllStringFunc(rendered, func(match string) string {
-		return style.Render(match)
-	})
+	lines := strings.Split(rendered, "\n")
+	for i, line := range lines {
+		matches := imageLabelRe.FindAllStringIndex(line, -1)
+		if len(matches) == 0 {
+			continue
+		}
+		var b strings.Builder
+		last := 0
+		for _, m := range matches {
+			b.WriteString(line[last:m[0]])
+			// The label's closing reset would otherwise strip the surrounding
+			// run's styling (e.g. a table row's background) for the rest of
+			// the line, so re-enter it after the label.
+			b.WriteString(style.Render(line[m[0]:m[1]]))
+			b.WriteString(activeSGR(line[:m[0]]))
+			last = m[1]
+		}
+		b.WriteString(line[last:])
+		lines[i] = b.String()
+	}
+	return strings.Join(lines, "\n")
+}
+
+// activeSGR returns the SGR sequences still in effect at the end of s: every
+// one since the last full reset.
+func activeSGR(s string) string {
+	seqs := sgrRe.FindAllString(s, -1)
+	for i := len(seqs) - 1; i >= 0; i-- {
+		if seqs[i] == "\x1b[0m" || seqs[i] == "\x1b[m" {
+			seqs = seqs[i+1:]
+			break
+		}
+	}
+	return strings.Join(seqs, "")
 }
 
 func hasMeaningfulRenderedHTML(rendered string) bool {
