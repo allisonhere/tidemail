@@ -86,6 +86,7 @@ const (
 	overlayPluginPicker
 	overlayPluginResult
 	overlayPluginAnnotations
+	overlayPluginClearConfirm
 )
 
 type commandPaletteContext int
@@ -1342,6 +1343,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pluginResultMsg:
 		return m.handlePluginResult(msg)
 
+	case pluginAnnotationCountsMsg, pluginAnnotationsClearedMsg:
+		return m.handlePluginCleanupMsg(msg)
+
 	case FolderCreatedMsg:
 		if msg.Err != nil {
 			m.setStatus("create folder failed: "+msg.Err.Error(), true)
@@ -2504,7 +2508,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayMoveMessage:
 		return m.handleMovePicker(msg)
 
-	case overlayPlugins, overlayPluginPicker, overlayPluginResult, overlayPluginAnnotations:
+	case overlayPlugins, overlayPluginPicker, overlayPluginResult, overlayPluginAnnotations, overlayPluginClearConfirm:
 		return m.handlePluginKey(msg)
 
 	case overlayOutbox:

@@ -236,3 +236,124 @@ func TestResyncKeepsAnnotations(t *testing.T) {
 	}
 	assertKV(t, mustList(t, d, ids[0]), "jev:urgency=high")
 }
+
+// seedCleanupDB gives two messages annotations from two plugins:
+// jev has 2 keys on m0 and 1 on m1; other has 1 key on each.
+func seedCleanupDB(t *testing.T) (*DB, []int64) {
+	t.Helper()
+	d, _, ids := newAnnotationTestDB(t, 2)
+	seed := []struct {
+		plugin string
+		msg    int64
+		anns   []PluginAnnotation
+	}{
+		{"jev", ids[0], []PluginAnnotation{ann("urgency", "high"), ann("needs_reply", "true")}},
+		{"jev", ids[1], []PluginAnnotation{ann("urgency", "low")}},
+		{"other", ids[0], []PluginAnnotation{ann("category", "receipt")}},
+		{"other", ids[1], []PluginAnnotation{ann("category", "github")}},
+	}
+	for _, s := range seed {
+		if err := d.ReplacePluginAnnotations(s.plugin, s.msg, s.anns); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return d, ids
+}
+
+func messageCount(t *testing.T, d *DB) int {
+	t.Helper()
+	var n int
+	if err := d.QueryRow(`SELECT COUNT(*) FROM messages`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func TestDeletePluginAnnotationsOnePluginOneMessage(t *testing.T) {
+	d, ids := seedCleanupDB(t)
+	if err := d.DeletePluginAnnotations("jev", ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	assertKV(t, mustList(t, d, ids[0]), "other:category=receipt")
+	assertKV(t, mustList(t, d, ids[1]), "jev:urgency=low", "other:category=github")
+	if n := messageCount(t, d); n != 2 {
+		t.Fatalf("messages = %d, want 2", n)
+	}
+}
+
+func TestDeleteMessagePluginAnnotations(t *testing.T) {
+	d, ids := seedCleanupDB(t)
+	if err := d.DeleteMessagePluginAnnotations(ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	assertKV(t, mustList(t, d, ids[0]))
+	assertKV(t, mustList(t, d, ids[1]), "jev:urgency=low", "other:category=github")
+	if n := messageCount(t, d); n != 2 {
+		t.Fatalf("messages = %d, want 2", n)
+	}
+}
+
+func TestDeletePluginAnnotationsForPlugin(t *testing.T) {
+	d, ids := seedCleanupDB(t)
+	if err := d.DeletePluginAnnotationsForPlugin("jev"); err != nil {
+		t.Fatal(err)
+	}
+	assertKV(t, mustList(t, d, ids[0]), "other:category=receipt")
+	assertKV(t, mustList(t, d, ids[1]), "other:category=github")
+	if n := messageCount(t, d); n != 2 {
+		t.Fatalf("messages = %d, want 2", n)
+	}
+}
+
+func TestPluginAnnotationCounts(t *testing.T) {
+	d, _ := seedCleanupDB(t)
+	counts, err := d.PluginAnnotationCounts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(counts) != 2 || counts["jev"] != 3 || counts["other"] != 2 {
+		t.Fatalf("counts = %v", counts)
+	}
+	if err := d.DeletePluginAnnotationsForPlugin("jev"); err != nil {
+		t.Fatal(err)
+	}
+	counts, err = d.PluginAnnotationCounts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := counts["jev"]; ok || counts["other"] != 2 {
+		t.Fatalf("after clearing jev: %v", counts)
+	}
+	empty := newTestDB(t)
+	if counts, err := empty.PluginAnnotationCounts(); err != nil || len(counts) != 0 {
+		t.Fatalf("empty db: %v %v", counts, err)
+	}
+}
+
+func TestAnnotationDeletesOfMissingRowsSucceed(t *testing.T) {
+	d, ids := seedCleanupDB(t)
+	if err := d.DeletePluginAnnotations("nobody", ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.DeletePluginAnnotations("jev", 999999); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.DeleteMessagePluginAnnotations(999999); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.DeletePluginAnnotationsForPlugin("nobody"); err != nil {
+		t.Fatal(err)
+	}
+	if counts, _ := d.PluginAnnotationCounts(); counts["jev"] != 3 || counts["other"] != 2 {
+		t.Fatalf("counts changed: %v", counts)
+	}
+	for _, err := range []error{
+		d.DeletePluginAnnotations("", ids[0]),
+		d.DeleteMessagePluginAnnotations(0),
+		d.DeletePluginAnnotationsForPlugin(""),
+	} {
+		if err == nil {
+			t.Fatal("empty identifiers should be refused, not treated as delete-everything")
+		}
+	}
+}

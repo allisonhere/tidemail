@@ -79,6 +79,14 @@ them to `Update`, which patches the model's cache. Message list loads batch
 annotations for all loaded messages in the same command, so rows render badges
 from the cache and never query SQLite.
 
+Cleanup (`internal/ui/plugin_cleanup.go`) follows the same pattern. The plugin
+list and annotations overlay hold a typed pending action (one plugin on one
+message, all plugins on one message, or one plugin everywhere) behind a single
+confirmation overlay. The delete runs in a `tea.Cmd` that also reloads the
+per-plugin counts (one `GROUP BY` query), and `Update` patches only the
+affected cache entries. Counts are loaded when the plugin list opens and after
+annotation writes, never while rendering.
+
 ### Terminal images
 
 `rich_images.go` owns the image store. Moving the cursor only records which

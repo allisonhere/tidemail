@@ -60,6 +60,19 @@ type pluginUI struct {
 	annotations map[int64][]db.PluginAnnotation
 	// annotationsFor is the message shown in the annotations overlay.
 	annotationsFor int64
+
+	// counts is stored annotations per plugin ID (see plugin_cleanup.go),
+	// loaded outside rendering; countsLoaded is false until the first load.
+	counts       map[string]int64
+	countsLoaded bool
+	// listCursor selects a plugin in the plugin list; annCursor a plugin
+	// group in the annotations overlay.
+	listCursor int
+	annCursor  int
+	// confirm is the cleanup awaiting y/n, and confirmOrigin the overlay to
+	// return to afterwards.
+	confirm       *annotationClearAction
+	confirmOrigin overlayMode
 }
 
 type pluginResult struct {
@@ -107,7 +120,7 @@ func (m *Model) SetPlugins(mgr *plugin.Manager, dir string, discoveryErr error) 
 	ctx, cancel := context.WithCancel(context.Background())
 	m.plugins = pluginUI{
 		manager: mgr, dir: dir, discoveryErr: discoveryErr, ctx: ctx, cancel: cancel,
-		annotations: m.plugins.annotations,
+		annotations: m.plugins.annotations, counts: m.plugins.counts, countsLoaded: m.plugins.countsLoaded,
 	}
 }
 
@@ -143,14 +156,17 @@ func (m Model) executePluginCommand(id string) (tea.Model, tea.Cmd) {
 	switch id {
 	case "plugins":
 		m.plugins.scroll = 0
+		m.plugins.listCursor = 0
 		m.overlay = overlayPlugins
-		return m, nil
+		// Counts are refreshed each time the list opens, never while drawing.
+		return m, loadPluginAnnotationCountsCmd(m.db)
 	case "plugin-run":
 		return m.openPluginPicker()
 	case "plugin-annotations":
 		if msg := m.commandMessage(); msg != nil {
 			m.plugins.annotationsFor = msg.ID
 			m.plugins.scroll = 0
+			m.plugins.annCursor = 0
 			m.overlay = overlayPluginAnnotations
 		}
 		return m, nil
@@ -354,6 +370,9 @@ func (m Model) handlePluginResult(msg pluginResultMsg) (tea.Model, tea.Cmd) {
 		status += "; open Plugins to view the result"
 	}
 	m.setStatus(status, isErr)
+	if msg.Result.Outcome == plugin.AnnotationsStored {
+		return m, tea.Batch(m.clearStatusCmd(), loadPluginAnnotationCountsCmd(m.db))
+	}
 	return m, m.clearStatusCmd()
 }
 
@@ -385,7 +404,13 @@ func (m Model) handlePluginKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, runPluginCmd(m.plugins.ctx, m.plugins.manager, m.db, p.Manifest.ID, meta)
 		}
 		return m, nil
-	case overlayPlugins, overlayPluginResult, overlayPluginAnnotations:
+	case overlayPlugins:
+		return m.handlePluginListKey(msg)
+	case overlayPluginAnnotations:
+		return m.handleAnnotationsKey(msg)
+	case overlayPluginClearConfirm:
+		return m.handleAnnotationClearConfirm(msg)
+	case overlayPluginResult:
 		switch {
 		case keyMatches(msg, m.keys.Cancel, m.keys.Back):
 			m.overlay = overlayNone
@@ -394,9 +419,6 @@ func (m Model) handlePluginKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.plugins.scroll = max(0, m.plugins.scroll-1)
 		case keyMatches(msg, m.keys.Down):
 			m.plugins.scroll = min(m.plugins.scroll+1, m.pluginMaxScroll())
-		case m.overlay == overlayPlugins && msg.String() == "r" && m.plugins.result != nil:
-			m.plugins.scroll = 0
-			m.overlay = overlayPluginResult
 		}
 		return m, nil
 	}
@@ -429,15 +451,28 @@ func (m Model) renderPluginOverlay() string {
 	case overlayPluginResult:
 		inner = m.renderPluginScroll(m.pluginResultLines(winW-4, chrome), winW, winH, chrome, "↑↓", "scroll", "esc", "close")
 		title = "plugin result"
+	case overlayPluginClearConfirm:
+		return m.renderAnnotationClearConfirm()
 	case overlayPluginAnnotations:
-		inner = m.renderPluginScroll(m.annotationLines(winW-4, chrome), winW, winH, chrome, "↑↓", "scroll", "esc", "close")
+		lines, _ := m.annotationLines(winW-4, chrome)
+		pairs := []string{"esc", "close"}
+		if len(m.annotationGroups()) > 0 {
+			pairs = []string{"↑↓", "select", "c", "clear plugin", "C", "clear all", "esc", "close"}
+		}
+		inner = m.renderPluginScroll(lines, winW, winH, chrome, pairs...)
 		title = "message annotations"
 	default:
-		pairs := []string{"↑↓", "scroll", "esc", "close"}
-		if m.plugins.result != nil {
-			pairs = append([]string{"r", "last result"}, pairs...)
+		lines, _ := m.pluginListLines(winW-4, chrome)
+		pairs := []string{"↑↓", "select"}
+		// Only offer clearing when the selected plugin has stored data.
+		if entries := m.pluginListEntries(); len(entries) > 0 && entries[clamp(m.plugins.listCursor, 0, len(entries)-1)].count > 0 {
+			pairs = append(pairs, "c", "clear stored")
 		}
-		inner = m.renderPluginScroll(m.pluginListLines(winW-4, chrome), winW, winH, chrome, pairs...)
+		if m.plugins.result != nil {
+			pairs = append(pairs, "r", "last result")
+		}
+		pairs = append(pairs, "esc", "close")
+		inner = m.renderPluginScroll(lines, winW, winH, chrome, pairs...)
 		title = "plugins"
 	}
 	inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
@@ -454,9 +489,9 @@ func (m Model) pluginMaxScroll() int {
 	case overlayPluginResult:
 		lines = m.pluginResultLines(winW-4, chrome)
 	case overlayPluginAnnotations:
-		lines = m.annotationLines(winW-4, chrome)
+		lines, _ = m.annotationLines(winW-4, chrome)
 	default:
-		lines = m.pluginListLines(winW-4, chrome)
+		lines, _ = m.pluginListLines(winW-4, chrome)
 	}
 	return max(0, len(lines)-pluginScrollHeight(winH))
 }
@@ -493,8 +528,11 @@ func (m Model) renderPluginPicker(width, height int, chrome managerChrome) strin
 }
 
 // pluginListLines renders the plugin list as styled lines wrapped to width.
-func (m Model) pluginListLines(width int, chrome managerChrome) []string {
-	width = max(1, width)
+// pluginListLines renders the plugin list, and returns the line index where
+// each pluginListEntries entry starts (for the cursor and scrolling). Every
+// line starts with a 2-cell rail column that marks the selected entry.
+func (m Model) pluginListLines(width int, chrome managerChrome) ([]string, []int) {
+	width = max(1, width-2) // minus the rail
 	plain := m.styles.PlainUI
 	base := lipgloss.NewStyle().Background(chrome.baseBg)
 	okStyle := base.Foreground(chrome.accent)
@@ -502,54 +540,83 @@ func (m Model) pluginListLines(width int, chrome managerChrome) []string {
 	text := base.Foreground(chrome.text)
 	muted := base.Foreground(chrome.muted)
 	indentW := max(1, width-2)
+	blankRail := softRail(chrome, false, chrome.baseBg)
 
 	var lines []string
-	add := func(style lipgloss.Style, s string, indent bool) {
+	add := func(style lipgloss.Style, s string, indent bool, rail string) {
 		prefix := ""
 		w := width
 		if indent {
 			prefix = "  "
 			w = indentW
 		}
-		for _, part := range strings.Split(ansi.Wrap(s, max(1, w), ""), "\n") {
-			lines = append(lines, style.Render(prefix+part))
+		for i, part := range strings.Split(ansi.Wrap(s, max(1, w), ""), "\n") {
+			r := blankRail
+			if i == 0 && rail != "" {
+				r = rail
+			}
+			lines = append(lines, r+style.Render(prefix+part))
 		}
 	}
+	blank := func() { lines = append(lines, "") }
 
 	mgr := m.plugins.manager
 	if m.plugins.discoveryErr != nil {
-		add(errStyle, aiConnectionStatusGlyph(plain, aiConnectionError)+" plugins directory", false)
-		add(muted, m.displayPluginError(m.plugins.discoveryErr), true)
-		lines = append(lines, "")
+		add(errStyle, aiConnectionStatusGlyph(plain, aiConnectionError)+" plugins directory", false, "")
+		add(muted, m.displayPluginError(m.plugins.discoveryErr), true, "")
+		blank()
 	}
+
+	entries := m.pluginListEntries()
+	starts := make([]int, len(entries))
+	railFor := func(i int) string { return softRail(chrome, i == m.plugins.listCursor, chrome.baseBg) }
+	countLine := func(n int64) {
+		if m.plugins.countsLoaded {
+			add(muted, fmt.Sprintf("stored annotations: %d", n), true, "")
+		}
+	}
+	i := 0
 	for _, p := range mgr.Plugins() {
 		man := p.Manifest
-		add(okStyle, aiConnectionStatusGlyph(plain, aiConnectionSuccess)+" "+man.ID, false)
-		add(text, sanitizePluginLine(man.Name), true)
+		starts[i] = len(lines)
+		add(okStyle, aiConnectionStatusGlyph(plain, aiConnectionSuccess)+" "+man.ID, false, railFor(i))
+		add(text, sanitizePluginLine(man.Name), true, "")
 		version := sanitizePluginLine(man.Version)
 		if version == "" {
 			version = "?"
 		}
-		add(muted, fmt.Sprintf("v%s%sAPI %d", version, m.styles.InlineMidDot(), man.API), true)
+		add(muted, fmt.Sprintf("v%s%sAPI %d", version, m.styles.InlineMidDot(), man.API), true, "")
 		perms := strings.Join(man.Permissions.Names(), ", ")
 		if perms == "" {
 			perms = "none"
 		}
-		add(muted, "permissions: "+perms, true)
-		lines = append(lines, "")
+		add(muted, "permissions: "+perms, true, "")
+		countLine(entries[i].count)
+		blank()
+		i++
+	}
+	if i < len(entries) {
+		add(text.Bold(true), "Stored data from removed plugins", false, "")
+		blank()
+		for ; i < len(entries); i++ {
+			starts[i] = len(lines)
+			add(muted, aiConnectionStatusGlyph(plain, aiConnectionPending)+" "+sanitizePluginLine(entries[i].pluginID), false, railFor(i))
+			countLine(entries[i].count)
+			blank()
+		}
 	}
 	for _, e := range mgr.Errors() {
-		add(errStyle, aiConnectionStatusGlyph(plain, aiConnectionError)+" "+sanitizePluginLine(filepath.Base(e.Dir)), false)
-		add(muted, m.displayPluginError(e.Err), true)
-		lines = append(lines, "")
+		add(errStyle, aiConnectionStatusGlyph(plain, aiConnectionError)+" "+sanitizePluginLine(filepath.Base(e.Dir)), false, "")
+		add(muted, m.displayPluginError(e.Err), true, "")
+		blank()
 	}
 	if len(lines) == 0 {
-		add(muted, "no plugins installed", false)
+		add(muted, "no plugins installed", false, "")
 	}
 	if m.plugins.running != "" {
-		add(muted, "running: "+m.plugins.running, false)
+		add(muted, "running: "+m.plugins.running, false, "")
 	}
-	return lines
+	return lines, starts
 }
 
 func (m Model) pluginResultLines(bodyW int, chrome managerChrome) []string {
@@ -689,8 +756,8 @@ func (m Model) withAnnotationBadges(messageID int64, age string) string {
 
 // annotationLines renders the annotations overlay: every stored annotation on
 // the message, grouped by plugin.
-func (m Model) annotationLines(width int, chrome managerChrome) []string {
-	width = max(1, width)
+func (m Model) annotationLines(width int, chrome managerChrome) ([]string, []int) {
+	width = max(1, width-2) // minus the rail
 	base := lipgloss.NewStyle().Background(chrome.baseBg)
 	head := base.Foreground(chrome.accent).Bold(true)
 	text := base.Foreground(chrome.text)
@@ -698,8 +765,10 @@ func (m Model) annotationLines(width int, chrome managerChrome) []string {
 
 	anns := m.plugins.annotations[m.plugins.annotationsFor]
 	if len(anns) == 0 {
-		return []string{muted.Render("no annotations")}
+		return []string{muted.Render("no annotations")}, nil
 	}
+	blankRail := softRail(chrome, false, chrome.baseBg)
+	var starts []int
 	keyW := 0
 	for _, a := range anns {
 		keyW = max(keyW, len(a.Key))
@@ -718,7 +787,9 @@ func (m Model) annotationLines(width int, chrome managerChrome) []string {
 			if p, ok := m.plugins.manager.Plugin(a.PluginID); ok {
 				title = sanitizePluginLine(p.Manifest.Name) + "  (" + p.Manifest.ID + ")"
 			}
-			lines = append(lines, head.Render(truncate(title, width)))
+			starts = append(starts, len(lines))
+			rail := softRail(chrome, len(starts)-1 == m.plugins.annCursor, chrome.baseBg)
+			lines = append(lines, rail+head.Render(truncate(title, width)))
 		}
 		confidence := ""
 		if a.Confidence != nil {
@@ -731,10 +802,10 @@ func (m Model) annotationLines(width int, chrome managerChrome) []string {
 		if confidence != "" {
 			row += "  " + confidence
 		}
-		lines = append(lines, text.Render(row))
+		lines = append(lines, blankRail+text.Render(row))
 	}
-	lines = append(lines, "", muted.Render("read-only; annotations never change your mail"))
-	return lines
+	lines = append(lines, "", muted.Render("annotations never change your mail; clearing them never deletes mail"))
+	return lines, starts
 }
 
 // ── Sanitizing untrusted plugin text ─────────────────────────────────────────

@@ -423,6 +423,14 @@ stored in TideMail's local cache and may show as small badges before the date
 off). **Message annotations** in the palette lists all of a message's
 annotations. Running the plugin again replaces its annotations on that message.
 
+Annotations stay after you remove a plugin, so its badges remain until you clear
+them. In **Message annotations**, select a plugin and press `c` to clear its
+annotations from that message, or `C` to clear all of them. In **Plugins
+(experimental)**, select a plugin (including one listed under **Stored data from
+removed plugins**) and press `c` to clear everything it stored. TideMail asks
+before clearing, and clearing never deletes or changes your mail. Plugins still
+run only when you start them; there is no automatic processing yet.
+
 Plugin support is experimental. Only install plugins you trust; see
 [`plugins.md`](plugins.md) for the format and security details.
 

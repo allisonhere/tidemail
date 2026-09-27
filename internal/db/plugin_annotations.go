@@ -112,3 +112,56 @@ func (db *DB) ListPluginAnnotationsForMessages(messageIDs []int64) (map[int64][]
 	}
 	return out, nil
 }
+
+// DeletePluginAnnotations removes one plugin's annotations from one message.
+// Other plugins' annotations and the message itself are untouched; no
+// matching rows is success.
+func (db *DB) DeletePluginAnnotations(pluginID string, messageID int64) error {
+	if pluginID == "" || messageID <= 0 {
+		return errors.New("delete plugin annotations: plugin id and message id are required")
+	}
+	_, err := db.Exec(`DELETE FROM plugin_annotations WHERE plugin_id = ? AND message_id = ?`, pluginID, messageID)
+	return err
+}
+
+// DeleteMessagePluginAnnotations removes every plugin's annotations from one
+// message, leaving the message itself alone.
+func (db *DB) DeleteMessagePluginAnnotations(messageID int64) error {
+	if messageID <= 0 {
+		return errors.New("delete message annotations: message id is required")
+	}
+	_, err := db.Exec(`DELETE FROM plugin_annotations WHERE message_id = ?`, messageID)
+	return err
+}
+
+// DeletePluginAnnotationsForPlugin removes one plugin's annotations from every
+// message. It never touches messages, and works whether or not the plugin is
+// still installed.
+func (db *DB) DeletePluginAnnotationsForPlugin(pluginID string) error {
+	if pluginID == "" {
+		return errors.New("delete plugin annotations: plugin id is required")
+	}
+	_, err := db.Exec(`DELETE FROM plugin_annotations WHERE plugin_id = ?`, pluginID)
+	return err
+}
+
+// PluginAnnotationCounts returns how many annotations each plugin ID has
+// stored, in one query. Plugin IDs without annotations are absent, so the keys
+// are exactly the plugins that have stored data.
+func (db *DB) PluginAnnotationCounts() (map[string]int64, error) {
+	rows, err := db.Query(`SELECT plugin_id, COUNT(*) FROM plugin_annotations GROUP BY plugin_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int64{}
+	for rows.Next() {
+		var id string
+		var n int64
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		out[id] = n
+	}
+	return out, rows.Err()
+}

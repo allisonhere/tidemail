@@ -18,9 +18,14 @@ With no `plugins/` directory, TideMail looks exactly as before: the plugin
 commands appear in the command palette (`:`) only when at least one plugin, or
 a plugin problem, was found at startup.
 
-- **Plugins (experimental)** opens a read-only list. Each valid plugin shows its
-  ID, name, version, API version, and declared permissions. Each broken plugin
-  shows why it was skipped. Press `r` there to reopen the last result.
+- **Plugins (experimental)** opens the plugin list. Each valid plugin shows its
+  ID, name, version, API version, declared permissions, and how many
+  annotations it has stored. Each broken plugin shows why it was skipped.
+  Plugins that were removed but still have stored annotations appear under
+  **Stored data from removed plugins**. Use `↑`/`↓` to select a plugin, `c` to
+  clear its stored annotations (see [Clearing annotations](#clearing-annotations)),
+  and `r` to reopen the last result. Nothing here installs, removes, or disables
+  a plugin.
 - **Run plugin on current message** opens a picker listing only plugins that
   declare `message_metadata = true`. Choosing one sends that message's metadata
   (see `message.metadata` below) and never its body. The plugin runs in the
@@ -224,6 +229,31 @@ time). The `messages` table is not changed.
   cache reset) deletes its annotations. Re-syncing a message keeps them. A
   message that moves to another folder on the server is re-cached as a new
   message there and starts without annotations.
+- Removing a plugin does **not** remove its annotations. They are TideMail's
+  data about your messages, not part of the plugin, and a plugin may only be
+  removed briefly (while upgrading it, say). TideMail never deletes them on
+  its own, at startup or otherwise; clear them explicitly (below).
+
+### Clearing annotations
+
+Clearing only deletes stored annotation rows. It never deletes or changes a
+message, touches the mail server, or uninstalls, disables, or edits a plugin.
+Every clear asks for confirmation (`y` or `Enter` to clear, `n` or `Esc` to
+cancel) and runs in the background; badges update as soon as it finishes.
+
+- **From one message:** open **Message annotations** for the message. Use
+  `↑`/`↓` to select a plugin's group, then `c` to clear that plugin's
+  annotations from this message, or `C` to clear every plugin's annotations
+  from it.
+- **For one plugin, everywhere:** open **Plugins (experimental)**, select the
+  plugin, and press `c`. This works for installed plugins (useful after a
+  plugin's rules change; the plugin stays installed) and for removed plugins
+  listed under **Stored data from removed plugins** (the entry disappears once
+  its annotations are gone). `c` is offered only when the plugin has
+  annotations stored.
+
+Only plugin IDs that TideMail finds in its own annotation store or plugin list
+can be cleared; there is no way to type one in.
 
 ### Display
 
