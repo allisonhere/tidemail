@@ -47,7 +47,10 @@ type pluginUI struct {
 
 	picker       []plugin.Plugin
 	pickerCursor int
-	pickerMeta   plugin.MessageMetadata
+	// pickerMetas are the messages the picked plugin will run on.
+	pickerMetas []plugin.MessageMetadata
+	// bulk is the manual multi-message run in progress (plugin_bulk.go).
+	bulk *pluginBulkRun
 
 	result *pluginResult
 	// scroll is the first visible line of the plugin list or result overlay.
@@ -164,7 +167,7 @@ func (m Model) pluginCommandItems(hasMessage bool) []commandItem {
 	if m.pluginsVisible() {
 		items = append(items,
 			commandItem{id: "plugins", label: "Plugins (experimental)", enabled: true},
-			commandItem{id: "plugin-run", label: "Run plugin on current message", enabled: hasMessage || m.contentMessageID != 0},
+			commandItem{id: "plugin-run", label: m.pluginRunLabel(), enabled: hasMessage || m.contentMessageID != 0},
 		)
 	}
 	// Stored annotations stay inspectable even if their plugin was removed.
@@ -219,8 +222,8 @@ func (m Model) openPluginPicker() (tea.Model, tea.Cmd) {
 		m.setStatus("plugin "+m.plugins.running+" is still running", false)
 		return m, m.clearStatusCmd()
 	}
-	msg := m.commandMessage()
-	if msg == nil {
+	targets := m.pluginTargets()
+	if len(targets) == 0 {
 		m.setStatus("no message selected", false)
 		return m, m.clearStatusCmd()
 	}
@@ -231,7 +234,11 @@ func (m Model) openPluginPicker() (tea.Model, tea.Cmd) {
 	}
 	m.plugins.picker = eligible
 	m.plugins.pickerCursor = 0
-	m.plugins.pickerMeta = m.pluginMessageMetadata(*msg)
+	// Metadata is built once per message, the same way as a single run.
+	m.plugins.pickerMetas = make([]plugin.MessageMetadata, len(targets))
+	for i, t := range targets {
+		m.plugins.pickerMetas[i] = m.pluginMessageMetadata(t)
+	}
 	m.overlay = overlayPluginPicker
 	return m, nil
 }
@@ -348,7 +355,7 @@ func (m Model) handlePluginResult(msg pluginResultMsg) (tea.Model, tea.Cmd) {
 	}
 	m.setStatus(status, isErr)
 	if msg.Result.Outcome == plugin.AnnotationsStored {
-		return m, tea.Batch(m.clearStatusCmd(), loadPluginAnnotationCountsCmd(m.db))
+		return m, tea.Batch(m.clearStatusCmd(), loadPluginAnnotationCountsCmd(m.db), m.needsYouRefreshCmd())
 	}
 	return m, m.clearStatusCmd()
 }
@@ -372,13 +379,7 @@ func (m Model) handlePluginKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if len(m.plugins.picker) == 0 {
 				return m, nil
 			}
-			p := m.plugins.picker[m.plugins.pickerCursor]
-			meta := m.plugins.pickerMeta
-			m.plugins.picker = nil
-			m.overlay = overlayNone
-			m.plugins.running = p.Manifest.ID
-			m.setStatus("running plugin "+p.Manifest.ID+"…", false)
-			return m, runPluginCmd(m.plugins.ctx, m.plugins.manager, m.db, p.Manifest.ID, meta)
+			return m.startPluginRun(m.plugins.picker[m.plugins.pickerCursor])
 		}
 		return m, nil
 	case overlayPlugins:
@@ -494,7 +495,7 @@ func (m Model) renderPluginPicker(width, height int, chrome managerChrome) strin
 	bodyW := max(1, width-4)
 	muted := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted)
 	header := []string{
-		muted.Render(truncate("message: "+sanitizePluginLine(m.plugins.pickerMeta.Subject), bodyW)),
+		muted.Render(truncate(m.pickerTargetLine(), bodyW)),
 		muted.Render(truncate("sends sender, recipients, subject, date, flags; never the body", bodyW)),
 		"",
 	}
@@ -609,7 +610,7 @@ func (m Model) pluginListLines(width int, chrome managerChrome) ([]string, []int
 		add(muted, "no plugins installed", false, "")
 	}
 	if m.plugins.running != "" {
-		add(muted, "running: "+m.plugins.running, false, "")
+		add(muted, m.bulkProgressLine(), false, "")
 	}
 	return lines, starts
 }
@@ -733,4 +734,15 @@ func formatPluginData(raw json.RawMessage) string {
 		text += "\n… truncated"
 	}
 	return text
+}
+
+// pickerTargetLine says what the picked plugin will run on.
+func (m Model) pickerTargetLine() string {
+	if n := len(m.plugins.pickerMetas); n > 1 {
+		return fmt.Sprintf("%d selected messages", n)
+	}
+	if len(m.plugins.pickerMetas) == 1 {
+		return "message: " + sanitizePluginLine(m.plugins.pickerMetas[0].Subject)
+	}
+	return ""
 }

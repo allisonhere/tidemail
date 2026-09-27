@@ -34,6 +34,7 @@ var helpers = map[string]func(){
 	"tidemail-plugin-hangpid":    helperHangPID,
 	"tidemail-plugin-leak":       helperLeak,
 	"tidemail-plugin-tester":     helperTester,
+	"tidemail-plugin-concurrent": helperConcurrent,
 	"tidemail-plugin-annotate":   helperAnnotate(`[{"key":"needs_reply","value":"true","confidence":0.94},{"key":"urgency","value":"high"}]`),
 	"tidemail-plugin-badconf":    helperAnnotate(`[{"key":"urgency","value":"high","confidence":2.0}]`),
 	"tidemail-plugin-noanns":     helperAnnotate(`[]`),
@@ -135,6 +136,28 @@ func helperLeak() {
 		os.Exit(1)
 	}
 	respond(req, map[string]any{"echo": "key=" + secret, "settings": req.Settings})
+}
+
+// helperConcurrent records itself in ../running while it works and reports
+// how many plugin processes (and how many of its own plugin) were running.
+func helperConcurrent() {
+	req := readRequest()
+	cwd, _ := os.Getwd()
+	own := filepath.Base(cwd)
+	dir := filepath.Join(cwd, "..", "running")
+	_ = os.MkdirAll(dir, 0o755)
+	marker := filepath.Join(dir, own+"-"+strconv.Itoa(os.Getpid()))
+	_ = os.WriteFile(marker, nil, 0o644)
+	time.Sleep(120 * time.Millisecond)
+	entries, _ := os.ReadDir(dir)
+	sameOwn := 0
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), own+"-") {
+			sameOwn++
+		}
+	}
+	_ = os.Remove(marker)
+	respond(req, map[string]int{"global": len(entries), "own": sameOwn})
 }
 
 // helperTester answers plugin.test.

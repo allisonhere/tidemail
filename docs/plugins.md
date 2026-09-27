@@ -31,6 +31,22 @@ a plugin problem, was found at startup.
   (see `message.metadata` below) and never its body. The plugin runs in the
   background, so TideMail stays responsive. The status line shows
   `running plugin <id>…` and then the outcome.
+- With messages selected (`Space`), the same command reads **Run plugin on
+  selected message** or **Run plugin on N selected messages**. The plugin is
+  chosen once and then runs on each selected message in turn, through exactly
+  the same metadata, permission, validation, and storage steps as a single run.
+  - Selections of 10 or more ask once for confirmation first.
+  - A bulk run uses one process at a time for its plugin, and every message
+    call (manual, bulk, or automatic) shares one limit of 3 plugin processes
+    at once, so a large selection never starts a flood of processes.
+  - Progress shows on the status line (`6 / 14`). Badges update as each
+    message finishes, and Needs You refreshes every few messages and at the
+    end.
+  - A failing message does not stop the run. At the end one summary window
+    shows how many succeeded and failed, with up to five sanitized reasons; no
+    per-message result windows open.
+  - The selection is kept. Bulk runs work whether automatic processing is off,
+    on, or paused, and never change its failure count.
 - A successful response opens a read-only result window with the response data
   pretty-printed. If another window (compose, settings) was opened meanwhile,
   the status line says the result is ready instead of interrupting it.
@@ -373,6 +389,49 @@ combined across a thread yet.
 
 All displayed annotation text is sanitized again before drawing, even though it
 was validated before storage.
+
+## Needs You
+
+**Needs You** is TideMail's first view built on annotations: inbox messages,
+across accounts, that any plugin has marked actionable. It is core TideMail,
+not tied to any plugin; TideMail Smart (with or without Jev) is just one source
+of annotations.
+
+A message qualifies when any stored annotation, from any plugin (including a
+removed one), has one of these conventional values (case-insensitive):
+
+| Key | Values |
+| --- | --- |
+| `needs_reply` | `true`, `yes`, `1` |
+| `urgency` | `high`, `urgent`, `critical` |
+| `importance` | `high` |
+
+- `category` alone never qualifies, so `#shipping` or `#github` mail stays out
+  unless it also has one of the signals above.
+- Conflicts resolve to the positive signal: if plugin A says
+  `needs_reply=true` and plugin B says `false`, the message qualifies. TideMail
+  has no notion of plugin priority or trust, so it does not vote or weigh.
+- Only inbox mailboxes count (the same test as Unified Inbox); Trash, Sent,
+  Drafts, archives, and other folders are excluded.
+- Order is an internal attention rank: urgent 4, needs reply 3, important 2,
+  added up, then newest first. Each signal counts once however many plugins
+  report it. The rank is never shown or stored.
+- These are the same values that draw the `↩`, `!`, and `◆` badges, so a badge
+  and Needs You always agree.
+
+The view and its count come from one SQL query with `EXISTS` tests (no
+per-message lookups) and refresh after syncs, plugin results, annotation
+cleanup, and dismissals. Opening Needs You never runs a plugin or makes a
+network request.
+
+### Dismissing
+
+`X` in Needs You records a dismissal in TideMail's own
+`message_attention_overrides` table. It does not change or delete annotations
+(a plugin's judgment and a user's "not here" are different things) and does not
+touch the message. A dismissal lasts until the user restores it (`Ctrl+Z` right
+after, or **Restore to Needs You**); later reclassification does not undo it.
+It disappears with the message if the message is deleted from the cache.
 
 ## Automatic events
 

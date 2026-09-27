@@ -101,6 +101,17 @@ enqueues work from `MailboxSyncedMsg.NewMessages`, which sync fills with
 stored row IDs, and skips syncs marked `Cold` (first sync or cache rebuild).
 Rendering reads a cached status snapshot.
 
+### Needs You
+
+`internal/db/attention.go` holds the qualification rules (conventional
+annotation values shared with the UI's badges), `ListNeedsYou` and
+`CountNeedsYou` (one query each, `EXISTS` per signal, ranked by an internal
+attention score), and dismissals in `message_attention_overrides`.
+`internal/ui/needs_you.go` adds the sidebar entry, loads the view like Unified
+Inbox (annotations batched in the same command), caches the count, and
+refreshes both after syncs, annotation writes and cleanups, and dismissals.
+Qualification never refers to a specific plugin.
+
 ### Plugin settings
 
 Manifests may declare `[[settings]]` (bool, select, secret) and

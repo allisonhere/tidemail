@@ -99,6 +99,7 @@ func (m Model) mainCommandItems() []commandItem {
 		{id: "filters", label: "Manage filters (AI rules)", enabled: true},
 		{id: "settings", label: "Open settings", enabled: true},
 	}
+	items = append(items, m.needsYouCommandItems()...)
 	return append(items, m.pluginCommandItems(hasMessage)...)
 }
 
@@ -229,6 +230,8 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "plugins", "plugin-run", "plugin-annotations":
 		return m.executePluginCommand(id)
+	case "needs-you-why", "needs-you-dismiss", "needs-you-restore":
+		return m.executeNeedsYouCommand(id)
 	case "compose-send":
 		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlS})
 	case "compose-schedule":

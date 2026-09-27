@@ -29,6 +29,8 @@ const (
 	// enableAutoEvents turns on automatic message.received for a plugin (see
 	// plugin_events.go). It shares this confirmation dialog.
 	enableAutoEvents
+	// runPluginBulk confirms a large manual run (plugin_bulk.go).
+	runPluginBulk
 )
 
 // pluginConfirmAction is a pending or finished cleanup. The plugin ID always
@@ -39,6 +41,8 @@ type pluginConfirmAction struct {
 	messageID int64
 	// label is the display name used in the confirmation and status text.
 	label string
+	// count is the number of messages, for runPluginBulk.
+	count int
 }
 
 // pluginAnnotationCountsMsg carries freshly loaded per-plugin counts.
@@ -123,7 +127,7 @@ func (m Model) handlePluginCleanupMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.clampPluginCursors()
 		m.setStatus(clearedStatus(msg.Action), false)
-		return m, m.clearStatusCmd()
+		return m, tea.Batch(m.clearStatusCmd(), m.needsYouRefreshCmd())
 	}
 	return m, nil
 }
@@ -335,8 +339,14 @@ func (m Model) handlePluginConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.setAutoEvents(action.pluginID, true)
 			return m, m.clearStatusCmd()
 		}
+		if action.kind == runPluginBulk {
+			return m.startBulk(action.pluginID)
+		}
 		return m, clearAnnotationsCmd(m.db, *action)
 	case keyMatches(msg, m.keys.No), keyMatches(msg, m.keys.Cancel):
+		if a := m.plugins.confirm; a != nil && a.kind == runPluginBulk {
+			m.plugins.pickerMetas = nil // nothing is launched
+		}
 		m.plugins.confirm = nil
 		m.overlay = m.plugins.confirmOrigin
 	}
@@ -376,7 +386,10 @@ func (m Model) renderPluginConfirm() string {
 	chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 	var text string
 	title, verb := "clear annotations?", "clear"
-	if a := m.plugins.confirm; a != nil && a.kind == enableAutoEvents {
+	if a := m.plugins.confirm; a != nil && a.kind == runPluginBulk {
+		title, verb = "run plugin?", "run"
+		text = fmt.Sprintf("Run %s on %d messages?\n\nOnly the metadata this plugin is permitted to receive will be sent (sender, recipients, subject, date, flags), never message bodies.", a.label, a.count)
+	} else if a != nil && a.kind == enableAutoEvents {
 		title, verb = "auto-process new mail?", "enable"
 		text = "Let " + a.label + " process new mail automatically?\n\n" +
 			"This plugin will automatically receive metadata (sender, recipients, subject, date, flags) for newly received messages. Message bodies are not sent.\n\n" +

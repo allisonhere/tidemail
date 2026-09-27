@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -51,6 +52,13 @@ type Manager struct {
 	plugins []Plugin
 	byID    map[string]int
 	errs    []DiscoveryError
+
+	// slots limits message calls (manual, bulk, and automatic alike): one at
+	// a time per plugin, and EventGlobalLimit across plugins.
+	slotsOnce sync.Once
+	global    chan struct{}
+	slotsMu   sync.Mutex
+	perPlugin map[string]chan struct{}
 }
 
 // Discover loads every plugin under dir, one plugin per subdirectory, in
@@ -226,7 +234,12 @@ func (m *Manager) runMetadata(ctx context.Context, pluginID, method string, meta
 	if err != nil {
 		return MessageMetadataResult{}, fmt.Errorf("plugin %q: encode metadata: %w", pluginID, err)
 	}
+	release, err := m.acquire(ctx, pluginID)
+	if err != nil {
+		return MessageMetadataResult{}, fmt.Errorf("plugin %q: %w", pluginID, err)
+	}
 	resp, err := m.call(ctx, p, method, data)
+	release()
 	if err != nil {
 		return MessageMetadataResult{}, err
 	}
@@ -335,4 +348,37 @@ func (m *Manager) Test(ctx context.Context, pluginID string) (Response, error) {
 		return Response{}, fmt.Errorf("plugin %q: %w: %s is not declared", pluginID, ErrPermissionDenied, CapabilityTest)
 	}
 	return m.call(ctx, p, MethodTest, nil)
+}
+
+// acquire waits for the plugin's slot and then a global slot, so a plugin
+// never runs two message calls at once and no more than EventGlobalLimit
+// processes run in total, whether started by hand, in bulk, or by events.
+func (m *Manager) acquire(ctx context.Context, pluginID string) (func(), error) {
+	m.slotsOnce.Do(func() {
+		m.global = make(chan struct{}, EventGlobalLimit)
+		m.perPlugin = map[string]chan struct{}{}
+	})
+	m.slotsMu.Lock()
+	own := m.perPlugin[pluginID]
+	if own == nil {
+		own = make(chan struct{}, 1)
+		m.perPlugin[pluginID] = own
+	}
+	m.slotsMu.Unlock()
+
+	select {
+	case own <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	select {
+	case m.global <- struct{}{}:
+	case <-ctx.Done():
+		<-own
+		return nil, ctx.Err()
+	}
+	return func() {
+		<-m.global
+		<-own
+	}, nil
 }

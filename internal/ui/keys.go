@@ -16,25 +16,26 @@ type KeyMap struct {
 	Enter                 key.Binding
 	Back                  key.Binding
 
-	Sync          key.Binding
-	SyncAll       key.Binding
-	MarkRead      key.Binding
-	MarkAllRead   key.Binding
-	ToggleStar    key.Binding
-	OpenBrowser   key.Binding
-	Unsubscribe   key.Binding
-	NextLink      key.Binding
-	PrevLink      key.Binding
-	Search        key.Binding
-	UnreadOnly    key.Binding
-	StarredFirst  key.Binding
-	ToggleThreads key.Binding
-	Compose       key.Binding
-	Reply         key.Binding
-	Forward       key.Binding
-	Archive       key.Binding
-	Move          key.Binding
-	Command       key.Binding
+	Sync            key.Binding
+	SyncAll         key.Binding
+	MarkRead        key.Binding
+	NeedsYouDismiss key.Binding
+	MarkAllRead     key.Binding
+	ToggleStar      key.Binding
+	OpenBrowser     key.Binding
+	Unsubscribe     key.Binding
+	NextLink        key.Binding
+	PrevLink        key.Binding
+	Search          key.Binding
+	UnreadOnly      key.Binding
+	StarredFirst    key.Binding
+	ToggleThreads   key.Binding
+	Compose         key.Binding
+	Reply           key.Binding
+	Forward         key.Binding
+	Archive         key.Binding
+	Move            key.Binding
+	Command         key.Binding
 
 	AccountManager key.Binding
 	ContactManager key.Binding
@@ -100,25 +101,27 @@ var DefaultKeys = KeyMap{
 	Enter:                 key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open")),
 	Back:                  key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 
-	Sync:          key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sync mailbox")),
-	SyncAll:       key.NewBinding(key.WithKeys("F", "ctrl+s"), key.WithHelp("F/ctrl+s", "sync all")),
-	MarkRead:      key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "mark read")),
-	MarkAllRead:   key.NewBinding(key.WithKeys("R", "ctrl+x"), key.WithHelp("R/ctrl+x", "mark all read")),
-	ToggleStar:    key.NewBinding(key.WithKeys("*"), key.WithHelp("*", "star")),
-	OpenBrowser:   key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser")),
-	Unsubscribe:   key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "unsubscribe")),
-	NextLink:      key.NewBinding(key.WithKeys("ctrl+n", "alt+n"), key.WithHelp("ctrl+n", "next link")),
-	PrevLink:      key.NewBinding(key.WithKeys("alt+p"), key.WithHelp("alt+p", "prev link")),
-	Search:        key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
-	UnreadOnly:    key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "toggle unread only")),
-	StarredFirst:  key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "starred first")),
-	ToggleThreads: key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "threads")),
-	Compose:       key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "compose")),
-	Reply:         key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reply")),
-	Forward:       key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "forward")),
-	Archive:       key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),
-	Move:          key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move")),
-	Command:       key.NewBinding(key.WithKeys(":", "ctrl+p"), key.WithHelp(":/ctrl+p", "command")),
+	Sync:     key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sync mailbox")),
+	SyncAll:  key.NewBinding(key.WithKeys("F", "ctrl+s"), key.WithHelp("F/ctrl+s", "sync all")),
+	MarkRead: key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "mark read")),
+	// NeedsYouDismiss only acts while Needs You is open.
+	NeedsYouDismiss: key.NewBinding(key.WithKeys("X"), key.WithHelp("X", "dismiss from Needs You")),
+	MarkAllRead:     key.NewBinding(key.WithKeys("R", "ctrl+x"), key.WithHelp("R/ctrl+x", "mark all read")),
+	ToggleStar:      key.NewBinding(key.WithKeys("*"), key.WithHelp("*", "star")),
+	OpenBrowser:     key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser")),
+	Unsubscribe:     key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "unsubscribe")),
+	NextLink:        key.NewBinding(key.WithKeys("ctrl+n", "alt+n"), key.WithHelp("ctrl+n", "next link")),
+	PrevLink:        key.NewBinding(key.WithKeys("alt+p"), key.WithHelp("alt+p", "prev link")),
+	Search:          key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
+	UnreadOnly:      key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "toggle unread only")),
+	StarredFirst:    key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "starred first")),
+	ToggleThreads:   key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "threads")),
+	Compose:         key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "compose")),
+	Reply:           key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reply")),
+	Forward:         key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "forward")),
+	Archive:         key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),
+	Move:            key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move")),
+	Command:         key.NewBinding(key.WithKeys(":", "ctrl+p"), key.WithHelp(":/ctrl+p", "command")),
 
 	AccountManager: key.NewBinding(key.WithKeys("M"), key.WithHelp("M", "accounts")),
 	ContactManager: key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "contacts")),

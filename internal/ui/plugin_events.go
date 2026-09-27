@@ -137,7 +137,8 @@ func (m Model) handlePluginAnnotationsRefreshed(msg pluginAnnotationsRefreshedMs
 	} else {
 		m.plugins.annotations[msg.MessageID] = msg.Annotations
 	}
-	return m, nil
+	// A new automatic result can add or remove a message from Needs You.
+	return m, m.needsYouRefreshCmd()
 }
 
 // setAutoEvents persists the switch for a plugin and applies it.

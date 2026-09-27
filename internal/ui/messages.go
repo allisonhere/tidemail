@@ -61,8 +61,9 @@ func (m Model) renderMessagesPane() string {
 			} else if !msg2.Read {
 				threadUnread = 1
 			}
-			// Threaded rows show the representative message's badges only.
-			age := m.withAnnotationBadges(msg2.ID, m.formatTime(msg2.Date))
+			// Threaded rows show the representative message's badges, except
+			// in Needs You, where they combine every message of the thread.
+			age := m.withAnnotationBadges(m.formatTime(msg2.Date), m.rowBadgeIDs(msg2, thread)...)
 			style := msgRead
 			if threadUnread > 0 {
 				style = msgUnread
@@ -104,6 +105,8 @@ func (m Model) renderMessagesPane() string {
 				rows = append(rows, msgRead.Render("  "+m.spinner.View()+" Loading messages…"))
 			case m.searchMode:
 				rows = append(rows, msgRead.Render("  no results"))
+			case m.selectedNeedsYou():
+				rows = append(rows, msgRead.Render("  Nothing needs your attention."))
 			case m.selectedOutboxRow():
 				// The Outbox row is a doorway, not a folder — its entries are
 				// not db.Message rows and this pane cannot act on them. Saying
@@ -181,6 +184,9 @@ func (m Model) messagesPaneTitle() string {
 	title := "Messages"
 	if m.selectedUnifiedInbox() {
 		title = "Unified Inbox"
+	}
+	if m.selectedNeedsYou() {
+		title = "Needs You"
 	}
 	if m.selectedOutboxRow() {
 		title = "Outbox"

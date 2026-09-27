@@ -100,9 +100,11 @@ func fixedBadge(values ...string) func(annotationBadgeRule, string, bool) string
 var categoryBadgePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,11}$`)
 
 var annotationBadgeRules = []annotationBadgeRule{
-	{key: "needs_reply", icon: "↩", ascii: "R", badge: fixedBadge("true", "yes", "1")},
-	{key: "urgency", icon: "!", ascii: "!", badge: fixedBadge("high", "urgent", "critical")},
-	{key: "importance", icon: "◆", ascii: "^", badge: fixedBadge("high")},
+	// The value lists are shared with Needs You, so a badge and Needs You
+	// always agree on what counts.
+	{key: db.AttentionNeedsReply, icon: "↩", ascii: "R", badge: fixedBadge(db.NeedsReplyValues...)},
+	{key: db.AttentionUrgency, icon: "!", ascii: "!", badge: fixedBadge(db.UrgencyValues...)},
+	{key: db.AttentionImportance, icon: "◆", ascii: "^", badge: fixedBadge(db.ImportanceValues...)},
 	{key: "category", badge: func(_ annotationBadgeRule, value string, _ bool) string {
 		if categoryBadgePattern.MatchString(value) {
 			return "#" + value
@@ -114,11 +116,14 @@ var annotationBadgeRules = []annotationBadgeRule{
 // maxAnnotationBadges caps badges per row.
 const maxAnnotationBadges = 3
 
-// annotationBadges renders the row badges for one message from the cache, in
+// annotationBadges renders the row badges for messages from the cache, in
 // rule order, at most one per key whichever plugin set it. It never queries
 // the database.
-func (m Model) annotationBadges(messageID int64) string {
-	anns := m.plugins.annotations[messageID]
+func (m Model) annotationBadges(messageIDs ...int64) string {
+	var anns []db.PluginAnnotation
+	for _, id := range messageIDs {
+		anns = append(anns, m.plugins.annotations[id]...)
+	}
 	if len(anns) == 0 {
 		return ""
 	}
@@ -142,8 +147,8 @@ func (m Model) annotationBadges(messageID int64) string {
 }
 
 // withAnnotationBadges puts a message's badges in front of its age column.
-func (m Model) withAnnotationBadges(messageID int64, age string) string {
-	badges := m.annotationBadges(messageID)
+func (m Model) withAnnotationBadges(age string, messageIDs ...int64) string {
+	badges := m.annotationBadges(messageIDs...)
 	switch {
 	case badges == "":
 		return age
@@ -166,6 +171,7 @@ func (m Model) annotationLines(width int, chrome managerChrome) ([]string, []int
 	if len(anns) == 0 {
 		return []string{muted.Render("no annotations")}, nil
 	}
+	lines := m.needsYouExplanationLines(m.plugins.annotationsFor, chrome)
 	blankRail := softRail(chrome, false, chrome.baseBg)
 	var starts []int
 	keyW := 0
@@ -174,7 +180,6 @@ func (m Model) annotationLines(width int, chrome managerChrome) ([]string, []int
 	}
 	keyW = min(keyW, 24)
 
-	var lines []string
 	prev := ""
 	for _, a := range anns { // sorted by plugin ID, then key
 		if a.PluginID != prev {

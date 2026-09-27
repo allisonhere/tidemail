@@ -231,6 +231,14 @@ func (db *DB) migrate() error {
 			PRIMARY KEY (plugin_id, message_id, key)
 		);
 		CREATE INDEX IF NOT EXISTS idx_plugin_annotations_message ON plugin_annotations(message_id);
+
+		-- TideMail's own per-message attention state. dismissed = 1 keeps a
+		-- message out of Needs You regardless of plugin annotations.
+		CREATE TABLE IF NOT EXISTS message_attention_overrides (
+			message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+			dismissed  INTEGER NOT NULL DEFAULT 0,
+			updated_at INTEGER NOT NULL
+		);
 	`)
 	if err != nil {
 		return err

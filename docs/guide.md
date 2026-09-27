@@ -119,6 +119,33 @@ account and folder, and matches as you type. In the content pane, `Ctrl+E` shows
 the full headers and authentication results. `Ctrl+U` opens the mailing list's
 unsubscribe option when the message provides one.
 
+### Needs You
+
+**Needs You**, just below Unified Inbox in the sidebar, gathers the inbox
+messages across every account that need you: ones tagged as needing a reply,
+urgent, or important. Its number is how many there are, read or not. Reading a
+message does not remove it; Needs You is about what still needs doing, not what
+is unread (`u` still narrows the list to unread mail).
+
+The tags come from annotations stored by plugins (for example TideMail Smart),
+from any plugin, installed or since removed. Without such a plugin Needs You
+stays empty ("Nothing needs your attention."). Opening it only reads what is
+already stored: it never runs a plugin or goes online.
+
+The most pressing messages come first: urgent, then needing a reply, then
+important (a message with several of these ranks higher), newest first within
+each. With threaded conversations a whole thread appears if any of its
+messages qualifies, and its badges combine the thread's signals.
+
+If a message doesn't belong there, press `X` (or choose **Dismiss from Needs
+You** in the palette). The message and its tags are untouched; TideMail just
+remembers not to show it here, even if a plugin later tags it again. `Ctrl+Z`
+while still in Needs You brings back the latest dismissal, and **Restore to
+Needs You** in the palette does the same for a dismissed message opened from
+its normal folder. **Why is this in Needs You?** lists the reasons and the
+annotations behind them. All the usual actions (reply, archive, delete, move,
+star, mark read) work on messages here.
+
 Receipt tables keep item descriptions, quantities, and prices together, even
 when the sender uses ordinary cells for headings or merges cells for totals.
 Amounts align on the right. When columns would be too cramped, each row becomes
@@ -413,8 +440,9 @@ TideMail can run external plugins placed in `~/.config/tidemail/plugins/`.
 When any are installed, the command palette gains **Plugins (experimental)**, a
 read-only list, and **Run plugin on current message**, which sends the
 message's sender, recipients, subject, date, and flags (never its body) to a
-plugin you choose and shows its reply. Plugins only run when you start them,
-and their replies never change your mail.
+plugin you choose and shows its reply. With several messages selected, the
+same command runs the plugin on all of them (asking first for 10 or more),
+shows progress, and ends with one summary. Plugins never change your mail.
 
 A plugin that also declares the `annotations` permission can attach short
 notes to that message, such as "needs reply" or "urgency: high". These are
@@ -480,7 +508,8 @@ Plugin support is experimental. Only install plugins you trust; see
 | `Shift+Up` / `Shift+Down` | Resize the messages/content split |
 | `u` | Toggle unread-only view |
 | `t` | Toggle starred-first sort (starred messages float to the top) |
-| `Ctrl+Z` | Cancel a queued send, or undo the latest pending delete, archive, or move |
+| `X` | In Needs You: dismiss the selected message (mail and tags untouched) |
+| `Ctrl+Z` | Cancel a queued send; in Needs You, restore the latest dismissal; otherwise undo the latest pending delete, archive, or move |
 | `O` | Open the Outbox |
 | `o` or `Enter` | Open link on the focus line (falls back to the selected content link) |
 | `Ctrl+U` | Unsubscribe from the mailing list for the open message |

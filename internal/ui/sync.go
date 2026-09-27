@@ -274,8 +274,8 @@ func (m *Model) searchAllMessagesCmd(query string) tea.Cmd {
 }
 
 func (m *Model) visibleMessagesCmd() tea.Cmd {
-	if m.selectedUnifiedInbox() {
-		return m.loadUnifiedInboxCmd()
+	if cmd := m.virtualViewCmd(); cmd != nil {
+		return cmd
 	}
 	if selected := m.selectedMailbox(); selected != nil {
 		cmd := m.loadMailboxMessagesCmd(selected.ID)

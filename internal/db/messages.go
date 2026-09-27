@@ -94,6 +94,20 @@ func (db *DB) ListUnreadMessages(mailboxID int64) ([]Message, error) {
 	return scanMessages(rows)
 }
 
+// inboxMailboxPredicate selects inbox mailboxes (joined as mailboxes) across
+// accounts. Unified Inbox and Needs You share it.
+const inboxMailboxPredicate = `(
+			lower(mailboxes.name) = 'inbox'
+			OR lower(mailboxes.display_name) = 'inbox'
+			OR instr(lower(mailboxes.flags), '\inbox') > 0
+		)`
+
+// messageColumns is the column list scanMessages reads, qualified by table.
+const messageColumns = `messages.id, messages.mailbox_id, messages.uid, messages.message_id,
+		       messages.in_reply_to, messages.references_text, messages.subject, messages.from_addr, messages.to_addr, messages.cc_addr,
+		       messages.reply_to, messages.date, messages.body_text, messages.body_html,
+		       messages.summary, messages.flags, messages.read, messages.starred, messages.has_attachment, messages.headers`
+
 func (db *DB) ListUnifiedInbox(unreadOnly bool) ([]Message, error) {
 	readClause := ""
 	if unreadOnly {
@@ -106,11 +120,7 @@ func (db *DB) ListUnifiedInbox(unreadOnly bool) ([]Message, error) {
 		       messages.summary, messages.flags, messages.read, messages.starred, messages.has_attachment, messages.headers
 		FROM messages
 		JOIN mailboxes ON mailboxes.id = messages.mailbox_id
-		WHERE (
-			lower(mailboxes.name) = 'inbox'
-			OR lower(mailboxes.display_name) = 'inbox'
-			OR instr(lower(mailboxes.flags), '\inbox') > 0
-		)` + readClause + `
+		WHERE ` + inboxMailboxPredicate + readClause + `
 		ORDER BY messages.date DESC, messages.id DESC`)
 	if err != nil {
 		return nil, err
@@ -131,11 +141,7 @@ func (db *DB) ListUnifiedInboxUnreadFirst(unreadOnly bool) ([]Message, error) {
 		       messages.summary, messages.flags, messages.read, messages.starred, messages.has_attachment, messages.headers
 		FROM messages
 		JOIN mailboxes ON mailboxes.id = messages.mailbox_id
-		WHERE (
-			lower(mailboxes.name) = 'inbox'
-			OR lower(mailboxes.display_name) = 'inbox'
-			OR instr(lower(mailboxes.flags), '\inbox') > 0
-		)` + readClause + `
+		WHERE ` + inboxMailboxPredicate + readClause + `
 		ORDER BY messages.read ASC, messages.date DESC, messages.id DESC`)
 	if err != nil {
 		return nil, err
