@@ -667,6 +667,16 @@ func LogPath() (string, error) {
 	return filepath.Join(filepath.Dir(cfgPath), "fetch.log"), nil
 }
 
+// PluginDir returns the directory scanned for experimental plugins (alongside
+// config.toml). It may not exist.
+func PluginDir() (string, error) {
+	cfgPath, err := configPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(cfgPath), "plugins"), nil
+}
+
 // NormalizeSendMaxAttempts bounds automatic delivery attempts. One disables retries.
 func NormalizeSendMaxAttempts(n int) int {
 	if n < 1 {

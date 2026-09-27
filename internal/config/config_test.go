@@ -349,3 +349,15 @@ from = "alice@example.com"
 		t.Fatal("expected unread_first to load true")
 	}
 }
+
+func TestPluginDirFollowsXDGConfigHome(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	got, err := PluginDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(dir, "tidemail", "plugins"); got != want {
+		t.Fatalf("PluginDir() = %q, want %q", got, want)
+	}
+}
