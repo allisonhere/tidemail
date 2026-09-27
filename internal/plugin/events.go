@@ -77,6 +77,9 @@ type RuntimeStatus struct {
 	Dropped             uint64
 	Paused              bool
 	LastError           string
+	LastRun             time.Time
+	LastSuccess         time.Time
+	LastFailure         time.Time
 }
 
 // eventCall runs one automatic call; tests replace it.
@@ -102,16 +105,19 @@ type EventManager struct {
 }
 
 type eventPlugin struct {
-	enabled  bool
-	paused   bool
-	queue    []MessageMetadata
-	pending  map[int64]bool // queued or running, for dedupe
-	running  bool
-	failures int
-	dropped  uint64
-	lastErr  string
-	calls    []time.Time // call start times inside the rate window
-	wake     chan struct{}
+	enabled     bool
+	paused      bool
+	queue       []MessageMetadata
+	pending     map[int64]bool // queued or running, for dedupe
+	running     bool
+	failures    int
+	dropped     uint64
+	lastErr     string
+	lastRun     time.Time
+	lastSuccess time.Time
+	lastFailure time.Time
+	calls       []time.Time // call start times inside the rate window
+	wake        chan struct{}
 }
 
 // NewEventManager starts workers for every plugin in mgr that declares
@@ -244,6 +250,7 @@ func (e *EventManager) Status() map[string]RuntimeStatus {
 		out[id] = RuntimeStatus{
 			Enabled: p.enabled, Queued: len(p.queue), Running: p.running,
 			ConsecutiveFailures: p.failures, Dropped: p.dropped, Paused: p.paused, LastError: p.lastErr,
+			LastRun: p.lastRun, LastSuccess: p.lastSuccess, LastFailure: p.lastFailure,
 		}
 	}
 	return out
@@ -334,7 +341,9 @@ func (e *EventManager) worker(id string, p *eventPlugin) {
 			return
 		}
 		e.mu.Lock()
-		p.calls = append(p.calls, e.now())
+		now := e.now()
+		p.calls = append(p.calls, now)
+		p.lastRun = now
 		e.mu.Unlock()
 
 		result, err := e.call(e.ctx, id, meta)
@@ -351,6 +360,7 @@ func (e *EventManager) worker(id string, p *eventPlugin) {
 			update.Failed = true
 			p.failures++
 			p.lastErr = failure
+			p.lastFailure = e.now()
 			if p.failures >= e.opts.FailureLimit && !p.paused {
 				p.paused = true
 				update.Paused = true
@@ -359,6 +369,7 @@ func (e *EventManager) worker(id string, p *eventPlugin) {
 		} else {
 			p.failures = 0
 			p.lastErr = ""
+			p.lastSuccess = e.now()
 		}
 		e.mu.Unlock()
 

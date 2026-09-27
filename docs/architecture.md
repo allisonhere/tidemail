@@ -219,6 +219,16 @@ plugin's own resolved settings, and its secrets are set only in that plugin's
 process environment and masked out of its output. Plugins such as TideMail
 Smart, which may call external services, live outside this repository.
 
+### Plugin runtime observability
+
+`internal/plugin/events.go` keeps automatic-event state in memory: enabled,
+queued, running, dropped, consecutive failures, paused, last error, and the
+last run/success/failure timestamps. `internal/ui/plugin_events.go` copies a
+locked snapshot into the Bubble Tea model and renders only sanitized plugin ID
+and error text. No message metadata, credentials, or plugin environment is
+included in this status. Manual runs remain independent of automatic-event
+failure counts and pause state.
+
 ### Terminal images
 
 `rich_images.go` owns the image store. Moving the cursor only records which

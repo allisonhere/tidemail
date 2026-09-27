@@ -299,7 +299,3 @@ func (m Model) effectiveClassificationFor(messageIDs ...int64) attention.Effecti
 	}
 	return out
 }
-
-func (m Model) applyClassificationOverrides(msg map[int64]map[string]db.ClassificationOverride) {
-	m.plugins.overrides = msg
-}

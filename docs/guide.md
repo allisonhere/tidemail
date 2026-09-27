@@ -129,7 +129,7 @@ urgent, or important. Its number is how many there are, read or not. Reading a
 message does not remove it; Needs You is about what still needs doing, not what
 is unread (`u` still narrows the list to unread mail).
 
-The tags come from annotations stored by plugins (for example TideMail Smart),
+The tags come from annotations stored by plugins (for example TideMail Smart (JEV)),
 from any plugin, installed or since removed. Without such a plugin Needs You
 stays empty ("Nothing needs your attention."). Opening it only reads what is
 already stored: it never runs a plugin or goes online.
@@ -508,7 +508,9 @@ open **Accounts** and re-enter that account's server details.
 
 ### Plugins (experimental)
 
-TideMail can run external plugins placed in `~/.config/tidemail/plugins/`.
+TideMail can run external plugins placed in
+`$XDG_CONFIG_HOME/tidemail/plugins/` (or `~/.config/tidemail/plugins/` when
+`XDG_CONFIG_HOME` is unset).
 When any are installed, the command palette (`:`) gains **Plugins
 (experimental)**, a read-only list of installed plugins, and **Run plugin**.
 Plugins receive a message's sender, recipients, subject, date, and flags, never
@@ -586,6 +588,12 @@ turn it on: in **Plugins (experimental)**, select it and press `a`, then
 confirm. It then receives the same metadata (never message bodies) for each
 newly arrived unread message, and its tags appear as mail comes in. Old mail,
 first-time setup of an account, and loading older messages are never sent.
+The plugin list shows its current queue, running state, dropped events,
+failures, last success, last failure, and a sanitized last error when those
+values exist. Three consecutive automatic failures pause that plugin; press
+`r` on it to resume. Manual **Run plugin** actions remain available while
+automatic processing is paused.
+
 Automatic processing is off for every plugin until you enable it. A plugin that
 fails three times in a row is paused; select it and press `r` to resume.
 
@@ -593,7 +601,7 @@ Plugins can have their own settings. Open **Settings → Advanced → Plugin
 settings** (or press `s` on a plugin in **Plugins (experimental)**) to change
 them. Secret values such as API keys are stored in your system keychain, never
 in `config.toml`, and are shown only as `************`. Plugins are separate
-programs, not part of TideMail's mail handling: for example, TideMail Smart
+programs, not part of TideMail's mail handling: for example, TideMail Smart (JEV)
 (an external plugin) can call TypeSafe's Jev model over the network, and its
 settings describe exactly what it sends.
 

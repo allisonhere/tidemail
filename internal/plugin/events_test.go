@@ -140,6 +140,10 @@ func TestEventsEnqueueRuns(t *testing.T) {
 	if ups[0].MessageID != 1 || ups[1].MessageID != 2 || ups[0].Failed {
 		t.Fatalf("updates = %+v", ups)
 	}
+	st := e.Status()["p"]
+	if st.LastRun.IsZero() || st.LastSuccess.IsZero() || !st.LastFailure.IsZero() {
+		t.Fatalf("successful run timestamps = %+v", st)
+	}
 }
 
 func TestEventsDedupeQueuedAndRunning(t *testing.T) {

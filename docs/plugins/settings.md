@@ -127,9 +127,9 @@ window. Nothing else happens; the test is informational. A good test checks
 exactly what a real call would need (a key is present, a service answers)
 without changing anything.
 
-## Example: TideMail Smart
+## Example: TideMail Smart (JEV)
 
-TideMail Smart, a separate plugin, uses all three types: a `select` for its
+TideMail Smart (JEV), a separate plugin, uses all three types: a `select` for its
 mode (local rules, or hybrid with an online model), `bool` switches for which
 signals to emit, and a `secret` for its API key. Its help texts say what is
 sent where. Nothing about settings is specific to it.

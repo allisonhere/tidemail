@@ -7,7 +7,8 @@ them for views like **Needs You**. Plugins never change mail, and nothing a
 plugin returns is treated as an instruction.
 
 - A plugin is an external executable plus a `plugin.toml` manifest, installed
-  in `~/.config/tidemail/plugins/<name>/`.
+  in `$XDG_CONFIG_HOME/tidemail/plugins/<name>/` (or
+  `~/.config/tidemail/plugins/<name>/` when `XDG_CONFIG_HOME` is unset).
 - TideMail writes one JSON request to its stdin; it writes one JSON response to
   stdout. Any language works.
 - Plugins receive header-level metadata only (sender, recipients, subject,

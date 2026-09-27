@@ -221,7 +221,33 @@ func (m Model) pluginEventLines(pluginID string) []string {
 			fmt.Sprintf("queued: %d %s running: %s", st.Queued, dot, running),
 			fmt.Sprintf("failures: %d %s dropped: %d", st.ConsecutiveFailures, dot, st.Dropped))
 	}
+	if !st.LastSuccess.IsZero() {
+		lines = append(lines, "last success: "+pluginEventAge(st.LastSuccess))
+	}
+	if !st.LastFailure.IsZero() {
+		lines = append(lines, "last failure: "+pluginEventAge(st.LastFailure))
+	}
+	if st.LastError != "" {
+		lines = append(lines, "last error: "+sanitizePluginLine(st.LastError))
+	}
 	return lines
+}
+
+func pluginEventAge(when time.Time) string {
+	age := time.Since(when)
+	if age < 0 {
+		return "just now"
+	}
+	switch {
+	case age < time.Minute:
+		return "just now"
+	case age < time.Hour:
+		return fmt.Sprintf("%dm ago", int(age/time.Minute))
+	case age < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(age/time.Hour))
+	default:
+		return fmt.Sprintf("%dd ago", int(age/(24*time.Hour)))
+	}
 }
 
 // pluginEventHints are the plugin-list hint pairs for the selected entry.

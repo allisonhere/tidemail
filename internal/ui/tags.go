@@ -16,7 +16,6 @@ import (
 
 	"github.com/allisonhere/tidemail/internal/attention"
 	"github.com/allisonhere/tidemail/internal/config"
-	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -92,10 +91,6 @@ const maxAnnotationTags = 3
 // Needs You always agree. It never queries the database.
 func (m Model) annotationTags(messageIDs ...int64) []annotationTag {
 	return tagsFromEffective(m.effectiveClassificationFor(messageIDs...))
-}
-
-func tagsFromAnnotations(anns []db.PluginAnnotation) []annotationTag {
-	return tagsFromEffective(attention.FromDB(anns, nil))
 }
 
 func tagsFromEffective(att attention.EffectiveClassification) []annotationTag {

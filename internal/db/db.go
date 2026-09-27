@@ -249,6 +249,7 @@ func (db *DB) migrate() error {
 			created_at   INTEGER NOT NULL,
 			PRIMARY KEY (target_type, target_key)
 		);
+		CREATE INDEX IF NOT EXISTS idx_snoozes_until ON snoozes(snooze_until);
 
 		CREATE TABLE IF NOT EXISTS message_attention_overrides (
 			message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,

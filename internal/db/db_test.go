@@ -223,6 +223,55 @@ func TestDBMigrateAddsStarredToLegacySchema(t *testing.T) {
 	}
 }
 
+// Optional plugin/attention tables may be absent from an older database. The
+// normal startup migration must add them without disturbing cached mail.
+func TestDBMigrateAddsPluginStateToExistingDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mail.db")
+	database, err := openSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.init(); err != nil {
+		t.Fatal(err)
+	}
+	accountID, err := database.AddAccount("", "Personal", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailboxID, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertMessage(Message{MailboxID: mailboxID, UID: 7, Subject: "kept"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"classification_overrides", "snoozes", "waiting_dismissals", "plugin_annotations"} {
+		if _, err := database.Exec("DROP TABLE " + table); err != nil {
+			t.Fatal(err)
+		}
+	}
+	database.Close()
+
+	database, err = openSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.init(); err != nil {
+		t.Fatalf("legacy database migration failed: %v", err)
+	}
+	messages, err := database.ListMessages(mailboxID)
+	if err != nil || len(messages) != 1 || messages[0].Subject != "kept" {
+		t.Fatalf("existing message changed: %+v, %v", messages, err)
+	}
+	for _, table := range []string{"classification_overrides", "snoozes", "waiting_dismissals", "plugin_annotations"} {
+		var name string
+		if err := database.QueryRow("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&name); err != nil {
+			t.Fatalf("migrated table %s missing: %v", table, err)
+		}
+	}
+}
+
 func TestMigrateMessageFTSRebuildsOnceThenSkips(t *testing.T) {
 	tmp := t.TempDir()
 	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
