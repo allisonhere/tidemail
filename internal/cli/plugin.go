@@ -1,5 +1,7 @@
-// Package cli contains headless developer commands. It deliberately imports
-// no UI or database package: plugin tooling must work on a clean machine.
+// Package cli contains headless developer commands. It imports no UI package
+// and never opens the user's configuration or mail cache: plugin tooling must
+// work on a clean machine. Report tests use a throwaway fixture database in
+// the temporary directory.
 package cli
 
 import (
@@ -15,7 +17,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/allisonhere/tidemail/internal/conversation"
+	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidemail/internal/plugin"
+	"github.com/allisonhere/tidemail/internal/pluginquery"
 )
 
 const maxTestTimeout = time.Minute
@@ -59,9 +64,11 @@ type validationReport struct {
 }
 
 type validationPlugin struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	API  int    `json:"api"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	API          int      `json:"api"`
+	Permissions  []string `json:"permissions,omitempty"`
+	Capabilities []string `json:"capabilities,omitempty"`
 }
 
 func runValidate(args []string, out, errOut io.Writer) int {
@@ -89,7 +96,10 @@ func runValidate(args []string, out, errOut io.Writer) int {
 	p, err := plugin.LoadPlugin(path)
 	report := validationReport{Valid: err == nil, Errors: nil}
 	if err == nil {
-		report.Plugin = validationPlugin{ID: p.Manifest.ID, Name: p.Manifest.Name, API: p.Manifest.API}
+		report.Plugin = validationPlugin{
+			ID: p.Manifest.ID, Name: p.Manifest.Name, API: p.Manifest.API,
+			Permissions: p.Manifest.Permissions.Names(), Capabilities: p.Manifest.Capabilities,
+		}
 	} else {
 		report.Errors = []string{sanitizeError(err.Error())}
 	}
@@ -100,8 +110,14 @@ func runValidate(args []string, out, errOut io.Writer) int {
 		_, _ = fmt.Fprintf(errOut, "✗ %s\n", sanitizeError(err.Error()))
 		return 1
 	}
-	for _, line := range []string{"✓ manifest", "✓ Plugin API v1", "✓ executable", "✓ permissions", "✓ events", "✓ settings"} {
+	for _, line := range []string{"✓ manifest", "✓ Plugin API v1", "✓ executable", "✓ permissions", "✓ events", "✓ capabilities", "✓ settings"} {
 		_, _ = fmt.Fprintln(out, line)
+	}
+	if names := p.Manifest.Permissions.Names(); len(names) > 0 {
+		_, _ = fmt.Fprintf(out, "\npermissions: %s\n", strings.Join(names, ", "))
+	}
+	if len(p.Manifest.Capabilities) > 0 {
+		_, _ = fmt.Fprintf(out, "capabilities: %s\n", strings.Join(p.Manifest.Capabilities, ", "))
 	}
 	_, _ = fmt.Fprintln(out, "\nPlugin is valid.")
 	return 0
@@ -109,7 +125,7 @@ func runValidate(args []string, out, errOut io.Writer) int {
 
 func printValidateHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "Usage: tidemail plugin validate [--json] <plugin-dir|plugin.toml>")
-	_, _ = fmt.Fprintln(w, "Validate a plugin manifest, executable, permissions, events, and settings.")
+	_, _ = fmt.Fprintln(w, "Validate a plugin manifest, executable, permissions, events, capabilities, and settings.")
 	_, _ = fmt.Fprintln(w, "\nExamples:")
 	_, _ = fmt.Fprintln(w, "  tidemail plugin validate ./my-plugin")
 	_, _ = fmt.Fprintln(w, "  tidemail plugin validate --json ./my-plugin/plugin.toml")
@@ -119,6 +135,7 @@ type testOptions struct {
 	jsonOutput   bool
 	verbose      bool
 	metadata     string
+	reportData   string
 	sets         []string
 	secretEnvs   []string
 	timeout      time.Duration
@@ -130,6 +147,7 @@ type testCheck struct {
 	Name    string `json:"name"`
 	Status  string `json:"status"`
 	Error   string `json:"error,omitempty"`
+	Detail  string `json:"detail,omitempty"`
 	Elapsed string `json:"elapsed,omitempty"`
 }
 
@@ -149,6 +167,7 @@ func runTest(args []string, out, errOut io.Writer) int {
 	fs.BoolVar(&opts.jsonOutput, "json", false, "print machine-readable JSON")
 	fs.BoolVar(&opts.verbose, "verbose", false, "show elapsed time and sanitized diagnostics")
 	fs.StringVar(&opts.metadata, "metadata", "", "JSON metadata fixture path")
+	fs.StringVar(&opts.reportData, "report-fixture", "", "JSON synthetic mailbox for report.run (default: built-in)")
 	fs.Var(stringList(&opts.sets), "set", "override a non-secret setting: key=value")
 	fs.Var(stringList(&opts.secretEnvs), "secret-env", "inject a secret from the environment: key=ENV_VAR")
 	fs.DurationVar(&opts.timeout, "timeout", plugin.DefaultTimeout, "maximum time per plugin call (1ms-1m)")
@@ -256,6 +275,24 @@ func runTest(args []string, out, errOut io.Writer) int {
 			return finishTest(out, errOut, opts, report)
 		}
 	}
+	if p.Manifest.HasCapability(plugin.CapabilityReport) {
+		started := time.Now()
+		detail, err := testReportRun(ctx, p, opts, settings, secrets)
+		c := testCheck{Name: plugin.MethodReportRun, Status: "pass", Detail: detail}
+		if opts.verbose {
+			c.Elapsed = time.Since(started).Round(time.Millisecond).String()
+		}
+		if err != nil {
+			c.Status, c.Error = "fail", sanitizeError(err.Error())
+		}
+		report.Checks = append(report.Checks, c)
+		if err != nil {
+			return finishTest(out, errOut, opts, report)
+		}
+	} else if opts.reportData != "" {
+		report.Checks = append(report.Checks, testCheck{Name: plugin.MethodReportRun, Status: "fail", Error: "plugin does not declare capability report.run"})
+		return finishTest(out, errOut, opts, report)
+	}
 	if opts.configTest {
 		if !p.Manifest.HasCapability(plugin.CapabilityTest) {
 			report.Checks = append(report.Checks, testCheck{Name: plugin.MethodTest, Status: "fail", Error: "plugin does not declare capability plugin.test"})
@@ -266,10 +303,57 @@ func runTest(args []string, out, errOut io.Writer) int {
 	return finishTest(out, errOut, opts, report)
 }
 
+// testReportRun runs a full report against a synthetic mailbox loaded into a
+// throwaway database, with TideMail's real query engine.
+func testReportRun(ctx context.Context, p plugin.Plugin, opts testOptions, settings map[string]any, secrets map[string]string) (string, error) {
+	now := time.Now().UTC().Truncate(time.Second)
+	fixture := pluginquery.DefaultFixture(now)
+	if opts.reportData != "" {
+		var err error
+		if fixture, err = pluginquery.ReadFixture(opts.reportData); err != nil {
+			return "", err
+		}
+	}
+	dir, err := os.MkdirTemp("", "tidemail-plugin-test-")
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+	database, err := db.OpenPath(filepath.Join(dir, "mail.db"))
+	if err != nil {
+		return "", err
+	}
+	defer database.Close()
+	if err := fixture.Load(database); err != nil {
+		return "", fmt.Errorf("report fixture: %w", err)
+	}
+	rc := plugin.ReportContext{AccountName: fixture.Accounts[0].Name, Now: fixture.Now, Timezone: "UTC"}
+	if rc.Now == "" {
+		rc.Now = now.Format(time.RFC3339)
+	}
+	if mbs := fixture.Accounts[0].Mailboxes; len(mbs) > 0 {
+		rc.MailboxName = mbs[0].Name
+	}
+	exec := &pluginquery.Executor{DB: database, Me: conversation.MyAddresses(fixture.Me...), Location: time.UTC}
+	res, err := plugin.RunReport(ctx, p, rc, exec, plugin.ReportOptions{Timeout: opts.timeout, Settings: settings, Secrets: secrets})
+	if err != nil {
+		return "", err
+	}
+	return countNoun(res.Rounds, "round", "rounds") + ", " + countNoun(res.Queries, "query", "queries"), nil
+}
+
+func countNoun(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return strconv.Itoa(n) + " " + many
+}
+
 func printTestHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "Usage: tidemail plugin test [options] <plugin-dir|plugin.toml>")
 	_, _ = fmt.Fprintln(w, "Run offline ping and metadata protocol checks without opening TideMail.")
-	_, _ = fmt.Fprintln(w, "\nOptions: --metadata FILE  --set key=value  --secret-env key=ENV_VAR")
+	_, _ = fmt.Fprintln(w, "Plugins with report.run also run a full report against a synthetic mailbox.")
+	_, _ = fmt.Fprintln(w, "\nOptions: --metadata FILE  --report-fixture FILE  --set key=value  --secret-env key=ENV_VAR")
 	_, _ = fmt.Fprintln(w, "         --timeout 8s     --json       --verbose")
 	_, _ = fmt.Fprintln(w, "         --config-test requires --allow-network")
 	_, _ = fmt.Fprintln(w, "\nExample: tidemail plugin test --set mode=local ./my-plugin")
@@ -290,6 +374,9 @@ func finishTest(out, errOut io.Writer, opts testOptions, report testReport) int 
 			_, _ = fmt.Fprintf(out, "✓ %s", c.Name)
 		} else {
 			_, _ = fmt.Fprintf(out, "✗ %s: %s", c.Name, c.Error)
+		}
+		if c.Detail != "" {
+			_, _ = fmt.Fprintf(out, " (%s)", c.Detail)
 		}
 		if opts.verbose && c.Elapsed != "" {
 			_, _ = fmt.Fprintf(out, " (%s)", c.Elapsed)

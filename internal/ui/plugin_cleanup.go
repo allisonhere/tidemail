@@ -242,7 +242,8 @@ func (m Model) pluginDisplayName(pluginID string) string {
 // ── Keys ─────────────────────────────────────────────────────────────────────
 
 // handlePluginListKey drives the plugin list: the cursor moves between
-// plugins, and c asks to clear the selected plugin's stored annotations.
+// plugins, enter runs the selected plugin's report, s opens its settings, and
+// c asks to clear its stored annotations.
 func (m Model) handlePluginListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	entries := m.pluginListEntries()
 	if len(entries) > 0 {
@@ -257,6 +258,10 @@ func (m Model) handlePluginListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case msg.String() == "s" && len(entries) > 0:
 		if e := entries[clamp(m.plugins.listCursor, 0, len(entries)-1)]; e.installed {
 			return m.openPluginSettings(e.pluginID)
+		}
+	case msg.Type == tea.KeyEnter && len(entries) > 0:
+		if e := entries[clamp(m.plugins.listCursor, 0, len(entries)-1)]; e.installed && m.pluginHasReport(e.pluginID) {
+			return m.startPluginReport(e.pluginID)
 		}
 	case keyMatches(msg, m.keys.Up):
 		if m.plugins.listCursor > 0 {

@@ -34,7 +34,7 @@ const CapabilityTest = "plugin.test"
 const MethodTest = "plugin.test"
 
 // knownCapabilities are the capability names a manifest may declare.
-var knownCapabilities = map[string]bool{CapabilityTest: true}
+var knownCapabilities = map[string]bool{CapabilityTest: true, CapabilityReport: true}
 
 // settingKeyPattern keeps setting keys short identifiers that are also safe as
 // environment variable suffixes.
@@ -125,7 +125,7 @@ func validateCapabilities(caps []string) []error {
 	for _, c := range caps {
 		switch {
 		case !knownCapabilities[c]:
-			errs = append(errs, fmt.Errorf("unknown capability %q (supported: %s)", c, CapabilityTest))
+			errs = append(errs, fmt.Errorf("unknown capability %q (supported: %s, %s)", c, CapabilityReport, CapabilityTest))
 		case seen[c]:
 			errs = append(errs, fmt.Errorf("capability %q is listed twice", c))
 		}

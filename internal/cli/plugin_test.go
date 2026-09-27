@@ -138,3 +138,95 @@ printf '{"api":1,"type":"response","request_id":"%s","ok":true,"data":%s}\n' "$i
 		t.Fatalf("bad test JSON: err=%v report=%+v", err, testReportValue)
 	}
 }
+
+// reportScript asks for one aggregate query in round 1, then reports the
+// received count it got back.
+const reportScript = `#!/bin/sh
+read request
+id=$(printf '%s' "$request" | sed -n 's/.*"request_id":"\([^"]*\)".*/\1/p')
+method=$(printf '%s' "$request" | sed -n 's/.*"method":"\([^"]*\)".*/\1/p')
+case "$method" in
+ping) data='{"message":"pong"}' ;;
+*)
+  case "$request" in
+  *'"round":1,'*) data='{"queries":{"vol":{"method":"analytics.volume","range":"all","group_by":"month"}},"state":"s1"}' ;;
+  *) received=$(printf '%s' "$request" | sed -n 's/.*"results":{"vol":{[^}]*"received":\([0-9]*\).*/\1/p')
+     data="{\"report\":\"received $received\"}" ;;
+  esac ;;
+esac
+printf '{"api":1,"type":"response","request_id":"%s","ok":true,"data":%s}\n' "$id" "$data"
+`
+
+func writeReportPlugin(t *testing.T, capabilities string) string {
+	t.Helper()
+	dir := t.TempDir()
+	manifest := "id = \"reporter\"\nname = \"Reporter\"\napi = 1\ncommand = \"./run\"\n" + capabilities + "\n[permissions]\nanalytics_read = true\nmessages_query = true\n"
+	if err := os.WriteFile(filepath.Join(dir, "plugin.toml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "run"), []byte(reportScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestReportPluginValidateAndTest(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test plugin uses a Unix executable")
+	}
+	// No real TideMail data directory is ever opened.
+	t.Setenv("XDG_DATA_HOME", filepath.Join(t.TempDir(), "must-not-be-created"))
+	dir := writeReportPlugin(t, `capabilities = ["report.run"]`)
+
+	var out, errOut bytes.Buffer
+	if code := Run([]string{"validate", "--json", dir}, &out, &errOut); code != 0 {
+		t.Fatalf("validate: %d %q", code, errOut.String())
+	}
+	var v validationReport
+	if err := json.Unmarshal(out.Bytes(), &v); err != nil || strings.Join(v.Plugin.Permissions, ",") != "messages query,analytics" || strings.Join(v.Plugin.Capabilities, ",") != "report.run" {
+		t.Fatalf("validate JSON = %s", out.String())
+	}
+
+	out.Reset()
+	if code := Run([]string{"test", "--json", dir}, &out, &errOut); code != 0 {
+		t.Fatalf("test: %d stdout=%q stderr=%q", code, out.String(), errOut.String())
+	}
+	var rep testReport
+	if err := json.Unmarshal(out.Bytes(), &rep); err != nil || !rep.Valid {
+		t.Fatalf("test JSON = %s", out.String())
+	}
+	last := rep.Checks[len(rep.Checks)-1]
+	if last.Name != "report.run" || last.Detail != "2 rounds, 1 query" {
+		t.Fatalf("report check = %+v", last)
+	}
+	if _, err := os.Stat(os.Getenv("XDG_DATA_HOME")); !os.IsNotExist(err) {
+		t.Fatal("plugin test touched the TideMail data directory")
+	}
+
+	// A custom synthetic mailbox.
+	fixture := filepath.Join(t.TempDir(), "mail.json")
+	data := `{"me":["me@x.example"],"accounts":[{"name":"A","mailboxes":[{"name":"INBOX","messages":[
+		{"from":"a@y.example","subject":"one","date":"2026-01-02T00:00:00Z"}]}]}]}`
+	if err := os.WriteFile(fixture, []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if code := Run([]string{"test", "--report-fixture", fixture, dir}, &out, &errOut); code != 0 || !strings.Contains(out.String(), "✓ report.run") {
+		t.Fatalf("fixture test: %d %q %q", code, out.String(), errOut.String())
+	}
+	// Bodies cannot be smuggled into a fixture.
+	if err := os.WriteFile(fixture, []byte(strings.Replace(data, `"subject"`, `"body_text":"x","subject"`, 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if code := Run([]string{"test", "--report-fixture", fixture, dir}, &out, &errOut); code == 0 || !strings.Contains(out.String(), "body_text") {
+		t.Fatalf("unknown fixture field accepted: %d %q", code, out.String())
+	}
+
+	// --report-fixture on a plugin without report.run fails clearly.
+	plain := writeReportPlugin(t, "")
+	out.Reset()
+	if code := Run([]string{"test", "--report-fixture", fixture, plain}, &out, &errOut); code == 0 || !strings.Contains(out.String(), "does not declare capability report.run") {
+		t.Fatalf("missing capability: %d %q", code, out.String())
+	}
+}

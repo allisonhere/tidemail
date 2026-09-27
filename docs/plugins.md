@@ -13,6 +13,9 @@ plugin returns is treated as an instruction.
   stdout. Any language works.
 - Plugins receive header-level metadata only (sender, recipients, subject,
   date, flags), never message bodies, passwords, or tokens.
+- Report plugins can ask TideMail read-only, allowlisted queries (message and
+  thread lists, stored annotations, aggregate analytics). TideMail runs them
+  itself; plugins never get database access.
 - Plugins provide semantics; TideMail controls presentation. Tag styles and
   colors come from the user's settings and theme, never from a plugin.
 - Plugins are not sandboxed by the operating system. Only install plugins you
@@ -38,17 +41,24 @@ The developer documentation is in [`docs/plugins/`](plugins/README.md):
 | [annotations](plugins/annotations.md) | limits, replace-on-success, conventional keys, reclassification |
 | [events](plugins/events.md) | `message.received` for new mail |
 | [settings](plugins/settings.md) | bool/select/secret settings and `plugin.test` |
+| [queries](plugins/queries.md) | `report.run` and read-only queries |
+| [analytics](plugins/analytics.md) | aggregate statistics |
 | [security](plugins/security.md) | trust model and runtime restrictions |
 | [compatibility](plugins/compatibility.md) | what API v1 promises |
 
-A small, tested example plugin is in
-[`examples/plugins/example/`](../examples/plugins/example/).
+Small, tested example plugins are in
+[`examples/plugins/example/`](../examples/plugins/example/) and
+[`examples/plugins/analytics/`](../examples/plugins/analytics/) (a report).
 
 ## For TideMail contributors
 
 The runtime is `internal/plugin` (discovery, manifest and protocol validation,
-process handling, permissions, annotation parsing, automatic events). The UI
-side is in `internal/ui` (`plugins.go`, `plugin_bulk.go` for multi-message runs,
+process handling, permissions, annotation parsing, automatic events, query
+validation and the report round driver in `query.go` and `report.go`). Report
+queries execute in `internal/pluginquery`, which reads header columns through
+`internal/db` and shares conversation threading with the UI through
+`internal/conversation`. The UI side is in `internal/ui` (`plugins.go`,
+`plugin_bulk.go` for multi-message runs, `plugin_report.go`,
 `plugin_annotations.go`, `tags.go` for tag rendering, `plugin_events.go`,
 `plugin_settings.go`), and annotation storage is `internal/db`. See
 [architecture.md](architecture.md#plugins). Tests in

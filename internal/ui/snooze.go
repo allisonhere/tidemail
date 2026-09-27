@@ -468,7 +468,7 @@ func (m Model) snoozedSender(msg db.Message) (string, bool) {
 	me := myAddresses(m.accountIdentities())
 	var names []string
 	for _, p := range parseParticipants(msg.To, msg.CC) {
-		if !me[p.addr] {
+		if !me[p.Addr] {
 			names = append(names, displayParticipant(p))
 		}
 	}

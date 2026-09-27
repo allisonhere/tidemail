@@ -554,8 +554,13 @@ annotations view to record a local decision for needs reply, urgency,
 importance, or category. A correction overrides every plugin for that field,
 while the original plugin annotations remain visible. **Use plugin decision**
 or **Reset all corrections** removes the local decision. Corrections survive
-plugin reruns, annotation cleanup, and plugin removal; they never leave the
-local database or get sent to Jev, TypeSafe, or a plugin.
+plugin reruns, annotation cleanup, and plugin removal. They never leave your
+computer: they are not sent to Jev, TypeSafe, or any plugin with a message.
+The one exception is report plugins that declare permission to read
+classifications (`annotations_query` and `analytics_read`). Those can see a
+message's current classification, including that it came from your
+correction. Reports with `analytics_read` also see corrected categories as
+part of category totals.
 
 Choose how tags look under **Settings → Display → Appearance → Annotation
 Tags**:
@@ -596,6 +601,17 @@ automatic processing is paused.
 
 Automatic processing is off for every plugin until you enable it. A plugin that
 fails three times in a row is paused; select it and press `r` to resume.
+
+Some plugins are **reports**, such as mail analytics. The plugin list shows
+**enter  run report** for them: select one in **Plugins (experimental)** and
+press `enter`. The report opens in the plugin result window when it finishes,
+and `r` in the plugin list reopens the last result. To answer, a report asks
+TideMail read-only questions, only those its permissions allow (the list shows
+them): for example message counts per day, category totals, or a list of
+conversations. TideMail answers from its local cache. A report never sees
+message bodies, cannot change your mail or TideMail's state, and cannot draw
+its own screens or colors. If a folder or account is selected in the sidebar,
+the report can treat it as the current one.
 
 Plugins can have their own settings. Open **Settings → Advanced → Plugin
 settings** (or press `s` on a plugin in **Plugins (experimental)**) to change

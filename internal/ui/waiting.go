@@ -9,12 +9,10 @@ package ui
 
 import (
 	"fmt"
-	"net/mail"
-	"regexp"
-	"sort"
 	"strings"
 	"time"
 
+	"github.com/allisonhere/tidemail/internal/conversation"
 	"github.com/allisonhere/tidemail/internal/db"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -69,15 +67,11 @@ type (
 // myAddresses are the user's own addresses, from every configured account's
 // login and From address. Display names never count.
 func myAddresses(accounts []accountIdentity) map[string]bool {
-	me := map[string]bool{}
+	raw := make([]string, 0, 2*len(accounts))
 	for _, a := range accounts {
-		for _, raw := range []string{a.user, a.from} {
-			if addr := bareAddress(raw); addr != "" {
-				me[addr] = true
-			}
-		}
+		raw = append(raw, a.user, a.from)
 	}
-	return me
+	return conversation.MyAddresses(raw...)
 }
 
 type accountIdentity struct{ user, from string }
@@ -90,97 +84,15 @@ func (m Model) accountIdentities() []accountIdentity {
 	return out
 }
 
-// bareAddress returns the lowercase address in s, or "" if there is none.
-func bareAddress(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return ""
-	}
-	if addr, err := mail.ParseAddress(s); err == nil {
-		return strings.ToLower(addr.Address)
-	}
-	if strings.Contains(s, "@") && !strings.ContainsAny(s, " <>") {
-		return strings.ToLower(s)
-	}
-	return ""
-}
-
-// participant is one parsed address.
-type participant struct {
-	name, addr string
-}
+// participant is one parsed address from the shared conversation model.
+type participant = conversation.Participant
 
 func parseParticipants(fields ...string) []participant {
-	var out []participant
-	for _, f := range fields {
-		if strings.TrimSpace(f) == "" {
-			continue
-		}
-		list, err := mail.ParseAddressList(f)
-		if err != nil {
-			// Sloppy or hostile headers (a control character in one display
-			// name rejects the whole list): split on commas and pull out each
-			// <address> and the name before it.
-			for _, part := range strings.Split(f, ",") {
-				if m := angleAddressRe.FindStringSubmatch(part); m != nil {
-					name := strings.Trim(strings.TrimSpace(part[:strings.Index(part, "<")]), `"`)
-					out = append(out, participant{name: name, addr: strings.ToLower(m[1])})
-				} else if a := bareAddress(part); a != "" {
-					out = append(out, participant{addr: a})
-				}
-			}
-			continue
-		}
-		for _, a := range list {
-			out = append(out, participant{name: strings.TrimSpace(a.Name), addr: strings.ToLower(a.Address)})
-		}
-	}
-	return out
+	return conversation.ParseParticipants(fields...)
 }
 
-var angleAddressRe = regexp.MustCompile(`<([^<>\s@]+@[^<>\s]+)>`)
-
-// automatedLocalParts mark addresses nobody reads replies from: no-reply
-// senders, bounce handlers, and notification robots.
-var automatedLocalParts = []string{
-	"noreply", "no-reply", "no_reply", "donotreply", "do-not-reply", "do_not_reply",
-	"mailer-daemon", "postmaster", "bounce", "bounces", "notifications", "notification",
-}
-
-// automatedAddress is a conservative heuristic for robots and mailing lists.
-func automatedAddress(addr string) bool {
-	at := strings.LastIndex(addr, "@")
-	if at <= 0 {
-		return false
-	}
-	local, domain := addr[:at], addr[at+1:]
-	for _, p := range automatedLocalParts {
-		if local == p || strings.HasPrefix(local, p+"+") || strings.HasPrefix(local, p+"-") || strings.HasPrefix(local, p+".") {
-			return true
-		}
-	}
-	// Obvious mailing lists.
-	if strings.HasSuffix(local, "-list") || local == "list" || strings.HasPrefix(domain, "lists.") ||
-		domain == "googlegroups.com" || domain == "groups.io" {
-		return true
-	}
-	return false
-}
-
-// meaningful reports whether a message can decide a conversation's state:
-// drafts and messages from robots (bounces, notifications) cannot.
-func meaningful(msg db.Message) bool {
-	if hasFlag(msg.Flags, `\Draft`) {
-		return false
-	}
-	from := bareAddress(msg.From)
-	return from != "" && !automatedAddress(from)
-}
-
-// computeWaiting finds waiting conversations. A thread qualifies when its
-// newest meaningful message is from the user and was sent to at least one
-// real person who is not the user; stopped cycles are left out. The oldest
-// wait comes first.
+// computeWaiting finds waiting conversations (see conversation.ComputeWaiting);
+// stopped cycles are left out. The oldest wait comes first.
 func computeWaiting(candidates []db.Message, me map[string]bool, stoppedKeys map[string]bool) ([]waitingThread, map[int64]string) {
 	threads, stopped, _ := computeWaitingWithSnoozes(candidates, me, stoppedKeys, nil)
 	return threads, stopped
@@ -191,68 +103,23 @@ func computeWaiting(candidates []db.Message, me map[string]bool, stoppedKeys map
 // snooze belongs to one wait, like Stop waiting, so those are deleted rather
 // than left to hide a new wait.
 func computeWaitingWithSnoozes(candidates []db.Message, me, stoppedKeys, snoozedKeys map[string]bool) ([]waitingThread, map[int64]string, []string) {
-	stopped := map[int64]string{}
-	var stale []string
-	if len(me) == 0 {
-		return nil, stopped, nil
-	}
+	waiting, stopped, stale := conversation.ComputeWaiting(candidates, me, stoppedKeys, snoozedKeys)
 	var out []waitingThread
-	for _, thread := range buildMessageThreads(candidates) {
-		var latest *db.Message
-		for i := len(thread.Messages) - 1; i >= 0; i-- { // oldest to newest
-			if meaningful(thread.Messages[i]) {
-				latest = &thread.Messages[i]
-				break
-			}
+	for _, w := range waiting {
+		names := make([]string, len(w.WaitingFor))
+		for i, p := range w.WaitingFor {
+			names[i] = displayParticipant(p)
 		}
-		currentKey := ""
-		if latest != nil && me[bareAddress(latest.From)] {
-			currentKey = db.WaitingKey(*latest)
-		}
-		for _, msg := range thread.Messages {
-			if key := db.WaitingKey(msg); snoozedKeys[key] && key != currentKey {
-				stale = append(stale, key)
-			}
-		}
-		if latest == nil || !me[bareAddress(latest.From)] {
-			continue
-		}
-		var waitingFor []string
-		seen := map[string]bool{}
-		for _, p := range parseParticipants(latest.To, latest.CC) {
-			if p.addr == "" || me[p.addr] || automatedAddress(p.addr) || seen[p.addr] {
-				continue
-			}
-			seen[p.addr] = true
-			waitingFor = append(waitingFor, displayParticipant(p))
-		}
-		if len(waitingFor) == 0 {
-			continue // self-mail, or only robots and lists
-		}
-		key := currentKey
-		if stoppedKeys[key] {
-			stopped[latest.ID] = key
-		}
-		// Snoozed and stopped both hide the wait; neither clears the other.
-		if stoppedKeys[key] || snoozedKeys[key] {
-			continue
-		}
-		out = append(out, waitingThread{message: *latest, key: key, since: latest.Date, waitingFor: waitingFor})
+		out = append(out, waitingThread{message: w.Message, key: w.Key, since: w.Since, waitingFor: names})
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if !out[i].since.Equal(out[j].since) {
-			return out[i].since.Before(out[j].since)
-		}
-		return out[i].message.ID < out[j].message.ID
-	})
 	return out, stopped, stale
 }
 
 func displayParticipant(p participant) string {
-	if name := sanitizePluginLine(unescapeDisplayText(p.name)); name != "" {
+	if name := sanitizePluginLine(unescapeDisplayText(p.Name)); name != "" {
 		return name
 	}
-	return sanitizePluginLine(p.addr)
+	return sanitizePluginLine(p.Addr)
 }
 
 // loadWaitingCmd computes Waiting on Them off the Update loop.

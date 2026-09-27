@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -54,15 +53,6 @@ func lines(block string) []string {
 			out = append(out, l)
 		}
 	}
-	return out
-}
-
-func sortedKeys(m map[string]bool) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
 	return out
 }
 
@@ -109,7 +99,7 @@ func TestDocsEventsAndCapabilities(t *testing.T) {
 
 func TestDocsMethods(t *testing.T) {
 	got := lines(driftBlocks(t, readDoc(t, "protocol.md"), "methods")[0])
-	want := []string{MethodPing, MethodMessageMetadata, EventMessageReceived, MethodTest}
+	want := []string{MethodPing, MethodMessageMetadata, EventMessageReceived, MethodTest, MethodReportRun}
 	if !slices.Equal(got, want) {
 		t.Fatalf("documented methods %v, want %v", got, want)
 	}
@@ -234,5 +224,57 @@ func TestExamplePluginManifestParses(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join("../../examples/plugins/example", "main.go")); err != nil {
 		t.Fatal("example source missing")
+	}
+}
+
+// The query reference lists exactly the implemented methods, fields, scopes,
+// and limits.
+func TestDocsQueries(t *testing.T) {
+	doc := readDoc(t, "queries.md")
+	if got := lines(driftBlocks(t, doc, "query-methods")[0]); !slices.Equal(got, QueryMethods) {
+		t.Fatalf("documented query methods %v, want %v", got, QueryMethods)
+	}
+	if got := lines(driftBlocks(t, doc, "message-fields")[0]); !slices.Equal(got, MessageQueryFields) {
+		t.Fatalf("documented message fields %v, want %v", got, MessageQueryFields)
+	}
+	if got := lines(driftBlocks(t, doc, "thread-fields")[0]); !slices.Equal(got, ThreadQueryFields) {
+		t.Fatalf("documented thread fields %v, want %v", got, ThreadQueryFields)
+	}
+	if got, want := lines(driftBlocks(t, doc, "scopes")[0]), sortedKeys(queryScopes); !slices.Equal(got, want) {
+		t.Fatalf("documented scopes %v, want %v", got, want)
+	}
+	want := map[string]int{
+		"default_limit":      DefaultQueryLimit,
+		"max_limit":          MaxQueryLimit,
+		"max_message_ids":    MaxQueryMessageIDs,
+		"max_contacts":       MaxContactsLimit,
+		"max_rounds":         MaxReportRounds,
+		"max_queries":        MaxReportQueriesPerRound,
+		"max_state_bytes":    MaxReportStateBytes,
+		"max_results_bytes":  MaxReportResultsBytes,
+		"report_timeout_s":   int(ReportTimeout.Seconds()),
+		"max_volume_buckets": MaxVolumeBuckets,
+	}
+	got := map[string]int{}
+	for _, l := range lines(driftBlocks(t, doc, "query-limits")[0]) {
+		k, v, ok := strings.Cut(l, "=")
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		if !ok || err != nil {
+			t.Fatalf("bad limit line %q", l)
+		}
+		got[strings.TrimSpace(k)] = n
+	}
+	if len(got) != len(want) {
+		t.Fatalf("documented limits %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Fatalf("documented %s = %d, code has %d", k, got[k], v)
+		}
+	}
+	for _, method := range QueryMethods {
+		if strings.HasPrefix(method, "analytics.") && !strings.Contains(readDoc(t, "analytics.md"), method) {
+			t.Fatalf("analytics.md does not document %s", method)
+		}
 	}
 }

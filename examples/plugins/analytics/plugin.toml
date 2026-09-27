@@ -1,0 +1,11 @@
+# A minimal report plugin. See docs/plugins/queries.md and analytics.md.
+id = "analytics-example"
+name = "Analytics Example"
+version = "0.1.0"
+api = 1
+command = "tidemail-plugin-analytics-example"
+capabilities = ["report.run"]
+
+# Aggregate statistics only: no message records, no metadata events.
+[permissions]
+analytics_read = true

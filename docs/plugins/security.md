@@ -10,14 +10,23 @@ it *hands* a plugin, how it *runs* it, and what it *keeps* from the result.
 ## What TideMail hands a plugin
 
 - Only the request: message metadata for metadata methods (see
-  [protocol.md](protocol.md#messagemetadata)), and the plugin's own settings.
+  [protocol.md](protocol.md#messagemetadata)), the results of a report's
+  read-only queries (see [queries.md](queries.md)), and the plugin's own
+  settings.
 - Its own secrets, as `TIDEMAIL_SECRET_*` environment variables, and nothing
   else secret.
 - Never message bodies, HTML, raw headers, attachments, AI summaries,
-  database handles, account passwords, OAuth tokens, API keys, other
-  plugins' data, TideMail's configuration, or file paths.
+  database paths or handles, SQL, account passwords, OAuth tokens, API keys,
+  other plugins' settings or secrets, TideMail's configuration, or file
+  paths. Other plugins' stored annotations only through `query.annotations`,
+  with the `annotations_query` permission.
 - Data only after the [permission checks](permissions.md), which run in
-  TideMail's plugin runtime for every call.
+  TideMail's plugin runtime for every call and every query.
+
+> Query permissions allow TideMail to disclose selected structured data to a
+> plugin. They do not grant direct database access. Aggregate analytics
+> permissions disclose computed statistics without necessarily disclosing
+> individual message records.
 
 ## How TideMail runs a plugin
 
@@ -29,11 +38,12 @@ it *hands* a plugin, how it *runs* it, and what it *keeps* from the result.
 | No arguments | Input arrives only on stdin. |
 | Working directory | The plugin directory. |
 | Trimmed environment | Only `PATH`, `HOME`, `USER`, `LANG`, `LC_ALL`, `LC_CTYPE`, `LC_MESSAGES`, `TMPDIR`, `TZ`, plus the plugin's own secrets. TideMail's own environment (client secrets, provider keys) is not passed on. |
-| Timeout | 5 seconds per call, from start to exit. |
+| Timeout | 5 seconds per call, from start to exit. A report (several rounds) must finish within 30 seconds. |
 | Process-tree kill | On timeout, cancellation, or quit, the whole process group is killed (Unix), so child processes do not linger. |
 | Output limit | stdout above 1 MiB fails the call. |
 | stderr limit | 16 KiB kept, 512 characters quoted in errors. |
-| Bounded concurrency | One process per plugin at a time, and at most 3 plugin processes for message calls overall. |
+| Bounded concurrency | One process per plugin at a time, and at most 3 plugin processes for message calls and report rounds overall. |
+| Bounded reports | At most 8 rounds of at most 8 queries; 64 KiB of state; 4 MiB of results per round; at most 500 rows per page. |
 
 The headless developer commands use the same direct process runner and output
 limits. `tidemail plugin test` is an offline protocol check by default; it
@@ -61,6 +71,9 @@ redacted from surfaced process diagnostics and JSON reports.
   `plugins/`.
 - **Secret masking:** a plugin's secret values are replaced with `********`
   in its stdout and stderr before anything else sees them.
+- **Read-only queries:** TideMail runs a report's queries itself, from fixed
+  allowlists of methods, fields, scopes, and filters. No query can change
+  mail or TideMail's state.
 - **No actions:** nothing in a response is treated as an instruction.
   TideMail never moves, deletes, flags, or sends mail, opens URLs, runs
   commands, or changes settings because of plugin output.

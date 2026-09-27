@@ -340,3 +340,20 @@ func TestCloseSessionsCancelsRunningPlugins(t *testing.T) {
 		t.Fatal("plugin context should be cancelled on shutdown")
 	}
 }
+
+func TestPluginErrorListsUnknownKeysOnePerLine(t *testing.T) {
+	m, _ := newMailboxListModel(1, 1)
+	lines := m.displayPluginErrorLines(errors.New("invalid manifest: manifest has unknown keys: permissions.analytics_read, permissions.threads_query"))
+	want := []string{
+		"invalid manifest: manifest has unknown keys:",
+		"  • permissions.analytics_read",
+		"  • permissions.threads_query",
+		"this TideMail may be older than the plugin; update TideMail or the plugin",
+	}
+	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("lines = %q", lines)
+	}
+	if got := m.displayPluginErrorLines(errors.New("a\nb")); len(got) != 2 {
+		t.Fatalf("joined errors should be one per line: %q", got)
+	}
+}

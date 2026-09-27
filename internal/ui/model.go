@@ -1392,6 +1392,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pluginResultMsg:
 		return m.handlePluginResult(msg)
 
+	case pluginReportMsg:
+		return m.handlePluginReport(msg)
+
 	case pluginBulkStepMsg:
 		return m.handleBulkStep(msg)
 

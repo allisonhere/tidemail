@@ -22,11 +22,16 @@ A plugin can:
   `category=billing`, which TideMail stores, shows as tags, and uses for views
   like Needs You;
 - declare **settings** (bool, select, secret) that TideMail shows in a generic
-  form and hands back on every call.
+  form and hands back on every call;
+- run as a **report**: ask TideMail read-only, allowlisted **queries** (message
+  and thread lists, stored annotations, aggregate **analytics** such as volume
+  and category counts) and return a report the user reads in TideMail.
 
 A plugin cannot change mail, send mail, trigger TideMail actions, add UI,
-choose colors, or read another plugin's data. Anything a plugin returns other
-than annotations is only displayed.
+choose colors, access TideMail's database directly, or read message bodies.
+It sees another plugin's annotations only through `query.annotations`, with
+permission. Anything a plugin returns other than annotations is only
+displayed.
 
 > **Plugins provide semantics. TideMail controls presentation.**
 >
@@ -50,11 +55,16 @@ than annotations is only displayed.
 | [annotations.md](annotations.md) | returning annotations, limits, replace-on-success, conventional keys, reclassification |
 | [events.md](events.md) | `message.received`: automatic processing of new mail |
 | [settings.md](settings.md) | bool/select/secret settings, storage, secrets, `plugin.test` |
+| [queries.md](queries.md) | `report.run`: rounds, read-only queries, fields, scopes, pagination, limits |
+| [analytics.md](analytics.md) | aggregate statistics: volume, categories, attention, response times, contacts |
 | [security.md](security.md) | the trust model and every runtime restriction |
 | [compatibility.md](compatibility.md) | what API v1 promises, and what may change |
 
-A complete, tested example lives in
-[`examples/plugins/example/`](../../examples/plugins/example/).
+Complete, tested examples live in
+[`examples/plugins/example/`](../../examples/plugins/example/) (message
+metadata and annotations) and
+[`examples/plugins/analytics/`](../../examples/plugins/analytics/) (a report
+built from aggregate analytics).
 
 ## How a call flows
 
@@ -85,7 +95,9 @@ TideMail UI                tags in message rows, Needs You, Message annotations
 Annotations are recommendations. TideMail may apply a local user correction
 for the conventional semantic fields; re-running the plugin does not clear
 that correction, and the correction is never sent back to the plugin or to a
-remote classifier.
+remote classifier with message metadata. Report plugins can read the current
+effective value, marked as the user's, only through `query.classification`
+([queries.md](queries.md#queryclassification)).
 
 Automatic run (new mail, when the plugin declares `message.received` and the
 user switches it on):
@@ -110,5 +122,6 @@ startup; restart it after installing or updating one. See
 ## What users see
 
 Users find plugins in the command palette (`:`): **Plugins (experimental)**,
-**Run plugin…**, and **Message annotations**. The user guide describes them:
+**Run plugin…**, and **Message annotations**. Reports run with `enter` on the
+plugin in **Plugins (experimental)**. The user guide describes them:
 [guide.md › Plugins](../guide.md#plugins-experimental).

@@ -17,7 +17,9 @@ behaviour see [`guide.md`](guide.md); for contribution rules see
 | `internal/config` | Config file load/save, account IDs, and secret storage in the system keyring (`TIDEMAIL_DISABLE_KEYRING` opts out). |
 | `internal/filter` | Deterministic mail rules. |
 | `internal/ai` | Summary providers: Claude, OpenAI, Gemini, and Ollama. |
-| `internal/plugin` | Experimental plugins: discovers plugins under the config dir, validates `plugin.toml`, runs one JSON request/response per process, enforces the `message_metadata` and `annotations` permissions, and validates annotations before handing them to an `AnnotationStore`. It does not import `internal/db`; `internal/ui/plugins.go` adapts the database and holds the manual UI hooks and the annotation cache, and `internal/ui/tags.go` draws annotation tags. See [`plugins.md`](plugins.md) and the Plugin API v1 docs in [`plugins/`](plugins/README.md). |
+| `internal/plugin` | Experimental plugins: discovers plugins under the config dir, validates `plugin.toml`, runs one JSON request/response per process, enforces the `message_metadata`, `annotations`, and read-only query permissions, validates annotations before handing them to an `AnnotationStore`, and drives report rounds (`report.go`), validating every query (`query.go`) before a `QueryExecutor` runs it. It does not import `internal/db`; `internal/ui/plugins.go` adapts the database and holds the manual UI hooks and the annotation cache, and `internal/ui/tags.go` draws annotation tags. See [`plugins.md`](plugins.md) and the Plugin API v1 docs in [`plugins/`](plugins/README.md). |
+| `internal/pluginquery` | Executes plugin report queries against the cache: header columns only, fixed allowlists, keyset pagination, sanitized strings, and aggregate analytics. Also loads synthetic fixture mailboxes for `tidemail plugin test`. |
+| `internal/conversation` | Pure conversation model shared by the UI and plugin queries: Message-ID threading, participant parsing, and Waiting on Them. |
 | `internal/richmail` | Email image model: source parsing, MIME-part resolution, decode limits, remote-fetch SSRF policy, and cell layout. |
 | `internal/termimage` | Terminal graphics: protocol detection, cell geometry, and the Kitty Unicode-placeholder backend. |
 | `internal/clipboard` | System clipboard access. |
@@ -90,6 +92,21 @@ tea.Cmd (manual Reclassify)        EventManager worker (message.received)
       Update patches the annotation cache → tags, Needs You refresh
 ```
 
+Reports (`report.run`, `internal/ui/plugin_report.go`) are the only path from
+a plugin to more than one message, and they never write:
+
+```text
+enter in the plugin list → tea.Cmd → Manager.Report / RunReport
+  round n: acquire slot → invoke report.run (state + results) → decode
+           ├─ {report}  → formatPluginData → plugin result overlay
+           └─ {queries} → ParseQuery + QueryPermission for every query
+                          (fail closed: a bad query runs nothing)
+                        → pluginquery.Executor: db.ListHeaders (header
+                          columns only), conversation.BuildThreads,
+                          attention.FromDB, analytics → sanitized JSON
+                        → round n+1   (≤ 8 rounds, 8 queries, 30 s)
+```
+
 ### Effective classification
 
 Plugin annotations and local user corrections are separate stores. The
@@ -99,8 +116,11 @@ Needs You's SQL applies the same precedence for filtering and ranking, while
 the UI uses the effective result for tags and explanations. Corrections are
 keyed by the cached message row ID, cascade when that message is deleted, and
 remain when plugin annotations are refreshed, cleared, or uninstalled. They
-are local-only and are never sent to plugins or remote classification
-services.
+are local-only and are never sent to plugins with message metadata or to
+remote classification services. Report plugins with `annotations_query` and
+`analytics_read` can read the current effective value, with `source: user`,
+through `query.classification`; `analytics.categories` counts effective
+categories.
 
 ### Reclassify
 

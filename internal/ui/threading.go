@@ -1,117 +1,17 @@
 package ui
 
 import (
-	"regexp"
 	"sort"
-	"strings"
 
+	"github.com/allisonhere/tidemail/internal/conversation"
 	"github.com/allisonhere/tidemail/internal/db"
 )
 
-var messageIDTokenRe = regexp.MustCompile(`<[^<>\s]+>`)
-
-type messageThread struct {
-	Key            string
-	Representative db.Message
-	Messages       []db.Message
-	Count          int
-	UnreadCount    int
-}
+// messageThread is a conversation from TideMail's shared thread engine.
+type messageThread = conversation.Thread
 
 func buildMessageThreads(messages []db.Message) []messageThread {
-	if len(messages) == 0 {
-		return nil
-	}
-
-	parent := map[string]string{}
-	msgKeys := make([]string, len(messages))
-	ensure := func(id string) string {
-		id = normalizeMessageID(id)
-		if id == "" {
-			return ""
-		}
-		if _, ok := parent[id]; !ok {
-			parent[id] = id
-		}
-		return id
-	}
-	var find func(string) string
-	find = func(id string) string {
-		p := parent[id]
-		if p == "" || p == id {
-			return id
-		}
-		root := find(p)
-		parent[id] = root
-		return root
-	}
-	union := func(a, b string) {
-		a = ensure(a)
-		b = ensure(b)
-		if a == "" || b == "" {
-			return
-		}
-		ra := find(a)
-		rb := find(b)
-		if ra != rb {
-			parent[rb] = ra
-		}
-	}
-
-	for i, msg := range messages {
-		key := ensure(msg.MessageID)
-		if key == "" {
-			key = ensure(rowThreadKey(msg))
-		}
-		msgKeys[i] = key
-		for _, ref := range messageIDList(msg.References) {
-			union(key, ref)
-		}
-		for _, ref := range messageIDList(msg.InReplyTo) {
-			union(key, ref)
-		}
-	}
-
-	byRoot := map[string][]db.Message{}
-	for i, msg := range messages {
-		root := find(msgKeys[i])
-		if root == "" {
-			root = msgKeys[i]
-		}
-		byRoot[root] = append(byRoot[root], msg)
-	}
-
-	threads := make([]messageThread, 0, len(byRoot))
-	for key, msgs := range byRoot {
-		sort.SliceStable(msgs, func(i, j int) bool {
-			if !msgs[i].Date.Equal(msgs[j].Date) {
-				return msgs[i].Date.Before(msgs[j].Date)
-			}
-			return msgs[i].ID < msgs[j].ID
-		})
-		t := messageThread{
-			Key:            key,
-			Representative: msgs[len(msgs)-1],
-			Messages:       msgs,
-			Count:          len(msgs),
-		}
-		for _, msg := range msgs {
-			if !msg.Read {
-				t.UnreadCount++
-			}
-		}
-		threads = append(threads, t)
-	}
-
-	sort.SliceStable(threads, func(i, j int) bool {
-		a := threads[i].Representative
-		b := threads[j].Representative
-		if !a.Date.Equal(b.Date) {
-			return a.Date.After(b.Date)
-		}
-		return a.ID > b.ID
-	})
-	return threads
+	return conversation.BuildThreads(messages)
 }
 
 func (m Model) threadedMessagesEnabled() bool {
@@ -227,64 +127,6 @@ func (m Model) messageRowSelected(msg db.Message, thread messageThread) bool {
 		return false
 	}
 	return m.selectedMessages[msg.ID]
-}
-
-func rowThreadKey(msg db.Message) string {
-	if msg.ID != 0 {
-		return "row:" + strconvFormatInt(msg.ID)
-	}
-	return "uid:" + strconvFormatInt(int64(msg.MailboxID)) + ":" + strconvFormatInt(int64(msg.UID))
-}
-
-func messageIDList(s string) []string {
-	var ids []string
-	for _, match := range messageIDTokenRe.FindAllString(s, -1) {
-		if id := normalizeMessageID(match); id != "" {
-			ids = append(ids, id)
-		}
-	}
-	if len(ids) > 0 {
-		return ids
-	}
-	if id := normalizeMessageID(s); id != "" {
-		return []string{id}
-	}
-	return nil
-}
-
-func normalizeMessageID(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return ""
-	}
-	s = strings.Trim(s, "<>")
-	s = strings.TrimSpace(s)
-	if s == "" || strings.ContainsAny(s, " \t\r\n") {
-		return ""
-	}
-	return strings.ToLower("<" + s + ">")
-}
-
-func strconvFormatInt(v int64) string {
-	if v == 0 {
-		return "0"
-	}
-	neg := v < 0
-	if neg {
-		v = -v
-	}
-	var buf [20]byte
-	i := len(buf)
-	for v > 0 {
-		i--
-		buf[i] = byte('0' + v%10)
-		v /= 10
-	}
-	if neg {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
 }
 
 // keepListOrder sorts threads by where their first message appears in list.

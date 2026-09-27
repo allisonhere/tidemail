@@ -49,6 +49,10 @@ message_metadata = true
 annotations = true
 network = false
 message_body = false
+messages_query = false               # read-only queries (report.run)
+threads_query = false
+annotations_query = false
+analytics_read = false
 
 [[settings]]                         # optional; zero or more
 key = "strict"
@@ -113,21 +117,27 @@ processing on for it. See [events.md](events.md).
 
 ### `capabilities` (optional)
 
-Optional protocol features. API v1 has one:
+Optional protocol features. API v1 has two:
 
 <!-- drift:capabilities -->
 ```text
 plugin.test
+report.run
 ```
 
-`plugin.test` adds a **Test plugin configuration** row to the plugin's
-settings form. See [settings.md](settings.md#testing-a-configuration).
+- `plugin.test` adds a **Test plugin configuration** row to the plugin's
+  settings form. See [settings.md](settings.md#testing-a-configuration).
+- `report.run` makes the plugin a report: the user runs it with `enter` in the
+  plugin list, and it can ask TideMail read-only queries. It grants no data by
+  itself; each query needs its own permission. See [queries.md](queries.md).
 
 ### `[permissions]` (optional)
 
-Four booleans, all `false` by default: `message_metadata`, `annotations`,
-`network`, `message_body`. What each one allows (and what it cannot prevent)
-is in [permissions.md](permissions.md).
+Eight booleans, all `false` by default: `message_metadata`, `annotations`,
+`network`, `message_body`, and the read-only query permissions
+`messages_query`, `threads_query`, `annotations_query`, `analytics_read`. What
+each one allows (and what it cannot prevent) is in
+[permissions.md](permissions.md).
 
 ### `[[settings]]` (optional)
 

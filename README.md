@@ -199,7 +199,10 @@ TideMail can run external plugins from
 receive message metadata, never message bodies, and can add annotations such as
 `needs_reply=true` or `category=shipping`. TideMail uses those annotations for
 tags and views such as **Needs You**, while keeping the original plugin output
-inspectable.
+inspectable. Report plugins (press `enter` on one in **Plugins
+(experimental)**) can ask TideMail read-only questions, such as message volume
+or category totals, and show the answer; they never see message bodies or get
+database access.
 
 To install TideMail Smart (JEV), build it from the
 [TideMail plugin collection](https://github.com/allisonhere/tidemail-plugins/tree/main/plugins/smart)
@@ -211,8 +214,11 @@ If you are writing a plugin, start with the
 [the developer tools guide](docs/plugins/developer-tools.md) for the
 `scaffold → build → validate → test` workflow, and see
 the [protocol](docs/plugins/protocol.md), [manifest](docs/plugins/manifest.md),
-and [permissions](docs/plugins/permissions.md) references. A complete local
-example is in [examples/plugins/example](examples/plugins/example/).
+and [permissions](docs/plugins/permissions.md) references. Reports and
+read-only queries are covered in [queries](docs/plugins/queries.md) and
+[analytics](docs/plugins/analytics.md). Complete local examples are in
+[examples/plugins/example](examples/plugins/example/) and
+[examples/plugins/analytics](examples/plugins/analytics/).
 
 ## Keys worth learning
 

@@ -18,8 +18,10 @@ another `api` fails the call.
 ## Stable within API v1
 
 - the request and response envelopes, and the error object;
-- the four methods (`ping`, `message.metadata`, `message.received`,
-  `plugin.test`) and their payloads;
+- the five methods (`ping`, `message.metadata`, `message.received`,
+  `plugin.test`, `report.run`) and their payloads;
+- the report round protocol, and the query methods, parameters, fields, and
+  result shapes in [queries.md](queries.md) and [analytics.md](analytics.md);
 - the `message.metadata` fields;
 - the manifest fields, permission names, and setting types;
 - the annotation format, its validation limits, and replace-on-success;
@@ -34,8 +36,11 @@ These are additions or runtime policy, not protocol:
 - **New methods, events, or capabilities**, which a plugin receives only if it
   declares them or TideMail calls them by hand. Answer unknown methods with an
   error.
+- **New query methods, fields, scopes, filters, or result fields.** Ignore
+  result fields you do not recognize.
 - **Runtime limits:** timeouts, queue sizes, rate limits, process counts,
-  pause thresholds (see [events.md](events.md#current-runtime-limits)).
+  pause thresholds (see [events.md](events.md#current-runtime-limits)), and
+  report limits (rounds, queries, page and result sizes).
 - **Presentation:** how, where, and in what colors annotations appear, and
   which conventional keys and values TideMail's views use.
 - **User interface** for running, configuring, and inspecting plugins.
@@ -54,7 +59,9 @@ These do not exist in API v1. Do not rely on them:
 - custom plugin panes, screens, or HTML UI;
 - plugin-defined colors, styles, or glyphs;
 - toolbar or menu extensions, or plugin-defined keybindings;
-- mutating mail (moving, deleting, flagging, sending);
+- mutating mail (moving, deleting, flagging, sending), or any write through
+  queries;
+- direct database access, SQL, or arbitrary query expressions;
 - long-running background daemons: every call is one short-lived process;
 - message bodies (the `message_body` permission is reserved).
 

@@ -61,6 +61,48 @@ default test path is offline and does not run `plugin.test`; use
 configuration check. API v1 is not an OS sandbox, so only test plugins you
 trust.
 
+### Reports
+
+For a plugin that declares `report.run`, `plugin test` also runs a complete
+report through TideMail's real report driver and query engine, against a
+synthetic mailbox loaded into a throwaway database in the temporary
+directory. Your own mail and TideMail's data directory are never opened. The
+check shows how many rounds and queries the report used:
+
+```text
+✓ report.run (2 rounds, 3 queries)
+```
+
+The built-in mailbox has a few conversations, categories, a correction, a
+snooze, and sent mail from the last 30 days. Supply your own with
+`--report-fixture`:
+
+```sh
+tidemail plugin test --report-fixture ./mailbox.json ./my-report
+```
+
+```json
+{
+  "me": ["me@example.com"],
+  "now": "2026-09-27T12:00:00Z",
+  "accounts": [{"name": "Work", "mailboxes": [
+    {"name": "INBOX", "messages": [
+      {"message_id": "<1@x>", "from": "Ann <ann@example.com>", "to": "me@example.com",
+       "subject": "Invoice", "date": "2026-09-26T10:00:00Z",
+       "annotations": [{"plugin": "smart", "key": "category", "value": "billing"}],
+       "overrides": {"category": "work"}, "dismissed": false, "snoozed_until": ""}
+    ]},
+    {"name": "Sent", "flags": ["\\Sent"], "messages": []}
+  ]}]
+}
+```
+
+Messages take the header fields from [protocol.md](protocol.md#messagemetadata)
+plus `in_reply_to`, `references`, `read`, `starred`, `has_attachment`, and
+`flags`; unknown fields (including any body) are rejected. The report starts
+in the first account's first folder. `validate` lists the declared permissions
+and capabilities, in both human and `--json` output.
+
 `--timeout` accepts a positive duration up to one minute. `--verbose` adds
 elapsed times and sanitized diagnostics. Both human and JSON test failures
 return exit code 1; usage/input errors return 2.

@@ -99,7 +99,9 @@ type pluginResult struct {
 	pluginID   string
 	pluginName string
 	subject    string
-	body       string
+	// heading replaces the "message: subject" line (reports have no message).
+	heading string
+	body    string
 	// annotationNote says what happened to the response's annotations.
 	annotationNote string
 }
@@ -526,6 +528,9 @@ func (m Model) renderPluginOverlay() string {
 			e := entries[clamp(m.plugins.listCursor, 0, len(entries)-1)]
 			eventHints := m.pluginEventHints(e)
 			pairs = append(pairs, eventHints...)
+			if e.installed && m.pluginHasReport(e.pluginID) {
+				pairs = append(pairs, "enter", "run report")
+			}
 			if e.installed && m.hasPluginSettingsPage(e.pluginID) {
 				pairs = append(pairs, "s", "settings")
 			}
@@ -678,7 +683,9 @@ func (m Model) pluginListLines(width int, chrome managerChrome) ([]string, []int
 	}
 	for _, e := range mgr.Errors() {
 		add(errStyle, aiConnectionStatusGlyph(plain, aiConnectionError)+" "+sanitizePluginLine(filepath.Base(e.Dir)), false, "")
-		add(muted, m.displayPluginError(e.Err), true, "")
+		for _, l := range m.displayPluginErrorLines(e.Err) {
+			add(muted, l, true, "")
+		}
 		blank()
 	}
 	if len(lines) == 0 {
@@ -700,8 +707,12 @@ func (m Model) pluginResultLines(bodyW int, chrome managerChrome) []string {
 	var lines []string
 	lines = append(lines,
 		base.Foreground(chrome.accent).Bold(true).Render(truncate(res.pluginName+"  ("+res.pluginID+")", bodyW)),
-		base.Foreground(chrome.muted).Render(truncate("message: "+res.subject, bodyW)),
 	)
+	heading := res.heading
+	if heading == "" {
+		heading = "message: " + res.subject
+	}
+	lines = append(lines, base.Foreground(chrome.muted).Render(truncate(heading, bodyW)))
 	if res.annotationNote != "" {
 		for _, part := range strings.Split(ansi.Wrap(res.annotationNote, bodyW, ""), "\n") {
 			lines = append(lines, base.Foreground(chrome.muted).Render(part))
@@ -750,6 +761,35 @@ func (m Model) displayPluginError(err error) string {
 		s = strings.ReplaceAll(s, m.plugins.dir, "plugins")
 	}
 	return sanitizePluginLine(s)
+}
+
+// displayPluginErrorLines is displayPluginError laid out for the plugin list:
+// one line per error, and unknown manifest keys listed one per line with a
+// hint, instead of one long comma-separated sentence.
+func (m Model) displayPluginErrorLines(err error) []string {
+	s := err.Error()
+	if m.plugins.dir != "" {
+		s = strings.ReplaceAll(s, m.plugins.dir+string(filepath.Separator), "plugins/")
+		s = strings.ReplaceAll(s, m.plugins.dir, "plugins")
+	}
+	var out []string
+	for _, part := range strings.Split(sanitizePluginText(s), "\n") {
+		part = strings.Join(strings.Fields(part), " ")
+		if part == "" {
+			continue
+		}
+		head, keys, ok := strings.Cut(part, "unknown keys: ")
+		if !ok {
+			out = append(out, part)
+			continue
+		}
+		out = append(out, head+"unknown keys:")
+		for _, k := range strings.Split(keys, ", ") {
+			out = append(out, "  • "+k)
+		}
+		out = append(out, "this TideMail may be older than the plugin; update TideMail or the plugin")
+	}
+	return out
 }
 
 // sanitizePluginText makes plugin-supplied text safe to draw: no control or

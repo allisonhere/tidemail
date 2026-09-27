@@ -121,7 +121,9 @@ all plugin judgments for that field, but never rewrites or deletes the stored
 plugin rows. Re-running a plugin does not clear corrections, and corrections
 remain after plugin annotations are cleared or the plugin is removed. Plugin
 authors should treat annotations as recommendations, not authoritative final
-presentation state.
+presentation state. Corrections never appear in `query.annotations`, which
+returns only what plugins stored. `query.classification` returns the effective
+value with its source ([queries.md](queries.md#queryclassification)).
 
 ### Needs You
 

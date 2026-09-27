@@ -1,7 +1,7 @@
 # Permissions
 
-Permissions live in the manifest's `[permissions]` table. All four default to
-`false`.
+Permissions live in the manifest's `[permissions]` table. All of them default
+to `false`.
 
 ```toml
 [permissions]
@@ -9,6 +9,10 @@ message_metadata = true
 annotations = true
 network = false
 message_body = false
+messages_query = false
+threads_query = false
+annotations_query = false
+analytics_read = false
 ```
 
 | Permission | What TideMail does with it | Enforced by TideMail? |
@@ -17,6 +21,18 @@ message_body = false
 | `annotations` | Allows TideMail to store the `annotations` a metadata response returns. Without it the plugin still runs and its response is shown, but nothing is stored. | **Yes**, on every response. |
 | `network` | A declaration that the plugin talks to online services. Shown in the plugin list. | **No.** TideMail cannot stop a process from using the network. |
 | `message_body` | Reserved. No API v1 method sends message bodies, whatever this says. | Not applicable. |
+| `messages_query` | Allows the `query.messages` report query: allowlisted header fields of messages in a scope, a bounded page at a time. | **Yes**, for every query, before it runs. |
+| `threads_query` | Allows `query.threads`: conversation summaries (participants, counts, latest message, Needs You / Waiting on Them state). | **Yes**, for every query. |
+| `annotations_query` | Allows `query.annotations`: stored plugin annotations on messages you name. With `analytics_read` it also allows `query.classification`. | **Yes**, for every query. |
+| `analytics_read` | Allows the `analytics.*` queries: computed counts and statistics, not message records. | **Yes**, for every query. |
+
+The four query permissions are read-only and independent: none implies
+another, `analytics_read` never grants message records, and none of them lets
+a plugin read bodies or change mail. They are used only by `report.run`
+([queries.md](queries.md)).
+
+> Query permissions allow TideMail to disclose selected structured data to a
+> plugin. They do not grant direct database access.
 
 ## The trust model
 
@@ -46,3 +62,7 @@ trust. The runtime restrictions TideMail does apply are listed in
 - `message.received` additionally requires the manifest to declare the event
   and the user to have switched automatic processing on.
 - `plugin.test` requires `capabilities = ["plugin.test"]`.
+- `report.run` requires `capabilities = ["report.run"]`, and generic calls
+  refuse it. Every query a report asks for is validated and checked against
+  the permissions above before any of them runs; one refused query fails the
+  whole round, so nothing is disclosed.
