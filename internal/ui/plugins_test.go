@@ -168,7 +168,7 @@ func TestPluginRunEndToEndSendsOnlyMetadata(t *testing.T) {
 	var echoed struct {
 		Request plugin.Request `json:"request"`
 	}
-	if err := json.Unmarshal(msg.Response.Data, &echoed); err != nil {
+	if err := json.Unmarshal(msg.Result.Response.Data, &echoed); err != nil {
 		t.Fatal(err)
 	}
 	if echoed.Request.Method != plugin.MethodMessageMetadata {
@@ -211,7 +211,7 @@ func TestPluginResultDoesNotHijackOtherOverlays(t *testing.T) {
 	m.plugins.running = "hello"
 	m.overlay = overlaySettings
 
-	next, _ := m.Update(pluginResultMsg{PluginID: "hello", Response: plugin.Response{OK: true, Data: json.RawMessage(`{"a":1}`)}})
+	next, _ := m.Update(pluginResultMsg{PluginID: "hello", Result: plugin.MessageMetadataResult{Response: plugin.Response{OK: true, Data: json.RawMessage(`{"a":1}`)}}})
 	m = next.(Model)
 	if m.overlay != overlaySettings {
 		t.Fatalf("overlay = %v, want settings kept", m.overlay)

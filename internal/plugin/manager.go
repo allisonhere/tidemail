@@ -182,22 +182,55 @@ func (m *Manager) Call(ctx context.Context, pluginID, method string, data json.R
 	return m.call(ctx, p, method, data)
 }
 
-// MessageMetadata sends one message's metadata to a plugin. It refuses, without
-// starting the plugin, unless the manifest declares message_metadata. The
-// response data is for display only.
-func (m *Manager) MessageMetadata(ctx context.Context, pluginID string, meta MessageMetadata) (Response, error) {
+// MessageMetadata sends one message's metadata to a plugin. It refuses,
+// without starting the plugin, unless the manifest declares message_metadata.
+//
+// Annotations in the response reach store only when the manifest also
+// declares annotations and the whole set validates; store is then given the
+// complete set (possibly empty) to replace the plugin's previous annotations
+// on the message. This is the only path from plugin output to storage. The
+// rest of the response is for display only. A failed run returns an error and
+// never touches store.
+func (m *Manager) MessageMetadata(ctx context.Context, pluginID string, meta MessageMetadata, store AnnotationStore) (MessageMetadataResult, error) {
 	p, ok := m.Plugin(pluginID)
 	if !ok {
-		return Response{}, fmt.Errorf("%w %q", ErrUnknownPlugin, pluginID)
+		return MessageMetadataResult{}, fmt.Errorf("%w %q", ErrUnknownPlugin, pluginID)
 	}
 	if !p.Manifest.Permissions.MessageMetadata {
-		return Response{}, fmt.Errorf("plugin %q: %w: message_metadata is not declared", pluginID, ErrPermissionDenied)
+		return MessageMetadataResult{}, fmt.Errorf("plugin %q: %w: message_metadata is not declared", pluginID, ErrPermissionDenied)
 	}
 	data, err := json.Marshal(meta)
 	if err != nil {
-		return Response{}, fmt.Errorf("plugin %q: encode metadata: %w", pluginID, err)
+		return MessageMetadataResult{}, fmt.Errorf("plugin %q: encode metadata: %w", pluginID, err)
 	}
-	return m.call(ctx, p, MethodMessageMetadata, data)
+	resp, err := m.call(ctx, p, MethodMessageMetadata, data)
+	if err != nil {
+		return MessageMetadataResult{}, err
+	}
+
+	result := MessageMetadataResult{Response: resp}
+	anns, parseErr := ParseAnnotations(resp.Data)
+	switch {
+	case !p.Manifest.Permissions.Annotations:
+		result.Annotations = anns
+		result.Outcome = AnnotationsNotPermitted
+	case parseErr != nil:
+		result.Outcome = AnnotationsRejected
+		result.AnnotationErr = parseErr
+	case store == nil:
+		result.Annotations = anns
+		result.Outcome = AnnotationsNotStored
+		result.AnnotationErr = errors.New("no annotation store")
+	default:
+		result.Annotations = anns
+		if err := store.ReplaceAnnotations(pluginID, meta.ID, anns); err != nil {
+			result.Outcome = AnnotationsNotStored
+			result.AnnotationErr = err
+		} else {
+			result.Outcome = AnnotationsStored
+		}
+	}
+	return result, nil
 }
 
 func (m *Manager) call(ctx context.Context, p Plugin, method string, data json.RawMessage) (Response, error) {

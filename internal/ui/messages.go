@@ -61,7 +61,8 @@ func (m Model) renderMessagesPane() string {
 			} else if !msg2.Read {
 				threadUnread = 1
 			}
-			age := m.formatTime(msg2.Date)
+			// Threaded rows show the representative message's badges only.
+			age := m.withAnnotationBadges(msg2.ID, m.formatTime(msg2.Date))
 			style := msgRead
 			if threadUnread > 0 {
 				style = msgUnread

@@ -235,7 +235,7 @@ func (m *Model) loadMailboxMessagesCmd(mailboxID int64) tea.Cmd {
 		if err != nil {
 			return MessagesLoadedMsg{MailboxID: mailboxID, Err: err}
 		}
-		return MessagesLoadedMsg{MailboxID: mailboxID, Messages: msgs}
+		return MessagesLoadedMsg{MailboxID: mailboxID, Messages: msgs, Annotations: loadMessageAnnotations(database, msgs)}
 	}
 }
 
@@ -256,7 +256,7 @@ func (m *Model) loadUnifiedInboxCmd() tea.Cmd {
 		if err != nil {
 			return MessagesLoadedMsg{Err: err}
 		}
-		return MessagesLoadedMsg{MailboxID: 0, Messages: msgs}
+		return MessagesLoadedMsg{MailboxID: 0, Messages: msgs, Annotations: loadMessageAnnotations(database, msgs)}
 	}
 }
 
@@ -269,7 +269,7 @@ func (m *Model) searchAllMessagesCmd(query string) tea.Cmd {
 		if err != nil {
 			return MessagesLoadedMsg{Search: true, Query: query, Err: err}
 		}
-		return MessagesLoadedMsg{Search: true, Query: query, Messages: msgs}
+		return MessagesLoadedMsg{Search: true, Query: query, Messages: msgs, Annotations: loadMessageAnnotations(database, msgs)}
 	}
 }
 

@@ -10,14 +10,14 @@ behaviour see [`guide.md`](guide.md); for contribution rules see
 | --- | --- |
 | `.` (`main.go`) | Startup options, config and database loading, running the Bubble Tea program, and post-exit work (flushing pending actions and sends, releasing terminal images, in-app update restart). |
 | `internal/ui` | The whole TUI: the `Model`, key handling, panes, overlays, compose, settings, account and contact managers, sync orchestration, and message rendering. |
-| `internal/db` | SQLite storage for accounts, messages, attachments, drafts, outbox, contacts, and filter rules, plus folder reconciliation. |
+| `internal/db` | SQLite storage for accounts, messages, attachments, drafts, outbox, contacts, filter rules, and experimental plugin annotations, plus folder reconciliation. |
 | `internal/imap` | IMAP client, connection pool, IDLE push, message parsing, and XOAUTH2. |
 | `internal/smtp` | Message assembly (including attachments) and SMTP/STARTTLS sending with password or XOAUTH2 auth. |
 | `internal/auth` | Google and Microsoft OAuth flows and token refresh. |
 | `internal/config` | Config file load/save, account IDs, and secret storage in the system keyring (`TIDEMAIL_DISABLE_KEYRING` opts out). |
 | `internal/filter` | Deterministic mail rules. |
 | `internal/ai` | Summary providers: Claude, OpenAI, Gemini, and Ollama. |
-| `internal/plugin` | Experimental plugins: discovers plugins under the config dir, validates `plugin.toml`, enforces the `message_metadata` permission, and runs one JSON request/response per process. `internal/ui/plugins.go` holds the manual, read-only UI hooks. See [`plugins.md`](plugins.md). |
+| `internal/plugin` | Experimental plugins: discovers plugins under the config dir, validates `plugin.toml`, runs one JSON request/response per process, enforces the `message_metadata` and `annotations` permissions, and validates annotations before handing them to an `AnnotationStore`. It does not import `internal/db`; `internal/ui/plugins.go` adapts the database and holds the manual UI hooks, the badge conventions, and the annotation cache. See [`plugins.md`](plugins.md). |
 | `internal/richmail` | Email image model: source parsing, MIME-part resolution, decode limits, remote-fetch SSRF policy, and cell layout. |
 | `internal/termimage` | Terminal graphics: protocol detection, cell geometry, and the Kitty Unicode-placeholder backend. |
 | `internal/clipboard` | System clipboard access. |
@@ -67,6 +67,17 @@ text. For HTML:
 
 Rendered bodies and viewport content are cached (`render_cache.go`); cache keys
 include the image store's generation.
+
+### Plugin annotations
+
+A manual plugin run (`internal/ui/plugins.go`) calls
+`plugin.Manager.MessageMetadata` inside a `tea.Cmd`. The manager checks
+permissions, validates the whole annotation set, and only then asks the
+database adapter to replace the plugin's annotations on the message in one
+transaction. The command reloads that one message's annotations and returns
+them to `Update`, which patches the model's cache. Message list loads batch
+annotations for all loaded messages in the same command, so rows render badges
+from the cache and never query SQLite.
 
 ### Terminal images
 

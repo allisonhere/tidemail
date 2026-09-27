@@ -31,6 +31,9 @@ var helpers = map[string]func(){
 	"tidemail-plugin-silent":     func() { readRequest() },
 	"tidemail-plugin-echo":       helperEcho,
 	"tidemail-plugin-marker":     helperMarker,
+	"tidemail-plugin-annotate":   helperAnnotate(`[{"key":"needs_reply","value":"true","confidence":0.94},{"key":"urgency","value":"high"}]`),
+	"tidemail-plugin-badconf":    helperAnnotate(`[{"key":"urgency","value":"high","confidence":2.0}]`),
+	"tidemail-plugin-noanns":     helperAnnotate(`[]`),
 	// If a shell ever interpreted this name, it would create PWNED files.
 	shellName: helperPong,
 }
@@ -96,6 +99,18 @@ func helperIntrospect() {
 func helperEcho() {
 	req := readRequest()
 	respond(req, map[string]any{"method": req.Method, "data": req.Data})
+}
+
+// helperAnnotate answers with the given annotations JSON plus a display
+// field.
+func helperAnnotate(annotations string) func() {
+	return func() {
+		req := readRequest()
+		respond(req, map[string]json.RawMessage{
+			"summary":     json.RawMessage(`"looks like a notification"`),
+			"annotations": json.RawMessage(annotations),
+		})
+	}
 }
 
 // helperMarker leaves a file in its working directory to prove it ran.
@@ -604,10 +619,11 @@ func TestMessageMetadataSendsPayload(t *testing.T) {
 		Date: "2026-09-26T10:00:00Z", Starred: true, Flags: []string{"\\Seen"},
 		AccountName: "Work", MailboxName: "INBOX",
 	}
-	resp, err := m.MessageMetadata(context.Background(), "p", meta)
+	result, err := m.MessageMetadata(context.Background(), "p", meta, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	resp := result.Response
 	var got struct {
 		Method string          `json:"method"`
 		Data   MessageMetadata `json:"data"`
@@ -627,7 +643,7 @@ func TestMessageMetadataRequiresPermission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = m.MessageMetadata(context.Background(), "p", MessageMetadata{ID: 1, Subject: "secret"})
+	_, err = m.MessageMetadata(context.Background(), "p", MessageMetadata{ID: 1, Subject: "secret"}, nil)
 	if !errors.Is(err, ErrPermissionDenied) {
 		t.Fatalf("err = %v, want ErrPermissionDenied", err)
 	}
@@ -660,7 +676,7 @@ func TestCallRefusesPermissionGatedMethod(t *testing.T) {
 
 func TestMessageMetadataUnknownPlugin(t *testing.T) {
 	var m *Manager
-	if _, err := m.MessageMetadata(context.Background(), "x", MessageMetadata{}); !errors.Is(err, ErrUnknownPlugin) {
+	if _, err := m.MessageMetadata(context.Background(), "x", MessageMetadata{}, nil); !errors.Is(err, ErrUnknownPlugin) {
 		t.Fatalf("err = %v, want ErrUnknownPlugin", err)
 	}
 }

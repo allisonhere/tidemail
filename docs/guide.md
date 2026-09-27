@@ -414,7 +414,16 @@ When any are installed, the command palette gains **Plugins (experimental)**, a
 read-only list, and **Run plugin on current message**, which sends the
 message's sender, recipients, subject, date, and flags (never its body) to a
 plugin you choose and shows its reply. Plugins only run when you start them,
-and their replies never change your mail. Only install plugins you trust; see
+and their replies never change your mail.
+
+A plugin that also declares the `annotations` permission can attach short
+notes to that message, such as "needs reply" or "urgency: high". These are
+stored in TideMail's local cache and may show as small badges before the date
+(`↩` needs reply, `!` urgent, `◆` important, `#tag` category; `R ! ^` with icons
+off). **Message annotations** in the palette lists all of a message's
+annotations. Running the plugin again replaces its annotations on that message.
+
+Plugin support is experimental. Only install plugins you trust; see
 [`plugins.md`](plugins.md) for the format and security details.
 
 ## Keyboard shortcuts

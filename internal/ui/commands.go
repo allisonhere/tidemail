@@ -226,7 +226,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		m.settings = newSettings(m.cfg, m.settingsUpdateState())
 		m.overlay = overlaySettings
 		return m, nil
-	case "plugins", "plugin-run":
+	case "plugins", "plugin-run", "plugin-annotations":
 		return m.executePluginCommand(id)
 	case "compose-send":
 		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlS})

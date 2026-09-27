@@ -218,6 +218,19 @@ func (db *DB) migrate() error {
 			json       TEXT    NOT NULL DEFAULT '',
 			created_at INTEGER NOT NULL DEFAULT 0
 		);
+
+		-- Experimental plugin output. One row per plugin/message/key; rows go
+		-- away with their message through the cascade.
+		CREATE TABLE IF NOT EXISTS plugin_annotations (
+			plugin_id  TEXT    NOT NULL,
+			message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+			key        TEXT    NOT NULL,
+			value      TEXT    NOT NULL,
+			confidence REAL,
+			updated_at INTEGER NOT NULL,
+			PRIMARY KEY (plugin_id, message_id, key)
+		);
+		CREATE INDEX IF NOT EXISTS idx_plugin_annotations_message ON plugin_annotations(message_id);
 	`)
 	if err != nil {
 		return err

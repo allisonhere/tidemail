@@ -85,6 +85,7 @@ const (
 	overlayPlugins
 	overlayPluginPicker
 	overlayPluginResult
+	overlayPluginAnnotations
 )
 
 type commandPaletteContext int
@@ -760,6 +761,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				currentID = current.ID
 			}
 			m.messages = msg.Messages
+			m.plugins.annotations = msg.Annotations
 			m.applyFilter()
 			if idx := m.indexOfFilteredMessage(currentID); idx >= 0 {
 				m.messageCursor = idx
@@ -798,6 +800,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			m.messages = msg.Messages
+			m.plugins.annotations = msg.Annotations
 			m.applyFilter()
 
 			rowCount := m.activeMessageRowCount()
@@ -2501,7 +2504,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayMoveMessage:
 		return m.handleMovePicker(msg)
 
-	case overlayPlugins, overlayPluginPicker, overlayPluginResult:
+	case overlayPlugins, overlayPluginPicker, overlayPluginResult, overlayPluginAnnotations:
 		return m.handlePluginKey(msg)
 
 	case overlayOutbox:

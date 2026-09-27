@@ -42,6 +42,9 @@ type MessagesLoadedMsg struct {
 	Search    bool
 	Query     string
 	Err       error
+	// Annotations holds plugin annotations for Messages, loaded in the same
+	// command so rendering never queries the database.
+	Annotations map[int64][]db.PluginAnnotation
 }
 
 type MailboxSyncedMsg struct {
