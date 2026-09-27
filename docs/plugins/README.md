@@ -38,7 +38,9 @@ than annotations is only displayed.
 
 1. [getting-started.md](getting-started.md): build your first plugin in a few
    minutes, from an empty directory to a tag in TideMail's message list.
-2. The reference:
+2. [developer-tools.md](developer-tools.md): use TideMail's headless
+   `plugin scaffold`, `plugin validate`, and `plugin test` commands.
+3. The reference:
 
 | Page | Covers |
 | --- | --- |

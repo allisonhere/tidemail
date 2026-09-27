@@ -8,6 +8,23 @@ TideMail source code. The finished, tested version is
 The examples use Go, but nothing here is Go-specific; a
 [Python version](#the-same-plugin-in-python) is at the end.
 
+## Faster start: scaffold a plugin
+
+If the TideMail binary is available, the recommended contributor workflow is:
+
+```sh
+tidemail plugin scaffold invoice-tagger
+cd invoice-tagger
+go build -buildvcs=false -o invoice-tagger .
+tidemail plugin validate .
+tidemail plugin test .
+```
+
+The generated starter tags subjects containing “invoice” as
+`category=billing`. These commands are headless: they do not need a TideMail
+configuration, database, mail account, or running TUI. See
+[developer-tools.md](developer-tools.md) for fixtures, settings, and CI.
+
 ## 1. Create a directory and an executable
 
 A plugin is a directory containing a manifest and an executable:

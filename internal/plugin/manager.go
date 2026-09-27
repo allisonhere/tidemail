@@ -140,6 +140,42 @@ func loadPlugin(dir string) (Plugin, error) {
 	return Plugin{Manifest: manifest, Dir: absDir, Executable: exe}, nil
 }
 
+// LoadPlugin validates and loads one plugin directory. Unlike Discover, it
+// reports the first problem directly, which is useful to headless developer
+// tooling.
+func LoadPlugin(path string) (Plugin, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return Plugin{}, err
+	}
+	if !info.IsDir() {
+		if filepath.Base(path) != ManifestFile {
+			return Plugin{}, fmt.Errorf("plugin path %q is neither a directory nor %s", path, ManifestFile)
+		}
+		path = filepath.Dir(path)
+	}
+	p, err := loadPlugin(path)
+	if err != nil {
+		return Plugin{}, err
+	}
+	// Headless developer tooling is stricter than the legacy discovery path:
+	// a command must resolve inside the plugin directory and cannot rely on
+	// PATH lookup or an escaping symlink.
+	resolvedDir, err := filepath.EvalSymlinks(p.Dir)
+	if err != nil {
+		return Plugin{}, fmt.Errorf("resolve plugin directory: %w", err)
+	}
+	resolvedExe, err := filepath.EvalSymlinks(p.Executable)
+	if err != nil {
+		return Plugin{}, fmt.Errorf("command %q: %w", p.Manifest.Command, err)
+	}
+	rel, err := filepath.Rel(resolvedDir, resolvedExe)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return Plugin{}, fmt.Errorf("command %q resolves outside the plugin directory", p.Manifest.Command)
+	}
+	return p, nil
+}
+
 // Dir returns the directory the manager discovered plugins in.
 func (m *Manager) Dir() string {
 	if m == nil {

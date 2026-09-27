@@ -33,6 +33,15 @@ const ManifestFile = "plugin.toml"
 // storage and file names.
 var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 
+// ValidateID checks the stable plugin identifier used in manifests and
+// plugin directories.
+func ValidateID(id string) error {
+	if !idPattern.MatchString(id) {
+		return fmt.Errorf("plugin id %q must be 1-64 characters of a-z, 0-9, '-' or '_', starting with a letter or digit", id)
+	}
+	return nil
+}
+
 // Manifest describes one plugin, as read from its plugin.toml.
 type Manifest struct {
 	// ID is the stable identifier TideMail uses for the plugin. It is not a
@@ -106,11 +115,10 @@ func LoadManifest(path string) (Manifest, error) {
 // Validate checks the fields TideMail relies on.
 func (m Manifest) Validate() error {
 	var errs []error
-	switch {
-	case m.ID == "":
+	if m.ID == "" {
 		errs = append(errs, errors.New("id is required"))
-	case !idPattern.MatchString(m.ID):
-		errs = append(errs, fmt.Errorf("id %q must be 1-64 characters of a-z, 0-9, '-' or '_', starting with a letter or digit", m.ID))
+	} else if err := ValidateID(m.ID); err != nil {
+		errs = append(errs, err)
 	}
 	if strings.TrimSpace(m.Name) == "" {
 		errs = append(errs, errors.New("name is required"))

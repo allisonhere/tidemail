@@ -35,6 +35,17 @@ it *hands* a plugin, how it *runs* it, and what it *keeps* from the result.
 | stderr limit | 16 KiB kept, 512 characters quoted in errors. |
 | Bounded concurrency | One process per plugin at a time, and at most 3 plugin processes for message calls overall. |
 
+The headless developer commands use the same direct process runner and output
+limits. `tidemail plugin test` is an offline protocol check by default; it
+does not run a remote configuration test. `--config-test` requires the
+explicit `--allow-network` flag. This is an opt-in workflow guard, not an OS
+network sandbox: a trusted executable with network permission can still make
+its own network calls.
+
+`--secret-env setting=ENV_VAR` supplies one declared secret setting from the
+named environment variable. The value is passed only to that plugin and is
+redacted from surfaced process diagnostics and JSON reports.
+
 ## What TideMail keeps and shows
 
 - **Protocol validation:** exactly one JSON value, matching `api`, `type`,

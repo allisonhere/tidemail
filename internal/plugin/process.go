@@ -101,6 +101,12 @@ func invoke(ctx context.Context, p Plugin, req Request, timeout time.Duration, s
 	return resp, nil
 }
 
+// Invoke runs one already-validated plugin request through TideMail's normal
+// process runner. It is intended for headless developer tooling and tests.
+func Invoke(ctx context.Context, p Plugin, req Request, timeout time.Duration, secrets map[string]string) (Response, error) {
+	return invoke(ctx, p, req, timeout, secrets)
+}
+
 // minRedactLen skips masking very short secrets, which would otherwise mask
 // ordinary text.
 const minRedactLen = 6

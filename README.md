@@ -208,6 +208,8 @@ The full user guide is in [docs/guide.md](docs/guide.md#plugins-experimental).
 
 If you are writing a plugin, start with the
 [Plugin API getting-started guide](docs/plugins/getting-started.md), then see
+[the developer tools guide](docs/plugins/developer-tools.md) for the
+`scaffold → build → validate → test` workflow, and see
 the [protocol](docs/plugins/protocol.md), [manifest](docs/plugins/manifest.md),
 and [permissions](docs/plugins/permissions.md) references. A complete local
 example is in [examples/plugins/example](examples/plugins/example/).
