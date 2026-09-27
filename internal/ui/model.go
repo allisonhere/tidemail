@@ -380,7 +380,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 	setEditorVimMode(cfg.Display.ComposeVim)
 
 	si := textinput.New()
-	si.Placeholder = "search messages..."
+	si.Placeholder = "search messages... (#tag for tags)"
 	si.CharLimit = 100
 
 	ci := textinput.New()

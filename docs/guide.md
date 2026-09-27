@@ -117,7 +117,14 @@ read. Press `A` to select every message in the current view.
 
 Press `/` to search, `u` to show unread mail, and `t` to place starred messages
 first. Search covers subject, sender, recipients, and message body across every
-account and folder, and matches as you type. In the content pane, `Ctrl+E` shows
+account and folder, and matches as you type.
+
+Type `#` and a tag name to search by the tags shown on message rows:
+`#github`, `#billing`, or any other category, and `#reply`, `#urgent`, or
+`#important`. Tags match as you type (`#git` already finds `#github`), several
+tags must all match, and they combine with words: `invoice #billing` finds
+billing mail mentioning an invoice. Your corrections count, so a message you
+recategorized is found under its new tag, not the plugin's. In the content pane, `Ctrl+E` shows
 the full headers and authentication results. `Ctrl+U` opens the mailing list's
 unsubscribe option when the message provides one.
 

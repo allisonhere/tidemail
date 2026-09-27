@@ -150,27 +150,45 @@ func (db *DB) ListUnifiedInboxUnreadFirst(unreadOnly bool) ([]Message, error) {
 	return scanMessages(rows)
 }
 
+// SearchAllMessages searches every cached message. Words match subject,
+// sender, recipients, and body (full-text, the last word as a prefix);
+// "#tag" terms match the tags shown on rows (see search_tags.go). Both kinds
+// may be combined.
 func (db *DB) SearchAllMessages(query string, unreadFirst bool) ([]Message, error) {
-	match := ftsQuery(query)
-	if match == "" {
+	terms := ParseSearch(query)
+	match := ftsQuery(terms.Text)
+	if match == "" && len(terms.Tags) == 0 {
 		return nil, nil
 	}
-	orderBy := "bm25(messages_fts), messages.date DESC, messages.id DESC"
-	if unreadFirst {
-		orderBy = "messages.read ASC, bm25(messages_fts), messages.date DESC, messages.id DESC"
-	}
-	rows, err := db.Query(`
-		SELECT messages.id, messages.mailbox_id, messages.uid, messages.message_id,
+	const columns = `messages.id, messages.mailbox_id, messages.uid, messages.message_id,
 		       messages.in_reply_to, messages.references_text, messages.subject, messages.from_addr, messages.to_addr, messages.cc_addr,
 		       messages.reply_to, messages.date, messages.body_text, messages.body_html, messages.summary,
 		       messages.flags, messages.read, messages.starred, messages.has_attachment, messages.headers,
-		       accounts.name, COALESCE(NULLIF(mailboxes.display_name, ''), mailboxes.name)
-		FROM messages_fts
-		JOIN messages ON messages.id = messages_fts.rowid
+		       accounts.name, COALESCE(NULLIF(mailboxes.display_name, ''), mailboxes.name)`
+	const joins = `
 		JOIN mailboxes ON mailboxes.id = messages.mailbox_id
-		JOIN accounts ON accounts.id = mailboxes.account_id
-		WHERE messages_fts MATCH ?
-		ORDER BY `+orderBy, match)
+		JOIN accounts ON accounts.id = mailboxes.account_id`
+	var where []string
+	var args []any
+	from := "messages"
+	orderBy := "messages.date DESC, messages.id DESC"
+	if match != "" {
+		from = "messages_fts JOIN messages ON messages.id = messages_fts.rowid"
+		where = append(where, "messages_fts MATCH ?")
+		args = append(args, match)
+		orderBy = "bm25(messages_fts), " + orderBy
+	}
+	if len(terms.Tags) > 0 {
+		expr, tagArgs := tagsWhere(terms.Tags)
+		where = append(where, expr)
+		args = append(args, tagArgs...)
+	}
+	if unreadFirst {
+		orderBy = "messages.read ASC, " + orderBy
+	}
+	rows, err := db.Query(`SELECT `+columns+` FROM `+from+joins+`
+		WHERE `+strings.Join(where, " AND ")+`
+		ORDER BY `+orderBy, args...)
 	if err != nil {
 		return nil, err
 	}
