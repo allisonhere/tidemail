@@ -81,6 +81,8 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.Delete.Help().Key, "delete selected message(s); in Drafts, delete draft"},
 				{keys.NeedsYouDismiss.Help().Key, "in Needs You: dismiss; in Waiting on Them: stop waiting (mail and annotations are untouched)"},
 				{keys.Snooze.Help().Key, "snooze message(s) or a waiting conversation from Needs You / Waiting on Them; in Snoozed: unsnooze"},
+				{keys.RunPlugin.Help().Key, "run a plugin on the current message or selection (when plugins are installed)"},
+				{"u (result card)", "unsubscribe when TideMail offers it; uses the normal confirmed unsubscribe flow"},
 				{keys.Undo.Help().Key, "cancel queued send, else undo the latest dismiss or stop waiting (in those views), else undo latest archive, move, or delete"},
 				bind(keys.Compose),
 				bind(keys.Reply),

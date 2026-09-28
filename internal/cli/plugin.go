@@ -148,7 +148,12 @@ type testCheck struct {
 	Status  string `json:"status"`
 	Error   string `json:"error,omitempty"`
 	Detail  string `json:"detail,omitempty"`
+	Warning string `json:"warning,omitempty"`
 	Elapsed string `json:"elapsed,omitempty"`
+	// Presentation is the validated presentation a metadata call returned.
+	Presentation *plugin.Presentation `json:"presentation,omitempty"`
+	// raw is the response data, printed with --verbose.
+	raw json.RawMessage
 }
 
 type testReport struct {
@@ -255,7 +260,9 @@ func runTest(args []string, out, errOut io.Writer) int {
 	}
 	if p.Manifest.Permissions.MessageMetadata {
 		data, _ := json.Marshal(meta)
+		var metaResp plugin.Response
 		if !check(plugin.MethodMessageMetadata, plugin.MethodMessageMetadata, data, func(resp plugin.Response) error {
+			metaResp = resp
 			if p.Manifest.Permissions.Annotations {
 				if _, err := plugin.ParseAnnotations(resp.Data); err != nil {
 					return err
@@ -264,6 +271,14 @@ func runTest(args []string, out, errOut io.Writer) int {
 			return nil
 		}) {
 			return finishTest(out, errOut, opts, report)
+		}
+		// The presentation is cosmetic: a bad one is a warning, never a failure,
+		// exactly as in TideMail.
+		c := &report.Checks[len(report.Checks)-1]
+		c.raw = metaResp.Data
+		c.Presentation, err = plugin.ExtractPresentation(metaResp.Data)
+		if err != nil {
+			c.Warning = "presentation ignored: " + sanitizeError(err.Error())
 		}
 		if p.Manifest.WantsEvent(plugin.EventMessageReceived) && !check(plugin.EventMessageReceived, plugin.EventMessageReceived, data, func(resp plugin.Response) error {
 			if p.Manifest.Permissions.Annotations {
@@ -301,6 +316,42 @@ func runTest(args []string, out, errOut io.Writer) int {
 		}
 	}
 	return finishTest(out, errOut, opts, report)
+}
+
+// printPresentationPreview shows what TideMail's result card would say.
+func printPresentationPreview(out io.Writer, c testCheck) {
+	p := c.Presentation
+	if p == nil {
+		_, _ = fmt.Fprintln(out, "\nPresentation preview: none (TideMail will describe the annotations itself)")
+		return
+	}
+	_, _ = fmt.Fprintln(out, "\nPresentation preview")
+	_, _ = fmt.Fprintf(out, "\nTitle: %s\n", p.Title)
+	if p.Summary != "" {
+		_, _ = fmt.Fprintf(out, "Summary: %s\n", p.Summary)
+	}
+	if len(p.Facts) > 0 {
+		_, _ = fmt.Fprintln(out)
+		for _, f := range p.Facts {
+			_, _ = fmt.Fprintf(out, "%s: %s\n", f.Label, f.Value)
+		}
+	}
+	if len(p.Reasons) > 0 {
+		_, _ = fmt.Fprintln(out, "\nWhy")
+		for _, r := range p.Reasons {
+			_, _ = fmt.Fprintf(out, "• %s\n", r)
+		}
+	}
+	if p.Confidence != "" || p.Status != "" {
+		_, _ = fmt.Fprintf(out, "\nConfidence: %s   Status: %s\n", orDash(p.Confidence), orDash(p.Status))
+	}
+}
+
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
 
 // testReportRun runs a full report against a synthetic mailbox loaded into a
@@ -382,6 +433,17 @@ func finishTest(out, errOut io.Writer, opts testOptions, report testReport) int 
 			_, _ = fmt.Fprintf(out, " (%s)", c.Elapsed)
 		}
 		_, _ = fmt.Fprintln(out)
+		if c.Warning != "" {
+			_, _ = fmt.Fprintf(out, "  ! %s\n", c.Warning)
+		}
+	}
+	for _, c := range report.Checks {
+		if c.Name == plugin.MethodMessageMetadata && c.Status == "pass" {
+			printPresentationPreview(out, c)
+			if opts.verbose && len(c.raw) > 0 {
+				_, _ = fmt.Fprintf(out, "\nRaw response data:\n%s\n", sanitizeError(string(c.raw)))
+			}
+		}
 	}
 	if report.Valid {
 		_, _ = fmt.Fprintln(out, "\nPlugin protocol test passed.")

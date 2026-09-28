@@ -237,8 +237,17 @@ func TestPluginFailureIsReportedAndClearsRunning(t *testing.T) {
 	m.plugins.running = "hello"
 	next, _ := m.Update(pluginResultMsg{PluginID: "hello", Err: errors.New("plugin \"hello\" timed out after 5s: stderr: \x1b[31mboom")})
 	m = next.(Model)
-	if m.plugins.running != "" || m.overlay != overlayNone {
+	// A friendly error card opens; the raw, sanitized error is in Details.
+	if m.plugins.running != "" || m.overlay != overlayPluginResult || m.plugins.result == nil || m.plugins.result.card == nil {
 		t.Fatalf("running=%q overlay=%v", m.plugins.running, m.overlay)
+	}
+	card := m.plugins.result.card
+	if card.title != "hello timed out" || card.summary != "The plugin took too long to respond." || card.status != plugin.StatusDanger {
+		t.Fatalf("card = %+v", card)
+	}
+	details := strings.Join(m.plugins.result.details, "\n")
+	if !strings.Contains(details, "boom") || strings.ContainsRune(details, 0x1b) || strings.Contains(resultText(m, &pluginResult{card: card}), "stderr") {
+		t.Fatalf("details = %q", details)
 	}
 	if !m.statusErr || !strings.Contains(m.statusMsg, "timed out") || strings.ContainsRune(m.statusMsg, 0x1b) {
 		t.Fatalf("status = %q (err %v)", m.statusMsg, m.statusErr)
@@ -275,7 +284,7 @@ func TestPluginListShowsPluginsAndSanitizedErrors(t *testing.T) {
 		t.Fatalf("overlay = %v", m.overlay)
 	}
 	view := m.View()
-	for _, want := range []string{"hello", "Plugin hello", "v0.1.0", "API 1", "permissions: metadata", "broken", "plugins/broken/missing"} {
+	for _, want := range []string{"Plugin hello", "Version 0.1.0", "✓ Message details", "✗ Network", "broken", "plugins/broken/missing"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("plugin list missing %q", want)
 		}

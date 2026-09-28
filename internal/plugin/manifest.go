@@ -29,6 +29,9 @@ const APIVersion = 1
 // ManifestFile is the manifest file name inside each plugin directory.
 const ManifestFile = "plugin.toml"
 
+// MaxDescription caps a manifest description.
+const MaxDescription = 120
+
 // idPattern keeps plugin IDs short, lowercase, and safe to reuse as keys in
 // storage and file names.
 var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
@@ -52,6 +55,11 @@ type Manifest struct {
 	// API is the protocol version the plugin speaks.
 	API int `toml:"api"`
 	// Command is the plugin executable, relative to the plugin directory.
+	// Description is a short, human sentence shown in the plugin picker and
+	// plugin page; Homepage an optional https link shown on the plugin page.
+	Description string `toml:"description"`
+	Homepage    string `toml:"homepage"`
+
 	Command     string      `toml:"command"`
 	Permissions Permissions `toml:"permissions"`
 	// Events lists the automatic events the plugin wants. Declaring one only
@@ -125,6 +133,12 @@ func (m Manifest) Validate() error {
 	}
 	if m.API != APIVersion {
 		errs = append(errs, fmt.Errorf("unsupported api version %d (this TideMail supports %d)", m.API, APIVersion))
+	}
+	if err := presentationText("description", m.Description, MaxDescription, false); err != nil {
+		errs = append(errs, fmt.Errorf("description must be at most %d characters of plain text", MaxDescription))
+	}
+	if m.Homepage != "" && (!strings.HasPrefix(m.Homepage, "https://") || len(m.Homepage) > 200 || hasHiddenRunes(m.Homepage) || strings.ContainsAny(m.Homepage, " \t")) {
+		errs = append(errs, errors.New("homepage must be an https:// URL of at most 200 characters"))
 	}
 	if err := validateCommand(m.Command); err != nil {
 		errs = append(errs, err)

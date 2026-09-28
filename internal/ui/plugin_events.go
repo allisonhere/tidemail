@@ -199,36 +199,39 @@ func (m Model) pluginEventLines(pluginID string) []string {
 	if !m.eventCapable(pluginID) {
 		return nil
 	}
-	lines := []string{"events: " + plugin.EventMessageReceived}
+	// Plain words first; the event name (message.received) is for Details
+	// and the developer docs.
+	var lines []string
 	st := m.plugins.eventStatus[pluginID]
 	switch {
 	case m.plugins.events == nil:
-		lines = append(lines, "auto: unavailable")
+		lines = append(lines, "Automatic processing  Unavailable")
 	case st.Paused:
-		lines = append(lines, "auto: paused", "reason: "+sanitizePluginLine(st.LastError))
+		lines = append(lines, "Automatic processing  Paused after repeated failures (r resumes)",
+			"Why  "+sanitizePluginLine(st.LastError))
 	case m.cfg.PluginAutoEvents(pluginID):
-		lines = append(lines, "auto: enabled")
+		lines = append(lines, "Automatic processing  On",
+			"Runs on new messages using safe metadata only.")
 	default:
-		lines = append(lines, "auto: disabled")
+		lines = append(lines, "Automatic processing  Off (a turns it on)")
 	}
 	if m.cfg.PluginAutoEvents(pluginID) || st.Dropped > 0 || st.ConsecutiveFailures > 0 {
-		running := "no"
+		running := "idle"
 		if st.Running {
-			running = "yes"
+			running = "running"
 		}
 		dot := strings.TrimSpace(m.styles.InlineMidDot())
-		lines = append(lines,
-			fmt.Sprintf("queued: %d %s running: %s", st.Queued, dot, running),
-			fmt.Sprintf("failures: %d %s dropped: %d", st.ConsecutiveFailures, dot, st.Dropped))
+		lines = append(lines, fmt.Sprintf("Queue %d %s %s %s failures %d %s dropped %d",
+			st.Queued, dot, running, dot, st.ConsecutiveFailures, dot, st.Dropped))
 	}
 	if !st.LastSuccess.IsZero() {
-		lines = append(lines, "last success: "+pluginEventAge(st.LastSuccess))
+		lines = append(lines, "Last run  "+pluginEventAge(st.LastSuccess))
 	}
 	if !st.LastFailure.IsZero() {
-		lines = append(lines, "last failure: "+pluginEventAge(st.LastFailure))
+		lines = append(lines, "Last problem  "+pluginEventAge(st.LastFailure))
 	}
-	if st.LastError != "" {
-		lines = append(lines, "last error: "+sanitizePluginLine(st.LastError))
+	if st.LastError != "" && !st.Paused {
+		lines = append(lines, "Last error  "+sanitizePluginLine(st.LastError))
 	}
 	return lines
 }

@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/allisonhere/tidemail/internal/db"
@@ -77,7 +78,21 @@ func (m Model) handlePluginReport(msg pluginReportMsg) (tea.Model, tea.Cmd) {
 		m.plugins.running = ""
 	}
 	if msg.Err != nil {
-		m.setStatus(sanitizePluginLine(msg.Err.Error()), true)
+		name := m.pluginDisplayName(msg.PluginID)
+		card := errorCard(name, msg.Err)
+		if !strings.Contains(card.title, "timed out") && !strings.Contains(card.title, "cancelled") {
+			card.title = name + " could not create its report"
+		}
+		details := append(m.pluginIdentityLines(msg.PluginID), "", "Error:")
+		for _, l := range m.displayPluginErrorLines(msg.Err) {
+			details = append(details, "  "+l)
+		}
+		m.plugins.result = &pluginResult{pluginID: msg.PluginID, pluginName: name, card: &card, details: details}
+		if m.overlay == overlayNone || m.overlay == overlayPlugins {
+			m.plugins.scroll = 0
+			m.overlay = overlayPluginResult
+		}
+		m.setStatus(card.title, true)
 		return m, m.clearStatusCmd()
 	}
 	m.plugins.result = &pluginResult{

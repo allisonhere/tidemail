@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/allisonhere/tidemail/internal/db"
@@ -50,6 +51,9 @@ type pluginBulkRun struct {
 	// stored annotation set differs afterwards.
 	changed   int
 	unchanged int
+	// found tallies what the plugin concluded, from its own stored
+	// annotations: category values, and automated senders.
+	found map[string]int
 	// ctx is this run's context; cancel kills the message in flight and
 	// cancelled stops scheduling the rest. Quitting cancels the parent.
 	ctx       context.Context
@@ -153,6 +157,7 @@ func (m Model) viewScopeLabel(n int) string {
 // startPluginRun runs the chosen plugin on the picker's targets: the usual
 // single-message run, or a bulk run (after one confirmation when large).
 func (m Model) startPluginRun(p plugin.Plugin) (tea.Model, tea.Cmd) {
+	m.plugins.last = p.Manifest.ID
 	metas := m.plugins.pickerMetas
 	m.plugins.picker = nil
 	m.overlay = overlayNone
@@ -169,11 +174,12 @@ func (m Model) startPluginRun(p plugin.Plugin) (tea.Model, tea.Cmd) {
 		m.plugins.confirmOrigin = overlayNone
 		return m, nil
 	case len(metas) == 1:
+		source := m.pluginResultMessage(metas[0].ID)
 		m.plugins.pickerMetas = nil
 		m.plugins.running = p.Manifest.ID
 		m.setStatus("Running "+m.pluginDisplayName(p.Manifest.ID)+" on "+m.plugins.pickerScope.label+"…", false)
 		m.plugins.pickerScope = reclassifyScope{}
-		return m, runPluginCmd(m.plugins.ctx, m.plugins.manager, m.db, p.Manifest.ID, metas[0])
+		return m, runPluginCmd(m.plugins.ctx, m.plugins.manager, m.db, p.Manifest.ID, metas[0], source)
 	}
 	return m.startBulk(p.Manifest.ID)
 }
@@ -221,7 +227,7 @@ func (m Model) cancelBulk() (tea.Model, tea.Cmd) {
 }
 
 func runBulkStepCmd(ctx context.Context, mgr *plugin.Manager, database *db.DB, pluginID string, meta plugin.MessageMetadata) tea.Cmd {
-	step := runPluginCmd(ctx, mgr, database, pluginID, meta)
+	step := runPluginCmd(ctx, mgr, database, pluginID, meta, nil)
 	return func() tea.Msg {
 		res, _ := step().(pluginResultMsg)
 		return pluginBulkStepMsg{Result: res}
@@ -272,6 +278,14 @@ func (m Model) handleBulkStep(msg pluginBulkStepMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
+	if res.RefreshedOK && failure == "" {
+		for _, label := range foundLabels(res.Refreshed, r.pluginID) {
+			if r.found == nil {
+				r.found = map[string]int{}
+			}
+			r.found[label]++
+		}
+	}
 	if res.RefreshedOK {
 		if m.plugins.annotations == nil {
 			m.plugins.annotations = map[int64][]db.PluginAnnotation{}
@@ -307,28 +321,56 @@ func (m Model) finishBulk() (tea.Model, tea.Cmd) {
 	}
 	dot := m.styles.InlineMidDot()
 	summary := fmt.Sprintf("%d succeeded%s%d failed", r.ok, dot, r.failed)
-	changes := fmt.Sprintf("%d changed%s%d unchanged", r.changed, dot, r.unchanged)
-	title := r.name + " finished"
-	if r.cancelled {
-		title = r.name + " cancelled"
+	card := resultCard{title: r.name + " completed", status: plugin.StatusSuccess}
+	switch {
+	case r.cancelled:
+		card.title, card.status = r.name+" was cancelled", plugin.StatusNeutral
+	case r.failed > 0:
+		card.title, card.status = r.name+" completed with some problems", plugin.StatusWarning
 	}
-	body := []string{title, "Reclassified " + r.scope, summary, changes}
-	if r.cancelled {
-		body = append(body, fmt.Sprintf("%d not run", r.total-r.done))
+	title := card.title
+	card.summary = "Ran on " + r.scope + "."
+	card.facts = []plugin.Fact{
+		{Label: "Processed", Value: fmt.Sprint(r.done)},
+		{Label: "Changed", Value: fmt.Sprint(r.changed)},
+		{Label: "Unchanged", Value: fmt.Sprint(r.unchanged)},
+		{Label: "Failed", Value: fmt.Sprint(r.failed)},
 	}
+	if r.cancelled {
+		card.facts = append(card.facts, plugin.Fact{Label: "Not run", Value: fmt.Sprint(r.total - r.done)})
+	}
+	if len(r.found) > 0 {
+		labels := make([]string, 0, len(r.found))
+		for l := range r.found {
+			labels = append(labels, l)
+		}
+		sort.Slice(labels, func(i, j int) bool {
+			if r.found[labels[i]] != r.found[labels[j]] {
+				return r.found[labels[i]] > r.found[labels[j]]
+			}
+			return labels[i] < labels[j]
+		})
+		sec := cardSection{title: "Found"}
+		for _, l := range labels[:min(len(labels), 8)] {
+			sec.facts = append(sec.facts, plugin.Fact{Label: l, Value: fmt.Sprint(r.found[l])})
+		}
+		card.sections = append(card.sections, sec)
+	}
+	details := append(m.pluginIdentityLines(r.pluginID), "Scope: "+r.scope,
+		fmt.Sprintf("Succeeded: %d, failed: %d, changed: %d, unchanged: %d", r.ok, r.failed, r.changed, r.unchanged))
 	if len(r.reasons) > 0 {
-		body = append(body, "", "Failures:")
+		details = append(details, "", "Failures:")
 		for _, reason := range r.reasons {
-			body = append(body, "  "+reason)
+			details = append(details, "  "+reason)
 		}
 		if r.failed > len(r.reasons) {
-			body = append(body, fmt.Sprintf("  …and %d more", r.failed-len(r.reasons)))
+			details = append(details, fmt.Sprintf("  …and %d more", r.failed-len(r.reasons)))
 		}
 	}
-	body = append(body, "", "Each message's annotations are under Message annotations.")
+	details = append(details, "", "Each message's raw annotations are under Message annotations.")
 	m.plugins.result = &pluginResult{
 		pluginID: r.pluginID, pluginName: r.name,
-		subject: r.scope, body: strings.Join(body, "\n"),
+		subject: r.scope, card: &card, details: details,
 	}
 	m.setStatus(title+": "+summary+dot+fmt.Sprintf("%d changed", r.changed), r.failed > 0)
 	// One summary window, and only if nothing else was opened meanwhile.
@@ -382,4 +424,30 @@ func annotationSet(anns []db.PluginAnnotation, pluginID string) []string {
 // annotationSetChanged compares a plugin's annotations before and after a run.
 func annotationSetChanged(before, after []db.PluginAnnotation, pluginID string) bool {
 	return !slices.Equal(annotationSet(before, pluginID), annotationSet(after, pluginID))
+}
+
+// foundLabels are the friendly conclusions one message's stored annotations
+// from pluginID express, for the bulk summary: its category, or that the
+// sender is automated.
+func foundLabels(anns []db.PluginAnnotation, pluginID string) []string {
+	var category string
+	automated := false
+	for _, a := range anns {
+		if a.PluginID != pluginID {
+			continue
+		}
+		switch a.Key {
+		case "category":
+			category = friendlyValue("category", a.Value)
+		case "automated_sender":
+			automated = strings.EqualFold(strings.TrimSpace(a.Value), "true")
+		}
+	}
+	switch {
+	case category != "":
+		return []string{category}
+	case automated:
+		return []string{"Automated sender"}
+	}
+	return nil
 }

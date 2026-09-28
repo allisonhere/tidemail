@@ -226,9 +226,12 @@ func TestBulkContinuesPastFailuresAndSummarizes(t *testing.T) {
 	if !m.statusErr || !strings.Contains(m.statusMsg, "3 succeeded") || !strings.Contains(m.statusMsg, "1 failed") {
 		t.Fatalf("status = %q", m.statusMsg)
 	}
-	body := m.plugins.result.body
+	body := strings.Join(m.plugins.result.details, "\n")
 	if !strings.Contains(body, "Failures:") || !strings.Contains(body, "BAD one") || strings.ContainsRune(body, 0x1b) {
-		t.Fatalf("summary = %q", body)
+		t.Fatalf("details = %q", body)
+	}
+	if card := m.plugins.result.card; card == nil || !hasFact(resultText(m, m.plugins.result), "Failed", "1") {
+		t.Fatalf("summary card = %+v", card)
 	}
 	// Manual failures never count against automatic processing.
 	m.refreshPluginEventStatus()

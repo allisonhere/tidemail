@@ -12,6 +12,8 @@ SyncAll,"F,ctrl+s",F/ctrl+s,sync all,main
 MarkRead,x,x,mark read,main
 NeedsYouDismiss,X,X,dismiss from Needs You / stop waiting,main
 Snooze,Z,Z,snooze (in Snoozed: unsnooze),main
+RunPlugin,p,p,run plugin,main
+PluginCardUnsubscribe,u,u,unsubscribe when offered,plugin result card
 MarkAllRead,"R,ctrl+x",R/ctrl+x,mark all read,main
 OpenBrowser,o,o,open in browser,main
 Unsubscribe,ctrl+u,ctrl+u,unsubscribe,content

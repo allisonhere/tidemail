@@ -217,7 +217,7 @@ func TestPluginListShowsCountsAndRemovedPlugins(t *testing.T) {
 	m, _, _ := newCleanupModel(t)
 	m = openPluginList(t, m)
 	view := m.View()
-	for _, want := range []string{"Plugin smart", "stored annotations: 1", "Stored data from removed plugins", "echo", "stored annotations: 2", "clear stored"} {
+	for _, want := range []string{"Plugin smart", "Stored tags  1", "Stored data from removed plugins", "echo", "Stored tags  2", "clear stored"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("plugin list missing %q", want)
 		}
@@ -284,7 +284,7 @@ func TestInstalledPluginGlobalCleanupKeepsPlugin(t *testing.T) {
 		t.Fatal("plugin should stay installed")
 	}
 	view := m.View()
-	if !strings.Contains(view, "Plugin smart") || !strings.Contains(view, "stored annotations: 0") {
+	if !strings.Contains(view, "Plugin smart") || !strings.Contains(view, "Stored tags  0") {
 		t.Fatal("installed plugin should stay listed with a zero count")
 	}
 	// Zero stored annotations: no clear hint, and c does nothing.
@@ -308,7 +308,7 @@ func TestPluginListCountsIncludeNewRunResults(t *testing.T) {
 	// runPlugin drops follow-up commands; the plugin list reloads on open.
 	m.overlay = overlayNone
 	m = openPluginList(t, m)
-	if m.plugins.counts["jev"] != 2 || !strings.Contains(m.View(), "stored annotations: 2") {
+	if m.plugins.counts["jev"] != 2 || !strings.Contains(m.View(), "Stored tags  2") {
 		t.Fatalf("counts = %v", m.plugins.counts)
 	}
 }
@@ -356,7 +356,7 @@ func TestCleanupRenderingIsDatabaseFree(t *testing.T) {
 	m.plugins.countsLoaded = true
 
 	m.overlay = overlayPlugins
-	if view := m.View(); !strings.Contains(view, "stored annotations: 5") {
+	if view := m.View(); !strings.Contains(view, "Stored tags  5") {
 		t.Fatal("plugin list should render from cached counts")
 	}
 	m = openAnnotations(t, m)
@@ -377,7 +377,7 @@ func TestNoCleanupControlsBeforeCountsLoadOrWithoutAnnotations(t *testing.T) {
 	installTestPlugin(t, root, "smart", true)
 	m := newPluginModel(t, root)
 	m.overlay = overlayPlugins // counts never loaded
-	if view := m.View(); strings.Contains(view, "clear stored") || strings.Contains(view, "stored annotations") {
+	if view := m.View(); strings.Contains(view, "clear stored") || strings.Contains(view, "Stored tags") {
 		t.Fatal("no counts or clear controls before counts are loaded")
 	}
 	m, cmd := press(t, m, "c")

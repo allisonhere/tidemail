@@ -1710,6 +1710,8 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.stopWaitingCurrent()
 	case keyMatches(msg, m.keys.Snooze) && m.focused != paneAccounts:
 		return m.handleSnoozeKeyPress()
+	case keyMatches(msg, m.keys.RunPlugin) && m.focused != paneAccounts && m.pluginsVisible():
+		return m.executePluginCommand("plugin-run")
 
 	case keyMatches(msg, m.keys.Undo):
 		// A queued send is the most recent (and most urgent) thing to take

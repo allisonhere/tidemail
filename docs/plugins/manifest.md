@@ -39,6 +39,8 @@ Every field TideMail accepts appears below. Only `id`, `name`, `api`, and
 id = "example"                       # required
 name = "Example Plugin"              # required
 version = "0.1.0"                    # optional, shown in the plugin list
+description = "Tag invoices as billing"  # optional, shown in the picker and plugin page
+homepage = "https://example.com/tidemail-plugin"  # optional, https only
 api = 1                              # required; the protocol version
 command = "tidemail-plugin-example"  # required; relative to the plugin directory
 events = ["message.received"]        # optional; automatic events
@@ -78,6 +80,14 @@ plugin as a new one.
 
 The display name, shown in the plugin list, the Reclassify picker, and
 confirmations. It must not be blank.
+
+### `description` and `homepage` (optional)
+
+`description` is one plain sentence, at most 120 characters, shown next to the
+plugin's name in the **Run plugin** picker and on its plugin page. Describe
+what it does for the user ("Detect newsletters and unsubscribe options"), not
+how. `homepage`, if given, must be an `https://` URL of at most 200
+characters.
 
 ### `version` (optional)
 

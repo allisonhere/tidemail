@@ -294,13 +294,20 @@ func TestReclassifyViewCountsAndSemantics(t *testing.T) {
 	if r == nil || m.overlay != overlayPluginResult {
 		t.Fatalf("overlay = %v", m.overlay)
 	}
-	for _, want := range []string{"Plugin rules finished", "Reclassified 4 messages in INBOX", "3 succeeded", "1 failed", "2 changed", "1 unchanged"} {
-		if !strings.Contains(r.body, want) {
-			t.Fatalf("summary lacks %q:\n%s", want, r.body)
+	text := resultText(m, r)
+	for _, want := range []string{"Plugin rules completed with some problems", "Ran on 4 messages in INBOX.", "Succeeded: 3"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("summary lacks %q:\n%s", want, text)
 		}
 	}
-	if strings.Contains(r.body, "\x1b") || !strings.Contains(r.body, "boom") {
-		t.Fatalf("failure reason should be shown sanitized:\n%q", r.body)
+	for label, value := range map[string]string{"Processed": "4", "Changed": "2", "Unchanged": "1", "Failed": "1"} {
+		if !hasFact(text, label, value) {
+			t.Fatalf("summary lacks %s %s:\n%s", label, value, text)
+		}
+	}
+	// One summary, no per-message dialogs; the reason is in Details only.
+	if strings.Contains(text, "\x1b") || !strings.Contains(strings.Join(r.details, "\n"), "boom") {
+		t.Fatalf("failure reason should be in Details, sanitized:\n%q", text)
 	}
 	if m.plugins.running != "" || m.plugins.bulk != nil {
 		t.Fatal("the run should be finished")
@@ -322,7 +329,7 @@ func TestReclassifyViewWithoutAnnotationPermission(t *testing.T) {
 	if got := storedFor(t, database, "metaonly", msgs[0].ID); got != "urgency=high" {
 		t.Fatalf("stored %q", got)
 	}
-	if r := m.plugins.result; r == nil || !strings.Contains(r.body, "0 changed") || !strings.Contains(r.body, "3 unchanged") {
+	if r := m.plugins.result; r == nil || !hasFact(resultText(m, r), "Changed", "0") || !hasFact(resultText(m, r), "Unchanged", "3") {
 		t.Fatalf("summary: %+v", m.plugins.result)
 	}
 }
@@ -347,7 +354,7 @@ func TestReclassifySelectionScope(t *testing.T) {
 	if got := requestedIDs(t, dir); fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("ran %v, want %v", got, want)
 	}
-	if r := m.plugins.result; r == nil || !strings.Contains(r.body, "Reclassified 2 selected messages") {
+	if r := m.plugins.result; r == nil || !strings.Contains(resultText(m, r), "Ran on 2 selected messages.") {
 		t.Fatalf("summary: %+v", m.plugins.result)
 	}
 }
@@ -483,7 +490,7 @@ func TestReclassifyWhileAutoPaused(t *testing.T) {
 	}
 	setAnswer(t, dir, `[{"key":"urgency","value":"high"}]`)
 	m = reclassifyView(t, m, "smart")
-	if r := m.plugins.result; r == nil || !strings.Contains(r.body, fmt.Sprintf("%d succeeded", len(msgs))) {
+	if r := m.plugins.result; r == nil || !hasFact(resultText(m, r), "Processed", fmt.Sprint(len(msgs))) {
 		t.Fatalf("summary: %+v", m.plugins.result)
 	}
 	m.refreshPluginEventStatus()
@@ -559,7 +566,7 @@ func TestReclassifyCancelKillsProcess(t *testing.T) {
 		t.Fatalf("%d requests; nothing more may be scheduled", n)
 	}
 	r := m.plugins.result
-	if r == nil || !strings.Contains(r.body, "Plugin rules cancelled") || !strings.Contains(r.body, "3 not run") || !strings.Contains(r.body, "0 failed") {
+	if r == nil || !strings.Contains(resultText(m, r), "Plugin rules was cancelled") || !hasFact(resultText(m, r), "Not run", "3") || !hasFact(resultText(m, r), "Failed", "0") {
 		t.Fatalf("summary: %+v", r)
 	}
 	if m.plugins.running != "" || m.plugins.bulk != nil {

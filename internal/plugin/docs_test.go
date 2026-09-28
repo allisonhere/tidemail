@@ -227,6 +227,42 @@ func TestExamplePluginManifestParses(t *testing.T) {
 	}
 }
 
+// The presentation reference lists exactly the statuses and limits.
+func TestDocsPresentation(t *testing.T) {
+	doc := readDoc(t, "presentation.md")
+	if got := lines(driftBlocks(t, doc, "presentation-statuses")[0]); !slices.Equal(got, PresentationStatuses) {
+		t.Fatalf("documented statuses %v, want %v", got, PresentationStatuses)
+	}
+	want := map[string]int{"title": MaxPresentationTitle, "summary": MaxPresentationSummary, "facts": MaxPresentationFacts,
+		"fact_label": MaxFactLabel, "fact_value": MaxFactValue, "reasons": MaxPresentationReasons, "reason": MaxPresentationReason}
+	got := map[string]int{}
+	for _, l := range lines(driftBlocks(t, doc, "presentation-limits")[0]) {
+		k, v, _ := strings.Cut(l, "=")
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil {
+			t.Fatalf("bad limit line %q", l)
+		}
+		got[strings.TrimSpace(k)] = n
+	}
+	if len(got) != len(want) {
+		t.Fatalf("documented limits %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Fatalf("documented %s = %d, code has %d", k, got[k], v)
+		}
+	}
+	// The documented example validates.
+	start := strings.Index(doc, `"presentation": {`)
+	end := strings.Index(doc[start:], "\n  }\n}")
+	if start < 0 || end < 0 {
+		t.Fatal("presentation example not found")
+	}
+	if _, err := ParsePresentation(json.RawMessage(doc[start+len(`"presentation": `) : start+end+4])); err != nil {
+		t.Fatalf("documented presentation: %v", err)
+	}
+}
+
 // The view reference lists exactly the implemented blocks, tones, and limits.
 func TestDocsViews(t *testing.T) {
 	doc := readDoc(t, "views.md")

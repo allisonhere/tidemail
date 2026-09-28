@@ -35,6 +35,10 @@ It sees another plugin's annotations only through `query.annotations`, with
 permission. Anything a plugin returns other than annotations is only
 displayed.
 
+> **Annotations are for machines. Presentation is for people.** A plugin can
+> return a short human explanation next to its annotations; TideMail shows it
+> in a result card ([presentation.md](presentation.md)).
+>
 > **Plugins provide semantics. TideMail controls presentation.**
 >
 > Return `category=github` or `urgency=high`. Never `color=purple`,
@@ -54,6 +58,7 @@ displayed.
 | [manifest.md](manifest.md) | `plugin.toml`: every field, where plugins live, discovery rules |
 | [protocol.md](protocol.md) | request/response envelopes, methods, metadata fields, errors, stdout/stderr |
 | [permissions.md](permissions.md) | what each permission allows, and what it does not |
+| [presentation.md](presentation.md) | explaining results to people: title, facts, reasons; the result card and its fallback |
 | [annotations.md](annotations.md) | returning annotations, limits, replace-on-success, conventional keys, reclassification |
 | [events.md](events.md) | `message.received`: automatic processing of new mail |
 | [settings.md](settings.md) | bool/select/secret settings, storage, secrets, `plugin.test` |

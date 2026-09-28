@@ -224,7 +224,7 @@ func TestAutoToggleNeedsConfirmationAndPersists(t *testing.T) {
 	m, _, _ := newEventModel(t, root, 1)
 	m = openPluginList(t, m)
 	view := m.View()
-	for _, want := range []string{"events: message.received", "auto: disabled", "auto on/off"} {
+	for _, want := range []string{"Automatic processing", "Off (a turns it on)", "auto on/off"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("plugin list missing %q", want)
 		}
@@ -251,7 +251,7 @@ func TestAutoToggleNeedsConfirmationAndPersists(t *testing.T) {
 	if err != nil || !saved.PluginAutoEvents("smart") {
 		t.Fatalf("setting not persisted: %v", err)
 	}
-	if view := m.View(); !strings.Contains(view, "auto: enabled") || !strings.Contains(view, "queued: 0") {
+	if view := m.View(); !strings.Contains(view, "Automatic processing  On") || !strings.Contains(view, "Queue 0") {
 		t.Fatal("enabled plugin should show its queue state")
 	}
 
@@ -307,7 +307,7 @@ func TestAutoFailuresPauseVisiblyAndResume(t *testing.T) {
 
 	m = openPluginList(t, m)
 	view := m.View()
-	for _, want := range []string{"auto: paused", "reason: plugin \"smart\" failed", "dropped: 2", "resume"} {
+	for _, want := range []string{"Paused after repeated failures", "Why  plugin \"smart\" failed", "dropped 2", "resume"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("plugin list missing %q", want)
 		}

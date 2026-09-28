@@ -1,5 +1,9 @@
 # Annotations
 
+> Annotations are for machines; a response's optional `presentation` is for
+> people ([presentation.md](presentation.md)). Keep annotation values short
+> identifiers (`newsletter`, `low`), and explain them in the presentation.
+
 Annotations are the only plugin output TideMail keeps. A `message.metadata`
 or `message.received` response attaches them in `data.annotations`:
 

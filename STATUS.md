@@ -68,6 +68,10 @@ Current release: **v1.0.28**.
   `TIDEMAIL_MS_CLIENT_ID` (device-code). XOAUTH2 for IMAP and SMTP; refresh
   token stored in the keychain and rotation-persisted.
 - **Search**, unread-only filtering, command palette, desktop notifications.
+- **Experimental plugins**: manual and automatic metadata classification,
+  stored tags, Needs You, result cards with technical Details, and a host-owned
+  `u` unsubscribe action that uses TideMail's existing confirmed flow without
+  exposing unsubscribe links to plugins.
 - **Settings**: theme, display density, pane corners, pane header bars, modal
   drop shadow, AI provider config, editor, update checks.
 - **Update checker**: GitHub-releases check with checksum-verified self-update,

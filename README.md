@@ -199,7 +199,9 @@ TideMail can run external plugins from
 receive message metadata, never message bodies, and can add annotations such as
 `needs_reply=true` or `category=shipping`. TideMail uses those annotations for
 tags and views such as **Needs You**, while keeping the original plugin output
-inspectable. Report plugins (press `enter` on one in **Plugins
+inspectable. Result cards can offer `u` when TideMail itself finds an
+unsubscribe option; the plugin never receives the link, and TideMail still
+shows its normal confirmation before acting. Report plugins (press `enter` on one in **Plugins
 (experimental)**) can ask TideMail read-only questions, such as message volume
 or category totals, and show the answer; they never see message bodies or get
 database access.

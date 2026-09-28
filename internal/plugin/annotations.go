@@ -150,4 +150,9 @@ type MessageMetadataResult struct {
 	Outcome     AnnotationOutcome
 	// AnnotationErr explains AnnotationsRejected and AnnotationsNotStored.
 	AnnotationErr error
+	// Presentation is the plugin's optional human-facing explanation.
+	// PresentationErr says why a presentation that was sent was ignored;
+	// it never affects the annotations.
+	Presentation    *Presentation
+	PresentationErr error
 }

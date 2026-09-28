@@ -230,3 +230,49 @@ func TestReportPluginValidateAndTest(t *testing.T) {
 		t.Fatalf("missing capability: %d %q", code, out.String())
 	}
 }
+
+func writePresentingPlugin(t *testing.T, presentation string) string {
+	t.Helper()
+	dir := t.TempDir()
+	manifest := "id = \"present\"\nname = \"Present\"\ndescription = \"Explains itself\"\napi = 1\ncommand = \"./run\"\n\n[permissions]\nmessage_metadata = true\nannotations = true\n"
+	if err := os.WriteFile(filepath.Join(dir, "plugin.toml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	script := `#!/bin/sh
+read request
+id=$(printf '%s' "$request" | sed -n 's/.*"request_id":"\([^"]*\)".*/\1/p')
+method=$(printf '%s' "$request" | sed -n 's/.*"method":"\([^"]*\)".*/\1/p')
+if [ "$method" = "ping" ]; then data='{"message":"pong"}'; else data='{"annotations":[{"key":"category","value":"newsletter"}],"presentation":` + presentation + `}'; fi
+printf '{"api":1,"type":"response","request_id":"%s","ok":true,"data":%s}\n' "$id" "$data"
+`
+	if err := os.WriteFile(filepath.Join(dir, "run"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestTestShowsPresentationPreview(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test plugin uses a Unix executable")
+	}
+	dir := writePresentingPlugin(t, `{"title":"This looks like a newsletter","facts":[{"label":"Type","value":"Newsletter"}],"reasons":["Matches list patterns"]}`)
+	var out, errOut bytes.Buffer
+	if code := Run([]string{"test", "--verbose", dir}, &out, &errOut); code != 0 {
+		t.Fatalf("test: %d %q %q", code, out.String(), errOut.String())
+	}
+	for _, want := range []string{"Presentation preview", "Title: This looks like a newsletter", "Type: Newsletter", "• Matches list patterns", "Raw response data:"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("output lacks %q:\n%s", want, out.String())
+		}
+	}
+	// A bad presentation is a warning, never a failure.
+	bad := writePresentingPlugin(t, `{"title":"x","status":"purple"}`)
+	out.Reset()
+	if code := Run([]string{"test", bad}, &out, &errOut); code != 0 || !strings.Contains(out.String(), "! presentation ignored: presentation status") {
+		t.Fatalf("bad presentation: %d %q", code, out.String())
+	}
+	out.Reset()
+	if code := Run([]string{"test", "--json", bad}, &out, &errOut); code != 0 || !strings.Contains(out.String(), `"warning":"presentation ignored`) {
+		t.Fatalf("json warning: %d %q", code, out.String())
+	}
+}

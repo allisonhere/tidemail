@@ -21,6 +21,7 @@ type KeyMap struct {
 	MarkRead        key.Binding
 	NeedsYouDismiss key.Binding
 	Snooze          key.Binding
+	RunPlugin       key.Binding
 	MarkAllRead     key.Binding
 	ToggleStar      key.Binding
 	OpenBrowser     key.Binding
@@ -110,7 +111,9 @@ var DefaultKeys = KeyMap{
 	NeedsYouDismiss: key.NewBinding(key.WithKeys("X"), key.WithHelp("X", "dismiss / stop waiting")),
 	// Snooze hides messages or waiting conversations from the attention
 	// views until later (in Snoozed it unsnoozes). z is quoted-text toggling.
-	Snooze:        key.NewBinding(key.WithKeys("Z"), key.WithHelp("Z", "snooze")),
+	Snooze: key.NewBinding(key.WithKeys("Z"), key.WithHelp("Z", "snooze")),
+	// RunPlugin picks a plugin to run on the current message or selection.
+	RunPlugin:     key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "run plugin")),
 	MarkAllRead:   key.NewBinding(key.WithKeys("R", "ctrl+x"), key.WithHelp("R/ctrl+x", "mark all read")),
 	ToggleStar:    key.NewBinding(key.WithKeys("*"), key.WithHelp("*", "star")),
 	OpenBrowser:   key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser")),

@@ -103,6 +103,15 @@ plus `in_reply_to`, `references`, `read`, `starred`, `has_attachment`, and
 in the first account's first folder. `validate` lists the declared permissions
 and capabilities, in both human and `--json` output.
 
+### Presentation preview
+
+When a metadata response carries a `presentation`, `plugin test` prints what
+the result card will say (title, summary, facts, reasons, confidence). An
+invalid presentation is reported as a warning (`! presentation ignored: …`,
+and `"warning"` in `--json` output) but never fails the test, as TideMail
+keeps the annotations and drops only the presentation. `--verbose` also
+prints the raw response JSON.
+
 `--timeout` accepts a positive duration up to one minute. `--verbose` adds
 elapsed times and sanitized diagnostics. Both human and JSON test failures
 return exit code 1; usage/input errors return 2.

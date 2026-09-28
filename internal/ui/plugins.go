@@ -45,6 +45,9 @@ type pluginUI struct {
 
 	// running is the ID of the plugin in flight; one run at a time.
 	running string
+	// last is the plugin most recently run by hand this session, for
+	// "Run … again".
+	last string
 
 	picker       []plugin.Plugin
 	pickerCursor int
@@ -104,6 +107,14 @@ type pluginResult struct {
 	body    string
 	// view is a report's structured view, drawn instead of body.
 	view *plugin.View
+	// card is the human-facing result, shown by default; details the raw
+	// record shown with d. showDetails toggles between them.
+	card        *resultCard
+	details     []string
+	showDetails bool
+	// message is TideMail's own source message for host-owned card actions.
+	// It is never sent to the plugin.
+	message *db.Message
 	// annotationNote says what happened to the response's annotations.
 	annotationNote string
 }
@@ -124,6 +135,9 @@ type pluginResultMsg struct {
 	// both read; Changed then says whether this plugin's set differs.
 	Compared bool
 	Changed  bool
+	// Source is TideMail's snapshot of the message at the start of a manual
+	// single-message run. It is never part of the plugin request.
+	Source *db.Message
 }
 
 // LoadPlugins discovers plugins in the config directory. Failure is never
@@ -181,6 +195,11 @@ func (m Model) pluginCommandItems(hasMessage bool) []commandItem {
 			commandItem{id: "plugins", label: "Plugins (experimental)", enabled: true},
 			commandItem{id: "plugin-run", label: m.pluginRunLabel(), enabled: hasMessage || m.contentMessageID != 0},
 		)
+		if p, ok := m.plugins.manager.Plugin(m.plugins.last); ok && p.Manifest.Permissions.MessageMetadata {
+			items = append(items, commandItem{id: "plugin-run-last",
+				label:   "Run " + sanitizePluginLine(p.Manifest.Name) + " again" + strings.TrimPrefix(m.pluginRunLabel(), "Run plugin"),
+				enabled: hasMessage || m.contentMessageID != 0})
+		}
 		// The explicit whole-view scope (plugin_bulk.go).
 		if n := len(m.viewTargets()); n > 0 {
 			items = append(items, commandItem{
@@ -213,6 +232,17 @@ func (m Model) executePluginCommand(id string) (tea.Model, tea.Cmd) {
 	case "plugin-run":
 		targets := m.pluginTargets()
 		return m.openPluginPicker(targets, reclassifyScope{label: m.contextScope(len(targets))})
+	case "plugin-run-last":
+		p, ok := m.plugins.manager.Plugin(m.plugins.last)
+		if !ok {
+			return m, nil
+		}
+		targets := m.pluginTargets()
+		next, cmd := m.openPluginPicker(targets, reclassifyScope{label: m.contextScope(len(targets))})
+		if mm, isModel := next.(Model); isModel && mm.overlay == overlayPluginPicker {
+			return mm.startPluginRun(p) // same flow and confirmation, no picker
+		}
+		return next, cmd
 	case "plugin-reclassify-view":
 		targets := m.viewTargets()
 		return m.openPluginPicker(targets, reclassifyScope{label: m.viewScopeLabel(len(targets)), view: true})
@@ -324,7 +354,12 @@ func (m Model) pluginMessageMetadata(msg db.Message) plugin.MessageMetadata {
 // runPluginCmd runs the plugin off the Update loop. It captures only the
 // manager, database, context, and a copy of the metadata, never the Model.
 // Annotation storage happens here too, so Update never waits on SQLite.
-func runPluginCmd(ctx context.Context, mgr *plugin.Manager, database *db.DB, pluginID string, meta plugin.MessageMetadata) tea.Cmd {
+func runPluginCmd(ctx context.Context, mgr *plugin.Manager, database *db.DB, pluginID string, meta plugin.MessageMetadata, source *db.Message) tea.Cmd {
+	var sourceCopy *db.Message
+	if source != nil {
+		copy := *source
+		sourceCopy = &copy
+	}
 	return func() tea.Msg {
 		start := time.Now()
 		var store plugin.AnnotationStore
@@ -347,6 +382,7 @@ func runPluginCmd(ctx context.Context, mgr *plugin.Manager, database *db.DB, plu
 			Result:    result,
 			Err:       err,
 			Elapsed:   time.Since(start),
+			Source:    sourceCopy,
 		}
 		switch {
 		case err != nil:
@@ -369,9 +405,23 @@ func (m Model) handlePluginResult(msg pluginResultMsg) (tea.Model, tea.Cmd) {
 	if m.plugins.running == msg.PluginID {
 		m.plugins.running = ""
 	}
+	source := msg.Source
+	if source == nil {
+		source = m.pluginResultMessage(msg.MessageID)
+	}
 	if msg.Err != nil {
 		// A failed run stored nothing, so the cached badges stay as they are.
-		m.setStatus(sanitizePluginLine(msg.Err.Error()), true)
+		name := m.pluginDisplayName(msg.PluginID)
+		card := finishMessageCard(errorCard(name, msg.Err), source)
+		m.plugins.result = &pluginResult{pluginID: msg.PluginID, pluginName: name,
+			subject: sanitizePluginLine(msg.Subject), card: &card, details: m.messageDetails(msg), message: source}
+		if m.overlay == overlayNone || m.overlay == overlayPlugins {
+			m.plugins.scroll = 0
+			m.overlay = overlayPluginResult
+			m.setStatus(card.title, true)
+		} else {
+			m.setStatus(card.title+"; open Plugins to view the result", true)
+		}
 		return m, m.clearStatusCmd()
 	}
 	if msg.RefreshedOK {
@@ -392,12 +442,16 @@ func (m Model) handlePluginResult(msg pluginResultMsg) (tea.Model, tea.Cmd) {
 	if change := changeNote(msg); change != "" {
 		note = strings.TrimPrefix(note+"; "+change, "; ")
 	}
+	card := messageCard(sanitizePluginLine(name), msg, source)
 	m.plugins.result = &pluginResult{
 		pluginID:       msg.PluginID,
 		pluginName:     sanitizePluginLine(name),
 		subject:        sanitizePluginLine(msg.Subject),
 		body:           formatPluginData(msg.Result.Response.Data),
 		annotationNote: note,
+		card:           &card,
+		details:        m.messageDetails(msg),
+		message:        source,
 	}
 	elapsed := msg.Elapsed.Round(time.Millisecond)
 	status := fmt.Sprintf("plugin %s completed (%v)", msg.PluginID, elapsed)
@@ -469,8 +523,14 @@ func (m Model) handlePluginKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handlePluginSettingsKey(msg)
 	case overlayPluginResult:
 		switch {
-		case keyMatches(msg, m.keys.Cancel, m.keys.Back):
+		case msg.String() == "u" && m.plugins.result != nil && m.plugins.result.message != nil &&
+			messageUnsubscribeTarget(*m.plugins.result.message) != "":
+			return m.handleUnsubscribe(*m.plugins.result.message)
+		case keyMatches(msg, m.keys.Cancel, m.keys.Back, m.keys.Confirm):
 			m.overlay = overlayNone
+			m.plugins.scroll = 0
+		case msg.String() == "d" && m.plugins.result != nil && len(m.plugins.result.details) > 0:
+			m.plugins.result.showDetails = !m.plugins.result.showDetails
 			m.plugins.scroll = 0
 		case keyMatches(msg, m.keys.Up):
 			m.plugins.scroll = max(0, m.plugins.scroll-1)
@@ -510,8 +570,24 @@ func (m Model) renderPluginOverlay() string {
 	case overlayPluginPicker:
 		inner, title = m.renderPluginPicker(winW, winH, chrome), "run plugin"
 	case overlayPluginResult:
-		inner = m.renderPluginScroll(m.pluginResultLines(winW-4, chrome), winW, winH, chrome, "↑↓", "scroll", "esc", "close")
+		var pairs []string
+		if r := m.plugins.result; r != nil && r.card != nil && r.card.canUnsubscribe {
+			pairs = append(pairs, "u", "unsubscribe")
+		}
+		pairs = append(pairs, "enter", "done")
+		if r := m.plugins.result; r != nil && len(r.details) > 0 {
+			if r.showDetails {
+				pairs = append(pairs, "d", "summary")
+			} else {
+				pairs = append(pairs, "d", "details")
+			}
+		}
+		pairs = append(pairs, "↑↓", "scroll", "esc", "close")
+		inner = m.renderPluginScroll(m.pluginResultLines(winW-4, chrome), winW, winH, chrome, pairs...)
 		title = "plugin result"
+		if r := m.plugins.result; r != nil && r.card != nil {
+			title = r.pluginName
+		}
 	case overlayPluginConfirm:
 		return m.renderPluginConfirm()
 	case overlayPluginSettings:
@@ -558,6 +634,32 @@ func (m Model) renderPluginOverlay() string {
 	return renderSoftPanelBox(inner, winW, "tidemail", title, chrome)
 }
 
+// pluginResultMessage snapshots the exact cached message a manual plugin run
+// described. The snapshot keeps a later card action tied to that message even
+// if the list selection moves.
+func (m Model) pluginResultMessage(messageID int64) *db.Message {
+	if messageID <= 0 {
+		return nil
+	}
+	if msg := m.commandMessage(); msg != nil && msg.ID == messageID {
+		copy := *msg
+		return &copy
+	}
+	for i := range m.filteredMessages {
+		if m.filteredMessages[i].ID == messageID {
+			copy := m.filteredMessages[i]
+			return &copy
+		}
+	}
+	for i := range m.messages {
+		if m.messages[i].ID == messageID {
+			copy := m.messages[i]
+			return &copy
+		}
+	}
+	return nil
+}
+
 // pluginMaxScroll is the largest useful scroll offset for the list or result
 // overlay at the current size.
 func (m Model) pluginMaxScroll() int {
@@ -593,10 +695,18 @@ func (m Model) renderPluginPicker(width, height int, chrome managerChrome) strin
 	listH := max(1, height-len(header)-2)
 	start := max(0, m.plugins.pickerCursor-listH+1)
 	end := min(start+listH, len(m.plugins.picker))
+	nameW := 0
+	for _, p := range m.plugins.picker {
+		nameW = max(nameW, lipgloss.Width(sanitizePluginLine(p.Manifest.Name)))
+	}
+	nameW = min(nameW, max(8, labelW/2))
 	for i := start; i < end; i++ {
 		p := m.plugins.picker[i]
-		label := sanitizePluginLine(p.Manifest.Name) + "  (" + p.Manifest.ID + ")"
-		cell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Render(" " + truncate(label, max(1, labelW-1)))
+		name := padRight(truncate(sanitizePluginLine(p.Manifest.Name), nameW), nameW)
+		cell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Render(" " + name)
+		if desc := sanitizePluginLine(p.Manifest.Description); desc != "" {
+			cell += lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render("  " + truncate(desc, max(1, labelW-nameW-3)))
+		}
 		rows = append(rows, softRail(chrome, i == m.plugins.pickerCursor, chrome.baseBg)+padStyled(cell, labelW, chrome.baseBg))
 	}
 	for len(rows) < height-1 {
@@ -651,25 +761,24 @@ func (m Model) pluginListLines(width int, chrome managerChrome) ([]string, []int
 	railFor := func(i int) string { return softRail(chrome, i == m.plugins.listCursor, chrome.baseBg) }
 	countLine := func(n int64) {
 		if m.plugins.countsLoaded {
-			add(muted, fmt.Sprintf("stored annotations: %d", n), true, "")
+			add(muted, fmt.Sprintf("Stored tags  %d", n), true, "")
 		}
 	}
 	i := 0
 	for _, p := range mgr.Plugins() {
 		man := p.Manifest
 		starts[i] = len(lines)
-		add(okStyle, aiConnectionStatusGlyph(plain, aiConnectionSuccess)+" "+man.ID, false, railFor(i))
-		add(text, sanitizePluginLine(man.Name), true, "")
-		version := sanitizePluginLine(man.Version)
-		if version == "" {
-			version = "?"
+		add(okStyle, aiConnectionStatusGlyph(plain, aiConnectionSuccess)+" "+sanitizePluginLine(man.Name), false, railFor(i))
+		if desc := sanitizePluginLine(man.Description); desc != "" {
+			add(text, desc, true, "")
 		}
-		add(muted, fmt.Sprintf("v%s%sAPI %d", version, m.styles.InlineMidDot(), man.API), true, "")
-		perms := strings.Join(man.Permissions.Names(), ", ")
-		if perms == "" {
-			perms = "none"
+		if version := sanitizePluginLine(man.Version); version != "" {
+			add(muted, "Version "+version, true, "")
 		}
-		add(muted, "permissions: "+perms, true, "")
+		add(muted, "Permissions", true, "")
+		for _, item := range permissionChecklist(man.Permissions, plain) {
+			add(muted, "  "+item, true, "")
+		}
 		for _, l := range m.pluginEventLines(man.ID) {
 			add(muted, l, true, "")
 		}
@@ -709,6 +818,20 @@ func (m Model) pluginResultLines(bodyW int, chrome managerChrome) []string {
 	res := m.plugins.result
 	if res == nil {
 		return []string{base.Foreground(chrome.muted).Render("no result")}
+	}
+	if res.showDetails && len(res.details) > 0 {
+		var lines []string
+		for _, l := range res.details {
+			// sanitizePluginText keeps indentation; fields were sanitized as the
+			// details were built.
+			for _, part := range strings.Split(ansi.Wrap(strings.ReplaceAll(sanitizePluginText(l), "\n", " "), bodyW, ""), "\n") {
+				lines = append(lines, base.Foreground(chrome.text).Render(part))
+			}
+		}
+		return lines
+	}
+	if res.card != nil {
+		return m.cardLines(*res.card, bodyW, chrome)
 	}
 	var lines []string
 	lines = append(lines,
@@ -958,4 +1081,35 @@ func (m Model) pickerTargetLine() string {
 		return fmt.Sprintf("Run plugin on %d messages", len(metas))
 	}
 	return ""
+}
+
+// permissionChecklist spells out a plugin's permissions in plain words, one
+// per line: the four basics always, read-only query permissions when granted.
+func permissionChecklist(p plugin.Permissions, plain bool) []string {
+	yes, no := "✓ ", "✗ "
+	if plain {
+		yes, no = "+ ", "- "
+	}
+	mark := func(on bool, label string) string {
+		if on {
+			return yes + label
+		}
+		return no + label
+	}
+	items := []string{
+		mark(p.MessageMetadata, "Message details (sender, subject, date)"),
+		mark(p.Annotations, "Save tags"),
+		mark(p.MessageBody, "Message body"),
+		mark(p.Network, "Network"),
+	}
+	for _, q := range []struct {
+		on    bool
+		label string
+	}{{p.MessagesQuery, "Read message lists"}, {p.ThreadsQuery, "Read conversations"},
+		{p.AnnotationsQuery, "Read stored tags"}, {p.AnalyticsRead, "Read statistics"}} {
+		if q.on {
+			items = append(items, yes+q.label)
+		}
+	}
+	return items
 }

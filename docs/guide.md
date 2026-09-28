@@ -524,11 +524,24 @@ Plugins receive a message's sender, recipients, subject, date, and flags, never
 its body, and they never change your mail.
 
 **Run plugin** runs a plugin you choose on mail, whether or not it has already
-been classified—for example after
-updating a plugin or changing its settings. You pick the plugin once:
+been classified, for example after updating a plugin or changing its settings.
+Press `p` in the message list or reader, or use the command palette. The
+picker lists each plugin by name with a short description of what it does;
+you pick once:
 
-- **Run plugin on current message…** runs it on the message you are on, and
-  shows the plugin's reply.
+- **Run plugin on current message…** runs it on the message you are on and
+  opens a result card that explains what the plugin found in plain words:
+  for example **Newsletter · low priority**, followed by a short **Why**.
+  Type, priority, confidence, raw tags, and technical information live under
+  `d` **Details**; press `d` again to go back and `Enter` or `Esc` to close.
+  When TideMail itself finds an unsubscribe option in the message, the card
+  says **Available — press u**. `u` uses the same safe flow as `Ctrl+U` in the
+  reader: TideMail shows the destination and requires confirmation before a
+  web unsubscribe, or opens a prefilled unsubscribe draft for email links.
+  Otherwise the card says **No unsubscribe option**. The plugin never receives
+  the unsubscribe link and cannot unsubscribe on its own. If the plugin found
+  nothing new, the card says **No changes**; if it failed or took too long, the
+  card says so in plain words, with the technical reason under Details.
 - With messages selected (`Space`), the same command reads **Run plugin on N
   selected messages…** and runs on the selection (asking first for 10 or
   more).
@@ -537,10 +550,14 @@ updating a plugin or changing its settings. You pick the plugin once:
   message the list currently shows. It always asks first, with the count.
   Only mail already in TideMail's cache is used; nothing is downloaded.
 
+After you have run a plugin, the palette also offers **Run *name* again**, which
+skips the picker.
+
 Several messages run one at a time, with progress on the status line
-(`running on 312 messages in Inbox… 87 / 312`), and end with one summary:
-how many succeeded and failed, and how many messages' classifications changed
-or stayed the same. A failing message does not stop the run, and its earlier
+(`running on 312 messages in Inbox… 87 / 312`), and end with one summary card:
+how many were processed, changed, unchanged, or failed, and what the plugin
+found (for example **Newsletter 9**, **Automated sender 2**). Failure reasons
+are under Details. A failing message does not stop the run, and its earlier
 annotations are kept. **Cancel plugin run** in the palette stops a run; quitting
 TideMail stops it too. The run works whether or not the plugin processes new
 mail automatically, and does not affect that.
@@ -605,6 +622,11 @@ failures, last success, last failure, and a sanitized last error when those
 values exist. Three consecutive automatic failures pause that plugin; press
 `r` on it to resume. Manual **Run plugin** actions remain available while
 automatic processing is paused.
+
+Each plugin's entry in **Plugins (experimental)** reads like a short product
+page: its name and description, its permissions as a checklist in plain words
+(✓ Message details, ✓ Save tags, ✗ Message body, ✗ Network), and whether
+**Automatic processing** is on.
 
 Automatic processing is off for every plugin until you enable it. A plugin that
 fails three times in a row is paused; select it and press `r` to resume.

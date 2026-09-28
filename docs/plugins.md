@@ -38,6 +38,7 @@ The developer documentation is in [`docs/plugins/`](plugins/README.md):
 | [manifest](plugins/manifest.md) | `plugin.toml` fields and discovery |
 | [protocol](plugins/protocol.md) | envelopes, methods, metadata, stdout/stderr |
 | [permissions](plugins/permissions.md) | what each permission allows |
+| [presentation](plugins/presentation.md) | explaining results to people |
 | [annotations](plugins/annotations.md) | limits, replace-on-success, conventional keys, reclassification |
 | [events](plugins/events.md) | `message.received` for new mail |
 | [settings](plugins/settings.md) | bool/select/secret settings and `plugin.test` |

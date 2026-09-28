@@ -281,6 +281,7 @@ func (m *Manager) runMetadata(ctx context.Context, pluginID, method string, meta
 	}
 
 	result := MessageMetadataResult{Response: resp}
+	result.Presentation, result.PresentationErr = ExtractPresentation(resp.Data)
 	anns, parseErr := ParseAnnotations(resp.Data)
 	switch {
 	case !p.Manifest.Permissions.Annotations:
