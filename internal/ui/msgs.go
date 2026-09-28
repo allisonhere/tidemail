@@ -145,6 +145,18 @@ type MessageReadUpdatedMsg struct {
 	Err       error
 }
 
+type MessageReadBatchEntry struct {
+	MessageID int64
+	MailboxID int64
+	WasRead   bool
+	Read      bool
+}
+
+type MessageReadBatchUpdatedMsg struct {
+	Entries []MessageReadBatchEntry
+	Err     error
+}
+
 type MessageStarredUpdatedMsg struct {
 	MessageID int64
 	MailboxID int64
@@ -288,6 +300,11 @@ type SummarySavedMsg struct {
 }
 
 type ClipboardCopiedMsg struct {
+	Err error
+}
+
+type BrowserOpenedMsg struct {
+	URL string
 	Err error
 }
 

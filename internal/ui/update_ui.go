@@ -2,11 +2,10 @@ package ui
 
 import (
 	"os"
-	"os/exec"
-	"runtime"
 	"strings"
 	"time"
 
+	"github.com/allisonhere/tidemail/internal/browser"
 	"github.com/allisonhere/tidemail/internal/update"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -112,22 +111,12 @@ func (m Model) finalizeUpdateInstall() (Model, tea.Cmd) {
 	return m, nil
 }
 
+var browserOpen = browser.Open
+
 func (m Model) openBrowserCmd(url string) tea.Cmd {
-	browser := m.cfg.Display.Browser
+	configured := m.cfg.Display.Browser
 	return func() tea.Msg {
-		var cmd *exec.Cmd
-		if browser != "" {
-			cmd = exec.Command(browser, url)
-		} else {
-			switch runtime.GOOS {
-			case "darwin":
-				cmd = exec.Command("open", url)
-			default:
-				cmd = exec.Command("xdg-open", url)
-			}
-		}
-		_ = cmd.Start()
-		return nil
+		return BrowserOpenedMsg{URL: url, Err: browserOpen(configured, url)}
 	}
 }
 

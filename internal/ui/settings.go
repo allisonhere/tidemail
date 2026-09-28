@@ -60,6 +60,7 @@ const (
 	sfUpdateDismissVersion
 	sfUpdateRestartNow
 	sfAboutHeart
+	sfAboutSupport
 	sfAboutRepo
 	sfAboutIssues
 	sfViewLogs
@@ -88,6 +89,8 @@ const (
 	// sfBackToSections is the first focusable target in the detail pane.
 	// Activating it restores focus to the sidebar so users never auto-land on a text input.
 	sfBackToSections
+	// Support action fields are allocated in open/copy pairs from this base.
+	sfSupportActionBase
 )
 
 type settingsSection int
@@ -98,6 +101,7 @@ const (
 	ssUpdates
 	ssAI
 	ssAdvanced
+	ssSupport
 	ssAbout
 	settingsSectionCount
 )
@@ -123,21 +127,27 @@ const (
 	settingsActionPluginSettings
 	settingsActionCopyManualInstall
 	settingsActionTagColors
+	settingsActionOpenSupport
+	settingsActionCopySupport
 )
 
 const (
-	tideRepoURL              = "https://github.com/allisonhere/tidemail"
-	tideIssuesURL            = tideRepoURL + "/issues"
-	settingsAboutPulsePeriod = 120 * time.Millisecond
-	settingsAboutTwoColMinW  = 56
-	settingsAboutCardGap     = 2
-	settingsAboutFrameReset  = 4096
-	settingsAboutRevealStart = 8
-	settingsAboutRevealEnd   = 28
-	settingsAboutRevealTotal = 40
+	tideRepoURL                = "https://github.com/allisonhere/tidemail"
+	tideIssuesURL              = tideRepoURL + "/issues"
+	settingsAboutPulsePeriod   = 120 * time.Millisecond
+	settingsSupportPulsePeriod = 240 * time.Millisecond
+	supportPacmanYellow        = lipgloss.Color("#f2cf45")
+	settingsAboutTwoColMinW    = 56
+	settingsAboutCardGap       = 2
+	settingsAboutFrameReset    = 4096
+	settingsAboutRevealStart   = 8
+	settingsAboutRevealEnd     = 28
+	settingsAboutRevealTotal   = 40
 )
 
 type settingsAboutPulseMsg struct{}
+
+type settingsSupportPulseMsg struct{}
 
 type settingsUpdateState struct {
 	currentVersion   string
@@ -179,6 +189,7 @@ var (
 		"UPDATES",
 		"AI",
 		"ADVANCED",
+		"SUPPORT",
 		"ABOUT",
 	}
 )
@@ -276,6 +287,7 @@ type Settings struct {
 	updateCheckOnStartup  bool
 	update                settingsUpdateState
 	action                settingsAction
+	supportLinkIndex      int
 
 	// AI
 	providerIdx         int
@@ -302,6 +314,7 @@ type Settings struct {
 	aboutGradientFrame int
 	aboutRevealFrame   int
 	aboutRevealActive  bool
+	supportPulseFrame  int
 	aiValidatePending  bool
 	aiTestError        string
 	aiTestOk           bool
@@ -407,6 +420,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 			ssUpdates:  sfBackToSections,
 			ssAI:       sfBackToSections,
 			ssAdvanced: sfBackToSections,
+			ssSupport:  supportOpenField(0),
 			ssAbout:    sfBackToSections,
 		},
 		focusedField: sfBackToSections,
@@ -556,6 +570,8 @@ func (s *Settings) setFocusedPane(pane settingsPaneFocus) {
 		field := sfBackToSections
 		if s.activeSection == ssAI && s.providerIdx >= 1 && s.providerIdx <= 3 {
 			field = sfAPIKey
+		} else if s.activeSection == ssSupport && len(supportLinks) > 0 {
+			field = supportOpenField(0)
 		}
 		s.focusedField = field
 		s.sectionField[s.activeSection] = field
@@ -572,6 +588,9 @@ func (s *Settings) setActiveSection(section settingsSection) {
 		s.aboutGradientFrame = 0
 		s.aboutRevealFrame = 0
 		s.aboutRevealActive = false
+	}
+	if section != ssSupport {
+		s.supportPulseFrame = 0
 	}
 	s.ensureSectionFieldVisible(section)
 	s.focusedField = s.sectionField[section]
@@ -732,12 +751,34 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 			fields = append(fields, sfPluginSettings)
 		}
 		return append(fields, sfFeedMaxBody)
+	case ssSupport:
+		fields := make([]settingsField, 0, len(supportLinks)*2)
+		for i := range supportLinks {
+			fields = append(fields, supportOpenField(i), supportCopyField(i))
+		}
+		return fields
 
 	case ssAbout:
-		return []settingsField{sfBackToSections, sfAboutHeart, sfAboutRepo, sfAboutIssues}
+		return []settingsField{sfBackToSections, sfAboutHeart, sfAboutSupport, sfAboutRepo, sfAboutIssues}
 	default:
 		return nil
 	}
+}
+
+func supportOpenField(index int) settingsField {
+	return sfSupportActionBase + settingsField(index*2)
+}
+
+func supportCopyField(index int) settingsField {
+	return supportOpenField(index) + 1
+}
+
+func supportField(field settingsField) (index int, copyLink bool, ok bool) {
+	offset := int(field - sfSupportActionBase)
+	if offset < 0 || offset >= len(supportLinks)*2 {
+		return 0, false, false
+	}
+	return offset / 2, offset%2 == 1, true
 }
 
 func settingsActionURL(action settingsAction) string {
@@ -762,6 +803,26 @@ func (s Settings) aboutPulseCmd() tea.Cmd {
 		return nil
 	}
 	return settingsAboutPulseCmd()
+}
+
+func settingsSupportPulseCmd() tea.Cmd {
+	return tea.Tick(settingsSupportPulsePeriod, func(time.Time) tea.Msg {
+		return settingsSupportPulseMsg{}
+	})
+}
+
+func (s Settings) supportPulseCmd() tea.Cmd {
+	if s.activeSection != ssSupport {
+		return nil
+	}
+	return settingsSupportPulseCmd()
+}
+
+func (s Settings) decorativePulseCmd() tea.Cmd {
+	if s.activeSection == ssAbout {
+		return s.aboutPulseCmd()
+	}
+	return s.supportPulseCmd()
 }
 
 func (s Settings) nextField() settingsField {
@@ -953,6 +1014,13 @@ func (s Settings) isPickerField() bool {
 // ── Update ────────────────────────────────────────────────────────────────────
 
 func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
+	if _, ok := msg.(settingsSupportPulseMsg); ok {
+		if s.activeSection != ssSupport {
+			return s, nil, false
+		}
+		s.supportPulseFrame++
+		return s, settingsSupportPulseCmd(), false
+	}
 	if _, ok := msg.(settingsAboutPulseMsg); ok {
 		if s.activeSection != ssAbout {
 			s.aboutGradientFrame = 0
@@ -1026,10 +1094,10 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 		switch {
 		case keyMatches(key, keys.Up):
 			s.setActiveSection(s.prevSection())
-			return s, s.aboutPulseCmd(), false
+			return s, s.decorativePulseCmd(), false
 		case keyMatches(key, keys.Down):
 			s.setActiveSection(s.nextSection())
-			return s, s.aboutPulseCmd(), false
+			return s, s.decorativePulseCmd(), false
 		case keyMatches(key, keys.Right), keyMatches(key, keys.Enter), keyMatches(key, keys.Tab):
 			s.setFocusedPane(settingsPaneDetail)
 			return s, nil, false
@@ -1063,6 +1131,26 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 	}
 
 	// Field-specific handling.
+	if linkIndex, copyLink, ok := supportField(s.focusedField); ok {
+		switch {
+		case key.String() == "ctrl+c":
+			s.supportLinkIndex = linkIndex
+			s.action = settingsActionCopySupport
+		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter):
+			s.supportLinkIndex = linkIndex
+			if copyLink {
+				s.action = settingsActionCopySupport
+			} else {
+				s.action = settingsActionOpenSupport
+			}
+		case keyMatches(key, keys.Down):
+			s.setFocusedField(s.nextField())
+		case keyMatches(key, keys.Up):
+			s.setFocusedField(s.prevField())
+		}
+		return s, nil, false
+	}
+
 	switch s.focusedField {
 	case sfBackToSections:
 		switch {
@@ -1419,6 +1507,20 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfAboutSupport:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.setActiveSection(ssSupport)
+			s.setFocusedPane(settingsPaneDetail)
+			if len(supportLinks) > 0 {
+				s.setFocusedField(supportOpenField(0))
+			}
+			return s, s.supportPulseCmd(), false
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfAboutHeart:
 		switch {
 		case key.Type == tea.KeySpace || key.Type == tea.KeyEnter || keyMatches(key, keys.Space) || keyMatches(key, keys.Enter):
@@ -1639,6 +1741,13 @@ func (s Settings) viewSectionsPane(width, height int, chrome managerChrome) stri
 }
 
 func (s *Settings) viewSectionPane(width, height int, chrome managerChrome) string {
+	if s.activeSection == ssSupport || s.activeSection == ssAbout {
+		s.detailHeight = height
+		body := s.viewSectionBody(width, chrome)
+		paneBg := s.sectionDetailBg(chrome)
+		return lipgloss.NewStyle().Width(width).Height(height).Background(paneBg).
+			Render(s.scrollSectionBody(body, width, height, paneBg))
+	}
 	s.detailHeight = height - 2 // title row + gap
 	title := titleCaseSectionLabel(settingsSectionLabels[s.activeSection])
 	body := s.viewSectionBody(width, chrome)
@@ -1691,6 +1800,9 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		body := s.renderAboutSection(width, chrome)
 		body = s.prependBackLink(body, width, chrome)
 		return body
+	}
+	if s.activeSection == ssSupport {
+		return s.renderSupportSection(width, chrome)
 	}
 
 	b := newSettingsFormBuilder(s, width, chrome)
@@ -1814,6 +1926,230 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 	}
 
 	return b.body
+}
+
+// renderSupportSection stretches the dotted frame through the detail pane and
+// carries the existing form anchors through the added spacing for keyboard focus.
+func (s Settings) renderSupportSection(width int, chrome managerChrome) settingsSectionBody {
+	dot := "·"
+	plain := chrome.plainUI || ThemeUsesASCII(s.themeName)
+	if plain {
+		dot = "."
+	}
+	coffee := "☕"
+	if plain {
+		coffee = "[_]"
+	}
+	sideW := max(2, lipgloss.Width(coffee))
+	if width < sideW*2+8 {
+		b := newSettingsFormBuilder(s, width, chrome)
+		b.addSupportSection()
+		return b.body
+	}
+
+	innerW := width - sideW*2
+	b := newSettingsFormBuilder(s, innerW, chrome)
+	gaps := b.addSupportSection()
+	available := max(0, s.detailHeight)
+	extra := max(0, available-len(b.body.lines)-2) // top and bottom border
+	spacers := make(map[int]int, len(gaps))
+	for i, row := range gaps {
+		spacers[row] = extra / len(gaps)
+		if i < extra%len(gaps) {
+			spacers[row]++
+		}
+	}
+	content := make([]string, 0, len(b.body.lines)+extra)
+	for row, line := range b.body.lines {
+		content = append(content, line)
+		for range spacers[row] {
+			content = append(content, b.blank)
+		}
+	}
+	frame := make([]string, 0, len(content)+2)
+	for row := 0; row < len(content)+2; row++ {
+		inner := ""
+		if row > 0 && row <= len(content) {
+			inner = content[row-1]
+		}
+		frame = append(frame, s.renderSupportFrameRow(width, len(content)+2, sideW, row, inner, dot, plain, chrome))
+	}
+
+	anchors := make(map[settingsField]int, len(b.body.anchors))
+	for field, row := range b.body.anchors {
+		shift := 0
+		for gapRow, count := range spacers {
+			if gapRow < row {
+				shift += count
+			}
+		}
+		anchors[field] = 1 + row + shift // top border and added spacing
+	}
+	return settingsSectionBody{lines: frame, anchors: anchors}
+}
+
+type supportBorderPoint struct {
+	row, col, direction int
+}
+
+// supportBorderPointAt walks clockwise around the frame. Each position has
+// enough horizontal room for the coffee cup, including on the vertical sides.
+func supportBorderPointAt(step, width, height, sideW int) supportBorderPoint {
+	topLen := width - sideW + 1
+	sideLen := height - 2
+	period := 2 * (topLen + sideLen)
+	step %= period
+	switch {
+	case step < topLen:
+		return supportBorderPoint{0, step, 0} // right
+	case step < topLen+sideLen:
+		return supportBorderPoint{1 + step - topLen, width - sideW, 1} // down
+	case step < topLen*2+sideLen:
+		return supportBorderPoint{height - 1, width - sideW - (step - topLen - sideLen), 2} // left
+	default:
+		return supportBorderPoint{height - 2 - (step - topLen*2 - sideLen), 0, 3} // up
+	}
+}
+
+func (s Settings) renderSupportFrameRow(width, height, sideW, row int, inner, dot string, plain bool, chrome managerChrome) string {
+	bg := chrome.baseBg
+	dotStyle := lipgloss.NewStyle().Background(bg).Foreground(readableText(lipgloss.Color("#ffffff"), bg, 3))
+	pacStyle := lipgloss.NewStyle().Background(bg).Foreground(accentReadableOn(supportPacmanYellow, bg, 3))
+	coffeeStyle := lipgloss.NewStyle().Background(bg)
+	period := 2 * (width - sideW + 1 + height - 2)
+	pacStep := s.supportPulseFrame % period
+	gap := min(8, period/3)
+	pac := supportBorderPointAt(pacStep, width, height, sideW)
+	cup := supportBorderPointAt((pacStep+gap)%period, width, height, sideW)
+	pacGlyphs := [...]string{"𜱭", "𜱮", "𜱫", "𜱬"}
+	pacGlyph, cupGlyph := pacGlyphs[pac.direction], "☕"
+	if plain {
+		pacGlyph, cupGlyph = "C", "[_]"
+	}
+	type sprite struct {
+		col   int
+		glyph string
+		style lipgloss.Style
+	}
+	sprites := make([]sprite, 0, 2)
+	if pac.row == row {
+		sprites = append(sprites, sprite{pac.col, pacGlyph, pacStyle})
+	}
+	if cup.row == row {
+		sprites = append(sprites, sprite{cup.col, cupGlyph, coffeeStyle})
+	}
+	if row == 0 || row == height-1 {
+		if len(sprites) == 2 && sprites[0].col > sprites[1].col {
+			sprites[0], sprites[1] = sprites[1], sprites[0]
+		}
+		var out strings.Builder
+		col := 0
+		for _, sp := range sprites {
+			if sp.col < col {
+				continue
+			}
+			out.WriteString(dotStyle.Render(strings.Repeat(dot, sp.col-col)))
+			out.WriteString(sp.style.Render(sp.glyph))
+			col = sp.col + lipgloss.Width(sp.glyph)
+		}
+		out.WriteString(dotStyle.Render(strings.Repeat(dot, width-col)))
+		return out.String()
+	}
+	left := dotStyle.Render(dot) + lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", sideW-1))
+	right := lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", sideW-1)) + dotStyle.Render(dot)
+	for _, sp := range sprites {
+		if sp.col == 0 {
+			left = padStyled(sp.style.Render(sp.glyph), sideW, bg)
+		} else {
+			right = padStyled(sp.style.Render(sp.glyph), sideW, bg)
+		}
+	}
+	return left + padStyled(inner, width-sideW*2, bg) + right
+}
+
+func (b *settingsFormBuilder) addSupportSection() []int {
+	gaps := make([]int, 0, 8)
+	markGap := func() { gaps = append(gaps, len(b.body.lines)-1) }
+	b.addSupportCentered("Support Tidemail", b.chrome.accent, true)
+	markGap()
+	b.addSupportCentered("Tidemail is free and open source.", b.chrome.text, false)
+	markGap()
+	b.addSupportCentered("If it makes email a little better for you,", b.chrome.muted, false)
+	b.addSupportCentered("you can support continued development.", b.chrome.muted, false)
+	markGap()
+	for i, link := range supportLinks {
+		label := link.Name
+		if link.Icon != "" && !ThemeUsesASCII(b.s.themeName) {
+			label = link.Icon + " " + label
+		}
+		b.addSupportCentered(label, b.chrome.accent, true)
+		markGap()
+		b.markAnchor(supportOpenField(i))
+		buttons, copyRow := b.s.renderSupportButtons(link, i, b.width, b.chrome)
+		b.body.anchors[supportCopyField(i)] = len(b.body.lines) + copyRow
+		for _, line := range strings.Split(buttons, "\n") {
+			b.addLine(line)
+		}
+		markGap()
+		b.addSupportCentered(link.URL, b.chrome.muted, false)
+		markGap()
+	}
+	b.addLine(b.s.renderSupportThanks(b.contentW, b.chrome))
+	markGap()
+	b.addLine(b.s.renderSupportHeart(b.contentW, b.chrome))
+	b.addBlank() // keep one quiet row below the heart and above the border
+	return gaps
+}
+
+func (b *settingsFormBuilder) addSupportCentered(label string, fg lipgloss.Color, bold bool) {
+	style := lipgloss.NewStyle().Background(b.chrome.baseBg).Foreground(fg).Bold(bold).
+		Width(b.contentW).Align(lipgloss.Center)
+	for _, line := range wrapShellCommand(label, b.contentW) {
+		b.addLine(style.Render(line))
+	}
+}
+
+func (s Settings) renderSupportButtons(link SupportLink, index, width int, chrome managerChrome) (string, int) {
+	if width < 4 {
+		return truncate("Open / Copy", width), 0
+	}
+	openW := min(18, width-2)
+	copyW := min(11, width-2)
+	openBtn := renderSettingsLinkButton("Support on "+link.Name, openW, s.focusedField == supportOpenField(index), chrome.baseBg, chrome)
+	copyBtn := renderSettingsLinkButton("Copy link", copyW, s.focusedField == supportCopyField(index), chrome.baseBg, chrome)
+	gap := lipgloss.NewStyle().Background(chrome.baseBg).Width(2).Height(lipgloss.Height(openBtn)).Render("")
+	line := lipgloss.JoinHorizontal(lipgloss.Center, openBtn, gap, copyBtn)
+	if lipgloss.Width(line) <= width {
+		return lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Align(lipgloss.Center).Render(line), 0
+	}
+	openLine := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Align(lipgloss.Center).Render(openBtn)
+	copyLine := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Align(lipgloss.Center).Render(copyBtn)
+	blank := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
+	return lipgloss.JoinVertical(lipgloss.Left, openLine, blank, copyLine), lipgloss.Height(openBtn) + 1
+}
+
+func (s Settings) renderSupportHeart(width int, chrome managerChrome) string {
+	if chrome.plainUI || ThemeUsesASCII(s.themeName) {
+		return lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.errorFg).
+			Width(width).Align(lipgloss.Center).Render("<3")
+	}
+	frames := [...]string{"  ♥  ", " · ♥ · ", "✦  ♥  ✦", " · ♥ · ", "  ♥  ", "  ♥  ", "  ♥  ", "  ♥  "}
+	frame := s.supportPulseFrame % len(frames)
+	color := chrome.errorFg
+	if frame >= 4 {
+		color = accentReadableOn(mixColors(chrome.errorFg, chrome.baseBg, 0.35), chrome.baseBg, 3)
+	}
+	return lipgloss.NewStyle().Background(chrome.baseBg).Foreground(color).Bold(frame == 2).
+		Width(width).Align(lipgloss.Center).Render(frames[frame])
+}
+
+func (s Settings) renderSupportThanks(width int, chrome managerChrome) string {
+	label := "Thank you for supporting Tidemail -allie"
+	if lipgloss.Width(label) > width {
+		label = "Thanks -allie"
+	}
+	return lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).
+		Width(width).Align(lipgloss.Center).Render(truncate(label, width))
 }
 
 type settingsFormBuilder struct {
@@ -2117,6 +2453,14 @@ func (s Settings) viewHints(width int, chrome managerChrome) string {
 			"enter", "copy",
 			"tab", "next",
 			"^s", "save",
+			"esc", "sections",
+		)
+	}
+	if s.activeSection == ssSupport {
+		return renderSoftHints(width, chrome,
+			"enter", "select",
+			"^c", "copy link",
+			"↑↓", "action",
 			"esc", "sections",
 		)
 	}
@@ -2701,7 +3045,7 @@ func (s Settings) renderAboutSection(width int, chrome managerChrome) settingsSe
 		return start
 	}
 	addBlock(ind.Render(s.renderAboutHero(bodyW, chrome)))
-	lines = append(lines, blank)
+	lines = append(lines, blank, blank, blank, blank)
 	// Backronym below hero
 	tideLine := lipgloss.NewStyle().Background(lipgloss.Color("#000000")).Foreground(chrome.muted).Italic(true).Width(bodyW).Align(lipgloss.Center).Render("terminal information delivery engine")
 	lines = append(lines, tideLine, blank)
@@ -2726,9 +3070,10 @@ func (s Settings) renderAboutSection(width int, chrome managerChrome) settingsSe
 	return settingsSectionBody{
 		lines: lines,
 		anchors: map[settingsField]int{
-			sfAboutHeart:  heartLine,
-			sfAboutRepo:   linksStart,
-			sfAboutIssues: linksStart,
+			sfAboutHeart:   heartLine,
+			sfAboutSupport: linksStart,
+			sfAboutRepo:    linksStart,
+			sfAboutIssues:  linksStart,
 		},
 	}
 }
@@ -2974,37 +3319,44 @@ func lerp(from, to, amount float64) float64 {
 	return from + (to-from)*clamp01(amount)
 }
 
+func renderSettingsLinkButton(label string, buttonWidth int, focused bool, background lipgloss.Color, chrome managerChrome) string {
+	bg := background
+	fg := chrome.accent
+	if focused {
+		bg = chrome.accent
+		fg = readableText(chrome.accent, chrome.accent, 4.5)
+	}
+	return lipgloss.NewStyle().
+		Background(bg).
+		Foreground(fg).
+		Border(lipgloss.RoundedBorder()).
+		BorderBackground(background).
+		BorderForeground(chrome.accent).
+		Bold(focused).
+		Width(buttonWidth).
+		Align(lipgloss.Center).
+		Render(truncate(label, buttonWidth))
+}
+
 func (s Settings) renderAboutLinks(width int, chrome managerChrome) string {
 	aboutBg := lipgloss.Color("#000000")
-	renderBtn := func(label string, focused bool) string {
-		bg := aboutBg
-		fg := chrome.accent
-		borderFg := chrome.accent
-		if focused {
-			bg = chrome.accent
-			fg = readableText(chrome.accent, chrome.accent, 4.5)
-			borderFg = chrome.accent
-		}
-		return lipgloss.NewStyle().
-			Background(bg).
-			Foreground(fg).
-			Border(lipgloss.RoundedBorder()).
-			BorderBackground(aboutBg).
-			BorderForeground(borderFg).
-			Bold(focused).
-			Width(14).
-			Align(lipgloss.Center).
-			Render(label)
-	}
-	repoBtn := renderBtn("Repository", s.focusedField == sfAboutRepo)
-	issuesBtn := renderBtn("Issues", s.focusedField == sfAboutIssues)
+	supportBtn := renderSettingsLinkButton("Support Tidemail", 16, s.focusedField == sfAboutSupport, aboutBg, chrome)
+	repoBtn := renderSettingsLinkButton("Repository", 14, s.focusedField == sfAboutRepo, aboutBg, chrome)
+	issuesBtn := renderSettingsLinkButton("Issues", 14, s.focusedField == sfAboutIssues, aboutBg, chrome)
 	gap := lipgloss.NewStyle().
 		Background(aboutBg).
-		Width(8).
+		Width(2).
 		Height(lipgloss.Height(repoBtn)).
 		Render("")
-	line := lipgloss.JoinHorizontal(lipgloss.Center, repoBtn, gap, issuesBtn)
-	return lipgloss.NewStyle().Background(aboutBg).Width(width).Align(lipgloss.Center).Render(line)
+	line := lipgloss.JoinHorizontal(lipgloss.Center, supportBtn, gap, repoBtn, gap, issuesBtn)
+	if lipgloss.Width(line) <= width {
+		return lipgloss.NewStyle().Background(aboutBg).Width(width).Align(lipgloss.Center).Render(line)
+	}
+	supportLine := lipgloss.NewStyle().Background(aboutBg).Width(width).Align(lipgloss.Center).Render(supportBtn)
+	repoLine := lipgloss.JoinHorizontal(lipgloss.Center, repoBtn, gap, issuesBtn)
+	repoLine = lipgloss.NewStyle().Background(aboutBg).Width(width).Align(lipgloss.Center).Render(repoLine)
+	blank := lipgloss.NewStyle().Background(aboutBg).Width(width).Render("")
+	return lipgloss.JoinVertical(lipgloss.Left, supportLine, blank, repoLine)
 }
 
 func aboutCenterText(s string, width int) string {

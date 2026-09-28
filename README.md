@@ -50,6 +50,9 @@ One inbox, several built-in themes.
 - **Experimental plugins.** Install trusted plugins such as TideMail Smart (JEV) to
   classify mail with local annotations, Needs You signals, and optional
   TypeSafe/Jev analysis.
+- **Optional support, kept out of your way.** Open **Settings → Support** to
+  visit or copy Tidemail's Ko-fi link. No donation prompts appear during normal
+  email use.
 
 ## Install
 

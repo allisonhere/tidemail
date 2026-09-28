@@ -1324,6 +1324,46 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.accountManager.statusMsg = "DELETED ACCOUNT"
 		return m, m.loadAccountsCmd()
 
+	case MessageReadBatchUpdatedMsg:
+		readByID := make(map[int64]MessageReadBatchEntry, len(msg.Entries))
+		unreadDeltas := make(map[int64]int64)
+		for _, entry := range msg.Entries {
+			readByID[entry.MessageID] = entry
+			if entry.MailboxID != 0 && entry.WasRead != entry.Read {
+				if entry.Read {
+					unreadDeltas[entry.MailboxID]--
+				} else {
+					unreadDeltas[entry.MailboxID]++
+				}
+			}
+		}
+		for i := range m.messages {
+			if entry, ok := readByID[m.messages[i].ID]; ok {
+				m.messages[i].Read = entry.Read
+			}
+		}
+		for mailboxID, delta := range unreadDeltas {
+			m.adjustMailboxUnreadCount(mailboxID, delta)
+		}
+		if len(msg.Entries) > 0 {
+			m.applyFilter()
+			if len(m.filteredMessages) == 0 {
+				m.messageCursor = 0
+				m.listOffset = 0
+				m.clearViewportMessage()
+			} else {
+				rowCount := m.activeMessageRowCount()
+				m.messageCursor = clamp(m.messageCursor, 0, max(0, rowCount-1))
+				m.listOffset = clamp(m.listOffset, 0, max(0, rowCount-1))
+				m.setViewportForCurrentRow()
+			}
+		}
+		if msg.Err != nil {
+			m.setStatus(fmt.Sprintf("mark read failed: %v", msg.Err), true)
+			return m, m.clearStatusCmd()
+		}
+		return m, nil
+
 	case MessageReadUpdatedMsg:
 		if msg.Err != nil {
 			m.setStatus(fmt.Sprintf("mark read failed: %v", msg.Err), true)
@@ -1620,6 +1660,14 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setStatus("copy failed: "+msg.Err.Error(), true)
 		} else {
 			m.setStatus("copied to clipboard", false)
+		}
+		return m, m.clearStatusCmd()
+
+	case BrowserOpenedMsg:
+		if msg.Err != nil {
+			m.setStatus("Could not open your browser — "+msg.URL, true)
+		} else {
+			m.setStatus("opened in browser", false)
 		}
 		return m, m.clearStatusCmd()
 
@@ -2027,11 +2075,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				return m, tea.Batch(cmds...)
 			}
-			for _, msg2 := range msgs {
-				read := !msg2.Read
-				advance := false
-				cmds = append(cmds, m.setMessageReadCmd(msg2, read, advance))
-			}
+			cmds = append(cmds, m.setSelectedMessagesReadCmd(msgs))
 			m.clearSelection()
 			return m, tea.Batch(cmds...)
 		}
@@ -2845,6 +2889,16 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, clipboardWriteCmd(cmd)
+	case settingsActionOpenSupport, settingsActionCopySupport:
+		index := m.settings.supportLinkIndex
+		if index < 0 || index >= len(supportLinks) {
+			return m, nil
+		}
+		link := supportLinks[index]
+		if action == settingsActionCopySupport {
+			return m, clipboardWriteCmd(link.URL)
+		}
+		return m, m.openBrowserCmd(link.URL)
 	}
 	if done {
 		if m.settings.shouldSave {

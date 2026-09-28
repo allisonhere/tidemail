@@ -743,4 +743,11 @@ Global message search uses a dedicated row above message subjects while active.
 - Updates: check, install, restart, or copy a manual install command
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings
 - Advanced: logs and feed max body size
-- About: repository and issue links
+- Support: choose the Ko-fi Open or Copy link button with Up/Down and press Enter; Ctrl+C also copies the link, and Esc returns to Settings sections
+- About: Support Tidemail, repository, and issue links
+
+Open the command palette with `:` or `Ctrl+P` and choose **Support Tidemail**
+to go directly to the same Support page. Browser-launch failures leave the URL
+in the status line so it can still be copied. Tidemail does not show donation
+prompts during normal email use. A Pac-Man and coffee cup circle the page's
+white dotted border only while Support is open.

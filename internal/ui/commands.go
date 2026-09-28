@@ -98,6 +98,7 @@ func (m Model) mainCommandItems() []commandItem {
 		{id: "accounts", label: "Manage accounts", enabled: true},
 		{id: "filters", label: "Manage filters (AI rules)", enabled: true},
 		{id: "settings", label: "Open settings", enabled: true},
+		{id: "support", label: "Support Tidemail", enabled: true},
 	}
 	items = append(items, m.needsYouCommandItems()...)
 	items = append(items, m.waitingCommandItems()...)
@@ -226,6 +227,16 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		m.settings.pluginsAvailable = m.pluginsVisible()
 		m.overlay = overlaySettings
 		return m, nil
+	case "support":
+		m.settings = newSettings(m.cfg, m.settingsUpdateState())
+		m.settings.pluginsAvailable = m.pluginsVisible()
+		m.settings.setActiveSection(ssSupport)
+		m.settings.setFocusedPane(settingsPaneDetail)
+		if len(supportLinks) > 0 {
+			m.settings.setFocusedField(supportOpenField(0))
+		}
+		m.overlay = overlaySettings
+		return m, m.settings.supportPulseCmd()
 	case "plugins", "plugin-run", "plugin-reclassify-view", "plugin-cancel", "plugin-annotations", "classification-correct", "classification-reset":
 		return m.executePluginCommand(id)
 	case "needs-you-why", "needs-you-dismiss", "needs-you-restore":

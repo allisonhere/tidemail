@@ -345,6 +345,42 @@ func (db *DB) MarkRead(id int64, read bool) error {
 	return err
 }
 
+// MarkReadBatch applies read and unread IDs in one transaction. Empty slices
+// are ignored so callers can preserve per-message toggle behavior in a batch.
+func (db *DB) MarkReadBatch(readIDs, unreadIDs []int64) error {
+	if len(readIDs) == 0 && len(unreadIDs) == 0 {
+		return nil
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin mark-read batch: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+	for _, batch := range []struct {
+		ids   []int64
+		value int
+	}{{readIDs, 1}, {unreadIDs, 0}} {
+		for start := 0; start < len(batch.ids); start += 500 {
+			end := min(start+500, len(batch.ids))
+			ids := batch.ids[start:end]
+			placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+			args := make([]any, 1, len(ids)+1)
+			args[0] = batch.value
+			for _, id := range ids {
+				args = append(args, id)
+			}
+			query := `UPDATE messages SET read = ? WHERE id IN (` + placeholders + `)`
+			if _, err := tx.Exec(query, args...); err != nil {
+				return fmt.Errorf("update mark-read batch: %w", err)
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit mark-read batch: %w", err)
+	}
+	return nil
+}
+
 func (db *DB) MarkStarred(id int64, starred bool) error {
 	v := 0
 	if starred {
