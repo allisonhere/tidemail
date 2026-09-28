@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/allisonhere/tidemail/internal/config"
-	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -18,11 +17,7 @@ import (
 // tagColorEditor is the editor's state on the Model.
 type tagColorEditor struct {
 	cursor int
-	// editing is "fg" or "bg" while a value is being typed.
-	editing string
-	input   textinput.Model
-	err     string
-	origin  overlayMode
+	origin overlayMode
 }
 
 // tagColorLabel names a key for people.
@@ -90,30 +85,6 @@ func (m Model) handleTagColorsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	e := &m.tagColors
 	keys := tagColorKeys()
 	key := keys[clamp(e.cursor, 0, len(keys)-1)]
-	if e.editing != "" {
-		switch {
-		case keyMatches(msg, m.keys.Cancel):
-			e.editing, e.err = "", ""
-		case keyMatches(msg, m.keys.Confirm):
-			raw := strings.TrimSpace(e.input.Value())
-			value := ""
-			if raw != "" {
-				hex, ok := config.NormalizeTagHex(raw)
-				if !ok {
-					e.err = "use #rrggbb or #rgb, or leave empty to follow the theme"
-					return m, nil
-				}
-				value = hex
-			}
-			m.setTagColor(key, e.editing, value)
-			e.editing, e.err = "", ""
-		default:
-			var cmd tea.Cmd
-			e.input, cmd = e.input.Update(msg)
-			return m, cmd
-		}
-		return m, nil
-	}
 	switch {
 	case keyMatches(msg, m.keys.Cancel, m.keys.Back):
 		m.overlay = e.origin
@@ -126,17 +97,13 @@ func (m Model) handleTagColorsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if msg.String() == "f" {
 			field = "fg"
 		}
-		current := m.cfg.Display.TagColors[key]
-		value := current.Bg
+		resolved := m.tagColorFor(key)
+		hex := string(resolved.bg)
 		if field == "fg" {
-			value = current.Fg
+			hex = string(resolved.fg)
 		}
-		in := textinput.New()
-		in.Placeholder = "#rrggbb (empty follows the theme)"
-		in.CharLimit = 7
-		in.SetValue(value)
-		in.Focus()
-		e.input, e.editing, e.err = in, field, ""
+		r, g, b, _ := parseHexRGB(hex)
+		return m.openColorPicker(overlayTagColors, key, field, r, g, b)
 	case msg.String() == "r":
 		m.setTagColor(key, "fg", "")
 		m.setTagColor(key, "bg", "")
@@ -151,7 +118,6 @@ func (m Model) renderTagColors() string {
 	base := lipgloss.NewStyle().Background(chrome.baseBg)
 	text := base.Foreground(chrome.text)
 	muted := base.Foreground(chrome.muted)
-	errStyle := base.Foreground(chrome.errorFg)
 	bodyW := max(1, winW-4)
 
 	style := tagStyleLabels[max(0, indexOf(tagStyleValues, m.tagStyle()))]
@@ -181,23 +147,6 @@ func (m Model) renderTagColors() string {
 		lines = append(lines, softRail(chrome, i == e.cursor, chrome.baseBg)+row)
 	}
 	pairs := []string{"↑↓", "choose", "b", "background", "f", "foreground", "r", "reset", "esc", "back"}
-	if e.editing != "" {
-		in := e.input
-		in.Width = max(1, bodyW-4)
-		in.PromptStyle = base.Foreground(chrome.accent)
-		in.TextStyle = text
-		in.PlaceholderStyle = muted
-		what := "background"
-		if e.editing == "fg" {
-			what = "foreground"
-		}
-		key := keys[clamp(e.cursor, 0, len(keys)-1)]
-		lines = append(lines, "", text.Render(truncate(tagColorLabel(key)+" "+what+":", bodyW)), in.View())
-		if e.err != "" {
-			lines = append(lines, errStyle.Render(truncate(e.err, bodyW)))
-		}
-		pairs = []string{"enter", "save", "esc", "cancel"}
-	}
 	body := lipgloss.NewStyle().Background(chrome.baseBg).Width(winW).Padding(1, 2).Render(strings.Join(lines, "\n"))
 	hints := renderSoftHints(winW, chrome, pairs...)
 	inner := lipgloss.JoinVertical(lipgloss.Left, body, hints)

@@ -55,6 +55,7 @@ func (m Model) startPluginReport(pluginID string) (tea.Model, tea.Cmd) {
 		return m, m.clearStatusCmd()
 	}
 	m.plugins.running = pluginID
+	m.plugins.reportOrigin = m.overlay
 	m.setStatus("Running report "+m.pluginDisplayName(pluginID)+"…", false)
 	exec := &pluginquery.Executor{DB: m.db, Me: myAddresses(m.accountIdentities()), Location: time.Local}
 	return m, runPluginReportCmd(m.plugins.ctx, m.plugins.manager, m.db, exec, pluginID, m.reportContext())
@@ -77,6 +78,12 @@ func (m Model) handlePluginReport(msg pluginReportMsg) (tea.Model, tea.Cmd) {
 	if m.plugins.running == msg.PluginID {
 		m.plugins.running = ""
 	}
+	showResult := m.overlay == overlayNone || m.overlay == overlayPlugins ||
+		(m.overlay == overlaySettings && m.settings.activeSection == ssPlugins && m.plugins.reportOrigin == overlaySettings)
+	m.plugins.resultOrigin = overlayNone
+	if m.overlay == overlaySettings && showResult {
+		m.plugins.resultOrigin = overlaySettings
+	}
 	if msg.Err != nil {
 		name := m.pluginDisplayName(msg.PluginID)
 		card := errorCard(name, msg.Err)
@@ -88,7 +95,7 @@ func (m Model) handlePluginReport(msg pluginReportMsg) (tea.Model, tea.Cmd) {
 			details = append(details, "  "+l)
 		}
 		m.plugins.result = &pluginResult{pluginID: msg.PluginID, pluginName: name, card: &card, details: details}
-		if m.overlay == overlayNone || m.overlay == overlayPlugins {
+		if showResult {
 			m.plugins.scroll = 0
 			m.overlay = overlayPluginResult
 		}
@@ -103,7 +110,7 @@ func (m Model) handlePluginReport(msg pluginReportMsg) (tea.Model, tea.Cmd) {
 		view:       msg.Result.View,
 	}
 	status := fmt.Sprintf("report %s completed (%v)", msg.PluginID, msg.Elapsed.Round(time.Millisecond))
-	if m.overlay == overlayNone || m.overlay == overlayPlugins {
+	if showResult {
 		m.plugins.scroll = 0
 		m.overlay = overlayPluginResult
 	} else {

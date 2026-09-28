@@ -50,7 +50,6 @@ const (
 	sfPaneCorners
 	sfShadow
 	sfTagStyle  // Appearance → Annotation Tags
-	sfTagEnds   // pill ends: square, round, none
 	sfTagColors // opens the tag color editor
 	sfBrowser
 	sfFeedMaxBody
@@ -64,7 +63,6 @@ const (
 	sfAboutRepo
 	sfAboutIssues
 	sfViewLogs
-	sfPluginSettings // Advanced; only when plugins are installed
 	sfProvider
 	sfAPIKey    // visible when provider is openai/claude/gemini
 	sfOllamaURL // visible when provider is ollama
@@ -100,6 +98,7 @@ const (
 	ssEditor
 	ssUpdates
 	ssAI
+	ssPlugins
 	ssAdvanced
 	ssSupport
 	ssAbout
@@ -124,7 +123,6 @@ const (
 	settingsActionOpenRepo
 	settingsActionOpenIssues
 	settingsActionViewLogs
-	settingsActionPluginSettings
 	settingsActionCopyManualInstall
 	settingsActionTagColors
 	settingsActionOpenSupport
@@ -172,9 +170,8 @@ type settingsSectionBody struct {
 var (
 	layoutDensityLabels   = []string{"Comfortable", "Compact"}
 	paneCornersLabels     = []string{"Square", "Round"}
-	tagStyleLabels        = []string{"Pills", "Compact", "Plain"}
-	tagStyleValues        = []string{config.TagStylePills, config.TagStyleCompact, config.TagStylePlain}
-	tagEndsLabels         = []string{"Square", "Round (Nerd Font)", "None"}
+	tagStyleLabels        = []string{"Pills", "Compact", "Plain", "Glyph Pills (Round)"}
+	tagStyleValues        = []string{config.TagStylePills, config.TagStyleCompact, config.TagStylePlain, config.TagStyleGlyphPills}
 	tagEndsValues         = []string{config.TagEndsSquare, config.TagEndsRound, config.TagEndsNone}
 	dateFormatLabels      = []string{"Relative", "Absolute", "None"}
 	aiProviderLabels      = []string{"none", "OpenAI", "Claude", "Gemini", "Ollama"}
@@ -188,11 +185,55 @@ var (
 		"EDITOR",
 		"UPDATES",
 		"AI",
+		"PLUGINS",
 		"ADVANCED",
 		"SUPPORT",
 		"ABOUT",
 	}
 )
+
+type tagAppearanceOption struct {
+	label string
+	style string
+	ends  string
+}
+
+var tagAppearanceOptions = []tagAppearanceOption{
+	{label: "Pills (Square)", style: config.TagStylePills, ends: config.TagEndsSquare},
+	{label: "Pills (Round)", style: config.TagStylePills, ends: config.TagEndsRound},
+	{label: "Pills (None)", style: config.TagStylePills, ends: config.TagEndsNone},
+	{label: "Compact", style: config.TagStyleCompact, ends: config.TagEndsSquare},
+	{label: "Plain", style: config.TagStylePlain, ends: config.TagEndsSquare},
+	{label: "Glyph Pills (Round)", style: config.TagStyleGlyphPills, ends: config.TagEndsRound},
+}
+
+func tagAppearanceIndex(style, ends string) int {
+	switch config.NormalizeTagStyle(style) {
+	case config.TagStyleGlyphPills:
+		return 5
+	case config.TagStyleCompact:
+		return 3
+	case config.TagStylePlain:
+		return 4
+	default:
+		switch config.NormalizeTagEnds(ends) {
+		case config.TagEndsRound:
+			return 1
+		case config.TagEndsNone:
+			return 2
+		default:
+			return 0
+		}
+	}
+}
+
+func (s *Settings) applyTagAppearanceSelection() {
+	option := tagAppearanceOptions[clamp(s.tagPickerIdx, 0, len(tagAppearanceOptions)-1)]
+	s.tagStyleIdx = slices.Index(tagStyleValues, option.style)
+	if option.style == config.TagStylePills || option.style == config.TagStyleGlyphPills {
+		s.tagEndsIdx = slices.Index(tagEndsValues, option.ends)
+	}
+}
 
 func dateFormatIndex(s string) int {
 	for i, label := range dateFormatLabels {
@@ -251,8 +292,10 @@ func ollamaModelIndex(s string) int {
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 type Settings struct {
-	// pluginsAvailable shows the experimental Plugins group in Advanced.
+	// Plugin administration is rendered by Model inside the detail pane.
 	pluginsAvailable bool
+	pluginPaneLoaded bool
+	pluginEditing    bool
 
 	// Display
 	icons                 bool
@@ -279,6 +322,7 @@ type Settings struct {
 	paneCornersIdx        int // 0 = square, 1 = round
 	tagStyleIdx           int // index into tagStyleValues
 	tagEndsIdx            int // index into tagEndsValues
+	tagPickerIdx          int // index into tagAppearanceOptions
 	readingWidthInput     textinput.Model
 	sendMaxAttemptsInput  textinput.Model
 	sendDelayInput        textinput.Model
@@ -390,6 +434,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		paneCornersIdx:        paneCornersIdx,
 		tagStyleIdx:           max(0, slices.Index(tagStyleValues, config.NormalizeTagStyle(cfg.Display.TagStyle))),
 		tagEndsIdx:            max(0, slices.Index(tagEndsValues, config.NormalizeTagEnds(cfg.Display.TagEnds))),
+		tagPickerIdx:          tagAppearanceIndex(cfg.Display.TagStyle, cfg.Display.TagEnds),
 		readingWidthInput:     mkInput(strconv.Itoa(cfg.Display.ReadingWidth), "0 (no limit)", false),
 		sendMaxAttemptsInput:  mkInput(strconv.Itoa(config.NormalizeSendMaxAttempts(cfg.Display.SendMaxAttempts)), "3 (1 = no retries)", false),
 		sendDelayInput:        mkInput(strconv.Itoa(cfg.Display.SendDelaySeconds), "5 (0 = immediate)", false),
@@ -419,6 +464,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 			ssEditor:   sfBackToSections,
 			ssUpdates:  sfBackToSections,
 			ssAI:       sfBackToSections,
+			ssPlugins:  sfBackToSections,
 			ssAdvanced: sfBackToSections,
 			ssSupport:  supportOpenField(0),
 			ssAbout:    sfBackToSections,
@@ -707,7 +753,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 	case ssDisplay:
 		// Keep this order in lockstep with the ssDisplay case in viewSectionBody:
 		// Appearance, Terminal colors (retro themes), Message list, Reading, Behavior.
-		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfPaneCorners, sfIcons, sfShowPaneHeaders, sfDateFormat, sfFocusLine, sfShadow, sfTagStyle, sfTagEnds, sfTagColors}
+		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfPaneCorners, sfIcons, sfShowPaneHeaders, sfDateFormat, sfFocusLine, sfShadow, sfTagStyle, sfTagColors}
 		if config.IsRetroTerminalTheme(s.themeName) {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
@@ -745,12 +791,10 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		}
 		fields = append(fields, sfTestAIConnection, sfSavePath, sfMarkReadOnSummarize)
 		return fields
+	case ssPlugins:
+		return []settingsField{sfBackToSections}
 	case ssAdvanced:
-		fields := []settingsField{sfBackToSections, sfViewLogs}
-		if s.pluginsAvailable {
-			fields = append(fields, sfPluginSettings)
-		}
-		return append(fields, sfFeedMaxBody)
+		return []settingsField{sfBackToSections, sfViewLogs, sfFeedMaxBody}
 	case ssSupport:
 		fields := make([]settingsField, 0, len(supportLinks)*2)
 		for i := range supportLinks {
@@ -1004,7 +1048,7 @@ func (s Settings) focusedTextInputCursorPosition() int {
 
 func (s Settings) isPickerField() bool {
 	switch s.focusedField {
-	case sfProvider, sfDisplayDensity, sfPaneCorners, sfTagStyle, sfTagEnds, sfImages, sfTheme, sfDateFormat,
+	case sfProvider, sfDisplayDensity, sfPaneCorners, sfTagStyle, sfImages, sfTheme, sfDateFormat,
 		sfOpenAIModel, sfClaudeModel, sfGeminiModel, sfOllamaModel:
 		return true
 	}
@@ -1214,25 +1258,13 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 	case sfTagStyle:
 		switch {
 		case keyMatches(key, keys.Left):
-			s.tagStyleIdx = (s.tagStyleIdx + len(tagStyleLabels) - 1) % len(tagStyleLabels)
+			s.tagPickerIdx = (s.tagPickerIdx + len(tagAppearanceOptions) - 1) % len(tagAppearanceOptions)
+			s.applyTagAppearanceSelection()
 			s.setFocusedField(sfTagStyle)
 		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) || keyMatches(key, keys.Right):
-			s.tagStyleIdx = (s.tagStyleIdx + 1) % len(tagStyleLabels)
+			s.tagPickerIdx = (s.tagPickerIdx + 1) % len(tagAppearanceOptions)
+			s.applyTagAppearanceSelection()
 			s.setFocusedField(sfTagStyle)
-		case keyMatches(key, keys.Down):
-			s.setFocusedField(s.nextField())
-		case keyMatches(key, keys.Up):
-			s.setFocusedField(s.prevField())
-		}
-
-	case sfTagEnds:
-		switch {
-		case keyMatches(key, keys.Left):
-			s.tagEndsIdx = (s.tagEndsIdx + len(tagEndsLabels) - 1) % len(tagEndsLabels)
-			s.setFocusedField(sfTagEnds)
-		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) || keyMatches(key, keys.Right):
-			s.tagEndsIdx = (s.tagEndsIdx + 1) % len(tagEndsLabels)
-			s.setFocusedField(sfTagEnds)
 		case keyMatches(key, keys.Down):
 			s.setFocusedField(s.nextField())
 		case keyMatches(key, keys.Up):
@@ -1532,16 +1564,6 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
-	case sfPluginSettings:
-		switch {
-		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter):
-			s.action = settingsActionPluginSettings
-		case keyMatches(key, keys.Down):
-			s.setFocusedField(s.nextField())
-		case keyMatches(key, keys.Up):
-			s.setFocusedField(s.prevField())
-		}
-
 	case sfViewLogs:
 		switch {
 		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter):
@@ -1690,22 +1712,35 @@ func (s Settings) saveAndExit() (Settings, tea.Cmd, bool) {
 // ── View ──────────────────────────────────────────────────────────────────────
 
 func (s *Settings) View(width, height int, chrome managerChrome) string {
+	return s.viewWithDetail(width, height, chrome, nil)
+}
+
+func (s *Settings) viewWithDetail(width, height int, chrome managerChrome, detail func(int, int) string) string {
 	gap := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
 	hints := s.viewHints(width, chrome)
 	bodyH := max(1, height-lipgloss.Height(gap)-lipgloss.Height(hints))
-	body := s.viewSplit(width, bodyH, chrome)
+	body := s.viewSplit(width, bodyH, chrome, detail)
 
 	return lipgloss.JoinVertical(lipgloss.Left, gap, body, hints)
 }
 
-func (s *Settings) viewSplit(width, height int, chrome managerChrome) string {
+func settingsSplitWidths(width int) (int, int) {
 	leftW := clamp(width/4, 14, 18)
 	if width-leftW-1 < 32 {
 		leftW = max(14, width-33)
 	}
-	rightW := max(18, width-leftW-1)
+	return leftW, max(18, width-leftW-1)
+}
+
+func (s *Settings) viewSplit(width, height int, chrome managerChrome, detail func(int, int) string) string {
+	leftW, rightW := settingsSplitWidths(width)
 	left := s.viewSectionsPane(leftW, height, chrome)
-	right := s.viewSectionPane(rightW, height, chrome)
+	var right string
+	if detail != nil {
+		right = detail(rightW, height)
+	} else {
+		right = s.viewSectionPane(rightW, height, chrome)
+	}
 	sepGlyph := "│"
 	if chrome.plainUI {
 		sepGlyph = "|"
@@ -1821,7 +1856,6 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addToggle("Modal drop shadow", s.shadow, sfShadow)
 		b.addGroup("Annotation Tags")
 		b.addTagStyleSelector()
-		b.addTagEndsSelector()
 		b.addAction("Tag colors", "unset colors follow the theme", sfTagColors)
 		if config.IsRetroTerminalTheme(s.themeName) {
 			b.addGroup("Terminal colors")
@@ -1915,6 +1949,11 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 
 	case ssAI:
 		b.addAISection()
+
+	case ssPlugins:
+		if !s.pluginsAvailable {
+			b.addHint("No plugins installed.")
+		}
 
 	case ssAdvanced:
 		b.addAdvancedSection()
@@ -2310,13 +2349,24 @@ func (b *settingsFormBuilder) addTagStyleSelector() {
 	b.addBlank()
 }
 
-func (b *settingsFormBuilder) addTagEndsSelector() {
-	b.markAnchor(sfTagEnds)
-	b.addLine(b.s.renderTagEndsSelector(b.width, b.chrome))
-	if hint := b.s.fieldHint(sfTagEnds); hint != "" {
-		b.addHint(hint)
+// renderTagPicker shows the option name and a live preview so cycling left or
+// right makes every style and pill shape explicit.
+func renderTagPicker(width int, label, style, ends string, icons, focused bool, chrome managerChrome) string {
+	chevrons := chrome.softChevrons()
+	chevronW := lipgloss.Width(chevrons) + 1
+	valueBg, chevronFg := chrome.baseBg, chrome.muted
+	if focused {
+		valueBg, chevronFg = chrome.fieldBg, chrome.accent
 	}
-	b.addBlank()
+	base := lipgloss.NewStyle().Background(valueBg)
+	room := max(1, width-chevronW-1)
+	value := base.Render(" ") + base.Foreground(chrome.text).Bold(focused).Render(label) + base.Render("  ") + renderTagExample(style, ends, icons, valueBg)
+	value = truncateStyled(value, room, valueBg)
+	gap := max(1, width-lipgloss.Width(value)-chevronW)
+	return value +
+		lipgloss.NewStyle().Background(chrome.baseBg).Render(strings.Repeat(" ", gap)) +
+		lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chevronFg).Bold(focused).Render(chevrons) +
+		lipgloss.NewStyle().Background(chrome.baseBg).Render(" ")
 }
 
 func (b *settingsFormBuilder) addDateFormatSelector() {
@@ -2368,10 +2418,6 @@ func (b *settingsFormBuilder) addAITestConnection() {
 func (b *settingsFormBuilder) addAdvancedSection() {
 	b.addGroup("Logs")
 	b.addAction("View Logs", "review errors and status messages", sfViewLogs)
-	if b.s.pluginsAvailable {
-		b.addGroup("Plugins")
-		b.addAction("Plugin settings", "experimental; configure installed plugins", sfPluginSettings)
-	}
 	b.addGroup("Storage")
 	b.addInput("Max body size (MiB)", b.s.feedMaxBodyInput, sfFeedMaxBody)
 }
@@ -2438,6 +2484,9 @@ func (s Settings) viewHints(width int, chrome managerChrome) string {
 			"esc", "cancel",
 			"q", "discard",
 		)
+	}
+	if s.activeSection == ssPlugins {
+		return renderSoftHints(width, chrome, "tab", "sections", "^s", "save settings")
 	}
 	if s.isPickerField() {
 		return renderSoftHints(width, chrome,
@@ -2909,18 +2958,11 @@ func (s Settings) renderDensitySelector(width int, chrome managerChrome) string 
 
 func (s Settings) renderTagStyleSelector(width int, chrome managerChrome) string {
 	focused := s.focusedField == sfTagStyle
-	name := tagStyleLabels[clamp(s.tagStyleIdx, 0, len(tagStyleLabels)-1)]
+	option := tagAppearanceOptions[clamp(s.tagPickerIdx, 0, len(tagAppearanceOptions)-1)]
 	labelW := formLabelWidth(width)
 	pickerW := max(1, width-labelW-2)
-	return renderSoftRow("Tag style", focused, renderSettingsPicker(pickerW, name, focused, chrome), width, labelW, chrome)
-}
-
-func (s Settings) renderTagEndsSelector(width int, chrome managerChrome) string {
-	focused := s.focusedField == sfTagEnds
-	name := tagEndsLabels[clamp(s.tagEndsIdx, 0, len(tagEndsLabels)-1)]
-	labelW := formLabelWidth(width)
-	pickerW := max(1, width-labelW-2)
-	return renderSoftRow("Pill ends", focused, renderSettingsPicker(pickerW, name, focused, chrome), width, labelW, chrome)
+	picker := renderTagPicker(pickerW, option.label, option.style, option.ends, s.icons && !chrome.plainUI, focused, chrome)
+	return renderSoftRow("Tag style", focused, picker, width, labelW, chrome)
 }
 
 func (s Settings) renderPaneCornersSelector(width int, chrome managerChrome) string {
@@ -3017,10 +3059,8 @@ func (s Settings) fieldHint(field settingsField) string {
 		return "show pane titles and shortcuts above content; when off, both move to the status line"
 	case sfShadow:
 		return "draw a soft drop shadow behind modal overlays"
-	case sfTagEnds:
-		return "pills only: square padding, rounded caps (needs a Nerd Font), or none to save space"
 	case sfTagStyle:
-		return "how plugin tags look in message rows: colored pills, compact colored text, or plain [TAG] text"
+		return "← → to compare Pills (Square/Round/None), Compact, Plain, and Glyph Pills (Round); Round needs a Nerd Font"
 	case sfShowSender:
 		return "show the sender's name in a column before the subject in the message list"
 	case sfThreadedConversations:

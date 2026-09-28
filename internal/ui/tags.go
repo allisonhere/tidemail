@@ -220,7 +220,7 @@ type tagLevel int
 const (
 	// tagWide spells labels out: "↩ REPLY", "GITHUB".
 	tagWide tagLevel = iota
-	// tagMedium keeps glyphs and category names: "↩", "GITHUB".
+	// tagMedium shrinks every tag to a single glyph, category included: "↩", "⚙".
 	tagMedium
 	// tagNarrow drops the pill padding: "↩ ◆ #github".
 	tagNarrow
@@ -273,11 +273,51 @@ func tagGlyph(k tagKind, icons bool) string {
 
 var tagLabels = [...]string{"REPLY", "URGENT", "IMPORTANT"}
 
+// categoryGlyphs give each known category a single glyph for the medium
+// pill level (icon, then its ASCII fallback), chosen to evoke the category
+// at a glance: a gear for CI/PR activity, a key for security, and so on.
+var categoryGlyphs = map[string][2]string{
+	"github":       {"⚙", "G"},
+	"shipping":     {"▣", "P"},
+	"security":     {"⚿", "K"},
+	"calendar":     {"▦", "D"},
+	"newsletter":   {"✉", "N"},
+	"support":      {"☎", "H"},
+	"social":       {"☺", "@"},
+	"billing":      {"$", "$"},
+	"receipt":      {"▤", "#"},
+	"notification": {"◉", "B"},
+	"personal":     {"⌂", "~"},
+}
+
+// categoryGlyph is the medium-level glyph for a category tag: the glyph that
+// best represents a known category, or a generic marker for any other
+// category value.
+func categoryGlyph(category string, icons bool) string {
+	g, ok := categoryGlyphs[category]
+	if !ok {
+		g = [2]string{"●", "*"}
+	}
+	if icons {
+		return g[0]
+	}
+	return g[1]
+}
+
 // chipFor lays out one tag in a style at a level.
 func chipFor(t annotationTag, style string, level tagLevel, icons bool) tagChip {
 	c := tagChip{colorKey: t.colorKey()}
 	isCategory := t.kind == tagCategory
 	switch style {
+	case config.TagStyleGlyphPills:
+		c.colored = true
+		c.filled = level != tagNarrow
+		if isCategory {
+			c.text = categoryGlyph(t.category, icons)
+		} else {
+			c.text = tagGlyph(t.kind, icons)
+		}
+		return c
 	case config.TagStylePlain:
 		switch {
 		case isCategory:
@@ -306,6 +346,8 @@ func chipFor(t annotationTag, style string, level tagLevel, icons bool) tagChip 
 	switch {
 	case isCategory && level == tagNarrow:
 		c.text = "#" + t.category
+	case isCategory && level == tagMedium:
+		c.text = categoryGlyph(t.category, icons)
 	case isCategory:
 		c.text = strings.ToUpper(t.category)
 	case level == tagWide && icons:
@@ -372,6 +414,14 @@ func (m Model) renderChips(chips []tagChip, row lipgloss.Style) string {
 	if rowBg == "" {
 		rowBg = m.styles.Theme.Bg
 	}
+	return renderChipsWith(chips, m.tagColorFor, rowBg, row)
+}
+
+// renderChipsWith draws chips exactly like renderChips, but resolves each
+// chip's color through colorFor instead of a Model's configured tag colors.
+// Settings uses this with fixed pastel demo colors to preview a tag style or
+// pill-ends choice without needing a Model.
+func renderChipsWith(chips []tagChip, colorFor func(string) tagColor, rowBg lipgloss.Color, row lipgloss.Style) string {
 	var b strings.Builder
 	for i, c := range chips {
 		if i > 0 {
@@ -379,7 +429,7 @@ func (m Model) renderChips(chips []tagChip, row lipgloss.Style) string {
 		}
 		switch {
 		case c.filled:
-			col := m.tagColorFor(c.colorKey)
+			col := colorFor(c.colorKey)
 			body := lipgloss.NewStyle().Background(col.bg).Foreground(col.fg).Bold(true)
 			switch c.ends {
 			case config.TagEndsNone:
@@ -391,7 +441,7 @@ func (m Model) renderChips(chips []tagChip, row lipgloss.Style) string {
 				b.WriteString(body.Render(" " + c.text + " "))
 			}
 		case c.colored:
-			col := m.tagColorFor(c.colorKey)
+			col := colorFor(c.colorKey)
 			b.WriteString(row.Foreground(accentReadableOn(col.bg, rowBg, 3)).Render(c.text))
 		default:
 			b.WriteString(row.Render(c.text))
@@ -407,6 +457,42 @@ func chipsText(chips []tagChip) string {
 		parts[i] = c.text
 	}
 	return strings.Join(parts, " ")
+}
+
+// ── Settings previews ───────────────────────────────────────────────────────
+//
+// The Tag style and Pill ends pickers in Settings show a live rendering of
+// each choice, rather than describing it in prose. The preview uses fixed
+// pastel demo colors instead of the user's configured (or theme-derived) tag
+// colors, so it reads the same regardless of theme or customization and
+// never mistakes itself for the real thing.
+
+// tagExampleTag is the one sample tag previewed in Settings: a category, the
+// same "github" example used throughout the docs and tests.
+var tagExampleTag = annotationTag{kind: tagCategory, category: "github"}
+
+// tagExamplePastels are the light, low-saturation demo colors for those
+// previews.
+var tagExamplePastels = map[string]tagColor{
+	tagKeyReply:    {fg: "#3a3a3a", bg: "#cfe8ff"},
+	tagKeyCategory: {fg: "#3a3a3a", bg: "#e6dcfb"},
+}
+
+func tagExampleColor(key string) tagColor {
+	if c, ok := tagExamplePastels[key]; ok {
+		return c
+	}
+	return tagExamplePastels[tagKeyCategory]
+}
+
+// renderTagExample previews one tag style/ends combination on background bg
+// as a single pill: a filled pastel pill for Pills (with the chosen
+// endcaps), pastel-colored text for Compact, or plain bracketed text for
+// Plain — exactly what that choice looks like, nothing else mixed in.
+func renderTagExample(style, ends string, icons bool, bg lipgloss.Color) string {
+	chip := chipFor(tagExampleTag, style, tagWide, icons)
+	chip.ends = ends
+	return renderChipsWith([]tagChip{chip}, tagExampleColor, bg, lipgloss.NewStyle().Background(bg))
 }
 
 // minSubjectCols is the least room a subject keeps before tags shrink.

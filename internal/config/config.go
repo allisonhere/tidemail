@@ -211,7 +211,7 @@ type DisplayConfig struct {
 	VT52                  RetroTerminalTweak `toml:"vt52"`
 	VT100                 RetroTerminalTweak `toml:"vt100"`
 	// TagStyle is how plugin annotation tags look in message rows: "pills"
-	// (default), "compact", or "plain".
+	// (default), "glyph-pills", "compact", or "plain".
 	TagStyle string `toml:"tag_style"`
 	// TagEnds is how pill tags end: "square" (default; a padded block),
 	// "round" (rounded caps; needs a Nerd Font), or "none" (no padding).
@@ -231,9 +231,10 @@ type TagColor struct {
 
 // Annotation tag styles.
 const (
-	TagStylePills   = "pills"
-	TagStyleCompact = "compact"
-	TagStylePlain   = "plain"
+	TagStyleGlyphPills = "glyph-pills"
+	TagStylePills      = "pills"
+	TagStyleCompact    = "compact"
+	TagStylePlain      = "plain"
 )
 
 // Pill tag ends.
@@ -257,6 +258,8 @@ func NormalizeTagEnds(s string) string {
 // NormalizeTagStyle returns a known tag style, defaulting to pills.
 func NormalizeTagStyle(s string) string {
 	switch strings.ToLower(strings.TrimSpace(s)) {
+	case TagStyleGlyphPills:
+		return TagStyleGlyphPills
 	case TagStyleCompact:
 		return TagStyleCompact
 	case TagStylePlain:

@@ -98,6 +98,7 @@ const (
 	overlayPluginSettings
 	overlaySnooze
 	overlayTagColors
+	overlayColorPicker
 	overlayClassification
 	overlaySyncAllConfirm
 )
@@ -233,6 +234,7 @@ type Model struct {
 	waiting        waitingState   // see waiting.go
 	snooze         snoozeState    // see snooze.go
 	tagColors      tagColorEditor // see tag_colors.go
+	colorPicker    colorPicker    // see color_picker.go
 	classification classificationEditor
 
 	plugins pluginUI // experimental; see plugins.go
@@ -2656,6 +2658,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayTagColors:
 		return m.handleTagColorsKey(msg)
 
+	case overlayColorPicker:
+		return m.handleColorPickerKey(msg)
+
 	case overlayClassification:
 		return m.handleClassificationKey(msg)
 
@@ -2819,7 +2824,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Settings previews theme changes live, but only commits them to config when the overlay finishes with Save. -allie
 	prevThemeIdx := m.settings.themeIdx
 	newS, cmd, done := m.settings.Update(msg, m.keys)
@@ -2879,8 +2884,6 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case settingsActionViewLogs:
 		m.overlay = overlayLogViewer
 		return m, nil
-	case settingsActionPluginSettings:
-		return m.openPluginList(overlaySettings)
 	case settingsActionTagColors:
 		return m.openTagColors(overlaySettings)
 	case settingsActionCopyManualInstall:

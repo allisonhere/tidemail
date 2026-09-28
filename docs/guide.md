@@ -566,8 +566,10 @@ A plugin that also declares the `annotations` permission can attach short
 notes to a message, such as "needs reply" or "category: github". TideMail
 stores them in its local cache and shows them as tags in message rows, the
 same way in every folder and view: `↩ REPLY`, `! URGENT`, `◆ IMPORTANT`, and
-the category name (`GITHUB`). On narrow screens tags shrink to their symbols
-(`↩ ◆ #github`) or disappear before the subject does. Each plugin run replaces
+the category name (`GITHUB`). On narrower screens tags shrink to their
+symbols, with the category becoming a single glyph chosen for that category
+(`↩ ◆ ⚙` for github), then to a plain `#github`, or disappear before the
+subject does. Each plugin run replaces
 that plugin's notes on the message; a successful run with nothing to say
 clears them. **Message annotations** in the palette lists all of a message's
 annotations. Running a plugin can move messages into or out of Needs You at once;
@@ -589,21 +591,31 @@ part of category totals.
 Choose how tags look under **Settings → Display → Appearance → Annotation
 Tags**:
 
-- **Tag style**: **Pills** (colored blocks, the default), **Compact** (colored
-  text such as `↩REPLY #github`), or **Plain** (uncolored `[REPLY] [github]`).
-  No special font is needed for any of them.
-- **Pill ends** (Pills only): **Square** pads each pill with a colored cell on
-  both sides (the default), **Round** draws rounded caps instead (needs a Nerd
-  Font in your terminal), and **None** drops the padding to save two columns
-  per tag.
+- **Tag style**: use `←`/`→` on the single picker to choose **Pills (Square)**,
+  **Pills (Round)**, **Pills (None)**, **Compact**, **Plain**, or
+  **Glyph Pills (Round)**. The picker
+  names and previews every choice. Square pills pad each side, Round uses
+  rounded caps (needs a Nerd Font), and None removes the padding. Compact uses
+  colored text such as `↩REPLY #github`; Plain uses uncolored
+  `[REPLY] [github]`. Glyph Pills (Round) shows only the matching category
+  glyph (for example, ⚙ for GitHub or ✉ for newsletters) inside rounded
+  colored pills, even when full labels would fit. Unknown categories use ●;
+  disabling icons uses ASCII markers. On narrow rows the caps may drop to
+  preserve subject space.
 - **Tag colors** opens an editor for the background and foreground of each
   tag: needs reply, urgency, importance, the default category color, and the
   known categories (github, shipping, security, calendar, newsletter, support,
   social, billing, receipt, notification, personal). Other categories use the
-  default category color. Select a tag, press `b` or `f`, and type a color as
-  `#rrggbb` (or `#rgb`); leave it empty to follow the theme again, or press
-  `r` to reset both. Changes apply and save at once. Colors you do not set
-  follow the theme; plugins can never choose colors.
+  default category color. Select a tag and press `b` or `f` to open a visual
+  color picker for that swatch: `tab` moves between the RGB sliders (or the
+  HSL field in HSL mode, toggled with `m`) and the hex/R/G/B/H/S/L fields,
+  `↑↓←→` adjust whatever has focus, and `enter` on a field types an exact
+  number while `enter` elsewhere applies the color and returns to the list.
+  `#` jumps straight to typing a hex value, `y` copies the current hex to the
+  clipboard, and `esc` cancels without changing anything. Press `r` on a tag
+  to reset both its colors to follow the theme. Changes apply and save the
+  moment you confirm; colors you do not set follow the theme, and plugins can
+  never choose colors.
 
 Annotations stay after you remove a plugin, so its tags remain until you clear
 them. In **Message annotations**, select a plugin and press `c` to clear its
@@ -632,9 +644,11 @@ Automatic processing is off for every plugin until you enable it. A plugin that
 fails three times in a row is paused; select it and press `r` to resume.
 
 Some plugins are **reports**, such as mail analytics. The plugin list shows
-**enter  run report** for them: select one in **Plugins (experimental)** and
-press `enter`. The report opens in the plugin result window when it finishes,
-and `r` in the plugin list reopens the last result. Reports can be charts as
+**enter  run report** for them: select one in **Settings → Plugins** or
+**Plugins (experimental)** and press `enter`. The report opens in the plugin
+result window when it finishes; closing a report launched from Settings
+returns to the Plugins section. Press `r` in the plugin list to reopen the
+last result. Reports can be charts as
 well as text: stat tiles, sparklines, bar charts, heatmaps, and tables, drawn
 in your theme. Category bars use your category tag colors, so changing those
 under **Settings → Display → Appearance** changes the charts too. Scroll with
@@ -646,9 +660,14 @@ message bodies, cannot change your mail or TideMail's state, and cannot draw
 its own screens or colors. If a folder or account is selected in the sidebar,
 the report can treat it as the current one.
 
-Plugins can have their own settings. Open **Settings → Advanced → Plugin
-settings** (or press `s` on a plugin in **Plugins (experimental)**) to change
-them. Secret values such as API keys are stored in your system keychain, never
+Open **Settings → Plugins** to administer plugins directly in the right-hand
+pane. Press `→` to focus the list, `↑`/`↓` to select a plugin, and `s` to edit
+its settings in the same pane. The list also offers automatic-processing,
+resume, and stored-data controls when available. In a plugin form, `esc`
+returns to the list; from the list, `esc` returns to the Settings sidebar.
+`Tab` also returns to the sidebar when you are not typing a secret.
+Plugin changes save immediately. The command palette's **Plugins (experimental)**
+view still offers `s` to open a plugin's settings. Secret values such as API keys are stored in your system keychain, never
 in `config.toml`, and are shown only as `************`. Plugins are separate
 programs, not part of TideMail's mail handling: for example, TideMail Smart (JEV)
 (an external plugin) can call TypeSafe's Jev model over the network, and its

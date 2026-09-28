@@ -73,7 +73,8 @@ Current release: **v1.0.28**.
   `u` unsubscribe action that uses TideMail's existing confirmed flow without
   exposing unsubscribe links to plugins.
 - **Settings**: theme, display density, pane corners, pane header bars, modal
-  drop shadow, AI provider config, editor, update checks, and an optional
+  drop shadow, AI provider config, editor, update checks, a dedicated Plugins
+  section with inline administration and configuration, and an optional
   Support page with open/copy actions for the confirmed Ko-fi link.
 - **Update checker**: GitHub-releases check with checksum-verified self-update,
   user-local install fallback, and an in-app progress popup. `U` offers an

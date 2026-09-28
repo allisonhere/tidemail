@@ -242,8 +242,7 @@ func (m Model) pluginDisplayName(pluginID string) string {
 // ── Keys ─────────────────────────────────────────────────────────────────────
 
 // handlePluginListKey drives the plugin list: the cursor moves between
-// plugins, enter runs the selected plugin's report, s opens its settings, and
-// c asks to clear its stored annotations.
+// plugins, Enter runs a report, s opens settings, and c clears stored annotations.
 func (m Model) handlePluginListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	entries := m.pluginListEntries()
 	if len(entries) > 0 {
@@ -280,6 +279,10 @@ func (m Model) handlePluginListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case msg.String() == "r" && m.plugins.result != nil:
 		m.plugins.scroll = 0
+		m.plugins.resultOrigin = overlayNone
+		if m.overlay == overlaySettings && m.settings.activeSection == ssPlugins {
+			m.plugins.resultOrigin = overlaySettings
+		}
 		m.overlay = overlayPluginResult
 	case msg.String() == "c":
 		if len(entries) == 0 {

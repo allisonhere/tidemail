@@ -96,6 +96,10 @@ type pluginUI struct {
 	// listOrigin is where Esc from the plugin list returns (Settings or
 	// nothing).
 	listOrigin overlayMode
+	// reportOrigin remembers where an asynchronous report was launched.
+	reportOrigin overlayMode
+	// resultOrigin returns a report opened from Settings to its plugin list.
+	resultOrigin overlayMode
 }
 
 type pluginResult struct {
@@ -527,7 +531,8 @@ func (m Model) handlePluginKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			messageUnsubscribeTarget(*m.plugins.result.message) != "":
 			return m.handleUnsubscribe(*m.plugins.result.message)
 		case keyMatches(msg, m.keys.Cancel, m.keys.Back, m.keys.Confirm):
-			m.overlay = overlayNone
+			m.overlay = m.plugins.resultOrigin
+			m.plugins.resultOrigin = overlayNone
 			m.plugins.scroll = 0
 		case msg.String() == "d" && m.plugins.result != nil && len(m.plugins.result.details) > 0:
 			m.plugins.result.showDetails = !m.plugins.result.showDetails
@@ -604,34 +609,40 @@ func (m Model) renderPluginOverlay() string {
 		title = "message annotations"
 	default:
 		lines, _ := m.pluginListLines(winW-4, chrome)
-		pairs := []string{"↑↓", "select"}
-		resumable := false
-		if entries := m.pluginListEntries(); len(entries) > 0 {
-			e := entries[clamp(m.plugins.listCursor, 0, len(entries)-1)]
-			eventHints := m.pluginEventHints(e)
-			pairs = append(pairs, eventHints...)
-			if e.installed && m.pluginHasReport(e.pluginID) {
-				pairs = append(pairs, "enter", "run report")
-			}
-			if e.installed && m.hasPluginSettingsPage(e.pluginID) {
-				pairs = append(pairs, "s", "settings")
-			}
-			resumable = len(eventHints) > 2 // includes "r resume"
-			// Only offer clearing when the selected plugin has stored data.
-			if e.count > 0 {
-				pairs = append(pairs, "c", "clear stored")
-			}
-		}
-		// r resumes a paused plugin; otherwise it reopens the last result.
-		if m.plugins.result != nil && !resumable {
-			pairs = append(pairs, "r", "last result")
-		}
+		pairs := m.pluginListHintPairs()
 		pairs = append(pairs, "esc", "close")
 		inner = m.renderPluginScroll(lines, winW, winH, chrome, pairs...)
 		title = "plugins"
 	}
 	inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 	return renderSoftPanelBox(inner, winW, "tidemail", title, chrome)
+}
+
+func (m Model) pluginListHintPairs() []string {
+	pairs := []string{"↑↓", "select"}
+	resumable := false
+	if entries := m.pluginListEntries(); len(entries) > 0 {
+		e := entries[clamp(m.plugins.listCursor, 0, len(entries)-1)]
+		eventHints := m.pluginEventHints(e)
+		pairs = append(pairs, eventHints...)
+		if e.installed && m.pluginHasReport(e.pluginID) {
+			pairs = append(pairs, "enter", "run report")
+		}
+		if e.installed && m.hasPluginSettingsPage(e.pluginID) {
+			pairs = append(pairs, "s", "settings")
+		}
+		resumable = len(eventHints) > 2 // includes "r resume"
+		// Only offer clearing when the selected plugin has stored data.
+		if e.count > 0 {
+			pairs = append(pairs, "c", "clear stored")
+		}
+	}
+	// r resumes a paused plugin; otherwise it reopens the last result.
+	if m.plugins.result != nil && !resumable {
+		pairs = append(pairs, "r", "last result")
+	}
+
+	return pairs
 }
 
 // pluginResultMessage snapshots the exact cached message a manual plugin run

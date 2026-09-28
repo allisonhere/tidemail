@@ -156,7 +156,11 @@ func (m Model) openPluginSettings(pluginID string) (Model, tea.Cmd) {
 		return m, nil
 	}
 	m.plugins.settings = pluginSettingsState{pluginID: pluginID, origin: m.overlay}
-	m.overlay = overlayPluginSettings
+	if m.overlay == overlaySettings && m.settings.activeSection == ssPlugins {
+		m.settings.pluginEditing = true
+	} else {
+		m.overlay = overlayPluginSettings
+	}
 	return m, loadSecretPresenceCmd(m.plugins.manager, pluginID)
 }
 
@@ -395,9 +399,16 @@ func (m Model) renderPluginSettings() string {
 	winW := max(1, min(m.width-4, 76))
 	winH := max(1, min(m.height-4, 30))
 	chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
+	lines, pairs, _ := m.pluginSettingsContent(max(1, winW-4), chrome)
+	inner := m.renderPluginScroll(lines, winW, winH, chrome, pairs...)
+	inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
+	return renderSoftPanelBox(inner, winW, "tidemail", "plugin settings", chrome)
+}
+
+// pluginSettingsContent is shared by the Settings pane and command-palette form.
+func (m Model) pluginSettingsContent(bodyW int, chrome managerChrome) ([]string, []string, int) {
 	st := m.plugins.settings
 	rows := m.pluginSettingsRows(st.pluginID)
-	bodyW := max(1, winW-4)
 	base := lipgloss.NewStyle().Background(chrome.baseBg)
 	text := base.Foreground(chrome.text)
 	muted := base.Foreground(chrome.muted)
@@ -430,9 +441,11 @@ func (m Model) renderPluginSettings() string {
 	} else if st.cursor < len(rows) && rows[st.cursor].kind == rowSetting && rows[st.cursor].spec.Type == plugin.SettingSecret && st.secretSet[rows[st.cursor].spec.Key] {
 		pairs = []string{"↑↓", "select", "enter", "replace", "x", "clear", "esc", "back"}
 	}
-	inner := m.renderPluginScroll(lines, winW, winH, chrome, pairs...)
-	inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-	return renderSoftPanelBox(inner, winW, "tidemail", "plugin settings", chrome)
+	anchor := 2 + st.cursor
+	if st.editing {
+		anchor = len(lines) - 1
+	}
+	return lines, pairs, anchor
 }
 
 // settingsRowText is a row's label and displayed value. Secrets show only

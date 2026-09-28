@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/allisonhere/tidemail/internal/config"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // memorySecrets replaces the keychain in tests.
@@ -274,38 +275,92 @@ func TestPluginWithoutSettingsHasNoPage(t *testing.T) {
 	}
 }
 
-func TestSettingsScreenLinksToPlugins(t *testing.T) {
+func TestSettingsPluginsInline(t *testing.T) {
+	useMemorySecrets(t)
 	root := t.TempDir()
 	installSettingsPlugin(t, root, "smart")
 	m, _, _ := newEventModel(t, root, 1)
 	next, _ := m.executeCommand("settings")
 	m = next.(Model)
-	m.settings.setActiveSection(ssAdvanced)
-	found := false
-	for _, f := range m.settings.sectionFields(ssAdvanced) {
-		found = found || f == sfPluginSettings
+	m.settings.setActiveSection(ssPlugins)
+	m, _ = press(t, m, "right")
+	if m.overlay != overlaySettings || !strings.Contains(m.View(), "Plugin smart") {
+		t.Fatal("plugin list should render directly in Settings")
 	}
-	if !found {
-		t.Fatal("Advanced settings should offer Plugin settings when plugins are installed")
+	m, _ = press(t, m, "s")
+	if m.overlay != overlaySettings || !m.settings.pluginEditing {
+		t.Fatal("plugin form should stay inside Settings")
 	}
-	m.settings.setFocusedPane(settingsPaneDetail)
-	m.settings.setFocusedField(sfPluginSettings)
+	m.plugins.settings.cursor = rowIndex(t, m, "Classification mode")
 	m, _ = press(t, m, "enter")
-	if m.overlay != overlayPlugins || m.plugins.listOrigin != overlaySettings {
-		t.Fatalf("overlay = %v origin = %v", m.overlay, m.plugins.listOrigin)
+	if got := m.cfg.PluginStoredSettings("smart")["mode"]; got != "jev" {
+		t.Fatalf("inline select did not persist: %v", got)
+	}
+	m.plugins.settings.cursor = rowIndex(t, m, "Auto-process new mail")
+	m, _ = press(t, m, "enter")
+	if m.overlay != overlayPluginConfirm || m.plugins.confirmOrigin != overlaySettings {
+		t.Fatal("auto-processing confirmation must return to the Settings pane")
 	}
 	m, _ = press(t, m, "esc")
-	if m.overlay != overlaySettings {
-		t.Fatal("esc should return to Settings")
+	if m.overlay != overlaySettings || !m.settings.pluginEditing {
+		t.Fatal("canceling confirmation lost the inline form")
 	}
+	m, _ = press(t, m, "esc")
+	if m.overlay != overlaySettings || m.settings.pluginEditing || m.settings.focusedPane != settingsPaneDetail {
+		t.Fatal("esc should return from the form to the inline plugin list")
+	}
+	m, _ = press(t, m, "esc")
+	if m.overlay != overlaySettings || m.settings.focusedPane != settingsPaneSidebar {
+		t.Fatal("esc from plugin list should focus sections")
+	}
+}
 
-	// Without plugins the entry does not exist.
-	plain, _ := newMailboxListModel(7, 1)
-	next, _ = plain.executeCommand("settings")
-	for _, f := range next.(Model).settings.sectionFields(ssAdvanced) {
-		if f == sfPluginSettings {
-			t.Fatal("Plugin settings shown without plugins")
+func TestSettingsPluginPaneEmptyAndBounded(t *testing.T) {
+	trueColor(t)
+	m, _ := newMailboxListModel(7, 1)
+	next, _ := m.executeCommand("settings")
+	m = next.(Model)
+	m.settings.setActiveSection(ssPlugins)
+	chrome := newManagerChrome(60, CatppuccinMocha, false)
+	if out := m.renderSettingsPluginPane(60, 20, chrome); !strings.Contains(out, "no plugins installed") {
+		t.Fatal("missing empty state")
+	}
+	for _, size := range [][2]int{{24, 8}, {40, 12}, {60, 24}} {
+		out := m.renderSettingsPluginPane(size[0], size[1], chrome)
+		gap := strings.Split(out, "\n")[1]
+		if at := unpaintedCell(gap); at >= 0 {
+			t.Fatalf("unpainted header gap at byte %d: %q", at, gap)
 		}
+		if lipgloss.Width(out) > size[0] || lipgloss.Height(out) > size[1] {
+			t.Fatalf("pane exceeds %dx%d", size[0], size[1])
+		}
+	}
+}
+
+func TestSettingsPluginSecretStaysInline(t *testing.T) {
+	useMemorySecrets(t)
+	root := t.TempDir()
+	installSettingsPlugin(t, root, "smart")
+	m, _, _ := newEventModel(t, root, 1)
+	next, _ := m.executeCommand("settings")
+	m = next.(Model)
+	m.settings.setActiveSection(ssPlugins)
+	m, _ = press(t, m, "right")
+	m, _ = press(t, m, "s")
+	m.plugins.settings.cursor = rowIndex(t, m, "API key")
+	m, _ = press(t, m, "enter")
+	m, _ = press(t, m, "q")
+	if m.overlay != overlaySettings || !m.plugins.settings.editing || m.plugins.settings.input.Value() != "q" {
+		t.Fatal("secret keystrokes should reach the input")
+	}
+	m.plugins.settings.input.SetValue("private-test-key")
+	view := m.renderSettingsPluginPane(40, 12, newManagerChrome(40, CatppuccinMocha, false))
+	if strings.Contains(view, "private-test-key") || !strings.Contains(view, "new value:") {
+		t.Fatal("secret input must be visible and masked")
+	}
+	m, _ = press(t, m, "esc")
+	if m.plugins.settings.editing || !m.settings.pluginEditing || m.overlay != overlaySettings {
+		t.Fatal("esc should cancel secret entry without leaving the inline form")
 	}
 }
 

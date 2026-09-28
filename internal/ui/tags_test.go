@@ -164,9 +164,8 @@ func TestTagAdaptiveWidth(t *testing.T) {
 		want   string
 	}{
 		{80, "↩ REPLY|◆ IMPORTANT|GITHUB"}, // wide: 9+1+13+1+8 = 32
-		{20, "↩|◆|GITHUB"},                 // medium: 3+1+3+1+8 = 16
-		{12, "↩|◆|#github"},                // narrow: 1+1+1+1+7 = 11
-		{8, "↩|◆"},                         // category dropped first
+		{20, "↩|◆|⚙"},                      // medium: 3+1+3+1+3 = 11 (github's glyph pill)
+		{8, "↩|◆"},                         // neither medium nor narrow fits all 3: category dropped first
 		{2, "↩"},                           // then the lowest priority
 		{0, ""},
 	}
@@ -179,8 +178,23 @@ func TestTagAdaptiveWidth(t *testing.T) {
 			t.Errorf("budget %d: width %d", tc.budget, w)
 		}
 	}
-	if chips := layoutTags(tags, config.TagStylePills, config.TagEndsSquare, true, 12); chips[2].filled {
-		t.Error("narrow category should be unpadded text")
+
+	// A category's medium level is a filled, round-able glyph pill; its
+	// narrow level drops to unpadded "#name" text, same as the other kinds.
+	if c := chipFor(githubTag, config.TagStylePills, tagMedium, true); c.text != "⚙" || !c.filled {
+		t.Errorf("medium category chip = %+v", c)
+	}
+	if c := chipFor(githubTag, config.TagStylePills, tagNarrow, true); c.text != "#github" || c.filled {
+		t.Errorf("narrow category chip = %+v", c)
+	}
+	// Without icons, the medium glyph falls back to a plain ASCII marker.
+	if c := chipFor(githubTag, config.TagStylePills, tagMedium, false); c.text != "G" {
+		t.Errorf("ascii medium category chip = %+v", c)
+	}
+	// An unlisted category still gets a generic glyph rather than empty text.
+	project := annotationTag{kind: tagCategory, category: "project"}
+	if c := chipFor(project, config.TagStylePills, tagMedium, true); c.text != "●" {
+		t.Errorf("medium unknown category chip = %+v", c)
 	}
 }
 
@@ -355,7 +369,9 @@ func TestTagSettingsRoundTrip(t *testing.T) {
 	}
 }
 
-// The editor validates input, saves overrides, and resets them.
+// The editor opens the color picker for background/foreground, which
+// validates typed input, applies on confirm, and can be canceled; the
+// tag-list-level reset still works, and Settings edits the style.
 func TestTagColorEditor(t *testing.T) {
 	var saved config.Config
 	orig := configSave
@@ -368,13 +384,30 @@ func TestTagColorEditor(t *testing.T) {
 		t.Fatal("editor should list the known categories")
 	}
 	m, _ = press(t, m, "b")
-	m.tagColors.input.SetValue("purple")
+	if m.overlay != overlayColorPicker || m.colorPicker.key != "reply" || m.colorPicker.field != "bg" {
+		t.Fatalf("b should open the color picker for reply/bg, got overlay=%v picker=%+v", m.overlay, m.colorPicker)
+	}
+	m, _ = press(t, m, "#")
+	m.colorPicker.input.SetValue("purple")
 	m, _ = press(t, m, "enter")
-	if m.tagColors.err == "" || m.cfg.Display.TagColors != nil {
+	if m.colorPicker.err == "" || m.cfg.Display.TagColors != nil {
 		t.Fatal("an invalid color must be refused and not stored")
 	}
-	m.tagColors.input.SetValue("#ABC")
+	m.colorPicker.input.SetValue("abc")
 	m, _ = press(t, m, "enter")
+	if m.colorPicker.hex() != "#aabbcc" {
+		t.Fatalf("picker color after commit = %s", m.colorPicker.hex())
+	}
+	if m.cfg.Display.TagColors != nil {
+		t.Fatal("editing a field must not write to config until the picker is confirmed")
+	}
+	// Move off the hex field so Enter closes and applies rather than
+	// reopening that field's text edit.
+	m.colorPicker.focus = colorPickerFocus{kind: cpFocusRGBSlider}
+	m, _ = press(t, m, "enter")
+	if m.overlay != overlayTagColors {
+		t.Fatalf("enter should apply and return to the tag list, got %v", m.overlay)
+	}
 	if got := m.cfg.Display.TagColors["reply"]; got.Bg != "#aabbcc" {
 		t.Fatalf("stored = %+v", m.cfg.Display.TagColors)
 	}
@@ -391,6 +424,28 @@ func TestTagColorEditor(t *testing.T) {
 	m, _ = press(t, m, "esc")
 	if m.overlay != overlaySettings {
 		t.Fatalf("esc returns to Settings, got %v", m.overlay)
+	}
+}
+
+// Canceling the picker (Esc, not editing a field) discards the change.
+func TestColorPickerCancelDiscards(t *testing.T) {
+	m, _ := newMailboxListModel(7, 1)
+	next, _ := m.openTagColors(overlaySettings)
+	m = next.(Model)
+	m, _ = press(t, m, "b")
+	m, _ = press(t, m, "#")
+	m.colorPicker.input.SetValue("00ff00")
+	m, _ = press(t, m, "enter")
+	if m.colorPicker.hex() != "#00ff00" {
+		t.Fatalf("picker color = %s", m.colorPicker.hex())
+	}
+	m.colorPicker.focus = colorPickerFocus{kind: cpFocusRGBSlider}
+	m, _ = press(t, m, "esc")
+	if m.overlay != overlayTagColors {
+		t.Fatalf("esc should return to the tag list, got %v", m.overlay)
+	}
+	if m.cfg.Display.TagColors != nil {
+		t.Fatalf("canceling must not store the edited color: %+v", m.cfg.Display.TagColors)
 	}
 }
 
@@ -421,8 +476,11 @@ func TestTagPillEnds(t *testing.T) {
 	if widths[config.TagEndsSquare] != 18 || widths[config.TagEndsRound] != 18 || widths[config.TagEndsNone] != 14 {
 		t.Fatalf("widths = %v", widths)
 	}
-	// Narrow text tags never get ends.
-	for _, c := range layoutTags(tags, config.TagStylePills, config.TagEndsRound, true, 9) {
+	// Narrow text tags never get ends. (A category's medium glyph pill is
+	// already as tight as its narrow "#name" form or tighter, so this uses
+	// plain attention tags, whose narrow level drops padding a medium glyph
+	// pill wouldn't.)
+	for _, c := range layoutTags([]annotationTag{replyTag, urgentTag}, config.TagStylePills, config.TagEndsRound, true, 5) {
 		if c.width() != lipgloss.Width(c.text) {
 			t.Errorf("narrow chip %+v has ends", c)
 		}

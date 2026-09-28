@@ -209,6 +209,9 @@ shows its normal confirmation before acting. Report plugins (press `enter` on on
 or category totals, and show the answer; they never see message bodies or get
 database access.
 
+Administer installed plugins directly in **Settings → Plugins**. Select a
+plugin and press `s` to edit its settings in the right-hand pane.
+
 To install TideMail Smart (JEV), build it from the
 [TideMail plugin collection](https://github.com/allisonhere/tidemail-plugins/tree/main/plugins/smart)
 repository and copy its binary and `plugin.toml` into the plugins directory.

@@ -90,3 +90,46 @@ func TestEnterRunsReportOnlyForReportPlugins(t *testing.T) {
 		t.Fatalf("report body = %q", body)
 	}
 }
+
+func TestSettingsPluginReportShowsResultAndReturnsToPane(t *testing.T) {
+	root := t.TempDir()
+	installReportPlugin(t, root, "analytics", true)
+	m := newPluginModel(t, root)
+	database, err := db.OpenPath(filepath.Join(t.TempDir(), "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	m.db = database
+	m.settings = newSettings(m.cfg, m.settingsUpdateState())
+	m.settings.setActiveSection(ssPlugins)
+	m.settings.setFocusedPane(settingsPaneDetail)
+	m.settings.pluginPaneLoaded = true
+	m.overlay = overlaySettings
+
+	next, cmd := m.handleSettings(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	if cmd == nil || m.plugins.running != "analytics" || m.overlay != overlaySettings {
+		t.Fatalf("report did not start from Settings: running=%q overlay=%v", m.plugins.running, m.overlay)
+	}
+	msg, ok := cmd().(pluginReportMsg)
+	if !ok || msg.Err != nil {
+		t.Fatalf("report result = %#v", msg)
+	}
+	next, _ = m.Update(msg)
+	m = next.(Model)
+	if m.overlay != overlayPluginResult || m.plugins.resultOrigin != overlaySettings {
+		t.Fatalf("completed report stayed hidden: overlay=%v origin=%v", m.overlay, m.plugins.resultOrigin)
+	}
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = next.(Model)
+	if m.overlay != overlaySettings || m.settings.activeSection != ssPlugins {
+		t.Fatalf("closing report did not return to Plugins: overlay=%v section=%v", m.overlay, m.settings.activeSection)
+	}
+	// Reopen the last result from the same pane.
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	m = next.(Model)
+	if m.overlay != overlayPluginResult || m.plugins.resultOrigin != overlaySettings {
+		t.Fatal("last result did not reopen from Settings")
+	}
+}

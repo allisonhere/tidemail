@@ -153,6 +153,9 @@ func (m Model) renderOverlay(base string) string {
 	case overlayTagColors:
 		box = m.renderTagColors()
 
+	case overlayColorPicker:
+		box = m.renderColorPicker()
+
 	case overlayClassification:
 		box = m.renderClassificationOverlay()
 
@@ -217,7 +220,11 @@ func (m Model) renderOverlay(base string) string {
 		winW := min(m.width-4, settingsOverlayMaxW)
 		winH := min(m.height-4, 36)
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
-		inner := m.settings.View(winW, winH, chrome)
+		var detail func(int, int) string
+		if m.settings.activeSection == ssPlugins {
+			detail = func(width, height int) string { return m.renderSettingsPluginPane(width, height, chrome) }
+		}
+		inner := m.settings.viewWithDetail(winW, winH, chrome, detail)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderSoftPanelBox(inner, winW, "tidemail", "settings", chrome)
 

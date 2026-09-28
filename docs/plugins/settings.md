@@ -3,9 +3,11 @@
 A plugin can declare settings. TideMail draws them in a generic form, stores
 them, and sends them back on every call. Plugins cannot supply their own UI.
 
-Users open the form from **Settings → Advanced → Plugin settings** (select
-the plugin and press `s`), or by pressing `s` on the plugin in **Plugins
-(experimental)**. Changes save immediately.
+Users select a plugin under **Settings → Plugins** and press `s` to edit its
+settings directly in the right-hand pane. `esc` returns to the plugin list;
+from the list, `esc` returns to the Settings sidebar. The command palette's
+**Plugins (experimental)** view also offers `s` to open the form. Changes
+save immediately.
 
 ## Types
 
