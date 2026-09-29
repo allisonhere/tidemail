@@ -883,7 +883,7 @@ func TestSettingsAboutHeartRestartsReveal(t *testing.T) {
 
 func TestSettingsAboutHeartFocusOrder(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
-	want := []settingsField{sfBackToSections, sfAboutHeart, sfAboutRepo, sfAboutIssues}
+	want := []settingsField{sfBackToSections, sfAboutHeart, sfAboutSupport, sfAboutRepo, sfAboutIssues}
 	if got := s.sectionFields(ssAbout); !reflect.DeepEqual(got, want) {
 		t.Fatalf("expected About focus order %#v, got %#v", want, got)
 	}

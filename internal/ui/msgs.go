@@ -42,6 +42,16 @@ type MessagesLoadedMsg struct {
 	Search    bool
 	Query     string
 	Err       error
+	// Annotations holds plugin annotations for Messages, loaded in the same
+	// command so rendering never queries the database.
+	Annotations map[int64][]db.PluginAnnotation
+	Overrides   map[int64]map[string]db.ClassificationOverride
+	// NeedsYou marks the Needs You view's list.
+	NeedsYou bool
+	// Waiting marks the Waiting on Them view's list.
+	Waiting bool
+	// Snoozed marks the Snoozed view's list.
+	Snoozed bool
 }
 
 type MailboxSyncedMsg struct {
@@ -50,9 +60,13 @@ type MailboxSyncedMsg struct {
 	NewMessages []db.Message // genuinely-new unread mail, for notification sender/subject
 	Err         error
 	Manual      bool
-	Passive     bool      // settled-folder refresh; never drives animated sync chrome
-	SyncedAt    time.Time // successful completion time, applied to in-memory freshness immediately
-	Total       time.Duration
+	Passive     bool // settled-folder refresh; never drives animated sync chrome
+	// Cold is true when the mailbox had no cached mail before this sync (first
+	// setup, or a cache reset after UIDVALIDITY changed). Its "new" messages
+	// are a history page, not fresh arrivals, so plugin events skip them.
+	Cold     bool
+	SyncedAt time.Time // successful completion time, applied to in-memory freshness immediately
+	Total    time.Duration
 }
 
 // OlderMessagesLoadedMsg reports the result of paging further back into a
@@ -129,6 +143,18 @@ type MessageReadUpdatedMsg struct {
 	Read      bool
 	Advance   bool
 	Err       error
+}
+
+type MessageReadBatchEntry struct {
+	MessageID int64
+	MailboxID int64
+	WasRead   bool
+	Read      bool
+}
+
+type MessageReadBatchUpdatedMsg struct {
+	Entries []MessageReadBatchEntry
+	Err     error
 }
 
 type MessageStarredUpdatedMsg struct {
@@ -274,6 +300,11 @@ type SummarySavedMsg struct {
 }
 
 type ClipboardCopiedMsg struct {
+	Err error
+}
+
+type BrowserOpenedMsg struct {
+	URL string
 	Err error
 }
 

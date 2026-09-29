@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -222,6 +223,50 @@ func DeleteAIKey(providerField string) {
 		return
 	}
 	_ = clearSecret(aiKeyKey(providerField))
+}
+
+// ── Plugin secrets ─────────────────────────────────────────────────────────────
+//
+// Plugin secret settings are keyed by plugin ID and setting key, so one
+// plugin's secrets are never visible under another plugin's name. There is no
+// plaintext fallback: without a usable keychain a plugin secret is not saved.
+
+func pluginSecretKey(pluginID, key string) string {
+	return "plugin:" + pluginID + ":" + key
+}
+
+// StorePluginSecret saves a plugin secret to the keychain.
+func StorePluginSecret(pluginID, key, value string) error {
+	if value == "" {
+		return errors.New("empty secret")
+	}
+	if !keyringAvailable() {
+		_, reason := KeyringStatus()
+		return fmt.Errorf("system keychain unavailable: %s", reason)
+	}
+	if err := storeSecret(pluginSecretKey(pluginID, key), value); err != nil {
+		return errors.New("could not write to the system keychain")
+	}
+	return nil
+}
+
+// GetPluginSecret returns a plugin secret and whether it is set.
+func GetPluginSecret(pluginID, key string) (string, bool) {
+	if !keyringAvailable() {
+		return "", false
+	}
+	v := lookupSecret(pluginSecretKey(pluginID, key))
+	return v, v != ""
+}
+
+// DeletePluginSecret removes a plugin secret from the keychain.
+func DeletePluginSecret(pluginID, key string) error {
+	if !keyringAvailable() {
+		_, reason := KeyringStatus()
+		return fmt.Errorf("system keychain unavailable: %s", reason)
+	}
+	_ = clearSecret(pluginSecretKey(pluginID, key))
+	return nil
 }
 
 // ── OAuth2 tokens ──────────────────────────────────────────────────────────────

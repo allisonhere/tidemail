@@ -1,11 +1,14 @@
 package ui
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 )
 
 const receiptTableFixture = `<table role="presentation"><tr><td>
@@ -124,6 +127,45 @@ func TestHeaderlessReceiptRendersThroughHTMLPipeline(t *testing.T) {
 			if !strings.Contains(got, value) {
 				t.Fatalf("amount changed: %s", got)
 			}
+		}
+	}
+}
+
+// Table text is emitted as a code block, and image labels inside it are
+// restyled; every visible cell must still carry the pane background or the
+// terminal's own background shows through behind it.
+func TestRenderedTableTextHasPaneBackground(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+	html := `<body bgcolor="#fff"><table><thead><tr><th>Status</th><th>Job</th><th>Annotations</th></tr></thead>
+<tbody><tr><td><img src="https://example.com/x.png" alt="validate" width="24" height="24"></td><td>Validate plugins / validate</td><td>4</td></tr></tbody></table></body>`
+	out := renderHTMLBody(html, 80, CatppuccinMocha, false)
+	if !strings.Contains(ansi.Strip(out), "Status") {
+		t.Fatalf("table not rendered: %q", ansi.Strip(out))
+	}
+	bgSGR := regexp.MustCompile(`(^|;)48;`)
+	for _, line := range strings.Split(out, "\n") {
+		bg := false
+		for i := 0; i < len(line); {
+			if line[i] == 0x1b {
+				end := strings.IndexByte(line[i:], 'm')
+				if end < 0 {
+					break
+				}
+				params := strings.TrimPrefix(line[i:i+end], "\x1b[")
+				switch {
+				case params == "0" || params == "":
+					bg = false
+				case bgSGR.MatchString(params):
+					bg = true
+				}
+				i += end + 1
+				continue
+			}
+			if !bg {
+				t.Fatalf("unpainted cell at byte %d in %q", i, line)
+			}
+			i++
 		}
 	}
 }

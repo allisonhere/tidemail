@@ -84,7 +84,7 @@ func (m Model) commandItems() []commandItem {
 func (m Model) mainCommandItems() []commandItem {
 	hasMessage := m.activeMessageRowCount() > 0 && m.focused != paneAccounts
 	hasMailbox := m.selectedMailbox() != nil
-	return []commandItem{
+	items := []commandItem{
 		{id: "outbox", label: "Open Outbox (queued, failed, and sent mail)", enabled: true},
 		{id: "compose", label: "Compose new message", enabled: len(m.cfg.Accounts) > 0},
 		{id: "reply", label: "Reply to current message", enabled: m.contentMessageID != 0 || hasMessage},
@@ -98,7 +98,12 @@ func (m Model) mainCommandItems() []commandItem {
 		{id: "accounts", label: "Manage accounts", enabled: true},
 		{id: "filters", label: "Manage filters (AI rules)", enabled: true},
 		{id: "settings", label: "Open settings", enabled: true},
+		{id: "support", label: "Support Tidemail", enabled: true},
 	}
+	items = append(items, m.needsYouCommandItems()...)
+	items = append(items, m.waitingCommandItems()...)
+	items = append(items, m.snoozeCommandItems()...)
+	return append(items, m.pluginCommandItems(hasMessage)...)
 }
 
 func (m Model) composeCommandItems() []commandItem {
@@ -208,11 +213,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		m.setStatus("no folder selected — pick one in the sidebar first", false)
 		return m, m.clearStatusCmd()
 	case "sync-all":
-		var cmds []tea.Cmd
-		for _, mb := range m.mailboxes {
-			cmds = append(cmds, m.syncMailboxCmd(mb.ID, true))
-		}
-		return m, tea.Batch(cmds...)
+		return m.requestSyncAll()
 	case "accounts":
 		m.overlay = overlayAccountManager
 		m.accountManager = m.newAccountManager()
@@ -223,8 +224,27 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "settings":
 		m.settings = newSettings(m.cfg, m.settingsUpdateState())
+		m.settings.pluginsAvailable = m.pluginsVisible()
 		m.overlay = overlaySettings
 		return m, nil
+	case "support":
+		m.settings = newSettings(m.cfg, m.settingsUpdateState())
+		m.settings.pluginsAvailable = m.pluginsVisible()
+		m.settings.setActiveSection(ssSupport)
+		m.settings.setFocusedPane(settingsPaneDetail)
+		if len(supportLinks) > 0 {
+			m.settings.setFocusedField(supportOpenField(0))
+		}
+		m.overlay = overlaySettings
+		return m, m.settings.supportPulseCmd()
+	case "plugins", "plugin-run", "plugin-reclassify-view", "plugin-cancel", "plugin-annotations", "classification-correct", "classification-reset":
+		return m.executePluginCommand(id)
+	case "needs-you-why", "needs-you-dismiss", "needs-you-restore":
+		return m.executeNeedsYouCommand(id)
+	case "waiting-why", "waiting-stop", "waiting-resume":
+		return m.executeWaitingCommand(id)
+	case "snooze", "snooze-unsnooze", "snooze-why":
+		return m.executeSnoozeCommand(id)
 	case "compose-send":
 		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlS})
 	case "compose-schedule":

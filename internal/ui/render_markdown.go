@@ -109,15 +109,16 @@ func tidemailDarkStyle(th Theme) string {
 		"background_color": "` + codeBg + `"
 	},
 	"code_block": {
-		"color": "` + codeFg + `",
-		"background_color": "` + codeBg + `",
+		"color": "` + fg + `",
+		"background_color": "` + bg + `",
 		"margin": 0,
 		"chroma": {
 			"text": {
-				"color": "` + codeFg + `"
+				"color": "` + fg + `",
+				"background_color": "` + bg + `"
 			},
-			"background_color": {
-				"color": "` + codeBg + `"
+			"background": {
+				"background_color": "` + bg + `"
 			}
 		}
 	},
@@ -181,6 +182,9 @@ func renderMarkdown(src string, width int, th Theme, plainUI bool) string {
 
 	r, err := glamour.NewTermRenderer(
 		glamour.WithStylesFromJSONBytes([]byte(tidemailDarkStyle(th))),
+		// terminal256 would quantize theme colors and leave code-block text
+		// off the palette the rest of the message uses.
+		glamour.WithChromaFormatter("terminal16m"),
 		glamour.WithWordWrap(width),
 	)
 	if err != nil {

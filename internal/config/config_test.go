@@ -349,3 +349,109 @@ from = "alice@example.com"
 		t.Fatal("expected unread_first to load true")
 	}
 }
+
+func TestPluginDirFollowsXDGConfigHome(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	got, err := PluginDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(dir, "tidemail", "plugins"); got != want {
+		t.Fatalf("PluginDir() = %q, want %q", got, want)
+	}
+}
+
+func TestPluginSettingsDefaultOffAndRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cfg := DefaultConfig()
+	if cfg.PluginAutoEvents("smart") {
+		t.Fatal("automatic events must default to off")
+	}
+	cfg.SetPluginAutoEvents("smart", true)
+	cfg.SetPluginAutoEvents("gone", true) // a removed plugin's setting is harmless
+	if err := Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.PluginAutoEvents("smart") || !loaded.PluginAutoEvents("gone") || loaded.PluginAutoEvents("other") {
+		t.Fatalf("plugins = %+v", loaded.Plugins)
+	}
+	loaded.SetPluginAutoEvents("smart", false)
+	if err := Save(loaded); err != nil {
+		t.Fatal(err)
+	}
+	again, err := Load()
+	if err != nil || again.PluginAutoEvents("smart") {
+		t.Fatalf("disable did not persist: %+v %v", again.Plugins, err)
+	}
+}
+
+func TestMalformedPluginSettingsDoNotBlockStartup(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	path := filepath.Join(dir, "tidemail", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data := "[plugins]\nsmart = 5\n[plugins.echo]\nauto_events = \"yes\"\n[plugins.ok]\nauto_events = true\n"
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("malformed plugin settings stopped startup: %v", err)
+	}
+	if cfg.PluginAutoEvents("smart") || cfg.PluginAutoEvents("echo") || !cfg.PluginAutoEvents("ok") {
+		t.Fatalf("plugins = %+v", cfg.Plugins)
+	}
+}
+
+func TestPluginNonSecretSettingsRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cfg := DefaultConfig()
+	cfg.SetPluginSetting("smart", "mode", "jev")
+	cfg.SetPluginSetting("smart", "jev_enabled", false)
+	cfg.SetPluginAutoEvents("smart", true)
+	if err := Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := loaded.PluginStoredSettings("smart")
+	if got["mode"] != "jev" || got["jev_enabled"] != false || !loaded.PluginAutoEvents("smart") {
+		t.Fatalf("settings = %v", got)
+	}
+	// Only bool and string values survive a hand-edited file.
+	path := filepath.Join(dir, "tidemail", "config.toml")
+	if err := os.WriteFile(path, []byte("[plugins.smart.settings]\nmode = \"local\"\nlevel = 5\nnested = { a = 1 }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := loaded.PluginStoredSettings("smart"); len(got) != 1 || got["mode"] != "local" {
+		t.Fatalf("settings = %v", got)
+	}
+}
+
+func TestPluginSecretsRefuseWithoutKeychain(t *testing.T) {
+	t.Setenv("TIDEMAIL_DISABLE_KEYRING", "1")
+	if err := StorePluginSecret("smart", "jev_api_key", "sk-test"); err == nil {
+		t.Fatal("storing a plugin secret without a keychain must fail, not fall back to plaintext")
+	}
+	if _, ok := GetPluginSecret("smart", "jev_api_key"); ok {
+		t.Fatal("no secret should be readable without a keychain")
+	}
+	if pluginSecretKey("a", "k") == pluginSecretKey("b", "k") {
+		t.Fatal("secret names must be namespaced by plugin")
+	}
+}

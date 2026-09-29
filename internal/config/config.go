@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -28,6 +29,101 @@ type Config struct {
 	AI       AIConfig        `toml:"ai"`
 	OAuth    OAuthConfig     `toml:"oauth"`
 	Accounts []AccountConfig `toml:"account"`
+
+	// Plugins holds per-plugin user settings for the experimental plugin
+	// system, keyed by plugin ID. A missing entry means every setting is off.
+	Plugins PluginSettingsMap `toml:"plugins,omitempty"`
+}
+
+// PluginSettings is one plugin's user settings.
+type PluginSettings struct {
+	// AutoEvents lets the plugin receive message.received automatically.
+	AutoEvents bool `toml:"auto_events"`
+	// Settings holds the plugin's declared non-secret settings (bool and
+	// string values only). Secrets live in the keychain, never here.
+	Settings map[string]any `toml:"settings,omitempty"`
+}
+
+// PluginSettingsMap maps plugin IDs to their settings. It decodes leniently:
+// a malformed [plugins] entry reads as "all off" instead of stopping TideMail
+// from starting, since these settings only ever turn optional features on.
+type PluginSettingsMap map[string]PluginSettings
+
+// UnmarshalTOML implements toml.Unmarshaler.
+func (p *PluginSettingsMap) UnmarshalTOML(data any) error {
+	out := PluginSettingsMap{}
+	if tables, ok := data.(map[string]any); ok {
+		for id, raw := range tables {
+			table, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			auto, _ := table["auto_events"].(bool)
+			ps := PluginSettings{AutoEvents: auto}
+			if values, ok := table["settings"].(map[string]any); ok {
+				for k, v := range values {
+					switch v.(type) {
+					case bool, string:
+						if ps.Settings == nil {
+							ps.Settings = map[string]any{}
+						}
+						ps.Settings[k] = v
+					}
+				}
+			}
+			out[id] = ps
+		}
+	}
+	*p = out
+	return nil
+}
+
+// PluginAutoEvents reports whether the user enabled automatic events for a
+// plugin. Unknown plugins are disabled.
+func (c Config) PluginAutoEvents(pluginID string) bool {
+	return c.Plugins[pluginID].AutoEvents
+}
+
+// SetPluginAutoEvents records the automatic-events switch for a plugin. It
+// copies the map so a Config value shared elsewhere is not changed.
+func (c *Config) SetPluginAutoEvents(pluginID string, on bool) {
+	next, settings := c.clonePlugin(pluginID)
+	settings.AutoEvents = on
+	next[pluginID] = settings
+	c.Plugins = next
+}
+
+// PluginStoredSettings returns a copy of a plugin's stored non-secret
+// setting values (raw, unvalidated; resolve them against the manifest).
+func (c Config) PluginStoredSettings(pluginID string) map[string]any {
+	stored := c.Plugins[pluginID].Settings
+	out := make(map[string]any, len(stored))
+	for k, v := range stored {
+		out[k] = v
+	}
+	return out
+}
+
+// SetPluginSetting stores one non-secret setting value (bool or string). It
+// copies the maps so a Config value shared elsewhere is not changed.
+func (c *Config) SetPluginSetting(pluginID, key string, value any) {
+	next, settings := c.clonePlugin(pluginID)
+	values := make(map[string]any, len(settings.Settings)+1)
+	for k, v := range settings.Settings {
+		values[k] = v
+	}
+	values[key] = value
+	settings.Settings = values
+	next[pluginID] = settings
+	c.Plugins = next
+}
+
+func (c *Config) clonePlugin(pluginID string) (PluginSettingsMap, PluginSettings) {
+	next := make(PluginSettingsMap, len(c.Plugins)+1)
+	for id, s := range c.Plugins {
+		next[id] = s
+	}
+	return next, next[pluginID]
 }
 
 type OAuthConfig struct {
@@ -114,6 +210,78 @@ type DisplayConfig struct {
 	Images                string             `toml:"images"`
 	VT52                  RetroTerminalTweak `toml:"vt52"`
 	VT100                 RetroTerminalTweak `toml:"vt100"`
+	// TagStyle is how plugin annotation tags look in message rows: "pills"
+	// (default), "glyph-pills", "compact", or "plain".
+	TagStyle string `toml:"tag_style"`
+	// TagEnds is how pill tags end: "square" (default; a padded block),
+	// "round" (rounded caps; needs a Nerd Font), or "none" (no padding).
+	TagEnds string `toml:"tag_ends"`
+	// TagColors overrides tag colors by semantic key: "reply", "urgent",
+	// "important", "category", or "category.<name>". Unset keys follow the
+	// theme; invalid values are ignored.
+	TagColors map[string]TagColor `toml:"tag_colors,omitempty"`
+}
+
+// TagColor is a user override for one annotation tag. Either field may be
+// empty to keep the theme's color for it.
+type TagColor struct {
+	Fg string `toml:"fg,omitempty"`
+	Bg string `toml:"bg,omitempty"`
+}
+
+// Annotation tag styles.
+const (
+	TagStyleGlyphPills = "glyph-pills"
+	TagStylePills      = "pills"
+	TagStyleCompact    = "compact"
+	TagStylePlain      = "plain"
+)
+
+// Pill tag ends.
+const (
+	TagEndsSquare = "square"
+	TagEndsRound  = "round"
+	TagEndsNone   = "none"
+)
+
+// NormalizeTagEnds returns a known pill end style, defaulting to square.
+func NormalizeTagEnds(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case TagEndsRound:
+		return TagEndsRound
+	case TagEndsNone:
+		return TagEndsNone
+	}
+	return TagEndsSquare
+}
+
+// NormalizeTagStyle returns a known tag style, defaulting to pills.
+func NormalizeTagStyle(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case TagStyleGlyphPills:
+		return TagStyleGlyphPills
+	case TagStyleCompact:
+		return TagStyleCompact
+	case TagStylePlain:
+		return TagStylePlain
+	}
+	return TagStylePills
+}
+
+var tagHexPattern = regexp.MustCompile(`^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$`)
+
+// NormalizeTagHex validates a tag color: #rgb or #rrggbb, returned as
+// lower-case #rrggbb. ok is false for anything else, including empty input.
+func NormalizeTagHex(s string) (string, bool) {
+	s = strings.TrimSpace(s)
+	if !tagHexPattern.MatchString(s) {
+		return "", false
+	}
+	s = strings.ToLower(s)
+	if len(s) == 4 {
+		s = "#" + strings.Repeat(s[1:2], 2) + strings.Repeat(s[2:3], 2) + strings.Repeat(s[3:4], 2)
+	}
+	return s, true
 }
 
 type UpdatesConfig struct {
@@ -418,6 +586,8 @@ func DefaultConfig() Config {
 			AccountsWidthPercent:  28,
 			MessagesHeightPercent: 40,
 			Density:               "compact",
+			TagStyle:              TagStylePills,
+			TagEnds:               TagEndsSquare,
 			PaneCorners:           "square",
 			Shadow:                true,
 			Images:                "auto",
@@ -665,6 +835,16 @@ func LogPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(filepath.Dir(cfgPath), "fetch.log"), nil
+}
+
+// PluginDir returns the directory scanned for experimental plugins (alongside
+// config.toml). It may not exist.
+func PluginDir() (string, error) {
+	cfgPath, err := configPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(cfgPath), "plugins"), nil
 }
 
 // NormalizeSendMaxAttempts bounds automatic delivery attempts. One disables retries.

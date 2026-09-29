@@ -16,25 +16,28 @@ type KeyMap struct {
 	Enter                 key.Binding
 	Back                  key.Binding
 
-	Sync          key.Binding
-	SyncAll       key.Binding
-	MarkRead      key.Binding
-	MarkAllRead   key.Binding
-	ToggleStar    key.Binding
-	OpenBrowser   key.Binding
-	Unsubscribe   key.Binding
-	NextLink      key.Binding
-	PrevLink      key.Binding
-	Search        key.Binding
-	UnreadOnly    key.Binding
-	StarredFirst  key.Binding
-	ToggleThreads key.Binding
-	Compose       key.Binding
-	Reply         key.Binding
-	Forward       key.Binding
-	Archive       key.Binding
-	Move          key.Binding
-	Command       key.Binding
+	Sync            key.Binding
+	SyncAll         key.Binding
+	MarkRead        key.Binding
+	NeedsYouDismiss key.Binding
+	Snooze          key.Binding
+	RunPlugin       key.Binding
+	MarkAllRead     key.Binding
+	ToggleStar      key.Binding
+	OpenBrowser     key.Binding
+	Unsubscribe     key.Binding
+	NextLink        key.Binding
+	PrevLink        key.Binding
+	Search          key.Binding
+	UnreadOnly      key.Binding
+	StarredFirst    key.Binding
+	ToggleThreads   key.Binding
+	Compose         key.Binding
+	Reply           key.Binding
+	Forward         key.Binding
+	Archive         key.Binding
+	Move            key.Binding
+	Command         key.Binding
 
 	AccountManager key.Binding
 	ContactManager key.Binding
@@ -100,9 +103,17 @@ var DefaultKeys = KeyMap{
 	Enter:                 key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open")),
 	Back:                  key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 
-	Sync:          key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sync mailbox")),
-	SyncAll:       key.NewBinding(key.WithKeys("F", "ctrl+s"), key.WithHelp("F/ctrl+s", "sync all")),
-	MarkRead:      key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "mark read")),
+	Sync:     key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sync mailbox")),
+	SyncAll:  key.NewBinding(key.WithKeys("F", "ctrl+s"), key.WithHelp("F/ctrl+s", "sync all")),
+	MarkRead: key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "mark read")),
+	// NeedsYouDismiss only acts in Needs You (dismiss) and Waiting on Them
+	// (stop waiting).
+	NeedsYouDismiss: key.NewBinding(key.WithKeys("X"), key.WithHelp("X", "dismiss / stop waiting")),
+	// Snooze hides messages or waiting conversations from the attention
+	// views until later (in Snoozed it unsnoozes). z is quoted-text toggling.
+	Snooze: key.NewBinding(key.WithKeys("Z"), key.WithHelp("Z", "snooze")),
+	// RunPlugin picks a plugin to run on the current message or selection.
+	RunPlugin:     key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "run plugin")),
 	MarkAllRead:   key.NewBinding(key.WithKeys("R", "ctrl+x"), key.WithHelp("R/ctrl+x", "mark all read")),
 	ToggleStar:    key.NewBinding(key.WithKeys("*"), key.WithHelp("*", "star")),
 	OpenBrowser:   key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser")),

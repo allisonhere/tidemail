@@ -46,6 +46,14 @@ const (
 	// at all — it used to be reachable only by knowing the "O" shortcut, so a
 	// message stuck there was invisible to anyone who did not.
 	rowKindOutbox
+	// rowKindNeedsYou is the standing Needs You entry beside the Unified
+	// Inbox: a virtual view of actionable inbox mail (see needs_you.go).
+	rowKindNeedsYou
+	// rowKindWaiting is the standing Waiting on Them entry: conversations
+	// awaiting someone else's reply (see waiting.go).
+	rowKindWaiting
+	// rowKindSnoozed is the standing Snoozed entry (see snooze.go).
+	rowKindSnoozed
 )
 
 type sidebarRow struct {
@@ -82,6 +90,17 @@ const (
 	overlayBulkDeleteConfirm
 	overlayUnsubscribeConfirm
 	overlayScheduleSend
+	overlayPlugins
+	overlayPluginPicker
+	overlayPluginResult
+	overlayPluginAnnotations
+	overlayPluginConfirm
+	overlayPluginSettings
+	overlaySnooze
+	overlayTagColors
+	overlayColorPicker
+	overlayClassification
+	overlaySyncAllConfirm
 )
 
 type commandPaletteContext int
@@ -211,6 +230,15 @@ type Model struct {
 
 	logBuffer []logEntry
 
+	needsYou       needsYouState  // see needs_you.go
+	waiting        waitingState   // see waiting.go
+	snooze         snoozeState    // see snooze.go
+	tagColors      tagColorEditor // see tag_colors.go
+	colorPicker    colorPicker    // see color_picker.go
+	classification classificationEditor
+
+	plugins pluginUI // experimental; see plugins.go
+
 	helpVP                viewport.Model
 	helpSearchInput       textinput.Model
 	helpSearchActive      bool
@@ -326,6 +354,8 @@ type Model struct {
 // watchers; called on shutdown.
 func (m Model) CloseSessions() {
 	m.stopIdleWatchers()
+	m.closePlugins()
+	m.stopSnoozeTimer()
 	if m.sessions != nil {
 		m.sessions.Close()
 	}
@@ -352,7 +382,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 	setEditorVimMode(cfg.Display.ComposeVim)
 
 	si := textinput.New()
-	si.Placeholder = "search messages..."
+	si.Placeholder = "search messages... (#tag for tags)"
 	si.CharLimit = 100
 
 	ci := textinput.New()
@@ -416,6 +446,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		contentSearchInput:     csi,
 		contentSearchIdx:       -1,
 		selectedMessages:       make(map[int64]bool),
+		snooze:                 newSnoozeState(),
 	}
 	m.restoreCachedUpdateState()
 	if previewManualUpdate {
@@ -453,6 +484,16 @@ func (m Model) Init() tea.Cmd {
 	}
 	if m.updateInProgress() {
 		cmds = append(cmds, tickUpdateProgress())
+	}
+	if cmd := m.pluginEventListenCmd(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	if cmd := loadNeedsYouCountCmd(m.db); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	// Overdue snoozes (TideMail was closed past their time) end now.
+	if cmd := expireSnoozesCmd(m.db); cmd != nil {
+		cmds = append(cmds, cmd)
 	}
 	return tea.Batch(cmds...)
 }
@@ -542,7 +583,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.beginDestructiveCommit(msg.ID)
 
 	case DestructiveActionResultMsg:
-		return m, m.handleDestructiveResult(msg)
+		cmd := m.handleDestructiveResult(msg)
+		// Archive, delete, and move can end or change a waiting conversation.
+		return m, tea.Batch(cmd, m.requestWaitingRefresh())
 
 	case UpdateCheckedMsg:
 		m.updateErr = ""
@@ -721,8 +764,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		cmds := []tea.Cmd{}
-		if m.selectedUnifiedInbox() {
-			cmds = append(cmds, m.loadUnifiedInboxCmd())
+		if !m.selectedWaiting() {
+			// Startup and account changes (identities) recompute waiting.
+			cmds = append(cmds, m.requestWaitingRefresh())
+		}
+		if cmd := m.virtualViewCmd(); cmd != nil {
+			cmds = append(cmds, cmd)
 		} else if selected := m.selectedMailbox(); selected != nil {
 			cmds = append(cmds, m.loadMailboxMessagesCmd(selected.ID))
 			if m.selectedDraftsMailbox() {
@@ -754,6 +801,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				currentID = current.ID
 			}
 			m.messages = msg.Messages
+			m.plugins.annotations = msg.Annotations
+			m.plugins.overrides = msg.Overrides
 			m.applyFilter()
 			if idx := m.indexOfFilteredMessage(currentID); idx >= 0 {
 				m.messageCursor = idx
@@ -778,7 +827,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setStatus(msg.Err.Error(), true)
 			return m, m.clearStatusCmd()
 		}
-		if (msg.MailboxID == 0 && m.selectedUnifiedInbox()) || (func() bool {
+		if (msg.NeedsYou && m.selectedNeedsYou()) || (msg.Waiting && m.selectedWaiting()) || (msg.Snoozed && m.selectedSnoozed()) || (!msg.NeedsYou && !msg.Waiting && !msg.Snoozed && msg.MailboxID == 0 && m.selectedUnifiedInbox()) || (!msg.NeedsYou && !msg.Waiting && !msg.Snoozed && func() bool {
 			selected := m.selectedMailbox()
 			return selected != nil && msg.MailboxID == selected.ID
 		}()) {
@@ -792,6 +841,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			m.messages = msg.Messages
+			m.plugins.annotations = msg.Annotations
+			m.plugins.overrides = msg.Overrides
+			if msg.NeedsYou || msg.Waiting || msg.Snoozed {
+				// Rows can leave a virtual view as their state changes.
+				m.pruneSelection()
+			}
 			m.applyFilter()
 
 			rowCount := m.activeMessageRowCount()
@@ -915,9 +970,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				mb.LastSynced = msg.SyncedAt
 			}
 		}
-		cmds := []tea.Cmd{m.loadAccountsCmd()}
-		if m.selectedUnifiedInbox() {
-			cmds = append(cmds, m.loadUnifiedInboxCmd())
+		cmds := []tea.Cmd{m.loadAccountsCmd(), loadNeedsYouCountCmd(m.db)}
+		if cmd := m.virtualViewCmd(); cmd != nil {
+			cmds = append(cmds, cmd)
 		} else if selected := m.selectedMailbox(); selected != nil && msg.MailboxID == selected.ID {
 			cmds = append(cmds, m.loadMailboxMessagesCmd(msg.MailboxID))
 		}
@@ -936,6 +991,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if len(msg.NewMessages) > 0 && !msg.Manual && m.cfg.Display.Notifications {
 			cmds = append(cmds, m.notifyCmd(msg.MailboxID, msg.NewMessages))
+		}
+		// Genuinely new mail only; cold syncs are skipped inside.
+		m.enqueuePluginEvents(msg)
+		// Any sync (Inbox, Sent, Archive) can start or end a wait.
+		if cmd := m.requestWaitingRefresh(); cmd != nil {
+			cmds = append(cmds, cmd)
 		}
 		if deferredFolderCmd != nil {
 			cmds = append(cmds, deferredFolderCmd)
@@ -1265,6 +1326,46 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.accountManager.statusMsg = "DELETED ACCOUNT"
 		return m, m.loadAccountsCmd()
 
+	case MessageReadBatchUpdatedMsg:
+		readByID := make(map[int64]MessageReadBatchEntry, len(msg.Entries))
+		unreadDeltas := make(map[int64]int64)
+		for _, entry := range msg.Entries {
+			readByID[entry.MessageID] = entry
+			if entry.MailboxID != 0 && entry.WasRead != entry.Read {
+				if entry.Read {
+					unreadDeltas[entry.MailboxID]--
+				} else {
+					unreadDeltas[entry.MailboxID]++
+				}
+			}
+		}
+		for i := range m.messages {
+			if entry, ok := readByID[m.messages[i].ID]; ok {
+				m.messages[i].Read = entry.Read
+			}
+		}
+		for mailboxID, delta := range unreadDeltas {
+			m.adjustMailboxUnreadCount(mailboxID, delta)
+		}
+		if len(msg.Entries) > 0 {
+			m.applyFilter()
+			if len(m.filteredMessages) == 0 {
+				m.messageCursor = 0
+				m.listOffset = 0
+				m.clearViewportMessage()
+			} else {
+				rowCount := m.activeMessageRowCount()
+				m.messageCursor = clamp(m.messageCursor, 0, max(0, rowCount-1))
+				m.listOffset = clamp(m.listOffset, 0, max(0, rowCount-1))
+				m.setViewportForCurrentRow()
+			}
+		}
+		if msg.Err != nil {
+			m.setStatus(fmt.Sprintf("mark read failed: %v", msg.Err), true)
+			return m, m.clearStatusCmd()
+		}
+		return m, nil
+
 	case MessageReadUpdatedMsg:
 		if msg.Err != nil {
 			m.setStatus(fmt.Sprintf("mark read failed: %v", msg.Err), true)
@@ -1329,6 +1430,42 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setViewportForCurrentRow()
 		}
 		return m, nil
+
+	case pluginResultMsg:
+		return m.handlePluginResult(msg)
+
+	case pluginReportMsg:
+		return m.handlePluginReport(msg)
+
+	case pluginBulkStepMsg:
+		return m.handleBulkStep(msg)
+
+	case pluginAnnotationCountsMsg, pluginAnnotationsClearedMsg:
+		return m.handlePluginCleanupMsg(msg)
+
+	case pluginEventMsg:
+		return m.handlePluginEvent(msg)
+
+	case pluginAnnotationsRefreshedMsg:
+		return m.handlePluginAnnotationsRefreshed(msg)
+
+	case pluginSecretPresenceMsg, pluginSecretSavedMsg, pluginTestResultMsg:
+		return m.handlePluginSettingsMsg(msg)
+
+	case classificationOverrideMsg:
+		return m.handleClassificationMsg(msg)
+
+	case needsYouCountMsg, needsYouDismissMsg:
+		return m.handleNeedsYouMsg(msg)
+
+	case waitingLoadedMsg, waitingStopMsg:
+		return m.handleWaitingMsg(msg)
+
+	case snoozeLoadedMsg, snoozeAppliedMsg:
+		return m.handleSnoozeMsg(msg)
+
+	case snoozeTickMsg:
+		return m.handleSnoozeTick(msg)
 
 	case FolderCreatedMsg:
 		if msg.Err != nil {
@@ -1528,6 +1665,14 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.clearStatusCmd()
 
+	case BrowserOpenedMsg:
+		if msg.Err != nil {
+			m.setStatus("Could not open your browser — "+msg.URL, true)
+		} else {
+			m.setStatus("opened in browser", false)
+		}
+		return m, m.clearStatusCmd()
+
 	case ClipboardReadMsg:
 		if msg.Err != nil {
 			m.setStatus("paste failed: "+msg.Err.Error(), true)
@@ -1608,11 +1753,27 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch {
+	case keyMatches(msg, m.keys.NeedsYouDismiss) && m.selectedNeedsYou() && m.focused != paneAccounts:
+		// Dismiss from Needs You. Only here: elsewhere X does nothing.
+		return m.dismissCurrent()
+	case keyMatches(msg, m.keys.NeedsYouDismiss) && m.selectedWaiting() && m.focused != paneAccounts:
+		return m.stopWaitingCurrent()
+	case keyMatches(msg, m.keys.Snooze) && m.focused != paneAccounts:
+		return m.handleSnoozeKeyPress()
+	case keyMatches(msg, m.keys.RunPlugin) && m.focused != paneAccounts && m.pluginsVisible():
+		return m.executePluginCommand("plugin-run")
+
 	case keyMatches(msg, m.keys.Undo):
 		// A queued send is the most recent (and most urgent) thing to take
 		// back; fall through to message-action undo when none is pending.
 		if m.undoLatestPendingSend() {
 			return m, m.clearStatusCmd()
+		}
+		if cmd, ok := m.undoNeedsYouDismissal(); ok {
+			return m, cmd
+		}
+		if cmd, ok := m.undoStopWaiting(); ok {
+			return m, cmd
 		}
 		return m, m.undoLatestDestructive()
 
@@ -1871,11 +2032,11 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.Sync):
-		if m.selectedUnifiedInbox() {
+		if m.selectedUnifiedInbox() || m.selectedNeedsYou() || m.selectedWaiting() {
 			// Sync all inboxes when 'f' is pressed on Unified Inbox
 			var cmds []tea.Cmd
 			for _, mb := range m.mailboxes {
-				if isInboxMailbox(mb) {
+				if isInboxMailbox(mb) || (m.selectedWaiting() && db.IsSentMailbox(mb)) {
 					cmds = append(cmds, m.syncMailboxCmd(mb.ID, true))
 				}
 			}
@@ -1893,11 +2054,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.clearStatusCmd()
 
 	case keyMatches(msg, m.keys.SyncAll):
-		var cmds []tea.Cmd
-		for _, mb := range m.mailboxes {
-			cmds = append(cmds, m.syncMailboxCmd(mb.ID, true))
-		}
-		return m, tea.Batch(cmds...)
+		return m.requestSyncAll()
 
 	case keyMatches(msg, m.keys.MarkRead):
 		if m.focused == paneMessages && m.activeMessageRowCount() > 0 {
@@ -1920,11 +2077,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				return m, tea.Batch(cmds...)
 			}
-			for _, msg2 := range msgs {
-				read := !msg2.Read
-				advance := false
-				cmds = append(cmds, m.setMessageReadCmd(msg2, read, advance))
-			}
+			cmds = append(cmds, m.setSelectedMessagesReadCmd(msgs))
 			m.clearSelection()
 			return m, tea.Batch(cmds...)
 		}
@@ -2133,6 +2286,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keyMatches(msg, m.keys.Settings):
 		m.settings = newSettings(m.cfg, m.settingsUpdateState())
+		m.settings.pluginsAvailable = m.pluginsVisible()
 		m.overlay = overlaySettings
 		return m, nil
 
@@ -2259,8 +2413,8 @@ func (m Model) handleUp() (tea.Model, tea.Cmd) {
 			if m.searchActive() {
 				return m, nil
 			}
-			if m.selectedUnifiedInbox() {
-				return m, m.loadUnifiedInboxCmd()
+			if cmd := m.virtualViewCmd(); cmd != nil {
+				return m, cmd
 			}
 			if selected := m.selectedMailbox(); selected != nil {
 				cmd := m.loadMailboxMessagesCmd(selected.ID)
@@ -2307,8 +2461,8 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 			if m.searchActive() {
 				return m, nil
 			}
-			if m.selectedUnifiedInbox() {
-				return m, m.loadUnifiedInboxCmd()
+			if cmd := m.virtualViewCmd(); cmd != nil {
+				return m, cmd
 			}
 			if selected := m.selectedMailbox(); selected != nil {
 				cmd := m.loadMailboxMessagesCmd(selected.ID)
@@ -2345,7 +2499,7 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 		// sync only caches the most recent window, so without this the archive
 		// just stops. Search results and the unified inbox span mailboxes and
 		// have no single paging cursor, so they are left alone.
-		if !m.searchActive() && !m.selectedUnifiedInbox() && !m.selectedDraftsMailbox() {
+		if !m.searchActive() && !m.selectedUnifiedInbox() && !m.selectedNeedsYou() && !m.selectedWaiting() && !m.selectedSnoozed() && !m.selectedDraftsMailbox() {
 			if selected := m.selectedMailbox(); selected != nil {
 				return m, m.loadOlderMessagesCmd(selected.ID)
 			}
@@ -2391,6 +2545,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.overlay = overlayNone
 		}
 		return m, nil
+
+	case overlaySyncAllConfirm:
+		return m.handleSyncAllConfirmKey(msg)
 
 	case overlayUnsubscribeConfirm:
 		switch {
@@ -2491,6 +2648,21 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case overlayMoveMessage:
 		return m.handleMovePicker(msg)
+
+	case overlayPlugins, overlayPluginPicker, overlayPluginResult, overlayPluginAnnotations, overlayPluginConfirm, overlayPluginSettings:
+		return m.handlePluginKey(msg)
+
+	case overlaySnooze:
+		return m.handleSnoozeKey(msg)
+
+	case overlayTagColors:
+		return m.handleTagColorsKey(msg)
+
+	case overlayColorPicker:
+		return m.handleColorPickerKey(msg)
+
+	case overlayClassification:
+		return m.handleClassificationKey(msg)
 
 	case overlayOutbox:
 		return m.handleOutboxKey(msg)
@@ -2652,7 +2824,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Settings previews theme changes live, but only commits them to config when the overlay finishes with Save. -allie
 	prevThemeIdx := m.settings.themeIdx
 	newS, cmd, done := m.settings.Update(msg, m.keys)
@@ -2712,12 +2884,24 @@ func (m Model) handleSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case settingsActionViewLogs:
 		m.overlay = overlayLogViewer
 		return m, nil
+	case settingsActionTagColors:
+		return m.openTagColors(overlaySettings)
 	case settingsActionCopyManualInstall:
 		cmd := strings.TrimSpace(m.settings.update.manualCommand)
 		if cmd == "" {
 			return m, nil
 		}
 		return m, clipboardWriteCmd(cmd)
+	case settingsActionOpenSupport, settingsActionCopySupport:
+		index := m.settings.supportLinkIndex
+		if index < 0 || index >= len(supportLinks) {
+			return m, nil
+		}
+		link := supportLinks[index]
+		if action == settingsActionCopySupport {
+			return m, clipboardWriteCmd(link.URL)
+		}
+		return m, m.openBrowserCmd(link.URL)
 	}
 	if done {
 		if m.settings.shouldSave {
@@ -3198,7 +3382,13 @@ func (m Model) renderStatusBar() string {
 	}
 
 	if m.cfg.Display.ShowPaneHeaders && len(m.mailboxes) > 0 {
-		if m.selectedUnifiedInbox() {
+		if m.selectedSnoozed() {
+			parts = append(parts, m.statusBarInlineText(sb, "Snoozed"))
+		} else if m.selectedWaiting() {
+			parts = append(parts, m.statusBarInlineText(sb, "Waiting on Them"))
+		} else if m.selectedNeedsYou() {
+			parts = append(parts, m.statusBarInlineText(sb, "Needs You"))
+		} else if m.selectedUnifiedInbox() {
 			parts = append(parts, m.statusBarInlineText(sb, "Unified Inbox"))
 			if unread := m.unifiedUnreadCount(); unread > 0 {
 				parts = append(parts, m.statusBarInlineText(sb, fmt.Sprintf("%d unread", unread)))
@@ -3495,7 +3685,7 @@ func (m *Model) restoreSidebarSelection(kind sidebarRowKind, id int64) {
 			continue
 		}
 		switch kind {
-		case rowKindUnified, rowKindOutbox:
+		case rowKindUnified, rowKindOutbox, rowKindNeedsYou, rowKindWaiting, rowKindSnoozed:
 			m.sidebarCursor = i
 			return
 		case rowKindMailbox:
@@ -3569,7 +3759,7 @@ func (m Model) currentSidebarSelection() (sidebarRowKind, int64) {
 		return rowKindMailbox, 0
 	}
 	row := m.sidebarRows[m.sidebarCursor]
-	if row.kind == rowKindUnified || row.kind == rowKindOutbox {
+	if row.kind == rowKindUnified || row.kind == rowKindOutbox || row.kind == rowKindNeedsYou || row.kind == rowKindWaiting || row.kind == rowKindSnoozed {
 		return row.kind, 0
 	}
 	if row.kind == rowKindAccount {
@@ -3761,7 +3951,7 @@ func (m Model) persistAccountConfigChange(mutate func(*config.Config), okStatus,
 	prevKind, prevID := m.currentSidebarSelection()
 	m.cfg = next
 	m.rebuildSidebar()
-	if prevID != 0 || prevKind == rowKindUnified {
+	if prevID != 0 || prevKind == rowKindUnified || prevKind == rowKindNeedsYou || prevKind == rowKindWaiting || prevKind == rowKindSnoozed {
 		m.restoreSidebarSelection(prevKind, prevID)
 	}
 	m.sidebarCursor = clamp(m.sidebarCursor, 0, max(0, len(m.sidebarRows)-1))

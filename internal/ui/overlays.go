@@ -33,6 +33,20 @@ func (m Model) renderOverlay(base string) string {
 		inner = clampView(inner, quitW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderSoftPanelBox(inner, quitW, "tidemail", "quit tide?", chrome)
 
+	case overlaySyncAllConfirm:
+		winW := 52
+		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
+		body := lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Foreground(chrome.text).
+			Width(winW).
+			Padding(1, 2).
+			Render(m.syncAllConfirmText())
+		hints := renderSoftHints(winW, chrome, "y/enter", "sync", "esc", "cancel")
+		inner := lipgloss.JoinVertical(lipgloss.Left, body, hints)
+		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
+		box = renderSoftPanelBox(inner, winW, "tidemail", "sync all?", chrome)
+
 	case overlayUnsubscribeConfirm:
 		winW := 52
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
@@ -133,6 +147,21 @@ func (m Model) renderOverlay(base string) string {
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderSoftPanelBox(inner, winW, "tidemail", "move to", chrome)
 
+	case overlaySnooze:
+		box = m.renderSnoozePicker()
+
+	case overlayTagColors:
+		box = m.renderTagColors()
+
+	case overlayColorPicker:
+		box = m.renderColorPicker()
+
+	case overlayClassification:
+		box = m.renderClassificationOverlay()
+
+	case overlayPlugins, overlayPluginPicker, overlayPluginResult, overlayPluginAnnotations, overlayPluginConfirm, overlayPluginSettings:
+		box = m.renderPluginOverlay()
+
 	case overlayOutbox:
 		winW := max(1, min(m.width-4, 90))
 		winH := max(1, min(m.height-4, 28))
@@ -191,7 +220,11 @@ func (m Model) renderOverlay(base string) string {
 		winW := min(m.width-4, settingsOverlayMaxW)
 		winH := min(m.height-4, 36)
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
-		inner := m.settings.View(winW, winH, chrome)
+		var detail func(int, int) string
+		if m.settings.activeSection == ssPlugins {
+			detail = func(width, height int) string { return m.renderSettingsPluginPane(width, height, chrome) }
+		}
+		inner := m.settings.viewWithDetail(winW, winH, chrome, detail)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderSoftPanelBox(inner, winW, "tidemail", "settings", chrome)
 

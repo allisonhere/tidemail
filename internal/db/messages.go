@@ -94,6 +94,20 @@ func (db *DB) ListUnreadMessages(mailboxID int64) ([]Message, error) {
 	return scanMessages(rows)
 }
 
+// inboxMailboxPredicate selects inbox mailboxes (joined as mailboxes) across
+// accounts. Unified Inbox and Needs You share it.
+const inboxMailboxPredicate = `(
+			lower(mailboxes.name) = 'inbox'
+			OR lower(mailboxes.display_name) = 'inbox'
+			OR instr(lower(mailboxes.flags), '\inbox') > 0
+		)`
+
+// messageColumns is the column list scanMessages reads, qualified by table.
+const messageColumns = `messages.id, messages.mailbox_id, messages.uid, messages.message_id,
+		       messages.in_reply_to, messages.references_text, messages.subject, messages.from_addr, messages.to_addr, messages.cc_addr,
+		       messages.reply_to, messages.date, messages.body_text, messages.body_html,
+		       messages.summary, messages.flags, messages.read, messages.starred, messages.has_attachment, messages.headers`
+
 func (db *DB) ListUnifiedInbox(unreadOnly bool) ([]Message, error) {
 	readClause := ""
 	if unreadOnly {
@@ -106,11 +120,7 @@ func (db *DB) ListUnifiedInbox(unreadOnly bool) ([]Message, error) {
 		       messages.summary, messages.flags, messages.read, messages.starred, messages.has_attachment, messages.headers
 		FROM messages
 		JOIN mailboxes ON mailboxes.id = messages.mailbox_id
-		WHERE (
-			lower(mailboxes.name) = 'inbox'
-			OR lower(mailboxes.display_name) = 'inbox'
-			OR instr(lower(mailboxes.flags), '\inbox') > 0
-		)` + readClause + `
+		WHERE ` + inboxMailboxPredicate + readClause + `
 		ORDER BY messages.date DESC, messages.id DESC`)
 	if err != nil {
 		return nil, err
@@ -131,11 +141,7 @@ func (db *DB) ListUnifiedInboxUnreadFirst(unreadOnly bool) ([]Message, error) {
 		       messages.summary, messages.flags, messages.read, messages.starred, messages.has_attachment, messages.headers
 		FROM messages
 		JOIN mailboxes ON mailboxes.id = messages.mailbox_id
-		WHERE (
-			lower(mailboxes.name) = 'inbox'
-			OR lower(mailboxes.display_name) = 'inbox'
-			OR instr(lower(mailboxes.flags), '\inbox') > 0
-		)` + readClause + `
+		WHERE ` + inboxMailboxPredicate + readClause + `
 		ORDER BY messages.read ASC, messages.date DESC, messages.id DESC`)
 	if err != nil {
 		return nil, err
@@ -144,27 +150,45 @@ func (db *DB) ListUnifiedInboxUnreadFirst(unreadOnly bool) ([]Message, error) {
 	return scanMessages(rows)
 }
 
+// SearchAllMessages searches every cached message. Words match subject,
+// sender, recipients, and body (full-text, the last word as a prefix);
+// "#tag" terms match the tags shown on rows (see search_tags.go). Both kinds
+// may be combined.
 func (db *DB) SearchAllMessages(query string, unreadFirst bool) ([]Message, error) {
-	match := ftsQuery(query)
-	if match == "" {
+	terms := ParseSearch(query)
+	match := ftsQuery(terms.Text)
+	if match == "" && len(terms.Tags) == 0 {
 		return nil, nil
 	}
-	orderBy := "bm25(messages_fts), messages.date DESC, messages.id DESC"
-	if unreadFirst {
-		orderBy = "messages.read ASC, bm25(messages_fts), messages.date DESC, messages.id DESC"
-	}
-	rows, err := db.Query(`
-		SELECT messages.id, messages.mailbox_id, messages.uid, messages.message_id,
+	const columns = `messages.id, messages.mailbox_id, messages.uid, messages.message_id,
 		       messages.in_reply_to, messages.references_text, messages.subject, messages.from_addr, messages.to_addr, messages.cc_addr,
 		       messages.reply_to, messages.date, messages.body_text, messages.body_html, messages.summary,
 		       messages.flags, messages.read, messages.starred, messages.has_attachment, messages.headers,
-		       accounts.name, COALESCE(NULLIF(mailboxes.display_name, ''), mailboxes.name)
-		FROM messages_fts
-		JOIN messages ON messages.id = messages_fts.rowid
+		       accounts.name, COALESCE(NULLIF(mailboxes.display_name, ''), mailboxes.name)`
+	const joins = `
 		JOIN mailboxes ON mailboxes.id = messages.mailbox_id
-		JOIN accounts ON accounts.id = mailboxes.account_id
-		WHERE messages_fts MATCH ?
-		ORDER BY `+orderBy, match)
+		JOIN accounts ON accounts.id = mailboxes.account_id`
+	var where []string
+	var args []any
+	from := "messages"
+	orderBy := "messages.date DESC, messages.id DESC"
+	if match != "" {
+		from = "messages_fts JOIN messages ON messages.id = messages_fts.rowid"
+		where = append(where, "messages_fts MATCH ?")
+		args = append(args, match)
+		orderBy = "bm25(messages_fts), " + orderBy
+	}
+	if len(terms.Tags) > 0 {
+		expr, tagArgs := tagsWhere(terms.Tags)
+		where = append(where, expr)
+		args = append(args, tagArgs...)
+	}
+	if unreadFirst {
+		orderBy = "messages.read ASC, " + orderBy
+	}
+	rows, err := db.Query(`SELECT `+columns+` FROM `+from+joins+`
+		WHERE `+strings.Join(where, " AND ")+`
+		ORDER BY `+orderBy, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -321,6 +345,42 @@ func (db *DB) MarkRead(id int64, read bool) error {
 	return err
 }
 
+// MarkReadBatch applies read and unread IDs in one transaction. Empty slices
+// are ignored so callers can preserve per-message toggle behavior in a batch.
+func (db *DB) MarkReadBatch(readIDs, unreadIDs []int64) error {
+	if len(readIDs) == 0 && len(unreadIDs) == 0 {
+		return nil
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin mark-read batch: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+	for _, batch := range []struct {
+		ids   []int64
+		value int
+	}{{readIDs, 1}, {unreadIDs, 0}} {
+		for start := 0; start < len(batch.ids); start += 500 {
+			end := min(start+500, len(batch.ids))
+			ids := batch.ids[start:end]
+			placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+			args := make([]any, 1, len(ids)+1)
+			args[0] = batch.value
+			for _, id := range ids {
+				args = append(args, id)
+			}
+			query := `UPDATE messages SET read = ? WHERE id IN (` + placeholders + `)`
+			if _, err := tx.Exec(query, args...); err != nil {
+				return fmt.Errorf("update mark-read batch: %w", err)
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit mark-read batch: %w", err)
+	}
+	return nil
+}
+
 func (db *DB) MarkStarred(id int64, starred bool) error {
 	v := 0
 	if starred {
@@ -365,6 +425,14 @@ func (db *DB) DeleteMessage(id int64) error {
 	}
 	_, err := db.Exec(`DELETE FROM messages WHERE id = ?`, id)
 	return err
+}
+
+// MessageIDByUID returns the cached row ID of the message with uid in
+// mailboxID.
+func (db *DB) MessageIDByUID(mailboxID int64, uid uint32) (int64, error) {
+	var id int64
+	err := db.QueryRow(`SELECT id FROM messages WHERE mailbox_id = ? AND uid = ?`, mailboxID, uid).Scan(&id)
+	return id, err
 }
 
 func (db *DB) MoveMessage(id, mailboxID int64) error {

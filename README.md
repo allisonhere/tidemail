@@ -47,6 +47,12 @@ One inbox, several built-in themes.
 - **Match your desktop.** On [Omarchy](https://omarchy.org), the `match-omarchy`
   theme follows your current desktop theme — contrast-corrected to the same
   bar as the built-ins — and repaints live when you switch it.
+- **Experimental plugins.** Install trusted plugins such as TideMail Smart (JEV) to
+  classify mail with local annotations, Needs You signals, and optional
+  TypeSafe/Jev analysis.
+- **Optional support, kept out of your way.** Open **Settings → Support** to
+  visit or copy Tidemail's Ko-fi link. No donation prompts appear during normal
+  email use.
 
 ## Install
 
@@ -187,6 +193,40 @@ summaries and a compose proofread. TideMail can also turn a plain-language mail
 rule into a local filter that runs without an AI call for each message.
 
 AI stays off until you configure a provider.
+
+## Experimental plugins
+
+TideMail can run external plugins from
+`$XDG_CONFIG_HOME/tidemail/plugins/` (or `~/.config/tidemail/plugins/` when
+`XDG_CONFIG_HOME` is unset). Plugins
+receive message metadata, never message bodies, and can add annotations such as
+`needs_reply=true` or `category=shipping`. TideMail uses those annotations for
+tags and views such as **Needs You**, while keeping the original plugin output
+inspectable. Result cards can offer `u` when TideMail itself finds an
+unsubscribe option; the plugin never receives the link, and TideMail still
+shows its normal confirmation before acting. Report plugins (press `enter` on one in **Plugins
+(experimental)**) can ask TideMail read-only questions, such as message volume
+or category totals, and show the answer; they never see message bodies or get
+database access.
+
+Administer installed plugins directly in **Settings → Plugins**. Select a
+plugin and press `s` to edit its settings in the right-hand pane.
+
+To install TideMail Smart (JEV), build it from the
+[TideMail plugin collection](https://github.com/allisonhere/tidemail-plugins/tree/main/plugins/smart)
+repository and copy its binary and `plugin.toml` into the plugins directory.
+The full user guide is in [docs/guide.md](docs/guide.md#plugins-experimental).
+
+If you are writing a plugin, start with the
+[Plugin API getting-started guide](docs/plugins/getting-started.md), then see
+[the developer tools guide](docs/plugins/developer-tools.md) for the
+`scaffold → build → validate → test` workflow, and see
+the [protocol](docs/plugins/protocol.md), [manifest](docs/plugins/manifest.md),
+and [permissions](docs/plugins/permissions.md) references. Reports and
+read-only queries are covered in [queries](docs/plugins/queries.md) and
+[analytics](docs/plugins/analytics.md). Complete local examples are in
+[examples/plugins/example](examples/plugins/example/) and
+[examples/plugins/analytics](examples/plugins/analytics/).
 
 ## Keys worth learning
 

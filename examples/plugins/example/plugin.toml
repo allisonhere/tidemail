@@ -1,0 +1,14 @@
+# A minimal TideMail plugin manifest. See docs/plugins/manifest.md.
+id = "example"
+name = "Example Plugin"
+version = "0.1.0"
+api = 1
+command = "tidemail-plugin-example"
+
+# Optional: also run on new mail. It still stays off until the user turns
+# it on in the plugin list.
+# events = ["message.received"]
+
+[permissions]
+message_metadata = true
+annotations = true

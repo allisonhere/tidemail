@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	imapClient "github.com/allisonhere/tidemail/internal/imap"
 	tea "github.com/charmbracelet/bubbletea"
@@ -61,7 +62,14 @@ func (m Model) renderMessagesPane() string {
 			} else if !msg2.Read {
 				threadUnread = 1
 			}
-			age := m.formatTime(msg2.Date)
+			// Threaded rows show the representative message's badges, except
+			// in Needs You, where they combine every message of the thread.
+			timeText := m.formatTime(msg2.Date)
+			if wake, ok := m.snoozedRowTime(msg2); ok {
+				timeText = wake
+			}
+			age := timeText
+			tags := m.annotationTags(m.rowBadgeIDs(msg2, thread)...)
 			style := msgRead
 			if threadUnread > 0 {
 				style = msgUnread
@@ -87,14 +95,18 @@ func (m Model) renderMessagesPane() string {
 			}
 			style = applyMessageRowState(style, msgSelected, msg2.Starred, cursor, m.styles.Theme)
 			star := m.messageRowStar(msg2.Starred)
-			var line string
+			var sender string
+			senderW := 0
 			if m.cfg.Display.ShowSender {
-				senderW := min(22, max(0, w/3))
-				line = style.Width(w).Render(renderArticleRowWithSender(dot, star, senderDisplay(msg2.From), subject, age, w, senderW))
-			} else {
-				line = style.Width(w).Render(renderArticleRow(dot, star, subject, age, w))
+				senderW = min(22, max(0, w/3))
+				sender = senderDisplay(msg2.From)
+				if waitingFor, ok := m.waitingSender(msg2); ok {
+					sender = waitingFor
+				} else if waitingFor, ok := m.snoozedSender(msg2); ok {
+					sender = waitingFor
+				}
 			}
-			rows = append(rows, line)
+			rows = append(rows, m.renderMessageRow(style, dot, star, sender, m.cfg.Display.ShowSender, senderW, subject, tags, age, w))
 		}
 
 		if len(m.filteredMessages) == 0 {
@@ -103,6 +115,12 @@ func (m Model) renderMessagesPane() string {
 				rows = append(rows, msgRead.Render("  "+m.spinner.View()+" Loading messages…"))
 			case m.searchMode:
 				rows = append(rows, msgRead.Render("  no results"))
+			case m.selectedNeedsYou():
+				rows = append(rows, msgRead.Render("  Nothing needs your attention."))
+			case m.selectedWaiting():
+				rows = append(rows, msgRead.Render("  You're not waiting on any replies."))
+			case m.selectedSnoozed():
+				rows = append(rows, msgRead.Render("  Nothing is snoozed."))
 			case m.selectedOutboxRow():
 				// The Outbox row is a doorway, not a folder — its entries are
 				// not db.Message rows and this pane cannot act on them. Saying
@@ -180,6 +198,15 @@ func (m Model) messagesPaneTitle() string {
 	title := "Messages"
 	if m.selectedUnifiedInbox() {
 		title = "Unified Inbox"
+	}
+	if m.selectedNeedsYou() {
+		title = "Needs You"
+	}
+	if m.selectedWaiting() {
+		title = "Waiting on Them"
+	}
+	if m.selectedSnoozed() {
+		title = "Snoozed"
 	}
 	if m.selectedOutboxRow() {
 		title = "Outbox"
@@ -345,6 +372,137 @@ func (m *Model) setMessageReadCmd(msg db.Message, read, advance bool) tea.Cmd {
 			Advance:   advance,
 		}
 	}
+}
+
+type messageReadMailboxBatch struct {
+	mailbox   *db.Mailbox
+	account   config.AccountConfig
+	configErr error
+	read      []db.Message
+	unread    []db.Message
+}
+
+func (m *Model) setSelectedMessagesReadCmd(messages []db.Message) tea.Cmd {
+	byMailbox := make(map[int64]*messageReadMailboxBatch)
+	for _, msg := range messages {
+		batch := byMailbox[msg.MailboxID]
+		if batch == nil {
+			batch = &messageReadMailboxBatch{
+				mailbox: m.mailboxByID(msg.MailboxID),
+			}
+			batch.account, batch.configErr = m.accountCfgForMailbox(msg.MailboxID)
+			byMailbox[msg.MailboxID] = batch
+		}
+		if msg.Read {
+			batch.unread = append(batch.unread, msg)
+		} else {
+			batch.read = append(batch.read, msg)
+		}
+	}
+	mailboxIDs := make([]int64, 0, len(byMailbox))
+	for mailboxID := range byMailbox {
+		mailboxIDs = append(mailboxIDs, mailboxID)
+	}
+	sort.Slice(mailboxIDs, func(i, j int) bool { return mailboxIDs[i] < mailboxIDs[j] })
+	database, sessions := m.db, m.sessions
+
+	return func() tea.Msg {
+		type outcome struct {
+			entries []MessageReadBatchEntry
+			err     error
+		}
+		results := make(chan outcome, len(mailboxIDs))
+		for _, mailboxID := range mailboxIDs {
+			batch := byMailbox[mailboxID]
+			go func(batch *messageReadMailboxBatch) {
+				var result outcome
+				if batch.configErr != nil {
+					result.err = batch.configErr
+					results <- result
+					return
+				}
+
+				readOK, unreadOK := true, true
+				if batch.mailbox != nil && batch.account.IMAPHost != "" {
+					readUIDs := messageUIDs(batch.read)
+					unreadUIDs := messageUIDs(batch.unread)
+					if len(readUIDs)+len(unreadUIDs) > 0 {
+						ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+						defer cancel()
+						var readErr, unreadErr error
+						sessionErr := sessions.Do(ctx, batch.account, func(client *imapClient.Client) error {
+							readErr = client.MarkSeenUIDs(ctx, batch.mailbox.Name, readUIDs, true)
+							unreadErr = client.MarkSeenUIDs(ctx, batch.mailbox.Name, unreadUIDs, false)
+							return nil
+						})
+						if sessionErr != nil {
+							readErr, unreadErr = sessionErr, sessionErr
+						}
+						readOK, unreadOK = readErr == nil, unreadErr == nil
+						if readErr != nil {
+							result.err = readErr
+						}
+						if result.err == nil && unreadErr != nil {
+							result.err = unreadErr
+						}
+					}
+				}
+
+				readMessages, unreadMessages := batch.read, batch.unread
+				if !readOK {
+					readMessages = nil
+				}
+				if !unreadOK {
+					unreadMessages = nil
+				}
+				readIDs := messageIDs(readMessages)
+				unreadIDs := messageIDs(unreadMessages)
+				if err := database.MarkReadBatch(readIDs, unreadIDs); err != nil {
+					if result.err == nil {
+						result.err = err
+					}
+					results <- result
+					return
+				}
+				result.entries = make([]MessageReadBatchEntry, 0, len(readMessages)+len(unreadMessages))
+				for _, msg := range readMessages {
+					result.entries = append(result.entries, MessageReadBatchEntry{MessageID: msg.ID, MailboxID: msg.MailboxID, WasRead: false, Read: true})
+				}
+				for _, msg := range unreadMessages {
+					result.entries = append(result.entries, MessageReadBatchEntry{MessageID: msg.ID, MailboxID: msg.MailboxID, WasRead: true, Read: false})
+				}
+				results <- result
+			}(batch)
+		}
+
+		updated := MessageReadBatchUpdatedMsg{}
+		for range mailboxIDs {
+			result := <-results
+			updated.Entries = append(updated.Entries, result.entries...)
+			if updated.Err == nil && result.err != nil {
+				updated.Err = result.err
+			}
+		}
+		return updated
+	}
+}
+
+func messageUIDs(messages []db.Message) []uint32 {
+	uids := make([]uint32, 0, len(messages))
+	for _, msg := range messages {
+		if msg.UID != 0 {
+			uids = append(uids, msg.UID)
+		}
+	}
+	return uids
+}
+
+func messageIDs(messages []db.Message) []int64 {
+	ids := make([]int64, len(messages))
+	for i, msg := range messages {
+		ids[i] = msg.ID
+	}
+	return ids
 }
 
 func (m *Model) setMessageStarredCmd(msg db.Message, starred bool) tea.Cmd {

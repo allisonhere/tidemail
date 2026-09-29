@@ -235,7 +235,8 @@ func (m *Model) loadMailboxMessagesCmd(mailboxID int64) tea.Cmd {
 		if err != nil {
 			return MessagesLoadedMsg{MailboxID: mailboxID, Err: err}
 		}
-		return MessagesLoadedMsg{MailboxID: mailboxID, Messages: msgs}
+		anns, overrides := loadMessageClassification(database, msgs)
+		return MessagesLoadedMsg{MailboxID: mailboxID, Messages: msgs, Annotations: anns, Overrides: overrides}
 	}
 }
 
@@ -256,7 +257,8 @@ func (m *Model) loadUnifiedInboxCmd() tea.Cmd {
 		if err != nil {
 			return MessagesLoadedMsg{Err: err}
 		}
-		return MessagesLoadedMsg{MailboxID: 0, Messages: msgs}
+		anns, overrides := loadMessageClassification(database, msgs)
+		return MessagesLoadedMsg{MailboxID: 0, Messages: msgs, Annotations: anns, Overrides: overrides}
 	}
 }
 
@@ -269,13 +271,14 @@ func (m *Model) searchAllMessagesCmd(query string) tea.Cmd {
 		if err != nil {
 			return MessagesLoadedMsg{Search: true, Query: query, Err: err}
 		}
-		return MessagesLoadedMsg{Search: true, Query: query, Messages: msgs}
+		anns, overrides := loadMessageClassification(database, msgs)
+		return MessagesLoadedMsg{Search: true, Query: query, Messages: msgs, Annotations: anns, Overrides: overrides}
 	}
 }
 
 func (m *Model) visibleMessagesCmd() tea.Cmd {
-	if m.selectedUnifiedInbox() {
-		return m.loadUnifiedInboxCmd()
+	if cmd := m.virtualViewCmd(); cmd != nil {
+		return cmd
 	}
 	if selected := m.selectedMailbox(); selected != nil {
 		cmd := m.loadMailboxMessagesCmd(selected.ID)
@@ -952,7 +955,7 @@ func (m *Model) syncMailboxCmdWithMode(mailboxID int64, manual, passive bool) te
 				writeErr = e
 			}
 			logFetch(acc.Name, mailbox.Name, len(msgs), connectDur, fetchDur, time.Since(t0), writeErr)
-			result = MailboxSyncedMsg{MailboxID: mailboxID, NewCount: len(newMsgs), NewMessages: newMsgs, Manual: manual, Passive: passive, SyncedAt: syncedAt, Total: time.Since(t0)}
+			result = MailboxSyncedMsg{MailboxID: mailboxID, NewCount: len(newMsgs), NewMessages: newMsgs, Manual: manual, Passive: passive, Cold: cold, SyncedAt: syncedAt, Total: time.Since(t0)}
 			return nil
 		})
 		if err != nil {
@@ -990,6 +993,11 @@ func storeFetchedMessages(database *db.DB, mailboxID int64, msgs []db.Message) (
 			return newMsgs, err
 		}
 		if exErr == nil && !existed && !msg.Read {
+			// Carry the row ID so later consumers (plugin events) can reference
+			// the stored message.
+			if id, idErr := database.MessageIDByUID(mailboxID, msg.UID); idErr == nil {
+				msg.ID = id
+			}
 			newMsgs = append(newMsgs, msg)
 		}
 	}

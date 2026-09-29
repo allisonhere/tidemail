@@ -340,6 +340,14 @@ func (c *Client) AppendSent(ctx context.Context, mailboxName string, raw []byte,
 }
 
 func (c *Client) MarkSeen(ctx context.Context, mailboxName string, uid uint32, seen bool) error {
+	return c.MarkSeenUIDs(ctx, mailboxName, []uint32{uid}, seen)
+}
+
+// MarkSeenUIDs updates the \Seen flag for a set of UIDs with one IMAP STORE.
+func (c *Client) MarkSeenUIDs(ctx context.Context, mailboxName string, uids []uint32, seen bool) error {
+	if len(uids) == 0 {
+		return nil
+	}
 	if c.conn == nil {
 		return fmt.Errorf("not connected")
 	}
@@ -357,7 +365,11 @@ func (c *Client) MarkSeen(ctx context.Context, mailboxName string, uid uint32, s
 		Silent: true,
 		Flags:  []imap.Flag{imap.FlagSeen},
 	}
-	return c.conn.Store(imap.UIDSetNum(imap.UID(uid)), flags, nil).Close()
+	uidSet := imap.UIDSetNum()
+	for _, uid := range uids {
+		uidSet.AddNum(imap.UID(uid))
+	}
+	return c.conn.Store(uidSet, flags, nil).Close()
 }
 
 // MarkFlagged adds or removes the \Flagged keyword (the "star") on a message.

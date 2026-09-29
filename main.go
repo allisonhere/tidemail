@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/allisonhere/tidemail/internal/cli"
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidemail/internal/ui"
@@ -67,6 +68,12 @@ func main() {
 }
 
 func run() (code int, restartExec string) {
+	// Developer plugin commands are intentionally headless. Short-circuit before
+	// config, database, IMAP, or Bubble Tea initialization so they work on a
+	// clean contributor machine.
+	if len(os.Args) > 1 && os.Args[1] == "plugin" {
+		return cli.Run(os.Args[2:], os.Stdout, os.Stderr), ""
+	}
 	opts := parseStartupOptions(os.Args[1:])
 	for _, a := range os.Args[1:] {
 		switch strings.TrimSpace(a) {
@@ -118,6 +125,8 @@ func run() (code int, restartExec string) {
 
 		// --preview-manual-update / --preview-update-progress are dev UI entry points.
 		m := ui.NewModel(database, cfg, resolvedVersion(), opts.previewManualUpdate || opts.previewUpdateProgress)
+		// Experimental plugins; a missing or broken plugin directory is never fatal.
+		m.LoadPlugins()
 		if opts.previewUpdateProgress {
 			m.ApplyUpdateProgressPreview()
 		}
