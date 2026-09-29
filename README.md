@@ -11,6 +11,10 @@ the good seat.
 Need the full settings and shortcut reference? Open the
 [setup and usage guide](docs/guide.md).
 
+The Android app and its Go bridge live in the separate
+[TideMail Android repository](https://github.com/allisonhere/tidemail-android).
+Desktop releases are built from this repository.
+
 ![TideMail running in several terminal themes](banner.png)
 
 One inbox, several built-in themes. 
