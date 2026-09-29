@@ -4,6 +4,39 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+**Release highlights:** experimental plugins can classify mail from message
+metadata, add local tags, and build reports without receiving message bodies.
+New Needs You, Waiting on Them, and Snoozed views help track what needs action.
+
+### Added
+
+- **Experimental plugin support.** Install trusted plugins, run one on a
+  message, a selection, or the current list, and inspect a plain-language
+  result card. Opt in to automatic processing of newly arrived unread mail;
+  plugin settings live in Settings → Plugins, with secrets in the system
+  keychain. Plugins receive header-level metadata, never message bodies.
+- **Local annotations and attention views.** Plugin tags appear in message
+  rows and feed Needs You. Waiting on Them finds conversations awaiting a
+  reply without a plugin. Snooze hides messages or conversations until a
+  chosen time; dismiss and stop-waiting controls let you clear each view
+  without changing mail on the server.
+- **Classification controls.** Correct a plugin's needs-reply, urgency,
+  importance, or category decision locally; corrections survive plugin
+  reruns. Search for tags with `#tag`, and choose tag styles and colors in
+  Settings → Display → Appearance.
+- **Plugin reports.** Plugins with the appropriate permissions can ask
+  TideMail read-only questions about cached mail and show totals, tables,
+  charts, and heatmaps in the current theme. The Plugin API v1 documentation,
+  examples, and `plugin scaffold`, `validate`, and `test` commands are
+  available for plugin authors.
+- **Support page and batch mark-read action.** Settings → Support offers
+  TideMail's Ko-fi link, and selected messages can be marked read together.
+
+### Fixed
+
+- Table code blocks and image labels use the reading pane background.
+- About-page links stay visible at the bottom of shorter Settings panes.
+
 ## v1.0.28
 
 **Release highlights:** images in HTML mail now render inline in the reading
