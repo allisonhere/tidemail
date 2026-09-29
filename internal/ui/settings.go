@@ -3085,7 +3085,8 @@ func (s Settings) renderAboutSection(width int, chrome managerChrome) settingsSe
 		return start
 	}
 	addBlock(ind.Render(s.renderAboutHero(bodyW, chrome)))
-	lines = append(lines, blank, blank, blank, blank)
+	heroEnd := len(lines)
+	lines = append(lines, blank)
 	// Backronym below hero
 	tideLine := lipgloss.NewStyle().Background(lipgloss.Color("#000000")).Foreground(chrome.muted).Italic(true).Width(bodyW).Align(lipgloss.Center).Render("terminal information delivery engine")
 	lines = append(lines, tideLine, blank)
@@ -3099,8 +3100,18 @@ func (s Settings) renderAboutSection(width int, chrome managerChrome) settingsSe
 	linksBlock := ind.Render(s.renderAboutLinks(bodyW, chrome))
 	linksLines := strings.Split(linksBlock, "\n")
 	// The About body gets a two-line back-link prefix after this section is
-	// rendered, so reserve that space and pin the link row to the pane bottom.
+	// rendered. Use the extra space above the backronym when it fits, then pin
+	// the link row to the pane bottom.
 	if targetHeight := s.detailHeight - 2; targetHeight > 0 {
+		extraGap := min(3, max(0, targetHeight-len(lines)-len(linksLines)))
+		if extraGap > 0 {
+			spacers := make([]string, extraGap)
+			for i := range spacers {
+				spacers[i] = blank
+			}
+			lines = slices.Insert(lines, heroEnd+1, spacers...)
+			heartLine += extraGap
+		}
 		for len(lines)+len(linksLines) < targetHeight {
 			lines = append(lines, blank)
 		}
