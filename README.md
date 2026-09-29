@@ -40,7 +40,7 @@ One inbox, several built-in themes.
   and commands instead. Optional AI tools can summarize mail, proofread a
   draft, and build local filters from plain English.
 - **See the pictures, not just the alt text.** ![NEW](https://img.shields.io/badge/NEW-red?style=flat-square)
-  On Ghostty, Kitty, and foot, images in HTML mail render inline in the reading
+  On Ghostty, Kitty, and Rio, images in HTML mail render inline in the reading
   pane, sized to fit and loaded in the background so browsing stays quick.
   Remote images wait until
   you press `i`. Receipts keep their columns and newsletter cards stay
@@ -170,7 +170,7 @@ Newsletter cards stay together — each image next to its heading, description,
 and button — with a thin rule between neighbouring cards.
 
 TideMail renders HTML mail as terminal text. On terminals with Kitty graphics support
-(Ghostty, Kitty, foot), images embedded in the message — CID parts, inline data
+(Ghostty, Kitty, Rio), images embedded in the message — CID parts, inline data
 URIs, and content-location references — are drawn as real raster images inline in
 the reading pane, scrolling with the document. They fit the pane and the sender's
 width and height without being stretched or enlarged, and are laid out again when
@@ -184,9 +184,10 @@ Choose **Settings → Display → Reading → Images** (`Auto` or `Off`) and pre
 `Ctrl+S` to save. The change takes effect immediately; remote images still require
 `i` to load. The setting also shows whether inline images are supported.
 
-**WezTerm: inline images are currently unsupported.** TideMail automatically uses
-text placeholders there. WezTerm lacks the Unicode-placeholder support required
-by this renderer; email text and attachment saving still work.
+**foot and WezTerm: inline images are currently unsupported.** TideMail uses
+text placeholders there. foot supports Sixel images, but TideMail's renderer
+requires Kitty Unicode placeholders; WezTerm does not support those placeholders.
+Email text and attachment saving still work.
 
 Full headers are one `Ctrl+E` away, with SPF, DKIM, and DMARC results called out
 in color.

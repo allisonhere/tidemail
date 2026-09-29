@@ -50,7 +50,14 @@ func DetectProtocol(getenv func(string) string) Protocol {
 		return ProtocolNone
 	}
 
-	if strings.EqualFold(strings.TrimSpace(getenv("TERM")), "dumb") {
+	term := strings.ToLower(strings.TrimSpace(getenv("TERM")))
+	program := strings.ToLower(strings.TrimSpace(getenv("TERM_PROGRAM")))
+	if term == "dumb" {
+		return ProtocolNone
+	}
+	// foot renders Sixel images, but does not support the Kitty Unicode
+	// placeholders used by this backend. Reject it before inherited Kitty hints.
+	if term == "foot" || strings.HasPrefix(term, "foot-") || program == "foot" {
 		return ProtocolNone
 	}
 
@@ -60,24 +67,24 @@ func DetectProtocol(getenv func(string) string) Protocol {
 	// Patched builds can still opt in using TIDEMAIL_IMAGE_PROTOCOL=kitty.
 	if strings.TrimSpace(getenv("WEZTERM_EXECUTABLE")) != "" ||
 		strings.TrimSpace(getenv("WEZTERM_PANE")) != "" ||
-		strings.EqualFold(strings.TrimSpace(getenv("TERM_PROGRAM")), "wezterm") ||
-		strings.Contains(strings.ToLower(getenv("TERM")), "wezterm") {
+		program == "wezterm" || strings.Contains(term, "wezterm") {
 		return ProtocolNone
 	}
 	if strings.TrimSpace(getenv("KITTY_WINDOW_ID")) != "" {
 		return ProtocolKitty
 	}
 
-	term := strings.ToLower(getenv("TERM"))
-	for _, marker := range []string{"xterm-kitty", "kitty", "ghostty", "foot"} {
+	for _, marker := range []string{"xterm-kitty", "kitty", "ghostty"} {
 		if strings.Contains(term, marker) {
 			return ProtocolKitty
 		}
 	}
+	if term == "rio" || term == "xterm-rio" {
+		return ProtocolKitty
+	}
 
-	program := strings.ToLower(getenv("TERM_PROGRAM"))
 	switch program {
-	case "ghostty", "kitty":
+	case "ghostty", "kitty", "rio":
 		return ProtocolKitty
 	}
 
@@ -93,10 +100,13 @@ func detectTrueColor(getenv func(string) string) bool {
 		return true
 	}
 	switch strings.ToLower(getenv("TERM_PROGRAM")) {
-	case "ghostty", "wezterm", "kitty", "iTerm.app":
+	case "ghostty", "wezterm", "kitty", "rio", "iTerm.app":
 		return true
 	}
 	term := strings.ToLower(getenv("TERM"))
+	if term == "rio" || term == "xterm-rio" {
+		return true
+	}
 	for _, marker := range []string{"kitty", "ghostty", "wezterm", "direct", "truecolor", "24bit"} {
 		if strings.Contains(term, marker) {
 			return true

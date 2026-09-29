@@ -237,7 +237,7 @@ description, and button, and a thin rule separates one card from the next.
 Cards that sit side by side in a browser stack in reading order, left to right
 and then top to bottom. Quoted and forwarded messages are not grouped.
 
-On a terminal with Kitty graphics support — Ghostty, Kitty, foot —
+On a terminal with Kitty graphics support — Ghostty, Kitty, Rio —
 images embedded in the message (CID parts, inline data URIs, and
 content-location references) are drawn as real raster images inside the reading
 pane. They are scaled to the pane width and to the sender's width and height,
@@ -257,10 +257,11 @@ Choose **Settings → Display → Reading → Images** (`Auto` or `Off`) and pre
 `Ctrl+S` to save. The change takes effect immediately; remote images still require
 `i` to load. The setting also shows whether inline images are supported.
 
-**WezTerm: inline images are currently unsupported.** TideMail automatically uses
+**foot and WezTerm: inline images are currently unsupported.** TideMail uses
 text placeholders there because the renderer requires Kitty Unicode placeholders
-and virtual placements. Email text and attachment saving still work; pressing
-`i` does not enable image display in WezTerm.
+and virtual placements. foot supports Sixel images, which this renderer does not
+use. Email text and attachment saving still work; pressing `i` does not enable
+image display in these terminals.
 
 Search only reaches mail TideMail has cached. The first sync fetches the 100
 most recent inbox messages and 25 messages from other folders, whose attachments

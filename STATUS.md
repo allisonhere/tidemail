@@ -41,7 +41,7 @@ Current release: **v1.0.28**.
   bars can be shown or removed; when removed, the focused title and shortcuts
   move to the status line and each pane gains a content row.
   Global search uses a dedicated row above message subjects. Threaded view, HTML
-  rendering with inline raster images (Kitty graphics on Ghostty/Kitty,
+  rendering with inline raster images (Kitty graphics on Ghostty/Kitty/Rio,
   text placeholders elsewhere; remote images blocked until `i`), attachment
   saving, contacts manager.
 - **Receipt tables**: detect simple item/amount tables without semantic headers,
@@ -52,8 +52,10 @@ Current release: **v1.0.28**.
   stack in reading order; quoted mail is not grouped.
 - **Image settings**: Settings → Display → Reading → Images offers Auto/Off,
   terminal capability information, and immediate application on save.
-- **WezTerm limitation**: inline images are currently unsupported. TideMail uses
-  text placeholders automatically; email text and attachment saving still work.
+- **foot/WezTerm limitation**: inline images are currently unsupported. foot
+  supports Sixel, but TideMail's renderer requires Kitty Unicode placeholders.
+  TideMail uses text placeholders automatically; email text and attachment
+  saving still work.
 - **Undo** for destructive message actions and for sending.
 - **AI**: summaries and grammar across OpenAI, Claude, Gemini, and Ollama. Mail rules
   are AI-generated once into reviewed JSON, then matched locally and deterministically —
