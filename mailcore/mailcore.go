@@ -46,6 +46,7 @@ type Message struct {
 	From      string
 	Subject   string
 	BodyText  string
+	BodyHTML  string
 	Date      time.Time
 	Read      bool
 	Starred   bool
@@ -58,6 +59,7 @@ func projectMessage(m db.Message) Message {
 		From:      m.From,
 		Subject:   m.Subject,
 		BodyText:  m.BodyText,
+		BodyHTML:  m.BodyHTML,
 		Date:      m.Date,
 		Read:      m.Read,
 		Starred:   m.Starred,
