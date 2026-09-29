@@ -4,13 +4,15 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.1.0
+
 **Release highlights:** experimental plugins can classify mail from message
 metadata, add local tags, and build reports without receiving message bodies.
 New Needs You, Waiting on Them, and Snoozed views help track what needs action.
 
 ### Added
 
-- **Experimental plugin support.** Install trusted plugins, run one on a
+- **NEW - Experimental plugin support. FINALLY** Install trusted plugins, run one on a
   message, a selection, or the current list, and inspect a plain-language
   result card. Opt in to automatic processing of newly arrived unread mail;
   plugin settings live in Settings → Plugins, with secrets in the system
