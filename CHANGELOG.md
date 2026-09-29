@@ -4,6 +4,17 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Press `e` in the message list or reading pane to edit a message's tags and
+  classification. The command palette also offers **Edit tags / Correct classification**.
+- Show inline images in Rio through its Kitty Unicode-placeholder support.
+
+### Fixed
+
+- foot now uses labelled text placeholders for images. foot supports Sixel, but
+  TideMail's inline renderer requires Kitty Unicode placeholders.
+
 ## v1.1.0
 
 **Release highlights:** experimental plugins can classify mail from message
@@ -42,7 +53,7 @@ New Needs You, Waiting on Them, and Snoozed views help track what needs action.
 ## v1.0.28
 
 **Release highlights:** images in HTML mail now render inline in the reading
-pane on Ghostty, Kitty, and foot, sized to fit without distortion and loaded in
+pane on Ghostty and Kitty, sized to fit without distortion and loaded in
 the background so moving through the list stays quick. Remote images stay
 blocked until you press `i`. Receipts keep their item and price columns, and
 newsletter cards stay together with a rule between them.
@@ -60,7 +71,7 @@ newsletter cards stay together with a rule between them.
   terminal capability information. Saving applies the preference immediately.
 
 - **Real inline images in the reading pane.** On terminals with Kitty graphics
-  support (Ghostty, Kitty, foot), images embedded in HTML mail — CID
+  support (Ghostty, Kitty), images embedded in HTML mail — CID
   parts, inline `data:` URIs, and content-location references — are now decoded
   and drawn as raster images inside the reading pane, scaled to the pane width,
   aspect-ratio preserved, and scrolling/clipping/reflowing with the document.
@@ -87,7 +98,7 @@ newsletter cards stay together with a rule between them.
 
   *Known limitations*: animated GIFs show only the first frame; side-by-side
   table-cell image rows stack vertically rather than forming a two-column grid;
-  WezTerm is unsupported and uses text placeholders.
+  foot and WezTerm do not display inline images.
 
 ### Fixed
 
