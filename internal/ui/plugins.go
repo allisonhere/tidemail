@@ -217,7 +217,7 @@ func (m Model) pluginCommandItems(hasMessage bool) []commandItem {
 		}
 	}
 	if msg := m.commandMessage(); msg != nil {
-		items = append(items, commandItem{id: "classification-correct", label: "Correct classification", enabled: true})
+		items = append(items, commandItem{id: "classification-correct", label: "Edit tags / Correct classification", enabled: true})
 		if len(m.plugins.overrides[msg.ID]) > 0 {
 			items = append(items, commandItem{id: "classification-reset", label: "Reset all corrections", enabled: true})
 		}

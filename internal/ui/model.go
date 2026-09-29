@@ -1762,6 +1762,8 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleSnoozeKeyPress()
 	case keyMatches(msg, m.keys.RunPlugin) && m.focused != paneAccounts && m.pluginsVisible():
 		return m.executePluginCommand("plugin-run")
+	case keyMatches(msg, m.keys.EditTags) && m.focused != paneAccounts && !m.selectedDraftsMailbox():
+		return m.openClassificationEditor()
 
 	case keyMatches(msg, m.keys.Undo):
 		// A queued send is the most recent (and most urgent) thing to take
@@ -3163,6 +3165,7 @@ func (m Model) renderPaneHint(p pane) string {
 		}
 		hint = m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " move  " +
 			m.keyHint(m.keys.Space) + " select  " +
+			m.keyHint(m.keys.EditTags) + " tags  " +
 			m.keyHint(m.keys.MarkRead) + " read  " +
 			m.keyHint(m.keys.ToggleStar) + " star  " +
 			m.keyHint(m.keys.Archive) + " archive  " + m.keyHint(m.keys.Move) + " move  " + m.keyHint(m.keys.Delete) + " delete  " +
@@ -3176,6 +3179,7 @@ func (m Model) renderPaneHint(p pane) string {
 		}
 		hint = progress + m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " line  " +
 			m.keyHint(m.keys.VisualSelect) + "/" + m.keyHint(m.keys.VisualLine) + " select  " +
+			m.keyHint(m.keys.EditTags) + " tags  " +
 			"y/ctrl+c copy  " +
 			m.keyHint(m.keys.Reply) + " reply  " + m.keyHint(m.keys.Forward) + " fwd  " +
 			m.keyHint(m.keys.Search) + " find  " +

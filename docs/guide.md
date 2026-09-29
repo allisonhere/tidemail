@@ -576,8 +576,10 @@ clears them. **Message annotations** in the palette lists all of a message's
 annotations. Running a plugin can move messages into or out of Needs You at once;
 snoozed messages stay snoozed, and Waiting on Them does not use annotations.
 
-Choose **Correct classification** from the command palette or the Message
-annotations view to record a local decision for needs reply, urgency,
+With a message highlighted or open, press `e` to edit its tags. You can also
+search the command palette for **Edit tags / Correct classification**, or press
+`e` in **Message annotations**. Use `↑`/`↓` to choose a field, `←`/`→` to
+choose a value, and `Enter` to save it. You can correct needs reply, urgency,
 importance, or category. A correction overrides every plugin for that field,
 while the original plugin annotations remain visible. **Use plugin decision**
 or **Reset all corrections** removes the local decision. Corrections survive
