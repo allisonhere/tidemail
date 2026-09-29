@@ -107,6 +107,21 @@ func (c *Client) FetchInbox(ctx context.Context, limit int) ([]Message, error) {
 	return out, nil
 }
 
+// FetchOlderInbox returns the next page of INBOX messages with UIDs below
+// beforeUID. UIDs can be sparse, so callers should use the oldest UID from
+// their current page as the cursor rather than subtracting the page size.
+func (c *Client) FetchOlderInbox(ctx context.Context, beforeUID uint32, limit int) ([]Message, error) {
+	messages, err := c.inner.FetchOlderThan(ctx, "INBOX", beforeUID, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Message, 0, len(messages))
+	for _, message := range messages {
+		out = append(out, projectMessage(message))
+	}
+	return out, nil
+}
+
 func (c *Client) FetchMessage(ctx context.Context, uid uint32) (Message, error) {
 	message, err := c.inner.FetchByUID(ctx, "INBOX", uid)
 	if err != nil {
