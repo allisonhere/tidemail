@@ -4,6 +4,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.1.1
+
 ### Added
 
 - Press `e` in the message list or reading pane to edit a message's tags and
