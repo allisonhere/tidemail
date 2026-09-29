@@ -13,6 +13,7 @@ behaviour see [`guide.md`](guide.md); for contribution rules see
 | `internal/db` | SQLite storage for accounts, messages, attachments, drafts, outbox, contacts, filter rules, and experimental plugin annotations, plus folder reconciliation. |
 | `internal/imap` | IMAP client, connection pool, IDLE push, message parsing, and XOAUTH2. |
 | `internal/smtp` | Message assembly (including attachments) and SMTP/STARTTLS sending with password or XOAUTH2 auth. |
+| `mailcore` | Small public Go API over TideMail's IMAP and SMTP internals for the separate Android repository's Go bridge. It exposes connection settings, mailbox/message projections, and the mail operations Android uses; credential storage and UI state stay with Android. |
 | `internal/auth` | Google and Microsoft OAuth flows and token refresh. |
 | `internal/config` | Config file load/save, account IDs, and secret storage in the system keyring (`TIDEMAIL_DISABLE_KEYRING` opts out). |
 | `internal/filter` | Deterministic mail rules. |
@@ -50,6 +51,12 @@ handle push via IMAP IDLE.
 Compose (`internal/ui/compose.go`) hands messages to the outbox
 (`internal/ui/outbox.go`, `internal/db/outbox.go`), which supports undo send
 and scheduled send before `internal/smtp` delivers them.
+
+### Android bridge
+
+The separate `tidemail-android` repository builds a gomobile AAR from its Go
+bridge. That bridge imports `mailcore` from a pinned TideMail revision; it does
+not import `internal/*` or ship Android app code in this repository.
 
 ### Rendering a message
 

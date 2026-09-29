@@ -124,6 +124,27 @@ func (c *Client) FetchOlderThan(ctx context.Context, mailboxName string, beforeU
 	return c.fetchNumSet(imap.UIDSetNum(uids...))
 }
 
+// FetchByUID fetches one message for a detail view without downloading a
+// whole page of the mailbox. The UID, not a sequence number, identifies it.
+func (c *Client) FetchByUID(ctx context.Context, mailboxName string, uid uint32) (db.Message, error) {
+	if c.conn == nil {
+		return db.Message{}, fmt.Errorf("not connected")
+	}
+	defer c.applyDeadline(ctx)()
+
+	if _, err := c.conn.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
+		return db.Message{}, fmt.Errorf("select %s: %w", mailboxName, err)
+	}
+	msgs, err := c.fetchNumSet(imap.UIDSetNum(imap.UID(uid)))
+	if err != nil {
+		return db.Message{}, err
+	}
+	if len(msgs) == 0 {
+		return db.Message{}, fmt.Errorf("message uid %d not found", uid)
+	}
+	return msgs[0], nil
+}
+
 // fetchNumSet fetches and parses a set of messages. Parse failures skip the
 // individual message rather than failing the batch — one malformed message
 // must not cost the user the whole page.
