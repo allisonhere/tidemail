@@ -35,9 +35,10 @@ One inbox, several built-in themes.
   clipboard, undo and redo, and word movement. You can switch on Vim motions
   and commands instead. Optional AI tools can summarize mail, proofread a
   draft, and build local filters from plain English.
-- **See the pictures, not just the alt text.** On Ghostty, Kitty, and foot,
-  images in HTML mail render inline in the reading pane, sized to fit and
-  loaded in the background so browsing stays quick. Remote images wait until
+- **See the pictures, not just the alt text.** ![NEW](https://img.shields.io/badge/NEW-red?style=flat-square)
+  On Ghostty, Kitty, and foot, images in HTML mail render inline in the reading
+  pane, sized to fit and loaded in the background so browsing stays quick.
+  Remote images wait until
   you press `i`. Receipts keep their columns and newsletter cards stay
   together.
 - **Readable by design, in every theme.** Text, selection highlights, and the
@@ -47,9 +48,9 @@ One inbox, several built-in themes.
 - **Match your desktop.** On [Omarchy](https://omarchy.org), the `match-omarchy`
   theme follows your current desktop theme — contrast-corrected to the same
   bar as the built-ins — and repaints live when you switch it.
-- **Experimental plugins.** Install trusted plugins such as TideMail Smart (JEV) to
-  classify mail with local annotations, Needs You signals, and optional
-  TypeSafe/Jev analysis.
+- **[Experimental plugins](docs/plugins.md).** ![NEW](https://img.shields.io/badge/NEW-red?style=flat-square)
+  Install trusted plugins such as TideMail Smart (JEV) to classify mail with
+  local annotations, Needs You signals, and optional TypeSafe/Jev analysis.
 - **Optional support, kept out of your way.** Open **Settings → Support** to
   visit or copy Tidemail's Ko-fi link. No donation prompts appear during normal
   email use.
