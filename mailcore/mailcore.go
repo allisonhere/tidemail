@@ -4,8 +4,10 @@ package mailcore
 
 import (
 	"context"
+	"errors"
 	"time"
 
+	"github.com/allisonhere/tidemail/internal/auth"
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidemail/internal/imap"
@@ -24,6 +26,14 @@ type Account struct {
 	User     string
 	Password string
 	From     string
+
+	// OAuth2 sign-in. Set AuthMethod to "oauth2" and Provider to "Gmail" (Outlook is the other
+	// supported provider) with a client and refresh token instead of a Password.
+	Provider     string
+	AuthMethod   string
+	ClientID     string
+	ClientSecret string
+	RefreshToken string
 }
 
 func (a Account) config() config.AccountConfig {
@@ -37,6 +47,12 @@ func (a Account) config() config.AccountConfig {
 		User:     a.User,
 		Password: a.Password,
 		From:     a.From,
+
+		Provider:     a.Provider,
+		AuthMethod:   a.AuthMethod,
+		ClientID:     a.ClientID,
+		ClientSecret: a.ClientSecret,
+		RefreshToken: a.RefreshToken,
 	}
 }
 
@@ -208,3 +224,37 @@ func Send(ctx context.Context, account Account, message OutgoingMessage) error {
 	outgoing.EnsureIdentity(message.From)
 	return smtp.Send(ctx, account.config(), outgoing)
 }
+
+// GoogleSignIn is one browser sign-in attempt for a Gmail account. The caller opens AuthURL in a
+// browser; Wait returns once Google redirects back to a short-lived localhost listener.
+type GoogleSignIn struct {
+	flow *auth.GoogleBrowserFlow
+}
+
+// StartGoogleSignIn begins an authorization-code + PKCE sign-in with a Desktop-type Google OAuth
+// client. It listens on 127.0.0.1 until the sign-in finishes, is cancelled, or times out.
+func StartGoogleSignIn(ctx context.Context, clientID, clientSecret string) (*GoogleSignIn, error) {
+	flow, err := auth.StartGoogleBrowserFlow(ctx, clientID, clientSecret)
+	if err != nil {
+		return nil, err
+	}
+	return &GoogleSignIn{flow: flow}, nil
+}
+
+// AuthURL is the Google sign-in page to open in a browser.
+func (g *GoogleSignIn) AuthURL() string { return g.flow.AuthURL }
+
+// Wait blocks until sign-in completes and returns the refresh token to store for the account.
+func (g *GoogleSignIn) Wait() (string, error) {
+	tok, err := g.flow.Wait()
+	if err != nil {
+		return "", err
+	}
+	if tok == nil || tok.RefreshToken == "" {
+		return "", errors.New("Google did not return a refresh token; remove TideMail from your Google account's third-party access and sign in again")
+	}
+	return tok.RefreshToken, nil
+}
+
+// Cancel abandons the sign-in and closes its listener.
+func (g *GoogleSignIn) Cancel() { g.flow.Close() }
