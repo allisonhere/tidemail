@@ -312,6 +312,12 @@ func (c *Client) FetchSinceLimit(ctx context.Context, mailboxName string, since 
 // APPEND writes to a mailbox without selecting it, so this does not disturb
 // whichever mailbox the pooled connection currently has selected.
 func (c *Client) AppendSent(ctx context.Context, mailboxName string, raw []byte, when time.Time) error {
+	return c.AppendWithFlags(ctx, mailboxName, raw, when, imap.FlagSeen)
+}
+
+// AppendWithFlags stores raw in mailboxName with the given flags (for example \Seen, or
+// \Seen and \Draft for a saved draft).
+func (c *Client) AppendWithFlags(ctx context.Context, mailboxName string, raw []byte, when time.Time, flags ...imap.Flag) error {
 	if c.conn == nil {
 		return fmt.Errorf("not connected")
 	}
@@ -321,7 +327,7 @@ func (c *Client) AppendSent(ctx context.Context, mailboxName string, raw []byte,
 	defer c.applyDeadline(ctx)()
 
 	cmd := c.conn.Append(mailboxName, int64(len(raw)), &imap.AppendOptions{
-		Flags: []imap.Flag{imap.FlagSeen},
+		Flags: flags,
 		Time:  when,
 	})
 	if _, err := cmd.Write(raw); err != nil {

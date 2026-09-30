@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime"
 	"net/textproto"
+	"sort"
 	"strings"
 	"time"
 
@@ -596,4 +597,34 @@ func meaningfulBodyText(s string) bool {
 		}
 	}
 	return contentWords > 0
+}
+
+// SearchText finds messages in mailboxName whose headers or body contain text, newest first, and
+// fetches at most limit of them. The server does the matching (IMAP TEXT search), so it covers the
+// whole mailbox and not only what the client has already downloaded.
+func (c *Client) SearchText(ctx context.Context, mailboxName string, text string, limit int) ([]db.Message, error) {
+	if c.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	if strings.TrimSpace(text) == "" || limit <= 0 {
+		return nil, nil
+	}
+	defer c.applyDeadline(ctx)()
+
+	if _, err := c.conn.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
+		return nil, fmt.Errorf("select %s: %w", mailboxName, err)
+	}
+	data, err := c.conn.UIDSearch(&imap.SearchCriteria{Text: []string{text}}, nil).Wait()
+	if err != nil {
+		return nil, fmt.Errorf("uid search: %w", err)
+	}
+	uids := data.AllUIDs()
+	if len(uids) == 0 {
+		return nil, nil
+	}
+	sort.Slice(uids, func(i, j int) bool { return uids[i] > uids[j] })
+	if len(uids) > limit {
+		uids = uids[:limit]
+	}
+	return c.fetchNumSet(imap.UIDSetNum(uids...))
 }

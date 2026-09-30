@@ -7,6 +7,8 @@ import (
 	"errors"
 	"time"
 
+	imapgo "github.com/emersion/go-imap/v2"
+
 	"github.com/allisonhere/tidemail/internal/auth"
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
@@ -175,6 +177,20 @@ func (c *Client) FetchOlderMailbox(ctx context.Context, mailbox string, beforeUI
 	return out, nil
 }
 
+// SearchMailbox asks the server to find messages containing text (headers or body) in a mailbox
+// and returns up to limit of them, newest first.
+func (c *Client) SearchMailbox(ctx context.Context, mailbox string, text string, limit int) ([]Message, error) {
+	messages, err := c.inner.SearchText(ctx, mailbox, text, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Message, 0, len(messages))
+	for _, message := range messages {
+		out = append(out, projectMessage(message))
+	}
+	return out, nil
+}
+
 func (c *Client) FetchMessage(ctx context.Context, uid uint32) (Message, error) {
 	return c.FetchMessageFrom(ctx, "INBOX", uid)
 }
@@ -241,7 +257,7 @@ type OutgoingAttachment struct {
 	Data []byte
 }
 
-func Send(ctx context.Context, account Account, message OutgoingMessage) error {
+func toSMTP(message OutgoingMessage) smtp.OutgoingMessage {
 	outgoing := smtp.OutgoingMessage{
 		From:       message.From,
 		To:         message.To,
@@ -255,8 +271,44 @@ func Send(ctx context.Context, account Account, message OutgoingMessage) error {
 	for _, a := range message.Attachments {
 		outgoing.Attachments = append(outgoing.Attachments, smtp.Attachment{Name: a.Name, Data: a.Data})
 	}
+	return outgoing
+}
+
+func Send(ctx context.Context, account Account, message OutgoingMessage) error {
+	outgoing := toSMTP(message)
 	outgoing.EnsureIdentity(message.From)
 	return smtp.Send(ctx, account.config(), outgoing)
+}
+
+// SendWithCopy sends the message and returns the exact bytes that were transmitted, so the caller
+// can append an identical copy to the Sent folder (SMTP submission leaves no copy behind on most
+// servers; Gmail is the exception and saves its own).
+func SendWithCopy(ctx context.Context, account Account, message OutgoingMessage) ([]byte, error) {
+	outgoing := toSMTP(message)
+	outgoing.EnsureIdentity(message.From)
+	raw := smtp.BuildRaw(account.config(), outgoing)
+	if err := smtp.Send(ctx, account.config(), outgoing); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+// BuildDraft returns the RFC822 bytes for message without sending it, plus the Message-ID it
+// carries, for saving to the Drafts folder.
+func BuildDraft(account Account, message OutgoingMessage) (raw []byte, messageID string) {
+	outgoing := toSMTP(message)
+	outgoing.EnsureIdentity(message.From)
+	return smtp.BuildRaw(account.config(), outgoing), outgoing.MessageID
+}
+
+// AppendSent stores raw in the given mailbox marked read, as a sent copy.
+func (c *Client) AppendSent(ctx context.Context, mailbox string, raw []byte, when time.Time) error {
+	return c.inner.AppendSent(ctx, mailbox, raw, when)
+}
+
+// AppendDraft stores raw in the given mailbox flagged \Draft (and read).
+func (c *Client) AppendDraft(ctx context.Context, mailbox string, raw []byte, when time.Time) error {
+	return c.inner.AppendWithFlags(ctx, mailbox, raw, when, imapgo.FlagSeen, imapgo.FlagDraft)
 }
 
 // GoogleSignIn is one browser sign-in attempt for a Gmail account. The caller opens AuthURL in a
@@ -285,7 +337,7 @@ func (g *GoogleSignIn) Wait() (string, error) {
 		return "", err
 	}
 	if tok == nil || tok.RefreshToken == "" {
-		return "", errors.New("Google did not return a refresh token; remove TideMail from your Google account's third-party access and sign in again")
+		return "", errors.New("no refresh token came back from Google; remove TideMail from your Google account's third-party access and sign in again")
 	}
 	return tok.RefreshToken, nil
 }
