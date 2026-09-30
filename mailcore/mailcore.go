@@ -40,30 +40,50 @@ func (a Account) config() config.AccountConfig {
 	}
 }
 
+// Attachment is a MIME part of a message: a downloadable file, or an inline
+// image referenced from the HTML body as cid:<ContentID>.
+type Attachment struct {
+	Filename    string
+	ContentType string
+	ContentID   string
+	Inline      bool
+	Size        int64
+	Data        []byte
+}
+
 // Message contains the fields currently used by Android's inbox and reader.
 type Message struct {
-	UID       uint32
-	From      string
-	Subject   string
-	BodyText  string
-	BodyHTML  string
-	Date      time.Time
-	Read      bool
-	Starred   bool
-	MessageID string
+	UID         uint32
+	From        string
+	Subject     string
+	BodyText    string
+	BodyHTML    string
+	Attachments []Attachment
+	Date        time.Time
+	Read        bool
+	Starred     bool
+	MessageID   string
 }
 
 func projectMessage(m db.Message) Message {
+	atts := make([]Attachment, len(m.AttachmentData))
+	for i, a := range m.AttachmentData {
+		atts[i] = Attachment{
+			Filename: a.Filename, ContentType: a.ContentType, ContentID: a.ContentID,
+			Inline: a.Inline, Size: a.Size, Data: a.Data,
+		}
+	}
 	return Message{
-		UID:       m.UID,
-		From:      m.From,
-		Subject:   m.Subject,
-		BodyText:  m.BodyText,
-		BodyHTML:  m.BodyHTML,
-		Date:      m.Date,
-		Read:      m.Read,
-		Starred:   m.Starred,
-		MessageID: m.MessageID,
+		Attachments: atts,
+		UID:         m.UID,
+		From:        m.From,
+		Subject:     m.Subject,
+		BodyText:    m.BodyText,
+		BodyHTML:    m.BodyHTML,
+		Date:        m.Date,
+		Read:        m.Read,
+		Starred:     m.Starred,
+		MessageID:   m.MessageID,
 	}
 }
 
