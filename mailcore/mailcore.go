@@ -58,6 +58,8 @@ type Message struct {
 	Subject     string
 	BodyText    string
 	BodyHTML    string
+	To          string
+	CC          string
 	Attachments []Attachment
 	Date        time.Time
 	Read        bool
@@ -80,6 +82,8 @@ func projectMessage(m db.Message) Message {
 		Subject:     m.Subject,
 		BodyText:    m.BodyText,
 		BodyHTML:    m.BodyHTML,
+		To:          m.To,
+		CC:          m.CC,
 		Date:        m.Date,
 		Read:        m.Read,
 		Starred:     m.Starred,
@@ -170,22 +174,36 @@ func (c *Client) Delete(ctx context.Context, uid uint32) error {
 
 // OutgoingMessage carries the fields used by Android compose and reply.
 type OutgoingMessage struct {
-	From       string
-	To         []string
-	Subject    string
-	Body       string
-	InReplyTo  string
-	References string
+	From        string
+	To          []string
+	CC          []string
+	BCC         []string
+	Subject     string
+	Body        string
+	InReplyTo   string
+	References  string
+	Attachments []OutgoingAttachment
+}
+
+// OutgoingAttachment is a file to attach to an outgoing message.
+type OutgoingAttachment struct {
+	Name string
+	Data []byte
 }
 
 func Send(ctx context.Context, account Account, message OutgoingMessage) error {
 	outgoing := smtp.OutgoingMessage{
 		From:       message.From,
 		To:         message.To,
+		CC:         message.CC,
+		BCC:        message.BCC,
 		Subject:    message.Subject,
 		Body:       message.Body,
 		InReplyTo:  message.InReplyTo,
 		References: message.References,
+	}
+	for _, a := range message.Attachments {
+		outgoing.Attachments = append(outgoing.Attachments, smtp.Attachment{Name: a.Name, Data: a.Data})
 	}
 	outgoing.EnsureIdentity(message.From)
 	return smtp.Send(ctx, account.config(), outgoing)
