@@ -138,7 +138,13 @@ func (c *Client) ListMailboxes(ctx context.Context) ([]Mailbox, error) {
 }
 
 func (c *Client) FetchInbox(ctx context.Context, limit int) ([]Message, error) {
-	messages, err := c.inner.FetchMessages(ctx, "INBOX", limit)
+	return c.FetchMailbox(ctx, "INBOX", limit)
+}
+
+// FetchMailbox returns the newest messages of any mailbox. Keep limit modest for folders such
+// as Sent, where large attachments make big pages slow (see MessagesPerFolderFirstSync).
+func (c *Client) FetchMailbox(ctx context.Context, mailbox string, limit int) ([]Message, error) {
+	messages, err := c.inner.FetchMessages(ctx, mailbox, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +159,12 @@ func (c *Client) FetchInbox(ctx context.Context, limit int) ([]Message, error) {
 // beforeUID. UIDs can be sparse, so callers should use the oldest UID from
 // their current page as the cursor rather than subtracting the page size.
 func (c *Client) FetchOlderInbox(ctx context.Context, beforeUID uint32, limit int) ([]Message, error) {
-	messages, err := c.inner.FetchOlderThan(ctx, "INBOX", beforeUID, limit)
+	return c.FetchOlderMailbox(ctx, "INBOX", beforeUID, limit)
+}
+
+// FetchOlderMailbox is FetchOlderInbox for any mailbox.
+func (c *Client) FetchOlderMailbox(ctx context.Context, mailbox string, beforeUID uint32, limit int) ([]Message, error) {
+	messages, err := c.inner.FetchOlderThan(ctx, mailbox, beforeUID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +176,12 @@ func (c *Client) FetchOlderInbox(ctx context.Context, beforeUID uint32, limit in
 }
 
 func (c *Client) FetchMessage(ctx context.Context, uid uint32) (Message, error) {
-	message, err := c.inner.FetchByUID(ctx, "INBOX", uid)
+	return c.FetchMessageFrom(ctx, "INBOX", uid)
+}
+
+// FetchMessageFrom fetches one message by UID from any mailbox. UIDs are per mailbox.
+func (c *Client) FetchMessageFrom(ctx context.Context, mailbox string, uid uint32) (Message, error) {
+	message, err := c.inner.FetchByUID(ctx, mailbox, uid)
 	if err != nil {
 		return Message{}, err
 	}
@@ -173,19 +189,37 @@ func (c *Client) FetchMessage(ctx context.Context, uid uint32) (Message, error) 
 }
 
 func (c *Client) SetRead(ctx context.Context, uid uint32, read bool) error {
-	return c.inner.MarkSeenUIDs(ctx, "INBOX", []uint32{uid}, read)
+	return c.SetReadIn(ctx, "INBOX", uid, read)
+}
+
+func (c *Client) SetReadIn(ctx context.Context, mailbox string, uid uint32, read bool) error {
+	return c.inner.MarkSeenUIDs(ctx, mailbox, []uint32{uid}, read)
 }
 
 func (c *Client) SetFlagged(ctx context.Context, uid uint32, flagged bool) error {
-	return c.inner.MarkFlagged(ctx, "INBOX", uid, flagged)
+	return c.SetFlaggedIn(ctx, "INBOX", uid, flagged)
+}
+
+func (c *Client) SetFlaggedIn(ctx context.Context, mailbox string, uid uint32, flagged bool) error {
+	return c.inner.MarkFlagged(ctx, mailbox, uid, flagged)
 }
 
 func (c *Client) Move(ctx context.Context, uid uint32, mailbox string) error {
-	return c.inner.MoveMessage(ctx, "INBOX", uid, mailbox)
+	return c.MoveFrom(ctx, "INBOX", uid, mailbox)
+}
+
+// MoveFrom moves a message from one mailbox to another.
+func (c *Client) MoveFrom(ctx context.Context, from string, uid uint32, to string) error {
+	return c.inner.MoveMessage(ctx, from, uid, to)
 }
 
 func (c *Client) Delete(ctx context.Context, uid uint32) error {
-	return c.inner.DeleteMessage(ctx, "INBOX", uid)
+	return c.DeleteFrom(ctx, "INBOX", uid)
+}
+
+// DeleteFrom permanently deletes (\Deleted + expunge) a message from any mailbox.
+func (c *Client) DeleteFrom(ctx context.Context, mailbox string, uid uint32) error {
+	return c.inner.DeleteMessage(ctx, mailbox, uid)
 }
 
 // OutgoingMessage carries the fields used by Android compose and reply.
