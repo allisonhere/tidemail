@@ -476,6 +476,53 @@ func (c *Client) CreateMailbox(ctx context.Context, name string) error {
 	return nil
 }
 
+// RenameMailbox renames a mailbox (and, on most servers, its children).
+func (c *Client) RenameMailbox(ctx context.Context, oldName, newName string) error {
+	if c.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	defer c.applyDeadline(ctx)()
+	if err := c.conn.Rename(oldName, newName, nil).Wait(); err != nil {
+		return fmt.Errorf("rename %s: %w", oldName, err)
+	}
+	return nil
+}
+
+// DeleteMailbox removes a mailbox and every message in it.
+func (c *Client) DeleteMailbox(ctx context.Context, name string) error {
+	if c.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	defer c.applyDeadline(ctx)()
+	if err := c.conn.Delete(name).Wait(); err != nil {
+		return fmt.Errorf("delete %s: %w", name, err)
+	}
+	return nil
+}
+
+// UnseenCounts returns the number of unread messages in each named mailbox, using STATUS (which does
+// not select the mailbox). A mailbox the server will not report on is left out of the result.
+func (c *Client) UnseenCounts(ctx context.Context, names []string) (map[string]uint32, error) {
+	if c.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	out := make(map[string]uint32, len(names))
+	for _, name := range names {
+		func() {
+			defer c.applyDeadline(ctx)()
+			data, err := c.conn.Status(name, &imap.StatusOptions{NumUnseen: true}).Wait()
+			if err != nil || data == nil || data.NumUnseen == nil {
+				return
+			}
+			out[name] = *data.NumUnseen
+		}()
+		if ctx.Err() != nil {
+			return out, ctx.Err()
+		}
+	}
+	return out, nil
+}
+
 func (c *Client) DeleteMessage(ctx context.Context, mailboxName string, uid uint32) error {
 	return c.DeleteMessages(ctx, mailboxName, []uint32{uid})
 }

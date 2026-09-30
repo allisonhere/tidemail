@@ -301,6 +301,27 @@ func BuildDraft(account Account, message OutgoingMessage) (raw []byte, messageID
 	return smtp.BuildRaw(account.config(), outgoing), outgoing.MessageID
 }
 
+// UnseenCounts reports how many unread messages each named mailbox holds. Mailboxes the server will not
+// report on are missing from the result.
+func (c *Client) UnseenCounts(ctx context.Context, names []string) (map[string]uint32, error) {
+	return c.inner.UnseenCounts(ctx, names)
+}
+
+// CreateMailbox makes a new mailbox (folder); use the account's hierarchy delimiter to nest it.
+func (c *Client) CreateMailbox(ctx context.Context, name string) error {
+	return c.inner.CreateMailbox(ctx, name)
+}
+
+// RenameMailbox renames a mailbox.
+func (c *Client) RenameMailbox(ctx context.Context, oldName, newName string) error {
+	return c.inner.RenameMailbox(ctx, oldName, newName)
+}
+
+// DeleteMailbox deletes a mailbox and the messages in it.
+func (c *Client) DeleteMailbox(ctx context.Context, name string) error {
+	return c.inner.DeleteMailbox(ctx, name)
+}
+
 // AppendSent stores raw in the given mailbox marked read, as a sent copy.
 func (c *Client) AppendSent(ctx context.Context, mailbox string, raw []byte, when time.Time) error {
 	return c.inner.AppendSent(ctx, mailbox, raw, when)
