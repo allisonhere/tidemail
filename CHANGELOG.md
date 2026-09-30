@@ -4,6 +4,11 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- Text files attached to a message (parts marked as attachments) are now shown as attachments
+  instead of being mistaken for the message body.
+
 ## v1.1.1
 
 ### Added
