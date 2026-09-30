@@ -390,12 +390,30 @@ func parseBody(raw []byte) (text, html string, attachments []bodyAttachment) {
 		if readErr != nil {
 			continue
 		}
-		switch ct {
-		case "text/plain":
+		contentID := normalizeCID(part.Header.Get("Content-ID"))
+		disposition := contentDisposition(part)
+		addAttachment := func() {
+			attachments = append(attachments, bodyAttachment{
+				Filename:        filenameFromPart(part, params, ct),
+				ContentType:     ct,
+				ContentID:       contentID,
+				Disposition:     disposition,
+				ContentLocation: normalizeContentLocation(part.Header.Get("Content-Location")),
+				Inline:          disposition == "inline" || (contentID != "" && disposition != "attachment"),
+				Data:            data,
+			})
+		}
+		switch {
+		case strings.HasPrefix(ct, "multipart/"):
+		// A text part explicitly marked as an attachment (e.g. a .txt file) is a
+		// file, not the message body.
+		case disposition == "attachment":
+			addAttachment()
+		case ct == "text/plain":
 			if text == "" {
 				text = strings.TrimSpace(string(data))
 			}
-		case "text/html":
+		case ct == "text/html":
 			if html == "" {
 				html = string(data)
 				if text == "" {
@@ -405,19 +423,7 @@ func parseBody(raw []byte) (text, html string, attachments []bodyAttachment) {
 				}
 			}
 		default:
-			if ct != "" && !strings.HasPrefix(ct, "multipart/") {
-				contentID := normalizeCID(part.Header.Get("Content-ID"))
-				disposition := contentDisposition(part)
-				attachments = append(attachments, bodyAttachment{
-					Filename:        filenameFromPart(part, params, ct),
-					ContentType:     ct,
-					ContentID:       contentID,
-					Disposition:     disposition,
-					ContentLocation: normalizeContentLocation(part.Header.Get("Content-Location")),
-					Inline:          disposition == "inline" || (contentID != "" && disposition != "attachment"),
-					Data:            data,
-				})
-			}
+			addAttachment()
 		}
 	}
 	return text, html, attachments
