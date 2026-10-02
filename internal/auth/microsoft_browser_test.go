@@ -186,3 +186,38 @@ func TestMicrosoftBrowserCancellationAndTimeout(t *testing.T) {
 		}
 	}
 }
+
+// After a new sign-in the cache must use the credential it is given, not the ended one it remembers.
+func TestForgetMSTokenLetsANewSignInReplaceAnEndedOne(t *testing.T) {
+	var seen []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		seen = append(seen, r.Form.Get("refresh_token"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"access","token_type":"Bearer","expires_in":1}`))
+	}))
+	defer srv.Close()
+	withMSTokenEndpoint(t, srv)
+	const key = "me@outlook.com@outlook.office365.com"
+	t.Cleanup(func() { ForgetMSToken(key) })
+
+	if _, err := MSAccessToken(context.Background(), "client", key, "old-refresh"); err != nil {
+		t.Fatal(err)
+	}
+	// Without forgetting, a later call with a new seed still uses the remembered one.
+	if _, err := MSAccessToken(context.Background(), "client", key, "new-refresh"); err != nil {
+		t.Fatal(err)
+	}
+	ForgetMSToken(key)
+	if _, err := MSAccessToken(context.Background(), "client", key, "new-refresh"); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) < 2 || seen[0] != "old-refresh" || seen[len(seen)-1] != "new-refresh" {
+		t.Fatalf("refresh tokens sent: %v", seen)
+	}
+	for _, s := range seen[:len(seen)-1] {
+		if s == "new-refresh" {
+			t.Fatalf("the new token was used before the old session was forgotten: %v", seen)
+		}
+	}
+}

@@ -415,3 +415,12 @@ func SetRefreshTokenSaver(save func(sessionKey, refreshToken string) error) {
 	}
 	auth.PersistRefreshToken = save
 }
+
+// ForgetOAuthSession drops the access and refresh tokens kept in memory for an account (its session key: the
+// account ID, or user@imapHost when there is none). Call it after the user signs in again: otherwise the old,
+// ended token cached from earlier connections keeps being used until the process restarts, instead of the new
+// credential the caller passes in.
+func ForgetOAuthSession(sessionKey string) {
+	auth.ForgetGoogleToken(sessionKey)
+	auth.ForgetMSToken(sessionKey)
+}

@@ -48,3 +48,8 @@ func TestSetRefreshTokenSaverReceivesRotatedTokens(t *testing.T) {
 		t.Fatalf("the default saver must accept tokens: %v", err)
 	}
 }
+
+func TestForgetOAuthSessionIsSafeForUnknownAccounts(t *testing.T) {
+	ForgetOAuthSession("nobody@example.test")
+	ForgetOAuthSession("")
+}
