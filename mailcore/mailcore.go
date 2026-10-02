@@ -365,3 +365,53 @@ func (g *GoogleSignIn) Wait() (string, error) {
 
 // Cancel abandons the sign-in and closes its listener.
 func (g *GoogleSignIn) Cancel() { g.flow.Close() }
+
+// MicrosoftSignIn is one browser sign-in attempt for an Outlook / Hotmail / Microsoft 365 account. The caller
+// opens AuthURL in a browser; Wait returns once Microsoft redirects back to a short-lived localhost listener.
+type MicrosoftSignIn struct {
+	flow *auth.MicrosoftBrowserFlow
+}
+
+// StartMicrosoftSignIn begins an authorization-code + PKCE sign-in with the caller's own Microsoft app
+// registration (a public client whose redirect URI is http://localhost). It listens on 127.0.0.1 until the
+// sign-in finishes, is cancelled, or times out.
+func StartMicrosoftSignIn(ctx context.Context, clientID string) (*MicrosoftSignIn, error) {
+	if clientID == "" {
+		return nil, errors.New("no Microsoft app (client) ID is set")
+	}
+	flow, err := auth.StartMicrosoftBrowserFlow(ctx, clientID)
+	if err != nil {
+		return nil, err
+	}
+	return &MicrosoftSignIn{flow: flow}, nil
+}
+
+// AuthURL is the Microsoft sign-in page to open in a browser.
+func (m *MicrosoftSignIn) AuthURL() string { return m.flow.AuthURL }
+
+// Wait blocks until sign-in completes and returns the refresh token to store for the account.
+func (m *MicrosoftSignIn) Wait() (string, error) {
+	tok, err := m.flow.Wait()
+	if err != nil {
+		return "", err
+	}
+	if tok == nil || tok.RefreshToken == "" {
+		return "", errors.New("no refresh token came back from Microsoft; sign in again")
+	}
+	return tok.RefreshToken, nil
+}
+
+// Cancel abandons the sign-in and closes its listener.
+func (m *MicrosoftSignIn) Cancel() { m.flow.Close() }
+
+// SetRefreshTokenSaver registers where rotated OAuth refresh tokens are saved. Microsoft (and sometimes Google)
+// replaces the refresh token when it is used, so the caller must store the new one: save is called with the
+// account's session key (the account ID, or user@imapHost when there is none) and the new token, after every
+// refresh that changed it. A nil save restores the default, which keeps tokens in memory only.
+func SetRefreshTokenSaver(save func(sessionKey, refreshToken string) error) {
+	if save == nil {
+		auth.PersistRefreshToken = func(string, string) error { return nil }
+		return
+	}
+	auth.PersistRefreshToken = save
+}
