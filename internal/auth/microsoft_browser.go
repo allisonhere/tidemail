@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -42,6 +43,9 @@ type MicrosoftBrowserFlow struct {
 	submitted   atomic.Bool
 	codes       chan string
 	results     chan microsoftBrowserResult
+	received    chan struct{}
+	done        chan struct{}
+	recvOnce    sync.Once
 }
 
 // StartMicrosoftBrowserFlow begins a sign-in for the given Microsoft app (client) ID and listens on 127.0.0.1
@@ -68,6 +72,7 @@ func StartMicrosoftBrowserFlow(ctx context.Context, clientID string) (*Microsoft
 		redirectURI: redirect, listenAddr: listener.Addr().String(),
 		ctx: ctx, cancel: cancel,
 		codes: make(chan string, 1), results: make(chan microsoftBrowserResult, 1),
+		received: make(chan struct{}), done: make(chan struct{}),
 	}
 	f.server = &http.Server{Handler: http.HandlerFunc(f.callback), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
@@ -83,8 +88,8 @@ func StartMicrosoftBrowserFlow(ctx context.Context, clientID string) (*Microsoft
 			if code == "" {
 				result.err = errors.New("auth: Microsoft access was denied")
 			} else {
-				exchangeCtx, stop := context.WithTimeout(ctx, 30*time.Second)
-				result.token, result.err = f.exchange(exchangeCtx, code)
+				exchangeCtx, stop := context.WithTimeout(ctx, 45*time.Second)
+				result.token, result.err = retryExchange(exchangeCtx, func(c context.Context) (*oauth2.Token, error) { return f.exchange(c, code) })
 				stop()
 			}
 		case <-ctx.Done():
@@ -97,6 +102,7 @@ func StartMicrosoftBrowserFlow(ctx context.Context, clientID string) (*Microsoft
 		}
 		stop()
 		f.results <- result
+		close(f.done)
 	}()
 	return f, nil
 }
@@ -145,8 +151,15 @@ func (f *MicrosoftBrowserFlow) callback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	f.codes <- code
+	f.recvOnce.Do(func() { close(f.received) })
 	_, _ = fmt.Fprintln(w, "Authorization received. Return to TideMail to finish adding your account. You can close this tab.")
 }
+
+// Received is closed once the browser has delivered a valid sign-in (the exchange for tokens may still be running).
+func (f *MicrosoftBrowserFlow) Received() <-chan struct{} { return f.received }
+
+// Done is closed when the attempt has ended, with tokens or with an error.
+func (f *MicrosoftBrowserFlow) Done() <-chan struct{} { return f.done }
 
 // Wait blocks until the sign-in finishes and returns its tokens. Call it once.
 func (f *MicrosoftBrowserFlow) Wait() (*oauth2.Token, error) {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -30,6 +31,9 @@ type GoogleBrowserFlow struct {
 	submitted atomic.Bool
 	codes     chan string
 	results   chan googleBrowserResult
+	received  chan struct{}
+	done      chan struct{}
+	recvOnce  sync.Once
 }
 
 func StartGoogleBrowserFlow(ctx context.Context, clientID, clientSecret string) (*GoogleBrowserFlow, error) {
@@ -42,6 +46,7 @@ func StartGoogleBrowserFlow(ctx context.Context, clientID, clientSecret string) 
 		GoogleAuthCodeFlow: newGoogleAuthCodeFlow(clientID, clientSecret, "http://"+listener.Addr().String()+"/oauth/callback"),
 		ctx:                ctx, cancel: cancel,
 		codes: make(chan string, 1), results: make(chan googleBrowserResult, 1),
+		received: make(chan struct{}), done: make(chan struct{}),
 	}
 	f.server = &http.Server{Handler: http.HandlerFunc(f.callback), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
@@ -54,8 +59,8 @@ func StartGoogleBrowserFlow(ctx context.Context, clientID, clientSecret string) 
 		var result googleBrowserResult
 		select {
 		case code := <-f.codes:
-			exchangeCtx, stop := context.WithTimeout(ctx, 30*time.Second)
-			result.token, result.err = f.Exchange(exchangeCtx, code)
+			exchangeCtx, stop := context.WithTimeout(ctx, 45*time.Second)
+			result.token, result.err = retryExchange(exchangeCtx, func(c context.Context) (*oauth2.Token, error) { return f.Exchange(c, code) })
 			stop()
 		case <-ctx.Done():
 			result.err = ctx.Err()
@@ -67,6 +72,7 @@ func StartGoogleBrowserFlow(ctx context.Context, clientID, clientSecret string) 
 		}
 		stop()
 		f.results <- result
+		close(f.done)
 	}()
 	return f, nil
 }
@@ -98,6 +104,7 @@ func (f *GoogleBrowserFlow) callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	f.recvOnce.Do(func() { close(f.received) })
 	_, _ = fmt.Fprintln(w, "Authorization received. Return to TideMail to finish adding your account. You can close this tab.")
 }
 
@@ -117,6 +124,12 @@ func (f *GoogleBrowserFlow) Submit(pasted string) error {
 	f.codes <- code
 	return nil
 }
+
+// Received is closed once the browser has delivered a valid sign-in (the exchange for tokens may still be running).
+func (f *GoogleBrowserFlow) Received() <-chan struct{} { return f.received }
+
+// Done is closed when the attempt has ended, with tokens or with an error.
+func (f *GoogleBrowserFlow) Done() <-chan struct{} { return f.done }
 
 // Wait is called once by the UI's background command.
 func (f *GoogleBrowserFlow) Wait() (*oauth2.Token, error) {

@@ -366,6 +366,13 @@ func (g *GoogleSignIn) Wait() (string, error) {
 // Cancel abandons the sign-in and closes its listener.
 func (g *GoogleSignIn) Cancel() { g.flow.Close() }
 
+// Received is closed once the browser has delivered the sign-in; the exchange for tokens may still be running, and Wait
+// returns when it ends.
+func (g *GoogleSignIn) Received() <-chan struct{} { return g.flow.Received() }
+
+// Done is closed when the attempt has ended, with tokens or with an error.
+func (g *GoogleSignIn) Done() <-chan struct{} { return g.flow.Done() }
+
 // MicrosoftSignIn is one browser sign-in attempt for an Outlook / Hotmail / Microsoft 365 account. The caller
 // opens AuthURL in a browser; Wait returns once Microsoft redirects back to a short-lived localhost listener.
 type MicrosoftSignIn struct {
@@ -403,6 +410,13 @@ func (m *MicrosoftSignIn) Wait() (string, error) {
 
 // Cancel abandons the sign-in and closes its listener.
 func (m *MicrosoftSignIn) Cancel() { m.flow.Close() }
+
+// Received is closed once the browser has delivered the sign-in; the exchange for tokens may still be running, and Wait
+// returns when it ends.
+func (m *MicrosoftSignIn) Received() <-chan struct{} { return m.flow.Received() }
+
+// Done is closed when the attempt has ended, with tokens or with an error.
+func (m *MicrosoftSignIn) Done() <-chan struct{} { return m.flow.Done() }
 
 // SetRefreshTokenSaver registers where rotated OAuth refresh tokens are saved. Microsoft (and sometimes Google)
 // replaces the refresh token when it is used, so the caller must store the new one: save is called with the
