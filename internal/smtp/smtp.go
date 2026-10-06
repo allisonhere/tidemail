@@ -292,7 +292,16 @@ func sendMail(client *smtp.Client, from string, to []string, raw []byte) error {
 	return err
 }
 
+// crlf converts bare LF line endings to CRLF. Bodies arrive with LF (a terminal or Android
+// editor), but net/smtp rewrites them to CRLF on the wire; doing it here keeps the bytes returned
+// by BuildRaw identical to what is transmitted, so a copy filed under Sent matches the sent mail.
+func crlf(s string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\n", "\r\n")
+}
+
 func buildRaw(from string, msg OutgoingMessage) []byte {
+	msg.Body = crlf(msg.Body)
+	msg.HTMLBody = crlf(msg.HTMLBody)
 	var hdr strings.Builder
 	hdr.WriteString("From: " + from + "\r\n")
 	hdr.WriteString("To: " + strings.Join(msg.To, ", ") + "\r\n")
@@ -319,6 +328,11 @@ func buildRaw(from string, msg OutgoingMessage) []byte {
 			hdr.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
 			hdr.WriteString("\r\n")
 			hdr.WriteString(msg.Body)
+			// net/smtp ends the DATA stream with CRLF when the body does not; end it here so
+			// the bytes match what is transmitted. (Multipart output already ends in CRLF.)
+			if !strings.HasSuffix(msg.Body, "\r\n") {
+				hdr.WriteString("\r\n")
+			}
 			return []byte(hdr.String())
 		}
 		// multipart/alternative: plain text + HTML

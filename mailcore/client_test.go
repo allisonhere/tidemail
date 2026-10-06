@@ -728,10 +728,10 @@ func TestSendWithCopyReturnsTheTransmittedBytes(t *testing.T) {
 		t.Fatal("no copy returned")
 	}
 	_, _, data := srv.snapshot()
-	// net/smtp rewrites bare LF to CRLF on the wire, so compare modulo line endings.
-	norm := func(s string) string { return strings.TrimSpace(strings.ReplaceAll(s, "\r\n", "\n")) }
-	if norm(data) != norm(string(raw)) {
-		t.Errorf("the returned copy differs from what was transmitted\n--- sent:\n%s\n--- copy:\n%s", data, raw)
+	// The Sent copy must be byte-for-byte what went over the wire, even for a body typed with
+	// bare LF line endings (net/smtp would otherwise rewrite them to CRLF in transit).
+	if data != string(raw) {
+		t.Errorf("the returned copy differs from what was transmitted\n--- sent:\n%q\n--- copy:\n%q", data, raw)
 	}
 	if !strings.Contains(string(raw), "Message-ID:") || !strings.Contains(string(raw), "Date:") {
 		t.Error("the copy should carry Message-ID and Date so the Sent folder matches the sent mail")
