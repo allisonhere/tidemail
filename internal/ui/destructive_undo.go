@@ -247,6 +247,10 @@ func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.C
 		return nil
 	}
 	for _, ref := range result.Succeeded {
+		if m.needsYou.messageIDs[ref.ID] {
+			delete(m.needsYou.messageIDs, ref.ID)
+			m.needsYou.count--
+		}
 		if m.removeMessageFromMemory(ref.ID) {
 			m.adjustMailboxUnreadCount(ref.MailboxID, -1)
 		}

@@ -453,3 +453,83 @@ func TestNeedsYouThreadBadgesCombineMembers(t *testing.T) {
 		t.Fatalf("thread row should combine its members' signals: %q", line)
 	}
 }
+
+func TestNeedsYouCountUpdatesDuringDestructiveActions(t *testing.T) {
+	for _, kind := range []string{"delete", "archive", "move", "failed move"} {
+		t.Run(kind, func(t *testing.T) {
+			m, f := newNeedsYouModel(t)
+			id := f.add(f.inbox, "actionable", 1, "smart needs_reply true")
+			f.add(f.inbox, "keep", 2, "smart urgency high")
+			plain := f.add(f.inbox, "ordinary", 3)
+			m = openNeedsYou(t, m)
+			// Act from another folder, where the list also includes ordinary mail.
+			for i, row := range m.sidebarRows {
+				if row.kind == rowKindUnified {
+					m.sidebarCursor = i
+				}
+			}
+			m = settle(t, m, m.loadUnifiedInboxCmd())
+			msg, err := f.database.GetMessage(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			schedule := func() {
+				switch kind {
+				case "delete":
+					m.scheduleDelete([]db.Message{msg})
+				case "archive":
+					m.mailboxes[1].Flags = []string{"\\Archive"}
+					if _, err := f.database.UpsertMailbox(m.mailboxes[1]); err != nil {
+						t.Fatal(err)
+					}
+					m.scheduleArchive([]db.Message{msg})
+				case "move":
+					m.scheduleMove([]db.Message{msg}, *m.mailboxByID(f.trash))
+				case "failed move":
+					m.scheduleMove([]db.Message{msg}, db.Mailbox{ID: 999999, AccountID: m.mailboxes[0].AccountID})
+				}
+			}
+			schedule()
+			if got := m.displayNeedsYouCount(); got != 1 || !strings.Contains(m.renderNeedsYouRow(false, 40), "(1)") {
+				t.Fatalf("pending badge = %d, want 1", got)
+			}
+			// Reloading the badge during the undo window must keep it reduced.
+			m = settle(t, m, loadNeedsYouCountCmd(m.db))
+			if got := m.displayNeedsYouCount(); got != 1 {
+				t.Fatalf("refreshed pending badge = %d, want 1", got)
+			}
+			m.undoLatestDestructive()
+			if got := m.displayNeedsYouCount(); got != 2 {
+				t.Fatalf("undo badge = %d, want 2", got)
+			}
+			ordinary, err := f.database.GetMessage(plain)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m.scheduleDelete([]db.Message{ordinary})
+			if got := m.displayNeedsYouCount(); got != 2 {
+				t.Fatalf("ordinary mail changed badge to %d", got)
+			}
+			m.undoLatestDestructive()
+			schedule()
+			cmd := m.beginDestructiveCommit(m.pendingDestructiveActions[0].ID)
+			next, refresh := m.Update(cmd())
+			m = next.(Model)
+			want := 1
+			if kind == "failed move" {
+				want = 2
+			}
+			if got := m.displayNeedsYouCount(); got != want {
+				t.Fatalf("commit badge = %d, want %d", got, want)
+			}
+			m = settle(t, m, refresh)
+			if m.needsYou.count != want {
+				t.Fatalf("stored badge = %d, want %d", m.needsYou.count, want)
+			}
+			m = openNeedsYou(t, m)
+			if len(m.filteredMessages) != want {
+				t.Fatalf("visible messages = %d, want %d", len(m.filteredMessages), want)
+			}
+		})
+	}
+}

@@ -585,7 +585,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case DestructiveActionResultMsg:
 		cmd := m.handleDestructiveResult(msg)
 		// Archive, delete, and move can end or change a waiting conversation.
-		return m, tea.Batch(cmd, m.requestWaitingRefresh())
+		return m, tea.Batch(cmd, m.requestWaitingRefresh(), m.needsYouRefreshCmd())
 
 	case UpdateCheckedMsg:
 		m.updateErr = ""

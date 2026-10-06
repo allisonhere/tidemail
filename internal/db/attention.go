@@ -149,6 +149,27 @@ func (db *DB) CountNeedsYou() (int, error) {
 	return n, err
 }
 
+// NeedsYouMessageIDs returns the messages counted by the Needs You badge.
+func (db *DB) NeedsYouMessageIDs() (map[int64]bool, error) {
+	where, _, args, _ := needsYouFilter(false)
+	rows, err := db.Query(`SELECT messages.id FROM messages
+		JOIN mailboxes ON mailboxes.id = messages.mailbox_id
+		WHERE `+where, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := make(map[int64]bool)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids[id] = true
+	}
+	return ids, rows.Err()
+}
+
 // SetNeedsYouDismissed dismisses a message from Needs You, or restores it.
 // It never touches the message, its flags, or any plugin annotation.
 func (db *DB) SetNeedsYouDismissed(messageID int64, dismissed bool) error {

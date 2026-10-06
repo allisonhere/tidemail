@@ -153,7 +153,9 @@ while still in Needs You brings back the latest dismissal, and **Restore to
 Needs You** in the palette does the same for a dismissed message opened from
 its normal folder. **Why is this in Needs You?** lists the reasons and the
 annotations behind them. All the usual actions (reply, archive, delete, move,
-star, mark read) work on messages here.
+star, mark read) work on messages here. The sidebar count updates immediately
+when you delete, archive, or move messages, including during the six-second
+undo window. Undoing the action or a failed action restores the count.
 
 ### Waiting on Them
 

@@ -71,7 +71,8 @@ Current release: **v1.0.28**.
   token stored in the keychain and rotation-persisted.
 - **Search**, unread-only filtering, command palette, desktop notifications.
 - **Experimental plugins**: manual and automatic metadata classification,
-  stored tags with local corrections (`e` on a message), Needs You, result cards
+  stored tags with local corrections (`e` on a message), Needs You with immediate
+  sidebar count updates for delete/archive/move and undo, result cards
   with technical Details, and a host-owned `u` unsubscribe action that uses TideMail's existing confirmed flow without
   exposing unsubscribe links to plugins.
 - **Settings**: theme, display density, pane corners, pane header bars, modal
