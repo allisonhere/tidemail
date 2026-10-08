@@ -60,8 +60,13 @@ type sidebarRow struct {
 	kind      sidebarRowKind
 	accountID int64
 	mailboxID int64
-	label     string // section header label (e.g. "System", "Labels")
+	label     string // section header label (e.g. "System", "Labels"); a nested folder's title
 	count     int    // item count for section headers
+
+	// Folder tree (mailbox rows).
+	depth       int  // nesting level below the section header
+	hasChildren bool // folder has subfolders
+	collapsed   bool // subfolders hidden
 }
 
 type overlayMode int
@@ -1943,12 +1948,29 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.clearStatusCmd()
 
 	case keyMatches(msg, m.keys.Left):
+		if m.focused == paneAccounts {
+			prev := m.sidebarCursor
+			if m.collapseOrJumpToParentFolder() {
+				if m.sidebarCursor == prev {
+					return m, nil
+				}
+				return m, m.loadSelectedFolderCmd()
+			}
+		}
 		if m.focused > paneAccounts {
 			return m.focusPane(m.focused - 1)
 		}
 		return m, nil
 
 	case keyMatches(msg, m.keys.Right):
+		if m.focused == paneAccounts {
+			expand := false
+			if m.sidebarCursor >= 0 && m.sidebarCursor < len(m.sidebarRows) {
+				if row := m.sidebarRows[m.sidebarCursor]; row.kind == rowKindMailbox && row.collapsed && m.setSelectedFolderCollapsed(&expand) {
+					return m, nil
+				}
+			}
+		}
 		if m.focused < paneContent {
 			return m.focusPane(m.focused + 1)
 		}
@@ -1994,6 +2016,9 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.toggleSelectedSection() {
+				return m, nil
+			}
+			if m.toggleSelectedFolder() {
 				return m, nil
 			}
 			// Neither toggle applied, so the cursor is on a folder row: Enter
@@ -2358,6 +2383,9 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.toggleSelectedSection() {
+				return m, nil
+			}
+			if m.toggleSelectedFolder() {
 				return m, nil
 			}
 		}
