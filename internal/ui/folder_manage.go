@@ -638,12 +638,47 @@ func (m Model) moveSelectedFolder(delta int) (tea.Model, tea.Cmd) {
 	if !ok || mb == nil || strings.EqualFold(mb.Name, "INBOX") {
 		return m, nil
 	}
-	sibs := m.folderSiblings(m.sidebarCursor)
-	pos := slices.Index(sibs, m.sidebarCursor)
-	target := pos + delta
-	if pos >= 0 && (target < 0 || target >= len(sibs)) && m.sidebarRows[m.sidebarCursor].depth > 0 {
-		return m.outdentSelectedFolder(*mb, delta)
+	cur := m.sidebarCursor
+	depth := m.sidebarRows[cur].depth
+	protected := protectedFolderReason(*mb) != ""
+
+	// Walk the visible tree one row at a time: look at the row F would pass.
+	end := cur
+	for end+1 < len(m.sidebarRows) && m.sidebarRows[end+1].kind == rowKindMailbox && m.sidebarRows[end+1].depth > depth {
+		end++
 	}
+	neighbour := cur - 1
+	if delta > 0 {
+		neighbour = end + 1
+	}
+	if neighbour < 0 || neighbour >= len(m.sidebarRows) || m.sidebarRows[neighbour].kind != rowKindMailbox {
+		neighbour = -1
+	}
+	switch {
+	case neighbour < 0 && depth > 0:
+		return m.outdentSelectedFolder(*mb, delta)
+	case neighbour < 0:
+		m.setStatus("already at the "+map[bool]string{true: "top", false: "bottom"}[delta < 0], false)
+		return m, m.clearStatusCmd()
+	case m.sidebarRows[neighbour].depth < depth:
+		return m.outdentSelectedFolder(*mb, delta)
+	case !protected && delta > 0 && m.nestableParent(neighbour):
+		return m.nestSelectedFolder(*mb, neighbour, true)
+	case !protected && delta < 0 && m.sidebarRows[neighbour].depth > depth:
+		// The row above is the last visible descendant of the previous sibling.
+		for i := neighbour; i >= 0 && m.sidebarRows[i].kind == rowKindMailbox; i-- {
+			if m.sidebarRows[i].depth == depth {
+				if m.nestableParent(i) {
+					return m.nestSelectedFolder(*mb, i, false)
+				}
+				break
+			}
+		}
+	}
+
+	sibs := m.folderSiblings(cur)
+	pos := slices.Index(sibs, cur)
+	target := pos + delta
 	if pos < 0 || target < 0 || target >= len(sibs) {
 		m.setStatus("already at the "+map[bool]string{true: "top", false: "bottom"}[delta < 0], false)
 		return m, m.clearStatusCmd()
@@ -721,12 +756,6 @@ func (m Model) outdentSelectedFolder(mb db.Mailbox, delta int) (tea.Model, tea.C
 	} else {
 		newName, _ = qualifyFolderName(leaf, accountMbs)
 	}
-	for _, other := range accountMbs {
-		if other.ID != mb.ID && strings.EqualFold(other.Name, newName) {
-			m.setStatus(fmt.Sprintf("can't move out: a folder named %q already exists there", leaf), true)
-			return m, m.clearStatusCmd()
-		}
-	}
 	// The destination is the parent's own sibling group; place the folder just
 	// before or after the parent in it.
 	var names []string
@@ -746,6 +775,71 @@ func (m Model) outdentSelectedFolder(mb db.Mailbox, delta int) (tea.Model, tea.C
 	orders := make(map[string]int, len(names))
 	for n, name := range names {
 		orders[name] = (n + 1) * 10
+	}
+	return m.reparentFolder(mb, newName, orders)
+}
+
+// nestableParent reports whether the folder on a sidebar row may receive a
+// nested folder: an open parent that is not the Inbox or a system folder.
+func (m Model) nestableParent(rowIdx int) bool {
+	row := m.sidebarRows[rowIdx]
+	if row.kind != rowKindMailbox || !row.hasChildren || row.collapsed {
+		return false
+	}
+	mb := m.mailboxByID(row.mailboxID)
+	return mb != nil && !strings.EqualFold(mb.Name, "INBOX") && protectedFolderReason(*mb) == ""
+}
+
+// childRowNames is the names of a row's direct children, in display order.
+func (m Model) childRowNames(rowIdx int) []string {
+	depth := m.sidebarRows[rowIdx].depth
+	var out []string
+	for i := rowIdx + 1; i < len(m.sidebarRows); i++ {
+		r := m.sidebarRows[i]
+		if r.kind != rowKindMailbox || r.depth <= depth {
+			break
+		}
+		if r.depth == depth+1 {
+			if f := m.mailboxByID(r.mailboxID); f != nil {
+				out = append(out, f.Name)
+			}
+		}
+	}
+	return out
+}
+
+// nestSelectedFolder moves a folder into the open parent on a sidebar row, as
+// that parent's first or last child. Its subfolders go with it.
+func (m Model) nestSelectedFolder(mb db.Mailbox, parentIdx int, first bool) (tea.Model, tea.Cmd) {
+	parent := m.mailboxByID(m.sidebarRows[parentIdx].mailboxID)
+	if parent == nil {
+		return m, nil
+	}
+	newName := parent.Name + folderDelimiter(*parent) + folderLeaf(mb)
+	kids := m.childRowNames(parentIdx)
+	names := make([]string, 0, len(kids)+1)
+	if first {
+		names = append(names, newName)
+	}
+	names = append(names, kids...)
+	if !first {
+		names = append(names, newName)
+	}
+	orders := make(map[string]int, len(names))
+	for n, name := range names {
+		orders[name] = (n + 1) * 10
+	}
+	return m.reparentFolder(mb, newName, orders)
+}
+
+// reparentFolder renames a folder to newName (a move to another parent),
+// refusing a name that is already taken, and records the new sibling order.
+func (m Model) reparentFolder(mb db.Mailbox, newName string, orders map[string]int) (tea.Model, tea.Cmd) {
+	for _, other := range accountMailboxes(m.mailboxes, mb.AccountID) {
+		if other.ID != mb.ID && strings.EqualFold(other.Name, newName) {
+			m.setStatus(fmt.Sprintf("can't move there: a folder named %q already exists", folderLeaf(mb)), true)
+			return m, m.clearStatusCmd()
+		}
 	}
 	m.setStatus("moving folder...", false)
 	return m, m.renameFolderCmd(mb, newName, orders)

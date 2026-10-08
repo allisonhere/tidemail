@@ -12,8 +12,8 @@ All notable changes to TideMail are documented in this file.
 - Manage folders from the sidebar: `n` creates a folder or subfolder, `r` renames (subfolders come
   along), `d` deletes after a confirmation that names the subfolders that go with it. The Inbox and
   system folders are protected. `H` hides a folder from TideMail's sidebar only, "Show hidden
-  folders" in the command palette lists them again, and `Shift+K` / `Shift+J` reorder siblings and,
-  past the first or last subfolder, move a folder out of its parent.
+  folders" in the command palette lists them again, and `Shift+K` / `Shift+J` walk a folder up or down the
+  tree: reorder siblings, move it into an open folder, or out of its parent.
   All are also in the command palette.
 - Reply all (`Ctrl+R`, or "Reply all" in the command palette): To is the sender or Reply-To,
   Cc is the other recipients minus your own addresses. Replies now also carry the full

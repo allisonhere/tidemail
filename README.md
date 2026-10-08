@@ -113,7 +113,7 @@ a key. TideMail keeps the help screen inside the app and lets you search it.
 
 - Folders show as a tree. In the left pane press `n` to create a folder, `r` to
   rename and `d` to delete the selected one, `H` to hide it locally, and
-  `Shift+K` / `Shift+J` to reorder it or, past the first or last subfolder, move it out of its parent. `Enter` or `←` / `→` collapse and expand
+  `Shift+K` / `Shift+J` to walk it up or down the tree: reorder it, move it into an open folder, or out of its parent. `Enter` or `←` / `→` collapse and expand
   folders that have subfolders.
 - Rest on a folder to refresh a stale cache silently, press `Enter` or `s` to
   fetch it immediately, or press `F` to sync every folder.

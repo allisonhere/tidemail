@@ -65,7 +65,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{"new folder", "n on a folder creates a subfolder, on an account or section header a top-level folder; inline prompt, enter to create, esc to cancel"},
 				{"delete folder", "asks first and says how many subfolders go with it; deletes on the server. Inbox and system folders are protected"},
 				bind(keys.HideFolder),
-				{keys.MoveAccountDown.Help().Key + "/" + keys.MoveAccountUp.Help().Key, "move the folder down or up among its siblings (the order is local to TideMail); past the last or first subfolder it moves out of its parent, just after or before it, and on the server"},
+				{keys.MoveAccountDown.Help().Key + "/" + keys.MoveAccountUp.Help().Key, "walk the folder down or up the tree one row at a time: past a sibling reorders (local to TideMail); onto an open parent it moves into it, past a parent's last or first subfolder it moves out (both real moves on the server). Collapsed folders are stepped over"},
 				{"hidden folders", "hide is local only; \"Show hidden folders\" in the command palette lists them again"},
 				{"Outbox row", "sits under Unified Inbox; enter/space opens it, its badge counts sends needing you"},
 				{keys.Sync.Help().Key, "sync selected mailbox; on Unified Inbox, sync all inboxes"},

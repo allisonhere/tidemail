@@ -295,6 +295,8 @@ func TestShiftJKReorderSiblingFolders(t *testing.T) {
 		}
 		m.mailboxes = append(m.mailboxes, db.Mailbox{ID: id, AccountID: accountID, Name: name, Delimiter: "/"})
 	}
+	// Work is collapsed, so Zed steps past it instead of walking into it.
+	m.collapsedSections[folderCollapseKey(*m.mailboxByID(mailboxIDByName(t, m, "Work")))] = true
 	m.rebuildSidebar()
 
 	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Zed"))
@@ -434,5 +436,130 @@ func TestMKeyInTheSidebarDoesNotOpenAPicker(t *testing.T) {
 	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
 	if m.overlay != overlayNone {
 		t.Fatalf("m in the sidebar should do nothing, overlay = %v", m.overlay)
+	}
+}
+
+// walkModel has Alpha above an open Work (Notes, Projects) and Zed below it.
+func walkModel(t *testing.T) (Model, *db.DB, int64) {
+	t.Helper()
+	m, database, accountID := folderManageModel(t)
+	for _, name := range []string{"Beta", "Zed", "Work/Notes"} {
+		id, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: name, Delimiter: "/"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.mailboxes = append(m.mailboxes, db.Mailbox{ID: id, AccountID: accountID, Name: name, Delimiter: "/"})
+	}
+	m.rebuildSidebar()
+	return m, database, accountID
+}
+
+func pressWalk(t *testing.T, m Model, k rune) Model {
+	t.Helper()
+	m, cmd := pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{k}})
+	if cmd != nil && m.statusMsg == "moving folder..." {
+		m = applyCmd(t, m, cmd)
+	}
+	return m
+}
+
+func rowDepth(m Model, id int64) int {
+	for _, r := range m.sidebarRows {
+		if r.kind == rowKindMailbox && r.mailboxID == id {
+			return r.depth
+		}
+	}
+	return -1
+}
+
+func personalOrder(m Model) []string {
+	var out []string
+	for _, r := range m.sidebarRows {
+		if r.kind == rowKindMailbox {
+			out = append(out, m.mailboxByID(r.mailboxID).Name)
+		}
+	}
+	return out
+}
+
+func TestShiftJWalksAFolderIntoOpenParentsAndBackOut(t *testing.T) {
+	m, database, accountID := walkModel(t)
+	beta := mailboxIDByName(t, m, "Beta")
+	cursorOnMailbox(t, &m, beta)
+
+	// Beta sits above the open Work (Notes, Projects/Alpha). Each press moves it
+	// one row; it is indented while it is inside a parent.
+	steps := []struct {
+		name  string
+		depth int
+	}{
+		{"Work/Beta", 1},          // into Work, first child
+		{"Work/Beta", 1},          // past Notes
+		{"Work/Projects/Beta", 2}, // into Projects, first child
+		{"Work/Projects/Beta", 2}, // past Projects/Alpha
+		{"Work/Beta", 1},          // out of Projects, just after it
+		{"Beta", 0},               // out of Work, just after it
+	}
+	for i, st := range steps {
+		m = pressWalk(t, m, 'J')
+		if got := m.mailboxByID(beta); got == nil || got.Name != st.name || rowDepth(m, beta) != st.depth {
+			t.Fatalf("step %d: Beta = %v (depth %d), want %s at depth %d; tree %v", i+1, got, rowDepth(m, beta), st.name, st.depth, personalOrder(m))
+		}
+		if m.sidebarRows[m.sidebarCursor].mailboxID != beta {
+			t.Fatalf("step %d: cursor left the folder", i+1)
+		}
+	}
+	got := personalOrder(m)
+	if slices.Index(got, "Beta") != slices.Index(got, "Zed")-1 {
+		t.Fatalf("Beta should end between Work's tree and Zed, got %v", got)
+	}
+	persisted := map[string]bool{}
+	for _, mb := range mustListMailboxes(t, database, accountID) {
+		persisted[mb.Name] = true
+	}
+	if !persisted["Beta"] || persisted["Work/Beta"] {
+		t.Fatalf("DB should end with a top-level Beta: %v", persisted)
+	}
+
+	// K walks it back the same way.
+	for i := len(steps) - 2; i >= 0; i-- {
+		m = pressWalk(t, m, 'K')
+		if got := m.mailboxByID(beta); got == nil || got.Name != steps[i].name || rowDepth(m, beta) != steps[i].depth {
+			t.Fatalf("back step %d: Beta = %v (depth %d), want %s at depth %d; tree %v", i+1, got, rowDepth(m, beta), steps[i].name, steps[i].depth, personalOrder(m))
+		}
+	}
+}
+
+func TestShiftJStepsPastACollapsedParentInsteadOfNesting(t *testing.T) {
+	m, _, _ := walkModel(t)
+	m.collapsedSections[folderCollapseKey(*m.mailboxByID(mailboxIDByName(t, m, "Work")))] = true
+	m.rebuildSidebar()
+	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Beta"))
+	m = pressWalk(t, m, 'J')
+	if !namesOf(m)["Beta"] || namesOf(m)["Work/Beta"] {
+		t.Fatalf("a collapsed parent must be stepped over, not nested into: %v", namesOf(m))
+	}
+}
+
+func TestNestingRefusesANameClashAndNeverNestsIntoSystemFolders(t *testing.T) {
+	m, database, accountID := walkModel(t)
+	id, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "Work/Beta", Delimiter: "/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.mailboxes = append(m.mailboxes, db.Mailbox{ID: id, AccountID: accountID, Name: "Work/Beta", Delimiter: "/"})
+	m.rebuildSidebar()
+	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Beta"))
+	m = pressWalk(t, m, 'J')
+	if !m.statusErr || !strings.Contains(m.statusMsg, "already exists") || !namesOf(m)["Beta"] {
+		t.Fatalf("a clash must be refused and nothing may move: %q", m.statusMsg)
+	}
+
+	// Sent is a system folder with no subfolders; Work steps past it, never into it.
+	m2, _, _ := walkModel(t)
+	cursorOnMailbox(t, &m2, mailboxIDByName(t, m2, "Work"))
+	m2 = pressWalk(t, m2, 'K')
+	if namesOf(m2)["Sent/Work"] {
+		t.Fatal("nothing may be nested into a system folder")
 	}
 }

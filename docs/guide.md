@@ -149,12 +149,15 @@ marker. In the left pane:
 - `H` hides the selected folder (and its subfolders) from TideMail's sidebar
   only; nothing changes on the server. "Show hidden folders" in the command
   palette lists them again, marked `(hidden)`, and `H` on one unhides it.
-- `Shift+K` / `Shift+J` move the selected folder up or down among its siblings;
-  the order is local to TideMail. Keep going past the first or last subfolder and
-  it moves out of its parent, to just before or just after that parent (a
-  subfolder of a top-level folder becomes top level). That is a real move on the
-  server, subfolders included, and is refused if the destination already has a
-  folder of the same name. The Inbox and system folders can't be moved out.
+- `Shift+K` / `Shift+J` walk the selected folder up or down the tree one row at a
+  time, and it is shown indented while it is inside a parent. Passing a sibling
+  just reorders it (the order is local to TideMail). Moving onto an open folder
+  that has subfolders puts it inside, as the first child going down or the last
+  going up; moving past a parent's last or first subfolder takes it out, to just
+  after or before that parent. Collapsed folders are stepped over, never entered.
+  Moving in or out is a real move on the server, subfolders included, and is
+  refused if the destination already has a folder of the same name. The Inbox
+  and system folders can be reordered but never moved in or out.
 
 The command palette has matching entries: New folder, Rename selected folder,
 Delete selected folder, Hide or unhide selected folder, and Show hidden folders.
@@ -732,7 +735,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Enter` on a folder | Fetch that folder now; on a folder with subfolders, collapse or expand it |
 | `n` / `r` / `d` in Accounts | New, rename, delete the selected folder (see Managing folders) |
 | `H` in Accounts | Hide or unhide the selected folder (local only) |
-| `Shift+K` / `Shift+J` on a folder | Move the folder up / down among its siblings; past the edge, out of its parent |
+| `Shift+K` / `Shift+J` on a folder | Walk the folder up / down the tree: reorder, move into an open parent, or out of its parent |
 | `←` / `→` on a folder | Collapse or go to parent / expand |
 | `F` | Sync all mailboxes (asks first when there are more than 10 folders) |
 | `Enter` in Drafts | Reopen selected draft in compose |
