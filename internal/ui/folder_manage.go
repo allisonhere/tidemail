@@ -50,6 +50,8 @@ type FolderDeletedMsg struct {
 	Err       error
 }
 
+const folderBusyMsg = "a folder change is still running; wait for it to finish"
+
 // folderDelimiter is the hierarchy delimiter in use for a mailbox.
 func folderDelimiter(mb db.Mailbox) string { return moveMailboxDelimiter(mb) }
 
@@ -179,6 +181,10 @@ func (m Model) startNewFolder() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) startRenameFolder() (tea.Model, tea.Cmd) {
+	if m.folderOpBusy {
+		m.setStatus(folderBusyMsg, false)
+		return m, m.clearStatusCmd()
+	}
 	_, mb, ok := m.sidebarFolderTarget()
 	if !ok || mb == nil {
 		m.setStatus("select a folder to rename", false)
@@ -194,6 +200,10 @@ func (m Model) startRenameFolder() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) startDeleteFolder() (tea.Model, tea.Cmd) {
+	if m.folderOpBusy {
+		m.setStatus(folderBusyMsg, false)
+		return m, m.clearStatusCmd()
+	}
 	_, mb, ok := m.sidebarFolderTarget()
 	if !ok || mb == nil {
 		m.setStatus("select a folder to delete", false)
@@ -236,6 +246,7 @@ func (m Model) handleFolderDeleteConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd)
 			return m, nil
 		}
 		m.setStatus("deleting folder...", false)
+		m.folderOpBusy = true
 		return m, m.deleteFolderCmd(*mb)
 	case keyMatches(msg, m.keys.No), keyMatches(msg, m.keys.Cancel):
 		m.overlay = overlayNone
@@ -283,6 +294,7 @@ func (m Model) submitFolderPrompt() (tea.Model, tea.Cmd) {
 		}
 		m.folderPrompt = folderPrompt{}
 		m.setStatus("renaming folder...", false)
+		m.folderOpBusy = true
 		return m, m.renameFolderCmd(*mb, newName, nil)
 	}
 
@@ -428,6 +440,7 @@ func (m Model) deleteFolderCmd(mb db.Mailbox) tea.Cmd {
 }
 
 func (m Model) handleFolderRenamed(msg FolderRenamedMsg) (tea.Model, tea.Cmd) {
+	m.folderOpBusy = false
 	if msg.Err != nil {
 		m.setStatus("rename folder failed: "+msg.Err.Error(), true)
 		return m, m.clearStatusCmd()
@@ -484,6 +497,7 @@ func (m Model) handleFolderRenamed(msg FolderRenamedMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleFolderDeleted(msg FolderDeletedMsg) (tea.Model, tea.Cmd) {
+	m.folderOpBusy = false
 	removed := make(map[int64]bool, len(msg.Removed))
 	for _, id := range msg.Removed {
 		removed[id] = true
@@ -634,6 +648,10 @@ func (m Model) folderSiblings(i int) []int {
 // moveSelectedFolder moves the folder under the cursor up (-1) or down (+1)
 // among its siblings. The order is local to TideMail.
 func (m Model) moveSelectedFolder(delta int) (tea.Model, tea.Cmd) {
+	if m.folderOpBusy {
+		m.setStatus(folderBusyMsg, false)
+		return m, m.clearStatusCmd()
+	}
 	_, mb, ok := m.sidebarFolderTarget()
 	if !ok || mb == nil || strings.EqualFold(mb.Name, "INBOX") {
 		return m, nil
@@ -842,6 +860,7 @@ func (m Model) reparentFolder(mb db.Mailbox, newName string, orders map[string]i
 		}
 	}
 	m.setStatus("moving folder...", false)
+	m.folderOpBusy = true
 	return m, m.renameFolderCmd(mb, newName, orders)
 }
 

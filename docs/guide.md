@@ -157,7 +157,9 @@ marker. In the left pane:
   after or before that parent. Collapsed folders are stepped over, never entered.
   Moving in or out is a real move on the server, subfolders included, and is
   refused if the destination already has a folder of the same name. The Inbox
-  and system folders can be reordered but never moved in or out.
+  and system folders can be reordered but never moved in or out. While a rename,
+  move or delete is still running on the server, further ones are refused with a
+  short notice, so a quick second keypress can't act on a name that is changing.
 
 The command palette has matching entries: New folder, Rename selected folder,
 Delete selected folder, Hide or unhide selected folder, and Show hidden folders.

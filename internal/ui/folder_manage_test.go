@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -561,5 +562,29 @@ func TestNestingRefusesANameClashAndNeverNestsIntoSystemFolders(t *testing.T) {
 	m2 = pressWalk(t, m2, 'K')
 	if namesOf(m2)["Sent/Work"] {
 		t.Fatal("nothing may be nested into a system folder")
+	}
+}
+
+func TestFolderMoveIsRefusedWhileAnotherFolderChangeIsRunning(t *testing.T) {
+	m, _, _ := folderManageModel(t)
+	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Work"))
+	m.folderOpBusy = true
+	before := m.sidebarCursor
+
+	m, cmd := pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'J'}})
+	if cmd != nil && m.statusMsg == "moving folder..." {
+		t.Fatal("a second move started while one was running")
+	}
+	if m.statusMsg != folderBusyMsg || m.sidebarCursor != before {
+		t.Fatalf("want busy notice and no movement, got %q", m.statusMsg)
+	}
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	if m.folderPrompt.active {
+		t.Fatal("rename prompt opened while a folder change was running")
+	}
+
+	next, _ := m.Update(FolderRenamedMsg{AccountID: 1, OldName: "x", NewName: "y", Err: errors.New("boom")})
+	if next.(Model).folderOpBusy {
+		t.Fatal("a finished (even failed) folder change must free the guard")
 	}
 }

@@ -199,6 +199,9 @@ type Model struct {
 	mailboxPrefs        map[int64]map[string]db.MailboxPref
 	showHiddenFolders   bool
 	pendingFolderDelete int64
+	// folderOpBusy is set while a folder rename, move or delete is running on
+	// the server, so a second one can't start from names that are about to change.
+	folderOpBusy bool
 
 	viewport         viewport.Model
 	contentLinks     []string
