@@ -30,8 +30,10 @@ NewFolder,n,n,new folder,sidebar
 RenameFolder,r,r,rename folder,sidebar
 DeleteFolder,d,d,delete folder,sidebar
 HideFolder,H,H,hide folder,sidebar
+MoveAccountUp,K,shift+k,"move account up (account manager); folder up, or out of its parent at the top (sidebar)",sidebar
+MoveAccountDown,J,shift+j,"move account down (account manager); folder down, or out of its parent at the bottom (sidebar)",sidebar
 Archive,a,a,archive,main
-Move,m,m,move message(s) or the selected sidebar folder,main
+Move,m,m,move to folder/label,main
 Command,":,ctrl+p",":/ctrl+p",command palette,global
 AccountManager,M,M,accounts,global
 ThemePicker,T,T,theme picker,global

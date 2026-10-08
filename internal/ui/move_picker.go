@@ -20,10 +20,6 @@ type movePicker struct {
 	sources     map[int64]bool
 	creating    bool
 	nameInput   textinput.Model
-
-	// moveFolder, when non-zero, makes the picker choose a new parent for that
-	// folder instead of a destination for messages.
-	moveFolder int64
 }
 
 type moveEntry struct {
@@ -79,11 +75,6 @@ func (m *Model) movePickerMessages() []db.Message {
 }
 
 func (m *Model) refreshMovePickerEntries() {
-	if m.movePicker.moveFolder != 0 {
-		m.movePicker.entries = buildFolderMoveEntries(m.mailboxes, m.movePicker.accountID, m.movePicker.currentPath, m.movePicker.sources)
-		m.movePicker.cursor = clamp(m.movePicker.cursor, 0, max(0, len(m.movePicker.entries)-1))
-		return
-	}
 	m.movePicker.entries = buildMoveEntries(m.mailboxes, m.movePicker.accountID, m.movePicker.currentPath, m.movePicker.sources)
 	m.movePicker.cursor = clamp(m.movePicker.cursor, 0, max(0, len(m.movePicker.entries)-1))
 }
@@ -248,9 +239,6 @@ func (m Model) handleMovePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		entry := m.movePicker.entries[m.movePicker.cursor]
-		if entry.isConfirm && m.movePicker.moveFolder != 0 {
-			return m.confirmFolderMove(m.movePicker.currentPath)
-		}
 		if entry.isConfirm {
 			return m.confirmMovePicker(entry.mailboxID)
 		}
@@ -307,9 +295,6 @@ func (m Model) confirmMovePicker(targetMailboxID int64) (tea.Model, tea.Cmd) {
 
 func (m Model) renderMovePicker(width, height int, chrome managerChrome) string {
 	path := m.movePicker.accountName
-	if mb := m.mailboxByID(m.movePicker.moveFolder); mb != nil {
-		path = "Move " + cleanDisplayName(mb.Name) + " into: " + path
-	}
 	if m.movePicker.currentPath != "" {
 		path += " / " + m.movePicker.currentPath
 	}
@@ -355,8 +340,6 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 		selected := idx == m.movePicker.cursor
 		label := e.label
 		switch {
-		case e.isConfirm && m.movePicker.moveFolder != 0 && m.movePicker.currentPath == "":
-			label = "move to top level"
 		case e.isConfirm:
 			label = "move here"
 		case e.label == "..":

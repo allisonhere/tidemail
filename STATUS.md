@@ -37,9 +37,9 @@ Current release: **v1.0.28**.
   skipped to avoid duplicate copies.
 - **Drafts**: local drafts plus a one-way mirror of server drafts, deduplicated by a
   partial unique index on `(mailbox_id, remote_uid)`.
-- **Folder management**: nested folder tree with collapse; create, rename, move, and delete real IMAP
-  folders from the sidebar (`n`/`r`/`m`/`d`, subtree-aware, system folders protected); local hide and
-  reorder (`H`, `Shift+J`/`K`) stored in `mailbox_prefs`.
+- **Folder management**: nested folder tree with collapse; create, rename, and delete real IMAP
+  folders from the sidebar (`n`/`r`/`d`, subtree-aware, system folders protected); local hide and
+  reorder and move out of a parent (`H`, `Shift+J`/`K`) stored in `mailbox_prefs`.
 - **Three-pane UI**: accounts sidebar, message list, message content. Pane header
   bars can be shown or removed; when removed, the focused title and shortcuts
   move to the status line and each pane gains a content row.

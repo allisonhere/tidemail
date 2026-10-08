@@ -316,47 +316,40 @@ func TestShiftJKReorderSiblingFolders(t *testing.T) {
 	if prefs[accountID]["Zed"].Order == 0 {
 		t.Fatalf("order not persisted: %v", prefs)
 	}
-
-	// A subfolder only moves among its own siblings.
-	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Work/Projects"))
-	before := len(folderRowIDs(m))
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}})
-	if len(folderRowIDs(m)) != before || m.sidebarRows[m.sidebarCursor].mailboxID != mailboxIDByName(t, m, "Work/Projects") {
-		t.Fatal("an only child can't move, and the cursor must stay put")
-	}
 }
 
-func TestMoveFolderOutToTheTopLevel(t *testing.T) {
-	m, database, accountID := folderManageModel(t)
-	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Work/Projects"))
-	alphaID := mailboxIDByName(t, m, "Work/Projects/Alpha")
-
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
-	if m.overlay != overlayMoveMessage || m.movePicker.moveFolder == 0 {
-		t.Fatalf("m on a folder should open the folder move picker, overlay=%v", m.overlay)
-	}
-	if m.movePicker.currentPath != "" || !m.movePicker.entries[0].isConfirm {
-		t.Fatalf("picker should open at the top level with a 'move here' entry: %+v", m.movePicker.entries)
-	}
-	for _, e := range m.movePicker.entries {
-		if e.path == "Work/Projects" || e.path == "Work/Projects/Alpha" {
-			t.Fatalf("the folder's own subtree must not be offered: %+v", e)
+func topLevelNames(m Model) []string {
+	var out []string
+	for _, r := range m.sidebarRows {
+		if r.kind == rowKindMailbox && r.depth == 0 {
+			out = append(out, m.mailboxByID(r.mailboxID).Name)
 		}
 	}
+	return out
+}
 
-	// Enter on "move here" at the top level moves it out of Work.
-	m, cmd := pressKey(m, tea.KeyMsg{Type: tea.KeyEnter})
-	if m.overlay != overlayNone {
-		t.Fatal("picker should close")
-	}
+func TestShiftKOnAFirstChildMovesItOutBeforeItsParent(t *testing.T) {
+	m, database, accountID := folderManageModel(t)
+	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Work/Projects"))
+	projectsID := mailboxIDByName(t, m, "Work/Projects")
+	alphaID := mailboxIDByName(t, m, "Work/Projects/Alpha")
+
+	m, cmd := pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}})
 	m = applyCmd(t, m, cmd)
 
 	names := namesOf(m)
 	if !names["Projects"] || !names["Projects/Alpha"] || names["Work/Projects"] || names["Work/Projects/Alpha"] {
-		t.Fatalf("Projects should now be top level with its subfolder: %v", names)
+		t.Fatalf("Projects should be top level with its subfolder: %v", names)
 	}
 	if got := m.mailboxByID(alphaID); got == nil || got.Name != "Projects/Alpha" {
 		t.Fatalf("Alpha kept its ID but not its new name: %+v", got)
+	}
+	top := topLevelNames(m)
+	if slices.Index(top, "Projects") != slices.Index(top, "Work")-1 {
+		t.Fatalf("Projects should sit just before Work, got %v", top)
+	}
+	if m.sidebarRows[m.sidebarCursor].mailboxID != projectsID {
+		t.Fatal("cursor should follow the moved folder")
 	}
 	persisted := map[string]bool{}
 	for _, mb := range mustListMailboxes(t, database, accountID) {
@@ -367,32 +360,57 @@ func TestMoveFolderOutToTheTopLevel(t *testing.T) {
 	}
 }
 
-func TestMoveFolderIntoAnotherFolder(t *testing.T) {
+func TestShiftJOnALastChildMovesItOutAfterItsParent(t *testing.T) {
 	m, _, _ := folderManageModel(t)
-	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Work/Projects"))
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Work/Projects/Alpha"))
 
-	// Navigate into Sent (a plain folder with no subfolders) and move here.
-	for i, e := range m.movePicker.entries {
-		if e.label == "Sent" {
-			m.movePicker.cursor = i
+	m, cmd := pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'J'}})
+	m = applyCmd(t, m, cmd)
+
+	if !namesOf(m)["Work/Alpha"] || namesOf(m)["Work/Projects/Alpha"] {
+		t.Fatalf("Alpha should now be a child of Work: %v", namesOf(m))
+	}
+	// It sits right after Projects inside Work.
+	var siblings []string
+	for _, r := range m.sidebarRows {
+		if r.kind == rowKindMailbox && r.depth == 1 {
+			siblings = append(siblings, m.mailboxByID(r.mailboxID).Name)
 		}
 	}
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyEnter})
-	if m.movePicker.currentPath != "Sent" {
-		t.Fatalf("enter on a folder should open it, path = %q", m.movePicker.currentPath)
-	}
-	m.movePicker.cursor = 0 // "move here"
-	m, cmd := pressKey(m, tea.KeyMsg{Type: tea.KeyEnter})
-	m = applyCmd(t, m, cmd)
-	if !namesOf(m)["Sent/Projects"] || namesOf(m)["Work/Projects"] {
-		t.Fatalf("Projects should live under Sent now: %v", namesOf(m))
+	if !slices.Equal(siblings, []string{"Work/Projects", "Work/Alpha"}) {
+		t.Fatalf("Alpha should come right after Projects, got %v", siblings)
 	}
 }
 
-func TestMoveFolderRefusesAClashAndSystemFolders(t *testing.T) {
+func TestShiftJKSwapsAMiddleChildInsteadOfMovingItOut(t *testing.T) {
 	m, database, accountID := folderManageModel(t)
-	// A top-level "Projects" already exists, so moving Work/Projects out clashes.
+	for _, name := range []string{"Work/Alpha", "Work/Zeta"} {
+		id, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: name, Delimiter: "/"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.mailboxes = append(m.mailboxes, db.Mailbox{ID: id, AccountID: accountID, Name: name, Delimiter: "/"})
+	}
+	m.rebuildSidebar() // Work/{Alpha, Projects, Zeta}
+	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Work/Projects"))
+
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}})
+	if !namesOf(m)["Work/Projects"] {
+		t.Fatalf("a middle child must swap, not leave Work: %v", namesOf(m))
+	}
+	var kids []string
+	for _, r := range m.sidebarRows {
+		if r.kind == rowKindMailbox && r.depth == 1 {
+			kids = append(kids, m.mailboxByID(r.mailboxID).Name)
+		}
+	}
+	if len(kids) < 2 || kids[0] != "Work/Projects" || kids[1] != "Work/Alpha" {
+		t.Fatalf("Projects should now precede Alpha, got %v", kids)
+	}
+}
+
+func TestMovingAFolderOutRefusesANameClashAndSystemFolders(t *testing.T) {
+	m, database, accountID := folderManageModel(t)
 	id, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "Projects", Delimiter: "/"})
 	if err != nil {
 		t.Fatal(err)
@@ -401,18 +419,20 @@ func TestMoveFolderRefusesAClashAndSystemFolders(t *testing.T) {
 	m.rebuildSidebar()
 
 	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Work/Projects"))
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
-	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}})
 	if !m.statusErr || !strings.Contains(m.statusMsg, "already exists") {
-		t.Fatalf("a name clash must be refused with an error, got %q", m.statusMsg)
+		t.Fatalf("a clash must be refused with an error, got %q", m.statusMsg)
 	}
 	if !namesOf(m)["Work/Projects"] {
 		t.Fatal("the folder must not have moved")
 	}
+}
 
-	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Sent"))
+func TestMKeyInTheSidebarDoesNotOpenAPicker(t *testing.T) {
+	m, _, _ := folderManageModel(t)
+	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Work/Projects"))
 	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
 	if m.overlay != overlayNone {
-		t.Fatal("system folders can't be moved")
+		t.Fatalf("m in the sidebar should do nothing, overlay = %v", m.overlay)
 	}
 }

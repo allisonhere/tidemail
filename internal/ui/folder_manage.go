@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -37,7 +36,10 @@ type FolderRenamedMsg struct {
 	AccountID int64
 	OldName   string
 	NewName   string
-	Err       error
+	// Orders, when set, is the new sibling order (by final name) written for a
+	// folder that was moved out of its parent.
+	Orders map[string]int
+	Err    error
 }
 
 // FolderDeletedMsg reports the result of deleting a folder and its subfolders.
@@ -281,7 +283,7 @@ func (m Model) submitFolderPrompt() (tea.Model, tea.Cmd) {
 		}
 		m.folderPrompt = folderPrompt{}
 		m.setStatus("renaming folder...", false)
-		return m, m.renameFolderCmd(*mb, newName)
+		return m, m.renameFolderCmd(*mb, newName, nil)
 	}
 
 	delimiter := moveDelimiter(m.mailboxes, p.accountID, p.parent)
@@ -341,7 +343,7 @@ func (m Model) createFolderOnServerCmd(accountID int64, parentPath, name string)
 	}
 }
 
-func (m Model) renameFolderCmd(mb db.Mailbox, newName string) tea.Cmd {
+func (m Model) renameFolderCmd(mb db.Mailbox, newName string, orders map[string]int) tea.Cmd {
 	acfg, err := m.accountCfgForAccountID(mb.AccountID)
 	if err != nil {
 		return func() tea.Msg {
@@ -366,7 +368,12 @@ func (m Model) renameFolderCmd(mb db.Mailbox, newName string) tea.Cmd {
 		if err := database.RenameMailboxTree(mb.AccountID, mb.Name, newName, delimiter, cleanDisplayName); err != nil {
 			return fail(err)
 		}
-		return FolderRenamedMsg{AccountID: mb.AccountID, OldName: mb.Name, NewName: newName}
+		if len(orders) > 0 {
+			if err := database.SetMailboxOrders(mb.AccountID, orders); err != nil {
+				return fail(err)
+			}
+		}
+		return FolderRenamedMsg{AccountID: mb.AccountID, OldName: mb.Name, NewName: newName, Orders: orders}
 	}
 }
 
@@ -451,6 +458,9 @@ func (m Model) handleFolderRenamed(msg FolderRenamedMsg) (tea.Model, tea.Cmd) {
 			delete(m.mailboxPrefs[msg.AccountID], name)
 			m.mailboxPrefs[msg.AccountID][msg.NewName+name[len(msg.OldName):]] = pref
 		}
+	}
+	for name, o := range msg.Orders {
+		m.setPref(msg.AccountID, name, func(p *db.MailboxPref) { p.Order = o })
 	}
 	// Collapse state is keyed by name, so carry it to the new names.
 	for key, collapsed := range m.collapsedSections {
@@ -631,6 +641,9 @@ func (m Model) moveSelectedFolder(delta int) (tea.Model, tea.Cmd) {
 	sibs := m.folderSiblings(m.sidebarCursor)
 	pos := slices.Index(sibs, m.sidebarCursor)
 	target := pos + delta
+	if pos >= 0 && (target < 0 || target >= len(sibs)) && m.sidebarRows[m.sidebarCursor].depth > 0 {
+		return m.outdentSelectedFolder(*mb, delta)
+	}
 	if pos < 0 || target < 0 || target >= len(sibs) {
 		m.setStatus("already at the "+map[bool]string{true: "top", false: "bottom"}[delta < 0], false)
 		return m, m.clearStatusCmd()
@@ -661,104 +674,86 @@ func (m Model) moveSelectedFolder(delta int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// outdentSelectedFolder moves a folder out of its parent, up to the parent's
+// level: just before the parent when it was moved up past the first child, just
+// after it when moved down past the last. Its subfolders go with it.
+func (m Model) outdentSelectedFolder(mb db.Mailbox, delta int) (tea.Model, tea.Cmd) {
+	if reason := protectedFolderReason(mb); reason != "" {
+		m.setStatus(reason, true)
+		return m, m.clearStatusCmd()
+	}
+	depth := m.sidebarRows[m.sidebarCursor].depth
+	// shallowerThan finds the nearest earlier folder row above a given depth:
+	// the tree parent of a row at that depth.
+	shallowerThan := func(from, depth int) int {
+		for i := from - 1; i >= 0; i-- {
+			r := m.sidebarRows[i]
+			if r.kind != rowKindMailbox {
+				return -1
+			}
+			if r.depth < depth {
+				return i
+			}
+		}
+		return -1
+	}
+	parentIdx := shallowerThan(m.sidebarCursor, depth)
+	grandIdx := -1
+	if parentIdx >= 0 {
+		grandIdx = shallowerThan(parentIdx, m.sidebarRows[parentIdx].depth)
+	}
+	if parentIdx < 0 {
+		return m, nil
+	}
+	parent := m.mailboxByID(m.sidebarRows[parentIdx].mailboxID)
+	if parent == nil {
+		return m, nil
+	}
+	leaf, delimiter := folderLeaf(mb), folderDelimiter(mb)
+	accountMbs := accountMailboxes(m.mailboxes, mb.AccountID)
+	var newName string
+	if grandIdx >= 0 {
+		grand := m.mailboxByID(m.sidebarRows[grandIdx].mailboxID)
+		if grand == nil {
+			return m, nil
+		}
+		newName = grand.Name + delimiter + leaf
+	} else {
+		newName, _ = qualifyFolderName(leaf, accountMbs)
+	}
+	for _, other := range accountMbs {
+		if other.ID != mb.ID && strings.EqualFold(other.Name, newName) {
+			m.setStatus(fmt.Sprintf("can't move out: a folder named %q already exists there", leaf), true)
+			return m, m.clearStatusCmd()
+		}
+	}
+	// The destination is the parent's own sibling group; place the folder just
+	// before or after the parent in it.
+	var names []string
+	for _, idx := range m.folderSiblings(parentIdx) {
+		f := m.mailboxByID(m.sidebarRows[idx].mailboxID)
+		if f == nil {
+			continue
+		}
+		if f.ID == parent.ID && delta > 0 {
+			names = append(names, f.Name, newName)
+		} else if f.ID == parent.ID {
+			names = append(names, newName, f.Name)
+		} else {
+			names = append(names, f.Name)
+		}
+	}
+	orders := make(map[string]int, len(names))
+	for n, name := range names {
+		orders[name] = (n + 1) * 10
+	}
+	m.setStatus("moving folder...", false)
+	return m, m.renameFolderCmd(mb, newName, orders)
+}
+
 func (m Model) showHiddenFoldersLabel() string {
 	if m.showHiddenFolders {
 		return "Hide hidden folders again"
 	}
 	return "Show hidden folders"
-}
-
-// buildFolderMoveEntries lists the folders under currentPath as places to move
-// a folder into. Unlike a message move, any level can be chosen, including the
-// top level, and a folder with no subfolders is still a valid parent. The moved
-// folder's own subtree (exclude) is not offered.
-func buildFolderMoveEntries(mailboxes []db.Mailbox, accountID int64, currentPath string, exclude map[int64]bool) []moveEntry {
-	delimiter := moveDelimiter(mailboxes, accountID, currentPath)
-	entries := []moveEntry{{label: "move here", isConfirm: true}}
-	if currentPath != "" {
-		entries = append(entries, moveEntry{label: "..", path: moveParentPath(currentPath, delimiter), isDir: true})
-	}
-	currentParts := splitMovePath(currentPath, delimiter)
-	seen := map[string]moveEntry{}
-	for _, mb := range mailboxes {
-		if mb.AccountID != accountID || mb.Name == "" || exclude[mb.ID] || strings.EqualFold(mb.Name, "INBOX") {
-			continue
-		}
-		parts := splitMovePath(mb.Name, moveMailboxDelimiter(mb))
-		if !sameMovePrefix(parts, currentParts) || len(parts) <= len(currentParts) {
-			continue
-		}
-		child := parts[len(currentParts)]
-		path := strings.Join(parts[:len(currentParts)+1], moveMailboxDelimiter(mb))
-		seen[strings.ToLower(child)] = moveEntry{label: child, path: path, isDir: true}
-	}
-	names := make([]string, 0, len(seen))
-	for k := range seen {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	for _, k := range names {
-		entries = append(entries, seen[k])
-	}
-	return entries
-}
-
-func (m Model) startMoveFolder() (tea.Model, tea.Cmd) {
-	_, mb, ok := m.sidebarFolderTarget()
-	if !ok || mb == nil {
-		m.setStatus("select a folder to move", false)
-		return m, m.clearStatusCmd()
-	}
-	if reason := protectedFolderReason(*mb); reason != "" {
-		m.setStatus(reason, true)
-		return m, m.clearStatusCmd()
-	}
-	exclude := map[int64]bool{}
-	for _, f := range m.folderSubtree(*mb) {
-		exclude[f.ID] = true
-	}
-	m.movePicker = movePicker{
-		accountID:   mb.AccountID,
-		accountName: m.accountName(mb.AccountID),
-		sources:     exclude,
-		moveFolder:  mb.ID,
-	}
-	m.refreshMovePickerEntries()
-	m.overlay = overlayMoveMessage
-	return m, nil
-}
-
-// confirmFolderMove re-parents the folder being moved under parent ("" = top
-// level), which on IMAP is a rename to the new path.
-func (m Model) confirmFolderMove(parent string) (tea.Model, tea.Cmd) {
-	mb := m.mailboxByID(m.movePicker.moveFolder)
-	m.movePicker = movePicker{}
-	m.overlay = overlayNone
-	if mb == nil {
-		return m, nil
-	}
-	leaf := folderLeaf(*mb)
-	delimiter := folderDelimiter(*mb)
-	newName := leaf
-	if parent == "" {
-		newName, _ = qualifyFolderName(leaf, accountMailboxes(m.mailboxes, mb.AccountID))
-	} else {
-		newName = parent + delimiter + leaf
-	}
-	if newName == mb.Name {
-		m.setStatus("folder is already there", false)
-		return m, m.clearStatusCmd()
-	}
-	if msg := validateFolderName(leaf, delimiter, accountMailboxes(m.mailboxes, mb.AccountID), strings.TrimSuffix(newName, delimiter+leaf), mb.ID); msg != "" && parent != "" {
-		m.setStatus("can't move there: "+msg, true)
-		return m, m.clearStatusCmd()
-	}
-	for _, other := range m.mailboxes {
-		if other.AccountID == mb.AccountID && other.ID != mb.ID && strings.EqualFold(other.Name, newName) {
-			m.setStatus(fmt.Sprintf("can't move there: a folder named %q already exists", leaf), true)
-			return m, m.clearStatusCmd()
-		}
-	}
-	m.setStatus("moving folder...", false)
-	return m, m.renameFolderCmd(*mb, newName)
 }
