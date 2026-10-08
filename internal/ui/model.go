@@ -67,6 +67,7 @@ type sidebarRow struct {
 	depth       int  // nesting level below the section header
 	hasChildren bool // folder has subfolders
 	collapsed   bool // subfolders hidden
+	hidden      bool // hidden by the user (only listed while hidden folders are shown)
 }
 
 type overlayMode int
@@ -195,6 +196,8 @@ type Model struct {
 	// folderPrompt is the sidebar's inline new/rename folder prompt;
 	// pendingFolderDelete is the folder awaiting delete confirmation.
 	folderPrompt        folderPrompt
+	mailboxPrefs        map[int64]map[string]db.MailboxPref
+	showHiddenFolders   bool
 	pendingFolderDelete int64
 
 	viewport         viewport.Model
@@ -709,6 +712,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		openAccountManagerOnEmptyFirstLoad := m.firstLoad && msg.Err == nil && len(m.accounts) == 0
 		if m.firstLoad {
 			m.loadCollapseState()
+			m.loadMailboxPrefs()
 			m.rebuildSidebar()
 			statusCmd = tea.Batch(statusCmd, m.startSyncTimers(), m.syncInboxesNowCmd(), m.loadAddressBookCmd())
 			// One folder LIST per account at launch, independent of sync mode.
@@ -1779,6 +1783,12 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.startRenameFolder()
 	case m.focused == paneAccounts && keyMatches(msg, m.keys.DeleteFolder):
 		return m.startDeleteFolder()
+	case m.focused == paneAccounts && keyMatches(msg, m.keys.HideFolder):
+		return m.toggleHideSelectedFolder()
+	case m.focused == paneAccounts && keyMatches(msg, m.keys.MoveAccountUp) && m.selectedMailbox() != nil:
+		return m.moveSelectedFolder(-1)
+	case m.focused == paneAccounts && keyMatches(msg, m.keys.MoveAccountDown) && m.selectedMailbox() != nil:
+		return m.moveSelectedFolder(1)
 	case keyMatches(msg, m.keys.NeedsYouDismiss) && m.selectedNeedsYou() && m.focused != paneAccounts:
 		// Dismiss from Needs You. Only here: elsewhere X does nothing.
 		return m.dismissCurrent()
@@ -3676,7 +3686,7 @@ func (m *Model) rebuildSidebar() {
 	// config.toml order is the one order everything shows; the database's
 	// position column is only insertion order.
 	m.accounts = sortAccountsByConfigOrder(m.accounts, m.cfg.Accounts)
-	m.sidebarRows = buildSidebarRows(m.accounts, m.mailboxes, m.collapsedAccounts, m.collapsedSections)
+	m.sidebarRows = buildSidebarRows(m.accounts, m.mailboxes, m.collapsedAccounts, m.collapsedSections, folderView{prefs: m.mailboxPrefs, showHidden: m.showHiddenFolders})
 	m.refreshDraftCounts()
 	m.sidebarCursor = clamp(m.sidebarCursor, 0, max(0, len(m.sidebarRows)-1))
 	m.clampSidebarOffset()

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -233,5 +234,94 @@ func TestDeleteFolderConfirmsAndRemovesTheSubtree(t *testing.T) {
 	}
 	if got := mustListMailboxes(t, database, accountID); len(got) != 2 {
 		t.Fatalf("DB has %d mailboxes, want 2", len(got))
+	}
+}
+
+func TestHideFolderHidesItsSubtreeAndPersists(t *testing.T) {
+	m, database, accountID := folderManageModel(t)
+	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Work"))
+
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'H'}})
+	for _, id := range folderRowIDs(m) {
+		if name := m.mailboxByID(id).Name; strings.HasPrefix(name, "Work") {
+			t.Fatalf("%s should be hidden with its parent", name)
+		}
+	}
+	if len(m.mailboxes) != 5 {
+		t.Fatalf("hiding must not delete anything locally, have %d mailboxes", len(m.mailboxes))
+	}
+	prefs, err := database.ListMailboxPrefs()
+	if err != nil || !prefs[accountID]["Work"].Hidden {
+		t.Fatalf("hide not persisted: %v %v", prefs, err)
+	}
+
+	// Show hidden folders from the palette: they come back, marked.
+	next, _ := m.executeCommand("show-hidden-folders")
+	m = next.(Model)
+	var marked bool
+	for _, r := range m.sidebarRows {
+		if r.kind == rowKindMailbox && r.mailboxID == mailboxIDByName(t, m, "Work") {
+			marked = r.hidden
+		}
+	}
+	if !marked || len(folderRowIDs(m)) < 4 {
+		t.Fatalf("hidden folders should be listed (marked) when shown: %v", folderRowIDs(m))
+	}
+
+	// H again, with hidden folders shown, unhides.
+	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Work"))
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'H'}})
+	if m.mailboxPrefs[accountID]["Work"].Hidden {
+		t.Fatal("second H should unhide")
+	}
+}
+
+func TestInboxCannotBeHidden(t *testing.T) {
+	m, _, _ := folderManageModel(t)
+	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "INBOX"))
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'H'}})
+	if len(m.mailboxPrefs) != 0 || !m.statusErr {
+		t.Fatalf("Inbox must refuse to hide, prefs=%v", m.mailboxPrefs)
+	}
+}
+
+func TestShiftJKReorderSiblingFolders(t *testing.T) {
+	m, database, accountID := folderManageModel(t)
+	// Top level is INBOX, Sent, Work in rank/name order; add Alpha and Zed.
+	for _, name := range []string{"Alpha", "Zed"} {
+		id, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: name, Delimiter: "/"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.mailboxes = append(m.mailboxes, db.Mailbox{ID: id, AccountID: accountID, Name: name, Delimiter: "/"})
+	}
+	m.rebuildSidebar()
+
+	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Zed"))
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}}) // up
+	var top []string
+	for _, r := range m.sidebarRows {
+		if r.kind == rowKindMailbox && r.depth == 0 {
+			top = append(top, m.mailboxByID(r.mailboxID).Name)
+		}
+	}
+	zed, work := slices.Index(top, "Zed"), slices.Index(top, "Work")
+	if zed > work {
+		t.Fatalf("Zed should have moved up past Work, got %v", top)
+	}
+	if m.sidebarRows[m.sidebarCursor].mailboxID != mailboxIDByName(t, m, "Zed") {
+		t.Fatal("cursor should follow the moved folder")
+	}
+	prefs, _ := database.ListMailboxPrefs()
+	if prefs[accountID]["Zed"].Order == 0 {
+		t.Fatalf("order not persisted: %v", prefs)
+	}
+
+	// A subfolder only moves among its own siblings.
+	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Work/Projects"))
+	before := len(folderRowIDs(m))
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}})
+	if len(folderRowIDs(m)) != before || m.sidebarRows[m.sidebarCursor].mailboxID != mailboxIDByName(t, m, "Work/Projects") {
+		t.Fatal("an only child can't move, and the cursor must stay put")
 	}
 }

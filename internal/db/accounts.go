@@ -314,6 +314,12 @@ func (db *DB) RenameMailboxTree(accountID int64, oldName, newName, delimiter str
 		if _, err := tx.Exec(`UPDATE mailboxes SET name = ?, display_name = ? WHERE id = ?`, renamed, display(renamed), c.id); err != nil {
 			return err
 		}
+		if _, err := tx.Exec(`UPDATE mailbox_prefs SET name = ? WHERE account_id = ? AND name = ?`, renamed, accountID, c.name); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`UPDATE mailbox_prefs SET name = ? WHERE account_id = ? AND name = ?`, newName, accountID, oldName); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

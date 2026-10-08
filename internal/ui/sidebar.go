@@ -75,7 +75,41 @@ func (m Model) renderAccountsPane() string {
 	return border.Width(innerW).Height(m.accountsPaneContentHeight()).Render(content)
 }
 
-func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed map[int64]bool, collapsedSections map[string]bool) []sidebarRow {
+// folderView is the local, per-folder view state the sidebar honours: which
+// folders are hidden or custom-ordered, and whether hidden ones are shown.
+type folderView struct {
+	prefs      map[int64]map[string]db.MailboxPref
+	showHidden bool
+}
+
+func (v folderView) pref(mb db.Mailbox) db.MailboxPref { return v.prefs[mb.AccountID][mb.Name] }
+
+// visible drops hidden folders and everything below them, unless hidden
+// folders are being shown.
+func (v folderView) visible(mbs []db.Mailbox) []db.Mailbox {
+	if v.showHidden || len(v.prefs) == 0 {
+		return mbs
+	}
+	out := make([]db.Mailbox, 0, len(mbs))
+	for _, mb := range mbs {
+		hidden := v.pref(mb).Hidden
+		for _, other := range mbs {
+			if !hidden && v.pref(other).Hidden && mailboxIsDescendant(other, mb) {
+				hidden = true
+			}
+		}
+		if !hidden {
+			out = append(out, mb)
+		}
+	}
+	return out
+}
+
+func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed map[int64]bool, collapsedSections map[string]bool, views ...folderView) []sidebarRow {
+	var view folderView
+	if len(views) > 0 {
+		view = views[0]
+	}
 	byAccount := make(map[int64][]db.Mailbox)
 	for _, mb := range mailboxes {
 		byAccount[mb.AccountID] = append(byAccount[mb.AccountID], mb)
@@ -141,6 +175,8 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 			}
 		}
 
+		sysMbs, personalMbs = view.visible(sysMbs), view.visible(personalMbs)
+
 		// INBOX first, always visible.
 		if inbox != nil {
 			rows = append(rows, sidebarRow{kind: rowKindMailbox, mailboxID: inbox.ID})
@@ -152,9 +188,7 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 			sysCollapsed := collapsedSections[sysKey]
 			rows = append(rows, sidebarRow{kind: rowKindSysFolderHeader, accountID: acc.ID, label: "System", count: len(sysMbs)})
 			if !sysCollapsed {
-				for _, mb := range sysMbs {
-					rows = append(rows, sidebarRow{kind: rowKindMailbox, mailboxID: mb.ID})
-				}
+				rows = append(rows, folderTreeRows(sysMbs, collapsedSections, view)...)
 			}
 		}
 
@@ -168,7 +202,7 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 			}
 			rows = append(rows, sidebarRow{kind: rowKindPersonalFolderHeader, accountID: acc.ID, label: label, count: len(personalMbs)})
 			if !personalCollapsed {
-				rows = append(rows, folderTreeRows(personalMbs, collapsedSections)...)
+				rows = append(rows, folderTreeRows(personalMbs, collapsedSections, view)...)
 			}
 		}
 
@@ -213,7 +247,7 @@ func mailboxIsDescendant(parent, child db.Mailbox) bool {
 // followed by its subfolders (unless collapsed), indented by depth. A folder
 // whose parent is not itself listed hangs from its nearest listed ancestor, or
 // sits at the top level, and shows the path below that ancestor as its title.
-func folderTreeRows(mbs []db.Mailbox, collapsed map[string]bool) []sidebarRow {
+func folderTreeRows(mbs []db.Mailbox, collapsed map[string]bool, view folderView) []sidebarRow {
 	byPath := make(map[string]int, len(mbs))
 	for i, mb := range mbs {
 		byPath[pathKey(mailboxPath(mb))] = i
@@ -235,6 +269,16 @@ func folderTreeRows(mbs []db.Mailbox, collapsed map[string]bool) []sidebarRow {
 	}
 	for _, kids := range children {
 		slices.SortStableFunc(kids, func(a, b int) int {
+			oa, ob := view.pref(mbs[a]).Order, view.pref(mbs[b]).Order
+			if (oa != 0 || ob != 0) && oa != ob {
+				switch {
+				case oa == 0:
+					return 1
+				case ob == 0:
+					return -1
+				}
+				return oa - ob
+			}
 			ra, rb := mailboxRank(mbs[a].Name), mailboxRank(mbs[b].Name)
 			if ra != rb {
 				return ra - rb
@@ -251,6 +295,7 @@ func folderTreeRows(mbs []db.Mailbox, collapsed map[string]bool) []sidebarRow {
 			segs, pseg := mailboxPath(mb), mailboxPath(mbs[parent[i]])
 			row.label = strings.Join(segs[len(pseg):], moveMailboxDelimiter(mb))
 		}
+		row.hidden = view.pref(mb).Hidden
 		row.collapsed = row.hasChildren && collapsed[folderCollapseKey(mb)]
 		rows = append(rows, row)
 		if row.collapsed {
@@ -805,6 +850,9 @@ func (m Model) renderSidebarMailboxRow(mb db.Mailbox, row sidebarRow, selected b
 			raw = mb.Name
 		}
 		title = cleanDisplayName(raw)
+	}
+	if row.hidden {
+		title += " (hidden)"
 	}
 	indent := strings.Repeat("  ", row.depth)
 	prefix := "    "

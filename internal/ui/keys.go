@@ -39,6 +39,7 @@ type KeyMap struct {
 	NewFolder       key.Binding
 	RenameFolder    key.Binding
 	DeleteFolder    key.Binding
+	HideFolder      key.Binding
 	Forward         key.Binding
 	Archive         key.Binding
 	Move            key.Binding
@@ -135,6 +136,7 @@ var DefaultKeys = KeyMap{
 	ReplyAll:      key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "reply all")),
 	NewFolder:     key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new folder")),
 	RenameFolder:  key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "rename folder")),
+	HideFolder:    key.NewBinding(key.WithKeys("H"), key.WithHelp("H", "hide folder")),
 	DeleteFolder:  key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete folder")),
 	Forward:       key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "forward")),
 	Archive:       key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),

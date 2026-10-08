@@ -79,6 +79,16 @@ func (db *DB) migrate() error {
 			UNIQUE(account_id, name)
 		);
 
+		-- Local-only folder view preferences (never sent to the server), keyed by
+		-- folder name so they survive a re-sync that reassigns mailbox ids.
+		CREATE TABLE IF NOT EXISTS mailbox_prefs (
+			account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+			name       TEXT    NOT NULL,
+			hidden     INTEGER NOT NULL DEFAULT 0,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (account_id, name)
+		);
+
 		CREATE TABLE IF NOT EXISTS messages (
 			id             INTEGER PRIMARY KEY AUTOINCREMENT,
 			mailbox_id     INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,

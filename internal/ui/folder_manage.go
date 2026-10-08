@@ -410,6 +410,11 @@ func (m Model) deleteFolderCmd(mb db.Mailbox) tea.Cmd {
 			}
 			kept = append(kept, id)
 		}
+		for _, f := range tree {
+			if slices.Contains(kept, f.ID) {
+				_ = database.DeleteMailboxPrefs(f.AccountID, f.Name)
+			}
+		}
 		return FolderDeletedMsg{AccountID: mb.AccountID, Name: mb.Name, Removed: kept, Err: firstErr}
 	}
 }
@@ -438,6 +443,13 @@ func (m Model) handleFolderRenamed(msg FolderRenamedMsg) (tea.Model, tea.Cmd) {
 			continue
 		}
 		mb.DisplayName = cleanDisplayName(mb.Name)
+	}
+	// Hide/order prefs are keyed by name too (the DB already moved them).
+	for name, pref := range m.mailboxPrefs[msg.AccountID] {
+		if name == msg.OldName || strings.HasPrefix(name, msg.OldName+"/") || strings.HasPrefix(name, msg.OldName+".") {
+			delete(m.mailboxPrefs[msg.AccountID], name)
+			m.mailboxPrefs[msg.AccountID][msg.NewName+name[len(msg.OldName):]] = pref
+		}
 	}
 	// Collapse state is keyed by name, so carry it to the new names.
 	for key, collapsed := range m.collapsedSections {
@@ -474,6 +486,8 @@ func (m Model) handleFolderDeleted(msg FolderDeletedMsg) (tea.Model, tea.Cmd) {
 		for _, mb := range m.mailboxes {
 			if !removed[mb.ID] {
 				kept = append(kept, mb)
+			} else {
+				delete(m.mailboxPrefs[mb.AccountID], mb.Name)
 			}
 		}
 		m.mailboxes = kept
@@ -505,4 +519,150 @@ func truncateStyledPlain(s string, width int) string {
 		return ""
 	}
 	return truncateStyled(s, width, "")
+}
+
+// ── Local view prefs: hide and reorder ─────────────────────────────────────
+
+func (m *Model) loadMailboxPrefs() {
+	if m.db == nil {
+		return
+	}
+	if prefs, err := m.db.ListMailboxPrefs(); err == nil {
+		m.mailboxPrefs = prefs
+	}
+}
+
+func (m *Model) setPref(accountID int64, name string, f func(*db.MailboxPref)) {
+	if m.mailboxPrefs == nil {
+		m.mailboxPrefs = map[int64]map[string]db.MailboxPref{}
+	}
+	if m.mailboxPrefs[accountID] == nil {
+		m.mailboxPrefs[accountID] = map[string]db.MailboxPref{}
+	}
+	p := m.mailboxPrefs[accountID][name]
+	f(&p)
+	m.mailboxPrefs[accountID][name] = p
+}
+
+// toggleHideSelectedFolder hides, or when hidden ones are shown unhides, the
+// folder under the cursor. The server is untouched.
+func (m Model) toggleHideSelectedFolder() (tea.Model, tea.Cmd) {
+	_, mb, ok := m.sidebarFolderTarget()
+	if !ok || mb == nil {
+		m.setStatus("select a folder to hide", false)
+		return m, m.clearStatusCmd()
+	}
+	if strings.EqualFold(mb.Name, "INBOX") {
+		m.setStatus("the Inbox can't be hidden", true)
+		return m, m.clearStatusCmd()
+	}
+	hide := !m.mailboxPrefs[mb.AccountID][mb.Name].Hidden
+	if m.db != nil {
+		if err := m.db.SetMailboxHidden(mb.AccountID, mb.Name, hide); err != nil {
+			m.setStatus("hide folder failed: "+err.Error(), true)
+			return m, m.clearStatusCmd()
+		}
+	}
+	m.setPref(mb.AccountID, mb.Name, func(p *db.MailboxPref) { p.Hidden = hide })
+	prev := m.sidebarCursor
+	m.rebuildSidebar()
+	if hide && !m.showHiddenFolders {
+		m.sidebarCursor = clamp(prev, 0, max(0, len(m.sidebarRows)-1))
+		m.clearMessages()
+		m.setStatus("folder hidden (only in TideMail). Use \"Show hidden folders\" in the command palette to bring it back", false)
+	} else if hide {
+		m.cursorToMailbox(mb.ID)
+		m.setStatus("folder hidden", false)
+	} else {
+		m.cursorToMailbox(mb.ID)
+		m.setStatus("folder shown", false)
+	}
+	return m, m.clearStatusCmd()
+}
+
+func (m Model) toggleShowHiddenFolders() (tea.Model, tea.Cmd) {
+	m.showHiddenFolders = !m.showHiddenFolders
+	m.rebuildSidebar()
+	if m.showHiddenFolders {
+		m.setStatus("showing hidden folders", false)
+	} else {
+		m.setStatus("hidden folders are hidden again", false)
+	}
+	return m, m.clearStatusCmd()
+}
+
+// folderSiblings returns the sidebar row indexes of the folders that share the
+// cursor row's parent, in display order.
+func (m Model) folderSiblings(i int) []int {
+	depth := m.sidebarRows[i].depth
+	start := i
+	for start > 0 {
+		prev := m.sidebarRows[start-1]
+		if prev.kind != rowKindMailbox || prev.depth < depth {
+			break
+		}
+		start--
+	}
+	end := i
+	for end+1 < len(m.sidebarRows) {
+		next := m.sidebarRows[end+1]
+		if next.kind != rowKindMailbox || next.depth < depth {
+			break
+		}
+		end++
+	}
+	var out []int
+	for j := start; j <= end; j++ {
+		if m.sidebarRows[j].depth == depth {
+			out = append(out, j)
+		}
+	}
+	return out
+}
+
+// moveSelectedFolder moves the folder under the cursor up (-1) or down (+1)
+// among its siblings. The order is local to TideMail.
+func (m Model) moveSelectedFolder(delta int) (tea.Model, tea.Cmd) {
+	_, mb, ok := m.sidebarFolderTarget()
+	if !ok || mb == nil || strings.EqualFold(mb.Name, "INBOX") {
+		return m, nil
+	}
+	sibs := m.folderSiblings(m.sidebarCursor)
+	pos := slices.Index(sibs, m.sidebarCursor)
+	target := pos + delta
+	if pos < 0 || target < 0 || target >= len(sibs) {
+		m.setStatus("already at the "+map[bool]string{true: "top", false: "bottom"}[delta < 0], false)
+		return m, m.clearStatusCmd()
+	}
+	order := make([]db.Mailbox, 0, len(sibs))
+	for _, idx := range sibs {
+		if f := m.mailboxByID(m.sidebarRows[idx].mailboxID); f != nil {
+			order = append(order, *f)
+		}
+	}
+	order[pos], order[target] = order[target], order[pos]
+	// Re-number every sibling (steps of 10) so the swap sticks and leaves room.
+	orders := make(map[string]int, len(order))
+	for n, f := range order {
+		orders[f.Name] = (n + 1) * 10
+	}
+	if m.db != nil {
+		if err := m.db.SetMailboxOrders(mb.AccountID, orders); err != nil {
+			m.setStatus("reorder failed: "+err.Error(), true)
+			return m, m.clearStatusCmd()
+		}
+	}
+	for name, o := range orders {
+		m.setPref(mb.AccountID, name, func(p *db.MailboxPref) { p.Order = o })
+	}
+	m.rebuildSidebar()
+	m.cursorToMailbox(mb.ID)
+	return m, nil
+}
+
+func (m Model) showHiddenFoldersLabel() string {
+	if m.showHiddenFolders {
+		return "Hide hidden folders again"
+	}
+	return "Show hidden folders"
 }
