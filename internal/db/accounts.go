@@ -272,6 +272,52 @@ func (db *DB) DeleteMailbox(id int64) error {
 	return err
 }
 
+// RenameMailboxTree renames a mailbox and every mailbox below it (names that
+// start with oldName+delimiter) in one transaction, keeping their IDs so cached
+// messages stay attached. display recomputes each renamed mailbox's
+// display_name from its new name.
+func (db *DB) RenameMailboxTree(accountID int64, oldName, newName, delimiter string, display func(name string) string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	res, err := tx.Exec(`UPDATE mailboxes SET name = ?, display_name = ? WHERE account_id = ? AND name = ?`,
+		newName, display(newName), accountID, oldName)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("mailbox %q not found", oldName)
+	}
+	rows, err := tx.Query(`SELECT id, name FROM mailboxes WHERE account_id = ? AND substr(name, 1, ?) = ?`,
+		accountID, len(oldName+delimiter), oldName+delimiter)
+	if err != nil {
+		return err
+	}
+	type child struct {
+		id   int64
+		name string
+	}
+	var children []child
+	for rows.Next() {
+		var c child
+		if err := rows.Scan(&c.id, &c.name); err != nil {
+			rows.Close()
+			return err
+		}
+		children = append(children, c)
+	}
+	rows.Close()
+	for _, c := range children {
+		renamed := newName + delimiter + c.name[len(oldName+delimiter):]
+		if _, err := tx.Exec(`UPDATE mailboxes SET name = ?, display_name = ? WHERE id = ?`, renamed, display(renamed), c.id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (db *DB) SetMailboxUnreadCount(mailboxID, count int64) error {
 	_, err := db.Exec(`UPDATE mailboxes SET unread_count = ? WHERE id = ?`, count, mailboxID)
 	return err

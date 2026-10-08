@@ -106,6 +106,7 @@ const (
 	overlayColorPicker
 	overlayClassification
 	overlaySyncAllConfirm
+	overlayFolderDeleteConfirm
 )
 
 type commandPaletteContext int
@@ -190,6 +191,11 @@ type Model struct {
 	// pendingUnsubscribe holds the message whose List-Unsubscribe action is
 	// awaiting the user's y/n in overlayUnsubscribeConfirm.
 	pendingUnsubscribe db.Message
+
+	// folderPrompt is the sidebar's inline new/rename folder prompt;
+	// pendingFolderDelete is the folder awaiting delete confirmation.
+	folderPrompt        folderPrompt
+	pendingFolderDelete int64
 
 	viewport         viewport.Model
 	contentLinks     []string
@@ -1472,6 +1478,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case snoozeTickMsg:
 		return m.handleSnoozeTick(msg)
 
+	case FolderRenamedMsg:
+		return m.handleFolderRenamed(msg)
+
+	case FolderDeletedMsg:
+		return m.handleFolderDeleted(msg)
+
 	case FolderCreatedMsg:
 		if msg.Err != nil {
 			m.setStatus("create folder failed: "+msg.Err.Error(), true)
@@ -1733,6 +1745,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.folderPrompt.active {
+		return m.handleFolderPromptKey(msg)
+	}
 	// Search mode editing intercept — capture typed characters for the query.
 	if m.searchMode && m.searchEditing {
 		switch {
@@ -1758,6 +1773,12 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch {
+	case m.focused == paneAccounts && keyMatches(msg, m.keys.NewFolder):
+		return m.startNewFolder()
+	case m.focused == paneAccounts && keyMatches(msg, m.keys.RenameFolder):
+		return m.startRenameFolder()
+	case m.focused == paneAccounts && keyMatches(msg, m.keys.DeleteFolder):
+		return m.startDeleteFolder()
 	case keyMatches(msg, m.keys.NeedsYouDismiss) && m.selectedNeedsYou() && m.focused != paneAccounts:
 		// Dismiss from Needs You. Only here: elsewhere X does nothing.
 		return m.dismissCurrent()
@@ -2596,6 +2617,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case overlaySyncAllConfirm:
 		return m.handleSyncAllConfirmKey(msg)
+
+	case overlayFolderDeleteConfirm:
+		return m.handleFolderDeleteConfirmKey(msg)
 
 	case overlayUnsubscribeConfirm:
 		switch {

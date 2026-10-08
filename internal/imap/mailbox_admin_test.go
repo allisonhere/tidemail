@@ -87,3 +87,27 @@ func TestUnseenCounts(t *testing.T) {
 		t.Error("a mailbox the server rejects should be left out, not reported as zero")
 	}
 }
+
+// Deleting a folder tree works deepest-first, the order the sidebar's folder
+// management uses. (RFC 3501 also makes servers rename subfolders along with
+// their parent, but the in-memory test server does not, so that is not asserted.)
+func TestDeleteMailboxTreeDeepestFirst(t *testing.T) {
+	c, done := connectTest(t)
+	defer done()
+	ctx := context.Background()
+
+	for _, name := range []string{"Work", "Work/Projects", "Work/Projects/Alpha"} {
+		if err := c.CreateMailbox(ctx, name); err != nil {
+			t.Fatalf("create %s: %v", name, err)
+		}
+	}
+	for _, name := range []string{"Work/Projects/Alpha", "Work/Projects", "Work"} {
+		if err := c.DeleteMailbox(ctx, name); err != nil {
+			t.Fatalf("delete %s: %v", name, err)
+		}
+	}
+	names := mailboxNames(t, c)
+	if names["Work"] || names["Work/Projects"] || names["Work/Projects/Alpha"] {
+		t.Fatalf("tree still listed after delete: %v", names)
+	}
+}

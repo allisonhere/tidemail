@@ -40,12 +40,19 @@ func (m Model) renderAccountsPane() string {
 			rows = append(rows, m.renderOutboxRow(selected, innerW))
 		case rowKindMailbox:
 			if mb := m.mailboxByID(row.mailboxID); mb != nil {
-				rows = append(rows, m.renderSidebarMailboxRow(*mb, row, selected, innerW))
+				if selected && m.folderPrompt.active && m.folderPrompt.rename {
+					rows = append(rows, m.folderPromptRow(row.depth, innerW))
+				} else {
+					rows = append(rows, m.renderSidebarMailboxRow(*mb, row, selected, innerW))
+				}
 			}
 		case rowKindSysFolderHeader:
 			rows = append(rows, m.renderSectionHeader("System", row.count, rowKindSysFolderHeader, row.accountID, selected, innerW))
 		case rowKindPersonalFolderHeader:
 			rows = append(rows, m.renderSectionHeader(row.label, row.count, rowKindPersonalFolderHeader, row.accountID, selected, innerW))
+		}
+		if selected && m.folderPrompt.active && !m.folderPrompt.rename {
+			rows = append(rows, m.folderPromptRow(row.depth+1, innerW))
 		}
 	}
 

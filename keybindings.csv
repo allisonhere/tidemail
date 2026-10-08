@@ -26,6 +26,9 @@ Compose,c,c,compose,main
 Reply,r,r,reply,main
 ReplyAll,ctrl+r,ctrl+r,reply all,main
 Forward,f,f,forward,main
+NewFolder,n,n,new folder,sidebar
+RenameFolder,r,r,rename folder,sidebar
+DeleteFolder,d,d,delete folder,sidebar
 Archive,a,a,archive,main
 Move,m,m,move to folder/label,main
 Command,":,ctrl+p",":/ctrl+p",command palette,global

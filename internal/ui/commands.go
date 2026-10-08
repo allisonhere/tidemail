@@ -94,6 +94,9 @@ func (m Model) mainCommandItems() []commandItem {
 		{id: "move", label: "Move current message", enabled: hasMessage},
 		{id: "delete", label: "Delete current message", enabled: hasMessage},
 		{id: "toggle-read", label: "Toggle read/unread", enabled: hasMessage},
+		{id: "new-folder", label: "New folder (select a folder or account first)", enabled: len(m.accounts) > 0},
+		{id: "rename-folder", label: "Rename selected folder", enabled: hasMailbox},
+		{id: "delete-folder", label: "Delete selected folder", enabled: hasMailbox},
 		{id: "sync", label: "Sync current mailbox", enabled: hasMailbox},
 		{id: "sync-all", label: "Sync all mailboxes", enabled: len(m.mailboxes) > 0},
 		{id: "accounts", label: "Manage accounts", enabled: true},
@@ -165,6 +168,15 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		m.compose = NewCompose(acfg, m.cfg.Accounts, m.addressBook)
 		m.overlay = overlayCompose
 		return m, nil
+	case "new-folder":
+		m.focused = paneAccounts
+		return m.startNewFolder()
+	case "rename-folder":
+		m.focused = paneAccounts
+		return m.startRenameFolder()
+	case "delete-folder":
+		m.focused = paneAccounts
+		return m.startDeleteFolder()
 	case "reply":
 		msg := m.commandMessage()
 		if msg == nil {
