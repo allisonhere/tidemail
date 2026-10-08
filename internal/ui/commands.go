@@ -97,6 +97,7 @@ func (m Model) mainCommandItems() []commandItem {
 		{id: "new-folder", label: "New folder (select a folder or account first)", enabled: len(m.accounts) > 0},
 		{id: "rename-folder", label: "Rename selected folder", enabled: hasMailbox},
 		{id: "delete-folder", label: "Delete selected folder", enabled: hasMailbox},
+		{id: "move-folder", label: "Move selected folder into another folder or to the top level", enabled: hasMailbox},
 		{id: "hide-folder", label: "Hide or unhide selected folder", enabled: hasMailbox},
 		{id: "show-hidden-folders", label: m.showHiddenFoldersLabel(), enabled: len(m.mailboxes) > 0},
 		{id: "sync", label: "Sync current mailbox", enabled: hasMailbox},
@@ -170,6 +171,9 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		m.compose = NewCompose(acfg, m.cfg.Accounts, m.addressBook)
 		m.overlay = overlayCompose
 		return m, nil
+	case "move-folder":
+		m.focused = paneAccounts
+		return m.startMoveFolder()
 	case "hide-folder":
 		m.focused = paneAccounts
 		return m.toggleHideSelectedFolder()

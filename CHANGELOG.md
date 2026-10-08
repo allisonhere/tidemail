@@ -10,7 +10,7 @@ All notable changes to TideMail are documented in this file.
   (`Enter`, `Space`, `←`/`→`), the choice is remembered, and a collapsed folder shows the unread
   count of everything inside it.
 - Manage folders from the sidebar: `n` creates a folder or subfolder, `r` renames (subfolders come
-  along), `d` deletes after a confirmation that names the subfolders that go with it. The Inbox and
+  along), `m` moves a folder into another folder or out to the top level, `d` deletes after a confirmation that names the subfolders that go with it. The Inbox and
   system folders are protected. `H` hides a folder from TideMail's sidebar only, "Show hidden
   folders" in the command palette lists them again, and `Shift+K` / `Shift+J` reorder siblings.
   All are also in the command palette.

@@ -1783,6 +1783,8 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.startRenameFolder()
 	case m.focused == paneAccounts && keyMatches(msg, m.keys.DeleteFolder):
 		return m.startDeleteFolder()
+	case m.focused == paneAccounts && keyMatches(msg, m.keys.Move) && m.selectedMailbox() != nil:
+		return m.startMoveFolder()
 	case m.focused == paneAccounts && keyMatches(msg, m.keys.HideFolder):
 		return m.toggleHideSelectedFolder()
 	case m.focused == paneAccounts && keyMatches(msg, m.keys.MoveAccountUp) && m.selectedMailbox() != nil:
@@ -3239,7 +3241,7 @@ func (m Model) renderPaneHint(p pane) string {
 			m.keyHint(m.keys.Enter) + " toggle/sync  " + m.keyHint(m.keys.Sync) + " sync"
 		if m.selectedMailbox() != nil {
 			hint += "  " + m.keyHint(m.keys.NewFolder) + " new  " + m.keyHint(m.keys.RenameFolder) + " rename  " +
-				m.keyHint(m.keys.DeleteFolder) + " delete  " + m.keyHint(m.keys.HideFolder) + " hide"
+				m.keyHint(m.keys.Move) + " move  " + m.keyHint(m.keys.DeleteFolder) + " delete  " + m.keyHint(m.keys.HideFolder) + " hide"
 		}
 	case paneMessages:
 		if m.selectedOutboxRow() {

@@ -142,6 +142,10 @@ marker. In the left pane:
   section header a top-level folder. Type the name in the prompt row and press
   `Enter` (or `Esc` to cancel).
 - `r` renames the selected folder; its subfolders come along.
+- `m` moves the selected folder, subfolders included, into another folder or out
+  to the top level. Open folders with `Enter`, go up with `←`, and choose "move
+  here" (at the top it reads "move to top level"). A folder can't move into its
+  own subfolders, or somewhere that already has a folder of the same name.
 - `d` deletes the selected folder from the server after asking. The prompt says
   how many subfolders go with it and that every message in them is deleted, and
   `y` or `Enter` confirms. The Inbox and system folders (Sent, Drafts, Trash,
@@ -153,7 +157,7 @@ marker. In the left pane:
   The order is local to TideMail.
 
 The command palette has matching entries: New folder, Rename selected folder,
-Delete selected folder, Hide or unhide selected folder, and Show hidden folders.
+Move selected folder, Delete selected folder, Hide or unhide selected folder, and Show hidden folders.
 Creating a folder is also possible from the move picker with `n`.
 
 ### Needs You
@@ -726,7 +730,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Ctrl+T` in the account form | Test the connection without saving |
 | `s` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
 | `Enter` on a folder | Fetch that folder now; on a folder with subfolders, collapse or expand it |
-| `n` / `r` / `d` in Accounts | New, rename, delete the selected folder (see Managing folders) |
+| `n` / `r` / `m` / `d` in Accounts | New, rename, move, delete the selected folder (see Managing folders) |
 | `H` in Accounts | Hide or unhide the selected folder (local only) |
 | `Shift+K` / `Shift+J` on a folder | Move the folder up / down among its siblings |
 | `←` / `→` on a folder | Collapse or go to parent / expand |

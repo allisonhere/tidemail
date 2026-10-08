@@ -1,15 +1,10 @@
 package ui
 
 import (
-	"context"
-	"fmt"
 	"sort"
 	"strings"
-	"time"
 
-	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
-	imapClient "github.com/allisonhere/tidemail/internal/imap"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -25,6 +20,10 @@ type movePicker struct {
 	sources     map[int64]bool
 	creating    bool
 	nameInput   textinput.Model
+
+	// moveFolder, when non-zero, makes the picker choose a new parent for that
+	// folder instead of a destination for messages.
+	moveFolder int64
 }
 
 type moveEntry struct {
@@ -80,6 +79,11 @@ func (m *Model) movePickerMessages() []db.Message {
 }
 
 func (m *Model) refreshMovePickerEntries() {
+	if m.movePicker.moveFolder != 0 {
+		m.movePicker.entries = buildFolderMoveEntries(m.mailboxes, m.movePicker.accountID, m.movePicker.currentPath, m.movePicker.sources)
+		m.movePicker.cursor = clamp(m.movePicker.cursor, 0, max(0, len(m.movePicker.entries)-1))
+		return
+	}
 	m.movePicker.entries = buildMoveEntries(m.mailboxes, m.movePicker.accountID, m.movePicker.currentPath, m.movePicker.sources)
 	m.movePicker.cursor = clamp(m.movePicker.cursor, 0, max(0, len(m.movePicker.entries)-1))
 }
@@ -244,6 +248,9 @@ func (m Model) handleMovePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		entry := m.movePicker.entries[m.movePicker.cursor]
+		if entry.isConfirm && m.movePicker.moveFolder != 0 {
+			return m.confirmFolderMove(m.movePicker.currentPath)
+		}
 		if entry.isConfirm {
 			return m.confirmMovePicker(entry.mailboxID)
 		}
@@ -300,6 +307,9 @@ func (m Model) confirmMovePicker(targetMailboxID int64) (tea.Model, tea.Cmd) {
 
 func (m Model) renderMovePicker(width, height int, chrome managerChrome) string {
 	path := m.movePicker.accountName
+	if mb := m.mailboxByID(m.movePicker.moveFolder); mb != nil {
+		path = "Move " + cleanDisplayName(mb.Name) + " into: " + path
+	}
 	if m.movePicker.currentPath != "" {
 		path += " / " + m.movePicker.currentPath
 	}
@@ -345,6 +355,8 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 		selected := idx == m.movePicker.cursor
 		label := e.label
 		switch {
+		case e.isConfirm && m.movePicker.moveFolder != 0 && m.movePicker.currentPath == "":
+			label = "move to top level"
 		case e.isConfirm:
 			label = "move here"
 		case e.label == "..":
@@ -369,47 +381,5 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 }
 
 func (m *Model) createFolderCmd(accountID int64, parentPath, name string) tea.Cmd {
-	delimiter := moveDelimiter(m.mailboxes, accountID, parentPath)
-	var fullName string
-	if parentPath != "" {
-		fullName = parentPath + delimiter + name
-	} else {
-		// At the root, the account's personal namespace decides where the
-		// folder may live — "INBOX." on Dovecot/Courier, empty on Gmail.
-		fullName, delimiter = qualifyFolderName(name, accountMailboxes(m.mailboxes, accountID))
-	}
-	var acfg config.AccountConfig
-	if len(m.movePicker.messages) > 0 {
-		var err error
-		acfg, err = m.accountCfgForMailbox(m.movePicker.messages[0].MailboxID)
-		if err != nil {
-			return func() tea.Msg { return FolderCreatedMsg{AccountID: accountID, Name: fullName, Err: err} }
-		}
-	} else {
-		err := fmt.Errorf("%w (account %d)", errNoAccountConfig, accountID)
-		return func() tea.Msg { return FolderCreatedMsg{AccountID: accountID, Name: fullName, Err: err} }
-	}
-	database := m.db
-	sessions := m.sessions
-	return func() tea.Msg {
-		if acfg.IMAPHost != "" {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			if err := sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
-				return client.CreateMailbox(ctx, fullName)
-			}); err != nil {
-				return FolderCreatedMsg{AccountID: accountID, Name: fullName, Err: err}
-			}
-		}
-		id, err := database.UpsertMailbox(db.Mailbox{
-			AccountID:   accountID,
-			Name:        fullName,
-			DisplayName: cleanDisplayName(fullName),
-			Delimiter:   delimiter,
-		})
-		if err != nil {
-			return FolderCreatedMsg{AccountID: accountID, Name: fullName, Err: err}
-		}
-		return FolderCreatedMsg{AccountID: accountID, MailboxID: id, Name: fullName, Delimiter: delimiter}
-	}
+	return m.createFolderOnServerCmd(accountID, parentPath, name)
 }

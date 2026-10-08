@@ -61,6 +61,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{"←/→", "on a folder: ← collapses it, or jumps to its parent; → expands it"},
 				bind(keys.NewFolder),
 				bind(keys.RenameFolder),
+				{keys.Move.Help().Key + " (on a folder)", "move the folder, with its subfolders, into another folder or out to the top level; enter opens a folder, then 'move here'"},
 				bind(keys.DeleteFolder),
 				{"new folder", "n on a folder creates a subfolder, on an account or section header a top-level folder; inline prompt, enter to create, esc to cancel"},
 				{"delete folder", "asks first and says how many subfolders go with it; deletes on the server. Inbox and system folders are protected"},

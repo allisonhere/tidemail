@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -665,4 +666,99 @@ func (m Model) showHiddenFoldersLabel() string {
 		return "Hide hidden folders again"
 	}
 	return "Show hidden folders"
+}
+
+// buildFolderMoveEntries lists the folders under currentPath as places to move
+// a folder into. Unlike a message move, any level can be chosen, including the
+// top level, and a folder with no subfolders is still a valid parent. The moved
+// folder's own subtree (exclude) is not offered.
+func buildFolderMoveEntries(mailboxes []db.Mailbox, accountID int64, currentPath string, exclude map[int64]bool) []moveEntry {
+	delimiter := moveDelimiter(mailboxes, accountID, currentPath)
+	entries := []moveEntry{{label: "move here", isConfirm: true}}
+	if currentPath != "" {
+		entries = append(entries, moveEntry{label: "..", path: moveParentPath(currentPath, delimiter), isDir: true})
+	}
+	currentParts := splitMovePath(currentPath, delimiter)
+	seen := map[string]moveEntry{}
+	for _, mb := range mailboxes {
+		if mb.AccountID != accountID || mb.Name == "" || exclude[mb.ID] || strings.EqualFold(mb.Name, "INBOX") {
+			continue
+		}
+		parts := splitMovePath(mb.Name, moveMailboxDelimiter(mb))
+		if !sameMovePrefix(parts, currentParts) || len(parts) <= len(currentParts) {
+			continue
+		}
+		child := parts[len(currentParts)]
+		path := strings.Join(parts[:len(currentParts)+1], moveMailboxDelimiter(mb))
+		seen[strings.ToLower(child)] = moveEntry{label: child, path: path, isDir: true}
+	}
+	names := make([]string, 0, len(seen))
+	for k := range seen {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	for _, k := range names {
+		entries = append(entries, seen[k])
+	}
+	return entries
+}
+
+func (m Model) startMoveFolder() (tea.Model, tea.Cmd) {
+	_, mb, ok := m.sidebarFolderTarget()
+	if !ok || mb == nil {
+		m.setStatus("select a folder to move", false)
+		return m, m.clearStatusCmd()
+	}
+	if reason := protectedFolderReason(*mb); reason != "" {
+		m.setStatus(reason, true)
+		return m, m.clearStatusCmd()
+	}
+	exclude := map[int64]bool{}
+	for _, f := range m.folderSubtree(*mb) {
+		exclude[f.ID] = true
+	}
+	m.movePicker = movePicker{
+		accountID:   mb.AccountID,
+		accountName: m.accountName(mb.AccountID),
+		sources:     exclude,
+		moveFolder:  mb.ID,
+	}
+	m.refreshMovePickerEntries()
+	m.overlay = overlayMoveMessage
+	return m, nil
+}
+
+// confirmFolderMove re-parents the folder being moved under parent ("" = top
+// level), which on IMAP is a rename to the new path.
+func (m Model) confirmFolderMove(parent string) (tea.Model, tea.Cmd) {
+	mb := m.mailboxByID(m.movePicker.moveFolder)
+	m.movePicker = movePicker{}
+	m.overlay = overlayNone
+	if mb == nil {
+		return m, nil
+	}
+	leaf := folderLeaf(*mb)
+	delimiter := folderDelimiter(*mb)
+	newName := leaf
+	if parent == "" {
+		newName, _ = qualifyFolderName(leaf, accountMailboxes(m.mailboxes, mb.AccountID))
+	} else {
+		newName = parent + delimiter + leaf
+	}
+	if newName == mb.Name {
+		m.setStatus("folder is already there", false)
+		return m, m.clearStatusCmd()
+	}
+	if msg := validateFolderName(leaf, delimiter, accountMailboxes(m.mailboxes, mb.AccountID), strings.TrimSuffix(newName, delimiter+leaf), mb.ID); msg != "" && parent != "" {
+		m.setStatus("can't move there: "+msg, true)
+		return m, m.clearStatusCmd()
+	}
+	for _, other := range m.mailboxes {
+		if other.AccountID == mb.AccountID && other.ID != mb.ID && strings.EqualFold(other.Name, newName) {
+			m.setStatus(fmt.Sprintf("can't move there: a folder named %q already exists", leaf), true)
+			return m, m.clearStatusCmd()
+		}
+	}
+	m.setStatus("moving folder...", false)
+	return m, m.renameFolderCmd(*mb, newName)
 }
