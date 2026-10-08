@@ -78,6 +78,8 @@ type KeyMap struct {
 	OAuthSignIn     key.Binding
 	MoveAccountUp   key.Binding
 	MoveAccountDown key.Binding
+	IndentFolder    key.Binding
+	OutdentFolder   key.Binding
 
 	AttachFile   key.Binding
 	RemoveAttach key.Binding
@@ -176,6 +178,8 @@ var DefaultKeys = KeyMap{
 	// never shadow the lowercase Up/Down movement keys.
 	MoveAccountUp:   key.NewBinding(key.WithKeys("K"), key.WithHelp("shift+k", "move account up")),
 	MoveAccountDown: key.NewBinding(key.WithKeys("J"), key.WithHelp("shift+j", "move account down")),
+	IndentFolder:    key.NewBinding(key.WithKeys(">"), key.WithHelp(">", "nest folder under the one above")),
+	OutdentFolder:   key.NewBinding(key.WithKeys("<"), key.WithHelp("<", "move folder out of its parent")),
 
 	AttachFile: key.NewBinding(key.WithKeys("alt+f"), key.WithHelp("alt+f", "attach file")),
 

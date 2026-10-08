@@ -808,6 +808,65 @@ func (m Model) nestableParent(rowIdx int) bool {
 	return mb != nil && !strings.EqualFold(mb.Name, "INBOX") && protectedFolderReason(*mb) == ""
 }
 
+// indentSelectedFolder nests the folder under the sibling just above it, as that
+// sibling's last child, even when the sibling has no subfolders yet.
+func (m Model) indentSelectedFolder() (tea.Model, tea.Cmd) {
+	if m.folderOpBusy {
+		m.setStatus(folderBusyMsg, false)
+		return m, m.clearStatusCmd()
+	}
+	_, mb, ok := m.sidebarFolderTarget()
+	if !ok || mb == nil {
+		return m, nil
+	}
+	if reason := protectedFolderReason(*mb); reason != "" || strings.EqualFold(mb.Name, "INBOX") {
+		if reason == "" {
+			reason = "the Inbox can't be moved"
+		}
+		m.setStatus(reason, true)
+		return m, m.clearStatusCmd()
+	}
+	sibs := m.folderSiblings(m.sidebarCursor)
+	pos := slices.Index(sibs, m.sidebarCursor)
+	if pos <= 0 {
+		m.setStatus("no folder above to nest under", false)
+		return m, m.clearStatusCmd()
+	}
+	parentIdx := sibs[pos-1]
+	parent := m.mailboxByID(m.sidebarRows[parentIdx].mailboxID)
+	if parent == nil || strings.EqualFold(parent.Name, "INBOX") || protectedFolderReason(*parent) != "" {
+		name := "that folder"
+		if parent != nil {
+			name = cleanDisplayName(parent.Name)
+		}
+		m.setStatus("can't nest a folder under "+name, true)
+		return m, m.clearStatusCmd()
+	}
+	if m.sidebarRows[parentIdx].collapsed {
+		// Its children aren't on screen, so leave their order alone.
+		newName := parent.Name + folderDelimiter(*parent) + folderLeaf(*mb)
+		return m.reparentFolder(*mb, newName, nil)
+	}
+	return m.nestSelectedFolder(*mb, parentIdx, false)
+}
+
+// outdentFolderKey moves the folder out of its parent, to just after it.
+func (m Model) outdentFolderKey() (tea.Model, tea.Cmd) {
+	if m.folderOpBusy {
+		m.setStatus(folderBusyMsg, false)
+		return m, m.clearStatusCmd()
+	}
+	_, mb, ok := m.sidebarFolderTarget()
+	if !ok || mb == nil {
+		return m, nil
+	}
+	if m.sidebarRows[m.sidebarCursor].depth == 0 {
+		m.setStatus("already at the top level", false)
+		return m, m.clearStatusCmd()
+	}
+	return m.outdentSelectedFolder(*mb, 1)
+}
+
 // childRowNames is the names of a row's direct children, in display order.
 func (m Model) childRowNames(rowIdx int) []string {
 	depth := m.sidebarRows[rowIdx].depth

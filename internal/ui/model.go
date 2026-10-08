@@ -1792,6 +1792,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.moveSelectedFolder(-1)
 	case m.focused == paneAccounts && keyMatches(msg, m.keys.MoveAccountDown) && m.selectedMailbox() != nil:
 		return m.moveSelectedFolder(1)
+	case m.focused == paneAccounts && keyMatches(msg, m.keys.IndentFolder) && m.selectedMailbox() != nil:
+		return m.indentSelectedFolder()
+	case m.focused == paneAccounts && keyMatches(msg, m.keys.OutdentFolder) && m.selectedMailbox() != nil:
+		return m.outdentFolderKey()
 	case keyMatches(msg, m.keys.NeedsYouDismiss) && m.selectedNeedsYou() && m.focused != paneAccounts:
 		// Dismiss from Needs You. Only here: elsewhere X does nothing.
 		return m.dismissCurrent()

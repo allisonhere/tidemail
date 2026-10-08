@@ -32,6 +32,8 @@ DeleteFolder,d,d,delete folder,sidebar
 HideFolder,H,H,hide folder,sidebar
 MoveAccountUp,K,shift+k,"move account up (account manager); folder up the tree: reorder, into an open parent, or out of its parent (sidebar)",sidebar
 MoveAccountDown,J,shift+j,"move account down (account manager); folder down the tree: reorder, into an open parent, or out of its parent (sidebar)",sidebar
+IndentFolder,>,>,nest folder under the one above,sidebar
+OutdentFolder,<,<,move folder out of its parent,sidebar
 Archive,a,a,archive,main
 Move,m,m,move to folder/label,main
 Command,":,ctrl+p",":/ctrl+p",command palette,global

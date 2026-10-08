@@ -588,3 +588,39 @@ func TestFolderMoveIsRefusedWhileAnotherFolderChangeIsRunning(t *testing.T) {
 		t.Fatal("a finished (even failed) folder change must free the guard")
 	}
 }
+
+func TestAngleKeysNestIntoAnEmptyFolderAndBackOut(t *testing.T) {
+	m, database, accountID := walkModel(t)
+	id, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "Yak", Delimiter: "/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.mailboxes = append(m.mailboxes, db.Mailbox{ID: id, AccountID: accountID, Name: "Yak", Delimiter: "/"})
+	m.rebuildSidebar()
+	zed := mailboxIDByName(t, m, "Zed")
+	cursorOnMailbox(t, &m, zed)
+
+	// Yak has no subfolders, so Shift+J could never put Zed inside it.
+	m = pressWalk(t, m, '>')
+	if got := m.mailboxByID(zed); got == nil || got.Name != "Yak/Zed" || rowDepth(m, zed) != 1 {
+		t.Fatalf("> should nest Zed under Yak, got %v; tree %v", got, personalOrder(m))
+	}
+	if m.sidebarRows[m.sidebarCursor].mailboxID != zed {
+		t.Fatal("cursor left the folder")
+	}
+	m = pressWalk(t, m, '<')
+	if got := m.mailboxByID(zed); got == nil || got.Name != "Zed" || rowDepth(m, zed) != 0 {
+		t.Fatalf("< should move Zed back out, got %v; tree %v", got, personalOrder(m))
+	}
+	if got := personalOrder(m); got[len(got)-1] != "Zed" || got[len(got)-2] != "Yak" {
+		t.Fatalf("Zed should sit just after Yak, got %v", got)
+	}
+	// Nothing above the first folder, and the top level has nowhere further out.
+	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Beta"))
+	if m = pressWalk(t, m, '>'); m.mailboxByID(mailboxIDByName(t, m, "Beta")).Name != "Beta" {
+		t.Fatal("Beta moved")
+	}
+	if m = pressWalk(t, m, '<'); m.statusMsg != "already at the top level" {
+		t.Fatalf("got %q", m.statusMsg)
+	}
+}

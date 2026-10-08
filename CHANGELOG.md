@@ -13,7 +13,8 @@ All notable changes to TideMail are documented in this file.
   along), `d` deletes after a confirmation that names the subfolders that go with it. The Inbox and
   system folders are protected. `H` hides a folder from TideMail's sidebar only, "Show hidden
   folders" in the command palette lists them again, and `Shift+K` / `Shift+J` walk a folder up or down the
-  tree: reorder siblings, move it into an open folder, or out of its parent.
+  tree: reorder siblings, move it into an open folder, or out of its parent. `>` nests it under the
+  folder above even when that folder is empty, and `<` moves it back out.
   All are also in the command palette. A second folder rename, move or delete is refused until the
   first finishes, so a fast repeat keypress can't fail with "Unknown source folder".
 - Reply all (`Ctrl+R`, or "Reply all" in the command palette): To is the sender or Reply-To,
