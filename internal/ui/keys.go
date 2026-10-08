@@ -35,6 +35,7 @@ type KeyMap struct {
 	ToggleThreads   key.Binding
 	Compose         key.Binding
 	Reply           key.Binding
+	ReplyAll        key.Binding
 	Forward         key.Binding
 	Archive         key.Binding
 	Move            key.Binding
@@ -128,6 +129,7 @@ var DefaultKeys = KeyMap{
 	ToggleThreads: key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "threads")),
 	Compose:       key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "compose")),
 	Reply:         key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reply")),
+	ReplyAll:      key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "reply all")),
 	Forward:       key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "forward")),
 	Archive:       key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),
 	Move:          key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move")),

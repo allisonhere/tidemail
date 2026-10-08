@@ -4,8 +4,16 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Reply all (`Ctrl+R`, or "Reply all" in the command palette): To is the sender or Reply-To,
+  Cc is the other recipients minus your own addresses. Replies now also carry the full
+  `References` chain.
+
 ### Fixed
 
+- Long To/CC/BCC lines in compose scroll sideways to follow the cursor instead of running off the
+  edge of the field.
 - Text files attached to a message (parts marked as attachments) are now shown as attachments
   instead of being mistaken for the message body.
 

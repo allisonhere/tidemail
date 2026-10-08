@@ -118,7 +118,7 @@ a key. TideMail keeps the help screen inside the app and lets you search it.
 - Press `/` to search the local message cache across accounts.
 - Use `*` for a server-backed star. The next sync picks up star changes from
   Gmail and other clients.
-- Open a message and press `r` to reply, `f` to forward, or `Ctrl+U` to use its
+- Open a message and press `r` to reply, `Ctrl+R` to reply all, `f` to forward, or `Ctrl+U` to use its
   unsubscribe header.
 
 Delete, archive, and move wait six seconds before TideMail sends them to the

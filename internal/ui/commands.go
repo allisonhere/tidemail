@@ -88,6 +88,7 @@ func (m Model) mainCommandItems() []commandItem {
 		{id: "outbox", label: "Open Outbox (queued, failed, and sent mail)", enabled: true},
 		{id: "compose", label: "Compose new message", enabled: len(m.cfg.Accounts) > 0},
 		{id: "reply", label: "Reply to current message", enabled: m.contentMessageID != 0 || hasMessage},
+		{id: "reply-all", label: "Reply all to current message", enabled: m.contentMessageID != 0 || hasMessage},
 		{id: "forward", label: "Forward current message", enabled: m.contentMessageID != 0 || hasMessage},
 		{id: "archive", label: "Archive current message", enabled: hasMessage},
 		{id: "move", label: "Move current message", enabled: hasMessage},
@@ -175,6 +176,19 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 			return m, m.clearStatusCmd()
 		}
 		m.compose = NewReply(*msg, acfg, m.cfg.Accounts, m.addressBook)
+		m.overlay = overlayCompose
+		return m, nil
+	case "reply-all":
+		msg := m.commandMessage()
+		if msg == nil {
+			return m, nil
+		}
+		acfg, err := m.accountCfgForMailbox(msg.MailboxID)
+		if err != nil {
+			m.setStatus("reply all failed: "+err.Error(), true)
+			return m, m.clearStatusCmd()
+		}
+		m.compose = NewReplyAll(*msg, acfg, m.cfg.Accounts, m.addressBook)
 		m.overlay = overlayCompose
 		return m, nil
 	case "forward":

@@ -31,7 +31,7 @@ Current release: **v1.0.28**.
   cache when a server renumbers (`internal/db/reconcile.go`). Tombstones keep deleted
   mail from resurrecting through date-granular re-fetches.
 - **SMTP send**: plain, STARTTLS, and direct TLS (port 465). Auth is app-password over
-  PLAIN, or XOAUTH2 for OAuth Gmail accounts. Reply/forward threading headers; display
+  PLAIN, or XOAUTH2 for OAuth Gmail accounts. Reply/reply-all/forward threading headers; display
   name preserved in `From:`. Delivered mail is appended to the account's discovered
   Sent folder for providers that do not file SMTP submissions themselves; Gmail is
   skipped to avoid duplicate copies.

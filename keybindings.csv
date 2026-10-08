@@ -24,6 +24,7 @@ Search,/,/,search,main
 UnreadOnly,u,u,toggle unread only,main
 Compose,c,c,compose,main
 Reply,r,r,reply,main
+ReplyAll,ctrl+r,ctrl+r,reply all,main
 Forward,f,f,forward,main
 Archive,a,a,archive,main
 Move,m,m,move to folder/label,main

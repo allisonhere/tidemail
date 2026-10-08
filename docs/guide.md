@@ -270,7 +270,10 @@ pulls the next 100 from the server, so you can page back as far as it goes.
 
 ## Writing mail
 
-Press `c` to compose a message or `r` from the content pane to reply. TideMail
+Press `c` to compose a message, or `r` to reply and `Ctrl+R` to reply all (from the
+message list or content pane). Reply all puts the sender (or Reply-To) in To and the
+other recipients in Cc, leaving out your own addresses. Recipient lines too long for
+the field scroll sideways as you type or move the cursor. TideMail
 saves your work to the sending account's Drafts folder as you type. Open Drafts
 and press `Enter` to continue writing, or `d` to delete a draft.
 
@@ -698,7 +701,9 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `F` | Sync all mailboxes (asks first when there are more than 10 folders) |
 | `Enter` in Drafts | Reopen selected draft in compose |
 | `d` in Drafts | Delete selected draft |
-| `r` | Toggle read/unread in message list, reply from content |
+| `r` | Reply to the selected or open message |
+| `Ctrl+R` | Reply all to the selected or open message |
+| `x` | Mark selected message(s) read |
 | `*` | Toggle star (IMAP `\Flagged`) on selected message(s); syncs to the server |
 | `a` | Archive selected message |
 | `d` | Delete selected message |

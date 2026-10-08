@@ -2179,6 +2179,24 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case keyMatches(msg, m.keys.ReplyAll):
+		var cur *db.Message
+		if m.focused == paneContent && m.contentMessageID != 0 {
+			cur = m.currentContentMessage()
+		} else if m.focused == paneMessages {
+			cur = m.currentRowMessage()
+		}
+		if cur != nil {
+			acfg, err := m.accountCfgForMailbox(cur.MailboxID)
+			if err != nil {
+				m.setStatus("reply all failed: "+err.Error(), true)
+				return m, m.clearStatusCmd()
+			}
+			m.compose = NewReplyAll(*cur, acfg, m.cfg.Accounts, m.addressBook)
+			m.overlay = overlayCompose
+		}
+		return m, nil
+
 	case keyMatches(msg, m.keys.Forward):
 		var cur *db.Message
 		if m.focused == paneContent && m.contentMessageID != 0 {
@@ -3039,6 +3057,7 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 		msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(sanitized), Paste: true}
 	}
 	before := m.compose
+	m.compose.SetWidth(composeOverlayWidth(m.width))
 	newC, cmd, exit := m.compose.Update(msg, m.keys)
 	m.compose = newC
 	if km, ok := msg.(tea.KeyMsg); ok && km.Paste {
@@ -3181,7 +3200,7 @@ func (m Model) renderPaneHint(p pane) string {
 			m.keyHint(m.keys.VisualSelect) + "/" + m.keyHint(m.keys.VisualLine) + " select  " +
 			m.keyHint(m.keys.EditTags) + " tags  " +
 			"y/ctrl+c copy  " +
-			m.keyHint(m.keys.Reply) + " reply  " + m.keyHint(m.keys.Forward) + " fwd  " +
+			m.keyHint(m.keys.Reply) + " reply  " + m.keyHint(m.keys.ReplyAll) + " all  " + m.keyHint(m.keys.Forward) + " fwd  " +
 			m.keyHint(m.keys.Search) + " find  " +
 			m.keyHint(m.keys.ToggleHeaders) + " headers  " +
 			m.keyHint(m.keys.Back) + " back"

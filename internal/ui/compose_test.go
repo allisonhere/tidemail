@@ -1125,3 +1125,66 @@ func TestForwardOpensOnTheFromRow(t *testing.T) {
 		t.Fatalf("forward focus = %v, want the From row", got)
 	}
 }
+
+func TestNewReplyAllBuildsCcWithoutMyAddresses(t *testing.T) {
+	me := config.AccountConfig{ID: "a", User: "me@example.com", From: "Me <me@example.com>"}
+	other := config.AccountConfig{ID: "b", User: "work@corp.com"}
+	original := db.Message{
+		From:       "Alice <alice@example.com>",
+		To:         "me@example.com, Bob <bob@example.com>, WORK@corp.com",
+		CC:         "carol@example.com, alice@example.com, bob@example.com",
+		Subject:    "Plans",
+		MessageID:  "<2@x>",
+		References: "<1@x>",
+		BodyText:   "hi",
+	}
+	c := NewReplyAll(original, me, []config.AccountConfig{me, other}, nil)
+
+	if got := c.toInput.Value(); got != `"Alice" <alice@example.com>` && got != "Alice <alice@example.com>" {
+		t.Fatalf("To = %q", got)
+	}
+	if got := c.ccInput.Value(); got != `"Bob" <bob@example.com>, carol@example.com` {
+		t.Fatalf("Cc = %q, want Bob and Carol only", got)
+	}
+	if got := c.subjectInput.Value(); got != "Re: Plans" {
+		t.Fatalf("subject = %q", got)
+	}
+	if c.inReplyTo != "<2@x>" || c.references != "<1@x> <2@x>" {
+		t.Fatalf("threading = %q / %q", c.inReplyTo, c.references)
+	}
+}
+
+func TestNewReplyAllUsesReplyToAndKeepsFromOutOfCc(t *testing.T) {
+	me := config.AccountConfig{ID: "a", User: "me@example.com"}
+	original := db.Message{
+		From: "list@example.com", ReplyTo: "alice@example.com",
+		To: "me@example.com", CC: "bob@example.com",
+	}
+	c := NewReplyAll(original, me, []config.AccountConfig{me}, nil)
+	if got := c.toInput.Value(); got != "alice@example.com" {
+		t.Fatalf("To = %q, want Reply-To", got)
+	}
+	if got := c.ccInput.Value(); got != "bob@example.com" {
+		t.Fatalf("Cc = %q", got)
+	}
+}
+
+func TestNewReplyAllToMyOwnMessageGoesToItsRecipients(t *testing.T) {
+	me := config.AccountConfig{ID: "a", User: "me@example.com"}
+	original := db.Message{From: "me@example.com", To: "alice@example.com", CC: "bob@example.com"}
+	c := NewReplyAll(original, me, []config.AccountConfig{me}, nil)
+	if got := c.toInput.Value(); got != "alice@example.com" {
+		t.Fatalf("To = %q", got)
+	}
+	if got := c.ccInput.Value(); got != "bob@example.com" {
+		t.Fatalf("Cc = %q", got)
+	}
+}
+
+func TestNewReplyChainsReferences(t *testing.T) {
+	me := config.AccountConfig{ID: "a", User: "me@example.com"}
+	c := NewReply(db.Message{From: "a@example.com", MessageID: "<2@x>", References: "<1@x>"}, me, []config.AccountConfig{me}, nil)
+	if c.references != "<1@x> <2@x>" {
+		t.Fatalf("references = %q", c.references)
+	}
+}

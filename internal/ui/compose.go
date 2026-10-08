@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/allisonhere/tidemail/internal/config"
+	"github.com/allisonhere/tidemail/internal/conversation"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidemail/internal/smtp"
 )
@@ -187,20 +188,75 @@ func (c *ComposeModel) SetAddressBook(addrs []string) {
 
 // NewReply creates a compose model pre-filled for replying to a message.
 func NewReply(original db.Message, acfg config.AccountConfig, accounts []config.AccountConfig, addressBook []string) ComposeModel {
-	c := NewCompose(acfg, accounts, addressBook)
-	c.quoteCollapsed = true
+	c := newReplyBase(original, acfg, accounts, addressBook)
 	replyTo := original.ReplyTo
 	if replyTo == "" {
 		replyTo = original.From
 	}
 	c.toInput.SetValue(replyTo)
+	return c
+}
+
+// NewReplyAll is NewReply plus the original's other recipients on Cc. To is
+// the Reply-To (or From); Cc is the original To and Cc minus every address
+// that belongs to one of the configured accounts and minus anyone already in
+// To. Replying to your own message goes back to its recipients.
+func NewReplyAll(original db.Message, acfg config.AccountConfig, accounts []config.AccountConfig, addressBook []string) ComposeModel {
+	c := newReplyBase(original, acfg, accounts, addressBook)
+
+	var raw []string
+	for _, a := range accounts {
+		raw = append(raw, a.User, a.From)
+	}
+	raw = append(raw, acfg.User, acfg.From)
+	me := conversation.MyAddresses(raw...)
+
+	replyTo := original.ReplyTo
+	if replyTo == "" {
+		replyTo = original.From
+	}
+	seen := map[string]bool{}
+	var to, cc []string
+	add := func(dst *[]string, fields ...string) {
+		for _, p := range conversation.ParseParticipants(fields...) {
+			if me[p.Addr] || seen[p.Addr] {
+				continue
+			}
+			seen[p.Addr] = true
+			*dst = append(*dst, formatParticipant(p))
+		}
+	}
+	add(&to, replyTo)
+	if len(to) == 0 {
+		// The original came from one of my addresses: answer its recipients.
+		add(&to, original.To)
+	}
+	add(&cc, original.To, original.CC)
+
+	c.toInput.SetValue(strings.Join(to, ", "))
+	c.ccInput.SetValue(strings.Join(cc, ", "))
+	return c
+}
+
+func formatParticipant(p conversation.Participant) string {
+	if p.Name == "" {
+		return p.Addr
+	}
+	return (&mail.Address{Name: p.Name, Address: p.Addr}).String()
+}
+
+// newReplyBase fills everything reply and reply all share: subject, threading
+// headers, and the quoted original.
+func newReplyBase(original db.Message, acfg config.AccountConfig, accounts []config.AccountConfig, addressBook []string) ComposeModel {
+	c := NewCompose(acfg, accounts, addressBook)
+	c.quoteCollapsed = true
 	subject := original.Subject
 	if !strings.HasPrefix(strings.ToLower(subject), "re:") {
 		subject = "Re: " + subject
 	}
 	c.subjectInput.SetValue(subject)
 	c.inReplyTo = original.MessageID
-	c.references = original.MessageID
+	c.references = strings.TrimSpace(original.References + " " + original.MessageID)
 
 	// Quote the original body text
 	if original.BodyText != "" {
@@ -1105,6 +1161,30 @@ func composeOverlayWidth(termWidth int) int {
 	return min(termWidth-4, 74)
 }
 
+// composeFieldWidths returns the width of a To/CC/BCC/Subject row's control and
+// of the text inside it, for an overlay width.
+func composeFieldWidths(width int) (rowFieldW, textW int) {
+	labelW := min(10, formLabelWidth(width))
+	rowFieldW = max(1, width-2-labelW)
+	return rowFieldW, max(1, rowFieldW-4)
+}
+
+// SetWidth tells the single-line fields how wide they render. The bubbles
+// input only scrolls its text window (keeping the cursor visible) while
+// handling edits, using its own Width, so the stored inputs need it up front;
+// the render-time copy alone cannot scroll.
+func (c *ComposeModel) SetWidth(width int) {
+	_, textW := composeFieldWidths(width)
+	textW = max(1, textW-1) // the cursor cell at the end of the text
+	for _, in := range []*textinput.Model{&c.toInput, &c.ccInput, &c.bccInput, &c.subjectInput} {
+		if in.Width == textW {
+			continue
+		}
+		in.Width = textW
+		in.SetCursor(in.Position())
+	}
+}
+
 // composeBodyWidth is the content width of the body editor inside the compose
 // overlay. handleCompose uses it to keep the stored editor wrapping identically
 // to the rendered copy, so vertical navigation matches what the user sees.
@@ -1239,6 +1319,9 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 }
 
 func (c ComposeModel) View(width, height int, styles Styles) string {
+	// c is a copy: size its inputs so freshly opened (prefilled) fields scroll
+	// to their cursor without waiting for a keypress.
+	c.SetWidth(width)
 	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
 
 	// File picker view
@@ -1260,8 +1343,8 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	// marks focus and the bubbles textinput sits inset in the control column.
 	softInput := func(label string, ti textinput.Model, field composeField) string {
 		focused := c.focusedField == field
-		rowFieldW := max(1, width-2-labelW)
-		control := renderInsetControl(renderTextInput(ti, max(1, rowFieldW-4), focused, false, chrome), rowFieldW, 2, chrome)
+		rowFieldW, textW := composeFieldWidths(width)
+		control := renderInsetControl(renderTextInput(ti, textW, focused, false, chrome), rowFieldW, 2, chrome)
 		return renderSoftRow(label, focused, control, width, labelW, chrome)
 	}
 
