@@ -3237,6 +3237,10 @@ func (m Model) renderPaneHint(p pane) string {
 	case paneAccounts:
 		hint = m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " move  " +
 			m.keyHint(m.keys.Enter) + " toggle/sync  " + m.keyHint(m.keys.Sync) + " sync"
+		if m.selectedMailbox() != nil {
+			hint += "  " + m.keyHint(m.keys.NewFolder) + " new  " + m.keyHint(m.keys.RenameFolder) + " rename  " +
+				m.keyHint(m.keys.DeleteFolder) + " delete  " + m.keyHint(m.keys.HideFolder) + " hide"
+		}
 	case paneMessages:
 		if m.selectedOutboxRow() {
 			// None of the folder verbs apply to a queued message, and the

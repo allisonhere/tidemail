@@ -128,6 +128,34 @@ recategorized is found under its new tag, not the plugin's. In the content pane,
 the full headers and authentication results. `Ctrl+U` opens the mailing list's
 unsubscribe option when the message provides one.
 
+### Managing folders
+
+Folders are your mail server's real folders, shown as a tree: a folder such as
+`Work/Projects` sits under `Work`, and a folder with subfolders has a `▾`/`▸`
+marker. In the left pane:
+
+- `Enter` or `Space` on a folder with subfolders collapses or expands it (the
+  state is remembered). `←` collapses an open folder, or moves to its parent
+  folder; `→` expands a collapsed one. A collapsed folder's unread count includes
+  everything inside it. To fetch a folder that has subfolders, use `s`.
+- `n` creates a folder: on a folder it makes a subfolder, on an account or
+  section header a top-level folder. Type the name in the prompt row and press
+  `Enter` (or `Esc` to cancel).
+- `r` renames the selected folder; its subfolders come along.
+- `d` deletes the selected folder from the server after asking. The prompt says
+  how many subfolders go with it and that every message in them is deleted, and
+  `y` or `Enter` confirms. The Inbox and system folders (Sent, Drafts, Trash,
+  Junk, Archive, and Gmail's `[Gmail]` folders) can't be renamed or deleted.
+- `H` hides the selected folder (and its subfolders) from TideMail's sidebar
+  only; nothing changes on the server. "Show hidden folders" in the command
+  palette lists them again, marked `(hidden)`, and `H` on one unhides it.
+- `Shift+K` / `Shift+J` move the selected folder up or down among its siblings.
+  The order is local to TideMail.
+
+The command palette has matching entries: New folder, Rename selected folder,
+Delete selected folder, Hide or unhide selected folder, and Show hidden folders.
+Creating a folder is also possible from the move picker with `n`.
+
 ### Needs You
 
 **Needs You**, just below Unified Inbox in the sidebar, gathers the inbox
@@ -697,7 +725,11 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Shift+J` / `Shift+K` in Accounts | Move the highlighted account down / up the list |
 | `Ctrl+T` in the account form | Test the connection without saving |
 | `s` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
-| `Enter` on a folder | Fetch that folder now |
+| `Enter` on a folder | Fetch that folder now; on a folder with subfolders, collapse or expand it |
+| `n` / `r` / `d` in Accounts | New, rename, delete the selected folder (see Managing folders) |
+| `H` in Accounts | Hide or unhide the selected folder (local only) |
+| `Shift+K` / `Shift+J` on a folder | Move the folder up / down among its siblings |
+| `←` / `→` on a folder | Collapse or go to parent / expand |
 | `F` | Sync all mailboxes (asks first when there are more than 10 folders) |
 | `Enter` in Drafts | Reopen selected draft in compose |
 | `d` in Drafts | Delete selected draft |
