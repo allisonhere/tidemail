@@ -26,6 +26,8 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Plugin secrets shorter than 6 characters are refused when saved: error text from a plugin is
+  scrubbed of secret values, and shorter ones could not be masked, so they could have leaked.
 - Manual-only accounts (`sync_minutes = -1`) no longer fetch their inbox at launch; they still list
   their folders once so the folder tree stays current.
 - The sidebar highlight stays on its folder when folders are added, removed or hidden above it, and

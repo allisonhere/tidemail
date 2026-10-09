@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/allisonhere/tidemail/internal/config"
 )
 
 // DefaultTimeout bounds one plugin invocation, from launch to exit.
@@ -108,8 +110,8 @@ func Invoke(ctx context.Context, p Plugin, req Request, timeout time.Duration, s
 }
 
 // minRedactLen skips masking very short secrets, which would otherwise mask
-// ordinary text.
-const minRedactLen = 6
+// ordinary text. Secrets shorter than this are refused when stored.
+const minRedactLen = config.MinPluginSecretLen
 
 // redactSecrets replaces every copy of a secret value with asterisks.
 func redactSecrets(b []byte, secrets map[string]string) []byte {
