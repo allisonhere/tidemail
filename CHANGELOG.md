@@ -4,6 +4,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.2.0
+
 ### Added
 
 - Folders are now a tree in the sidebar: nested folders (`Work/Projects`) collapse and expand
