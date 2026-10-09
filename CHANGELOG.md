@@ -26,6 +26,9 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- `fetch.log` is rotated to `fetch.log.1` once it passes 5 MB instead of growing forever.
+- If a folder rename or move succeeds on the server but TideMail can't record it locally, it now says
+  so and re-lists the folders instead of just reporting a failure.
 - Plugin secrets shorter than 6 characters are refused when saved: error text from a plugin is
   scrubbed of secret values, and shorter ones could not be masked, so they could have leaked.
 - Manual-only accounts (`sync_minutes = -1`) no longer fetch their inbox at launch; they still list

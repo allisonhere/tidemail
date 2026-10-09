@@ -1021,12 +1021,25 @@ func storeFetchedMessages(database *db.DB, mailboxID int64, msgs []db.Message) (
 	return newMsgs, nil
 }
 
-func logFetch(account, mailbox string, msgCount int, connectDur, fetchDur, totalDur time.Duration, err error) {
-	logPath, pathErr := config.LogPath()
-	if pathErr != nil {
-		return
+// maxFetchLogBytes caps fetch.log. Past it the file is moved to fetch.log.1
+// (replacing the previous one) and a fresh log is started.
+const maxFetchLogBytes = 5 << 20
+
+// openFetchLog opens fetch.log for appending, rotating it first if it has
+// grown past maxFetchLogBytes.
+func openFetchLog() (*os.File, error) {
+	logPath, err := config.LogPath()
+	if err != nil {
+		return nil, err
 	}
-	f, openErr := os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	if info, statErr := os.Stat(logPath); statErr == nil && info.Size() > maxFetchLogBytes {
+		_ = os.Rename(logPath, logPath+".1")
+	}
+	return os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+}
+
+func logFetch(account, mailbox string, msgCount int, connectDur, fetchDur, totalDur time.Duration, err error) {
+	f, openErr := openFetchLog()
 	if openErr != nil {
 		return
 	}

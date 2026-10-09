@@ -703,3 +703,23 @@ func TestShowingHiddenFoldersKeepsSelectedVisibleFolder(t *testing.T) {
 		}
 	}
 }
+
+func TestRenameThatReachedTheServerButNotTheDatabaseTriggersAFolderRefresh(t *testing.T) {
+	m, _, accountID := folderManageModel(t)
+	m.cfg.Accounts = []config.AccountConfig{{Name: "Personal", IMAPHost: "imap.example.com"}}
+
+	next, cmd := m.Update(FolderRenamedMsg{AccountID: accountID, OldName: "Work", NewName: "Office", Err: errors.New("disk full"), ServerRenamed: true})
+	got := next.(Model)
+	if !strings.Contains(got.statusMsg, "renamed on the server") || !strings.Contains(got.statusMsg, "refreshing folders") {
+		t.Fatalf("status should explain the half-done rename, got %q", got.statusMsg)
+	}
+	if cmd == nil {
+		t.Fatal("expected a command batch (folder refresh)")
+	}
+
+	// A rename the server refused is a plain failure: nothing changed anywhere.
+	next, _ = m.Update(FolderRenamedMsg{AccountID: accountID, OldName: "Work", NewName: "Office", Err: errors.New("NO")})
+	if got := next.(Model); !strings.HasPrefix(got.statusMsg, "rename folder failed") {
+		t.Fatalf("got %q", got.statusMsg)
+	}
+}

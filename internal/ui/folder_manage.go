@@ -40,6 +40,9 @@ type FolderRenamedMsg struct {
 	// folder that was moved out of its parent.
 	Orders map[string]int
 	Err    error
+	// ServerRenamed is set when the server already did the rename but TideMail's
+	// own records could not be updated, so the cache is out of step with it.
+	ServerRenamed bool
 }
 
 // FolderDeletedMsg reports the result of deleting a folder and its subfolders.
@@ -407,12 +410,18 @@ func (m Model) renameFolderCmd(mb db.Mailbox, newName string, orders map[string]
 				return fail(err)
 			}
 		}
+		// From here the server has renamed the folder (if there is one), so a
+		// failure leaves TideMail's cache behind it and needs a resync.
+		serverDone := acfg.IMAPHost != ""
+		failLocal := func(err error) tea.Msg {
+			return FolderRenamedMsg{AccountID: mb.AccountID, OldName: mb.Name, NewName: newName, Err: err, ServerRenamed: serverDone}
+		}
 		if err := database.RenameMailboxTree(mb.AccountID, mb.Name, newName, delimiter, cleanDisplayName); err != nil {
-			return fail(err)
+			return failLocal(err)
 		}
 		if len(orders) > 0 {
 			if err := database.SetMailboxOrders(mb.AccountID, orders); err != nil {
-				return fail(err)
+				return failLocal(err)
 			}
 		}
 		return FolderRenamedMsg{AccountID: mb.AccountID, OldName: mb.Name, NewName: newName, Orders: orders}
@@ -472,6 +481,12 @@ func (m Model) deleteFolderCmd(mb db.Mailbox) tea.Cmd {
 func (m Model) handleFolderRenamed(msg FolderRenamedMsg) (tea.Model, tea.Cmd) {
 	m.folderOpBusy = false
 	if msg.Err != nil {
+		if msg.ServerRenamed {
+			// The server did rename it; only our copy is stale. Re-list the
+			// folders so the sidebar catches up.
+			m.setStatus("folder renamed on the server, but TideMail couldn't update its own copy ("+msg.Err.Error()+"); refreshing folders", true)
+			return m, tea.Batch(m.refreshMailboxesCmd(msg.AccountID), m.clearStatusCmd())
+		}
 		m.setStatus("rename folder failed: "+msg.Err.Error(), true)
 		return m, m.clearStatusCmd()
 	}

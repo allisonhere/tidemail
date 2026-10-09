@@ -308,7 +308,12 @@ func (db *DB) RenameMailboxTree(accountID int64, oldName, newName, delimiter str
 		}
 		children = append(children, c)
 	}
+	// A query that failed part-way must not commit a half-renamed tree.
+	iterErr := rows.Err()
 	rows.Close()
+	if iterErr != nil {
+		return iterErr
+	}
 	for _, c := range children {
 		renamed := newName + delimiter + c.name[len(oldName+delimiter):]
 		if _, err := tx.Exec(`UPDATE mailboxes SET name = ?, display_name = ? WHERE id = ?`, renamed, display(renamed), c.id); err != nil {
