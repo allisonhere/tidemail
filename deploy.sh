@@ -1425,10 +1425,19 @@ act_lint() {
     log_warn "golangci-lint not installed — skipping"
     return 0
   fi
+  # Prefer a linter installed with `go install` (built with the active Go) over
+  # whatever PATH finds first: a distro package or mise shim is often built
+  # with an older Go and cannot read the current standard library.
+  local linter=golangci-lint gobin
+  gobin="$(go env GOPATH 2>/dev/null)/bin/golangci-lint"
+  if [ -x "$gobin" ]; then
+    linter="$gobin"
+  fi
+  log_detail "linter: $(command -v "$linter" 2>/dev/null || echo "$linter")"
   # The frame clips long lines, so keep the full output in a file as well.
   local lint_log="${TMPDIR:-/tmp}/${BINARY_NAME:-tidemail}-lint.log"
   if run_streamed "golangci-lint run" \
-    bash -c 'set -o pipefail; golangci-lint run 2>&1 | tee "$1"' _ "$lint_log"; then
+    bash -c 'set -o pipefail; "$1" run 2>&1 | tee "$2"' _ "$linter" "$lint_log"; then
     log_ok "lint clean"
     return 0
   fi
