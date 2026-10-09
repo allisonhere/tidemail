@@ -26,6 +26,10 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Manual-only accounts (`sync_minutes = -1`) no longer fetch their inbox at launch; they still list
+  their folders once so the folder tree stays current.
+- The sidebar highlight stays on its folder when folders are added, removed or hidden above it, and
+  the reading pane clears when the open folder is removed.
 - Long To/CC/BCC lines in compose scroll sideways to follow the cursor instead of running off the
   edge of the field.
 - Text files attached to a message (parts marked as attachments) are now shown as attachments

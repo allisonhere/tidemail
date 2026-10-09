@@ -431,6 +431,9 @@ func (m *Model) startSyncTimers() tea.Cmd {
 		}
 		// Also trigger an immediate sync for every inbox on startup,
 		// so the user sees fresh mail without waiting for the first timer tick.
+		if !m.syncsOnLaunch(acc.ID) {
+			continue
+		}
 		for _, mb := range m.mailboxes {
 			if mb.AccountID == acc.ID && isInboxMailbox(mb) {
 				cmds = append(cmds, m.syncMailboxCmd(mb.ID, false))
@@ -443,6 +446,20 @@ func (m *Model) startSyncTimers() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// syncsOnLaunch reports whether an account fetches mail at startup. A
+// manual-only account (sync_minutes < 0) refreshes only when asked, so it does
+// not. An account whose config can't be resolved keeps the old behaviour.
+func (m *Model) syncsOnLaunch(accountID int64) bool {
+	for _, acc := range m.accounts {
+		if acc.ID != accountID {
+			continue
+		}
+		acfg, err := m.accountConfigFor(acc)
+		return err != nil || acfg.SyncMinutes >= 0
+	}
+	return true
+}
+
 // syncInboxesNowCmd kicks off an immediate one-shot sync of every inbox mailbox.
 // Auto-sync timers (tea.Every) only fire after the first interval elapses, so
 // without this the app would show only cached mail on launch until the first
@@ -450,7 +467,7 @@ func (m *Model) startSyncTimers() tea.Cmd {
 func (m *Model) syncInboxesNowCmd() tea.Cmd {
 	var cmds []tea.Cmd
 	for _, mb := range m.mailboxes {
-		if isInboxMailbox(mb) {
+		if isInboxMailbox(mb) && m.syncsOnLaunch(mb.AccountID) {
 			cmds = append(cmds, m.syncMailboxCmd(mb.ID, false))
 		}
 	}

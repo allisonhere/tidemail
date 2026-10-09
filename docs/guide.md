@@ -92,7 +92,7 @@ all can take a while.
 When you stop on a non-inbox folder, TideMail silently refreshes it if its cache
 is more than 15 minutes old. Scrolling past folders does not queue refreshes;
 press `Enter` on a folder row when you want to fetch it immediately. Manual-only
-accounts refresh only when you explicitly use `Enter`, `s`, or `F`.
+accounts fetch no mail on their own, not even at launch: they refresh only when you explicitly use `Enter`, `s`, or `F`. (TideMail still lists their folders once at launch so the folder tree stays current.)
 `sync_minutes` controls how an account refreshes on its own:
 
 | Value | Meaning |
