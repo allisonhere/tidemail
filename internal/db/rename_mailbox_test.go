@@ -39,6 +39,33 @@ func TestRenameMailboxTreeMovesSubfoldersAndKeepsIDs(t *testing.T) {
 	}
 }
 
+func TestRenameMailboxTreeWithNilDelimiterOnlyRenamesExactMailbox(t *testing.T) {
+	d := newTestDB(t)
+	acc, _ := d.AddAccount("", "Personal", "")
+	ids := map[string]int64{}
+	for _, name := range []string{"Work", "Workshop", "Work/Projects"} {
+		id, err := d.UpsertMailbox(Mailbox{AccountID: acc, Name: name})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[name] = id
+	}
+	if err := d.RenameMailboxTree(acc, "Work", "Office", "", func(n string) string { return n }); err != nil {
+		t.Fatal(err)
+	}
+	list, err := d.ListMailboxes(acc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[int64]string{}
+	for _, mb := range list {
+		got[mb.ID] = mb.Name
+	}
+	if got[ids["Work"]] != "Office" || got[ids["Workshop"]] != "Workshop" || got[ids["Work/Projects"]] != "Work/Projects" {
+		t.Fatalf("flat siblings changed: %v", got)
+	}
+}
+
 // SQLite's substr counts characters, not bytes, so a non-ASCII parent must
 // still find its children.
 func TestRenameMailboxTreeFindsChildrenOfANonASCIIParent(t *testing.T) {

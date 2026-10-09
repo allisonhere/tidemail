@@ -115,6 +115,8 @@ a key. TideMail keeps the help screen inside the app and lets you search it.
   rename and `d` to delete the selected one, `H` to hide it locally, and
   `Shift+K` / `Shift+J` to walk it up or down the tree: reorder it, move it into an open folder, or out of its parent; `>` nests it under the folder above (even an empty one) and `<` moves it back out. `Enter` or `←` / `→` collapse and expand
   folders that have subfolders.
+  On servers without a folder hierarchy, names stay literal and flat: `n`
+  creates at the account root, and nesting is unavailable.
 - Rest on a folder to refresh a stale cache silently, press `Enter` or `s` to
   fetch it immediately, or press `F` to sync every folder.
 - Mark messages with `Space`, then archive, move, delete, or change read state as

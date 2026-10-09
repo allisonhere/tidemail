@@ -546,7 +546,7 @@ func (m *Model) refreshMailboxesCmd(accountID int64) tea.Cmd {
 				mb := db.Mailbox{
 					AccountID:   accountID,
 					Name:        info.Name,
-					DisplayName: cleanDisplayName(info.Name),
+					DisplayName: displayNameForDelimiter(info.Name, info.Delimiter),
 					Delimiter:   info.Delimiter,
 					Flags:       info.Flags,
 				}

@@ -98,7 +98,7 @@ func (db *DB) ListUnreadMessages(mailboxID int64) ([]Message, error) {
 // accounts. Unified Inbox and Needs You share it.
 const inboxMailboxPredicate = `(
 			lower(mailboxes.name) = 'inbox'
-			OR lower(mailboxes.display_name) = 'inbox'
+			OR (mailboxes.delimiter != '' AND lower(mailboxes.display_name) = 'inbox')
 			OR instr(lower(mailboxes.flags), '\inbox') > 0
 		)`
 
@@ -164,7 +164,7 @@ func (db *DB) SearchAllMessages(query string, unreadFirst bool) ([]Message, erro
 		       messages.in_reply_to, messages.references_text, messages.subject, messages.from_addr, messages.to_addr, messages.cc_addr,
 		       messages.reply_to, messages.date, messages.body_text, messages.body_html, messages.summary,
 		       messages.flags, messages.read, messages.starred, messages.has_attachment, messages.headers,
-		       accounts.name, COALESCE(NULLIF(mailboxes.display_name, ''), mailboxes.name)`
+		       accounts.name, CASE WHEN mailboxes.delimiter = '' THEN mailboxes.name ELSE COALESCE(NULLIF(mailboxes.display_name, ''), mailboxes.name) END`
 	const joins = `
 		JOIN mailboxes ON mailboxes.id = messages.mailbox_id
 		JOIN accounts ON accounts.id = mailboxes.account_id`

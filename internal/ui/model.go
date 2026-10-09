@@ -1506,7 +1506,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				ID:          msg.MailboxID,
 				AccountID:   msg.AccountID,
 				Name:        msg.Name,
-				DisplayName: cleanDisplayName(msg.Name),
+				DisplayName: displayNameForDelimiter(msg.Name, msg.Delimiter),
 				Delimiter:   msg.Delimiter,
 			})
 		}
@@ -3495,7 +3495,7 @@ func (m Model) renderStatusBar() string {
 				parts = append(parts, m.statusBarInlineText(sb, fmt.Sprintf("%d unread", unread)))
 			}
 		} else if mb := m.selectedMailbox(); mb != nil {
-			parts = append(parts, m.statusBarInlineText(sb, cleanDisplayName(mb.DisplayName)))
+			parts = append(parts, m.statusBarInlineText(sb, displayNameForDelimiter(mb.Name, mb.Delimiter)))
 			if unread := m.displayMailboxUnreadCount(*mb); unread > 0 {
 				parts = append(parts, m.statusBarInlineText(sb, fmt.Sprintf("%d unread", unread)))
 			}
@@ -4020,7 +4020,7 @@ func saveAccountDatabaseCmd(database *db.DB, request AccountSavedMsg, previousCf
 		for _, info := range request.MailboxInfo {
 			mailboxes = append(mailboxes, db.Mailbox{
 				Name:        info.Name,
-				DisplayName: cleanDisplayName(info.Name),
+				DisplayName: displayNameForDelimiter(info.Name, info.Delimiter),
 				Delimiter:   info.Delimiter,
 				Flags:       info.Flags,
 			})

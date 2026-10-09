@@ -132,7 +132,10 @@ unsubscribe option when the message provides one.
 
 Folders are your mail server's real folders, shown as a tree: a folder such as
 `Work/Projects` sits under `Work`, and a folder with subfolders has a `▾`/`▸`
-marker. In the left pane:
+marker. If a server reports no hierarchy delimiter, its folders stay flat:
+punctuation in names is literal, `n` creates at the account root, and nesting
+or moving folders into/out of parents is unavailable. Reordering, renaming,
+deleting, and moving messages still work. In the left pane:
 
 - `Enter` or `Space` on a folder with subfolders collapses or expands it (the
   state is remembered). `←` collapses an open folder, or moves to its parent
@@ -161,9 +164,10 @@ marker. In the left pane:
 - `>` nests the selected folder under the folder just above it, as its last
   child, even if that folder has no subfolders yet (Shift+J/K can only move into
   a folder that already has some). `<` moves it out of its parent to just after
-  it. Both are real moves on the server, subfolders included. While a rename,
-  move or delete is still running on the server, further ones are refused with a
-  short notice, so a quick second keypress can't act on a name that is changing.
+  it. Both are real moves on the server, subfolders included. While a create,
+  rename, move or delete is still running on the server, further ones are
+  refused with a short notice, so a quick second keypress can't act on a name
+  that is changing.
   A rename or move is also refused up front if any subfolder would land on an
   existing folder, and deleting a folder is refused if a system folder (such as
   a `\Sent` subfolder) is inside it.
@@ -718,7 +722,8 @@ returns to the list; from the list, `esc` returns to the Settings sidebar.
 `Tab` also returns to the sidebar when you are not typing a secret.
 Plugin changes save immediately. The command palette's **Plugins (experimental)**
 view still offers `s` to open a plugin's settings. Secret values such as API keys are stored in your system keychain, never
-in `config.toml`, and are shown only as `************`. Plugins are separate
+in `config.toml`, and are shown only as `************`. A secret must be at least 6
+characters, so it can be masked in plugin output. Plugins are separate
 programs, not part of TideMail's mail handling: for example, TideMail Smart (JEV)
 (an external plugin) can call TypeSafe's Jev model over the network, and its
 settings describe exactly what it sends.

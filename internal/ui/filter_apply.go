@@ -133,7 +133,7 @@ func resolveOrCreateFolder(ctx context.Context, database *db.DB, client *imapCli
 	mailbox := db.Mailbox{
 		AccountID:   accountID,
 		Name:        fullName,
-		DisplayName: cleanDisplayName(fullName),
+		DisplayName: displayNameForDelimiter(fullName, delimiter),
 		Delimiter:   delimiter,
 	}
 	id, err := database.UpsertMailbox(mailbox)

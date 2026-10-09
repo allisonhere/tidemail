@@ -423,6 +423,13 @@ func cleanDisplayName(name string) string {
 	return cleaned
 }
 
+func displayNameForDelimiter(name, delimiter string) string {
+	if delimiter == "" {
+		return name
+	}
+	return cleanDisplayName(name)
+}
+
 func hasFlag(flags []string, flag string) bool {
 	for _, f := range flags {
 		if strings.EqualFold(f, flag) {
@@ -455,7 +462,7 @@ func isGmailSystemFolder(name string) bool {
 }
 
 func isInboxMailbox(mb db.Mailbox) bool {
-	if strings.EqualFold(strings.TrimSpace(mb.Name), "inbox") || strings.EqualFold(strings.TrimSpace(mb.DisplayName), "inbox") {
+	if strings.EqualFold(strings.TrimSpace(mb.Name), "inbox") || (mb.Delimiter != "" && strings.EqualFold(strings.TrimSpace(mb.DisplayName), "inbox")) {
 		return true
 	}
 	for _, flag := range mb.Flags {

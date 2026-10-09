@@ -22,11 +22,17 @@ import (
 // the way.
 func mailboxNamespace(mbs []db.Mailbox) (prefix, delimiter string) {
 	delimiter = "/"
+	if len(mbs) > 0 {
+		delimiter = ""
+	}
 	for _, mb := range mbs {
 		if mb.Delimiter != "" {
 			delimiter = mb.Delimiter
 			break
 		}
+	}
+	if delimiter == "" {
+		return "", ""
 	}
 	inboxPrefix := "INBOX" + delimiter
 	nested := 0

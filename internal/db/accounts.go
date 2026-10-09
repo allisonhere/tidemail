@@ -292,29 +292,31 @@ func (db *DB) RenameMailboxTree(accountID int64, oldName, newName, delimiter str
 	if n, _ := res.RowsAffected(); n == 0 {
 		return fmt.Errorf("mailbox %q not found", oldName)
 	}
-	rows, err := tx.Query(`SELECT id, name FROM mailboxes WHERE account_id = ? AND substr(name, 1, ?) = ?`,
-		accountID, utf8.RuneCountInString(oldName+delimiter), oldName+delimiter)
-	if err != nil {
-		return err
-	}
 	type child struct {
 		id   int64
 		name string
 	}
 	var children []child
-	for rows.Next() {
-		var c child
-		if err := rows.Scan(&c.id, &c.name); err != nil {
-			rows.Close()
+	if delimiter != "" {
+		rows, err := tx.Query(`SELECT id, name FROM mailboxes WHERE account_id = ? AND substr(name, 1, ?) = ?`,
+			accountID, utf8.RuneCountInString(oldName+delimiter), oldName+delimiter)
+		if err != nil {
 			return err
 		}
-		children = append(children, c)
-	}
-	// A query that failed part-way must not commit a half-renamed tree.
-	iterErr := rows.Err()
-	rows.Close()
-	if iterErr != nil {
-		return iterErr
+		for rows.Next() {
+			var c child
+			if err := rows.Scan(&c.id, &c.name); err != nil {
+				rows.Close()
+				return err
+			}
+			children = append(children, c)
+		}
+		// A query that failed part-way must not commit a half-renamed tree.
+		iterErr := rows.Err()
+		rows.Close()
+		if iterErr != nil {
+			return iterErr
+		}
 	}
 	for _, c := range children {
 		renamed := newName + delimiter + c.name[len(oldName+delimiter):]

@@ -40,6 +40,8 @@ Current release: **v1.0.28**.
 - **Folder management**: nested folder tree with collapse; create, rename, and delete real IMAP
   folders from the sidebar (`n`/`r`/`d`, subtree-aware, system folders protected); local hide and
   reorder and walk in/out of parents (`H`, `Shift+J`/`K`, `>`/`<`) stored in `mailbox_prefs`.
+  NIL-delimiter servers use flat literal folder names: top-level creation and reorder remain,
+  while nesting and reparenting are unavailable.
 - **Three-pane UI**: accounts sidebar, message list, message content. Pane header
   bars can be shown or removed; when removed, the focused title and shortcuts
   move to the status line and each pane gains a content row.

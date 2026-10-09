@@ -149,7 +149,7 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 				continue // cannot be opened, no messages — skip
 			}
 			// Also skip children of Noselect parents (e.g. dovecot.sieve under INBOX.dovecot)
-			if idx := strings.LastIndex(mb.Name, "."); idx >= 0 {
+			if idx := strings.LastIndex(mb.Name, mb.Delimiter); mb.Delimiter != "" && idx >= 0 {
 				parent := mb.Name[:idx]
 				skip := false
 				for _, pmb := range mbs {
@@ -163,12 +163,12 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 				}
 			}
 			lower := strings.ToLower(mb.Name)
-			if lower == "inbox" || strings.HasSuffix(lower, "/inbox") {
+			if lower == "inbox" || (mb.Delimiter != "" && strings.HasSuffix(lower, mb.Delimiter+"inbox")) {
 				mb := mb
 				inbox = &mb
 				continue
 			}
-			if isGmailSystemFolder(mb.Name) {
+			if mb.Delimiter != "" && isGmailSystemFolder(mb.Name) {
 				sysMbs = append(sysMbs, mb)
 			} else {
 				personalMbs = append(personalMbs, mb)
@@ -844,6 +844,9 @@ func (m Model) renderSidebarMailboxRow(mb db.Mailbox, row sidebarRow, selected b
 		badge = m.mailboxBadgeStyle(mb, selected).Render(fmt.Sprintf("(%d)", unread))
 	}
 	title := row.label
+	if mb.Delimiter == "" {
+		title = mb.Name
+	}
 	if title == "" {
 		raw := mb.DisplayName
 		if raw == "" {

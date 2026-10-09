@@ -137,19 +137,23 @@ func moveDelimiter(mailboxes []db.Mailbox, accountID int64, currentPath string) 
 			return moveMailboxDelimiter(mb)
 		}
 	}
+	known := false
 	for _, mb := range mailboxes {
+		if mb.AccountID == accountID {
+			known = true
+		}
 		if mb.AccountID == accountID && mb.Delimiter != "" {
 			return mb.Delimiter
 		}
+	}
+	if known {
+		return ""
 	}
 	return "/"
 }
 
 func moveMailboxDelimiter(mb db.Mailbox) string {
-	if mb.Delimiter != "" {
-		return mb.Delimiter
-	}
-	return "/"
+	return mb.Delimiter
 }
 
 func exactMoveMailbox(mailboxes []db.Mailbox, accountID int64, path string) (db.Mailbox, bool) {
@@ -166,7 +170,7 @@ func splitMovePath(path, delimiter string) []string {
 		return nil
 	}
 	if delimiter == "" {
-		delimiter = "/"
+		return []string{path}
 	}
 	parts := strings.Split(path, delimiter)
 	out := parts[:0]
@@ -212,7 +216,11 @@ func (m Model) handleMovePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if name == "" {
 				return m, nil
 			}
-			return m, m.createFolderCmd(m.movePicker.accountID, m.movePicker.currentPath, name)
+			parent := m.movePicker.currentPath
+			if moveDelimiter(m.mailboxes, m.movePicker.accountID, parent) == "" {
+				parent = ""
+			}
+			return m, m.createFolderCmd(m.movePicker.accountID, parent, name)
 		default:
 			var cmd tea.Cmd
 			m.movePicker.nameInput, cmd = m.movePicker.nameInput.Update(msg)

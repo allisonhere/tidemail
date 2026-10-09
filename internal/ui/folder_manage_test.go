@@ -800,6 +800,90 @@ func TestRenameCarriesPrefsOnAPipeDelimitedAccount(t *testing.T) {
 	}
 }
 
+func TestRenameDropsStaleDestinationPrefAndCollapseState(t *testing.T) {
+	m, database, accountID := folderManageModel(t)
+	workID := mailboxIDByName(t, m, "Work")
+	m.setPref(accountID, "Office", func(p *db.MailboxPref) { p.Hidden = true; p.Order = 50 })
+	m.collapsedSections[fmt.Sprintf("folder:%d:Office", accountID)] = true
+	cursorOnMailbox(t, &m, workID)
+	msg := m.renameFolderCmd(*m.mailboxByID(workID), "Office", nil)().(FolderRenamedMsg)
+	if msg.Err != nil {
+		t.Fatal(msg.Err)
+	}
+	next, _ := m.Update(msg)
+	m = next.(Model)
+	if _, ok := m.mailboxPrefs[accountID]["Office"]; ok {
+		t.Fatalf("stale destination pref survived: %+v", m.mailboxPrefs[accountID])
+	}
+	if m.collapsedSections[fmt.Sprintf("folder:%d:Office", accountID)] {
+		t.Fatal("stale collapse state survived")
+	}
+	if got := m.selectedMailbox(); got == nil || got.ID != workID {
+		t.Fatalf("renamed folder not selected: %+v", got)
+	}
+	prefs, err := database.ListMailboxPrefs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := prefs[accountID]["Office"]; ok {
+		t.Fatalf("database kept stale preference: %+v", prefs[accountID])
+	}
+}
+
+func TestFlatFolderOperationsStayAtAccountRoot(t *testing.T) {
+	m, database, accountID := folderManageModel(t)
+	for i := range m.mailboxes {
+		m.mailboxes[i].Delimiter = ""
+	}
+	for _, name := range []string{"Workshop", "Work/Projects"} {
+		id, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: name})
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.mailboxes = append(m.mailboxes, db.Mailbox{ID: id, AccountID: accountID, Name: name})
+	}
+	if reason := protectedFolderReason(db.Mailbox{Name: "Work/Sent"}); reason != "" {
+		t.Fatalf("literal flat name treated as a system folder: %s", reason)
+	}
+	m.rebuildSidebar()
+	workID := mailboxIDByName(t, m, "Work")
+	cursorOnMailbox(t, &m, workID)
+	if got := m.folderSubtree(*m.mailboxByID(workID)); len(got) != 1 {
+		t.Fatalf("flat subtree = %+v", got)
+	}
+	next, _ := m.startNewFolder()
+	m = next.(Model)
+	if m.folderPrompt.parent != "" {
+		t.Fatalf("new folder parent = %q", m.folderPrompt.parent)
+	}
+	m.folderPrompt.input.SetValue("Clients")
+	next, createCmd := m.submitFolderPrompt()
+	m = next.(Model)
+	created := createCmd().(FolderCreatedMsg)
+	if created.Err != nil || created.Name != "Clients" || created.Delimiter != "" {
+		t.Fatalf("flat create = %+v", created)
+	}
+	next, _ = m.Update(created)
+	m = next.(Model)
+	if !namesOf(m)["Clients"] {
+		t.Fatalf("created folder missing: %v", namesOf(m))
+	}
+	next, cmd := m.indentSelectedFolder()
+	m = next.(Model)
+	if cmd == nil || !strings.Contains(m.statusMsg, "does not support nested") {
+		t.Fatalf("nest status = %q", m.statusMsg)
+	}
+	msg := m.renameFolderCmd(*m.mailboxByID(workID), "Office", nil)().(FolderRenamedMsg)
+	if msg.Err != nil {
+		t.Fatal(msg.Err)
+	}
+	next, _ = m.Update(msg)
+	m = next.(Model)
+	if !namesOf(m)["Workshop"] || !namesOf(m)["Work/Projects"] || !namesOf(m)["Office"] {
+		t.Fatalf("flat siblings changed: %v", namesOf(m))
+	}
+}
+
 func TestCreateFolderIsRefusedWhileAnotherFolderChangeRuns(t *testing.T) {
 	m, _, accountID := folderManageModel(t)
 	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Work"))

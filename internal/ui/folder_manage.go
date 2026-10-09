@@ -63,6 +63,9 @@ func folderDelimiter(mb db.Mailbox) string { return moveMailboxDelimiter(mb) }
 
 // folderLeaf is the last path segment of a mailbox name.
 func folderLeaf(mb db.Mailbox) string {
+	if folderDelimiter(mb) == "" {
+		return mb.Name
+	}
 	if i := strings.LastIndex(mb.Name, folderDelimiter(mb)); i >= 0 {
 		return mb.Name[i+len(folderDelimiter(mb)):]
 	}
@@ -71,6 +74,9 @@ func folderLeaf(mb db.Mailbox) string {
 
 // folderParentName is everything above the last segment ("" at the top level).
 func folderParentName(mb db.Mailbox) string {
+	if folderDelimiter(mb) == "" {
+		return ""
+	}
 	if i := strings.LastIndex(mb.Name, folderDelimiter(mb)); i >= 0 {
 		return mb.Name[:i]
 	}
@@ -89,13 +95,13 @@ func protectedFolderReason(mb db.Mailbox) string {
 			return "system folders can't be renamed or deleted"
 		}
 	}
-	if isGmailSystemFolder(mb.Name) || strings.HasPrefix(mb.Name, "[") {
+	if mb.Delimiter != "" && (isGmailSystemFolder(mb.Name) || strings.HasPrefix(mb.Name, "[")) {
 		return "system folders can't be renamed or deleted"
 	}
 	// Only top-level standard names are system folders ("Work/Sent" is not).
 	leaf := folderLeaf(mb)
 	top := strings.EqualFold(mb.Name, leaf) || strings.EqualFold(strings.TrimPrefix(strings.ToUpper(mb.Name), "INBOX"+strings.ToUpper(folderDelimiter(mb))), strings.ToUpper(leaf))
-	if top && mailboxRank(leaf) < 6 {
+	if top && (mb.Delimiter != "" || !strings.Contains(leaf, "/")) && mailboxRank(leaf) < 6 {
 		return "system folders can't be renamed or deleted"
 	}
 	return ""
@@ -135,7 +141,7 @@ func (m Model) folderSubtree(mb db.Mailbox) []db.Mailbox {
 		if other.AccountID != mb.AccountID {
 			continue
 		}
-		if other.ID == mb.ID || strings.HasPrefix(other.Name, prefix) {
+		if other.ID == mb.ID || (folderDelimiter(mb) != "" && strings.HasPrefix(other.Name, prefix)) {
 			out = append(out, other)
 		}
 	}
@@ -202,7 +208,7 @@ func (m Model) startNewFolder() (tea.Model, tea.Cmd) {
 	}
 	parent := ""
 	// A subfolder of the Inbox is a top-level folder in the account's namespace.
-	if mb != nil && !strings.EqualFold(mb.Name, "INBOX") {
+	if mb != nil && mb.Delimiter != "" && !strings.EqualFold(mb.Name, "INBOX") {
 		parent = mb.Name
 	}
 	m.folderPrompt = folderPrompt{active: true, accountID: accountID, parent: parent, input: newFolderInput("")}
@@ -362,6 +368,9 @@ func (m Model) accountCfgForAccountID(accountID int64) (config.AccountConfig, er
 // account's namespace when parentPath is empty.
 func (m Model) createFolderOnServerCmd(accountID int64, parentPath, name string) tea.Cmd {
 	delimiter := moveDelimiter(m.mailboxes, accountID, parentPath)
+	if delimiter == "" {
+		parentPath = ""
+	}
 	fullName := name
 	if parentPath != "" {
 		fullName = parentPath + delimiter + name
@@ -386,7 +395,7 @@ func (m Model) createFolderOnServerCmd(accountID int64, parentPath, name string)
 		id, err := database.UpsertMailbox(db.Mailbox{
 			AccountID:   accountID,
 			Name:        fullName,
-			DisplayName: cleanDisplayName(fullName),
+			DisplayName: displayNameForDelimiter(fullName, delimiter),
 			Delimiter:   delimiter,
 		})
 		if err != nil {
@@ -424,7 +433,7 @@ func (m Model) renameFolderCmd(mb db.Mailbox, newName string, orders map[string]
 		failLocal := func(err error) tea.Msg {
 			return FolderRenamedMsg{AccountID: mb.AccountID, OldName: mb.Name, NewName: newName, Err: err, ServerRenamed: serverDone}
 		}
-		if err := database.RenameMailboxTree(mb.AccountID, mb.Name, newName, delimiter, cleanDisplayName); err != nil {
+		if err := database.RenameMailboxTree(mb.AccountID, mb.Name, newName, delimiter, func(name string) string { return displayNameForDelimiter(name, delimiter) }); err != nil {
 			return failLocal(err)
 		}
 		if len(orders) > 0 {
@@ -516,11 +525,13 @@ func (m Model) handleFolderRenamed(msg FolderRenamedMsg) (tea.Model, tea.Cmd) {
 		if name == msg.OldName {
 			return msg.NewName, true
 		}
-		if prefix := msg.OldName + delimiter; strings.HasPrefix(name, prefix) {
+		if prefix := msg.OldName + delimiter; delimiter != "" && strings.HasPrefix(name, prefix) {
 			return msg.NewName + delimiter + name[len(prefix):], true
 		}
 		return "", false
 	}
+	type renamePair struct{ old, new string }
+	var pairs []renamePair
 	for i := range m.mailboxes {
 		mb := &m.mailboxes[i]
 		if mb.AccountID != msg.AccountID {
@@ -530,18 +541,29 @@ func (m Model) handleFolderRenamed(msg FolderRenamedMsg) (tea.Model, tea.Cmd) {
 		if !ok {
 			continue
 		}
+		pairs = append(pairs, renamePair{mb.Name, newName})
 		mb.Name = newName
-		mb.DisplayName = cleanDisplayName(mb.Name)
+		mb.DisplayName = displayNameForDelimiter(mb.Name, mb.Delimiter)
 	}
-	// Hide/order prefs are keyed by name too (the DB already moved them). Work
-	// from a snapshot: adding keys to a map while ranging it can revisit them.
+	// Match the database's movePref operation: a stale preference at a target
+	// name is replaced even when the source mailbox has no preference.
 	prefs := m.mailboxPrefs[msg.AccountID]
-	moved := make(map[string]db.MailboxPref)
-	for name, pref := range prefs {
-		if newName, ok := renamed(name); ok {
-			delete(prefs, name)
-			moved[newName] = pref
+	moved := make(map[string]db.MailboxPref, len(pairs))
+	keyPrefix := fmt.Sprintf("folder:%d:", msg.AccountID)
+	collapsed := make(map[string]bool, len(pairs))
+	for _, pair := range pairs {
+		if pref, ok := prefs[pair.old]; ok {
+			moved[pair.new] = pref
 		}
+		if m.collapsedSections[keyPrefix+pair.old] {
+			collapsed[pair.new] = true
+		}
+	}
+	for _, pair := range pairs {
+		delete(prefs, pair.old)
+		delete(prefs, pair.new)
+		delete(m.collapsedSections, keyPrefix+pair.old)
+		delete(m.collapsedSections, keyPrefix+pair.new)
 	}
 	for name, pref := range moved {
 		prefs[name] = pref
@@ -549,20 +571,8 @@ func (m Model) handleFolderRenamed(msg FolderRenamedMsg) (tea.Model, tea.Cmd) {
 	for name, o := range msg.Orders {
 		m.setPref(msg.AccountID, name, func(p *db.MailboxPref) { p.Order = o })
 	}
-	// Collapse state is keyed by name, so carry it to the new names.
-	keyPrefix := fmt.Sprintf("folder:%d:", msg.AccountID)
-	collapsed := make(map[string]bool)
-	for key, isCollapsed := range m.collapsedSections {
-		if !strings.HasPrefix(key, keyPrefix) || !isCollapsed {
-			continue
-		}
-		if newName, ok := renamed(key[len(keyPrefix):]); ok {
-			delete(m.collapsedSections, key)
-			collapsed[keyPrefix+newName] = true
-		}
-	}
-	for key := range collapsed {
-		m.collapsedSections[key] = true
+	for name := range collapsed {
+		m.collapsedSections[keyPrefix+name] = true
 	}
 	m.saveCollapseState()
 	m.rebuildSidebar()
@@ -573,7 +583,7 @@ func (m Model) handleFolderRenamed(msg FolderRenamedMsg) (tea.Model, tea.Cmd) {
 		m.setStatus("folder renamed, but saving its order failed: "+msg.Err.Error(), true)
 		return m, m.clearStatusCmd()
 	}
-	m.setStatus("folder renamed: "+cleanDisplayName(msg.NewName), false)
+	m.setStatus("folder renamed: "+displayNameForDelimiter(msg.NewName, delimiter), false)
 	return m, m.clearStatusCmd()
 }
 
@@ -917,6 +927,10 @@ func (m Model) indentSelectedFolder() (tea.Model, tea.Cmd) {
 	if !ok || mb == nil {
 		return m, nil
 	}
+	if mb.Delimiter == "" {
+		m.setStatus("this account does not support nested folders", false)
+		return m, m.clearStatusCmd()
+	}
 	if reason := protectedFolderReason(*mb); reason != "" || strings.EqualFold(mb.Name, "INBOX") {
 		if reason == "" {
 			reason = "the Inbox can't be moved"
@@ -1010,6 +1024,10 @@ func (m Model) nestSelectedFolder(mb db.Mailbox, parentIdx int, first bool) (tea
 // reparentFolder renames a folder to newName (a move to another parent),
 // refusing a name that is already taken, and records the new sibling order.
 func (m Model) reparentFolder(mb db.Mailbox, newName string, orders map[string]int) (tea.Model, tea.Cmd) {
+	if mb.Delimiter == "" {
+		m.setStatus("this account does not support nested folders", false)
+		return m, m.clearStatusCmd()
+	}
 	if clash := m.renameClash(mb, newName); clash != "" {
 		m.setStatus(fmt.Sprintf("can't move there: a folder named %q already exists", clash), true)
 		return m, m.clearStatusCmd()
