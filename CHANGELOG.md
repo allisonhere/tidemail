@@ -34,17 +34,23 @@ All notable changes to TideMail are documented in this file.
 - A timer tick that was already pending no longer fetches a manual-only account.
 - A folder rename remains visible if saving its new order fails afterward. TideMail reports the
   order error without reverting the completed rename in the sidebar.
-- Older plugin secrets shorter than 6 characters no longer reach plugin processes. They appear
-  unset and must be re-entered.
 - `fetch.log` is rotated to `fetch.log.1` once it passes 5 MB instead of growing forever.
 - If a folder rename or move succeeds on the server but TideMail can't record it locally, it now says
   so and re-lists the folders instead of just reporting a failure.
-- Plugin secrets shorter than 6 characters are refused when saved: error text from a plugin is
-  scrubbed of secret values, and shorter ones could not be masked, so they could have leaked.
+- Plugin secrets shorter than 6 characters are refused when saved, because error text from a
+  plugin is scrubbed of secret values and shorter ones could not be masked. Older shorter secrets
+  no longer reach plugin processes: they appear unset and must be re-entered.
 - Manual-only accounts (`sync_minutes = -1`) no longer fetch their inbox at launch; they still list
   their folders once so the folder tree stays current.
 - The sidebar highlight stays on its folder when folders are added, removed or hidden above it, and
   the reading pane clears when the open folder is removed.
+- Outgoing mail is built with CRLF line endings, so the copy saved to Sent matches the bytes sent
+  on the wire.
+- The Needs You count in the sidebar updates immediately when you delete, archive or move a message.
+- Servers with a flat folder namespace (no hierarchy delimiter) are no longer treated as having a
+  NUL delimiter.
+- The note about the status bar at the top of help is now a titled, wrapped section instead of two
+  clipped lines.
 - Long To/CC/BCC lines in compose scroll sideways to follow the cursor instead of running off the
   edge of the field.
 - Text files attached to a message (parts marked as attachments) are now shown as attachments
