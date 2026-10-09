@@ -317,11 +317,24 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		}
 		lines = append(lines, muted(summary), blank)
 	} else {
-		lines = append(lines,
-			muted("With pane headers on, the status bar shows: M accounts · C contacts · S settings · / search · ? help"),
-			muted("With pane headers off, it shows the focused pane title and shortcuts; Accounts also keeps the global shortcuts."),
-			blank,
-		)
+		// Same key/description layout as the shortcut rows below, but wrapped:
+		// these two are prose, and truncating them clipped the sentence.
+		lines = append(lines, renderSoftGroupTitle("Status bar", contentW, chrome))
+		for _, e := range []entry{
+			{"Pane headers on", "shows M accounts · C contacts · S settings · / search · ? help"},
+			{"Pane headers off", "shows the focused pane title and shortcuts; Accounts also keeps the global shortcuts"},
+		} {
+			for i, part := range strings.Split(wrapWords(e.desc, max(1, descW-1)), "\n") {
+				k := ""
+				if i == 0 {
+					k = e.key
+				}
+				keyCell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Width(keyW).Render(truncate(" "+k, max(1, keyW-1)))
+				descCell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render(part)
+				lines = append(lines, keyCell+padStyled(descCell, descW, chrome.baseBg))
+			}
+		}
+		lines = append(lines, blank)
 	}
 
 	for _, s := range sections {
