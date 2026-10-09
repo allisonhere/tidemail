@@ -1425,11 +1425,22 @@ act_lint() {
     log_warn "golangci-lint not installed — skipping"
     return 0
   fi
-  if run_streamed "golangci-lint run" golangci-lint run; then
+  # The frame clips long lines, so keep the full output in a file as well.
+  local lint_log="${TMPDIR:-/tmp}/${BINARY_NAME:-tidemail}-lint.log"
+  if run_streamed "golangci-lint run" \
+    bash -c 'set -o pipefail; golangci-lint run 2>&1 | tee "$1"' _ "$lint_log"; then
     log_ok "lint clean"
     return 0
   fi
   log_err "lint reported problems"
+  log_detail "full output: $lint_log"
+  # "could not import os" / "does not match go tool version" means the linter
+  # was built with an older Go than the active toolchain: not a code problem.
+  if grep -qE 'does not match go tool version|could not import (os|strings|fmt) ' "$lint_log" 2>/dev/null; then
+    log_warn "golangci-lint looks older than your Go ($(go version 2>/dev/null | awk '{print $3}')): rebuild it with"
+    log_detail "go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest"
+    log_detail "and make sure that copy comes first in PATH"
+  fi
   return 1
 }
 
