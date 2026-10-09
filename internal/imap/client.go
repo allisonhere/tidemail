@@ -263,7 +263,7 @@ func (c *Client) ListMailboxes(ctx context.Context) ([]MailboxInfo, error) {
 	for _, mb := range data {
 		info := MailboxInfo{
 			Name:      mb.Mailbox,
-			Delimiter: string(mb.Delim),
+			Delimiter: listDelimiter(mb.Delim),
 		}
 		for _, f := range mb.Attrs {
 			info.Flags = append(info.Flags, string(f))
@@ -549,4 +549,14 @@ func uidSetOf(uids []uint32) imap.UIDSet {
 		set.AddNum(imap.UID(uid))
 	}
 	return set
+}
+
+// listDelimiter turns a LIST hierarchy delimiter into a string. A flat
+// namespace reports NIL, which the library decodes as the zero rune; that means
+// "no hierarchy", not a NUL delimiter.
+func listDelimiter(r rune) string {
+	if r == 0 {
+		return ""
+	}
+	return string(r)
 }
