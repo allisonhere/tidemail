@@ -465,6 +465,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		selectedMessages:       make(map[int64]bool),
 		snooze:                 newSnoozeState(),
 	}
+	m.loadUpdateState()
 	m.restoreCachedUpdateState()
 	if previewManualUpdate {
 		m.applyManualUpdatePreview()
@@ -4110,6 +4111,12 @@ func (m *Model) persistConfig(cfg config.Config) error {
 		if tok, ok := auth.LatestRefreshToken(cfg.Accounts[i].SessionKey()); ok {
 			cfg.Accounts[i].RefreshToken = tok
 		}
+	}
+	// Update-check state lives in the database, not config.toml, so a config
+	// kept in a dotfiles repo doesn't change every time an update is checked.
+	// Without a database to hold it, leave it in the file rather than lose it.
+	if m.saveUpdateState() == nil {
+		cfg = withoutUpdateState(cfg)
 	}
 	return configSave(cfg)
 }
