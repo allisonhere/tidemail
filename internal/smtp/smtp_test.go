@@ -619,3 +619,31 @@ func TestSignatureHTMLEmptyIsNothing(t *testing.T) {
 		t.Fatalf("blank signature produced %q", got)
 	}
 }
+
+func TestBuildRawUsesCRLFLineEndings(t *testing.T) {
+	cases := map[string]OutgoingMessage{
+		"plain":       {To: []string{"b@x"}, Subject: "s", Body: "one\ntwo\r\nthree"},
+		"alternative": {To: []string{"b@x"}, Subject: "s", Body: "one\ntwo", HTMLBody: "<p>a</p>\n<p>b</p>"},
+		"attachment":  {To: []string{"b@x"}, Subject: "s", Body: "one\ntwo", Attachments: []Attachment{{Name: "f.txt", Data: []byte("x")}}},
+		"attachment+html": {To: []string{"b@x"}, Subject: "s", Body: "one\ntwo", HTMLBody: "<p>a</p>\n<p>b</p>",
+			Attachments: []Attachment{{Name: "f.txt", Data: []byte("x")}}},
+	}
+	for name, msg := range cases {
+		t.Run(name, func(t *testing.T) {
+			raw := string(buildRaw("a@x", msg))
+			if bare := strings.Count(raw, "\n") - strings.Count(raw, "\r\n"); bare != 0 {
+				t.Errorf("%d bare LF line endings in:\n%q", bare, raw)
+			}
+			if !strings.HasSuffix(raw, "\r\n") {
+				t.Errorf("message must end with CRLF: %q", raw[max(0, len(raw)-20):])
+			}
+			if strings.Contains(raw, "\r\r\n") {
+				t.Errorf("an existing CRLF was doubled:\n%q", raw)
+			}
+		})
+	}
+	raw := string(buildRaw("a@x", cases["plain"]))
+	if !strings.HasSuffix(raw, "one\r\ntwo\r\nthree\r\n") {
+		t.Errorf("body not normalised, got %q", raw)
+	}
+}
