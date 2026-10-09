@@ -566,6 +566,10 @@ func (m *Model) refreshMailboxesCmd(accountID int64) tea.Cmd {
 				}
 			}
 
+			nameByID := make(map[int64]string, len(existing))
+			for _, mb := range existing {
+				nameByID[mb.ID] = mb.Name
+			}
 			for _, id := range prunableMailboxIDs(existing, server) {
 				// Clear cached messages + FTS first (the FTS mirror has no FK
 				// cascade), then drop the now-empty mailbox row.
@@ -575,6 +579,9 @@ func (m *Model) refreshMailboxesCmd(accountID int64) tea.Cmd {
 				if e := database.DeleteMailbox(id); e != nil {
 					continue
 				}
+				// Its hide/order prefs are keyed by name; leaving them would
+				// haunt a later folder of the same name.
+				_ = database.DeleteMailboxPrefs(accountID, nameByID[id])
 				removed = append(removed, id)
 			}
 			return nil

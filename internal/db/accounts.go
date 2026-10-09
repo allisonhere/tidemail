@@ -1,10 +1,12 @@
 package db
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type Account struct {
@@ -291,7 +293,7 @@ func (db *DB) RenameMailboxTree(accountID int64, oldName, newName, delimiter str
 		return fmt.Errorf("mailbox %q not found", oldName)
 	}
 	rows, err := tx.Query(`SELECT id, name FROM mailboxes WHERE account_id = ? AND substr(name, 1, ?) = ?`,
-		accountID, len(oldName+delimiter), oldName+delimiter)
+		accountID, utf8.RuneCountInString(oldName+delimiter), oldName+delimiter)
 	if err != nil {
 		return err
 	}
@@ -319,14 +321,26 @@ func (db *DB) RenameMailboxTree(accountID int64, oldName, newName, delimiter str
 		if _, err := tx.Exec(`UPDATE mailboxes SET name = ?, display_name = ? WHERE id = ?`, renamed, display(renamed), c.id); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`UPDATE mailbox_prefs SET name = ? WHERE account_id = ? AND name = ?`, renamed, accountID, c.name); err != nil {
+		if err := movePref(tx, accountID, c.name, renamed); err != nil {
 			return err
 		}
 	}
-	if _, err := tx.Exec(`UPDATE mailbox_prefs SET name = ? WHERE account_id = ? AND name = ?`, newName, accountID, oldName); err != nil {
+	if err := movePref(tx, accountID, oldName, newName); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+// movePref renames a folder's saved preferences. A leftover row at the new name
+// (its folder was removed elsewhere and nothing cleaned it up) is dropped first:
+// it would break the primary key and abort the rename, and if the moved folder
+// has no prefs of its own it would otherwise be inherited.
+func movePref(tx *sql.Tx, accountID int64, from, to string) error {
+	if _, err := tx.Exec(`DELETE FROM mailbox_prefs WHERE account_id = ? AND name = ?`, accountID, to); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`UPDATE mailbox_prefs SET name = ? WHERE account_id = ? AND name = ?`, to, accountID, from)
+	return err
 }
 
 func (db *DB) SetMailboxUnreadCount(mailboxID, count int64) error {
