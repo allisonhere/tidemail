@@ -16,7 +16,10 @@ All notable changes to TideMail are documented in this file.
   tree: reorder siblings, move it into an open folder, or out of its parent. `>` nests it under the
   folder above even when that folder is empty, and `<` moves it back out.
   All are also in the command palette. A second folder rename, move or delete is refused until the
-  first finishes, so a fast repeat keypress can't fail with "Unknown source folder".
+  first finishes, so a fast repeat keypress can't fail with "Unknown source folder". Deleting a folder that contains a
+  system folder is refused, a rename or move whose subfolders would clash with existing folders is
+  refused before it reaches the server, and hiding hidden folders clears the list of a folder that
+  just disappeared.
 - Reply all (`Ctrl+R`, or "Reply all" in the command palette): To is the sender or Reply-To,
   Cc is the other recipients minus your own addresses. Replies now also carry the full
   `References` chain.

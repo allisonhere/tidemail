@@ -136,6 +136,26 @@ func (m Model) folderSubtree(mb db.Mailbox) []db.Mailbox {
 	return out
 }
 
+// renameClash returns the leaf of the first folder in mb's subtree whose new
+// name (after mb is renamed to newName) would land on a folder outside it, or
+// "" when the whole move is free of clashes.
+func (m Model) renameClash(mb db.Mailbox, newName string) string {
+	tree := m.folderSubtree(mb)
+	inTree := make(map[int64]bool, len(tree))
+	for _, f := range tree {
+		inTree[f.ID] = true
+	}
+	for _, f := range tree {
+		target := newName + f.Name[len(mb.Name):]
+		for _, other := range accountMailboxes(m.mailboxes, mb.AccountID) {
+			if !inTree[other.ID] && strings.EqualFold(other.Name, target) {
+				return folderLeaf(f)
+			}
+		}
+	}
+	return ""
+}
+
 // sidebarFolderTarget resolves the sidebar cursor to an account and, when it is
 // on a folder, that folder.
 func (m Model) sidebarFolderTarget() (accountID int64, mb *db.Mailbox, ok bool) {
@@ -212,6 +232,12 @@ func (m Model) startDeleteFolder() (tea.Model, tea.Cmd) {
 	if reason := protectedFolderReason(*mb); reason != "" {
 		m.setStatus(reason, true)
 		return m, m.clearStatusCmd()
+	}
+	for _, f := range m.folderSubtree(*mb) {
+		if f.ID != mb.ID && protectedFolderReason(f) != "" {
+			m.setStatus(fmt.Sprintf("can't delete %q: it contains the system folder %q", cleanDisplayName(mb.Name), cleanDisplayName(f.Name)), true)
+			return m, m.clearStatusCmd()
+		}
 	}
 	m.pendingFolderDelete = mb.ID
 	m.overlay = overlayFolderDeleteConfirm
@@ -291,6 +317,10 @@ func (m Model) submitFolderPrompt() (tea.Model, tea.Cmd) {
 		newName := name
 		if parent := folderParentName(*mb); parent != "" {
 			newName = parent + folderDelimiter(*mb) + name
+		}
+		if clash := m.renameClash(*mb, newName); clash != "" {
+			m.setStatus(fmt.Sprintf("a folder named %q already exists at the new name", clash), true)
+			return m, nil
 		}
 		m.folderPrompt = folderPrompt{}
 		m.setStatus("renaming folder...", false)
@@ -607,7 +637,23 @@ func (m Model) toggleHideSelectedFolder() (tea.Model, tea.Cmd) {
 
 func (m Model) toggleShowHiddenFolders() (tea.Model, tea.Cmd) {
 	m.showHiddenFolders = !m.showHiddenFolders
+	prev := m.sidebarCursor
+	var selID int64
+	if sel := m.selectedMailbox(); sel != nil {
+		selID = sel.ID
+	}
 	m.rebuildSidebar()
+	losing := selID != 0
+	for _, r := range m.sidebarRows {
+		if r.kind == rowKindMailbox && r.mailboxID == selID {
+			losing = false
+		}
+	}
+	if losing {
+		// The open folder just vanished from the sidebar: don't leave its messages up.
+		m.sidebarCursor = clamp(prev, 0, max(0, len(m.sidebarRows)-1))
+		m.clearMessages()
+	}
 	if m.showHiddenFolders {
 		m.setStatus("showing hidden folders", false)
 	} else {
@@ -912,11 +958,9 @@ func (m Model) nestSelectedFolder(mb db.Mailbox, parentIdx int, first bool) (tea
 // reparentFolder renames a folder to newName (a move to another parent),
 // refusing a name that is already taken, and records the new sibling order.
 func (m Model) reparentFolder(mb db.Mailbox, newName string, orders map[string]int) (tea.Model, tea.Cmd) {
-	for _, other := range accountMailboxes(m.mailboxes, mb.AccountID) {
-		if other.ID != mb.ID && strings.EqualFold(other.Name, newName) {
-			m.setStatus(fmt.Sprintf("can't move there: a folder named %q already exists", folderLeaf(mb)), true)
-			return m, m.clearStatusCmd()
-		}
+	if clash := m.renameClash(mb, newName); clash != "" {
+		m.setStatus(fmt.Sprintf("can't move there: a folder named %q already exists", clash), true)
+		return m, m.clearStatusCmd()
 	}
 	m.setStatus("moving folder...", false)
 	m.folderOpBusy = true

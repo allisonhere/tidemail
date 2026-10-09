@@ -164,6 +164,9 @@ marker. In the left pane:
   it. Both are real moves on the server, subfolders included. While a rename,
   move or delete is still running on the server, further ones are refused with a
   short notice, so a quick second keypress can't act on a name that is changing.
+  A rename or move is also refused up front if any subfolder would land on an
+  existing folder, and deleting a folder is refused if a system folder (such as
+  a `\Sent` subfolder) is inside it.
 
 The command palette has matching entries: New folder, Rename selected folder,
 Delete selected folder, Hide or unhide selected folder, and Show hidden folders.

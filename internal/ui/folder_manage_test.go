@@ -624,3 +624,62 @@ func TestAngleKeysNestIntoAnEmptyFolderAndBackOut(t *testing.T) {
 		t.Fatalf("got %q", m.statusMsg)
 	}
 }
+
+func TestDeleteRefusesAParentWithAProtectedSubfolder(t *testing.T) {
+	m, database, accountID := folderManageModel(t)
+	id, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "Work/Sent", Delimiter: "/", Flags: []string{`\Sent`}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.mailboxes = append(m.mailboxes, db.Mailbox{ID: id, AccountID: accountID, Name: "Work/Sent", Delimiter: "/", Flags: []string{`\Sent`}})
+	m.rebuildSidebar()
+	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Work"))
+
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	if m.overlay == overlayFolderDeleteConfirm {
+		t.Fatal("deleting Work would delete its \\Sent subfolder; it must be refused")
+	}
+	if !strings.Contains(m.statusMsg, "Sent") {
+		t.Fatalf("status should name the protected subfolder, got %q", m.statusMsg)
+	}
+}
+
+func TestMoveRefusesWhenASubfolderWouldCollide(t *testing.T) {
+	m, database, accountID := folderManageModel(t)
+	// Moving Work (with Projects) to the top level is fine, but Other/Projects
+	// already exists, and renaming Work to Other would put Projects on top of it.
+	for _, name := range []string{"Other/Projects"} {
+		id, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: name, Delimiter: "/"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.mailboxes = append(m.mailboxes, db.Mailbox{ID: id, AccountID: accountID, Name: name, Delimiter: "/"})
+	}
+	m.rebuildSidebar()
+	work := m.mailboxByID(mailboxIDByName(t, m, "Work"))
+
+	next, _ := m.reparentFolder(*work, "Other", nil)
+	m = next.(Model)
+	if m.folderOpBusy || m.statusMsg == "moving folder..." {
+		t.Fatal("a move whose subfolders would collide must not reach the server")
+	}
+	if !strings.Contains(m.statusMsg, "Projects") {
+		t.Fatalf("status should name the clash, got %q", m.statusMsg)
+	}
+}
+
+func TestHidingHiddenFoldersClearsTheListOfAHiddenSelectedFolder(t *testing.T) {
+	m, _, accountID := folderManageModel(t)
+	work := mailboxIDByName(t, m, "Work")
+	m.setPref(accountID, "Work", func(p *db.MailboxPref) { p.Hidden = true })
+	m.showHiddenFolders = true
+	m.rebuildSidebar()
+	cursorOnMailbox(t, &m, work)
+	m.messages = []db.Message{{ID: 1}}
+
+	next, _ := m.toggleShowHiddenFolders()
+	m = next.(Model)
+	if sel := m.selectedMailbox(); sel != nil && sel.ID != work && len(m.messages) != 0 {
+		t.Fatalf("cursor left hidden Work for %s but its %d messages stayed", sel.Name, len(m.messages))
+	}
+}
