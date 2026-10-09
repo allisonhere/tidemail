@@ -602,3 +602,12 @@ func TestNotConnectedError(t *testing.T) {
 		t.Fatal("expected error for DeleteMessage when not connected")
 	}
 }
+
+func TestListDelimiterTreatsNILAsNoDelimiter(t *testing.T) {
+	if got := listDelimiter(0); got != "" {
+		t.Fatalf("NIL delimiter = %q, want empty", got)
+	}
+	if got := listDelimiter('/'); got != "/" {
+		t.Fatalf("got %q", got)
+	}
+}

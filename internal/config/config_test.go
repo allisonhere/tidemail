@@ -455,3 +455,13 @@ func TestPluginSecretsRefuseWithoutKeychain(t *testing.T) {
 		t.Fatal("secret names must be namespaced by plugin")
 	}
 }
+
+// A secret shorter than the redaction minimum would be echoed unmasked in
+// plugin error text, so it is refused up front (before any keychain access).
+func TestPluginSecretsRefuseValuesTooShortToRedact(t *testing.T) {
+	t.Setenv("TIDEMAIL_DISABLE_KEYRING", "1")
+	err := StorePluginSecret("smart", "pin", "12345")
+	if err == nil || !strings.Contains(err.Error(), "at least") {
+		t.Fatalf("a 5-character secret must be refused for its length, got %v", err)
+	}
+}

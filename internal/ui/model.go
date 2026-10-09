@@ -60,8 +60,14 @@ type sidebarRow struct {
 	kind      sidebarRowKind
 	accountID int64
 	mailboxID int64
-	label     string // section header label (e.g. "System", "Labels")
+	label     string // section header label (e.g. "System", "Labels"); a nested folder's title
 	count     int    // item count for section headers
+
+	// Folder tree (mailbox rows).
+	depth       int  // nesting level below the section header
+	hasChildren bool // folder has subfolders
+	collapsed   bool // subfolders hidden
+	hidden      bool // hidden by the user (only listed while hidden folders are shown)
 }
 
 type overlayMode int
@@ -101,6 +107,7 @@ const (
 	overlayColorPicker
 	overlayClassification
 	overlaySyncAllConfirm
+	overlayFolderDeleteConfirm
 )
 
 type commandPaletteContext int
@@ -185,6 +192,16 @@ type Model struct {
 	// pendingUnsubscribe holds the message whose List-Unsubscribe action is
 	// awaiting the user's y/n in overlayUnsubscribeConfirm.
 	pendingUnsubscribe db.Message
+
+	// folderPrompt is the sidebar's inline new/rename folder prompt;
+	// pendingFolderDelete is the folder awaiting delete confirmation.
+	folderPrompt        folderPrompt
+	mailboxPrefs        map[int64]map[string]db.MailboxPref
+	showHiddenFolders   bool
+	pendingFolderDelete int64
+	// folderOpBusy is set while a folder rename, move or delete is running on
+	// the server, so a second one can't start from names that are about to change.
+	folderOpBusy bool
 
 	viewport         viewport.Model
 	contentLinks     []string
@@ -698,6 +715,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		openAccountManagerOnEmptyFirstLoad := m.firstLoad && msg.Err == nil && len(m.accounts) == 0
 		if m.firstLoad {
 			m.loadCollapseState()
+			m.loadMailboxPrefs()
 			m.rebuildSidebar()
 			statusCmd = tea.Batch(statusCmd, m.startSyncTimers(), m.syncInboxesNowCmd(), m.loadAddressBookCmd())
 			// One folder LIST per account at launch, independent of sync mode.
@@ -1128,6 +1146,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AutoSyncMsg:
 		var cmds []tea.Cmd
+		// A timer that was already pending when the account was switched to
+		// manual-only can still fire once; it must not fetch.
+		if !m.syncsAutomatically(msg.AccountID) {
+			return m, nil
+		}
 		for _, mb := range m.mailboxes {
 			if mb.AccountID == msg.AccountID && isInboxMailbox(mb) {
 				cmds = append(cmds, m.syncMailboxCmd(mb.ID, false))
@@ -1210,8 +1233,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// If the folder being viewed was pruned, drop its now-orphaned
 			// message list so the content pane doesn't show stale rows.
 			if gone[activeID] {
-				m.messages = nil
-				m.filteredMessages = nil
+				m.clearMessages()
 			}
 		}
 		m.rebuildSidebar()
@@ -1467,7 +1489,14 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case snoozeTickMsg:
 		return m.handleSnoozeTick(msg)
 
+	case FolderRenamedMsg:
+		return m.handleFolderRenamed(msg)
+
+	case FolderDeletedMsg:
+		return m.handleFolderDeleted(msg)
+
 	case FolderCreatedMsg:
+		m.folderOpBusy = false
 		if msg.Err != nil {
 			m.setStatus("create folder failed: "+msg.Err.Error(), true)
 			return m, m.clearStatusCmd()
@@ -1477,7 +1506,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				ID:          msg.MailboxID,
 				AccountID:   msg.AccountID,
 				Name:        msg.Name,
-				DisplayName: cleanDisplayName(msg.Name),
+				DisplayName: displayNameForDelimiter(msg.Name, msg.Delimiter),
 				Delimiter:   msg.Delimiter,
 			})
 		}
@@ -1728,6 +1757,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.folderPrompt.active {
+		return m.handleFolderPromptKey(msg)
+	}
 	// Search mode editing intercept — capture typed characters for the query.
 	if m.searchMode && m.searchEditing {
 		switch {
@@ -1753,6 +1785,22 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch {
+	case m.focused == paneAccounts && keyMatches(msg, m.keys.NewFolder):
+		return m.startNewFolder()
+	case m.focused == paneAccounts && keyMatches(msg, m.keys.RenameFolder):
+		return m.startRenameFolder()
+	case m.focused == paneAccounts && keyMatches(msg, m.keys.DeleteFolder):
+		return m.startDeleteFolder()
+	case m.focused == paneAccounts && keyMatches(msg, m.keys.HideFolder):
+		return m.toggleHideSelectedFolder()
+	case m.focused == paneAccounts && keyMatches(msg, m.keys.MoveAccountUp) && m.selectedMailbox() != nil:
+		return m.moveSelectedFolder(-1)
+	case m.focused == paneAccounts && keyMatches(msg, m.keys.MoveAccountDown) && m.selectedMailbox() != nil:
+		return m.moveSelectedFolder(1)
+	case m.focused == paneAccounts && keyMatches(msg, m.keys.IndentFolder) && m.selectedMailbox() != nil:
+		return m.indentSelectedFolder()
+	case m.focused == paneAccounts && keyMatches(msg, m.keys.OutdentFolder) && m.selectedMailbox() != nil:
+		return m.outdentFolderKey()
 	case keyMatches(msg, m.keys.NeedsYouDismiss) && m.selectedNeedsYou() && m.focused != paneAccounts:
 		// Dismiss from Needs You. Only here: elsewhere X does nothing.
 		return m.dismissCurrent()
@@ -1943,12 +1991,29 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.clearStatusCmd()
 
 	case keyMatches(msg, m.keys.Left):
+		if m.focused == paneAccounts {
+			prev := m.sidebarCursor
+			if m.collapseOrJumpToParentFolder() {
+				if m.sidebarCursor == prev {
+					return m, nil
+				}
+				return m, m.loadSelectedFolderCmd()
+			}
+		}
 		if m.focused > paneAccounts {
 			return m.focusPane(m.focused - 1)
 		}
 		return m, nil
 
 	case keyMatches(msg, m.keys.Right):
+		if m.focused == paneAccounts {
+			expand := false
+			if m.sidebarCursor >= 0 && m.sidebarCursor < len(m.sidebarRows) {
+				if row := m.sidebarRows[m.sidebarCursor]; row.kind == rowKindMailbox && row.collapsed && m.setSelectedFolderCollapsed(&expand) {
+					return m, nil
+				}
+			}
+		}
 		if m.focused < paneContent {
 			return m.focusPane(m.focused + 1)
 		}
@@ -1994,6 +2059,9 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.toggleSelectedSection() {
+				return m, nil
+			}
+			if m.toggleSelectedFolder() {
 				return m, nil
 			}
 			// Neither toggle applied, so the cursor is on a folder row: Enter
@@ -2179,6 +2247,24 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case keyMatches(msg, m.keys.ReplyAll):
+		var cur *db.Message
+		if m.focused == paneContent && m.contentMessageID != 0 {
+			cur = m.currentContentMessage()
+		} else if m.focused == paneMessages {
+			cur = m.currentRowMessage()
+		}
+		if cur != nil {
+			acfg, err := m.accountCfgForMailbox(cur.MailboxID)
+			if err != nil {
+				m.setStatus("reply all failed: "+err.Error(), true)
+				return m, m.clearStatusCmd()
+			}
+			m.compose = NewReplyAll(*cur, acfg, m.cfg.Accounts, m.addressBook)
+			m.overlay = overlayCompose
+		}
+		return m, nil
+
 	case keyMatches(msg, m.keys.Forward):
 		var cur *db.Message
 		if m.focused == paneContent && m.contentMessageID != 0 {
@@ -2340,6 +2426,9 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.toggleSelectedSection() {
+				return m, nil
+			}
+			if m.toggleSelectedFolder() {
 				return m, nil
 			}
 		}
@@ -2550,6 +2639,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case overlaySyncAllConfirm:
 		return m.handleSyncAllConfirmKey(msg)
+
+	case overlayFolderDeleteConfirm:
+		return m.handleFolderDeleteConfirmKey(msg)
 
 	case overlayUnsubscribeConfirm:
 		switch {
@@ -3039,6 +3131,7 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 		msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(sanitized), Paste: true}
 	}
 	before := m.compose
+	m.compose.SetWidth(composeOverlayWidth(m.width))
 	newC, cmd, exit := m.compose.Update(msg, m.keys)
 	m.compose = newC
 	if km, ok := msg.(tea.KeyMsg); ok && km.Paste {
@@ -3156,6 +3249,10 @@ func (m Model) renderPaneHint(p pane) string {
 	case paneAccounts:
 		hint = m.keyHint(m.keys.Up) + "/" + m.keyHint(m.keys.Down) + " move  " +
 			m.keyHint(m.keys.Enter) + " toggle/sync  " + m.keyHint(m.keys.Sync) + " sync"
+		if m.selectedMailbox() != nil {
+			hint += "  " + m.keyHint(m.keys.NewFolder) + " new  " + m.keyHint(m.keys.RenameFolder) + " rename  " +
+				m.keyHint(m.keys.DeleteFolder) + " delete  " + m.keyHint(m.keys.HideFolder) + " hide"
+		}
 	case paneMessages:
 		if m.selectedOutboxRow() {
 			// None of the folder verbs apply to a queued message, and the
@@ -3181,7 +3278,7 @@ func (m Model) renderPaneHint(p pane) string {
 			m.keyHint(m.keys.VisualSelect) + "/" + m.keyHint(m.keys.VisualLine) + " select  " +
 			m.keyHint(m.keys.EditTags) + " tags  " +
 			"y/ctrl+c copy  " +
-			m.keyHint(m.keys.Reply) + " reply  " + m.keyHint(m.keys.Forward) + " fwd  " +
+			m.keyHint(m.keys.Reply) + " reply  " + m.keyHint(m.keys.ReplyAll) + " all  " + m.keyHint(m.keys.Forward) + " fwd  " +
 			m.keyHint(m.keys.Search) + " find  " +
 			m.keyHint(m.keys.ToggleHeaders) + " headers  " +
 			m.keyHint(m.keys.Back) + " back"
@@ -3398,7 +3495,7 @@ func (m Model) renderStatusBar() string {
 				parts = append(parts, m.statusBarInlineText(sb, fmt.Sprintf("%d unread", unread)))
 			}
 		} else if mb := m.selectedMailbox(); mb != nil {
-			parts = append(parts, m.statusBarInlineText(sb, cleanDisplayName(mb.DisplayName)))
+			parts = append(parts, m.statusBarInlineText(sb, displayNameForDelimiter(mb.Name, mb.Delimiter)))
 			if unread := m.displayMailboxUnreadCount(*mb); unread > 0 {
 				parts = append(parts, m.statusBarInlineText(sb, fmt.Sprintf("%d unread", unread)))
 			}
@@ -3601,12 +3698,45 @@ func (m *Model) setStyles(s Styles) {
 	m.viewportCache.clear()
 }
 
+// sameSidebarRow reports whether two rows stand for the same thing: the same
+// folder, account, section header or standing entry.
+func sameSidebarRow(a, b sidebarRow) bool {
+	if a.kind != b.kind {
+		return false
+	}
+	switch a.kind {
+	case rowKindMailbox:
+		return a.mailboxID == b.mailboxID
+	case rowKindAccount:
+		return a.accountID == b.accountID
+	case rowKindSysFolderHeader, rowKindPersonalFolderHeader:
+		return a.accountID == b.accountID && a.label == b.label
+	}
+	return true
+}
+
 func (m *Model) rebuildSidebar() {
 	// config.toml order is the one order everything shows; the database's
 	// position column is only insertion order.
 	m.accounts = sortAccountsByConfigOrder(m.accounts, m.cfg.Accounts)
-	m.sidebarRows = buildSidebarRows(m.accounts, m.mailboxes, m.collapsedAccounts, m.collapsedSections)
+	var selected *sidebarRow
+	if m.sidebarCursor >= 0 && m.sidebarCursor < len(m.sidebarRows) {
+		row := m.sidebarRows[m.sidebarCursor]
+		selected = &row
+	}
+	m.sidebarRows = buildSidebarRows(m.accounts, m.mailboxes, m.collapsedAccounts, m.collapsedSections, folderView{prefs: m.mailboxPrefs, showHidden: m.showHiddenFolders})
 	m.refreshDraftCounts()
+	// Rows come and go (folders created, pruned, hidden). Keep the highlight on
+	// the same row rather than the same position, or it slides onto a different
+	// folder while the old folder's messages stay on screen.
+	if selected != nil {
+		for i, row := range m.sidebarRows {
+			if sameSidebarRow(*selected, row) {
+				m.sidebarCursor = i
+				break
+			}
+		}
+	}
 	m.sidebarCursor = clamp(m.sidebarCursor, 0, max(0, len(m.sidebarRows)-1))
 	m.clampSidebarOffset()
 }
@@ -3890,7 +4020,7 @@ func saveAccountDatabaseCmd(database *db.DB, request AccountSavedMsg, previousCf
 		for _, info := range request.MailboxInfo {
 			mailboxes = append(mailboxes, db.Mailbox{
 				Name:        info.Name,
-				DisplayName: cleanDisplayName(info.Name),
+				DisplayName: displayNameForDelimiter(info.Name, info.Delimiter),
 				Delimiter:   info.Delimiter,
 				Flags:       info.Flags,
 			})

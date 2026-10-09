@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/allisonhere/tidemail/internal/config"
 )
 
 // DefaultTimeout bounds one plugin invocation, from launch to exit.
@@ -55,6 +57,12 @@ func pluginEnv() []string {
 func invoke(ctx context.Context, p Plugin, req Request, timeout time.Duration, secrets map[string]string) (Response, error) {
 	if err := req.validate(); err != nil {
 		return Response{}, fmt.Errorf("plugin %q: %w", p.Manifest.ID, err)
+	}
+	for key, value := range secrets {
+		// An empty value is "not set", not a short secret: there is nothing to leak.
+		if value != "" && len(value) < minRedactLen {
+			return Response{}, fmt.Errorf("plugin %q: secret %q is too short to redact; re-enter it with at least %d characters", p.Manifest.ID, key, minRedactLen)
+		}
 	}
 	payload, err := json.Marshal(req)
 	if err != nil {
@@ -108,8 +116,8 @@ func Invoke(ctx context.Context, p Plugin, req Request, timeout time.Duration, s
 }
 
 // minRedactLen skips masking very short secrets, which would otherwise mask
-// ordinary text.
-const minRedactLen = 6
+// ordinary text. Secrets shorter than this are refused when stored.
+const minRedactLen = config.MinPluginSecretLen
 
 // redactSecrets replaces every copy of a secret value with asterisks.
 func redactSecrets(b []byte, secrets map[string]string) []byte {

@@ -100,7 +100,9 @@ func renderTextInput(input textinput.Model, width int, focused, masked bool, chr
 	if width <= 0 {
 		return ""
 	}
-	input.Width = width
+	// View is Width cells plus one for the cursor when it sits at the end; leave
+	// that cell inside the field or truncateStyled clips the cursor.
+	input.Width = max(1, width-1)
 	bg := chrome.surfaceBg
 	if focused {
 		bg = chrome.fieldBg

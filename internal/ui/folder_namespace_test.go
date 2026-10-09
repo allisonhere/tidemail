@@ -30,6 +30,7 @@ func TestQualifyFolderName(t *testing.T) {
 		{"gmail stays top level", gmail, "Newsletters", "Newsletters", "/"},
 		{"inbox only stays top level", []db.Mailbox{{Name: "INBOX", Delimiter: "/"}}, "Newsletters", "Newsletters", "/"},
 		{"no mailboxes defaults to slash", nil, "Newsletters", "Newsletters", "/"},
+		{"nil delimiter stays flat", []db.Mailbox{{Name: "INBOX"}, {Name: "INBOX.Receipts"}}, "Newsletters", "Newsletters", ""},
 	}
 
 	for _, tc := range tests {

@@ -584,8 +584,8 @@ func parseSecretEnvs(man plugin.Manifest, values []string) (map[string]string, e
 			return nil, fmt.Errorf("setting %q is not a declared secret setting", key)
 		}
 		value, ok := os.LookupEnv(env)
-		if !ok {
-			return nil, fmt.Errorf("environment variable %s is not set", env)
+		if !ok || value == "" {
+			return nil, fmt.Errorf("environment variable %s is not set or is empty", env)
 		}
 		secrets[key] = value
 	}

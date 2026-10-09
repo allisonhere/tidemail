@@ -57,7 +57,7 @@ func TestCommandPaletteEnablesMessageActionsWhenMessageSelected(t *testing.T) {
 	for _, item := range m.commandItems() {
 		enabled[item.id] = item.enabled
 	}
-	for _, id := range []string{"reply", "archive", "move", "delete", "toggle-read"} {
+	for _, id := range []string{"reply", "reply-all", "archive", "move", "delete", "toggle-read"} {
 		if !enabled[id] {
 			t.Fatalf("expected %q to be enabled with a selected message; commands=%+v", id, m.commandItems())
 		}

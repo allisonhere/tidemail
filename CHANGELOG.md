@@ -4,8 +4,49 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Folders are now a tree in the sidebar: nested folders (`Work/Projects`) collapse and expand
+  (`Enter`, `Space`, `←`/`→`), the choice is remembered, and a collapsed folder shows the unread
+  count of everything inside it.
+- Manage folders from the sidebar: `n` creates a folder or subfolder, `r` renames (subfolders come
+  along), `d` deletes after a confirmation that names the subfolders that go with it. The Inbox and
+  system folders are protected. `H` hides a folder from TideMail's sidebar only, "Show hidden
+  folders" in the command palette lists them again, and `Shift+K` / `Shift+J` walk a folder up or down the
+  tree: reorder siblings, move it into an open folder, or out of its parent. `>` nests it under the
+  folder above even when that folder is empty, and `<` moves it back out.
+  All are also in the command palette. A second folder rename, move or delete is refused until the
+  first finishes, so a fast repeat keypress can't fail with "Unknown source folder". Deleting a folder that contains a
+  system folder is refused, a rename or move whose subfolders would clash with existing folders is
+  refused before it reaches the server, and hiding hidden folders clears the list of a folder that
+  just disappeared.
+- Reply all (`Ctrl+R`, or "Reply all" in the command palette): To is the sender or Reply-To,
+  Cc is the other recipients minus your own addresses. Replies now also carry the full
+  `References` chain.
+
 ### Fixed
 
+- Renaming or moving a folder whose name has non-ASCII characters (`Café`) now carries its
+  subfolders and their hide/order settings along. Settings follow the account's own folder
+  delimiter, a stale setting left at the new name can no longer abort the rename, and settings of
+  folders removed on the server are cleaned up.
+- Creating a folder is held back while a folder rename, move or delete is still running.
+- A timer tick that was already pending no longer fetches a manual-only account.
+- A folder rename remains visible if saving its new order fails afterward. TideMail reports the
+  order error without reverting the completed rename in the sidebar.
+- Older plugin secrets shorter than 6 characters no longer reach plugin processes. They appear
+  unset and must be re-entered.
+- `fetch.log` is rotated to `fetch.log.1` once it passes 5 MB instead of growing forever.
+- If a folder rename or move succeeds on the server but TideMail can't record it locally, it now says
+  so and re-lists the folders instead of just reporting a failure.
+- Plugin secrets shorter than 6 characters are refused when saved: error text from a plugin is
+  scrubbed of secret values, and shorter ones could not be masked, so they could have leaked.
+- Manual-only accounts (`sync_minutes = -1`) no longer fetch their inbox at launch; they still list
+  their folders once so the folder tree stays current.
+- The sidebar highlight stays on its folder when folders are added, removed or hidden above it, and
+  the reading pane clears when the open folder is removed.
+- Long To/CC/BCC lines in compose scroll sideways to follow the cursor instead of running off the
+  edge of the field.
 - Text files attached to a message (parts marked as attachments) are now shown as attachments
   instead of being mistaken for the message body.
 

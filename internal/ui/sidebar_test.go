@@ -5,7 +5,26 @@ import (
 	"testing"
 
 	"github.com/allisonhere/tidemail/internal/config"
+	"github.com/allisonhere/tidemail/internal/db"
 )
+
+func TestFlatSidebarDoesNotInferParentsFromPunctuation(t *testing.T) {
+	mbs := []db.Mailbox{{ID: 1, AccountID: 10, Name: "INBOX"}, {ID: 2, AccountID: 10, Name: "INBOX.Receipts"}, {ID: 3, AccountID: 10, Name: "Work/Projects"}}
+	rows := buildSidebarRows([]db.Account{{ID: 10}}, mbs, nil, nil)
+	seen := map[int64]bool{}
+	for _, row := range rows {
+		if row.kind != rowKindMailbox {
+			continue
+		}
+		if row.depth != 0 || row.hasChildren {
+			t.Fatalf("flat mailbox has tree relationship: %+v", row)
+		}
+		seen[row.mailboxID] = true
+	}
+	if len(seen) != 3 {
+		t.Fatalf("flat mailboxes missing from sidebar: %v", seen)
+	}
+}
 
 func TestEmptyAccountsHintUsesUppercaseAccountManagerShortcut(t *testing.T) {
 	for _, tt := range []struct {

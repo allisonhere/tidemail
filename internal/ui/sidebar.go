@@ -9,6 +9,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -39,12 +40,19 @@ func (m Model) renderAccountsPane() string {
 			rows = append(rows, m.renderOutboxRow(selected, innerW))
 		case rowKindMailbox:
 			if mb := m.mailboxByID(row.mailboxID); mb != nil {
-				rows = append(rows, m.renderSidebarMailboxRow(*mb, selected, innerW))
+				if selected && m.folderPrompt.active && m.folderPrompt.rename {
+					rows = append(rows, m.folderPromptRow(row.depth, innerW))
+				} else {
+					rows = append(rows, m.renderSidebarMailboxRow(*mb, row, selected, innerW))
+				}
 			}
 		case rowKindSysFolderHeader:
 			rows = append(rows, m.renderSectionHeader("System", row.count, rowKindSysFolderHeader, row.accountID, selected, innerW))
 		case rowKindPersonalFolderHeader:
 			rows = append(rows, m.renderSectionHeader(row.label, row.count, rowKindPersonalFolderHeader, row.accountID, selected, innerW))
+		}
+		if selected && m.folderPrompt.active && !m.folderPrompt.rename {
+			rows = append(rows, m.folderPromptRow(row.depth+1, innerW))
 		}
 	}
 
@@ -67,7 +75,41 @@ func (m Model) renderAccountsPane() string {
 	return border.Width(innerW).Height(m.accountsPaneContentHeight()).Render(content)
 }
 
-func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed map[int64]bool, collapsedSections map[string]bool) []sidebarRow {
+// folderView is the local, per-folder view state the sidebar honours: which
+// folders are hidden or custom-ordered, and whether hidden ones are shown.
+type folderView struct {
+	prefs      map[int64]map[string]db.MailboxPref
+	showHidden bool
+}
+
+func (v folderView) pref(mb db.Mailbox) db.MailboxPref { return v.prefs[mb.AccountID][mb.Name] }
+
+// visible drops hidden folders and everything below them, unless hidden
+// folders are being shown.
+func (v folderView) visible(mbs []db.Mailbox) []db.Mailbox {
+	if v.showHidden || len(v.prefs) == 0 {
+		return mbs
+	}
+	out := make([]db.Mailbox, 0, len(mbs))
+	for _, mb := range mbs {
+		hidden := v.pref(mb).Hidden
+		for _, other := range mbs {
+			if !hidden && v.pref(other).Hidden && mailboxIsDescendant(other, mb) {
+				hidden = true
+			}
+		}
+		if !hidden {
+			out = append(out, mb)
+		}
+	}
+	return out
+}
+
+func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed map[int64]bool, collapsedSections map[string]bool, views ...folderView) []sidebarRow {
+	var view folderView
+	if len(views) > 0 {
+		view = views[0]
+	}
 	byAccount := make(map[int64][]db.Mailbox)
 	for _, mb := range mailboxes {
 		byAccount[mb.AccountID] = append(byAccount[mb.AccountID], mb)
@@ -107,7 +149,7 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 				continue // cannot be opened, no messages — skip
 			}
 			// Also skip children of Noselect parents (e.g. dovecot.sieve under INBOX.dovecot)
-			if idx := strings.LastIndex(mb.Name, "."); idx >= 0 {
+			if idx := strings.LastIndex(mb.Name, mb.Delimiter); mb.Delimiter != "" && idx >= 0 {
 				parent := mb.Name[:idx]
 				skip := false
 				for _, pmb := range mbs {
@@ -121,17 +163,19 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 				}
 			}
 			lower := strings.ToLower(mb.Name)
-			if lower == "inbox" || strings.HasSuffix(lower, "/inbox") {
+			if lower == "inbox" || (mb.Delimiter != "" && strings.HasSuffix(lower, mb.Delimiter+"inbox")) {
 				mb := mb
 				inbox = &mb
 				continue
 			}
-			if isGmailSystemFolder(mb.Name) {
+			if mb.Delimiter != "" && isGmailSystemFolder(mb.Name) {
 				sysMbs = append(sysMbs, mb)
 			} else {
 				personalMbs = append(personalMbs, mb)
 			}
 		}
+
+		sysMbs, personalMbs = view.visible(sysMbs), view.visible(personalMbs)
 
 		// INBOX first, always visible.
 		if inbox != nil {
@@ -144,9 +188,7 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 			sysCollapsed := collapsedSections[sysKey]
 			rows = append(rows, sidebarRow{kind: rowKindSysFolderHeader, accountID: acc.ID, label: "System", count: len(sysMbs)})
 			if !sysCollapsed {
-				for _, mb := range sysMbs {
-					rows = append(rows, sidebarRow{kind: rowKindMailbox, mailboxID: mb.ID})
-				}
+				rows = append(rows, folderTreeRows(sysMbs, collapsedSections, view)...)
 			}
 		}
 
@@ -160,14 +202,204 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 			}
 			rows = append(rows, sidebarRow{kind: rowKindPersonalFolderHeader, accountID: acc.ID, label: label, count: len(personalMbs)})
 			if !personalCollapsed {
-				for _, mb := range personalMbs {
-					rows = append(rows, sidebarRow{kind: rowKindMailbox, mailboxID: mb.ID})
-				}
+				rows = append(rows, folderTreeRows(personalMbs, collapsedSections, view)...)
 			}
 		}
 
 	}
 	return rows
+}
+
+// mailboxPath is a mailbox's hierarchy as path segments, split on its own
+// delimiter. A leading INBOX segment (Dovecot/Courier "INBOX.Work") is only a
+// namespace prefix and is dropped.
+func mailboxPath(mb db.Mailbox) []string {
+	segs := splitMovePath(mb.Name, moveMailboxDelimiter(mb))
+	if len(segs) > 1 && strings.EqualFold(segs[0], "INBOX") {
+		segs = segs[1:]
+	}
+	return segs
+}
+
+func pathKey(segs []string) string {
+	return strings.ToLower(strings.Join(segs, "\x00"))
+}
+
+// folderCollapseKey is the collapsedSections key for one folder.
+func folderCollapseKey(mb db.Mailbox) string {
+	return fmt.Sprintf("folder:%d:%s", mb.AccountID, mb.Name)
+}
+
+// mailboxIsDescendant reports whether child sits below parent in the folder
+// hierarchy of one account.
+func mailboxIsDescendant(parent, child db.Mailbox) bool {
+	if parent.AccountID != child.AccountID || parent.ID == child.ID {
+		return false
+	}
+	ps, cs := mailboxPath(parent), mailboxPath(child)
+	if len(ps) == 0 || len(cs) <= len(ps) {
+		return false
+	}
+	return pathKey(cs[:len(ps)]) == pathKey(ps)
+}
+
+// folderTreeRows lays one account's folders out as a tree: each folder is
+// followed by its subfolders (unless collapsed), indented by depth. A folder
+// whose parent is not itself listed hangs from its nearest listed ancestor, or
+// sits at the top level, and shows the path below that ancestor as its title.
+func folderTreeRows(mbs []db.Mailbox, collapsed map[string]bool, view folderView) []sidebarRow {
+	byPath := make(map[string]int, len(mbs))
+	for i, mb := range mbs {
+		byPath[pathKey(mailboxPath(mb))] = i
+	}
+	parent := make([]int, len(mbs))
+	for i, mb := range mbs {
+		parent[i] = -1
+		segs := mailboxPath(mb)
+		for n := len(segs) - 1; n >= 1; n-- {
+			if j, ok := byPath[pathKey(segs[:n])]; ok && j != i {
+				parent[i] = j
+				break
+			}
+		}
+	}
+	children := make(map[int][]int)
+	for i, p := range parent {
+		children[p] = append(children[p], i)
+	}
+	for _, kids := range children {
+		slices.SortStableFunc(kids, func(a, b int) int {
+			oa, ob := view.pref(mbs[a]).Order, view.pref(mbs[b]).Order
+			if (oa != 0 || ob != 0) && oa != ob {
+				switch {
+				case oa == 0:
+					return 1
+				case ob == 0:
+					return -1
+				}
+				return oa - ob
+			}
+			ra, rb := mailboxRank(mbs[a].Name), mailboxRank(mbs[b].Name)
+			if ra != rb {
+				return ra - rb
+			}
+			return strings.Compare(strings.ToLower(mbs[a].Name), strings.ToLower(mbs[b].Name))
+		})
+	}
+	var rows []sidebarRow
+	var walk func(i, depth int)
+	walk = func(i, depth int) {
+		mb := mbs[i]
+		row := sidebarRow{kind: rowKindMailbox, mailboxID: mb.ID, depth: depth, hasChildren: len(children[i]) > 0}
+		if parent[i] >= 0 {
+			segs, pseg := mailboxPath(mb), mailboxPath(mbs[parent[i]])
+			row.label = strings.Join(segs[len(pseg):], moveMailboxDelimiter(mb))
+		}
+		row.hidden = view.pref(mb).Hidden
+		row.collapsed = row.hasChildren && collapsed[folderCollapseKey(mb)]
+		rows = append(rows, row)
+		if row.collapsed {
+			return
+		}
+		for _, c := range children[i] {
+			walk(c, depth+1)
+		}
+	}
+	for _, i := range children[-1] {
+		walk(i, 0)
+	}
+	return rows
+}
+
+// toggleSelectedFolder collapses or expands the folder under the cursor when it
+// has subfolders.
+func (m *Model) toggleSelectedFolder() bool {
+	return m.setSelectedFolderCollapsed(nil)
+}
+
+// setSelectedFolderCollapsed sets the collapsed state of the folder under the
+// cursor (nil toggles). It reports false for a row that is not a parent folder.
+func (m *Model) setSelectedFolderCollapsed(want *bool) bool {
+	if m.sidebarCursor < 0 || m.sidebarCursor >= len(m.sidebarRows) {
+		return false
+	}
+	row := m.sidebarRows[m.sidebarCursor]
+	if row.kind != rowKindMailbox || !row.hasChildren {
+		return false
+	}
+	mb := m.mailboxByID(row.mailboxID)
+	if mb == nil {
+		return false
+	}
+	next := !row.collapsed
+	if want != nil {
+		next = *want
+	}
+	if next == row.collapsed {
+		return true
+	}
+	m.collapsedSections[folderCollapseKey(*mb)] = next
+	m.saveCollapseState()
+	m.rebuildSidebar()
+	m.cursorToMailbox(mb.ID)
+	return true
+}
+
+// loadSelectedFolderCmd loads whatever the sidebar cursor landed on, as moving
+// the cursor with Up/Down does.
+func (m *Model) loadSelectedFolderCmd() tea.Cmd {
+	m.cancelFolderSettle()
+	if m.searchActive() {
+		return nil
+	}
+	if cmd := m.virtualViewCmd(); cmd != nil {
+		return cmd
+	}
+	if selected := m.selectedMailbox(); selected != nil {
+		cmd := m.loadMailboxMessagesCmd(selected.ID)
+		if m.selectedDraftsMailbox() {
+			cmd = tea.Batch(cmd, m.loadDraftsCmd(selected.ID))
+		}
+		return tea.Batch(cmd, m.scheduleFolderSettle())
+	}
+	m.clearMessages()
+	return nil
+}
+
+func (m *Model) cursorToMailbox(id int64) {
+	for i, r := range m.sidebarRows {
+		if r.kind == rowKindMailbox && r.mailboxID == id {
+			m.sidebarCursor = i
+			return
+		}
+	}
+}
+
+// collapseOrJumpToParentFolder is the Left key on a folder row: collapse an open
+// parent, otherwise move to the folder's parent.
+func (m *Model) collapseOrJumpToParentFolder() bool {
+	if m.sidebarCursor < 0 || m.sidebarCursor >= len(m.sidebarRows) {
+		return false
+	}
+	row := m.sidebarRows[m.sidebarCursor]
+	if row.kind != rowKindMailbox {
+		return false
+	}
+	if row.hasChildren && !row.collapsed {
+		collapse := true
+		return m.setSelectedFolderCollapsed(&collapse)
+	}
+	if row.depth == 0 {
+		return false
+	}
+	for i := m.sidebarCursor - 1; i >= 0; i-- {
+		r := m.sidebarRows[i]
+		if r.kind == rowKindMailbox && r.depth < row.depth {
+			m.sidebarCursor = i
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Model) toggleSelectedAccount() bool {
@@ -602,30 +834,71 @@ func (m Model) renderOutboxRow(selected bool, width int) string {
 	return style.Width(width).Render(row)
 }
 
-func (m Model) renderSidebarMailboxRow(mb db.Mailbox, selected bool, width int) string {
+func (m Model) renderSidebarMailboxRow(mb db.Mailbox, row sidebarRow, selected bool, width int) string {
 	badge := ""
 	if m.isDraftsMailbox(mb) {
 		if count := m.draftCounts[mb.ID]; count > 0 {
 			badge = m.mailboxBadgeStyle(mb, selected).Render(fmt.Sprintf("(%d)", count))
 		}
-	} else if unread := m.displayMailboxUnreadCount(mb); unread > 0 {
+	} else if unread := m.folderUnreadCount(mb, row.collapsed); unread > 0 {
 		badge = m.mailboxBadgeStyle(mb, selected).Render(fmt.Sprintf("(%d)", unread))
 	}
-	raw := mb.DisplayName
-	if raw == "" {
-		raw = mb.Name
+	title := row.label
+	if mb.Delimiter == "" {
+		title = mb.Name
 	}
-	title := cleanDisplayName(raw)
+	if title == "" {
+		raw := mb.DisplayName
+		if raw == "" {
+			raw = mb.Name
+		}
+		title = cleanDisplayName(raw)
+	}
+	if row.hidden {
+		title += " (hidden)"
+	}
+	indent := strings.Repeat("  ", row.depth)
 	prefix := "    "
 	if !m.iconsEnabled() {
 		prefix = "    " + m.mailboxRowPrefix(selected)
 	}
+	if row.hasChildren {
+		marker := "▾"
+		if row.collapsed {
+			marker = "▸"
+		}
+		if !m.iconsEnabled() {
+			marker = "-"
+			if row.collapsed {
+				marker = "+"
+			}
+		}
+		prefix = "  " + marker + " "
+		if !m.iconsEnabled() {
+			prefix = "    " + marker + " "
+		}
+	}
 	if m.syncVisible[mb.ID] {
 		prefix = "    " + m.spinner.View() + " "
 	}
-	row := renderFeedRow(prefix, title, badge, width)
+	line := renderFeedRow(indent+prefix, title, badge, width)
 	style := m.mailboxAccentStyle(mb, selected)
-	return style.Width(width).Render(row)
+	return style.Width(width).Render(line)
+}
+
+// folderUnreadCount is a folder's unread count; a collapsed parent also counts
+// everything hidden below it.
+func (m Model) folderUnreadCount(mb db.Mailbox, collapsed bool) int64 {
+	total := m.displayMailboxUnreadCount(mb)
+	if !collapsed {
+		return total
+	}
+	for _, other := range m.mailboxes {
+		if mailboxIsDescendant(mb, other) {
+			total += m.displayMailboxUnreadCount(other)
+		}
+	}
+	return total
 }
 
 func (m Model) iconsEnabled() bool {

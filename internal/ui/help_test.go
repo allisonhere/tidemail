@@ -257,3 +257,15 @@ func TestHelpOverlaySearchKeyFlow(t *testing.T) {
 		t.Fatalf("expected second esc to close help, got %v", m.overlay)
 	}
 }
+
+func TestHelpStatusBarIntroWrapsInsteadOfClipping(t *testing.T) {
+	for _, width := range []int{100, 60} {
+		view := ansi.Strip(renderHelp(width, BuildStyles(CatppuccinMocha, "comfortable", "square"), DefaultKeys, ""))
+		flat := strings.Join(strings.Fields(view), " ")
+		for _, want := range []string{"Status bar", "Pane headers on", "? help", "Pane headers off", "Accounts also keeps the global shortcuts"} {
+			if !strings.Contains(flat, want) {
+				t.Fatalf("width %d: help intro lost %q:\n%s", width, want, view)
+			}
+		}
+	}
+}

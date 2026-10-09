@@ -54,7 +54,9 @@ The manifest is rejected when any setting breaks these rules:
 - `bool`: `default`, when given, is `true` or `false`; no `options`.
 - `select`: 1 to **16** unique, non-empty `options` of at most **48**
   characters each; `default`, when given, is one of them.
-- `secret`: no `default` and no `options`.
+- `secret`: no `default` and no `options`. TideMail refuses secrets shorter
+  than 6 characters because it cannot safely mask them in plugin output.
+  Previously saved shorter secrets appear unset. Re-enter them to use the plugin.
 - Any other `type`, or any unknown field, is an error.
 
 ## Defaults

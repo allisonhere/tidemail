@@ -30,6 +30,20 @@ func TestBuildMoveEntriesUsesSameAccountAndExcludesSource(t *testing.T) {
 	}
 }
 
+func TestFlatMovePickerKeepsPunctuationLiteral(t *testing.T) {
+	mailboxes := []db.Mailbox{{ID: 1, AccountID: 10, Name: "INBOX"}, {ID: 2, AccountID: 10, Name: "INBOX.Receipts"}, {ID: 3, AccountID: 10, Name: "Work/Projects"}}
+	entries := buildMoveEntries(mailboxes, 10, "", map[int64]bool{1: true})
+	if got := moveEntryLabels(entries); !strings.Contains(got, "INBOX.Receipts") || !strings.Contains(got, "Work/Projects") {
+		t.Fatalf("flat names were split: %q", got)
+	}
+	if got := moveDelimiter(mailboxes, 10, ""); got != "" {
+		t.Fatalf("delimiter = %q", got)
+	}
+	if got := moveParentPath("Work/Projects", ""); got != "" {
+		t.Fatalf("flat folder has parent %q", got)
+	}
+}
+
 func TestBuildMoveEntriesAllowsNoselectParentNavigationOnly(t *testing.T) {
 	mailboxes := []db.Mailbox{
 		{ID: 1, AccountID: 10, Name: "INBOX", Delimiter: "/"},

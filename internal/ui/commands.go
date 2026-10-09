@@ -88,11 +88,17 @@ func (m Model) mainCommandItems() []commandItem {
 		{id: "outbox", label: "Open Outbox (queued, failed, and sent mail)", enabled: true},
 		{id: "compose", label: "Compose new message", enabled: len(m.cfg.Accounts) > 0},
 		{id: "reply", label: "Reply to current message", enabled: m.contentMessageID != 0 || hasMessage},
+		{id: "reply-all", label: "Reply all to current message", enabled: m.contentMessageID != 0 || hasMessage},
 		{id: "forward", label: "Forward current message", enabled: m.contentMessageID != 0 || hasMessage},
 		{id: "archive", label: "Archive current message", enabled: hasMessage},
 		{id: "move", label: "Move current message", enabled: hasMessage},
 		{id: "delete", label: "Delete current message", enabled: hasMessage},
 		{id: "toggle-read", label: "Toggle read/unread", enabled: hasMessage},
+		{id: "new-folder", label: "New folder (select a folder or account first)", enabled: len(m.accounts) > 0},
+		{id: "rename-folder", label: "Rename selected folder", enabled: hasMailbox},
+		{id: "delete-folder", label: "Delete selected folder", enabled: hasMailbox},
+		{id: "hide-folder", label: "Hide or unhide selected folder", enabled: hasMailbox},
+		{id: "show-hidden-folders", label: m.showHiddenFoldersLabel(), enabled: len(m.mailboxes) > 0},
 		{id: "sync", label: "Sync current mailbox", enabled: hasMailbox},
 		{id: "sync-all", label: "Sync all mailboxes", enabled: len(m.mailboxes) > 0},
 		{id: "accounts", label: "Manage accounts", enabled: true},
@@ -164,6 +170,20 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		m.compose = NewCompose(acfg, m.cfg.Accounts, m.addressBook)
 		m.overlay = overlayCompose
 		return m, nil
+	case "hide-folder":
+		m.focused = paneAccounts
+		return m.toggleHideSelectedFolder()
+	case "show-hidden-folders":
+		return m.toggleShowHiddenFolders()
+	case "new-folder":
+		m.focused = paneAccounts
+		return m.startNewFolder()
+	case "rename-folder":
+		m.focused = paneAccounts
+		return m.startRenameFolder()
+	case "delete-folder":
+		m.focused = paneAccounts
+		return m.startDeleteFolder()
 	case "reply":
 		msg := m.commandMessage()
 		if msg == nil {
@@ -175,6 +195,19 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 			return m, m.clearStatusCmd()
 		}
 		m.compose = NewReply(*msg, acfg, m.cfg.Accounts, m.addressBook)
+		m.overlay = overlayCompose
+		return m, nil
+	case "reply-all":
+		msg := m.commandMessage()
+		if msg == nil {
+			return m, nil
+		}
+		acfg, err := m.accountCfgForMailbox(msg.MailboxID)
+		if err != nil {
+			m.setStatus("reply all failed: "+err.Error(), true)
+			return m, m.clearStatusCmd()
+		}
+		m.compose = NewReplyAll(*msg, acfg, m.cfg.Accounts, m.addressBook)
 		m.overlay = overlayCompose
 		return m, nil
 	case "forward":

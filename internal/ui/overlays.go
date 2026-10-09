@@ -47,6 +47,20 @@ func (m Model) renderOverlay(base string) string {
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderSoftPanelBox(inner, winW, "tidemail", "sync all?", chrome)
 
+	case overlayFolderDeleteConfirm:
+		winW := 56
+		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
+		body := lipgloss.NewStyle().
+			Background(chrome.baseBg).
+			Foreground(chrome.text).
+			Width(winW).
+			Padding(1, 2).
+			Render(m.folderDeleteConfirmText())
+		hints := renderSoftHints(winW, chrome, "y/enter", "delete", "esc", "cancel")
+		inner := lipgloss.JoinVertical(lipgloss.Left, body, hints)
+		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
+		box = renderSoftPanelBox(inner, winW, "tidemail", "delete folder?", chrome)
+
 	case overlayUnsubscribeConfirm:
 		winW := 52
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)

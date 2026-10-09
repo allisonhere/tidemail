@@ -235,10 +235,19 @@ func pluginSecretKey(pluginID, key string) string {
 	return "plugin:" + pluginID + ":" + key
 }
 
+// MinPluginSecretLen is the shortest plugin secret TideMail will store. Plugin
+// output is scrubbed of secret values before it reaches an error message, and
+// that scrub skips values shorter than this (masking them would mangle ordinary
+// text), so a shorter secret could leak.
+const MinPluginSecretLen = 6
+
 // StorePluginSecret saves a plugin secret to the keychain.
 func StorePluginSecret(pluginID, key, value string) error {
 	if value == "" {
 		return errors.New("empty secret")
+	}
+	if len(value) < MinPluginSecretLen {
+		return fmt.Errorf("secret must be at least %d characters", MinPluginSecretLen)
 	}
 	if !keyringAvailable() {
 		_, reason := KeyringStatus()
@@ -250,13 +259,17 @@ func StorePluginSecret(pluginID, key, value string) error {
 	return nil
 }
 
-// GetPluginSecret returns a plugin secret and whether it is set.
+// GetPluginSecret returns a plugin secret and whether it is usable. Older
+// short values remain in the keychain but appear unset until replaced.
 func GetPluginSecret(pluginID, key string) (string, bool) {
 	if !keyringAvailable() {
 		return "", false
 	}
 	v := lookupSecret(pluginSecretKey(pluginID, key))
-	return v, v != ""
+	if len(v) < MinPluginSecretLen {
+		return "", false
+	}
+	return v, true
 }
 
 // DeletePluginSecret removes a plugin secret from the keychain.

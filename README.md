@@ -111,6 +111,12 @@ a key. TideMail keeps the help screen inside the app and lets you search it.
 
 ## A normal day in TideMail
 
+- Folders show as a tree. In the left pane press `n` to create a folder, `r` to
+  rename and `d` to delete the selected one, `H` to hide it locally, and
+  `Shift+K` / `Shift+J` to walk it up or down the tree: reorder it, move it into an open folder, or out of its parent; `>` nests it under the folder above (even an empty one) and `<` moves it back out. `Enter` or `←` / `→` collapse and expand
+  folders that have subfolders.
+  On servers without a folder hierarchy, names stay literal and flat: `n`
+  creates at the account root, and nesting is unavailable.
 - Rest on a folder to refresh a stale cache silently, press `Enter` or `s` to
   fetch it immediately, or press `F` to sync every folder.
 - Mark messages with `Space`, then archive, move, delete, or change read state as
@@ -118,7 +124,7 @@ a key. TideMail keeps the help screen inside the app and lets you search it.
 - Press `/` to search the local message cache across accounts.
 - Use `*` for a server-backed star. The next sync picks up star changes from
   Gmail and other clients.
-- Open a message and press `r` to reply, `f` to forward, or `Ctrl+U` to use its
+- Open a message and press `r` to reply, `Ctrl+R` to reply all, `f` to forward, or `Ctrl+U` to use its
   unsubscribe header.
 
 Delete, archive, and move wait six seconds before TideMail sends them to the

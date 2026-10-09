@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/allisonhere/tidemail/internal/config"
@@ -158,3 +159,48 @@ var errTest = errTestType("list mailboxes: boom")
 type errTestType string
 
 func (e errTestType) Error() string { return string(e) }
+
+// TestMailboxesRefreshedKeepsTheSelectionOnItsFolder: a folder inserted above
+// the selected one must not slide the highlight onto a different folder while
+// the old folder's messages stay on screen.
+func TestMailboxesRefreshedKeepsTheSelectionOnItsFolder(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.accounts = []db.Account{{ID: 1, Name: "Personal"}}
+	m.mailboxes = []db.Mailbox{
+		{ID: 10, AccountID: 1, Name: "INBOX"},
+		{ID: 12, AccountID: 1, Name: "Zeta", DisplayName: "Zeta"},
+	}
+	m.rebuildSidebar()
+	m.cursorToMailbox(12)
+
+	next, _ := m.Update(MailboxesRefreshedMsg{AccountID: 1, Mailboxes: []db.Mailbox{
+		{ID: 11, AccountID: 1, Name: "Alpha", DisplayName: "Alpha"},
+	}})
+	m = next.(Model)
+
+	if sel := m.selectedMailbox(); sel == nil || sel.ID != 12 {
+		t.Fatalf("selection should stay on Zeta, got %v", sel)
+	}
+}
+
+func TestMailboxesRefreshedClearsTheReadingPaneWhenTheOpenFolderIsPruned(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.accounts = []db.Account{{ID: 1, Name: "Personal"}}
+	m.mailboxes = []db.Mailbox{
+		{ID: 10, AccountID: 1, Name: "INBOX"},
+		{ID: 11, AccountID: 1, Name: "Receipts", DisplayName: "Receipts"},
+	}
+	m.rebuildSidebar()
+	m.cursorToMailbox(11)
+	m.messages = []db.Message{{ID: 99, MailboxID: 11, Subject: "old"}}
+	m.filteredMessages = m.messages
+	m.viewport.SetContent("old message body")
+	m.contentMessageID = 99
+
+	next, _ := m.Update(MailboxesRefreshedMsg{AccountID: 1, Removed: []int64{11}})
+	m = next.(Model)
+
+	if m.contentMessageID != 0 || strings.Contains(m.viewport.View(), "old message body") {
+		t.Fatalf("reading pane still shows the pruned folder's message (id %d)", m.contentMessageID)
+	}
+}

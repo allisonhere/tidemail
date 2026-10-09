@@ -31,12 +31,17 @@ Current release: **v1.0.28**.
   cache when a server renumbers (`internal/db/reconcile.go`). Tombstones keep deleted
   mail from resurrecting through date-granular re-fetches.
 - **SMTP send**: plain, STARTTLS, and direct TLS (port 465). Auth is app-password over
-  PLAIN, or XOAUTH2 for OAuth Gmail accounts. Reply/forward threading headers; display
+  PLAIN, or XOAUTH2 for OAuth Gmail accounts. Reply/reply-all/forward threading headers; display
   name preserved in `From:`. Delivered mail is appended to the account's discovered
   Sent folder for providers that do not file SMTP submissions themselves; Gmail is
   skipped to avoid duplicate copies.
 - **Drafts**: local drafts plus a one-way mirror of server drafts, deduplicated by a
   partial unique index on `(mailbox_id, remote_uid)`.
+- **Folder management**: nested folder tree with collapse; create, rename, and delete real IMAP
+  folders from the sidebar (`n`/`r`/`d`, subtree-aware, system folders protected); local hide and
+  reorder and walk in/out of parents (`H`, `Shift+J`/`K`, `>`/`<`) stored in `mailbox_prefs`.
+  NIL-delimiter servers use flat literal folder names: top-level creation and reorder remain,
+  while nesting and reparenting are unavailable.
 - **Three-pane UI**: accounts sidebar, message list, message content. Pane header
   bars can be shown or removed; when removed, the focused title and shortcuts
   move to the status line and each pane gains a content row.

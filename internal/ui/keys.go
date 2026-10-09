@@ -35,6 +35,11 @@ type KeyMap struct {
 	ToggleThreads   key.Binding
 	Compose         key.Binding
 	Reply           key.Binding
+	ReplyAll        key.Binding
+	NewFolder       key.Binding
+	RenameFolder    key.Binding
+	DeleteFolder    key.Binding
+	HideFolder      key.Binding
 	Forward         key.Binding
 	Archive         key.Binding
 	Move            key.Binding
@@ -73,6 +78,8 @@ type KeyMap struct {
 	OAuthSignIn     key.Binding
 	MoveAccountUp   key.Binding
 	MoveAccountDown key.Binding
+	IndentFolder    key.Binding
+	OutdentFolder   key.Binding
 
 	AttachFile   key.Binding
 	RemoveAttach key.Binding
@@ -128,6 +135,11 @@ var DefaultKeys = KeyMap{
 	ToggleThreads: key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "threads")),
 	Compose:       key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "compose")),
 	Reply:         key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reply")),
+	ReplyAll:      key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "reply all")),
+	NewFolder:     key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new folder")),
+	RenameFolder:  key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "rename folder")),
+	HideFolder:    key.NewBinding(key.WithKeys("H"), key.WithHelp("H", "hide folder")),
+	DeleteFolder:  key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete folder")),
 	Forward:       key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "forward")),
 	Archive:       key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),
 	Move:          key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move")),
@@ -166,6 +178,8 @@ var DefaultKeys = KeyMap{
 	// never shadow the lowercase Up/Down movement keys.
 	MoveAccountUp:   key.NewBinding(key.WithKeys("K"), key.WithHelp("shift+k", "move account up")),
 	MoveAccountDown: key.NewBinding(key.WithKeys("J"), key.WithHelp("shift+j", "move account down")),
+	IndentFolder:    key.NewBinding(key.WithKeys(">"), key.WithHelp(">", "nest folder under the one above")),
+	OutdentFolder:   key.NewBinding(key.WithKeys("<"), key.WithHelp("<", "move folder out of its parent")),
 
 	AttachFile: key.NewBinding(key.WithKeys("alt+f"), key.WithHelp("alt+f", "attach file")),
 

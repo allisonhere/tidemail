@@ -57,7 +57,17 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 			name: "Accounts Pane",
 			entries: []entry{
 				{keys.Enter.Help().Key + "/" + keys.Space.Help().Key, "expand or collapse selected account/section"},
-				{keys.Enter.Help().Key, "on a folder row, fetch that folder now"},
+				{keys.Enter.Help().Key, "on a folder row, fetch that folder now; on a folder with subfolders, collapse or expand it"},
+				{"←/→", "on a folder: ← collapses it, or jumps to its parent; → expands it"},
+				bind(keys.NewFolder),
+				bind(keys.RenameFolder),
+				bind(keys.DeleteFolder),
+				{"new folder", "n on a folder creates a subfolder, on an account or section header a top-level folder; flat accounts always create at the top level; inline prompt, enter to create, esc to cancel"},
+				{"delete folder", "asks first and says how many subfolders go with it; deletes on the server. Inbox and system folders are protected, and a folder with a system folder inside it can't be deleted; while a folder change is still running, another is refused"},
+				bind(keys.HideFolder),
+				{keys.MoveAccountDown.Help().Key + "/" + keys.MoveAccountUp.Help().Key, "walk the folder down or up the tree one row at a time: past a sibling reorders (local to TideMail); onto an open parent it moves into it, past a parent's last or first subfolder it moves out (both real moves on the server). Collapsed folders are stepped over"},
+				{keys.IndentFolder.Help().Key + "/" + keys.OutdentFolder.Help().Key, "nest the folder under the one above it (even an empty one) / move it out of its parent, to just after it; unavailable on flat accounts"},
+				{"hidden folders", "hide is local only; \"Show hidden folders\" in the command palette lists them again"},
 				{"Outbox row", "sits under Unified Inbox; enter/space opens it, its badge counts sends needing you"},
 				{keys.Sync.Help().Key, "sync selected mailbox; on Unified Inbox, sync all inboxes"},
 				bind(keys.SyncAll),
@@ -87,6 +97,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.Undo.Help().Key, "cancel queued send, else undo the latest dismiss or stop waiting (in those views), else undo latest archive, move, or delete"},
 				bind(keys.Compose),
 				bind(keys.Reply),
+				bind(keys.ReplyAll),
 				bind(keys.Forward),
 				{keys.Back.Help().Key, "clear message selection"},
 			},
@@ -111,6 +122,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.ToggleQuote.Help().Key, "toggle quoted text collapse"},
 				{keys.Summary.Help().Key, "open AI summary overlay"},
 				bind(keys.Reply),
+				bind(keys.ReplyAll),
 				bind(keys.Forward),
 			},
 		},
@@ -172,7 +184,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.MoveAccountDown.Help().Key + "/" + keys.MoveAccountUp.Help().Key, "reorder accounts: move the selected account down or up"},
 				{"Default sender", "the ★ [default] account: From for a new message, and focused at startup"},
 				{"No default", "compose uses the first account; TideMail opens on the Unified Inbox"},
-				{"Replies", "reply and forward send from the account the message arrived on"},
+				{"Replies", "reply, reply all and forward send from the account the message arrived on"},
 				{"Account order", "reordering also reorders the sidebar and the ctrl+u sender list"},
 				{keys.Tab.Help().Key, "next form field"},
 				{keys.Left.Help().Key + "/" + keys.Right.Help().Key, "change provider, color, or the Auth method"},
@@ -305,11 +317,24 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		}
 		lines = append(lines, muted(summary), blank)
 	} else {
-		lines = append(lines,
-			muted("With pane headers on, the status bar shows: M accounts · C contacts · S settings · / search · ? help"),
-			muted("With pane headers off, it shows the focused pane title and shortcuts; Accounts also keeps the global shortcuts."),
-			blank,
-		)
+		// Same key/description layout as the shortcut rows below, but wrapped:
+		// these two are prose, and truncating them clipped the sentence.
+		lines = append(lines, renderSoftGroupTitle("Status bar", contentW, chrome))
+		for _, e := range []entry{
+			{"Pane headers on", "shows M accounts · C contacts · S settings · / search · ? help"},
+			{"Pane headers off", "shows the focused pane title and shortcuts; Accounts also keeps the global shortcuts"},
+		} {
+			for i, part := range strings.Split(wrapWords(e.desc, max(1, descW-1)), "\n") {
+				k := ""
+				if i == 0 {
+					k = e.key
+				}
+				keyCell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Width(keyW).Render(truncate(" "+k, max(1, keyW-1)))
+				descCell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render(part)
+				lines = append(lines, keyCell+padStyled(descCell, descW, chrome.baseBg))
+			}
+		}
+		lines = append(lines, blank)
 	}
 
 	for _, s := range sections {

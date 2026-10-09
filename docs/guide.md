@@ -92,7 +92,7 @@ all can take a while.
 When you stop on a non-inbox folder, TideMail silently refreshes it if its cache
 is more than 15 minutes old. Scrolling past folders does not queue refreshes;
 press `Enter` on a folder row when you want to fetch it immediately. Manual-only
-accounts refresh only when you explicitly use `Enter`, `s`, or `F`.
+accounts fetch no mail on their own, not even at launch: they refresh only when you explicitly use `Enter`, `s`, or `F`. (TideMail still lists their folders once at launch so the folder tree stays current.)
 `sync_minutes` controls how an account refreshes on its own:
 
 | Value | Meaning |
@@ -127,6 +127,54 @@ billing mail mentioning an invoice. Your corrections count, so a message you
 recategorized is found under its new tag, not the plugin's. In the content pane, `Ctrl+E` shows
 the full headers and authentication results. `Ctrl+U` opens the mailing list's
 unsubscribe option when the message provides one.
+
+### Managing folders
+
+Folders are your mail server's real folders, shown as a tree: a folder such as
+`Work/Projects` sits under `Work`, and a folder with subfolders has a `▾`/`▸`
+marker. If a server reports no hierarchy delimiter, its folders stay flat:
+punctuation in names is literal, `n` creates at the account root, and nesting
+or moving folders into/out of parents is unavailable. Reordering, renaming,
+deleting, and moving messages still work. In the left pane:
+
+- `Enter` or `Space` on a folder with subfolders collapses or expands it (the
+  state is remembered). `←` collapses an open folder, or moves to its parent
+  folder; `→` expands a collapsed one. A collapsed folder's unread count includes
+  everything inside it. To fetch a folder that has subfolders, use `s`.
+- `n` creates a folder: on a folder it makes a subfolder, on an account or
+  section header a top-level folder. Type the name in the prompt row and press
+  `Enter` (or `Esc` to cancel).
+- `r` renames the selected folder; its subfolders come along.
+- `d` deletes the selected folder from the server after asking. The prompt says
+  how many subfolders go with it and that every message in them is deleted, and
+  `y` or `Enter` confirms. The Inbox and system folders (Sent, Drafts, Trash,
+  Junk, Archive, and Gmail's `[Gmail]` folders) can't be renamed or deleted.
+- `H` hides the selected folder (and its subfolders) from TideMail's sidebar
+  only; nothing changes on the server. "Show hidden folders" in the command
+  palette lists them again, marked `(hidden)`, and `H` on one unhides it.
+- `Shift+K` / `Shift+J` walk the selected folder up or down the tree one row at a
+  time, and it is shown indented while it is inside a parent. Passing a sibling
+  just reorders it (the order is local to TideMail). Moving onto an open folder
+  that has subfolders puts it inside, as the first child going down or the last
+  going up; moving past a parent's last or first subfolder takes it out, to just
+  after or before that parent. Collapsed folders are stepped over, never entered.
+  Moving in or out is a real move on the server, subfolders included, and is
+  refused if the destination already has a folder of the same name. The Inbox
+  and system folders can be reordered but never moved in or out.
+- `>` nests the selected folder under the folder just above it, as its last
+  child, even if that folder has no subfolders yet (Shift+J/K can only move into
+  a folder that already has some). `<` moves it out of its parent to just after
+  it. Both are real moves on the server, subfolders included. While a create,
+  rename, move or delete is still running on the server, further ones are
+  refused with a short notice, so a quick second keypress can't act on a name
+  that is changing.
+  A rename or move is also refused up front if any subfolder would land on an
+  existing folder, and deleting a folder is refused if a system folder (such as
+  a `\Sent` subfolder) is inside it.
+
+The command palette has matching entries: New folder, Rename selected folder,
+Delete selected folder, Hide or unhide selected folder, and Show hidden folders.
+Creating a folder is also possible from the move picker with `n`.
 
 ### Needs You
 
@@ -270,7 +318,10 @@ pulls the next 100 from the server, so you can page back as far as it goes.
 
 ## Writing mail
 
-Press `c` to compose a message or `r` from the content pane to reply. TideMail
+Press `c` to compose a message, or `r` to reply and `Ctrl+R` to reply all (from the
+message list or content pane). Reply all puts the sender (or Reply-To) in To and the
+other recipients in Cc, leaving out your own addresses. Recipient lines too long for
+the field scroll sideways as you type or move the cursor. TideMail
 saves your work to the sending account's Drafts folder as you type. Open Drafts
 and press `Enter` to continue writing, or `d` to delete a draft.
 
@@ -671,7 +722,8 @@ returns to the list; from the list, `esc` returns to the Settings sidebar.
 `Tab` also returns to the sidebar when you are not typing a secret.
 Plugin changes save immediately. The command palette's **Plugins (experimental)**
 view still offers `s` to open a plugin's settings. Secret values such as API keys are stored in your system keychain, never
-in `config.toml`, and are shown only as `************`. Plugins are separate
+in `config.toml`, and are shown only as `************`. A secret must be at least 6
+characters, so it can be masked in plugin output. Plugins are separate
 programs, not part of TideMail's mail handling: for example, TideMail Smart (JEV)
 (an external plugin) can call TypeSafe's Jev model over the network, and its
 settings describe exactly what it sends.
@@ -694,11 +746,18 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Shift+J` / `Shift+K` in Accounts | Move the highlighted account down / up the list |
 | `Ctrl+T` in the account form | Test the connection without saving |
 | `s` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
-| `Enter` on a folder | Fetch that folder now |
+| `Enter` on a folder | Fetch that folder now; on a folder with subfolders, collapse or expand it |
+| `n` / `r` / `d` in Accounts | New, rename, delete the selected folder (see Managing folders) |
+| `H` in Accounts | Hide or unhide the selected folder (local only) |
+| `>` / `<` on a folder | Nest it under the folder above / move it out of its parent |
+| `Shift+K` / `Shift+J` on a folder | Walk the folder up / down the tree: reorder, move into an open parent, or out of its parent |
+| `←` / `→` on a folder | Collapse or go to parent / expand |
 | `F` | Sync all mailboxes (asks first when there are more than 10 folders) |
 | `Enter` in Drafts | Reopen selected draft in compose |
 | `d` in Drafts | Delete selected draft |
-| `r` | Toggle read/unread in message list, reply from content |
+| `r` | Reply to the selected or open message |
+| `Ctrl+R` | Reply all to the selected or open message |
+| `x` | Mark selected message(s) read |
 | `*` | Toggle star (IMAP `\Flagged`) on selected message(s); syncs to the server |
 | `a` | Archive selected message |
 | `d` | Delete selected message |

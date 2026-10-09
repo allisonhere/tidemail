@@ -2,7 +2,6 @@ package ui
 
 import (
 	"log"
-	"os"
 	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -126,11 +125,7 @@ func waitIdleCmd(w *imapClient.Watcher, accountID, mailboxID int64) tea.Cmd {
 
 // logIdle appends watcher diagnostics to the fetch log (same file syncs log to).
 func logIdle(format string, args ...any) {
-	logPath, pathErr := config.LogPath()
-	if pathErr != nil {
-		return
-	}
-	f, openErr := os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	f, openErr := openFetchLog()
 	if openErr != nil {
 		return
 	}

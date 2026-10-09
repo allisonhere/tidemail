@@ -1,15 +1,10 @@
 package ui
 
 import (
-	"context"
-	"fmt"
 	"sort"
 	"strings"
-	"time"
 
-	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
-	imapClient "github.com/allisonhere/tidemail/internal/imap"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -142,19 +137,23 @@ func moveDelimiter(mailboxes []db.Mailbox, accountID int64, currentPath string) 
 			return moveMailboxDelimiter(mb)
 		}
 	}
+	known := false
 	for _, mb := range mailboxes {
+		if mb.AccountID == accountID {
+			known = true
+		}
 		if mb.AccountID == accountID && mb.Delimiter != "" {
 			return mb.Delimiter
 		}
+	}
+	if known {
+		return ""
 	}
 	return "/"
 }
 
 func moveMailboxDelimiter(mb db.Mailbox) string {
-	if mb.Delimiter != "" {
-		return mb.Delimiter
-	}
-	return "/"
+	return mb.Delimiter
 }
 
 func exactMoveMailbox(mailboxes []db.Mailbox, accountID int64, path string) (db.Mailbox, bool) {
@@ -171,7 +170,7 @@ func splitMovePath(path, delimiter string) []string {
 		return nil
 	}
 	if delimiter == "" {
-		delimiter = "/"
+		return []string{path}
 	}
 	parts := strings.Split(path, delimiter)
 	out := parts[:0]
@@ -217,7 +216,11 @@ func (m Model) handleMovePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if name == "" {
 				return m, nil
 			}
-			return m, m.createFolderCmd(m.movePicker.accountID, m.movePicker.currentPath, name)
+			parent := m.movePicker.currentPath
+			if moveDelimiter(m.mailboxes, m.movePicker.accountID, parent) == "" {
+				parent = ""
+			}
+			return m, m.createFolderCmd(m.movePicker.accountID, parent, name)
 		default:
 			var cmd tea.Cmd
 			m.movePicker.nameInput, cmd = m.movePicker.nameInput.Update(msg)
@@ -369,47 +372,10 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 }
 
 func (m *Model) createFolderCmd(accountID int64, parentPath, name string) tea.Cmd {
-	delimiter := moveDelimiter(m.mailboxes, accountID, parentPath)
-	var fullName string
-	if parentPath != "" {
-		fullName = parentPath + delimiter + name
-	} else {
-		// At the root, the account's personal namespace decides where the
-		// folder may live — "INBOX." on Dovecot/Courier, empty on Gmail.
-		fullName, delimiter = qualifyFolderName(name, accountMailboxes(m.mailboxes, accountID))
+	if m.folderOpBusy {
+		m.setStatus(folderBusyMsg, false)
+		return m.clearStatusCmd()
 	}
-	var acfg config.AccountConfig
-	if len(m.movePicker.messages) > 0 {
-		var err error
-		acfg, err = m.accountCfgForMailbox(m.movePicker.messages[0].MailboxID)
-		if err != nil {
-			return func() tea.Msg { return FolderCreatedMsg{AccountID: accountID, Name: fullName, Err: err} }
-		}
-	} else {
-		err := fmt.Errorf("%w (account %d)", errNoAccountConfig, accountID)
-		return func() tea.Msg { return FolderCreatedMsg{AccountID: accountID, Name: fullName, Err: err} }
-	}
-	database := m.db
-	sessions := m.sessions
-	return func() tea.Msg {
-		if acfg.IMAPHost != "" {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			if err := sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
-				return client.CreateMailbox(ctx, fullName)
-			}); err != nil {
-				return FolderCreatedMsg{AccountID: accountID, Name: fullName, Err: err}
-			}
-		}
-		id, err := database.UpsertMailbox(db.Mailbox{
-			AccountID:   accountID,
-			Name:        fullName,
-			DisplayName: cleanDisplayName(fullName),
-			Delimiter:   delimiter,
-		})
-		if err != nil {
-			return FolderCreatedMsg{AccountID: accountID, Name: fullName, Err: err}
-		}
-		return FolderCreatedMsg{AccountID: accountID, MailboxID: id, Name: fullName, Delimiter: delimiter}
-	}
+	m.folderOpBusy = true
+	return m.createFolderOnServerCmd(accountID, parentPath, name)
 }

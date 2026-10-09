@@ -1,10 +1,12 @@
 package db
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type Account struct {
@@ -269,6 +271,77 @@ func (db *DB) UpsertMailbox(m Mailbox) (int64, error) {
 
 func (db *DB) DeleteMailbox(id int64) error {
 	_, err := db.Exec(`DELETE FROM mailboxes WHERE id = ?`, id)
+	return err
+}
+
+// RenameMailboxTree renames a mailbox and every mailbox below it (names that
+// start with oldName+delimiter) in one transaction, keeping their IDs so cached
+// messages stay attached. display recomputes each renamed mailbox's
+// display_name from its new name.
+func (db *DB) RenameMailboxTree(accountID int64, oldName, newName, delimiter string, display func(name string) string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	res, err := tx.Exec(`UPDATE mailboxes SET name = ?, display_name = ? WHERE account_id = ? AND name = ?`,
+		newName, display(newName), accountID, oldName)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("mailbox %q not found", oldName)
+	}
+	type child struct {
+		id   int64
+		name string
+	}
+	var children []child
+	if delimiter != "" {
+		rows, err := tx.Query(`SELECT id, name FROM mailboxes WHERE account_id = ? AND substr(name, 1, ?) = ?`,
+			accountID, utf8.RuneCountInString(oldName+delimiter), oldName+delimiter)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var c child
+			if err := rows.Scan(&c.id, &c.name); err != nil {
+				rows.Close()
+				return err
+			}
+			children = append(children, c)
+		}
+		// A query that failed part-way must not commit a half-renamed tree.
+		iterErr := rows.Err()
+		rows.Close()
+		if iterErr != nil {
+			return iterErr
+		}
+	}
+	for _, c := range children {
+		renamed := newName + delimiter + c.name[len(oldName+delimiter):]
+		if _, err := tx.Exec(`UPDATE mailboxes SET name = ?, display_name = ? WHERE id = ?`, renamed, display(renamed), c.id); err != nil {
+			return err
+		}
+		if err := movePref(tx, accountID, c.name, renamed); err != nil {
+			return err
+		}
+	}
+	if err := movePref(tx, accountID, oldName, newName); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// movePref renames a folder's saved preferences. A leftover row at the new name
+// (its folder was removed elsewhere and nothing cleaned it up) is dropped first:
+// it would break the primary key and abort the rename, and if the moved folder
+// has no prefs of its own it would otherwise be inherited.
+func movePref(tx *sql.Tx, accountID int64, from, to string) error {
+	if _, err := tx.Exec(`DELETE FROM mailbox_prefs WHERE account_id = ? AND name = ?`, accountID, to); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`UPDATE mailbox_prefs SET name = ? WHERE account_id = ? AND name = ?`, to, accountID, from)
 	return err
 }
 

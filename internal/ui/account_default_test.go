@@ -263,3 +263,30 @@ func TestReplyKeyOpensOnTheFromRow(t *testing.T) {
 		t.Fatalf("To = %q, want the sender prefilled", got)
 	}
 }
+
+func TestReplyAllKeyPrefillsToAndCc(t *testing.T) {
+	m, _, _ := newOrderedModel(t, nil, "")
+
+	mailbox := m.mailboxes[0]
+	m.messages = []db.Message{{
+		ID: 1, MailboxID: mailbox.ID, UID: 1,
+		From: "alice@example.com", To: "bob@example.com", CC: "carol@example.com",
+		Subject: "Plans", MessageID: "<p@x>", BodyText: "quoted line",
+	}}
+	m.filteredMessages = m.messages
+	m.messageCursor = 0
+	m.focused = paneMessages
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	m = next.(Model)
+
+	if m.overlay != overlayCompose {
+		t.Fatalf("overlay = %v, want compose", m.overlay)
+	}
+	if got := m.compose.toInput.Value(); got != "alice@example.com" {
+		t.Fatalf("To = %q", got)
+	}
+	if got := m.compose.ccInput.Value(); got != "bob@example.com, carol@example.com" {
+		t.Fatalf("Cc = %q", got)
+	}
+}

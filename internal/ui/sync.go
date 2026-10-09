@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/allisonhere/tidemail/internal/config"
@@ -431,6 +432,9 @@ func (m *Model) startSyncTimers() tea.Cmd {
 		}
 		// Also trigger an immediate sync for every inbox on startup,
 		// so the user sees fresh mail without waiting for the first timer tick.
+		if !m.syncsAutomatically(acc.ID) {
+			continue
+		}
 		for _, mb := range m.mailboxes {
 			if mb.AccountID == acc.ID && isInboxMailbox(mb) {
 				cmds = append(cmds, m.syncMailboxCmd(mb.ID, false))
@@ -443,6 +447,20 @@ func (m *Model) startSyncTimers() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// syncsAutomatically reports whether an account fetches mail without being
+// asked: at launch, on a timer tick, or on a push nudge. A manual-only account
+// (sync_minutes < 0) refreshes only when asked, so it does not. An account whose config can't be resolved keeps the old behaviour.
+func (m *Model) syncsAutomatically(accountID int64) bool {
+	for _, acc := range m.accounts {
+		if acc.ID != accountID {
+			continue
+		}
+		acfg, err := m.accountConfigFor(acc)
+		return err != nil || acfg.SyncMinutes >= 0
+	}
+	return true
+}
+
 // syncInboxesNowCmd kicks off an immediate one-shot sync of every inbox mailbox.
 // Auto-sync timers (tea.Every) only fire after the first interval elapses, so
 // without this the app would show only cached mail on launch until the first
@@ -450,7 +468,7 @@ func (m *Model) startSyncTimers() tea.Cmd {
 func (m *Model) syncInboxesNowCmd() tea.Cmd {
 	var cmds []tea.Cmd
 	for _, mb := range m.mailboxes {
-		if isInboxMailbox(mb) {
+		if isInboxMailbox(mb) && m.syncsAutomatically(mb.AccountID) {
 			cmds = append(cmds, m.syncMailboxCmd(mb.ID, false))
 		}
 	}
@@ -528,7 +546,7 @@ func (m *Model) refreshMailboxesCmd(accountID int64) tea.Cmd {
 				mb := db.Mailbox{
 					AccountID:   accountID,
 					Name:        info.Name,
-					DisplayName: cleanDisplayName(info.Name),
+					DisplayName: displayNameForDelimiter(info.Name, info.Delimiter),
 					Delimiter:   info.Delimiter,
 					Flags:       info.Flags,
 				}
@@ -549,6 +567,10 @@ func (m *Model) refreshMailboxesCmd(accountID int64) tea.Cmd {
 				}
 			}
 
+			nameByID := make(map[int64]string, len(existing))
+			for _, mb := range existing {
+				nameByID[mb.ID] = mb.Name
+			}
 			for _, id := range prunableMailboxIDs(existing, server) {
 				// Clear cached messages + FTS first (the FTS mirror has no FK
 				// cascade), then drop the now-empty mailbox row.
@@ -558,6 +580,9 @@ func (m *Model) refreshMailboxesCmd(accountID int64) tea.Cmd {
 				if e := database.DeleteMailbox(id); e != nil {
 					continue
 				}
+				// Its hide/order prefs are keyed by name; leaving them would
+				// haunt a later folder of the same name.
+				_ = database.DeleteMailboxPrefs(accountID, nameByID[id])
 				removed = append(removed, id)
 			}
 			return nil
@@ -1004,12 +1029,31 @@ func storeFetchedMessages(database *db.DB, mailboxID int64, msgs []db.Message) (
 	return newMsgs, nil
 }
 
-func logFetch(account, mailbox string, msgCount int, connectDur, fetchDur, totalDur time.Duration, err error) {
-	logPath, pathErr := config.LogPath()
-	if pathErr != nil {
-		return
+// maxFetchLogBytes caps fetch.log. Past it the file is moved to fetch.log.1
+// (replacing the previous one) and a fresh log is started.
+const maxFetchLogBytes = 5 << 20
+
+var fetchLogMu sync.Mutex
+
+// openFetchLog opens fetch.log for appending, rotating it first if it has
+// grown past maxFetchLogBytes.
+func openFetchLog() (*os.File, error) {
+	logPath, err := config.LogPath()
+	if err != nil {
+		return nil, err
 	}
-	f, openErr := os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	// Sync and IDLE goroutines log concurrently; without the lock two of them
+	// can both rotate and the second would replace fetch.log.1 with a near-empty file.
+	fetchLogMu.Lock()
+	defer fetchLogMu.Unlock()
+	if info, statErr := os.Stat(logPath); statErr == nil && info.Size() > maxFetchLogBytes {
+		_ = os.Rename(logPath, logPath+".1")
+	}
+	return os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+}
+
+func logFetch(account, mailbox string, msgCount int, connectDur, fetchDur, totalDur time.Duration, err error) {
+	f, openErr := openFetchLog()
 	if openErr != nil {
 		return
 	}
