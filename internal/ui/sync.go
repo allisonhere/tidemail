@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/allisonhere/tidemail/internal/config"
@@ -431,7 +432,7 @@ func (m *Model) startSyncTimers() tea.Cmd {
 		}
 		// Also trigger an immediate sync for every inbox on startup,
 		// so the user sees fresh mail without waiting for the first timer tick.
-		if !m.syncsOnLaunch(acc.ID) {
+		if !m.syncsAutomatically(acc.ID) {
 			continue
 		}
 		for _, mb := range m.mailboxes {
@@ -446,10 +447,10 @@ func (m *Model) startSyncTimers() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// syncsOnLaunch reports whether an account fetches mail at startup. A
-// manual-only account (sync_minutes < 0) refreshes only when asked, so it does
-// not. An account whose config can't be resolved keeps the old behaviour.
-func (m *Model) syncsOnLaunch(accountID int64) bool {
+// syncsAutomatically reports whether an account fetches mail without being
+// asked: at launch, on a timer tick, or on a push nudge. A manual-only account
+// (sync_minutes < 0) refreshes only when asked, so it does not. An account whose config can't be resolved keeps the old behaviour.
+func (m *Model) syncsAutomatically(accountID int64) bool {
 	for _, acc := range m.accounts {
 		if acc.ID != accountID {
 			continue
@@ -467,7 +468,7 @@ func (m *Model) syncsOnLaunch(accountID int64) bool {
 func (m *Model) syncInboxesNowCmd() tea.Cmd {
 	var cmds []tea.Cmd
 	for _, mb := range m.mailboxes {
-		if isInboxMailbox(mb) && m.syncsOnLaunch(mb.AccountID) {
+		if isInboxMailbox(mb) && m.syncsAutomatically(mb.AccountID) {
 			cmds = append(cmds, m.syncMailboxCmd(mb.ID, false))
 		}
 	}
@@ -1032,6 +1033,8 @@ func storeFetchedMessages(database *db.DB, mailboxID int64, msgs []db.Message) (
 // (replacing the previous one) and a fresh log is started.
 const maxFetchLogBytes = 5 << 20
 
+var fetchLogMu sync.Mutex
+
 // openFetchLog opens fetch.log for appending, rotating it first if it has
 // grown past maxFetchLogBytes.
 func openFetchLog() (*os.File, error) {
@@ -1039,6 +1042,10 @@ func openFetchLog() (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Sync and IDLE goroutines log concurrently; without the lock two of them
+	// can both rotate and the second would replace fetch.log.1 with a near-empty file.
+	fetchLogMu.Lock()
+	defer fetchLogMu.Unlock()
 	if info, statErr := os.Stat(logPath); statErr == nil && info.Size() > maxFetchLogBytes {
 		_ = os.Rename(logPath, logPath+".1")
 	}
