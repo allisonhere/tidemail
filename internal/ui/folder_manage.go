@@ -637,21 +637,22 @@ func (m Model) toggleHideSelectedFolder() (tea.Model, tea.Cmd) {
 
 func (m Model) toggleShowHiddenFolders() (tea.Model, tea.Cmd) {
 	m.showHiddenFolders = !m.showHiddenFolders
-	prev := m.sidebarCursor
 	var selID int64
 	if sel := m.selectedMailbox(); sel != nil {
 		selID = sel.ID
 	}
 	m.rebuildSidebar()
 	losing := selID != 0
-	for _, r := range m.sidebarRows {
+	for i, r := range m.sidebarRows {
 		if r.kind == rowKindMailbox && r.mailboxID == selID {
+			m.sidebarCursor = i
+			m.clampSidebarOffset()
 			losing = false
+			break
 		}
 	}
 	if losing {
 		// The open folder just vanished from the sidebar: don't leave its messages up.
-		m.sidebarCursor = clamp(prev, 0, max(0, len(m.sidebarRows)-1))
 		m.clearMessages()
 	}
 	if m.showHiddenFolders {

@@ -1228,8 +1228,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// If the folder being viewed was pruned, drop its now-orphaned
 			// message list so the content pane doesn't show stale rows.
 			if gone[activeID] {
-				m.messages = nil
-				m.filteredMessages = nil
+				m.clearMessages()
 			}
 		}
 		m.rebuildSidebar()
@@ -3693,12 +3692,45 @@ func (m *Model) setStyles(s Styles) {
 	m.viewportCache.clear()
 }
 
+// sameSidebarRow reports whether two rows stand for the same thing: the same
+// folder, account, section header or standing entry.
+func sameSidebarRow(a, b sidebarRow) bool {
+	if a.kind != b.kind {
+		return false
+	}
+	switch a.kind {
+	case rowKindMailbox:
+		return a.mailboxID == b.mailboxID
+	case rowKindAccount:
+		return a.accountID == b.accountID
+	case rowKindSysFolderHeader, rowKindPersonalFolderHeader:
+		return a.accountID == b.accountID && a.label == b.label
+	}
+	return true
+}
+
 func (m *Model) rebuildSidebar() {
 	// config.toml order is the one order everything shows; the database's
 	// position column is only insertion order.
 	m.accounts = sortAccountsByConfigOrder(m.accounts, m.cfg.Accounts)
+	var selected *sidebarRow
+	if m.sidebarCursor >= 0 && m.sidebarCursor < len(m.sidebarRows) {
+		row := m.sidebarRows[m.sidebarCursor]
+		selected = &row
+	}
 	m.sidebarRows = buildSidebarRows(m.accounts, m.mailboxes, m.collapsedAccounts, m.collapsedSections, folderView{prefs: m.mailboxPrefs, showHidden: m.showHiddenFolders})
 	m.refreshDraftCounts()
+	// Rows come and go (folders created, pruned, hidden). Keep the highlight on
+	// the same row rather than the same position, or it slides onto a different
+	// folder while the old folder's messages stay on screen.
+	if selected != nil {
+		for i, row := range m.sidebarRows {
+			if sameSidebarRow(*selected, row) {
+				m.sidebarCursor = i
+				break
+			}
+		}
+	}
 	m.sidebarCursor = clamp(m.sidebarCursor, 0, max(0, len(m.sidebarRows)-1))
 	m.clampSidebarOffset()
 }

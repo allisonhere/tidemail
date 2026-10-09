@@ -683,3 +683,23 @@ func TestHidingHiddenFoldersClearsTheListOfAHiddenSelectedFolder(t *testing.T) {
 		t.Fatalf("cursor left hidden Work for %s but its %d messages stayed", sel.Name, len(m.messages))
 	}
 }
+
+func TestShowingHiddenFoldersKeepsSelectedVisibleFolder(t *testing.T) {
+	m, _, accountID := folderManageModel(t)
+	m.setPref(accountID, "Sent", func(p *db.MailboxPref) { p.Hidden = true })
+	m.rebuildSidebar()
+	work := mailboxIDByName(t, m, "Work")
+	cursorOnMailbox(t, &m, work)
+	m.messages = []db.Message{{ID: 42}}
+
+	for _, command := range []string{"show-hidden-folders", "show-hidden-folders"} {
+		next, _ := m.executeCommand(command)
+		m = next.(Model)
+		if selected := m.selectedMailbox(); selected == nil || selected.ID != work {
+			t.Fatalf("after %s, selected folder = %+v, want Work", command, selected)
+		}
+		if len(m.messages) != 1 || m.messages[0].ID != 42 {
+			t.Fatalf("after %s, Work's message list changed: %+v", command, m.messages)
+		}
+	}
+}
