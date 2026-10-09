@@ -18,6 +18,7 @@ import (
 type needsYouState struct {
 	count       int
 	countLoaded bool
+	messageIDs  map[int64]bool
 	// dismissed holds dismissed message IDs, for "Restore to Needs You".
 	dismissed map[int64]bool
 	// lastDismissed is the most recent dismissal (all messages of a threaded
@@ -27,9 +28,10 @@ type needsYouState struct {
 
 type (
 	needsYouCountMsg struct {
-		Count     int
-		Dismissed map[int64]bool
-		Err       error
+		Count      int
+		MessageIDs map[int64]bool
+		Dismissed  map[int64]bool
+		Err        error
 	}
 	needsYouDismissMsg struct {
 		MessageIDs []int64
@@ -69,12 +71,12 @@ func loadNeedsYouCountCmd(database *db.DB) tea.Cmd {
 		return nil
 	}
 	return func() tea.Msg {
-		n, err := database.CountNeedsYou()
+		ids, err := database.NeedsYouMessageIDs()
 		if err != nil {
 			return needsYouCountMsg{Err: err}
 		}
 		dismissed, err := database.DismissedFromNeedsYou()
-		return needsYouCountMsg{Count: n, Dismissed: dismissed, Err: err}
+		return needsYouCountMsg{Count: len(ids), MessageIDs: ids, Dismissed: dismissed, Err: err}
 	}
 }
 
@@ -96,7 +98,7 @@ func (m *Model) virtualViewCmd() tea.Cmd {
 
 // needsYouRefreshCmd updates the count and, when Needs You is open, the list.
 // It runs after anything that can change qualification: annotation writes and
-// cleanups, dismissals, and syncs.
+// cleanups, dismissals, destructive actions, and syncs.
 func (m *Model) needsYouRefreshCmd() tea.Cmd {
 	cmds := []tea.Cmd{loadNeedsYouCountCmd(m.db)}
 	if m.selectedNeedsYou() && !m.searchActive() {
@@ -110,6 +112,7 @@ func (m Model) handleNeedsYouMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case needsYouCountMsg:
 		if msg.Err == nil {
 			m.needsYou.count = msg.Count
+			m.needsYou.messageIDs = msg.MessageIDs
 			m.needsYou.dismissed = msg.Dismissed
 			m.needsYou.countLoaded = true
 		}
@@ -266,10 +269,25 @@ func (m Model) needsYouExplanationLines(messageID int64, chrome managerChrome) [
 	return append(lines, "")
 }
 
+func (m Model) displayNeedsYouCount() int {
+	count := m.needsYou.count
+	hidden := make(map[int64]bool)
+	for _, action := range m.pendingDestructiveActions {
+		for _, entry := range action.Entries {
+			id := entry.Message.ID
+			if m.needsYou.messageIDs[id] && !hidden[id] {
+				hidden[id] = true
+				count--
+			}
+		}
+	}
+	return max(0, count)
+}
+
 func (m Model) renderNeedsYouRow(selected bool, width int) string {
 	badge := ""
-	if m.needsYou.count > 0 {
-		badge = m.accountBadgeStyle(0, selected).Render(fmt.Sprintf("(%d)", m.needsYou.count))
+	if count := m.displayNeedsYouCount(); count > 0 {
+		badge = m.accountBadgeStyle(0, selected).Render(fmt.Sprintf("(%d)", count))
 	}
 	prefix := "◆ "
 	if !m.iconsEnabled() {
