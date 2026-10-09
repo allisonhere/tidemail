@@ -128,6 +128,17 @@ func TestSecretsMaskedInErrors(t *testing.T) {
 	}
 }
 
+func TestLegacyShortSecretCannotReachPluginOutput(t *testing.T) {
+	root := t.TempDir()
+	installPlugin(t, root, "a", "a", "tidemail-plugin-leak", leakManifest)
+	m, _ := Discover(root)
+	m.Settings = &memorySettings{secrets: map[string]map[string]string{"a": {"api_key": "12345"}}}
+	_, err := m.Call(context.Background(), "a", "fail", nil)
+	if err == nil || !strings.Contains(err.Error(), "too short") || strings.Contains(err.Error(), "12345") {
+		t.Fatalf("short secret should be rejected without disclosure, got %v", err)
+	}
+}
+
 func TestPluginsWithoutSettingsGetNone(t *testing.T) {
 	root := t.TempDir()
 	installPlugin(t, root, "p", "p", "tidemail-plugin-leak")
@@ -157,5 +168,16 @@ func TestTestCapability(t *testing.T) {
 	}
 	if _, err := m.Test(context.Background(), "no"); !errors.Is(err, ErrPermissionDenied) {
 		t.Fatalf("err = %v, want ErrPermissionDenied", err)
+	}
+}
+
+func TestEmptySecretIsNotTreatedAsTooShort(t *testing.T) {
+	root := t.TempDir()
+	installPlugin(t, root, "a", "a", "tidemail-plugin-leak", leakManifest)
+	m, _ := Discover(root)
+	m.Settings = &memorySettings{secrets: map[string]map[string]string{"a": {"api_key": ""}}}
+	_, err := m.Call(context.Background(), "a", "fail", nil)
+	if err != nil && strings.Contains(err.Error(), "too short") {
+		t.Fatalf("an empty (unset) secret is not a short secret: %v", err)
 	}
 }

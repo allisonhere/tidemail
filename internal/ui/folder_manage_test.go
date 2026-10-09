@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -721,5 +722,104 @@ func TestRenameThatReachedTheServerButNotTheDatabaseTriggersAFolderRefresh(t *te
 	next, _ = m.Update(FolderRenamedMsg{AccountID: accountID, OldName: "Work", NewName: "Office", Err: errors.New("NO")})
 	if got := next.(Model); !strings.HasPrefix(got.statusMsg, "rename folder failed") {
 		t.Fatalf("got %q", got.statusMsg)
+	}
+}
+
+func TestOrderSaveFailureStillShowsCompletedFolderRename(t *testing.T) {
+	m, database, accountID := folderManageModel(t)
+	workID := mailboxIDByName(t, m, "Work")
+	cursorOnMailbox(t, &m, workID)
+	if _, err := database.Exec(`CREATE TRIGGER fail_folder_order BEFORE INSERT ON mailbox_prefs BEGIN SELECT RAISE(FAIL, 'order failed'); END`); err != nil {
+		t.Fatal(err)
+	}
+	msg := m.renameFolderCmd(*m.mailboxByID(workID), "Office", map[string]int{"Office": 10})().(FolderRenamedMsg)
+	if msg.Err == nil {
+		t.Fatal("expected order save to fail")
+	}
+	next, _ := m.Update(msg)
+	m = next.(Model)
+	if got := m.mailboxByID(workID); got == nil || got.Name != "Office" {
+		t.Fatalf("renamed folder should be visible, got %+v", got)
+	}
+	if persisted := mustListMailboxes(t, database, accountID); !slices.ContainsFunc(persisted, func(mb db.Mailbox) bool { return mb.ID == workID && mb.Name == "Office" }) {
+		t.Fatalf("database should keep the completed rename, got %+v", persisted)
+	}
+	if selected := m.selectedMailbox(); selected == nil || selected.ID != workID {
+		t.Fatalf("selection should stay on renamed folder, got %+v", selected)
+	}
+	if !m.statusErr || !strings.Contains(m.statusMsg, "order") {
+		t.Fatalf("order failure should remain visible, got %q", m.statusMsg)
+	}
+}
+
+func TestRenameCarriesPrefsAndCollapseStateUsingTheAccountsDelimiter(t *testing.T) {
+	// "/" account: Work/x follows Work, but a sibling literally named "Work.b" must not.
+	m, _, accountID := folderManageModel(t)
+	m.setPref(accountID, "Work.b", func(p *db.MailboxPref) { p.Hidden = true })
+	m.setPref(accountID, "Work/Projects", func(p *db.MailboxPref) { p.Order = 20 })
+	if m.collapsedSections == nil {
+		m.collapsedSections = map[string]bool{}
+	}
+	m.collapsedSections[fmt.Sprintf("folder:%d:%s", accountID, "Work.b")] = true
+	m.collapsedSections[fmt.Sprintf("folder:%d:%s", accountID, "Work/Projects")] = true
+
+	next, _ := m.Update(FolderRenamedMsg{AccountID: accountID, OldName: "Work", NewName: "Office"})
+	m = next.(Model)
+	if _, ok := m.mailboxPrefs[accountID]["Office/Projects"]; !ok {
+		t.Fatalf("child pref should follow the rename: %v", m.mailboxPrefs[accountID])
+	}
+	if _, ok := m.mailboxPrefs[accountID]["Work.b"]; !ok {
+		t.Fatalf("a sibling named Work.b must keep its pref: %v", m.mailboxPrefs[accountID])
+	}
+	if _, ok := m.mailboxPrefs[accountID]["Office.b"]; ok {
+		t.Fatal("Work.b was wrongly renamed to Office.b")
+	}
+	if !m.collapsedSections[fmt.Sprintf("folder:%d:%s", accountID, "Office/Projects")] || m.collapsedSections[fmt.Sprintf("folder:%d:%s", accountID, "Office.b")] {
+		t.Fatalf("collapse state followed the wrong names: %v", m.collapsedSections)
+	}
+}
+
+func TestRenameCarriesPrefsOnAPipeDelimitedAccount(t *testing.T) {
+	m, database, accountID := folderManageModel(t)
+	for _, name := range []string{"Box", "Box|Sub"} {
+		id, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: name, Delimiter: "|"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.mailboxes = append(m.mailboxes, db.Mailbox{ID: id, AccountID: accountID, Name: name, Delimiter: "|"})
+	}
+	m.setPref(accountID, "Box|Sub", func(p *db.MailboxPref) { p.Order = 30 })
+
+	next, _ := m.Update(FolderRenamedMsg{AccountID: accountID, OldName: "Box", NewName: "Crate"})
+	m = next.(Model)
+	if _, ok := m.mailboxPrefs[accountID]["Crate|Sub"]; !ok {
+		t.Fatalf("pref on a |-delimited child should follow: %v", m.mailboxPrefs[accountID])
+	}
+	if _, ok := m.mailboxPrefs[accountID]["Box|Sub"]; ok {
+		t.Fatal("old key should be gone")
+	}
+}
+
+func TestCreateFolderIsRefusedWhileAnotherFolderChangeRuns(t *testing.T) {
+	m, _, accountID := folderManageModel(t)
+	cursorOnMailbox(t, &m, mailboxIDByName(t, m, "Work"))
+	m.folderOpBusy = true
+
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	if m.folderPrompt.active || m.statusMsg != folderBusyMsg {
+		t.Fatalf("n should be refused while a rename runs, prompt=%v status=%q", m.folderPrompt.active, m.statusMsg)
+	}
+
+	// Creating from the prompt takes the guard, and the result frees it.
+	m.folderOpBusy = false
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	m = typeText(m, "Clients")
+	m, _ = pressKey(m, tea.KeyMsg{Type: tea.KeyEnter})
+	if !m.folderOpBusy {
+		t.Fatal("a running create must hold the guard")
+	}
+	next, _ := m.Update(FolderCreatedMsg{AccountID: accountID, Err: errors.New("NO")})
+	if next.(Model).folderOpBusy {
+		t.Fatal("the create result must free the guard")
 	}
 }

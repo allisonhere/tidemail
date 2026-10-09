@@ -43,6 +43,9 @@ type FolderRenamedMsg struct {
 	// ServerRenamed is set when the server already did the rename but TideMail's
 	// own records could not be updated, so the cache is out of step with it.
 	ServerRenamed bool
+	// LocalRenamed is set when the mailbox rename was committed locally, but
+	// saving the requested folder order failed afterward.
+	LocalRenamed bool
 }
 
 // FolderDeletedMsg reports the result of deleting a folder and its subfolders.
@@ -188,6 +191,10 @@ func newFolderInput(value string) textinput.Model {
 }
 
 func (m Model) startNewFolder() (tea.Model, tea.Cmd) {
+	if m.folderOpBusy {
+		m.setStatus(folderBusyMsg, false)
+		return m, m.clearStatusCmd()
+	}
 	accountID, mb, ok := m.sidebarFolderTarget()
 	if !ok {
 		m.setStatus("move to an account or folder to create a folder", false)
@@ -338,6 +345,7 @@ func (m Model) submitFolderPrompt() (tea.Model, tea.Cmd) {
 	}
 	m.folderPrompt = folderPrompt{}
 	m.setStatus("creating folder...", false)
+	m.folderOpBusy = true
 	return m, m.createFolderOnServerCmd(p.accountID, p.parent, name)
 }
 
@@ -421,7 +429,7 @@ func (m Model) renameFolderCmd(mb db.Mailbox, newName string, orders map[string]
 		}
 		if len(orders) > 0 {
 			if err := database.SetMailboxOrders(mb.AccountID, orders); err != nil {
-				return failLocal(err)
+				return FolderRenamedMsg{AccountID: mb.AccountID, OldName: mb.Name, NewName: newName, Err: err, LocalRenamed: true}
 			}
 		}
 		return FolderRenamedMsg{AccountID: mb.AccountID, OldName: mb.Name, NewName: newName, Orders: orders}
@@ -480,7 +488,7 @@ func (m Model) deleteFolderCmd(mb db.Mailbox) tea.Cmd {
 
 func (m Model) handleFolderRenamed(msg FolderRenamedMsg) (tea.Model, tea.Cmd) {
 	m.folderOpBusy = false
-	if msg.Err != nil {
+	if msg.Err != nil && !msg.LocalRenamed {
 		if msg.ServerRenamed {
 			// The server did rename it; only our copy is stale. Re-list the
 			// folders so the sidebar catches up.
@@ -494,48 +502,76 @@ func (m Model) handleFolderRenamed(msg FolderRenamedMsg) (tea.Model, tea.Cmd) {
 	if m.sidebarCursor >= 0 && m.sidebarCursor < len(m.sidebarRows) {
 		selected = m.sidebarRows[m.sidebarCursor].mailboxID
 	}
+	// The account's own delimiter decides what is "below" the renamed folder.
+	delimiter := "/"
+	for _, mb := range m.mailboxes {
+		if mb.AccountID == msg.AccountID && mb.Name == msg.OldName {
+			delimiter = folderDelimiter(mb)
+			break
+		}
+	}
+	// renamed maps an old folder name to its new one, or ok=false if the folder
+	// is not the renamed one or inside it.
+	renamed := func(name string) (string, bool) {
+		if name == msg.OldName {
+			return msg.NewName, true
+		}
+		if prefix := msg.OldName + delimiter; strings.HasPrefix(name, prefix) {
+			return msg.NewName + delimiter + name[len(prefix):], true
+		}
+		return "", false
+	}
 	for i := range m.mailboxes {
 		mb := &m.mailboxes[i]
 		if mb.AccountID != msg.AccountID {
 			continue
 		}
-		prefix := msg.OldName + folderDelimiter(*mb)
-		switch {
-		case mb.Name == msg.OldName:
-			mb.Name = msg.NewName
-		case strings.HasPrefix(mb.Name, prefix):
-			mb.Name = msg.NewName + folderDelimiter(*mb) + mb.Name[len(prefix):]
-		default:
+		newName, ok := renamed(mb.Name)
+		if !ok {
 			continue
 		}
+		mb.Name = newName
 		mb.DisplayName = cleanDisplayName(mb.Name)
 	}
-	// Hide/order prefs are keyed by name too (the DB already moved them).
-	for name, pref := range m.mailboxPrefs[msg.AccountID] {
-		if name == msg.OldName || strings.HasPrefix(name, msg.OldName+"/") || strings.HasPrefix(name, msg.OldName+".") {
-			delete(m.mailboxPrefs[msg.AccountID], name)
-			m.mailboxPrefs[msg.AccountID][msg.NewName+name[len(msg.OldName):]] = pref
+	// Hide/order prefs are keyed by name too (the DB already moved them). Work
+	// from a snapshot: adding keys to a map while ranging it can revisit them.
+	prefs := m.mailboxPrefs[msg.AccountID]
+	moved := make(map[string]db.MailboxPref)
+	for name, pref := range prefs {
+		if newName, ok := renamed(name); ok {
+			delete(prefs, name)
+			moved[newName] = pref
 		}
+	}
+	for name, pref := range moved {
+		prefs[name] = pref
 	}
 	for name, o := range msg.Orders {
 		m.setPref(msg.AccountID, name, func(p *db.MailboxPref) { p.Order = o })
 	}
 	// Collapse state is keyed by name, so carry it to the new names.
-	for key, collapsed := range m.collapsedSections {
-		oldKey := fmt.Sprintf("folder:%d:", msg.AccountID)
-		if !strings.HasPrefix(key, oldKey) || !collapsed {
+	keyPrefix := fmt.Sprintf("folder:%d:", msg.AccountID)
+	collapsed := make(map[string]bool)
+	for key, isCollapsed := range m.collapsedSections {
+		if !strings.HasPrefix(key, keyPrefix) || !isCollapsed {
 			continue
 		}
-		name := key[len(oldKey):]
-		if name == msg.OldName || strings.HasPrefix(name, msg.OldName+"/") || strings.HasPrefix(name, msg.OldName+".") {
+		if newName, ok := renamed(key[len(keyPrefix):]); ok {
 			delete(m.collapsedSections, key)
-			m.collapsedSections[oldKey+msg.NewName+name[len(msg.OldName):]] = true
+			collapsed[keyPrefix+newName] = true
 		}
+	}
+	for key := range collapsed {
+		m.collapsedSections[key] = true
 	}
 	m.saveCollapseState()
 	m.rebuildSidebar()
 	if selected != 0 {
 		m.cursorToMailbox(selected)
+	}
+	if msg.Err != nil {
+		m.setStatus("folder renamed, but saving its order failed: "+msg.Err.Error(), true)
+		return m, m.clearStatusCmd()
 	}
 	m.setStatus("folder renamed: "+cleanDisplayName(msg.NewName), false)
 	return m, m.clearStatusCmd()

@@ -364,5 +364,10 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 }
 
 func (m *Model) createFolderCmd(accountID int64, parentPath, name string) tea.Cmd {
+	if m.folderOpBusy {
+		m.setStatus(folderBusyMsg, false)
+		return m.clearStatusCmd()
+	}
+	m.folderOpBusy = true
 	return m.createFolderOnServerCmd(accountID, parentPath, name)
 }

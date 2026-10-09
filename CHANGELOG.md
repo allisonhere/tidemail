@@ -26,6 +26,16 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Renaming or moving a folder whose name has non-ASCII characters (`Café`) now carries its
+  subfolders and their hide/order settings along. Settings follow the account's own folder
+  delimiter, a stale setting left at the new name can no longer abort the rename, and settings of
+  folders removed on the server are cleaned up.
+- Creating a folder is held back while a folder rename, move or delete is still running.
+- A timer tick that was already pending no longer fetches a manual-only account.
+- A folder rename remains visible if saving its new order fails afterward. TideMail reports the
+  order error without reverting the completed rename in the sidebar.
+- Older plugin secrets shorter than 6 characters no longer reach plugin processes. They appear
+  unset and must be re-entered.
 - `fetch.log` is rotated to `fetch.log.1` once it passes 5 MB instead of growing forever.
 - If a folder rename or move succeeds on the server but TideMail can't record it locally, it now says
   so and re-lists the folders instead of just reporting a failure.

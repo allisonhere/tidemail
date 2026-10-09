@@ -1146,6 +1146,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AutoSyncMsg:
 		var cmds []tea.Cmd
+		// A timer that was already pending when the account was switched to
+		// manual-only can still fire once; it must not fetch.
+		if !m.syncsAutomatically(msg.AccountID) {
+			return m, nil
+		}
 		for _, mb := range m.mailboxes {
 			if mb.AccountID == msg.AccountID && isInboxMailbox(mb) {
 				cmds = append(cmds, m.syncMailboxCmd(mb.ID, false))
@@ -1491,6 +1496,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleFolderDeleted(msg)
 
 	case FolderCreatedMsg:
+		m.folderOpBusy = false
 		if msg.Err != nil {
 			m.setStatus("create folder failed: "+msg.Err.Error(), true)
 			return m, m.clearStatusCmd()

@@ -58,6 +58,12 @@ func invoke(ctx context.Context, p Plugin, req Request, timeout time.Duration, s
 	if err := req.validate(); err != nil {
 		return Response{}, fmt.Errorf("plugin %q: %w", p.Manifest.ID, err)
 	}
+	for key, value := range secrets {
+		// An empty value is "not set", not a short secret: there is nothing to leak.
+		if value != "" && len(value) < minRedactLen {
+			return Response{}, fmt.Errorf("plugin %q: secret %q is too short to redact; re-enter it with at least %d characters", p.Manifest.ID, key, minRedactLen)
+		}
+	}
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return Response{}, fmt.Errorf("plugin %q: encode request: %w", p.Manifest.ID, err)

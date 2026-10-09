@@ -50,3 +50,25 @@ func TestLaunchSyncSkipsManualOnlyAccounts(t *testing.T) {
 		t.Fatal("startSyncTimers must not sync a manual-only account either")
 	}
 }
+
+func TestAutoSyncTickSkipsAManualOnlyAccount(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Accounts = []config.AccountConfig{{Name: "Manual", IMAPHost: "imap.example.com", SyncMinutes: -1}}
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	database, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	accID, _ := database.AddAccount("", "Manual", "")
+	inbox, _ := database.UpsertMailbox(db.Mailbox{AccountID: accID, Name: "INBOX", Delimiter: "/"})
+	m := NewModel(database, cfg, "dev", false)
+	m.accounts = []db.Account{{ID: accID, Name: "Manual"}}
+	m.mailboxes = []db.Mailbox{{ID: inbox, AccountID: accID, Name: "INBOX"}}
+
+	next, _ := m.Update(AutoSyncMsg{AccountID: accID})
+	if next.(Model).syncing[inbox] {
+		t.Fatal("a stray timer tick must not sync a manual-only account")
+	}
+}

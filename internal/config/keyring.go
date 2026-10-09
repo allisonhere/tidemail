@@ -259,13 +259,17 @@ func StorePluginSecret(pluginID, key, value string) error {
 	return nil
 }
 
-// GetPluginSecret returns a plugin secret and whether it is set.
+// GetPluginSecret returns a plugin secret and whether it is usable. Older
+// short values remain in the keychain but appear unset until replaced.
 func GetPluginSecret(pluginID, key string) (string, bool) {
 	if !keyringAvailable() {
 		return "", false
 	}
 	v := lookupSecret(pluginSecretKey(pluginID, key))
-	return v, v != ""
+	if len(v) < MinPluginSecretLen {
+		return "", false
+	}
+	return v, true
 }
 
 // DeletePluginSecret removes a plugin secret from the keychain.
