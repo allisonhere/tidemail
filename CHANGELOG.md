@@ -1,8 +1,12 @@
 # Changelog
+Please report bugs ;)
+-allie
 
 All notable changes to TideMail are documented in this file.
 
 ## Unreleased
+
+## v1.3.0
 
 ### Fixed
 
