@@ -83,6 +83,9 @@ type Message struct {
 	Read        bool
 	Starred     bool
 	MessageID   string
+	// Headers is the message's full header block as the server sent it (the Received trail, authentication results
+	// and the rest), for a "show original headers" view. Only filled when a single message is fetched.
+	Headers string
 }
 
 func projectMessage(m db.Message) Message {
@@ -106,6 +109,7 @@ func projectMessage(m db.Message) Message {
 		Read:        m.Read,
 		Starred:     m.Starred,
 		MessageID:   m.MessageID,
+		Headers:     m.RawHeaders,
 	}
 }
 

@@ -221,6 +221,7 @@ func parseIMAPMessage(msg *imapclient.FetchMessageBuffer) (db.Message, error) {
 		// Distinguish header section from body section
 		if section.Section != nil && section.Section.Specifier == imap.PartSpecifierHeader {
 			m.Headers = sanitizeControl(parseAuthHeaders(raw))
+			m.RawHeaders = sanitizeControl(string(raw[:min(len(raw), maxRawHeaders)]))
 			m.References = sanitizeControl(parseHeaderValue(raw, "References"))
 			continue
 		}
@@ -275,6 +276,9 @@ func sanitizeControl(s string) string {
 		return r
 	}, s)
 }
+
+// maxRawHeaders caps the raw header block kept for display; real headers are a few KB.
+const maxRawHeaders = 64 << 10
 
 func parseHeaderValue(raw []byte, name string) string {
 	tr := textproto.NewReader(bufio.NewReader(bytes.NewReader(raw)))
