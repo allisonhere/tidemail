@@ -131,3 +131,10 @@ func TestMicrosoftSignInDoneClosesOnCancel(t *testing.T) {
 		t.Fatal("Done should close once the sign-in is cancelled")
 	}
 }
+
+func TestProjectMessageCarriesRawHeaders(t *testing.T) {
+	got := projectMessage(db.Message{RawHeaders: "Received: from a by b\r\nSubject: hi\r\n"})
+	if got.Headers != "Received: from a by b\r\nSubject: hi\r\n" {
+		t.Fatalf("Headers = %q", got.Headers)
+	}
+}

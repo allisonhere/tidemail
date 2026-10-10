@@ -29,6 +29,7 @@ type Message struct {
 	Starred        bool
 	HasAttachment  bool
 	Headers        string       // auth-related headers parsed from MIME
+	RawHeaders     string       // transient, not stored: the full header block as received (Received trail and all)
 	AttachmentData []Attachment // transient, not stored in messages table
 	AccountName    string       // transient, populated for cross-mailbox search results
 	MailboxName    string       // transient, populated for cross-mailbox search results
