@@ -4,6 +4,12 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- The update checker's state (last check time, dismissed version) is kept in the database instead of
+  `config.toml`, so a config file kept in a dotfiles repo no longer changes on every update check.
+  Values from an older config are carried over once.
+
 ## v1.2.0
 
 ### Added

@@ -492,7 +492,10 @@ Kerberos (GSSAPI).
 
 TideMail stores its config in `~/.config/tidemail/config.toml` and its SQLite
 cache in `~/.local/share/tidemail/mail.db`. Set `XDG_DATA_HOME` to use a
-different cache location.
+different cache location. The update checker's own state (when it last
+checked, and which version you dismissed) is kept in `mail.db`, not in
+`config.toml`, so a config file under version control doesn't change every time
+TideMail checks for updates.
 
 Example configuration:
 

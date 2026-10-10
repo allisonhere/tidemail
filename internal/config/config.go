@@ -285,13 +285,17 @@ func NormalizeTagHex(s string) (string, bool) {
 }
 
 type UpdatesConfig struct {
-	CheckOnStartup     bool   `toml:"check_on_startup"`
-	CheckIntervalHours int    `toml:"check_interval_hours"`
-	LastCheckedUnix    int64  `toml:"last_checked_unix"`
-	DismissedVersion   string `toml:"dismissed_version"`
-	AvailableVersion   string `toml:"available_version"`
-	AvailableSummary   string `toml:"available_summary"`
-	AvailablePublished int64  `toml:"available_published_unix"`
+	CheckOnStartup     bool `toml:"check_on_startup"`
+	CheckIntervalHours int  `toml:"check_interval_hours"`
+	// The fields below are runtime state, not settings. TideMail keeps them in
+	// its database and no longer writes them here, so a config.toml under
+	// version control stays still. They are still read, once, to carry an older
+	// file's values over.
+	LastCheckedUnix    int64  `toml:"last_checked_unix,omitzero"`
+	DismissedVersion   string `toml:"dismissed_version,omitempty"`
+	AvailableVersion   string `toml:"available_version,omitempty"`
+	AvailableSummary   string `toml:"available_summary,omitempty"`
+	AvailablePublished int64  `toml:"available_published_unix,omitzero"`
 }
 
 type FeedConfig struct {
