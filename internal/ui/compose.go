@@ -641,6 +641,19 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 		c.suggestCursor = (c.suggestCursor - 1 + len(c.suggestions)) % len(c.suggestions)
 		return c, nil, false
 
+	// Up/Down walk the header fields. Raw arrow keys only (keys.Up/Down also bind
+	// j/k, which must keep inserting). The body keeps them for cursor movement,
+	// and Up stops at the first header rather than wrapping down into the body.
+	case c.focusedField != composeFieldBody && km.String() == "down":
+		c.advanceField(1)
+		return c, nil, false
+
+	case c.focusedField != composeFieldBody && km.String() == "up":
+		if c.focusedField != c.firstHeaderField() {
+			c.advanceField(-1)
+		}
+		return c, nil, false
+
 	case keyMatches(km, keys.AttachFile):
 		// Start picker in user's home directory
 		home, err := os.UserHomeDir()
@@ -856,6 +869,15 @@ func (c ComposeModel) updatePicker(km tea.KeyMsg, keys KeyMap) (ComposeModel, te
 		}
 		return c, nil, false
 	}
+}
+
+// firstHeaderField is the topmost field Tab can reach: From only exists in the
+// cycle when there is more than one account to choose from.
+func (c ComposeModel) firstHeaderField() composeField {
+	if len(c.accounts) > 1 {
+		return composeFieldFrom
+	}
+	return composeFieldTo
 }
 
 func (c *ComposeModel) advanceField(delta int) {

@@ -1188,3 +1188,48 @@ func TestNewReplyChainsReferences(t *testing.T) {
 		t.Fatalf("references = %q", c.references)
 	}
 }
+
+func TestComposeArrowsMoveBetweenHeaderFields(t *testing.T) {
+	account := config.AccountConfig{Name: "Only", User: "only@example.com"}
+	c := focusToField(NewCompose(account, []config.AccountConfig{account}, nil))
+	down, up := tea.KeyMsg{Type: tea.KeyDown}, tea.KeyMsg{Type: tea.KeyUp}
+	for _, want := range []composeField{composeFieldCC, composeFieldBCC, composeFieldSubject, composeFieldBody} {
+		c, _, _ = c.Update(down, DefaultKeys)
+		if c.focusedField != want {
+			t.Fatalf("down: want %v, got %v", want, c.focusedField)
+		}
+	}
+	c, _, _ = c.Update(down, DefaultKeys)
+	if c.focusedField != composeFieldBody {
+		t.Fatalf("down in the body must stay in the body, got %v", c.focusedField)
+	}
+	c.advanceField(-1)
+	for _, want := range []composeField{composeFieldBCC, composeFieldCC, composeFieldTo, composeFieldTo} {
+		c, _, _ = c.Update(up, DefaultKeys)
+		if c.focusedField != want {
+			t.Fatalf("up: want %v, got %v", want, c.focusedField)
+		}
+	}
+}
+
+func TestComposeUpReachesFromWithSeveralAccounts(t *testing.T) {
+	a := config.AccountConfig{Name: "A", User: "a@example.com"}
+	b := config.AccountConfig{Name: "B", User: "b@example.com"}
+	c := focusToField(NewCompose(a, []config.AccountConfig{a, b}, nil))
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyUp}, DefaultKeys)
+	if c.focusedField != composeFieldFrom {
+		t.Fatalf("want From, got %v", c.focusedField)
+	}
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyUp}, DefaultKeys)
+	if c.focusedField != composeFieldFrom {
+		t.Fatalf("up from the first field must not wrap, got %v", c.focusedField)
+	}
+}
+
+func TestComposeJKStillTypeInHeaderFields(t *testing.T) {
+	c := focusToField(NewCompose(config.AccountConfig{}, nil, nil))
+	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("jk")}, DefaultKeys)
+	if got := c.toInput.Value(); got != "jk" || c.focusedField != composeFieldTo {
+		t.Fatalf("j/k must insert text, value %q field %v", got, c.focusedField)
+	}
+}
