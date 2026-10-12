@@ -25,7 +25,8 @@ tidemail install-skill codex
 For guided CLI workflows, run `tidemail cli` for the command menu or
 `tidemail send` for the step-by-step composer and attachment browser.
 [Interactive CLI help](docs/cli.md#interactive-command-menu-and-composer) covers
-keyboard navigation and script-friendly prompt controls.
+keyboard navigation and script-friendly prompt controls. **Settings → CLI**
+has switches for quitting after a send, skipping review, and the default signature.
 
 `send` saves a draft unless you authorize delivery. `--yes` queues mail with the
 configured delay. The client or `outbox process` delivers due queued mail.

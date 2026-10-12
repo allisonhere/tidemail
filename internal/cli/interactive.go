@@ -92,7 +92,7 @@ func interactiveRoute(args []string, in io.Reader, out, errOut io.Writer) (bool,
 	clean, explicit, disabled := interactionFlags(args)
 	if hasHelpFlag(clean) {
 		if command == "cli" {
-			_, _ = fmt.Fprintln(out, "Usage: tidemail cli\nOpen the interactive command menu. Plain tidemail opens the inbox.\nOther mail commands accept --interactive and --no-interactive.")
+			_, _ = fmt.Fprintln(out, "Usage: tidemail cli\nOpen the interactive command menu. Plain tidemail opens the inbox.\nOther mail commands accept --interactive and --no-interactive.\nSettings > CLI sets: quit after send, skip review, default signature (interactive use only).")
 			return true, 0
 		}
 		if explicit || disabled {
