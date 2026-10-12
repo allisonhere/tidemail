@@ -19,6 +19,10 @@ Current release: **v1.0.28**.
   drafting, and sending. See the [CLI reference](docs/cli.md) for queue scheduling,
   JSON output, installation, and current limits.
 
+- **Standard folders**: Gmail's Sent Mail, Drafts, All Mail, Trash, Spam,
+  Starred, and Important remain visible under unselectable server containers.
+  Explicit folder hiding and section collapse still apply.
+
 - **Multi-account IMAP**: connect, list mailboxes, fetch, move, delete, archive,
   mark read/unread, star. Delete moves remote mail to Trash when one is available,
   with permanent expunge as the fallback. Incremental sync via UID SEARCH SINCE,

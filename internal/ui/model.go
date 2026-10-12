@@ -3762,10 +3762,6 @@ func (m *Model) clampSidebarOffset() {
 // casing for display in the sidebar. The raw Name is preserved for IMAP
 // SELECT commands; this is purely cosmetic.
 
-// isGmailSystemFolder reports whether name is a Gmail system label that is
-// typically uninteresting in an IMAP client. These are hidden when the
-// HideGmailSystem config toggle is enabled.
-
 func (m Model) newAccountManager() AccountManager {
 	am := NewAccountManager(m.db)
 	am.mode = amList

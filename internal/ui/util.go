@@ -449,13 +449,9 @@ func isGmailSystemFolder(name string) bool {
 	}
 	rest := strings.TrimSpace(name[idx+2:])
 
-	// Hide: All Mail (duplicates everything), Starred/Important
-	// (no star/importance UI), Spam/Trash (handled by actions),
-	// and all Categories/* (Gmail auto-categorization noise).
-	// Keep: Drafts, Sent Mail — these are useful.
 	lower := strings.ToLower(rest)
 	switch lower {
-	case "all mail", "starred", "important", "spam", "trash":
+	case "all mail", "drafts", "sent", "sent mail", "starred", "important", "spam", "trash":
 		return true
 	}
 	return strings.HasPrefix(lower, "categories/")

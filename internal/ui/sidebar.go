@@ -146,21 +146,7 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 		personalMbs := make([]db.Mailbox, 0, len(mbs))
 		for _, mb := range mbs {
 			if hasFlag(mb.Flags, "\\Noselect") {
-				continue // cannot be opened, no messages — skip
-			}
-			// Also skip children of Noselect parents (e.g. dovecot.sieve under INBOX.dovecot)
-			if idx := strings.LastIndex(mb.Name, mb.Delimiter); mb.Delimiter != "" && idx >= 0 {
-				parent := mb.Name[:idx]
-				skip := false
-				for _, pmb := range mbs {
-					if strings.EqualFold(pmb.Name, parent) && hasFlag(pmb.Flags, "\\Noselect") {
-						skip = true
-						break
-					}
-				}
-				if skip {
-					continue
-				}
+				continue // Containers may still have selectable children.
 			}
 			lower := strings.ToLower(mb.Name)
 			if lower == "inbox" || (mb.Delimiter != "" && strings.HasSuffix(lower, mb.Delimiter+"inbox")) {
@@ -853,6 +839,9 @@ func (m Model) renderSidebarMailboxRow(mb db.Mailbox, row sidebarRow, selected b
 			raw = mb.Name
 		}
 		title = cleanDisplayName(raw)
+	}
+	if mb.Delimiter != "" && isGmailSystemFolder(mb.Name) {
+		title = cleanDisplayName(title)
 	}
 	if row.hidden {
 		title += " (hidden)"

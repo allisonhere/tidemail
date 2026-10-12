@@ -140,6 +140,10 @@ unsubscribe option when the message provides one.
 
 ### Managing folders
 
+Gmail's standard folders appear in the System section: Sent Mail, Drafts, All
+Mail, Trash, Spam, Starred, and Important. Inbox appears first under the account.
+An unselectable server container does not hide its selectable subfolders.
+
 Folders are your mail server's real folders, shown as a tree: a folder such as
 `Work/Projects` sits under `Work`, and a folder with subfolders has a `▾`/`▸`
 marker. If a server reports no hierarchy delimiter, its folders stay flat:
