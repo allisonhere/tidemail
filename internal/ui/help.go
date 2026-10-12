@@ -244,6 +244,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.Left.Help().Key + "/" + keys.Right.Help().Key, "change picker fields"},
 				{keys.Save.Help().Key, "save settings"},
 				{"Editor", "set compose keys and the ctrl+z send delay"},
+				{"CLI", "tidemail cli: quit after send, skip review, default signature (interactive use only)"},
 				{"Support", "select Open or Copy link with arrows; Enter activates; ctrl+c copies"},
 				{"Pane header bars", "show titles and shortcuts above panes; off restores one row and moves focused-pane details to the status bar"},
 				{keys.Cancel.Help().Key, "back to sections, then cancel from the section list"},

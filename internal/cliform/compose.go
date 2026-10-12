@@ -23,7 +23,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-type ComposeOptions struct{ DraftOnly, DryRun, SendNow, Signature, Agent bool }
+type ComposeOptions struct{ DraftOnly, DryRun, SendNow, Signature, Agent, SkipReview bool }
 type Outcome struct {
 	MIMEBytes, Attachments int
 	State                  string
@@ -250,10 +250,30 @@ func (m *composeModel) advance() tea.Cmd {
 		m.opts.Signature = m.cursor == 0
 	}
 	m.setStep(m.step + 1)
+	if m.step == stepReview && m.canSkipReview() {
+		if m.opts.DraftOnly {
+			return m.save()
+		}
+		// send reports validation problems on the model and leaves the review
+		// step showing, so a bad message still gets reviewed.
+		next, cmd := m.send()
+		*m = next
+		return cmd
+	}
 	if m.step >= stepTo && m.step <= stepSubject {
 		return textinput.Blink
 	}
 	return nil
+}
+
+// canSkipReview reports whether the review screen may be bypassed. Drafts are
+// harmless to save; a send needs the undo countdown as its safety net, so it is
+// never skipped for immediate sends, dry runs, or agent-gated runs.
+func (m composeModel) canSkipReview() bool {
+	if !m.opts.SkipReview || m.opts.DryRun || m.opts.Agent {
+		return false
+	}
+	return m.opts.DraftOnly || (!m.opts.SendNow && m.cfg.Display.SendDelaySeconds > 0)
 }
 func (m *composeModel) leave() {
 	m.storeField()

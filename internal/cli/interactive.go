@@ -26,6 +26,11 @@ func terminalIO(in io.Reader, out io.Writer) bool {
 	output, ok := out.(*os.File)
 	return ok && term.IsTerminal(int(input.Fd())) && term.IsTerminal(int(output.Fd()))
 }
+
+// lastComposeState records how the most recent wizard ended so the command
+// menu can tell a finished send or draft from a cancelled one.
+var lastComposeState string
+
 func composeInteractive(cfg config.Config, a config.AccountConfig, d db.Draft, opts cliform.ComposeOptions, out, errOut io.Writer, jsonMode bool) int {
 	tty, e := cliform.OpenTerminal()
 	if e != nil {
@@ -44,6 +49,7 @@ func composeInteractive(cfg config.Config, a config.AccountConfig, d db.Draft, o
 	if e != nil {
 		return mailResult(out, errOut, jsonMode, nil, 1, "interactive_error", "interactive editor stopped; inspect outbox status if a send was queued")
 	}
+	lastComposeState = result.State
 	data := map[string]any{"state": result.State, "id": result.ID, "account_id": result.AccountID, "next_attempt": result.NextAttempt}
 	if opts.DryRun {
 		data["mime_bytes"] = result.MIMEBytes
@@ -86,7 +92,7 @@ func interactiveRoute(args []string, in io.Reader, out, errOut io.Writer) (bool,
 	clean, explicit, disabled := interactionFlags(args)
 	if hasHelpFlag(clean) {
 		if command == "cli" {
-			_, _ = fmt.Fprintln(out, "Usage: tidemail cli\nOpen the interactive command menu. Plain tidemail opens the inbox.\nOther mail commands accept --interactive and --no-interactive.")
+			_, _ = fmt.Fprintln(out, "Usage: tidemail cli\nOpen the interactive command menu. Plain tidemail opens the inbox.\nOther mail commands accept --interactive and --no-interactive.\nSettings > CLI sets: quit after send, skip review, default signature (interactive use only).")
 			return true, 0
 		}
 		if explicit || disabled {
@@ -178,6 +184,7 @@ func runCommandMenu(tty *os.File, in io.Reader, out, errOut io.Writer) int {
 			return 1
 		}
 		code := 0
+		lastComposeState = ""
 		switch action {
 		case "send":
 			code = RunHeadless([]string{"send", "--interactive"}, in, out, errOut)
@@ -198,12 +205,22 @@ func runCommandMenu(tty *os.File, in io.Reader, out, errOut io.Writer) int {
 		case "inbox":
 			return OpenInbox
 		}
+		if code == 0 && (action == "send" || action == "draft") && lastComposeState != "" && lastComposeState != "canceled" && quitAfterSend() {
+			return 0
+		}
 		if code != 0 {
 			if e = cliform.Show(tty, "Command stopped", "The command could not finish. Check the diagnostic printed after returning to your terminal."); e != nil {
 				return 1
 			}
 		}
 	}
+}
+
+// quitAfterSend reads Settings > CLI. A config that cannot be loaded keeps the
+// menu open, which is the default behavior.
+func quitAfterSend() bool {
+	cfg, err := config.Load()
+	return err == nil && cfg.Display.CLIQuitAfterSend
 }
 func captureRead(command string, args []string) (map[string]any, error) {
 	var out, errs bytes.Buffer

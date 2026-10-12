@@ -248,6 +248,34 @@ send_delay_seconds = 3600
         assert b"Fixture signature" in fixture.message
         print("PASS approved synchronous delivery through local fake SMTP")
 
+        # Settings > CLI: skip review, quit after the draft, no default signature.
+        config_path.write_text(config_text + "cli_quit_after_send = true\ncli_skip_review = true\ncli_signature = false\n")
+        quick = Session(binary, ["cli"], env, work)
+        quick.expect("Choose a command")
+        quick.send("j\r")
+        quick.expect("Sender account")
+        quick.send("\r")
+        quick.expect("To")
+        quick.send("you@example.com\r")
+        quick.expect("CC (optional)")
+        quick.send("\r")
+        quick.expect("BCC (optional)")
+        quick.send("\r")
+        quick.expect("Subject")
+        quick.send("Settings check\r")
+        quick.expect("Message body")
+        quick.send("No review needed\x13")
+        quick.expect("Signature")
+        quick.send("\r")
+        quick.expect("Attachments")
+        quick.send("\r")
+        quick.expect("drafted")
+        quick.finish()  # exits without returning to the menu
+        with sqlite3.connect(root / "data" / "tidemail" / "mail.db") as cache:
+            row = cache.execute("SELECT COUNT(*) FROM drafts WHERE subject = 'Settings check'").fetchone()[0]
+            assert row == 1, row
+        print("PASS CLI settings: skip review, quit after draft, signature default")
+
 
 if __name__ == "__main__":
     main()

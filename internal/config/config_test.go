@@ -465,3 +465,29 @@ func TestPluginSecretsRefuseValuesTooShortToRedact(t *testing.T) {
 		t.Fatalf("a 5-character secret must be refused for its length, got %v", err)
 	}
 }
+
+func TestDefaultConfigCLISwitches(t *testing.T) {
+	d := DefaultConfig().Display
+	if d.CLIQuitAfterSend || d.CLISkipReview || !d.CLISignature {
+		t.Fatalf("CLI defaults changed: %+v", d)
+	}
+}
+
+func TestLoadKeepsCLISignatureDefaultWhenKeyIsAbsent(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	if err := os.MkdirAll(filepath.Join(dir, "tidemail"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	text := "[display]\ncli_quit_after_send = true\n"
+	if err := os.WriteFile(filepath.Join(dir, "tidemail", "config.toml"), []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Display.CLIQuitAfterSend || !cfg.Display.CLISignature || cfg.Display.CLISkipReview {
+		t.Fatalf("unexpected CLI settings: %+v", cfg.Display)
+	}
+}
