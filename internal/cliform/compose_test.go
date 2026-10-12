@@ -275,3 +275,56 @@ func TestQQuitsMenusButRemainsText(t *testing.T) {
 		t.Fatal("q was not typed into body")
 	}
 }
+
+func TestSkipReviewGoesStraightToSaveOrCountdown(t *testing.T) {
+	saves, sends := 0, 0
+	ops := operations{save: func(config.AccountConfig, db.Draft) (int64, error) {
+		saves++
+		return 7, nil
+	}, enqueue: func(config.AccountConfig, smtp.OutgoingMessage, db.Draft, time.Time) (int64, error) {
+		sends++
+		return 8, nil
+	}}
+	attachmentsDone := func(mutate func(*composeModel)) (composeModel, tea.Cmd) {
+		m := testCompose(t, ops)
+		m.opts.SkipReview = true
+		mutate(&m)
+		m.setStep(stepAttachments)
+		return press(m, tea.KeyEnter)
+	}
+
+	m, cmd := attachmentsDone(func(m *composeModel) { m.opts.DraftOnly = true })
+	if cmd == nil || m.step != stepLoading {
+		t.Fatal("draft should save without review", m.step)
+	}
+	m, _ = apply(m, cmd())
+	if saves != 1 || sends != 0 || m.outcome.State != "drafted" {
+		t.Fatal(m.outcome, saves, sends)
+	}
+
+	m, cmd = attachmentsDone(func(*composeModel) {})
+	if cmd == nil {
+		t.Fatal("send should be dispatched")
+	}
+	m, _ = apply(m, cmd())
+	if sends != 1 || m.step != stepCountdown {
+		t.Fatal("expected the undo countdown", m.step, sends)
+	}
+
+	for name, mutate := range map[string]func(*composeModel){
+		"no delay": func(m *composeModel) { m.cfg.Display.SendDelaySeconds = 0 },
+		"send now": func(m *composeModel) { m.opts.SendNow = true },
+		"dry run":  func(m *composeModel) { m.opts.DryRun = true },
+		"agent":    func(m *composeModel) { m.opts.Agent = true },
+	} {
+		m, _ := attachmentsDone(mutate)
+		if m.step != stepReview {
+			t.Fatalf("%s must still show the review, got step %v", name, m.step)
+		}
+	}
+
+	m, _ = attachmentsDone(func(m *composeModel) { m.draft.Subject = "" })
+	if m.step != stepReview || m.err == "" {
+		t.Fatal("an invalid message must fall back to the review with an error", m.step, m.err)
+	}
+}

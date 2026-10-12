@@ -12,6 +12,8 @@ Current release: **v1.0.28**.
   wizard with Ripple, attachment browser, review, durable sending and undo.
   Automatic prompts respect pipes, JSON, agents, and `--no-interactive`; explicit
   `--interactive` renders through the controlling terminal.
+  Settings → CLI adds switches for quitting after a send, skipping review, and the
+  default signature (interactive use only).
 - **Headless mail CLI**: configured-account sends and drafts, Markdown and
   attachments, cached inbox list/search/read, account and outbox metadata,
   explicit queue processing, and portable agent skills for Codex, Claude, Pi,

@@ -182,35 +182,39 @@ type RetroTerminalTweak struct {
 }
 
 type DisplayConfig struct {
-	Icons                 bool               `toml:"icons"`
-	ShowPaneHeaders       bool               `toml:"show_pane_headers"`
-	DateFormat            string             `toml:"date_format"`
-	MarkReadOnOpen        bool               `toml:"mark_read_on_open"`
-	MarkReadOnFocus       bool               `toml:"mark_read_on_focus"`
-	FocusLine             bool               `toml:"focus_line"`
-	DefaultUnreadOnly     bool               `toml:"default_unread_only"`
-	ActionableLinks       bool               `toml:"actionable_links"`
-	FilterLinks           bool               `toml:"filter_links"`
-	ShowSender            bool               `toml:"show_sender"`
-	ThreadedConversations bool               `toml:"threaded_conversations"`
-	ReadingWidth          int                `toml:"reading_width"`
-	AccountsWidthPercent  int                `toml:"accounts_width_percent"`
-	MessagesHeightPercent int                `toml:"messages_height_percent"`
-	ConfirmQuit           bool               `toml:"confirm_quit"`
-	ShowHeaders           bool               `toml:"show_headers"`
-	UnreadFirst           bool               `toml:"unread_first"`
-	StarredFirst          bool               `toml:"starred_first"`
-	Notifications         bool               `toml:"notifications"`
-	Browser               string             `toml:"browser"`
-	Density               string             `toml:"density"`
-	PaneCorners           string             `toml:"pane_corners"` // "square" or "round"
-	Shadow                bool               `toml:"shadow"`       // drop shadow behind modal overlays
-	ComposeVim            bool               `toml:"compose_vim"`
-	SendMaxAttempts       int                `toml:"send_max_attempts"`  // total tries, including the first
-	SendDelaySeconds      int                `toml:"send_delay_seconds"` // undo grace period; 0 = send immediately
-	Images                string             `toml:"images"`
-	VT52                  RetroTerminalTweak `toml:"vt52"`
-	VT100                 RetroTerminalTweak `toml:"vt100"`
+	Icons                 bool   `toml:"icons"`
+	ShowPaneHeaders       bool   `toml:"show_pane_headers"`
+	DateFormat            string `toml:"date_format"`
+	MarkReadOnOpen        bool   `toml:"mark_read_on_open"`
+	MarkReadOnFocus       bool   `toml:"mark_read_on_focus"`
+	FocusLine             bool   `toml:"focus_line"`
+	DefaultUnreadOnly     bool   `toml:"default_unread_only"`
+	ActionableLinks       bool   `toml:"actionable_links"`
+	FilterLinks           bool   `toml:"filter_links"`
+	ShowSender            bool   `toml:"show_sender"`
+	ThreadedConversations bool   `toml:"threaded_conversations"`
+	ReadingWidth          int    `toml:"reading_width"`
+	AccountsWidthPercent  int    `toml:"accounts_width_percent"`
+	MessagesHeightPercent int    `toml:"messages_height_percent"`
+	ConfirmQuit           bool   `toml:"confirm_quit"`
+	ShowHeaders           bool   `toml:"show_headers"`
+	UnreadFirst           bool   `toml:"unread_first"`
+	StarredFirst          bool   `toml:"starred_first"`
+	Notifications         bool   `toml:"notifications"`
+	Browser               string `toml:"browser"`
+	Density               string `toml:"density"`
+	PaneCorners           string `toml:"pane_corners"` // "square" or "round"
+	Shadow                bool   `toml:"shadow"`       // drop shadow behind modal overlays
+	ComposeVim            bool   `toml:"compose_vim"`
+	// Interactive CLI only; scripted commands ignore these.
+	CLIQuitAfterSend bool               `toml:"cli_quit_after_send"` // leave `tidemail cli` after a successful send or draft
+	CLISkipReview    bool               `toml:"cli_skip_review"`     // skip the wizard's review step when undo or a draft makes it safe
+	CLISignature     bool               `toml:"cli_signature"`       // wizard default for the account signature
+	SendMaxAttempts  int                `toml:"send_max_attempts"`   // total tries, including the first
+	SendDelaySeconds int                `toml:"send_delay_seconds"`  // undo grace period; 0 = send immediately
+	Images           string             `toml:"images"`
+	VT52             RetroTerminalTweak `toml:"vt52"`
+	VT100            RetroTerminalTweak `toml:"vt100"`
 	// TagStyle is how plugin annotation tags look in message rows: "pills"
 	// (default), "glyph-pills", "compact", or "plain".
 	TagStyle string `toml:"tag_style"`
@@ -601,6 +605,7 @@ func DefaultConfig() Config {
 			Notifications:         true,
 			SendDelaySeconds:      5,
 			SendMaxAttempts:       3,
+			CLISignature:          true,
 		},
 		Updates: UpdatesConfig{
 			CheckOnStartup:     true,

@@ -162,10 +162,13 @@ func runComposeCLI(draftOnly bool, args []string, in io.Reader, out, errOut io.W
 		return fail(2, "invalid_arguments", "unexpected positional arguments")
 	}
 	sources := 0
+	signatureFlag := false
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "body", "file", "body-file", "markdown":
 			sources++
+		case "signature", "no-signature":
+			signatureFlag = true
 		}
 	})
 	if sources > 1 {
@@ -227,7 +230,13 @@ func runComposeCLI(draftOnly bool, args []string, in io.Reader, out, errOut io.W
 	}
 	auto := !noInteractive && !yes && !j && !agent && !dry && terminalIO(in, out) && (strings.TrimSpace(to) == "" || strings.TrimSpace(subject) == "" || (strings.TrimSpace(body) == "" && len(attachments) == 0))
 	if interactive || preview || auto {
-		return composeInteractive(cfg, a, d, cliform.ComposeOptions{DraftOnly: draftOnly, DryRun: dry, SendNow: now, Signature: signature && !noSignature, Agent: agent}, out, errOut, j)
+		// Settings > CLI supplies the wizard's defaults; explicit flags win.
+		// Only the interactive path reads them, so scripted use is unaffected.
+		wizardSignature := cfg.Display.CLISignature
+		if signatureFlag {
+			wizardSignature = signature && !noSignature
+		}
+		return composeInteractive(cfg, a, d, cliform.ComposeOptions{DraftOnly: draftOnly, DryRun: dry, SendNow: now, Signature: wizardSignature, Agent: agent, SkipReview: cfg.Display.CLISkipReview}, out, errOut, j)
 	}
 	msg, err := mailapp.Prepare(a, d, signature && !noSignature)
 	if err != nil {

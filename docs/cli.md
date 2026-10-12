@@ -363,6 +363,18 @@ status. `--send-now` skips the countdown. Once submission starts, cancellation
 cannot guarantee stopping delivery. A queued retry still needs the inbox or
 `outbox process`; uncertain mail must be checked before any explicit retry.
 
+### CLI settings
+
+**Settings → CLI** (config keys under `[display]`) changes the interactive menu and
+wizard only. Scripted commands, `--json`, `--agent`, `--yes`, and `--no-interactive`
+runs ignore all three, so automation never depends on a user's settings.
+
+| Setting | Config key | Default | Effect |
+|---|---|---|---|
+| Quit after send or draft | `cli_quit_after_send` | off | `tidemail cli` exits after a send or draft finishes instead of returning to the menu. A cancelled or failed command still returns to the menu. |
+| Skip review step | `cli_skip_review` | off | The wizard goes from Attachments straight to saving the draft (draft flow) or to the undo countdown (send flow). A send skips review only when the send delay is above zero and `--send-now` is not used, so undo remains available; otherwise review is shown. Dry runs and `--agent` always show review. If the message is invalid, review opens with the error. |
+| Include signature by default | `cli_signature` | on | Pre-selects the wizard's Signature choice. `--signature` and `--no-signature` override it. |
+
 Interactive screens render on the controlling terminal; JSON stdout remains a
 single result envelope. Terminal settings are restored on exit. The wizard uses
 assho's purple/cyan palette and respects `NO_COLOR`.

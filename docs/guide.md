@@ -12,7 +12,8 @@ queued mail needs the running client or periodic `tidemail outbox process`.
 
 Use `tidemail cli` for guided commands, or `tidemail send` in a terminal for the
 compose wizard. The wizard includes a file browser for attachments and a send
-countdown with undo. See [Interactive CLI](cli.md#interactive-command-menu-and-composer).
+countdown with undo. See [Interactive CLI](cli.md#interactive-command-menu-and-composer). Settings → CLI
+has switches for quitting after a send, skipping the review step, and the default signature.
 
 ## Installation
 

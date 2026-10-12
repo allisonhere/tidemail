@@ -84,6 +84,9 @@ const (
 	sfComposeVim
 	sfSendDelay
 	sfSendMaxAttempts
+	sfCLIQuitAfterSend
+	sfCLISkipReview
+	sfCLISignature
 	// sfBackToSections is the first focusable target in the detail pane.
 	// Activating it restores focus to the sidebar so users never auto-land on a text input.
 	sfBackToSections
@@ -96,6 +99,7 @@ type settingsSection int
 const (
 	ssDisplay settingsSection = iota
 	ssEditor
+	ssCLI
 	ssUpdates
 	ssAI
 	ssPlugins
@@ -183,6 +187,7 @@ var (
 	settingsSectionLabels = [settingsSectionCount]string{
 		"DISPLAY",
 		"EDITOR",
+		"CLI",
 		"UPDATES",
 		"AI",
 		"PLUGINS",
@@ -318,6 +323,9 @@ type Settings struct {
 	showHeaders           bool
 	notifications         bool
 	composeVim            bool
+	cliQuitAfterSend      bool
+	cliSkipReview         bool
+	cliSignature          bool
 	layoutDensityIdx      int // 0 = comfortable, 1 = compact
 	paneCornersIdx        int // 0 = square, 1 = round
 	tagStyleIdx           int // index into tagStyleValues
@@ -430,6 +438,9 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		showHeaders:           cfg.Display.ShowHeaders,
 		notifications:         cfg.Display.Notifications,
 		composeVim:            cfg.Display.ComposeVim,
+		cliQuitAfterSend:      cfg.Display.CLIQuitAfterSend,
+		cliSkipReview:         cfg.Display.CLISkipReview,
+		cliSignature:          cfg.Display.CLISignature,
 		layoutDensityIdx:      layoutIdx,
 		paneCornersIdx:        paneCornersIdx,
 		tagStyleIdx:           max(0, slices.Index(tagStyleValues, config.NormalizeTagStyle(cfg.Display.TagStyle))),
@@ -462,6 +473,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		sectionField: [settingsSectionCount]settingsField{
 			ssDisplay:  sfBackToSections,
 			ssEditor:   sfBackToSections,
+			ssCLI:      sfBackToSections,
 			ssUpdates:  sfBackToSections,
 			ssAI:       sfBackToSections,
 			ssPlugins:  sfBackToSections,
@@ -513,6 +525,9 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.ShowHeaders = s.showHeaders
 	cfg.Display.Notifications = s.notifications
 	cfg.Display.ComposeVim = s.composeVim
+	cfg.Display.CLIQuitAfterSend = s.cliQuitAfterSend
+	cfg.Display.CLISkipReview = s.cliSkipReview
+	cfg.Display.CLISignature = s.cliSignature
 	if w, err := strconv.Atoi(strings.TrimSpace(s.readingWidthInput.Value())); err == nil {
 		cfg.Display.ReadingWidth = max(0, w)
 	}
@@ -762,6 +777,8 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		return append(fields, sfBrowser, sfConfirmQuit, sfNotifications)
 	case ssEditor:
 		return []settingsField{sfBackToSections, sfComposeVim, sfSendDelay, sfSendMaxAttempts}
+	case ssCLI:
+		return []settingsField{sfBackToSections, sfCLIQuitAfterSend, sfCLISkipReview, sfCLISignature}
 	case ssUpdates:
 		fields := []settingsField{sfBackToSections, sfUpdateCheckOnStartup, sfUpdateCheckNow}
 		if s.updateNowActionVisible() {
@@ -1443,6 +1460,33 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfCLIQuitAfterSend:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.cliQuitAfterSend = !s.cliQuitAfterSend
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
+	case sfCLISkipReview:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.cliSkipReview = !s.cliSkipReview
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
+	case sfCLISignature:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.cliSignature = !s.cliSignature
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfShowHeaders:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.showHeaders = !s.showHeaders
@@ -1900,6 +1944,14 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addToggle("Vim keys in compose", s.composeVim, sfComposeVim)
 		b.addInput("Send delay (seconds)", s.sendDelayInput, sfSendDelay)
 		b.addInput("Maximum send attempts", s.sendMaxAttemptsInput, sfSendMaxAttempts)
+
+	case ssCLI:
+		b.addGroup("Interactive CLI")
+		b.addToggle("Quit after send or draft", s.cliQuitAfterSend, sfCLIQuitAfterSend)
+		b.addToggle("Skip review step", s.cliSkipReview, sfCLISkipReview)
+		b.addToggle("Include signature by default", s.cliSignature, sfCLISignature)
+		b.addBlank()
+		b.addHint("Applies to the interactive tidemail cli menu and wizard only. Scripted commands, --json, and agent runs ignore these.")
 
 	case ssUpdates:
 		b.addGroup("Updates")

@@ -1829,3 +1829,21 @@ func TestImageSupportMarker(t *testing.T) {
 		t.Fatalf("unicode neutral marker = %q, want ○", got)
 	}
 }
+
+func TestSettingsCLISwitchesToggleAndApply(t *testing.T) {
+	cfg := config.DefaultConfig()
+	s := newSettings(cfg, settingsUpdateState{})
+	if s.cliQuitAfterSend || s.cliSkipReview || !s.cliSignature {
+		t.Fatal("settings should start from the config defaults")
+	}
+	s.setActiveSection(ssCLI)
+	s.setFocusedPane(settingsPaneDetail)
+	for _, field := range []settingsField{sfCLIQuitAfterSend, sfCLISkipReview, sfCLISignature} {
+		s.setFocusedField(field)
+		s, _, _ = s.Update(tea.KeyMsg{Type: tea.KeySpace}, DefaultKeys)
+	}
+	got := s.ApplyTo(cfg).Display
+	if !got.CLIQuitAfterSend || !got.CLISkipReview || got.CLISignature {
+		t.Fatalf("toggles not applied: %+v", got)
+	}
+}

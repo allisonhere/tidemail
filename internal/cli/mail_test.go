@@ -166,3 +166,29 @@ func TestJSONParseErrorsDoNotPolluteStdout(t *testing.T) {
 		t.Fatal(code, out.String(), errs.String())
 	}
 }
+
+func TestCLISettingsDoNotAffectScriptedSend(t *testing.T) {
+	mailFixture(t)
+	config := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "tidemail", "config.toml")
+	text := "[[account]]\nid = 'stable'\nname = 'Work'\nuser = 'me@example.com'\nfrom = 'me@example.com'\nsignature = 'Sig line'\nsmtp_host = 'localhost'\nsmtp_port = 587\n[display]\nsend_delay_seconds = 60\ncli_signature = false\ncli_skip_review = true\ncli_quit_after_send = true\n"
+	if e := os.WriteFile(config, []byte(text), 0600); e != nil {
+		t.Fatal(e)
+	}
+	var out, errs bytes.Buffer
+	if code := RunHeadless([]string{"send", "--to", "you@example.com", "--subject", "Hi", "--yes", "--json"}, strings.NewReader("hello"), &out, &errs); code != 0 {
+		t.Fatal(code, out.String(), errs.String())
+	}
+	database, e := db.Open()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer database.Close()
+	items, e := database.ListOutbox()
+	if e != nil || len(items) != 1 {
+		t.Fatal(items, e)
+	}
+	item, e := database.GetOutbox(items[0].ID)
+	if e != nil || !strings.Contains(string(item.MessageJSON), "Sig line") {
+		t.Fatal("scripted send must keep the signature despite cli_signature=false", item, e)
+	}
+}
