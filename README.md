@@ -266,6 +266,7 @@ read-only queries are covered in [queries](docs/plugins/queries.md) and
 |---|---|
 | `j` / `k` | Move down or up |
 | `Tab` / `Shift+Tab` | Move between panes or compose fields |
+| `Up` / `Down` (compose headers) | Move between From, To, Cc, Bcc, and Subject |
 | `Enter` | Open a message, immediately sync a folder, or open a draft or picker |
 | `c` | Compose |
 | `r` / `f` | Reply or forward from the reading pane |

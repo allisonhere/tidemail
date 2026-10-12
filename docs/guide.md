@@ -341,8 +341,13 @@ the field scroll sideways as you type or move the cursor. TideMail
 saves your work to the sending account's Drafts folder as you type. Open Drafts
 and press `Enter` to continue writing, or `d` to delete a draft.
 
+In the header rows (From, To, Cc, Bcc, Subject), `Down` and `Up` move to the next or
+previous row, like `Tab` and `Shift+Tab`, except that `Up` stops at the top row. While
+the recipient suggestions are open, `Up` and `Down` choose a suggestion instead. In the
+body they move the text cursor.
+
 If you have more than one account, the From row works as an account picker.
-Focus it with `Shift+Tab` from the To row, then press `Enter` or `Space` and
+Focus it with `Shift+Tab` or `Up` from the To row, then press `Enter` or `Space` and
 choose the account. `Ctrl+U` cycles through the same list. TideMail uses that
 account's SMTP settings, From address, and signature.
 

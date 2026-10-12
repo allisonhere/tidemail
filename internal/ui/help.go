@@ -130,6 +130,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 			name: "Compose Modal",
 			entries: []entry{
 				{keys.Tab.Help().Key + "/shift+tab", "next/previous field; From opens the sender picker"},
+				{"up/down", "previous/next header row (suggestions first); body moves the cursor"},
 				{keys.Enter.Help().Key, "open sender picker or advance header fields"},
 				{"ctrl+s/ctrl+d", "send message"},
 				{"ctrl+p → Schedule send", "choose a future local date and time"},
