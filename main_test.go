@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"os"
 	"runtime/debug"
 	"strings"
 	"testing"
@@ -112,5 +113,15 @@ func TestProgramOptionsKeepTerminalMouseSelectionAvailable(t *testing.T) {
 	opts := programOptions()
 	if len(opts) != 1 {
 		t.Fatalf("expected only alt-screen option so terminal mouse selection stays available, got %d options", len(opts))
+	}
+}
+
+func TestHeadlessHelpRouting(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	os.Args = []string{"tidemail", "send", "--help"}
+	code, restart := run()
+	if code != 0 || restart != "" {
+		t.Fatalf("headless help returned %d %q", code, restart)
 	}
 }

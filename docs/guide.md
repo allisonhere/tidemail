@@ -4,6 +4,16 @@ This guide covers installation, account setup, everyday mail tasks, settings,
 and keyboard shortcuts. For an overview of TideMail, see the
 [main README](../README.md).
 
+For shell scripts, Unix pipes, cached inbox reads, and AI agents, see the
+[CLI reference](cli.md). Running `tidemail` without arguments still opens the
+interactive client. Headless sends use the same accounts and durable outbox.
+Without delivery authorization, `tidemail send` creates a draft. Authorized
+queued mail needs the running client or periodic `tidemail outbox process`.
+
+Use `tidemail cli` for guided commands, or `tidemail send` in a terminal for the
+compose wizard. The wizard includes a file browser for attachments and a send
+countdown with undo. See [Interactive CLI](cli.md#interactive-command-menu-and-composer).
+
 ## Installation
 
 ### Install a release

@@ -634,7 +634,13 @@ func stringList(dst *[]string) *listValue { return &listValue{dst: dst} }
 
 type listValue struct{ dst *[]string }
 
-func (v *listValue) String() string { return strings.Join(*v.dst, ",") }
+func (v *listValue) String() string {
+	if v == nil || v.dst == nil {
+		return ""
+	}
+	return strings.Join(*v.dst, ",")
+}
+
 func (v *listValue) Set(s string) error {
 	*v.dst = append(*v.dst, s)
 	return nil

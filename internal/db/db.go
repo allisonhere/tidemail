@@ -46,6 +46,7 @@ func (db *DB) init() error {
 	pragmas := []string{
 		"PRAGMA journal_mode=WAL",
 		"PRAGMA foreign_keys=ON",
+		"PRAGMA busy_timeout=5000",
 	}
 	for _, p := range pragmas {
 		if _, err := db.Exec(p); err != nil {

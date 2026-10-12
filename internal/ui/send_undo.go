@@ -2,21 +2,17 @@ package ui
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	imapClient "github.com/allisonhere/tidemail/internal/imap"
+	"github.com/allisonhere/tidemail/internal/mailapp"
 	"github.com/allisonhere/tidemail/internal/smtp"
 	tea "github.com/charmbracelet/bubbletea"
 )
-
-const outboxRetryDelay = time.Minute
 
 type pendingSend struct {
 	ID         uint64
@@ -49,32 +45,12 @@ func (m Model) handleSendQueued(msg SendQueuedMsg) (Model, tea.Cmd) {
 		m.compose.isErr = true
 		return m, nil
 	}
-	// The sender is deliberately not baked in here. It is resolved from the
-	// account on every attempt (see outboxMessage), so correcting a bad From
-	// and retrying works instead of replaying the value that failed.
-	payload, err := json.Marshal(msg.Msg)
-	if err != nil {
-		m.compose = snapshot
-		m.setStatus(err.Error(), true)
-		return m, nil
-	}
-	draftJSON, err := json.Marshal(draft)
-	if err != nil {
-		m.compose = snapshot
-		m.setStatus(err.Error(), true)
-		return m, nil
-	}
 	dueAt := msg.ScheduledAt
 	if dueAt.IsZero() {
 		dueAt = time.Now().Add(time.Duration(m.cfg.Display.SendDelaySeconds) * time.Second)
 	}
 	delay := time.Until(dueAt)
-	id, err := m.db.EnqueueOutbox(db.OutboxItem{
-		AccountConfigID: msg.Account.ID,
-		AccountName:     msg.Account.Name, AccountUser: msg.Account.User, DraftID: draft.ID,
-		Subject: msg.Msg.Subject, Recipients: joinRecipients(msg.Msg), MessageJSON: payload, DraftJSON: draftJSON,
-		MaxAttempts: config.NormalizeSendMaxAttempts(m.cfg.Display.SendMaxAttempts), NextAttempt: dueAt.Unix(),
-	})
+	id, err := mailapp.Enqueue(m.db, m.cfg, msg.Account, msg.Msg, draft, dueAt)
 	if err != nil {
 		m.compose = snapshot
 		m.compose.statusMsg = "cannot queue mail: " + err.Error()
@@ -169,121 +145,24 @@ func (rt *sendRuntime) run() tea.Msg {
 	return rt.result
 }
 
-// outboxMessage reads a queued item's message and resolves its sender from the
-// account as it stands now, discarding whatever was current when the message
-// was queued. Without this, an account whose From was wrong at queue time kept
-// failing every retry even after the account was fixed (#25) — the bad value
-// was serialized into message_json and won over the corrected config.
 func outboxMessage(item db.OutboxItem, account config.AccountConfig) (smtp.OutgoingMessage, error) {
-	var msg smtp.OutgoingMessage
-	if err := json.Unmarshal(item.MessageJSON, &msg); err != nil {
-		return msg, err
-	}
-	msg.From = smtp.AccountSender(account)
-	return msg, nil
+	return mailapp.OutboxMessage(item, account)
 }
-
 func newOutboxRuntime(database *db.DB, sessions *imapClient.SessionPool, id int64, account config.AccountConfig, cleanup tea.Cmd) *sendRuntime {
 	return &sendRuntime{command: func() tea.Msg {
-		result := MessageSentMsg{PendingID: uint64(id)}
-		item, err := database.GetOutbox(id)
-		if err != nil {
-			result.Err = err
-			return result
+		var cleanupFn func() error
+		if cleanup != nil {
+			cleanupFn = func() error { return cleanup().(DraftDeletedMsg).Err }
 		}
-		msg, err := outboxMessage(item, account)
-		if err != nil {
-			result.Err = err
-			return result
-		}
-		claimed, err := database.ClaimOutbox(id)
-		if err != nil {
-			result.Err = err
-			return result
-		}
-		if !claimed {
-			result.Skipped = true
-			return result
-		}
-		// Stamp Date and Message-ID once, so the copy appended to Sent is
-		// byte-identical to what goes out over SMTP.
-		msg.EnsureIdentity(msg.From)
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		err = smtp.Send(ctx, account, msg)
-		cancel()
-		state, next, message := db.OutboxSent, int64(0), ""
-		if err != nil {
-			result.Err = err
-			message = config.RedactSecrets(err.Error(), config.Config{Accounts: []config.AccountConfig{account}})
-			state = db.OutboxFailed
-			if errors.Is(err, smtp.ErrDeliveryUncertain) {
-				state = db.OutboxUncertain
-			} else if smtp.CanRetry(err) && item.Attempts+1 < item.MaxAttempts {
-				state = db.OutboxQueued
-				next = time.Now().Add(outboxRetryDelay).Unix()
-			}
-		}
-		// Record acceptance before cleanup. Restart must never resend a known success.
-		if saveErr := database.FinishOutbox(id, state, message, next); saveErr != nil {
-			if err == nil {
-				result.CleanupErr = fmt.Errorf("record sent status: %w", saveErr)
-			} else {
-				result.Err = fmt.Errorf("%v; save delivery status: %w", err, saveErr)
-			}
-			return result
-		}
-		// Only once delivery is recorded: an APPEND is decoration, and must
-		// never sit between delivery and the durable record, or a crash inside
-		// it leaves a delivered message looking unsent and eligible for resend.
-		if err == nil {
-			result.SentCopyErr = appendToSentFolder(database, sessions, account, msg)
-		}
-		if err == nil && item.DraftID != 0 && cleanup != nil {
-			result.CleanupErr = cleanup().(DraftDeletedMsg).Err
-		}
-		return result
+		r := mailapp.Deliver(context.Background(), database, sessions, id, account, true, cleanupFn)
+		return MessageSentMsg{PendingID: uint64(id), Skipped: r.Skipped, Err: r.Err, CleanupErr: r.CleanupErr, SentCopyErr: r.SentCopyErr}
 	}}
 }
-
-// serverFilesSentMail reports whether the provider files submitted mail into
-// Sent by itself, in which case appending our own copy would show the user two
-// of everything. Gmail does this for anything submitted through its SMTP —
-// including Workspace accounts on a custom address — so match the host as well
-// as the provider name.
-func serverFilesSentMail(acfg config.AccountConfig) bool {
-	host := strings.ToLower(strings.TrimSpace(acfg.SMTPHost))
-	if strings.HasSuffix(host, "smtp.gmail.com") || strings.HasSuffix(host, "smtp-relay.gmail.com") {
-		return true
-	}
-	return strings.EqualFold(strings.TrimSpace(acfg.Provider), "Gmail")
+func serverFilesSentMail(account config.AccountConfig) bool {
+	return mailapp.ServerFilesSentMail(account)
 }
-
-// appendToSentFolder puts a copy of a just-delivered message in the account's
-// Sent folder. Any error is returned for reporting only — the mail is already
-// delivered and recorded, so there is nothing to retry and nothing to fail.
-func appendToSentFolder(database *db.DB, sessions *imapClient.SessionPool, acfg config.AccountConfig, msg smtp.OutgoingMessage) error {
-	if database == nil || sessions == nil || strings.TrimSpace(acfg.IMAPHost) == "" {
-		return nil
-	}
-	if serverFilesSentMail(acfg) {
-		return nil
-	}
-	accountID, err := database.AccountIDByConfigID(acfg.ID)
-	if err != nil {
-		return err
-	}
-	// Report rather than guess: creating folders on someone's server as a side
-	// effect of sending mail is too aggressive.
-	sent, err := database.FindSentMailbox(accountID)
-	if err != nil {
-		return err
-	}
-	raw := smtp.BuildRaw(acfg, msg)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	return sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
-		return client.AppendSent(ctx, sent.Name, raw, msg.Date)
-	})
+func appendToSentFolder(database *db.DB, sessions *imapClient.SessionPool, account config.AccountConfig, msg smtp.OutgoingMessage) error {
+	return mailapp.AppendToSentFolder(database, sessions, account, msg)
 }
 
 // Complete first sends and in-flight deliveries on quit. Scheduled retries are

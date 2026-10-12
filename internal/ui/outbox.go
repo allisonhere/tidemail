@@ -8,17 +8,10 @@ import (
 
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
-	"github.com/allisonhere/tidemail/internal/smtp"
+	"github.com/allisonhere/tidemail/internal/mailapp"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
-
-func joinRecipients(msg smtp.OutgoingMessage) string {
-	recipients := append([]string{}, msg.To...)
-	recipients = append(recipients, msg.CC...)
-	recipients = append(recipients, msg.BCC...)
-	return strings.Join(recipients, ", ")
-}
 
 func (m *Model) refreshOutbox() {
 	if m.db == nil {
@@ -90,20 +83,7 @@ func (m *Model) openOutbox() {
 // before that column existed — matching on the pair alone stranded every queued
 // message when its account was renamed.
 func (m Model) outboxAccount(item db.OutboxItem) (config.AccountConfig, bool) {
-	if item.AccountConfigID != "" {
-		for _, account := range m.cfg.Accounts {
-			if account.ID == item.AccountConfigID {
-				return account, true
-			}
-		}
-		return config.AccountConfig{}, false
-	}
-	for _, account := range m.cfg.Accounts {
-		if account.Name == item.AccountName && account.User == item.AccountUser {
-			return account, true
-		}
-	}
-	return config.AccountConfig{}, false
+	return mailapp.ResolveOutboxAccount(m.cfg, item)
 }
 
 func (m *Model) scheduleOutbox(id int64) tea.Cmd {
@@ -161,7 +141,7 @@ func (m *Model) resumeOutbox() tea.Cmd {
 	if m.db == nil {
 		return nil
 	}
-	if err := m.db.RecoverOutbox(); err != nil {
+	if err := m.db.RecoverStaleOutbox(); err != nil {
 		m.setStatus("outbox recovery failed: "+err.Error(), true)
 		return nil
 	}

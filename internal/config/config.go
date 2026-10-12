@@ -15,7 +15,8 @@ import (
 )
 
 type Config struct {
-	Theme string `toml:"theme"`
+	AgentPermissions []string `toml:"agent_permissions"`
+	Theme            string   `toml:"theme"`
 	// DefaultAccountID is the stable ID of the account a brand-new message is
 	// sent from, and the account focused at startup. Empty means "not chosen":
 	// DefaultAccount then falls back to the first account, which is what

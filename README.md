@@ -11,6 +11,25 @@ the good seat.
 Need the full settings and shortcut reference? Open the
 [setup and usage guide](docs/guide.md).
 
+For shell scripts and AI agents, see the [CLI reference](docs/cli.md). TideMail's
+headless commands use your configured accounts and persistent queue:
+
+```bash
+tidemail messages list --unread --json
+tidemail draft create --to me@example.com --subject "Draft" --body-file message.md
+tidemail send --to me@example.com --subject "Hello" --body "Hello" --yes
+tidemail outbox process --json
+tidemail install-skill codex
+```
+
+For guided CLI workflows, run `tidemail cli` for the command menu or
+`tidemail send` for the step-by-step composer and attachment browser.
+[Interactive CLI help](docs/cli.md#interactive-command-menu-and-composer) covers
+keyboard navigation and script-friendly prompt controls.
+
+`send` saves a draft unless you authorize delivery. `--yes` queues mail with the
+configured delay. The client or `outbox process` delivers due queued mail.
+
 The Android app and its Go bridge live in the separate
 [TideMail Android repository](https://github.com/allisonhere/tidemail-android).
 Desktop releases are built from this repository.

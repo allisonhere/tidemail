@@ -18,7 +18,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/conversation"
 	"github.com/allisonhere/tidemail/internal/db"
-	"github.com/allisonhere/tidemail/internal/smtp"
+	"github.com/allisonhere/tidemail/internal/mailapp"
 )
 
 type composeField int
@@ -1005,35 +1005,11 @@ func (c ComposeModel) send() (ComposeModel, tea.Cmd, bool) {
 	}
 	acfg := c.selectedAccount()
 
-	// Build attachment list from stored file data
-	var atts []smtp.Attachment
-	for _, af := range c.attachments {
-		atts = append(atts, smtp.Attachment{
-			Name: af.Name,
-			Data: af.Data,
-		})
-	}
-
-	// The signature is appended to each part separately. Running it through the
-	// Markdown renderer with the body folded its lines into one paragraph, so a
-	// multi-line signature arrived as a single line in any client showing the
-	// HTML part.
-	body := c.bodyInput.Value()
-	htmlBody := smtp.MarkdownToHTML(body)
-	if sig := strings.TrimSpace(acfg.Signature); sig != "" {
-		body = strings.TrimRight(body, "\n") + "\n\n-- \n" + sig + "\n"
-		htmlBody += smtp.SignatureHTML(sig)
-	}
-	msg := smtp.OutgoingMessage{
-		To:          parseAddressList(to),
-		CC:          parseAddressList(c.ccInput.Value()),
-		BCC:         parseAddressList(bcc),
-		Subject:     c.subjectInput.Value(),
-		Body:        body,
-		HTMLBody:    htmlBody,
-		InReplyTo:   c.inReplyTo,
-		References:  c.references,
-		Attachments: atts,
+	msg, err := mailapp.Prepare(acfg, c.toDraftRecord(), true)
+	if err != nil {
+		c.statusMsg = err.Error()
+		c.isErr = true
+		return c, nil, false
 	}
 	c.busy = true
 	c.statusMsg = "Sending..."

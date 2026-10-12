@@ -167,3 +167,35 @@ func TestSentOutboxDropsMessagePayload(t *testing.T) {
 		t.Fatalf("sent payload retained: %+v", item)
 	}
 }
+
+func TestOutboxConcurrentProcessesClaimOnce(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "shared.db")
+	first, err := OpenPath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	second, err := OpenPath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	id := outboxTestItem(t, first)
+	outcomes := make(chan bool, 2)
+	failures := make(chan error, 2)
+	for _, database := range []*DB{first, second} {
+		go func(database *DB) { claimed, err := database.ClaimDueOutbox(id); outcomes <- claimed; failures <- err }(database)
+	}
+	count := 0
+	for range 2 {
+		if <-outcomes {
+			count++
+		}
+		if err := <-failures; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if count != 1 {
+		t.Fatalf("claims across connections: %d", count)
+	}
+}

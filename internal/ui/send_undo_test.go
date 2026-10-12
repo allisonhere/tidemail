@@ -190,7 +190,7 @@ func TestScheduleSendRejectsPastTime(t *testing.T) {
 
 func TestScheduleSendUsesTwelveHourTime(t *testing.T) {
 	m := newSendTestModel(t, 5)
-	m.compose = NewCompose(config.AccountConfig{}, nil, nil)
+	m.compose = NewCompose(config.AccountConfig{User: "allie@example.com"}, nil, nil)
 	m.compose.toInput.SetValue("bob@example.com")
 	m.overlay = overlayCompose
 	m.openScheduleSend()

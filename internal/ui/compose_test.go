@@ -377,7 +377,7 @@ func TestReplyRecipientAutocomplete(t *testing.T) {
 }
 
 func TestSendAppendsAccountSignature(t *testing.T) {
-	acfg := config.AccountConfig{Signature: "Allie\nTideMail"}
+	acfg := config.AccountConfig{User: "allie@example.com", Signature: "Allie\nTideMail"}
 	c := NewCompose(acfg, nil, nil)
 	c.toInput.SetValue("bob@example.com")
 	c.bodyInput.SetValue("hi bob")
@@ -397,7 +397,7 @@ func TestSendAppendsAccountSignature(t *testing.T) {
 }
 
 func TestSendWithoutSignatureLeavesBodyAlone(t *testing.T) {
-	c := NewCompose(config.AccountConfig{}, nil, nil)
+	c := NewCompose(config.AccountConfig{User: "allie@example.com"}, nil, nil)
 	c.toInput.SetValue("bob@example.com")
 	c.bodyInput.SetValue("hi bob")
 
@@ -1043,7 +1043,7 @@ func TestComposeEmptyFieldsNoBackgroundBleed(t *testing.T) {
 // the Markdown renderer along with the body, which folded its lines into one
 // paragraph. Clients that prefer HTML — most of them — showed a run-on line.
 func TestSendKeepsSignatureLinesInTheHTMLPart(t *testing.T) {
-	acfg := config.AccountConfig{Signature: "-allie\nSent with Tidemail\nhttps://example.com/tidemail"}
+	acfg := config.AccountConfig{User: "allie@example.com", Signature: "-allie\nSent with Tidemail\nhttps://example.com/tidemail"}
 	c := NewCompose(acfg, nil, nil)
 	c.toInput.SetValue("bob@example.com")
 	c.bodyInput.SetValue("hi bob")

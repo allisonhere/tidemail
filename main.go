@@ -74,12 +74,28 @@ func run() (code int, restartExec string) {
 	if len(os.Args) > 1 && os.Args[1] == "plugin" {
 		return cli.Run(os.Args[2:], os.Stdout, os.Stderr), ""
 	}
-	opts := parseStartupOptions(os.Args[1:])
-	for _, a := range os.Args[1:] {
+	startupArgs := os.Args[1:]
+	if len(startupArgs) > 0 && cli.IsMailCommand(startupArgs[0]) {
+		code := cli.RunHeadless(startupArgs, os.Stdin, os.Stdout, os.Stderr)
+		if code != cli.OpenInbox {
+			return code, ""
+		}
+		startupArgs = nil
+	}
+	opts := parseStartupOptions(startupArgs)
+	for _, a := range startupArgs {
 		switch strings.TrimSpace(a) {
 		case "--version", "-version", "-v":
 			fmt.Printf("tidemail %s\n", resolvedVersion())
 			return 0, ""
+		}
+	}
+	for _, a := range startupArgs {
+		switch a {
+		case "--preview-manual-update", "--preview-update-progress", "--prototype-forms", "--disable-google-oauth":
+		default:
+			fmt.Fprintln(os.Stderr, "unknown command or option; run tidemail --help")
+			return 2, ""
 		}
 	}
 

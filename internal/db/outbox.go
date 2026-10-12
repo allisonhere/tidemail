@@ -201,3 +201,22 @@ func (db *DB) FailQueuedOutbox(id int64, message string) error {
 	_, err := db.Exec(`UPDATE outbox SET state='failed', last_error=?, updated_at=? WHERE id=? AND state='queued'`, message, time.Now().Unix(), id)
 	return err
 }
+
+// ClaimDueOutbox atomically honors durable scheduling, including retries.
+func (db *DB) ClaimDueOutbox(id int64) (bool, error) {
+	now := time.Now().Unix()
+	res, err := db.Exec(`UPDATE outbox SET state='sending', attempts=attempts+1, updated_at=? WHERE id=? AND state='queued' AND attempts<max_attempts AND next_attempt<=?`, now, id, now)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+// RecoverStaleOutbox leaves live workers alone. The lease exceeds SMTP's 30s
+// deadline and Sent append's 20s deadline; abandoned attempts never auto-retry.
+func (db *DB) RecoverStaleOutbox() error {
+	now := time.Now().Unix()
+	_, err := db.Exec(`UPDATE outbox SET state='uncertain',last_error='Delivery was interrupted. Check Sent mail before retrying.',updated_at=? WHERE state='sending' AND updated_at<?`, now, now-120)
+	return err
+}

@@ -43,6 +43,11 @@ jobs:
       - name: Test
         run: go test ./... -race
 
+      - name: Interactive CLI smoke test
+        run: |
+          go build -o /tmp/tidemail-agent-cli .
+          python scripts/verify-cli-interactive.py /tmp/tidemail-agent-cli
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

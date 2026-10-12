@@ -8,6 +8,17 @@ Current release: **v1.0.28**.
 
 ## Working
 
+- **Interactive CLI**: `tidemail cli` command chooser, step-by-step compose/draft
+  wizard with Ripple, attachment browser, review, durable sending and undo.
+  Automatic prompts respect pipes, JSON, agents, and `--no-interactive`; explicit
+  `--interactive` renders through the controlling terminal.
+- **Headless mail CLI**: configured-account sends and drafts, Markdown and
+  attachments, cached inbox list/search/read, account and outbox metadata,
+  explicit queue processing, and portable agent skills for Codex, Claude, Pi,
+  and Hermes. Agent capabilities and invocation approval separate reading,
+  drafting, and sending. See the [CLI reference](docs/cli.md) for queue scheduling,
+  JSON output, installation, and current limits.
+
 - **Multi-account IMAP**: connect, list mailboxes, fetch, move, delete, archive,
   mark read/unread, star. Delete moves remote mail to Trash when one is available,
   with permanent expunge as the fallback. Incremental sync via UID SEARCH SINCE,

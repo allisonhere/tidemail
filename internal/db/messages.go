@@ -156,10 +156,20 @@ func (db *DB) ListUnifiedInboxUnreadFirst(unreadOnly bool) ([]Message, error) {
 // "#tag" terms match the tags shown on rows (see search_tags.go). Both kinds
 // may be combined.
 func (db *DB) SearchAllMessages(query string, unreadFirst bool) ([]Message, error) {
+	messages, _, err := db.searchAllMessages(query, unreadFirst, false, -1, 0)
+	return messages, err
+}
+
+// SearchAllMessagesPage preserves the TUI's full-text and tag search semantics.
+func (db *DB) SearchAllMessagesPage(query string, unreadOnly bool, limit, offset int) ([]Message, int, error) {
+	return db.searchAllMessages(query, false, unreadOnly, limit, offset)
+}
+
+func (db *DB) searchAllMessages(query string, unreadFirst, unreadOnly bool, limit, offset int) ([]Message, int, error) {
 	terms := ParseSearch(query)
 	match := ftsQuery(terms.Text)
 	if match == "" && len(terms.Tags) == 0 {
-		return nil, nil
+		return nil, 0, nil
 	}
 	const columns = `messages.id, messages.mailbox_id, messages.uid, messages.message_id,
 		       messages.in_reply_to, messages.references_text, messages.subject, messages.from_addr, messages.to_addr, messages.cc_addr,
@@ -184,17 +194,31 @@ func (db *DB) SearchAllMessages(query string, unreadFirst bool) ([]Message, erro
 		where = append(where, expr)
 		args = append(args, tagArgs...)
 	}
+	if unreadOnly {
+		where = append(where, "messages.read = 0")
+	}
 	if unreadFirst {
 		orderBy = "messages.read ASC, " + orderBy
 	}
-	rows, err := db.Query(`SELECT `+columns+` FROM `+from+joins+`
-		WHERE `+strings.Join(where, " AND ")+`
-		ORDER BY `+orderBy, args...)
+	clause := from + joins + ` WHERE ` + strings.Join(where, " AND ")
+	total := 0
+	if limit >= 0 {
+		if err := db.QueryRow("SELECT COUNT(*) FROM "+clause, args...).Scan(&total); err != nil {
+			return nil, 0, err
+		}
+	}
+	sqlQuery := `SELECT ` + columns + ` FROM ` + clause + ` ORDER BY ` + orderBy
+	if limit >= 0 {
+		sqlQuery += " LIMIT ? OFFSET ?"
+		args = append(args, limit, offset)
+	}
+	rows, err := db.Query(sqlQuery, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
-	return scanMessagesWithContext(rows)
+	messages, err := scanMessagesWithContext(rows)
+	return messages, total, err
 }
 
 func (db *DB) GetMessage(id int64) (Message, error) {
@@ -586,4 +610,24 @@ func (db *DB) ListAddresses() ([]string, error) {
 		}
 	}
 	return addrs, rows.Err()
+}
+
+// ListUnifiedInboxPage reads one bounded cache page without contacting IMAP.
+func (db *DB) ListUnifiedInboxPage(unreadOnly bool, limit, offset int) ([]Message, int, error) {
+	where := inboxMailboxPredicate
+	if unreadOnly {
+		where += " AND messages.read = 0"
+	}
+	clause := ` FROM messages JOIN mailboxes ON mailboxes.id=messages.mailbox_id WHERE ` + where
+	var total int
+	if err := db.QueryRow("SELECT COUNT(*)" + clause).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := db.Query("SELECT "+messageColumns+clause+" ORDER BY messages.date DESC, messages.id DESC LIMIT ? OFFSET ?", limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	messages, err := scanMessages(rows)
+	return messages, total, err
 }

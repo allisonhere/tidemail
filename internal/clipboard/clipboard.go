@@ -27,6 +27,11 @@ var (
 // terminals (including over SSH) still receive the copy. It returns an error
 // only when every mechanism fails.
 func Copy(text string) error {
+	return CopyTo(text, osc52Writer)
+}
+
+// CopyTo sends any terminal fallback to the interactive terminal supplied by the caller.
+func CopyTo(text string, terminal io.Writer) error {
 	candidates := [][]string{
 		{"wl-copy"},
 		{"xclip", "-selection", "clipboard"},
@@ -44,7 +49,7 @@ func Copy(text string) error {
 			return nil
 		}
 	}
-	if _, err := osc52.New(text).WriteTo(osc52Writer); err != nil {
+	if _, err := osc52.New(text).WriteTo(terminal); err != nil {
 		return fmt.Errorf("no clipboard tool found and OSC 52 fallback failed: %w", err)
 	}
 	return nil
