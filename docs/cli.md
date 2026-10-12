@@ -156,6 +156,11 @@ tidemail outbox process --json
 future scheduled entries. It connects to SMTP and, for providers that require it,
 IMAP to append delivered mail to Sent. Multiple client and processor instances
 use atomic database claims to avoid delivering the same queue entry twice.
+A queued entry whose account has been removed from the configuration is marked
+`failed` (the run exits 1 once); it is not reported again on later runs.
+
+An unknown read subcommand, such as `tidemail messages invoice`, exits 2 and
+names the supported subcommands. Search with `tidemail messages search "invoice"`.
 
 A cron entry can process the queue once a minute while the client is closed:
 

@@ -166,3 +166,49 @@ func TestJSONParseErrorsDoNotPolluteStdout(t *testing.T) {
 		t.Fatal(code, out.String(), errs.String())
 	}
 }
+
+func TestOutboxProcessFailsEntryForRemovedAccount(t *testing.T) {
+	mailFixture(t)
+	var out, errs bytes.Buffer
+	if code := RunHeadless([]string{"send", "--to", "you@example.com", "--subject", "Hi", "--body", "x", "--yes", "--json"}, strings.NewReader(""), &out, &errs); code != 0 {
+		t.Fatal(code, out.String(), errs.String())
+	}
+	config := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "tidemail", "config.toml")
+	if e := os.WriteFile(config, []byte("[display]\nsend_delay_seconds = 0\n"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	// Make the entry due regardless of the configured delay.
+	database, e := db.Open()
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = database.Exec(`UPDATE outbox SET next_attempt=0`); e != nil {
+		t.Fatal(e)
+	}
+	database.Close()
+	out.Reset()
+	errs.Reset()
+	if code := RunHeadless([]string{"outbox", "process", "--json"}, strings.NewReader(""), &out, &errs); code != 1 {
+		t.Fatalf("first run: %d %s", code, out.String())
+	}
+	out.Reset()
+	if code := RunHeadless([]string{"outbox", "process", "--json"}, strings.NewReader(""), &out, &errs); code != 0 {
+		t.Fatalf("second run should be clean: %d %s", code, out.String())
+	}
+	database, e = db.Open()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer database.Close()
+	items, e := database.ListOutbox()
+	if e != nil || len(items) != 1 || items[0].State != db.OutboxFailed {
+		t.Fatal(items, e)
+	}
+}
+
+func TestUnknownReadSubcommandSuggestsSearch(t *testing.T) {
+	var out, errs bytes.Buffer
+	if code := RunHeadless([]string{"messages", "invoice"}, strings.NewReader(""), &out, &errs); code != 2 || !strings.Contains(errs.String(), "messages search") {
+		t.Fatal(code, errs.String())
+	}
+}

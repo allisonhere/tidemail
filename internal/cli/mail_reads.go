@@ -76,7 +76,12 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		return fail("invalid_arguments", "--limit must be 1–1000 and --offset must be nonnegative.", 2)
 	}
 	if (command == "accounts" && action != "list") || (command == "messages" && action != "list" && action != "search" && action != "read") || (command == "outbox" && action != "list" && action != "status") {
-		return fail("invalid_arguments", "Unknown subcommand; use --help.", 2)
+		hint := map[string]string{"accounts": "list", "messages": "list, search, or read", "outbox": "list or status"}[command]
+		message := fmt.Sprintf("Unknown subcommand %q; %s supports %s.", action, command, hint)
+		if command == "messages" {
+			message += ` Search with: tidemail messages search "query".`
+		}
+		return fail("invalid_arguments", message, 2)
 	}
 	needsArgument := action == "read" || action == "status" || action == "search"
 	if (needsArgument && len(positionals) != 1) || (!needsArgument && len(positionals) != 0) {

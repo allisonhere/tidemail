@@ -388,6 +388,11 @@ func runOutboxAction(args []string, out, errOut io.Writer) int {
 		}
 		a, ok := mailapp.ResolveOutboxAccount(cfg, item)
 		if !ok {
+			// The account is gone from config; fail the entry so it is not
+			// re-reported on every run.
+			if e := database.FailQueuedOutbox(item.ID, "Account is no longer configured."); e != nil {
+				_, _ = fmt.Fprintln(errOut, "warning: cannot mark outbox entry failed")
+			}
 			failed++
 			continue
 		}
