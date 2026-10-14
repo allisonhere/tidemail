@@ -58,18 +58,33 @@ func aboutWaveHeight(col, frame, layer int) float64 {
 
 // aboutWaveGlyphForRow reports whether a layer at the given water height
 // reaches row (0 = top of the strip, aboutWaveRows-1 = bottom/baseline), and
-// if so which block glyph represents the fractional fill at that row.
-func aboutWaveGlyphForRow(height float64, row int) (rune, bool) {
-	depth := float64(aboutWaveRows - row) // bottom row -> depth 1
-	fill := height - (depth - 1)
+// if so which block glyph represents the fractional fill at that row, plus a
+// normalized depth (0 right at the surface edge, up to 1 at the deepest
+// possible cell) for shading — distinct from the sub-cell fill fraction,
+// which only varies within the one partially-filled row per layer and is
+// otherwise pinned at 1 for every fully submerged cell below it.
+func aboutWaveGlyphForRow(height float64, row int) (rune, float64, bool) {
+	rowDepth := float64(aboutWaveRows - row) // bottom row -> depth 1
+	fill := height - (rowDepth - 1)
 	if fill <= 0 {
-		return ' ', false
+		return ' ', 0, false
+	}
+	depth := fill / float64(aboutWaveRows)
+	if depth > 1 {
+		depth = 1
 	}
 	if fill >= 1 {
-		return aboutWaveBlocks[len(aboutWaveBlocks)-1], true
+		return aboutWaveBlocks[len(aboutWaveBlocks)-1], depth, true
 	}
 	idx := int(fill * float64(len(aboutWaveBlocks)-1))
-	return aboutWaveBlocks[idx], true
+	return aboutWaveBlocks[idx], depth, true
+}
+
+// aboutWaveShade blends base darker toward bg as depth increases (0 = base
+// unchanged, 1 = halfway to bg), so deeper water reads darker without
+// losing the layer's hue or going fully black.
+func aboutWaveShade(base, bg lipgloss.Color, depth float64) lipgloss.Color {
+	return mixColors(base, bg, depth*0.5)
 }
 
 // aboutWaveRow renders one row of the wave strip, width cells wide. For each
@@ -90,8 +105,8 @@ func aboutWaveRow(width, row, frame int, bg lipgloss.Color, colors []lipgloss.Co
 		glyph := ' '
 		color := bg
 		for layer := len(colors) - 1; layer >= 0; layer-- {
-			if g, ok := aboutWaveGlyphForRow(aboutWaveHeight(col, frame, layer), row); ok {
-				glyph, color = g, colors[layer]
+			if g, depth, ok := aboutWaveGlyphForRow(aboutWaveHeight(col, frame, layer), row); ok {
+				glyph, color = g, aboutWaveShade(colors[layer], bg, depth)
 				break
 			}
 		}

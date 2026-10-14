@@ -1,12 +1,28 @@
 package ui
 
 import (
+	"math"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/allisonhere/tidemail/internal/config"
 )
+
+// rgbDistance is a simple Euclidean distance in sRGB space, enough to order
+// "closer to bg" vs "closer to base" without needing full perceptual color
+// math (that's what contrastRatio is for elsewhere in this package).
+func rgbDistance(t *testing.T, a, b lipgloss.Color) float64 {
+	t.Helper()
+	ar, ag, ab, ok1 := hexToRGB(a)
+	br, bg, bb, ok2 := hexToRGB(b)
+	if !ok1 || !ok2 {
+		t.Fatalf("could not parse colors %q, %q", a, b)
+	}
+	dr, dg, db := ar-br, ag-bg, ab-bb
+	return math.Sqrt(dr*dr + dg*dg + db*db)
+}
 
 func aboutWaveTestSettings(t *testing.T) Settings {
 	t.Helper()
@@ -68,6 +84,25 @@ func TestDecorativePulseCmdRunsBothAboutAnimations(t *testing.T) {
 	}
 	if len(batch) != 2 {
 		t.Fatalf("expected both the gradient pulse and the wave pulse armed together, got %d commands", len(batch))
+	}
+}
+
+func TestAboutWaveShadeDarkensWithDepth(t *testing.T) {
+	base := lipgloss.Color("#4080c0")
+	bg := lipgloss.Color("#000000")
+
+	if got := aboutWaveShade(base, bg, 0); got != base {
+		t.Fatalf("expected depth 0 to leave the base color unchanged, got %q", got)
+	}
+
+	shallow := aboutWaveShade(base, bg, 0.3)
+	deep := aboutWaveShade(base, bg, 1)
+
+	distShallow := rgbDistance(t, shallow, bg)
+	distDeep := rgbDistance(t, deep, bg)
+	if !(distDeep < distShallow) {
+		t.Fatalf("expected deeper shading to be closer to bg: shallow=%q (dist %.1f) deep=%q (dist %.1f)",
+			shallow, distShallow, deep, distDeep)
 	}
 }
 
