@@ -16,32 +16,8 @@ func aboutWaveTestSettings(t *testing.T) Settings {
 	return s
 }
 
-func TestAboutWaveToggleKeyFlipsScreen(t *testing.T) {
-	s := aboutWaveTestSettings(t)
-	if s.aboutUseWaveScreen {
-		t.Fatalf("expected the wave screen to start off")
-	}
-
-	next, cmd, done := s.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}}, DefaultKeys)
-	if done {
-		t.Fatalf("expected the toggle key to stay in Settings, not exit")
-	}
-	if !next.aboutUseWaveScreen {
-		t.Fatalf("expected 'w' to turn the wave screen on")
-	}
-	if cmd == nil {
-		t.Fatalf("expected a command to start the wave animation")
-	}
-
-	next, _, _ = next.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}}, DefaultKeys)
-	if next.aboutUseWaveScreen {
-		t.Fatalf("expected a second 'w' to flip the wave screen back off")
-	}
-}
-
 func TestAboutWaveTickAdvancesFrameAndRearms(t *testing.T) {
 	s := aboutWaveTestSettings(t)
-	s.aboutUseWaveScreen = true
 
 	next, cmd, _ := s.Update(settingsAboutWaveMsg{}, DefaultKeys)
 	if next.aboutWaveFrame != 1 {
@@ -52,34 +28,21 @@ func TestAboutWaveTickAdvancesFrameAndRearms(t *testing.T) {
 	}
 }
 
-func TestAboutWaveTickStopsWhenScreenIsOff(t *testing.T) {
-	s := aboutWaveTestSettings(t)
-	s.aboutUseWaveScreen = false
-
-	next, cmd, _ := s.Update(settingsAboutWaveMsg{}, DefaultKeys)
-	if next.aboutWaveFrame != 0 {
-		t.Fatalf("expected no frame advance while the wave screen is off, got %d", next.aboutWaveFrame)
-	}
-	if cmd != nil {
-		t.Fatalf("expected no re-arm while the wave screen is off")
-	}
-}
-
 func TestAboutWaveTickStopsWhenSectionChanges(t *testing.T) {
 	s := aboutWaveTestSettings(t)
-	s.aboutUseWaveScreen = true
 	s.setActiveSection(ssSupport)
 
 	next, cmd, _ := s.Update(settingsAboutWaveMsg{}, DefaultKeys)
 	if cmd != nil {
 		t.Fatalf("expected no re-arm once the active section changed away from About")
 	}
-	_ = next
+	if next.aboutWaveFrame != 0 {
+		t.Fatalf("expected aboutWaveFrame to reset to 0 once off About, got %d", next.aboutWaveFrame)
+	}
 }
 
 func TestAboutWaveTickSettlesAfterIdleThreshold(t *testing.T) {
 	s := aboutWaveTestSettings(t)
-	s.aboutUseWaveScreen = true
 	s.aboutWaveFrame = settingsAboutWaveSettleFrame - 1
 
 	next, cmd, _ := s.Update(settingsAboutWaveMsg{}, DefaultKeys)
@@ -91,37 +54,30 @@ func TestAboutWaveTickSettlesAfterIdleThreshold(t *testing.T) {
 	}
 }
 
-func TestAboutSectionFieldsOmitHeartOnWaveScreen(t *testing.T) {
+func TestDecorativePulseCmdRunsBothAboutAnimations(t *testing.T) {
 	s := aboutWaveTestSettings(t)
 
-	withHeart := s.sectionFields(ssAbout)
-	foundHeart := false
-	for _, f := range withHeart {
-		if f == sfAboutHeart {
-			foundHeart = true
-		}
+	cmd := s.decorativePulseCmd()
+	if cmd == nil {
+		t.Fatalf("expected a batched command for the About section")
 	}
-	if !foundHeart {
-		t.Fatalf("expected sfAboutHeart in the default About field list")
+	msg := cmd()
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		t.Fatalf("expected a tea.BatchMsg combining the gradient and wave pulses, got %T", msg)
 	}
-
-	s.aboutUseWaveScreen = true
-	withoutHeart := s.sectionFields(ssAbout)
-	for _, f := range withoutHeart {
-		if f == sfAboutHeart {
-			t.Fatalf("expected sfAboutHeart to be omitted when the wave screen is active")
-		}
+	if len(batch) != 2 {
+		t.Fatalf("expected both the gradient pulse and the wave pulse armed together, got %d commands", len(batch))
 	}
 }
 
-func TestRenderAboutWaveSectionKeepsLinkAnchors(t *testing.T) {
+func TestRenderAboutCombinedSectionKeepsAllAnchors(t *testing.T) {
 	s := aboutWaveTestSettings(t)
-	s.aboutUseWaveScreen = true
 	s.detailHeight = 30
 
 	for _, width := range []int{40, 80, 120} {
-		body := s.renderAboutWaveSection(width, newManagerChrome(width, CatppuccinMocha, false))
-		for _, field := range []settingsField{sfAboutSupport, sfAboutRepo, sfAboutIssues} {
+		body := s.renderAboutCombinedSection(width, newManagerChrome(width, CatppuccinMocha, false))
+		for _, field := range []settingsField{sfAboutHeart, sfAboutSupport, sfAboutRepo, sfAboutIssues} {
 			if _, ok := body.anchors[field]; !ok {
 				t.Fatalf("width %d: expected an anchor for field %v", width, field)
 			}

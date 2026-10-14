@@ -1176,9 +1176,15 @@ func TestSettingsAboutLinksCompactLayout(t *testing.T) {
 	}
 }
 
+// The wave strip framing About's content (see renderAboutCombinedSection)
+// means the links are no longer the pane's literal last content — the
+// footer wave sits below them — so this checks the links scroll into view
+// when focused, and that the trailing rows are the wave footer rather than
+// blank or cut off, instead of asserting an exact bottom-row pin.
 func TestSettingsAboutLinksSitOnBottomRow(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	s.setActiveSection(ssAbout)
+	s.setFocusedField(sfAboutRepo)
 	chrome := newManagerChrome(96, CatppuccinMocha, false)
 	bodyHeight := 22
 	s.detailHeight = bodyHeight
@@ -1189,12 +1195,11 @@ func TestSettingsAboutLinksSitOnBottomRow(t *testing.T) {
 	if len(lines) != bodyHeight {
 		t.Fatalf("expected %d rendered lines, got %d: %q", bodyHeight, len(lines), view)
 	}
-	buttonRows := strings.Join(lines[len(lines)-3:], "\n")
-	if !strings.Contains(buttonRows, "Repository") || !strings.Contains(buttonRows, "Issues") {
-		t.Fatalf("expected about button block at bottom, got %q in view %q", buttonRows, view)
+	if !strings.Contains(view, "Repository") || !strings.Contains(view, "Issues") {
+		t.Fatalf("expected the link buttons to scroll into view when focused, got %q", view)
 	}
 	if strings.TrimSpace(lines[len(lines)-1]) == "" {
-		t.Fatalf("expected bottom row to be button border, got blank in view %q", view)
+		t.Fatalf("expected the bottom row to be the wave footer, got blank in view %q", view)
 	}
 }
 

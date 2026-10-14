@@ -9,11 +9,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Prototype: a tideftp-inspired animated wave screen for Settings -> About,
-// toggled with `w` (see the key check in Settings.Update). Kept in its own
-// file so it's easy to review or remove independently of the real About
-// screen (renderAboutSection, elsewhere in this package), which this leaves
-// completely untouched.
+// A tideftp-inspired animated wave strip for Settings -> About, framing the
+// existing DNA-helix/heart content (renderAboutSection, elsewhere in this
+// package, left completely unchanged) with one copy of the wave above it and
+// another below. Kept in its own file so it's easy to review or remove
+// independently.
 //
 // The wave itself ports the layered-sine-wave technique from
 // ~/Projects/tideftp/internal/about/about.go: three sine terms at different
@@ -123,56 +123,42 @@ func (s Settings) renderAboutWaveStrip(width int, chrome managerChrome, bg lipgl
 	return strings.Join(rows, "\n")
 }
 
-// renderAboutWaveSection is the wave screen's equivalent of
-// renderAboutSection: same settingsSectionBody shape, same link row/anchors
-// (so Tab navigation and Enter/Space activation on the Support/Repository/
-// Issues buttons keep working unchanged), but with the wave strip standing
-// in for the DNA-helix hero and heart, header and footer.
-func (s Settings) renderAboutWaveSection(width int, chrome managerChrome) settingsSectionBody {
+// renderAboutCombinedSection frames the real About content (rendered by
+// renderAboutSection, completely unchanged) with the wave strip once above
+// and once below: waves, DNA/heart/links as-is, waves. Field anchors from
+// the wrapped body are preserved, shifted down by the header's line count,
+// so Tab navigation and Enter/Space activation on the heart and the
+// Support/Repository/Issues buttons keep working unchanged.
+func (s Settings) renderAboutCombinedSection(width int, chrome managerChrome) settingsSectionBody {
 	bodyW := max(1, width)
 	aboutBg := lipgloss.Color("#000000")
 	blank := lipgloss.NewStyle().Background(aboutBg).Width(bodyW).Render("")
-	center := func(text string, fg lipgloss.Color, italic bool) string {
-		return lipgloss.NewStyle().Background(aboutBg).Foreground(fg).Italic(italic).Bold(!italic).
-			Width(bodyW).Align(lipgloss.Center).Render(text)
-	}
-
 	wave := s.renderAboutWaveStrip(bodyW, chrome, aboutBg)
 	waveLines := strings.Split(wave, "\n")
+	headerLen := len(waveLines) + 1 // wave + trailing blank
+	footerLen := 1 + len(waveLines) // leading blank + wave
 
-	lines := make([]string, 0, 32)
-	lines = append(lines, waveLines...)
-	lines = append(lines, blank,
-		center("TIDEMAIL", chrome.text, false),
-		center("your mail, your rules", chrome.muted, true),
-		blank,
-		center(s.update.currentVersion, chrome.muted, false),
-		blank,
-	)
-
-	linksBlock := s.renderAboutLinks(bodyW, chrome)
-	linksLines := strings.Split(linksBlock, "\n")
-	hint := center("w  back to the original about screen", chrome.muted, true)
-	footerLen := 1 + len(waveLines) + 1 // hint + wave + trailing blank
-
-	if targetHeight := s.detailHeight - 2; targetHeight > 0 {
-		for len(lines)+footerLen+len(linksLines) < targetHeight {
-			lines = append(lines, blank)
-		}
+	// renderAboutSection pads its own content to fill the whole detail pane,
+	// assuming it owns the full height. Shrink what it sees by the extra
+	// rows this wrapper adds above and below, so the combined total still
+	// fits the real pane instead of overflowing past the visible window.
+	inner := s
+	if inner.detailHeight > 0 {
+		inner.detailHeight = max(1, inner.detailHeight-headerLen-footerLen)
 	}
-	lines = append(lines, hint)
+	body := inner.renderAboutSection(width, chrome)
+
+	lines := make([]string, 0, headerLen+len(body.lines)+footerLen)
 	lines = append(lines, waveLines...)
 	lines = append(lines, blank)
+	lines = append(lines, body.lines...)
+	lines = append(lines, blank)
+	lines = append(lines, waveLines...)
 
-	linksStart := len(lines)
-	lines = append(lines, linksLines...)
-
-	return settingsSectionBody{
-		lines: lines,
-		anchors: map[settingsField]int{
-			sfAboutSupport: linksStart,
-			sfAboutRepo:    linksStart,
-			sfAboutIssues:  linksStart,
-		},
+	anchors := make(map[settingsField]int, len(body.anchors))
+	for field, line := range body.anchors {
+		anchors[field] = line + headerLen
 	}
+
+	return settingsSectionBody{lines: lines, anchors: anchors}
 }
