@@ -2,6 +2,7 @@ package ui
 
 import (
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -9,11 +10,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// A tideftp-inspired animated wave strip for Settings -> About, framing the
-// existing DNA-helix/heart content (renderAboutSection, elsewhere in this
-// package, left completely unchanged) with one copy of the wave above it and
-// another below. Kept in its own file so it's easy to review or remove
-// independently.
+// A tideftp-inspired animated wave strip for Settings -> About, framing a
+// DNA-free copy of the real About content (renderAboutBodyNoDNA/
+// renderAboutHeroNoDNA below, mirroring renderAboutSection/renderAboutHero
+// elsewhere in this package, which stay completely unchanged along with
+// their own tests) with one copy of the wave above and another below. Kept
+// in its own file so it's easy to review or remove independently.
 //
 // The wave itself ports the layered-sine-wave technique from
 // ~/Projects/tideftp/internal/about/about.go: three sine terms at different
@@ -138,12 +140,96 @@ func (s Settings) renderAboutWaveStrip(width int, chrome managerChrome, bg lipgl
 	return strings.Join(rows, "\n")
 }
 
-// renderAboutCombinedSection frames the real About content (rendered by
-// renderAboutSection, completely unchanged) with the wave strip once above
-// and once below: waves, DNA/heart/links as-is, waves. Field anchors from
-// the wrapped body are preserved, shifted down by the header's line count,
-// so Tab navigation and Enter/Space activation on the heart and the
-// Support/Repository/Issues buttons keep working unchanged.
+// renderAboutHeroNoDNA mirrors the real About hero (renderAboutHero,
+// settings.go — left completely untouched, along with its own tests) minus
+// the DNA-helix graphic: same title/tagline panel, just two lines instead of
+// title+helix+tagline. Used only by the wave screen below.
+func (s Settings) renderAboutHeroNoDNA(width int, chrome managerChrome) string {
+	panelW := max(1, width-4)
+	contentW := max(1, panelW-2)
+
+	titleCentered := aboutCenterText("TIDEMAIL", contentW)
+	taglineCentered := aboutCenterText("your mail, your rules", contentW)
+
+	lines := []string{
+		s.renderAboutHeroTextLine(titleCentered, contentW, 0, true),
+		s.renderAboutHeroTextLine(taglineCentered, contentW, 1, false),
+	}
+
+	panelBg := lipgloss.Color("#000000")
+	panel := lipgloss.NewStyle().
+		Width(panelW).
+		Background(panelBg).
+		Border(lipPaneBorder(chrome.plainUI)).
+		BorderForeground(lipgloss.Color("#143a4a")).
+		BorderBackground(panelBg).
+		Padding(0, 1).
+		Render(strings.Join(lines, "\n"))
+
+	return lipgloss.NewStyle().Width(width).Background(panelBg).Align(lipgloss.Center).Render(panel)
+}
+
+// renderAboutBodyNoDNA mirrors renderAboutSection (settings.go, left
+// completely untouched) line for line, except it frames the hero with
+// renderAboutHeroNoDNA instead of the real renderAboutHero. Kept as a
+// separate copy, rather than post-processing renderAboutSection's output, so
+// there's no fragile string-matching to pick the helix rows back out.
+func (s Settings) renderAboutBodyNoDNA(width int, chrome managerChrome) settingsSectionBody {
+	ind := lipgloss.NewStyle().Background(lipgloss.Color("#000000")).Width(width)
+	blank := lipgloss.NewStyle().Background(lipgloss.Color("#000000")).Width(width).Render("")
+	bodyW := max(1, width)
+	lines := []string{}
+	addBlock := func(block string) int {
+		start := len(lines)
+		lines = append(lines, strings.Split(block, "\n")...)
+		return start
+	}
+	addBlock(ind.Render(s.renderAboutHeroNoDNA(bodyW, chrome)))
+	heroEnd := len(lines)
+	lines = append(lines, blank)
+	tideLine := lipgloss.NewStyle().Background(lipgloss.Color("#000000")).Foreground(chrome.muted).Italic(true).Width(bodyW).Align(lipgloss.Center).Render("terminal information delivery engine")
+	lines = append(lines, tideLine, blank)
+	verLine := lipgloss.NewStyle().Background(lipgloss.Color("#000000")).Foreground(chrome.muted).Width(bodyW).Align(lipgloss.Center).Render(s.update.currentVersion)
+	lines = append(lines, verLine, blank)
+	closingBlock := s.renderAboutClosingNote(bodyW, chrome)
+	closingStart := addBlock(ind.Render(closingBlock))
+	heartLine := closingStart + max(0, lipgloss.Height(closingBlock)-1)
+	lines = append(lines, blank)
+	linksBlock := ind.Render(s.renderAboutLinks(bodyW, chrome))
+	linksLines := strings.Split(linksBlock, "\n")
+	if targetHeight := s.detailHeight - 2; targetHeight > 0 {
+		extraGap := min(3, max(0, targetHeight-len(lines)-len(linksLines)))
+		if extraGap > 0 {
+			spacers := make([]string, extraGap)
+			for i := range spacers {
+				spacers[i] = blank
+			}
+			lines = slices.Insert(lines, heroEnd+1, spacers...)
+			heartLine += extraGap
+		}
+		for len(lines)+len(linksLines) < targetHeight {
+			lines = append(lines, blank)
+		}
+	}
+	linksStart := len(lines)
+	lines = append(lines, linksLines...)
+	return settingsSectionBody{
+		lines: lines,
+		anchors: map[settingsField]int{
+			sfAboutHeart:   heartLine,
+			sfAboutSupport: linksStart,
+			sfAboutRepo:    linksStart,
+			sfAboutIssues:  linksStart,
+		},
+	}
+}
+
+// renderAboutCombinedSection frames the DNA-free About content (above) with
+// the wave strip once above and once below: waves, hero/tagline/heart/links
+// (minus DNA), waves. Field anchors from the wrapped body are preserved,
+// shifted down by the header's line count, so Tab navigation and
+// Enter/Space activation on the heart and the Support/Repository/Issues
+// buttons keep working unchanged.
 func (s Settings) renderAboutCombinedSection(width int, chrome managerChrome) settingsSectionBody {
 	bodyW := max(1, width)
 	aboutBg := lipgloss.Color("#000000")
@@ -153,15 +239,16 @@ func (s Settings) renderAboutCombinedSection(width int, chrome managerChrome) se
 	headerLen := len(waveLines) + 1 // wave + trailing blank
 	footerLen := 1 + len(waveLines) // leading blank + wave
 
-	// renderAboutSection pads its own content to fill the whole detail pane,
-	// assuming it owns the full height. Shrink what it sees by the extra
-	// rows this wrapper adds above and below, so the combined total still
-	// fits the real pane instead of overflowing past the visible window.
+	// renderAboutBodyNoDNA pads its own content to fill the whole detail
+	// pane, assuming it owns the full height. Shrink what it sees by the
+	// extra rows this wrapper adds above and below, so the combined total
+	// still fits the real pane instead of overflowing past the visible
+	// window.
 	inner := s
 	if inner.detailHeight > 0 {
 		inner.detailHeight = max(1, inner.detailHeight-headerLen-footerLen)
 	}
-	body := inner.renderAboutSection(width, chrome)
+	body := inner.renderAboutBodyNoDNA(width, chrome)
 
 	lines := make([]string, 0, headerLen+len(body.lines)+footerLen)
 	lines = append(lines, waveLines...)
