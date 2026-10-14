@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,6 +18,11 @@ import (
 )
 
 var version = "dev"
+
+// changelog is shown in Settings → Changelog, so it always matches this build.
+//
+//go:embed CHANGELOG.md
+var changelog string
 
 type startupOptions struct {
 	previewManualUpdate   bool
@@ -140,6 +146,7 @@ func run() (code int, restartExec string) {
 		defer database.Close()
 
 		// --preview-manual-update / --preview-update-progress are dev UI entry points.
+		ui.SetChangelog(changelog)
 		m := ui.NewModel(database, cfg, resolvedVersion(), opts.previewManualUpdate || opts.previewUpdateProgress)
 		// Experimental plugins; a missing or broken plugin directory is never fatal.
 		m.LoadPlugins()

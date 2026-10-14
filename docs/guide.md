@@ -873,6 +873,7 @@ native click-drag text selection while it's enabled.
   Them, and Snoozed — so you can still tell accounts apart at a glance when
   browsing across all of them.
 - Updates: check, install, restart, or copy a manual install command
+- Changelog: read the release notes bundled with your installed version, newest first, offline. Scroll with `j`/`k` or the arrow keys, page with `PgUp`/`PgDn`, and jump with `g`/`G` (or `Home`/`End`); `Esc` or `←` returns to the sections list
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings
 - Advanced: logs and feed max body size
 - Support: an animated café scene (swaying string lights, a steaming mug, Pac-Man chasing a coffee cup). Choose the Ko-fi Open or Copy link button with Up/Down and press Enter; Ctrl+C also copies the link, and Esc returns to Settings sections

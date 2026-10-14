@@ -99,7 +99,8 @@ Current release: **v1.0.28**.
   exposing unsubscribe links to plugins.
 - **Settings**: theme, display density, pane corners, pane header bars, modal
   drop shadow, AI provider config, editor, update checks, a dedicated Plugins
-  section with inline administration and configuration, and an optional
+  section with inline administration and configuration, a read-only Changelog
+  view (the embedded CHANGELOG.md, scrollable, works offline), and an optional
   Support page with open/copy actions for the confirmed Ko-fi link. About is an
   animated "Ocean night" scene and Support an animated "Café" scene; plain
   (VT52) themes keep the original static pages.

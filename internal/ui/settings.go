@@ -102,6 +102,7 @@ const (
 	ssEditor
 	ssCLI
 	ssUpdates
+	ssChangelog
 	ssAI
 	ssPlugins
 	ssAdvanced
@@ -190,6 +191,7 @@ var (
 		"EDITOR",
 		"CLI",
 		"UPDATES",
+		"CHANGELOG",
 		"AI",
 		"PLUGINS",
 		"ADVANCED",
@@ -366,6 +368,8 @@ type Settings struct {
 	sectionField       [settingsSectionCount]settingsField
 	focusedField       settingsField
 	aboutGradientFrame int
+	changelogScroll    int // first visible line of Settings → Changelog
+	changelogPage      int // visible lines, recorded when drawn, for paging
 	aboutRevealFrame   int
 	aboutRevealActive  bool
 	aboutWaveFrame     int // animates the wave strip framing the About content
@@ -475,15 +479,16 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		activeSection:         ssDisplay,
 		focusedPane:           settingsPaneSidebar,
 		sectionField: [settingsSectionCount]settingsField{
-			ssDisplay:  sfBackToSections,
-			ssEditor:   sfBackToSections,
-			ssCLI:      sfBackToSections,
-			ssUpdates:  sfBackToSections,
-			ssAI:       sfBackToSections,
-			ssPlugins:  sfBackToSections,
-			ssAdvanced: sfBackToSections,
-			ssSupport:  supportOpenField(0),
-			ssAbout:    sfBackToSections,
+			ssDisplay:   sfBackToSections,
+			ssEditor:    sfBackToSections,
+			ssCLI:       sfBackToSections,
+			ssUpdates:   sfBackToSections,
+			ssChangelog: sfBackToSections,
+			ssAI:        sfBackToSections,
+			ssPlugins:   sfBackToSections,
+			ssAdvanced:  sfBackToSections,
+			ssSupport:   supportOpenField(0),
+			ssAbout:     sfBackToSections,
 		},
 		focusedField: sfBackToSections,
 	}
@@ -659,6 +664,7 @@ func (s *Settings) setActiveSection(section settingsSection) {
 	if section != ssSupport {
 		s.supportPulseFrame = 0
 	}
+	s.changelogScroll = 0
 	s.ensureSectionFieldVisible(section)
 	s.focusedField = s.sectionField[section]
 	s.applyFocus()
@@ -814,7 +820,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		}
 		fields = append(fields, sfTestAIConnection, sfSavePath, sfMarkReadOnSummarize)
 		return fields
-	case ssPlugins:
+	case ssChangelog, ssPlugins:
 		return []settingsField{sfBackToSections}
 	case ssAdvanced:
 		return []settingsField{sfBackToSections, sfViewLogs, sfFeedMaxBody}
@@ -1236,6 +1242,10 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 		case keyMatches(key, keys.Up):
 			s.setFocusedField(s.prevField())
 		}
+		return s, nil, false
+	}
+
+	if s.activeSection == ssChangelog && s.handleChangelogKey(key.String()) {
 		return s, nil, false
 	}
 
@@ -1876,6 +1886,10 @@ func (s *Settings) viewSectionPane(width, height int, chrome managerChrome) stri
 		lipgloss.NewStyle().Background(titleBg).Foreground(titleFg).Bold(true).Render(title)
 	titleRow = padStyled(titleRow, width, titleBg)
 	paneBg := s.sectionDetailBg(chrome)
+	if s.activeSection == ssChangelog {
+		s.changelogPage = max(1, height-2)
+		s.changelogScroll = clamp(s.changelogScroll, 0, max(0, len(body.lines)-s.changelogPage))
+	}
 	headingGap := lipgloss.NewStyle().Background(paneBg).Width(width).Render("")
 	bodyHeight := max(1, height-2)
 	section := lipgloss.JoinVertical(lipgloss.Left, titleRow, headingGap, s.scrollSectionBody(body, width, bodyHeight, paneBg))
@@ -1894,7 +1908,9 @@ func (s Settings) scrollSectionBody(body settingsSectionBody, width, height int,
 		return clampView("", width, height, bg)
 	}
 	offset := 0
-	if anchor, ok := body.anchors[s.focusedField]; ok {
+	if s.activeSection == ssChangelog {
+		offset = clamp(s.changelogScroll, 0, max(0, len(body.lines)-height))
+	} else if anchor, ok := body.anchors[s.focusedField]; ok {
 		offset = settingsScrollOffset(len(body.lines), anchor, height)
 	}
 	end := min(len(body.lines), offset+height)
@@ -1923,6 +1939,9 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 	}
 	if s.activeSection == ssSupport {
 		return s.renderSupportSection(width, chrome)
+	}
+	if s.activeSection == ssChangelog {
+		return s.renderChangelogSection(width, chrome)
 	}
 
 	b := newSettingsFormBuilder(s, width, chrome)

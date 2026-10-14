@@ -18,6 +18,8 @@ All notable changes to TideMail are documented in this file.
 - An account's color now also tints its own messages in the Unified Inbox, Needs You, Waiting on
   Them, and Snoozed views, so accounts stay visually distinct even when a single mailbox pane
   (and its usual header/border accent) isn't selected.
+- Settings → Changelog: read TideMail's release notes inside the app. The notes are bundled with
+  the build, so they work offline and always match the installed version.
 - Settings → About is now an animated "Ocean night" scene (twinkling stars, a crescent moon, a
   self-drawing TIDEMAIL wordmark, and rolling waves), and Settings → Support is an animated
   "Café" scene with the same Ko-fi Open/Copy link buttons. Plain (VT52) themes keep the original

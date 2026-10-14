@@ -245,6 +245,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.Save.Help().Key, "save settings"},
 				{"Editor", "set compose keys and the ctrl+z send delay"},
 				{"CLI", "tidemail cli: quit after send, skip review, default signature (interactive use only)"},
+				{"Changelog", "read the bundled release notes; j/k or arrows scroll, PgUp/PgDn page, g/G jump to top/bottom"},
 				{"Support", "select Open or Copy link with arrows; Enter activates; ctrl+c copies"},
 				{"Pane header bars", "show titles and shortcuts above panes; off restores one row and moves focused-pane details to the status bar"},
 				{keys.Cancel.Help().Key, "back to sections, then cancel from the section list"},
@@ -281,7 +282,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{"keychain", "passwords / API keys / OAuth refresh tokens stored in system keychain"},
 				{"config", "~/.config/tidemail/config.toml (no plain-text secrets after save)"},
 				{"secrets", "passwords, API keys, and OAuth tokens are redacted from errors/status"},
-				{"Settings", "display, AI, updates, optional support, and desktop notifications live in settings"},
+				{"Settings", "display, AI, updates, the changelog, optional support, and desktop notifications live in settings"},
 			},
 		},
 	}
