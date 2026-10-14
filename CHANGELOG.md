@@ -6,6 +6,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.4.0
+
 ### Added
 
 - Settings → Display: an opt-in **Mouse support** toggle (off by default) adds click-to-select
@@ -16,6 +18,16 @@ All notable changes to TideMail are documented in this file.
 - An account's color now also tints its own messages in the Unified Inbox, Needs You, Waiting on
   Them, and Snoozed views, so accounts stay visually distinct even when a single mailbox pane
   (and its usual header/border accent) isn't selected.
+- Settings → About is now an animated "Ocean night" scene (twinkling stars, a crescent moon, a
+  self-drawing TIDEMAIL wordmark, and rolling waves), and Settings → Support is an animated
+  "Café" scene with the same Ko-fi Open/Copy link buttons. Plain (VT52) themes keep the original
+  static pages.
+
+### Security
+
+- Updated `golang.org/x/net` to v0.55.0 and `goldmark` to v1.7.17, fixing known vulnerabilities in
+  HTML parsing (used when finding unsubscribe links) and Markdown autolink rendering (used when
+  composing).
 
 ## v1.3.1
 
