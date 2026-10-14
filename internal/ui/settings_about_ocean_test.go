@@ -165,7 +165,7 @@ func TestAboutOceanFocusedButtonIsFilled(t *testing.T) {
 	l, _ := oceanLayoutFor(90, 28)
 
 	// Re-render the button row on its own canvas to inspect cell styles.
-	c := newOceanCanvas(90, 3)
+	c := newSceneCanvas(90, 3)
 	oceanButtons(c, 0, sfAboutRepo, 1)
 	filled := 0
 	for x := range c.w {

@@ -872,8 +872,8 @@ func (s Settings) aboutPulseCmd() tea.Cmd {
 	return settingsAboutPulseCmd()
 }
 
-func settingsSupportPulseCmd() tea.Cmd {
-	return tea.Tick(settingsSupportPulsePeriod, func(time.Time) tea.Msg {
+func settingsSupportPulseCmd(period time.Duration) tea.Cmd {
+	return tea.Tick(period, func(time.Time) tea.Msg {
 		return settingsSupportPulseMsg{}
 	})
 }
@@ -882,7 +882,7 @@ func (s Settings) supportPulseCmd() tea.Cmd {
 	if s.activeSection != ssSupport {
 		return nil
 	}
-	return settingsSupportPulseCmd()
+	return settingsSupportPulseCmd(s.supportPulsePeriod())
 }
 
 func (s Settings) decorativePulseCmd() tea.Cmd {
@@ -1093,7 +1093,7 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			return s, nil, false
 		}
 		s.supportPulseFrame++
-		return s, settingsSupportPulseCmd(), false
+		return s, settingsSupportPulseCmd(s.supportPulsePeriod()), false
 	}
 	if _, ok := msg.(settingsAboutPulseMsg); ok {
 		if s.activeSection != ssAbout {
@@ -2064,8 +2064,11 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 // renderSupportSection stretches the dotted frame through the detail pane and
 // carries the existing form anchors through the added spacing for keyboard focus.
 func (s Settings) renderSupportSection(width int, chrome managerChrome) settingsSectionBody {
-	dot := "·"
 	plain := chrome.plainUI || ThemeUsesASCII(s.themeName)
+	if !plain {
+		return s.renderSupportCafeSection(width)
+	}
+	dot := "·"
 	if plain {
 		dot = "."
 	}
@@ -2248,7 +2251,7 @@ func (s Settings) renderSupportButtons(link SupportLink, index, width int, chrom
 	}
 	openW := min(18, width-2)
 	copyW := min(11, width-2)
-	openBtn := renderSettingsLinkButton("Support on "+link.Name, openW, s.focusedField == supportOpenField(index), chrome.baseBg, chrome)
+	openBtn := renderSettingsLinkButton(cafeBuyLabel, openW, s.focusedField == supportOpenField(index), chrome.baseBg, chrome)
 	copyBtn := renderSettingsLinkButton("Copy link", copyW, s.focusedField == supportCopyField(index), chrome.baseBg, chrome)
 	gap := lipgloss.NewStyle().Background(chrome.baseBg).Width(2).Height(lipgloss.Height(openBtn)).Render("")
 	line := lipgloss.JoinHorizontal(lipgloss.Center, openBtn, gap, copyBtn)

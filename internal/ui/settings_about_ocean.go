@@ -1,13 +1,11 @@
 package ui
 
 import (
-	"fmt"
 	"math"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // Settings → About, "Ocean night": a night sky with twinkling stars, a
@@ -36,180 +34,32 @@ func settingsAboutWaveCmd() tea.Cmd {
 	})
 }
 
-// ── palette ────────────────────────────────────────────────────────────────
-
-type oceanRGB struct{ r, g, b uint8 }
-
-func oceanHex(s string) oceanRGB {
-	var c oceanRGB
-	fmt.Sscanf(s, "#%02x%02x%02x", &c.r, &c.g, &c.b)
-	return c
-}
-
-func oceanFromColor(c lipgloss.Color) oceanRGB {
-	r, g, b, ok := hexToRGB(c)
-	if !ok {
-		return oceanRGB{}
-	}
-	return oceanRGB{uint8(r*255 + 0.5), uint8(g*255 + 0.5), uint8(b*255 + 0.5)}
-}
-
-func (c oceanRGB) color() lipgloss.Color {
-	return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", c.r, c.g, c.b))
-}
-
-func oceanLerp(a, b oceanRGB, t float64) oceanRGB {
-	t = clamp01(t)
-	m := func(x, y uint8) uint8 { return uint8(float64(x) + (float64(y)-float64(x))*t + 0.5) }
-	return oceanRGB{m(a.r, b.r), m(a.g, b.g), m(a.b, b.b)}
-}
-
-// oceanEase is a smoothstep from 0 at frame a to 1 at frame b.
-func oceanEase(f, a, b float64) float64 {
-	if f <= a {
-		return 0
-	}
-	if f >= b {
-		return 1
-	}
-	t := (f - a) / (b - a)
-	return t * t * (3 - 2*t)
-}
-
-func oceanHash(n int) uint32 {
-	x := uint32(n)*0x9E3779B1 + 0x7F4A7C15
-	x ^= x >> 16
-	x *= 0x85EBCA6B
-	x ^= x >> 13
-	x *= 0xC2B2AE35
-	x ^= x >> 16
-	return x
-}
-
-func oceanRand(n int) float64 { return float64(oceanHash(n)%100000) / 100000 }
-
 var (
-	oceanSkyTop   = oceanHex("#02040d")
-	oceanSkyBot   = oceanHex("#0d2048")
-	oceanStar     = oceanHex("#eef4ff")
-	oceanMoon     = oceanHex("#f7edcb")
-	oceanGlow     = oceanHex("#1f3a78")
-	oceanWordA    = oceanHex("#4fd8ff")
-	oceanWordB    = oceanHex("#a07bff")
-	oceanWhite    = oceanHex("#ffffff")
-	oceanTagline  = oceanHex("#a9bde0")
-	oceanDim      = oceanHex("#5f7398")
-	oceanSignoff  = oceanHex("#8ea2c6")
-	oceanHeartLo  = oceanHex("#b0174f")
-	oceanHeartHi  = oceanHex("#ff6b8b")
-	oceanHalo     = oceanHex("#ffe3a3")
-	oceanBtnEdge  = oceanHex("#3d6aa8")
-	oceanLabel    = oceanHex("#d2def5")
-	oceanAccent   = oceanHex("#4fd8ff")
-	oceanAccentFg = oceanHex("#04121f")
-	oceanDeep     = oceanHex("#04121f")
-	oceanFoam     = oceanHex("#e4fbff")
-	oceanLayers   = [3]oceanRGB{oceanHex("#0b3556"), oceanHex("#11658a"), oceanHex("#1aa0c8")}
+	oceanSkyTop   = sceneHex("#02040d")
+	oceanSkyBot   = sceneHex("#0d2048")
+	oceanStar     = sceneHex("#eef4ff")
+	oceanMoon     = sceneHex("#f7edcb")
+	oceanGlow     = sceneHex("#1f3a78")
+	oceanWordA    = sceneHex("#4fd8ff")
+	oceanWordB    = sceneHex("#a07bff")
+	oceanWhite    = sceneHex("#ffffff")
+	oceanTagline  = sceneHex("#a9bde0")
+	oceanDim      = sceneHex("#5f7398")
+	oceanSignoff  = sceneHex("#8ea2c6")
+	oceanHeartLo  = sceneHex("#b0174f")
+	oceanHeartHi  = sceneHex("#ff6b8b")
+	oceanHalo     = sceneHex("#ffe3a3")
+	oceanBtnEdge  = sceneHex("#3d6aa8")
+	oceanLabel    = sceneHex("#d2def5")
+	oceanAccent   = sceneHex("#4fd8ff")
+	oceanAccentFg = sceneHex("#04121f")
+	oceanDeep     = sceneHex("#04121f")
+	oceanFoam     = sceneHex("#e4fbff")
+	oceanLayers   = [3]sceneRGB{sceneHex("#0b3556"), sceneHex("#11658a"), sceneHex("#1aa0c8")}
 )
 
-func oceanPride(i int) oceanRGB {
-	return oceanFromColor(aboutPrideColors[((i%len(aboutPrideColors))+len(aboutPrideColors))%len(aboutPrideColors)])
-}
-
-// ── canvas ─────────────────────────────────────────────────────────────────
-
-type oceanCell struct {
-	ch     rune
-	fg, bg oceanRGB
-	bold   bool
-}
-
-type oceanCanvas struct {
-	w, h  int
-	cells []oceanCell
-}
-
-func newOceanCanvas(w, h int) *oceanCanvas {
-	return &oceanCanvas{w: w, h: h, cells: make([]oceanCell, w*h)}
-}
-
-func (c *oceanCanvas) at(x, y int) *oceanCell {
-	if x < 0 || y < 0 || x >= c.w || y >= c.h {
-		return nil
-	}
-	return &c.cells[y*c.w+x]
-}
-
-func (c *oceanCanvas) set(x, y int, ch rune, fg, bg oceanRGB) {
-	if p := c.at(x, y); p != nil {
-		*p = oceanCell{ch: ch, fg: fg, bg: bg}
-	}
-}
-
-// put draws a glyph over whatever background is already there.
-func (c *oceanCanvas) put(x, y int, ch rune, fg oceanRGB) {
-	if p := c.at(x, y); p != nil {
-		p.ch, p.fg = ch, fg
-	}
-}
-
-func (c *oceanCanvas) centerText(y int, s string, fg oceanRGB) int {
-	x := (c.w - len([]rune(s))) / 2
-	for i, r := range []rune(s) {
-		c.put(x+i, y, r, fg)
-	}
-	return x
-}
-
-// plot sets one half-block pixel: each cell is two pixels tall, drawn as ▀
-// with the top pixel in the foreground and the bottom one in the background.
-func (c *oceanCanvas) plot(x, py int, col oceanRGB) {
-	p := c.at(x, py/2)
-	if p == nil {
-		return
-	}
-	if p.ch != '▀' {
-		p.ch, p.fg = '▀', p.bg
-	}
-	if py%2 == 0 {
-		p.fg = col
-	} else {
-		p.bg = col
-	}
-}
-
-// lines renders each row as runs of identically styled cells, so lipgloss
-// can still downsample the colors for terminals without truecolor.
-func (c *oceanCanvas) lines() []string {
-	out := make([]string, c.h)
-	var run strings.Builder
-	for y := range c.h {
-		var b strings.Builder
-		row := c.cells[y*c.w : (y+1)*c.w]
-		start := 0
-		for x := 1; x <= c.w; x++ {
-			if x < c.w && row[x].fg == row[start].fg && row[x].bg == row[start].bg && row[x].bold == row[start].bold {
-				continue
-			}
-			run.Reset()
-			for _, cl := range row[start:x] {
-				ch := cl.ch
-				if ch == 0 {
-					ch = ' '
-				}
-				run.WriteRune(ch)
-			}
-			first := row[start]
-			b.WriteString(lipgloss.NewStyle().
-				Foreground(first.fg.color()).
-				Background(first.bg.color()).
-				Bold(first.bold).
-				Render(run.String()))
-			start = x
-		}
-		out[y] = b.String()
-	}
-	return out
+func oceanPride(i int) sceneRGB {
+	return sceneFromColor(aboutPrideColors[((i%len(aboutPrideColors))+len(aboutPrideColors))%len(aboutPrideColors)])
 }
 
 // ── wordmark ───────────────────────────────────────────────────────────────
@@ -284,13 +134,13 @@ func (s Settings) renderAboutOceanSection(width int, chrome managerChrome) setti
 		h = 24
 	}
 	l, h := oceanLayoutFor(w, h)
-	c := newOceanCanvas(w, h)
+	c := newSceneCanvas(w, h)
 	f := float64(s.aboutWaveFrame)
 	pride := s.aboutRevealActive
 	loveIsLove := pride && s.aboutRevealFrame >= settingsAboutRevealStart && s.aboutRevealFrame < settingsAboutRevealEnd
 
-	sky := func(y int) oceanRGB {
-		return oceanLerp(oceanSkyTop, oceanSkyBot, float64(y)/float64(max(1, l.waveTop-1)))
+	sky := func(y int) sceneRGB {
+		return sceneLerp(oceanSkyTop, oceanSkyBot, float64(y)/float64(max(1, l.waveTop-1)))
 	}
 	for y := range h {
 		bg := sky(y)
@@ -311,13 +161,13 @@ func (s Settings) renderAboutOceanSection(width int, chrome managerChrome) setti
 	// Wordmark: draws in left to right, then a light sweeps across it.
 	if l.big {
 		x0 := (w - oceanWordW) / 2
-		reveal := oceanEase(f, 6, oceanIntroEnd) * float64(oceanWordW+6)
+		reveal := sceneEase(f, 6, oceanIntroEnd) * float64(oceanWordW+6)
 		sweep := math.Mod((f-oceanIntroEnd)*0.9, float64(oceanWordW+70)) - 30
 		for row := range 5 {
 			for col := range oceanWordW {
 				if oceanWordmark[row][col] && float64(col) <= reveal {
 					if p := c.at(x0+col+1, l.y0+row+1); p != nil {
-						c.put(x0+col+1, l.y0+row+1, '█', oceanLerp(p.bg, oceanHex("#000000"), 0.55))
+						c.put(x0+col+1, l.y0+row+1, '█', sceneLerp(p.bg, sceneHex("#000000"), 0.55))
 					}
 				}
 			}
@@ -327,18 +177,18 @@ func (s Settings) renderAboutOceanSection(width int, chrome managerChrome) setti
 				if !oceanWordmark[row][col] || float64(col) > reveal {
 					continue
 				}
-				fg := oceanLerp(oceanWordA, oceanWordB, float64(col)/float64(oceanWordW-1))
+				fg := sceneLerp(oceanWordA, oceanWordB, float64(col)/float64(oceanWordW-1))
 				if pride {
 					fg = oceanPride(col * len(aboutPrideColors) / oceanWordW)
 				}
-				fg = oceanLerp(fg, oceanWhite, 0.14*float64(4-row)/4)
+				fg = sceneLerp(fg, oceanWhite, 0.14*float64(4-row)/4)
 				if f > oceanIntroEnd {
 					if d := math.Abs(float64(col+row*2) - sweep); d < 5 {
-						fg = oceanLerp(fg, oceanWhite, (1-d/5)*0.85)
+						fg = sceneLerp(fg, oceanWhite, (1-d/5)*0.85)
 					}
 				}
 				if edge := reveal - float64(col); edge < 3 {
-					fg = oceanLerp(fg, oceanWhite, 1-edge/3)
+					fg = sceneLerp(fg, oceanWhite, 1-edge/3)
 				}
 				c.put(x0+col, l.y0+row, '█', fg)
 			}
@@ -347,18 +197,18 @@ func (s Settings) renderAboutOceanSection(width int, chrome managerChrome) setti
 		title := "T I D E M A I L"
 		x := c.centerText(l.y0, title, oceanWordA)
 		for i := range len(title) {
-			fg := oceanLerp(oceanWordA, oceanWordB, float64(i)/float64(len(title)-1))
+			fg := sceneLerp(oceanWordA, oceanWordB, float64(i)/float64(len(title)-1))
 			if pride {
 				fg = oceanPride(i)
 			}
 			if p := c.at(x+i, l.y0); p != nil {
-				p.fg = oceanLerp(p.bg, fg, oceanEase(f, 6, 20))
+				p.fg = sceneLerp(p.bg, fg, sceneEase(f, 6, 20))
 				p.bold = true
 			}
 		}
 	}
 
-	textFade := oceanEase(f, 14, 30)
+	textFade := sceneEase(f, 14, 30)
 	if loveIsLove {
 		x := c.centerText(l.tagY, "LOVE IS LOVE", oceanWhite)
 		for i := range len("LOVE IS LOVE") {
@@ -367,7 +217,7 @@ func (s Settings) renderAboutOceanSection(width int, chrome managerChrome) setti
 			}
 		}
 	} else {
-		c.centerText(l.tagY, "your mail, your rules", oceanLerp(sky(l.tagY), oceanTagline, textFade))
+		c.centerText(l.tagY, "your mail, your rules", sceneLerp(sky(l.tagY), oceanTagline, textFade))
 	}
 	ver := "terminal information delivery engine"
 	if v := strings.TrimSpace(s.update.currentVersion); v != "" {
@@ -376,13 +226,13 @@ func (s Settings) renderAboutOceanSection(width int, chrome managerChrome) setti
 	if len([]rune(ver)) > w-2 {
 		ver = strings.TrimSpace(s.update.currentVersion)
 	}
-	c.centerText(l.verY, ver, oceanLerp(sky(l.verY), oceanDim, textFade))
-	c.centerText(l.signY, "Thanks for taking a look -allie", oceanLerp(sky(l.signY), oceanSignoff, oceanEase(f, 20, 36)))
+	c.centerText(l.verY, ver, sceneLerp(sky(l.verY), oceanDim, textFade))
+	c.centerText(l.signY, "Thanks for taking a look -allie", sceneLerp(sky(l.signY), oceanSignoff, sceneEase(f, 20, 36)))
 
 	// Heart: always visible so keyboard focus is never invisible mid-intro.
 	heartFocused := s.focusedField == sfAboutHeart
 	pulse := 0.5 + 0.5*math.Sin(f*0.22)
-	heart := oceanLerp(oceanHeartLo, oceanHeartHi, pulse)
+	heart := sceneLerp(oceanHeartLo, oceanHeartHi, pulse)
 	if pride {
 		heart = oceanPride(s.aboutRevealFrame / 3)
 	}
@@ -396,8 +246,8 @@ func (s Settings) renderAboutOceanSection(width int, chrome managerChrome) setti
 		c.centerText(l.heartY, "❤", heart)
 	}
 
-	oceanButtons(c, l.linksY, s.focusedField, oceanEase(f, 20, 36))
-	oceanTide(c, f, l.waveTop, l.waveRows, oceanEase(f, 0, 35))
+	oceanButtons(c, l.linksY, s.focusedField, sceneEase(f, 20, 36))
+	oceanTide(c, f, l.waveTop, l.waveRows, sceneEase(f, 0, 35))
 
 	return settingsSectionBody{
 		lines: c.lines(),
@@ -412,20 +262,20 @@ func (s Settings) renderAboutOceanSection(width int, chrome managerChrome) setti
 
 // oceanStars fades stars in at staggered times; each then twinkles at its own
 // pace. During the heart reveal they take on the pride colors.
-func oceanStars(c *oceanCanvas, f float64, skyRows int, inContent func(int, int) bool, pride bool) {
+func oceanStars(c *sceneCanvas, f float64, skyRows int, inContent func(int, int) bool, pride bool) {
 	for i := range c.w * skyRows / 16 {
-		x := int(oceanHash(i*3+1) % uint32(c.w))
-		y := int(oceanHash(i*3+2) % uint32(max(1, skyRows-1)))
+		x := int(sceneHash(i*3+1) % uint32(c.w))
+		y := int(sceneHash(i*3+2) % uint32(max(1, skyRows-1)))
 		if inContent(x, y) {
 			continue
 		}
-		start := oceanRand(i) * 25
-		b := oceanEase(f, start, start+12) * (0.5 + 0.5*math.Sin(f*(0.06+oceanRand(i+11)*0.14)+oceanRand(i+7)*6.28))
+		start := sceneRand(i) * 25
+		b := sceneEase(f, start, start+12) * (0.5 + 0.5*math.Sin(f*(0.06+sceneRand(i+11)*0.14)+sceneRand(i+7)*6.28))
 		if b < 0.08 {
 			continue
 		}
 		ch := '·'
-		if size := oceanRand(i + 5); size > 0.94 {
+		if size := sceneRand(i + 5); size > 0.94 {
 			ch = '✦'
 		} else if size > 0.82 {
 			ch = '+'
@@ -435,14 +285,14 @@ func oceanStars(c *oceanCanvas, f float64, skyRows int, inContent func(int, int)
 			col = oceanPride(i)
 		}
 		if p := c.at(x, y); p != nil {
-			c.put(x, y, ch, oceanLerp(p.bg, col, b))
+			c.put(x, y, ch, sceneLerp(p.bg, col, b))
 		}
 	}
 }
 
 // oceanMoonAt draws a soft glow and a crescent in half-block pixels.
-func oceanMoonAt(c *oceanCanvas, f float64, cx, cyPx int) {
-	moon := oceanEase(f, 8, 30)
+func oceanMoonAt(c *sceneCanvas, f float64, cx, cyPx int) {
+	moon := sceneEase(f, 8, 30)
 	if moon <= 0 {
 		return
 	}
@@ -451,9 +301,9 @@ func oceanMoonAt(c *oceanCanvas, f float64, cx, cyPx int) {
 		for x := cx - 9; x < cx+9; x++ {
 			d := math.Hypot(float64(x)-mx, float64(y*2+1)-my)
 			if p := c.at(x, y); p != nil && d < 9 {
-				p.bg = oceanLerp(p.bg, oceanGlow, (1-d/9)*0.55*moon)
+				p.bg = sceneLerp(p.bg, oceanGlow, (1-d/9)*0.55*moon)
 				if p.ch != ' ' {
-					p.fg = oceanLerp(p.fg, oceanGlow, (1-d/9)*0.5)
+					p.fg = sceneLerp(p.fg, oceanGlow, (1-d/9)*0.5)
 				}
 			}
 		}
@@ -463,14 +313,14 @@ func oceanMoonAt(c *oceanCanvas, f float64, cx, cyPx int) {
 			in := math.Hypot(float64(x)-mx, float64(py)-my) < 3.6
 			bite := math.Hypot(float64(x)-mx-1.8, float64(py)-my+1.2) < 3.1
 			if p := c.at(x, py/2); p != nil && in && !bite {
-				c.plot(x, py, oceanLerp(p.bg, oceanMoon, moon))
+				c.plot(x, py, sceneLerp(p.bg, oceanMoon, moon))
 			}
 		}
 	}
 }
 
 // oceanShootingStar sends one across the sky every ~15s after the intro.
-func oceanShootingStar(c *oceanCanvas, f float64, skyRows int, inContent func(int, int) bool) {
+func oceanShootingStar(c *sceneCanvas, f float64, skyRows int, inContent func(int, int) bool) {
 	frame := int(f) - oceanIntroEnd - 20
 	if frame < 0 {
 		return
@@ -479,8 +329,8 @@ func oceanShootingStar(c *oceanCanvas, f float64, skyRows int, inContent func(in
 	if cyc >= 16 {
 		return
 	}
-	sx := c.w/6 + int(oceanRand(n*13+1)*float64(c.w)*0.5)
-	sy := 1 + int(oceanRand(n*13+2)*float64(max(1, skyRows/4)))
+	sx := c.w/6 + int(sceneRand(n*13+1)*float64(c.w)*0.5)
+	sy := 1 + int(sceneRand(n*13+2)*float64(max(1, skyRows/4)))
 	for k := 0; k < 8; k++ {
 		pos := cyc - k
 		x, y := sx+pos*3, sy+pos
@@ -492,7 +342,7 @@ func oceanShootingStar(c *oceanCanvas, f float64, skyRows int, inContent func(in
 			if k == 0 {
 				ch = '✦'
 			}
-			c.put(x, y, ch, oceanLerp(p.bg, oceanWhite, 1-float64(k)/8))
+			c.put(x, y, ch, sceneLerp(p.bg, oceanWhite, 1-float64(k)/8))
 		}
 	}
 }
@@ -514,7 +364,7 @@ var oceanLinkButtons = []oceanButton{
 // compact row when the pane is too narrow. The focused button is filled so
 // keyboard focus reads at a glance, and is drawn at full strength even
 // while the rest fade in.
-func oceanButtons(c *oceanCanvas, y int, focused settingsField, fade float64) {
+func oceanButtons(c *sceneCanvas, y int, focused settingsField, fade float64) {
 	total := 0
 	for _, b := range oceanLinkButtons {
 		total += b.inner + 2
@@ -536,9 +386,9 @@ func oceanButtons(c *oceanCanvas, y int, focused settingsField, fade float64) {
 					continue
 				}
 				if b.field == focused {
-					*p = oceanCell{ch: r, fg: oceanAccentFg, bg: oceanAccent, bold: true}
+					*p = sceneCell{ch: r, fg: oceanAccentFg, bg: oceanAccent, bold: true}
 				} else {
-					c.put(x+i, y+1, r, oceanLerp(p.bg, oceanLabel, fade))
+					c.put(x+i, y+1, r, sceneLerp(p.bg, oceanLabel, fade))
 				}
 			}
 			x += len(label) + 1
@@ -556,7 +406,7 @@ func oceanButtons(c *oceanCanvas, y int, focused settingsField, fade float64) {
 				if p == nil {
 					continue
 				}
-				border := oceanLerp(p.bg, oceanBtnEdge, fade)
+				border := sceneLerp(p.bg, oceanBtnEdge, fade)
 				if on {
 					border = oceanAccent
 				}
@@ -588,7 +438,7 @@ func oceanButtons(c *oceanCanvas, y int, focused settingsField, fade float64) {
 				if on {
 					p.ch, p.fg, p.bold = r, oceanAccentFg, true
 				} else {
-					p.ch, p.fg = r, oceanLerp(p.bg, oceanLabel, fade)
+					p.ch, p.fg = r, sceneLerp(p.bg, oceanLabel, fade)
 				}
 			}
 		}
@@ -599,7 +449,7 @@ func oceanButtons(c *oceanCanvas, y int, focused settingsField, fade float64) {
 // oceanTide draws three wave layers rolling in along the bottom rows. Deeper
 // cells shade darker, crests catch foam, and where a crest only partly fills
 // a cell the layer behind it shows through instead of the sky.
-func oceanTide(c *oceanCanvas, f float64, top, rows int, tide float64) {
+func oceanTide(c *sceneCanvas, f float64, top, rows int, tide float64) {
 	t := f * 0.11
 	r := float64(rows) * tide
 	heightAt := func(x, l int) float64 {
@@ -624,8 +474,8 @@ func oceanTide(c *oceanCanvas, f float64, top, rows int, tide float64) {
 				continue
 			}
 			fromBottom := float64(rows - row)
-			shade := func(l int) oceanRGB {
-				return oceanLerp(oceanLayers[l], oceanDeep, clamp01((hs[l]-fromBottom)/float64(rows))*0.75)
+			shade := func(l int) sceneRGB {
+				return sceneLerp(oceanLayers[l], oceanDeep, clamp01((hs[l]-fromBottom)/float64(rows))*0.75)
 			}
 			front, fill := -1, 0.0
 			for l := 2; l >= 0; l-- {
@@ -642,7 +492,7 @@ func oceanTide(c *oceanCanvas, f float64, top, rows int, tide float64) {
 				c.set(x, y, '█', fg, fg)
 				continue
 			}
-			fg = oceanLerp(fg, oceanFoam, foamAmt[front])
+			fg = sceneLerp(fg, oceanFoam, foamAmt[front])
 			bg := p.bg
 			for l := front - 1; l >= 0; l-- {
 				if hs[l]-(fromBottom-1) >= 1 {

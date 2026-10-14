@@ -48,7 +48,7 @@ func TestSupportSettingsSectionRegistrationAndRendering(t *testing.T) {
 
 	s.setActiveSection(ssSupport)
 	view := ansi.Strip(s.View(120, 24, newManagerChrome(120, CatppuccinMocha, false)))
-	for _, want := range []string{"free and open source", "Support on Ko-fi", "Copy link", koFiSupportURL, "Thank you"} {
+	for _, want := range []string{"free and open source", "Buy me a coffee", "Copy link", koFiSupportURL, "Thank you"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("Support view missing %q: %q", want, view)
 		}
@@ -151,58 +151,18 @@ func TestSupportHeartbeatOnlyTicksWhileVisible(t *testing.T) {
 	}
 }
 
-func TestSupportFrameUsesWhiteDotsAndKeepsFocusVisible(t *testing.T) {
-	trueColor(t)
+// The plain (VT52) theme keeps the original dotted-frame Support page with
+// its ASCII Pac-Man chase and original tick, rather than the café.
+func TestSupportPlainThemeKeepsDottedFrame(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	s.themeName = ThemeNameVT52
 	s.setActiveSection(ssSupport)
-	s.setFocusedPane(settingsPaneDetail)
-	s.setFocusedField(supportOpenField(0))
-	chrome := newManagerChrome(80, CatppuccinMocha, false)
-	view := s.View(80, 24, chrome)
-	if !strings.Contains(view, foreground(t, chrome.errorFg)) {
-		t.Fatal("animated heart is not using the theme's red error color")
+	view := ansi.Strip(s.View(80, 24, newManagerChrome(80, CatppuccinMocha, true)))
+	if !strings.Contains(view, strings.Repeat(".", 12)) || strings.Contains(view, "▔") {
+		t.Fatalf("plain Support page should keep its dotted frame, not the café: %q", view)
 	}
-	if !strings.Contains(view, foreground(t, readableText(lipgloss.Color("#ffffff"), chrome.baseBg, 3))) {
-		t.Fatal("dotted frame is not white")
-	}
-	if !strings.Contains(view, foreground(t, accentReadableOn(supportPacmanYellow, chrome.baseBg, 3))) {
-		t.Fatal("Pac-Man is not yellow")
-	}
-	if !strings.Contains(ansi.Strip(view), "Support on Ko-fi") {
-		t.Fatal("Support action lost its focused, filled button")
-	}
-	focused := renderSettingsLinkButton("Support on Ko-fi", 18, true, chrome.baseBg, chrome)
-	unfocused := renderSettingsLinkButton("Support on Ko-fi", 18, false, chrome.baseBg, chrome)
-	if focused == unfocused {
-		t.Fatal("Support button does not use About's filled focus treatment")
-	}
-	lines := strings.Split(ansi.Strip(view), "\n")
-	firstDot, lastDot := -1, -1
-	for i, line := range lines {
-		if strings.Contains(line, strings.Repeat("·", 12)) {
-			if firstDot < 0 {
-				firstDot = i
-			}
-			lastDot = i
-		}
-	}
-	if firstDot < 0 || lastDot-firstDot < 8 || len(lines)-lastDot > 4 {
-		t.Fatalf("dotted frame leaves excessive bottom space: first=%d last=%d total=%d", firstDot, lastDot, len(lines))
-	}
-	body := s.viewSectionBody(61, chrome)
-	heartRow := len(body.lines) - 3
-	if !strings.Contains(ansi.Strip(body.lines[heartRow]), "♥") {
-		t.Fatal("heart is not at the bottom of the content")
-	}
-	thanksFound := false
-	for _, line := range body.lines[:heartRow] {
-		thanksFound = thanksFound || strings.Contains(ansi.Strip(line), "-allie")
-	}
-	if !thanksFound {
-		t.Fatal("thank-you signoff is missing above the heart")
-	}
-	if strings.Contains(ansi.Strip(body.lines[len(body.lines)-2]), "♥") || !strings.Contains(ansi.Strip(body.lines[len(body.lines)-2]), "·") {
-		t.Fatal("missing blank row between heart and bottom border")
+	if got := s.supportPulsePeriod(); got != settingsSupportPulsePeriod {
+		t.Fatalf("plain chase tick = %v; want %v", got, settingsSupportPulsePeriod)
 	}
 }
 
@@ -272,7 +232,7 @@ func TestSupportContentFollowsCenteredSpacingMockup(t *testing.T) {
 		"If it makes email a little better for you,",
 		"you can support continued development.",
 		"☕ Ko-fi",
-		"Support on Ko-fi",
+		"Buy me a coffee",
 		koFiSupportURL,
 		"Thank you for supporting Tidemail -allie",
 		"♥",
@@ -292,7 +252,7 @@ func TestSupportContentFollowsCenteredSpacingMockup(t *testing.T) {
 		line := ansi.Strip(body.lines[found])
 		start := strings.Index(line, label)
 		delta := start - (ansi.StringWidth(line)-lipgloss.Width(label))/2
-		if label != "Support on Ko-fi" && (start < 0 || delta < -4 || delta > 4) {
+		if label != "Buy me a coffee" && (start < 0 || delta < -4 || delta > 4) {
 			t.Fatalf("support content %q is not centered in %q", label, line)
 		}
 		last = found
@@ -316,7 +276,7 @@ func TestSupportButtonsMatchAboutAndStackWhenNarrow(t *testing.T) {
 	if wideCopyRow != 0 || lipgloss.Height(wide) != 3 {
 		t.Fatalf("wide support buttons should share one About-style row: offset=%d height=%d", wideCopyRow, lipgloss.Height(wide))
 	}
-	if !strings.Contains(ansi.Strip(wide), "╭") || !strings.Contains(ansi.Strip(wide), "Support on Ko-fi") || !strings.Contains(ansi.Strip(wide), "Copy link") {
+	if !strings.Contains(ansi.Strip(wide), "╭") || !strings.Contains(ansi.Strip(wide), "Buy me a coffee") || !strings.Contains(ansi.Strip(wide), "Copy link") {
 		t.Fatalf("wide support buttons lost About-style rounded controls: %q", ansi.Strip(wide))
 	}
 	narrow, narrowCopyRow := s.renderSupportButtons(supportLinks[0], 0, 24, chrome)
