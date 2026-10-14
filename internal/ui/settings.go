@@ -654,6 +654,7 @@ func (s *Settings) setActiveSection(section settingsSection) {
 		s.aboutGradientFrame = 0
 		s.aboutRevealFrame = 0
 		s.aboutRevealActive = false
+		s.aboutWaveFrame = 0 // replay the intro next time About opens
 	}
 	if section != ssSupport {
 		s.supportPulseFrame = 0
@@ -1911,7 +1912,12 @@ func settingsScrollOffset(totalLines, anchorLine, height int) int {
 
 func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSectionBody {
 	if s.activeSection == ssAbout {
-		body := s.renderAboutCombinedSection(width, chrome)
+		var body settingsSectionBody
+		if chrome.plainUI {
+			body = s.renderAboutSection(width, chrome)
+		} else {
+			body = s.renderAboutOceanSection(width, chrome)
+		}
 		body = s.prependBackLink(body, width, chrome)
 		return body
 	}

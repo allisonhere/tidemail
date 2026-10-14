@@ -861,13 +861,8 @@ func TestModelRoutesAboutHeartActivationThroughSettingsOverlay(t *testing.T) {
 		nextModel, _ = next.handleSettings(settingsAboutPulseMsg{})
 		next = nextModel.(Model)
 	}
-	// "LOVE IS LOVE" renders inside the DNA helix (see
-	// TestSettingsAboutRevealFramesLoveIsLoveInsideHelix, which still
-	// covers it directly on renderAboutHero/renderPrideDNA, untouched) —
-	// the wave screen this routes through (renderAboutCombinedSection) omits
-	// the helix, so only the heart halo is expected here.
 	view := ansi.Strip(next.settings.View(80, 24, newManagerChrome(80, CatppuccinMocha, false)))
-	if !strings.Contains(view, "✦ ❤ ✦") {
+	if !strings.Contains(view, "LOVE IS LOVE") || !strings.Contains(view, "✦ ❤ ✦") {
 		t.Fatalf("expected routed reveal and active heart halo, got %q", view)
 	}
 }
@@ -1181,15 +1176,15 @@ func TestSettingsAboutLinksCompactLayout(t *testing.T) {
 	}
 }
 
-// The wave strip framing About's content (see renderAboutCombinedSection)
-// means the links are no longer the pane's literal last content — the
-// footer wave sits below them — so this checks the links scroll into view
-// when focused, and that the trailing rows are the wave footer rather than
-// blank or cut off, instead of asserting an exact bottom-row pin.
+// The ocean scene (renderAboutOceanSection) puts the tide below the links,
+// so the links are no longer the pane's literal last content. This checks
+// the links are in view when focused and that, once the tide has rolled in,
+// the bottom row is water rather than blank or cut off.
 func TestSettingsAboutLinksSitOnBottomRow(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	s.setActiveSection(ssAbout)
 	s.setFocusedField(sfAboutRepo)
+	s.aboutWaveFrame = 120 // past the intro, tide fully in
 	chrome := newManagerChrome(96, CatppuccinMocha, false)
 	bodyHeight := 22
 	s.detailHeight = bodyHeight
