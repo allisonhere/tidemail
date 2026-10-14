@@ -11,6 +11,9 @@ All notable changes to TideMail are documented in this file.
 - Settings → Display: an opt-in **Mouse support** toggle (off by default) adds click-to-select
   for sidebar rows, message rows, and panes, and click-to-open for links in the reading pane.
   Leaving it off keeps the terminal's native click-drag text selection available, as before.
+- An account's color now also tints its own messages in the Unified Inbox, Needs You, Waiting on
+  Them, and Snoozed views, so accounts stay visually distinct even when a single mailbox pane
+  (and its usual header/border accent) isn't selected.
 
 ## v1.3.1
 

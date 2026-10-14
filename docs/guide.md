@@ -856,7 +856,12 @@ native click-drag text selection while it's enabled.
 - Display: theme, icons, annotation tag style and colors, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, mouse support, and quit confirmation
 - Editor: compose keys, send delay, and maximum delivery attempts
 - CLI: quit after send or draft, skip the review step, and the default signature for the interactive `tidemail cli` wizard
-- Accounts: connection details, From address, signature, color, and sync interval
+- Accounts: connection details, From address, signature, color, and sync interval.
+  An account's color accents its own mailbox pane (unread text, the focused
+  header, and the border) when that mailbox is selected directly, and tints
+  each of its messages in mixed views — Unified Inbox, Needs You, Waiting on
+  Them, and Snoozed — so you can still tell accounts apart at a glance when
+  browsing across all of them.
 - Updates: check, install, restart, or copy a manual install command
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings
 - Advanced: logs and feed max body size
