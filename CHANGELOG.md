@@ -6,6 +6,12 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Settings → Display: an opt-in **Mouse support** toggle (off by default) adds click-to-select
+  for sidebar rows, message rows, and panes, and click-to-open for links in the reading pane.
+  Leaving it off keeps the terminal's native click-drag text selection available, as before.
+
 ## v1.3.1
 
 ### Added

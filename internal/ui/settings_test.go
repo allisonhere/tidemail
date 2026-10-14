@@ -18,9 +18,9 @@ func TestSettingsFieldNavigationClampsAtEnds(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
 	s.setActiveSection(ssDisplay)
 	s.setFocusedPane(settingsPaneDetail)
-	s.setFocusedField(sfNotifications)
-	if got := s.nextField(); got != sfNotifications {
-		t.Fatalf("nextField at last visible field: got %v want sfNotifications", got)
+	s.setFocusedField(sfMouseSupport)
+	if got := s.nextField(); got != sfMouseSupport {
+		t.Fatalf("nextField at last visible field: got %v want sfMouseSupport", got)
 	}
 	s.setFocusedField(sfBackToSections)
 	if got := s.prevField(); got != sfBackToSections {

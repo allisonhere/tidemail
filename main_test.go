@@ -110,9 +110,18 @@ func TestGoogleOAuthIsDisabledWhileApprovalIsPending(t *testing.T) {
 }
 
 func TestProgramOptionsKeepTerminalMouseSelectionAvailable(t *testing.T) {
-	opts := programOptions()
+	opts := programOptions(config.DefaultConfig())
 	if len(opts) != 1 {
-		t.Fatalf("expected only alt-screen option so terminal mouse selection stays available, got %d options", len(opts))
+		t.Fatalf("expected only alt-screen option by default so terminal mouse selection stays available, got %d options", len(opts))
+	}
+}
+
+func TestProgramOptionsEnableMouseWhenOptedIn(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Display.MouseSupport = true
+	opts := programOptions(cfg)
+	if len(opts) != 2 {
+		t.Fatalf("expected alt-screen + mouse option when mouse support is enabled, got %d options", len(opts))
 	}
 }
 

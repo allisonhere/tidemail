@@ -552,6 +552,19 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.MouseMsg:
+		if !m.cfg.Display.MouseSupport {
+			// Defense in depth: the mouse ProgramOption isn't registered at
+			// all when this is off, so no tea.MouseMsg should normally arrive.
+			return m, nil
+		}
+		if tea.MouseEvent(msg).IsWheel() || msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
+			// v1 scope: left-click press only. Right-click, release, motion,
+			// and wheel events are left as no-ops.
+			return m, nil
+		}
+		return m.handleMouseClick(msg)
+
 	case spinner.TickMsg:
 		// The spinner self-perpetuates: Update returns a fresh Tick on every
 		// TickMsg. Only keep the loop alive while something is actually animating,
@@ -2495,43 +2508,90 @@ func (m Model) focusPane(next pane) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// selectSidebarRow jumps the sidebar cursor directly to idx and runs the same
+// side effects as a single Up/Down step landing there: cancels any pending
+// folder-settle, keeps the scroll offset in view, and (outside search) loads
+// the newly selected mailbox. It focuses paneAccounts first if it wasn't
+// already focused, via focusPane, so a caller never needs to do both
+// separately. handleUp/handleDown call this with idx = cursor±1; a mouse
+// click calls it with the clicked row's absolute index, jumping directly
+// instead of stepping through every row in between.
+func (m Model) selectSidebarRow(idx int) (tea.Model, tea.Cmd) {
+	if m.focused != paneAccounts {
+		next, _ := m.focusPane(paneAccounts)
+		m = next.(Model)
+	}
+	if idx < 0 || idx >= len(m.sidebarRows) || idx == m.sidebarCursor {
+		return m, nil
+	}
+	m.cancelFolderSettle()
+	m.sidebarCursor = idx
+	m.clampSidebarOffset()
+	if m.searchActive() {
+		return m, nil
+	}
+	if cmd := m.virtualViewCmd(); cmd != nil {
+		return m, cmd
+	}
+	if selected := m.selectedMailbox(); selected != nil {
+		cmd := m.loadMailboxMessagesCmd(selected.ID)
+		if m.selectedDraftsMailbox() {
+			cmd = tea.Batch(cmd, m.loadDraftsCmd(selected.ID))
+		}
+		// Fill the folder from the server too, once the cursor settles.
+		return m, tea.Batch(cmd, m.scheduleFolderSettle())
+	}
+	m.clearMessages()
+	return m, nil
+}
+
+// selectMessageRow jumps the message-list cursor directly to idx and runs
+// the same side effects as a single Up/Down step landing there: keeps the
+// scroll offset in view and loads the newly focused message. It focuses
+// paneMessages first if it wasn't already focused, via focusPane, so a
+// caller never needs to do both separately. handleUp/handleDown call this
+// with idx = cursor±1; a mouse click calls it with the clicked row's
+// absolute index, jumping directly instead of stepping through every row in
+// between.
+func (m Model) selectMessageRow(idx int) (tea.Model, tea.Cmd) {
+	if m.focused != paneMessages {
+		next, _ := m.focusPane(paneMessages)
+		m = next.(Model)
+	}
+	count := m.activeMessageRowCount()
+	if m.selectedDraftsMailbox() {
+		count = len(m.drafts)
+	}
+	if idx < 0 || idx >= count || idx == m.messageCursor {
+		return m, nil
+	}
+	m.messageCursor = idx
+	visible := m.articleRowsVisible()
+	if m.messageCursor < m.listOffset {
+		m.listOffset = m.messageCursor
+	} else if m.messageCursor >= m.listOffset+visible {
+		m.listOffset = m.messageCursor - visible + 1
+	}
+	if m.selectedDraftsMailbox() {
+		m.setViewportForCurrentRow()
+		return m, nil
+	}
+	if msg2 := m.currentRowMessage(); msg2 != nil {
+		m.setViewportForCurrentRow()
+		return m, m.focusedMessageChangedCmd(*msg2)
+	}
+	return m, nil
+}
+
 func (m Model) handleUp() (tea.Model, tea.Cmd) {
 	switch m.focused {
 	case paneAccounts:
 		if m.sidebarCursor > 0 {
-			m.cancelFolderSettle()
-			m.sidebarCursor--
-			m.clampSidebarOffset()
-			if m.searchActive() {
-				return m, nil
-			}
-			if cmd := m.virtualViewCmd(); cmd != nil {
-				return m, cmd
-			}
-			if selected := m.selectedMailbox(); selected != nil {
-				cmd := m.loadMailboxMessagesCmd(selected.ID)
-				if m.selectedDraftsMailbox() {
-					cmd = tea.Batch(cmd, m.loadDraftsCmd(selected.ID))
-				}
-				// Fill the folder from the server too, once the cursor settles.
-				return m, tea.Batch(cmd, m.scheduleFolderSettle())
-			}
-			m.clearMessages()
+			return m.selectSidebarRow(m.sidebarCursor - 1)
 		}
 	case paneMessages:
 		if m.messageCursor > 0 {
-			m.messageCursor--
-			if m.messageCursor < m.listOffset {
-				m.listOffset = m.messageCursor
-			}
-			if m.selectedDraftsMailbox() {
-				m.setViewportForCurrentRow()
-				return m, nil
-			}
-			if msg2 := m.currentRowMessage(); msg2 != nil {
-				m.setViewportForCurrentRow()
-				return m, m.focusedMessageChangedCmd(*msg2)
-			}
+			return m.selectMessageRow(m.messageCursor - 1)
 		}
 	case paneContent:
 		if !m.cfg.Display.FocusLine {
@@ -2547,24 +2607,7 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 	switch m.focused {
 	case paneAccounts:
 		if m.sidebarCursor < len(m.sidebarRows)-1 {
-			m.cancelFolderSettle()
-			m.sidebarCursor++
-			m.clampSidebarOffset()
-			if m.searchActive() {
-				return m, nil
-			}
-			if cmd := m.virtualViewCmd(); cmd != nil {
-				return m, cmd
-			}
-			if selected := m.selectedMailbox(); selected != nil {
-				cmd := m.loadMailboxMessagesCmd(selected.ID)
-				if m.selectedDraftsMailbox() {
-					cmd = tea.Batch(cmd, m.loadDraftsCmd(selected.ID))
-				}
-				// Fill the folder from the server too, once the cursor settles.
-				return m, tea.Batch(cmd, m.scheduleFolderSettle())
-			}
-			m.clearMessages()
+			return m.selectSidebarRow(m.sidebarCursor + 1)
 		}
 	case paneMessages:
 		count := m.activeMessageRowCount()
@@ -2572,20 +2615,7 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 			count = len(m.drafts)
 		}
 		if m.messageCursor < count-1 {
-			m.messageCursor++
-			visible := m.articleRowsVisible()
-			if m.messageCursor >= m.listOffset+visible {
-				m.listOffset = m.messageCursor - visible + 1
-			}
-			if m.selectedDraftsMailbox() {
-				m.setViewportForCurrentRow()
-				return m, nil
-			}
-			if msg2 := m.currentRowMessage(); msg2 != nil {
-				m.setViewportForCurrentRow()
-				return m, m.focusedMessageChangedCmd(*msg2)
-			}
-			return m, nil
+			return m.selectMessageRow(m.messageCursor + 1)
 		}
 		// At the last row: page further back into server history. The initial
 		// sync only caches the most recent window, so without this the archive
@@ -2602,6 +2632,100 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.moveContentFocusLine(1)
+	}
+	return m, nil
+}
+
+// handleMouseClick resolves a left-click's absolute terminal coordinates to
+// whichever pane, row, or link they land on. It recomputes the same layout
+// View() computes on every render — there is no stored per-pane origin
+// anywhere — so this must be kept in sync with View()'s composition by hand.
+// It is reached only when Display.MouseSupport is on and the event is a
+// left-button press (see the tea.MouseMsg case in update).
+func (m Model) handleMouseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.overlay != overlayNone {
+		// Phase 1 scope: a click while any overlay (Settings, Account
+		// Manager, confirm dialogs, etc.) is open is a no-op. Clicking
+		// controls inside an overlay is a separate follow-up.
+		return m, nil
+	}
+
+	mainH := m.mainHeight()
+	if msg.Y >= mainH {
+		// The status bar row.
+		return m, nil
+	}
+
+	if msg.X < m.feedsPaneWidth() {
+		return m.handleSidebarClick(msg.Y)
+	}
+
+	messagesH := m.articlesPaneOuterHeight()
+	if msg.Y < messagesH {
+		return m.handleMessagesClick(msg.Y)
+	}
+	return m.handleContentClick(msg.Y, messagesH)
+}
+
+// handleSidebarClick maps a click's Y coordinate (already known to be inside
+// the sidebar's column) to a sidebar row and selects it, reusing
+// selectSidebarRow so the side effects match a keyboard Up/Down landing on
+// the same row.
+func (m Model) handleSidebarClick(y int) (tea.Model, tea.Cmd) {
+	interiorTop := 1 + m.paneHeaderHeight() // +1 for the pane's top border
+	if y < interiorTop || m.folderPrompt.active {
+		// A folder rename/create prompt inserts an extra row whose height
+		// isn't accounted for below; just focus the pane rather than risk
+		// selecting the wrong row while it's active.
+		return m.focusPane(paneAccounts)
+	}
+	stride := m.styles.ListItemLineStride()
+	idx := m.sidebarOffset + (y-interiorTop)/stride
+	if idx < 0 || idx >= len(m.sidebarRows) {
+		return m.focusPane(paneAccounts)
+	}
+	return m.selectSidebarRow(idx)
+}
+
+// handleMessagesClick maps a click's Y coordinate (already known to be
+// inside the messages pane) to a message row and selects it, reusing
+// selectMessageRow so the side effects match a keyboard Up/Down landing on
+// the same row.
+func (m Model) handleMessagesClick(y int) (tea.Model, tea.Cmd) {
+	interiorTop := 1 + m.paneHeaderHeight() + m.messageSearchRowHeight()
+	if y < interiorTop {
+		return m.focusPane(paneMessages)
+	}
+	stride := m.styles.ListItemLineStride()
+	idx := m.listOffset + (y-interiorTop)/stride
+	count := m.activeMessageRowCount()
+	if m.selectedDraftsMailbox() {
+		count = len(m.drafts)
+	}
+	if idx < 0 || idx >= count {
+		return m.focusPane(paneMessages)
+	}
+	return m.selectMessageRow(idx)
+}
+
+// handleContentClick maps a click's Y coordinate (already known to be inside
+// the content pane, which starts at paneTop within the right-hand column) to
+// a logical content line and opens whatever link that line resolves to,
+// reusing the existing keyboard "actionable links" machinery
+// (contentFocusLine + openContentLinkCmd) unchanged.
+func (m Model) handleContentClick(y, paneTop int) (tea.Model, tea.Cmd) {
+	interiorTop := paneTop + 1 + m.paneHeaderHeight()
+	if y < interiorTop {
+		return m.focusPane(paneContent)
+	}
+	if m.focused != paneContent {
+		next, _ := m.focusPane(paneContent)
+		m = next.(Model)
+	}
+	line := m.viewport.YOffset + (y - interiorTop)
+	m.contentFocusLine = clamp(line, 0, max(0, m.contentLineCount-1))
+	if cmd, ok := m.openContentLinkCmd(); ok {
+		return m, cmd
 	}
 	return m, nil
 }

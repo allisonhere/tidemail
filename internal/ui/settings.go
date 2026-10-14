@@ -81,6 +81,7 @@ const (
 	sfConfirmQuit
 	sfShowHeaders
 	sfNotifications
+	sfMouseSupport
 	sfComposeVim
 	sfSendDelay
 	sfSendMaxAttempts
@@ -322,6 +323,7 @@ type Settings struct {
 	confirmQuit           bool
 	showHeaders           bool
 	notifications         bool
+	mouseSupport          bool
 	composeVim            bool
 	cliQuitAfterSend      bool
 	cliSkipReview         bool
@@ -437,6 +439,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		confirmQuit:           cfg.Display.ConfirmQuit,
 		showHeaders:           cfg.Display.ShowHeaders,
 		notifications:         cfg.Display.Notifications,
+		mouseSupport:          cfg.Display.MouseSupport,
 		composeVim:            cfg.Display.ComposeVim,
 		cliQuitAfterSend:      cfg.Display.CLIQuitAfterSend,
 		cliSkipReview:         cfg.Display.CLISkipReview,
@@ -524,6 +527,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.ConfirmQuit = s.confirmQuit
 	cfg.Display.ShowHeaders = s.showHeaders
 	cfg.Display.Notifications = s.notifications
+	cfg.Display.MouseSupport = s.mouseSupport
 	cfg.Display.ComposeVim = s.composeVim
 	cfg.Display.CLIQuitAfterSend = s.cliQuitAfterSend
 	cfg.Display.CLISkipReview = s.cliSkipReview
@@ -774,7 +778,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		}
 		fields = append(fields, sfShowSender, sfThreadedConversations, sfDefaultUnreadOnly, sfUnreadFirst, sfStarredFirst)
 		fields = append(fields, sfReadingWidth, sfShowHeaders, sfMarkReadOnOpen, sfMarkReadOnFocus, sfActionableLinks, sfFilterLinks, sfImages)
-		return append(fields, sfBrowser, sfConfirmQuit, sfNotifications)
+		return append(fields, sfBrowser, sfConfirmQuit, sfNotifications, sfMouseSupport)
 	case ssEditor:
 		return []settingsField{sfBackToSections, sfComposeVim, sfSendDelay, sfSendMaxAttempts}
 	case ssCLI:
@@ -1505,6 +1509,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfMouseSupport:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.mouseSupport = !s.mouseSupport
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfMarkReadOnSummarize:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.markReadOnSummarize = !s.markReadOnSummarize
@@ -1938,6 +1951,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addInput("Browser command", s.browserInput, sfBrowser)
 		b.addToggle("Confirm before quitting", s.confirmQuit, sfConfirmQuit)
 		b.addToggle("Desktop notifications", s.notifications, sfNotifications)
+		b.addToggle("Mouse support", s.mouseSupport, sfMouseSupport)
 
 	case ssEditor:
 		b.addGroup("Compose")
@@ -3119,6 +3133,8 @@ func (s Settings) fieldHint(field settingsField) string {
 		return "group related replies into one optional conversation row"
 	case sfNotifications:
 		return "show a desktop notification when new mail arrives during background sync"
+	case sfMouseSupport:
+		return "click to select folders, messages, and links; turns off the terminal's native click-drag text selection while on"
 	case sfUpdateManualCommand:
 		return "enter or c copies the command"
 	default:

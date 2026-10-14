@@ -843,7 +843,17 @@ each pane. When disabled, those rows disappear to make more room for content;
 the focused pane's title and shortcuts appear in the bottom status line instead.
 Global message search uses a dedicated row above message subjects while active.
 
-- Display: theme, icons, annotation tag style and colors, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, and quit confirmation
+**Mouse support** is off by default, so your terminal's own native
+click-drag text selection and copy keep working untouched. Turn it on to
+click a sidebar row, a message row, or a pane to focus or select it, and to
+click a link in HTML mail (reusing whatever the focused reading line already
+resolves to, so it needs **Focus line** on to reliably open the clicked
+line's link rather than whichever link `Ctrl+N`/`Ctrl+P` last cycled to).
+There's no scroll-wheel support yet, and clicking inside Settings or the
+Account Manager does nothing. Turning it on trades away your terminal's
+native click-drag text selection while it's enabled.
+
+- Display: theme, icons, annotation tag style and colors, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, mouse support, and quit confirmation
 - Editor: compose keys, send delay, and maximum delivery attempts
 - CLI: quit after send or draft, skip the review step, and the default signature for the interactive `tidemail cli` wizard
 - Accounts: connection details, From address, signature, color, and sync interval

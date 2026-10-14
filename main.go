@@ -152,7 +152,7 @@ func run() (code int, restartExec string) {
 		defer uiModel.CloseSessions()
 	}
 
-	p := tea.NewProgram(model, programOptions()...)
+	p := tea.NewProgram(model, programOptions(cfg)...)
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -213,10 +213,16 @@ func applyStartupOverrides(cfg *config.Config, opts startupOptions) {
 	}
 }
 
-func programOptions() []tea.ProgramOption {
-	return []tea.ProgramOption{
-		tea.WithAltScreen(),
+func programOptions(cfg config.Config) []tea.ProgramOption {
+	opts := []tea.ProgramOption{tea.WithAltScreen()}
+	if cfg.Display.MouseSupport {
+		// Cell-motion mode reports clicks/releases without the extra hover
+		// noise of all-motion mode, matching TideMail's click-only scope.
+		// Mouse support is opt-in: capturing mouse input takes over the
+		// terminal's own native click-drag text selection in most emulators.
+		opts = append(opts, tea.WithMouseCellMotion())
 	}
+	return opts
 }
 
 func resolvedVersion() string {
