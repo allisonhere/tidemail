@@ -3046,6 +3046,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Settings previews theme changes live, but only commits them to config when the overlay finishes with Save. -allie
 	prevThemeIdx := m.settings.themeIdx
+	prevMouseSupport := m.cfg.Display.MouseSupport
 	newS, cmd, done := m.settings.Update(msg, m.keys)
 	m.settings = newS
 	tickChanged := m.settings.themeIdx != prevThemeIdx
@@ -3154,7 +3155,18 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.overlay = overlayNone
 			m.clearMessages()
-			return m, tea.Batch(m.loadAccountsCmd(), omarchyCmd)
+			cmds := []tea.Cmd{m.loadAccountsCmd(), omarchyCmd}
+			// The mouse ProgramOption is only set once at startup; flip the
+			// terminal's live mouse-capture mode too so the toggle doesn't
+			// need a restart to take effect.
+			if m.cfg.Display.MouseSupport != prevMouseSupport {
+				if m.cfg.Display.MouseSupport {
+					cmds = append(cmds, tea.EnableMouseCellMotion)
+				} else {
+					cmds = append(cmds, tea.DisableMouse)
+				}
+			}
+			return m, tea.Batch(cmds...)
 		}
 		m.overlay = overlayNone
 		if previewingTheme {

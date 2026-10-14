@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -166,5 +167,110 @@ func TestMouseWheelAndRightClickAreNoOps(t *testing.T) {
 	got = next.(Model)
 	if got.messageCursor != 0 {
 		t.Fatalf("expected right-click to be a no-op, got messageCursor=%d", got.messageCursor)
+	}
+}
+
+// settingsSaveTestModel builds a Model with a real (empty) temp database and
+// Settings open, matching the construction other Settings-save tests in this
+// package use (e.g. around model_test.go's Ctrl+S save test), so saving can
+// run through the real updateSettings code path — including loadAccountsCmd
+// and startOmarchyWatchIfNeeded, which are safe to execute here against an
+// empty db and the non-Omarchy default theme.
+func settingsSaveTestModel(t *testing.T, mouseSupport bool) Model {
+	t.Helper()
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	database, err := db.Open()
+	if err != nil {
+		t.Fatalf("Open DB: %v", err)
+	}
+	t.Cleanup(func() { database.Close() })
+
+	origSave := configSave
+	configSave = func(config.Config) error { return nil }
+	t.Cleanup(func() { configSave = origSave })
+
+	cfg := config.DefaultConfig()
+	cfg.Display.MouseSupport = mouseSupport
+	m := NewModel(database, cfg, "dev", false)
+	m.overlay = overlaySettings
+	m.settings = newSettings(cfg, m.settingsUpdateState())
+	return m
+}
+
+// commandMsgTypes flattens a tea.Cmd (which may be a tea.Batch of further
+// commands) and returns the %T of each leaf message, by actually calling
+// each command. Only safe to use when every command reachable from cmd is
+// known to be side-effect-free or safe to run in a test (see
+// settingsSaveTestModel).
+func commandMsgTypes(cmd tea.Cmd) []string {
+	if cmd == nil {
+		return nil
+	}
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		var types []string
+		for _, c := range batch {
+			types = append(types, commandMsgTypes(c)...)
+		}
+		return types
+	}
+	return []string{fmt.Sprintf("%T", msg)}
+}
+
+func TestSettingsSaveEnablesMouseAtRuntime(t *testing.T) {
+	m := settingsSaveTestModel(t, false)
+	m.settings.mouseSupport = true
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	got := next.(Model)
+
+	if !got.cfg.Display.MouseSupport {
+		t.Fatalf("expected MouseSupport saved to config")
+	}
+	types := commandMsgTypes(cmd)
+	found := false
+	for _, ty := range types {
+		if ty == "tea.enableMouseCellMotionMsg" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected an EnableMouseCellMotion command when MouseSupport turns on, got command types %v", types)
+	}
+}
+
+func TestSettingsSaveDisablesMouseAtRuntime(t *testing.T) {
+	m := settingsSaveTestModel(t, true)
+	m.settings.mouseSupport = false
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	got := next.(Model)
+
+	if got.cfg.Display.MouseSupport {
+		t.Fatalf("expected MouseSupport saved as off in config")
+	}
+	types := commandMsgTypes(cmd)
+	found := false
+	for _, ty := range types {
+		if ty == "tea.disableMouseMsg" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a DisableMouse command when MouseSupport turns off, got command types %v", types)
+	}
+}
+
+func TestSettingsSaveWithoutMouseChangeOmitsMouseCommand(t *testing.T) {
+	m := settingsSaveTestModel(t, false)
+	m.settings.notifications = !m.settings.notifications // change something unrelated
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+
+	for _, ty := range commandMsgTypes(cmd) {
+		if ty == "tea.enableMouseCellMotionMsg" || ty == "tea.disableMouseMsg" {
+			t.Fatalf("expected no mouse-mode command when MouseSupport didn't change, got %v", ty)
+		}
 	}
 }
