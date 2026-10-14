@@ -587,6 +587,18 @@ func (m Model) accountColor(accountID int64) lipgloss.Color {
 	return ""
 }
 
+// messageAccountColor resolves the account color for a single message,
+// via its mailbox, for per-row tinting in mixed-account views (Unified
+// Inbox, Needs You, Waiting on Them, Snoozed) where selectedMailboxAccountColor
+// has no single account to accent the whole pane with.
+func (m Model) messageAccountColor(msg db.Message) lipgloss.Color {
+	mb := m.mailboxByID(msg.MailboxID)
+	if mb == nil {
+		return ""
+	}
+	return m.accountColor(mb.AccountID)
+}
+
 func (m Model) selectedMailboxAccountColor() lipgloss.Color {
 	if m.selectedUnifiedInbox() || m.selectedNeedsYou() || m.selectedWaiting() || m.selectedSnoozed() {
 		return ""

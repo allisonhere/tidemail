@@ -49,6 +49,7 @@ func (m Model) renderMessagesPane() string {
 	} else {
 		rowCount := m.activeMessageRowCount()
 		end := min(m.listOffset+m.articleRowsVisible(), rowCount)
+		mixedAccounts := m.selectedUnifiedInbox() || m.selectedNeedsYou() || m.selectedWaiting() || m.selectedSnoozed()
 		for i := m.listOffset; i < end; i++ {
 			msg2 := m.filteredMessages[i]
 			threadCount := 1
@@ -73,6 +74,21 @@ func (m Model) renderMessagesPane() string {
 			style := msgRead
 			if threadUnread > 0 {
 				style = msgUnread
+			}
+			// Mixed-account views (Unified Inbox, Needs You, Waiting on Them,
+			// Snoozed) have no single account to accent the whole pane with, so
+			// tint each row with its own message's account color instead. Both
+			// read and unread rows are tinted (unlike the single-mailbox pane
+			// accent, which only tints unread) so the account stays identifiable
+			// after a message is read.
+			if mixedAccounts {
+				if rowAccent := m.messageAccountColor(msg2); rowAccent != "" {
+					bg := terminalColorAsColor(style.GetBackground())
+					if bg == "" {
+						bg = m.styles.Theme.Bg
+					}
+					style = style.Foreground(accentReadableOn(rowAccent, bg, 3))
+				}
 			}
 			cursor := i == m.messageCursor
 			dot := m.messageRowPrefix(threadUnread == 0)

@@ -6,6 +6,12 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- An account's color now also tints its own messages in the Unified Inbox, Needs You, Waiting on
+  Them, and Snoozed views, so accounts stay visually distinct even when a single mailbox pane
+  (and its usual header/border accent) isn't selected.
+
 ## v1.3.1
 
 ### Added
