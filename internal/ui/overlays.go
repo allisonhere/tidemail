@@ -15,6 +15,9 @@ import (
 const settingsOverlayMaxW = 96
 
 func (m Model) renderOverlay(base string) string {
+	if m.overlay == overlayContextMenu {
+		return m.renderContextMenu(base)
+	}
 	var box string
 
 	switch m.overlay {

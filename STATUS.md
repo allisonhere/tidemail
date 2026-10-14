@@ -106,7 +106,7 @@ Current release: **v1.0.28**.
   (VT52) themes keep the original static pages.
 - **Mouse support** (opt-in, Settings → Display): click to select rows/focus panes/open links,
   double-click to open a message, scroll wheel over the sidebar, list, and reading pane,
-  right-click to open the command palette on a row, and click the search row to resume
+  right-click for a context menu of that row's actions (folder, account, or message), and click the search row to resume
   editing. Overlays and the status line are not yet clickable; no drag support.
 - **Update checker**: GitHub-releases check with checksum-verified self-update,
   user-local install fallback, and an in-app progress popup. `U` offers an

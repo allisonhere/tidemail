@@ -272,7 +272,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{"click", "select a sidebar or message row, focus a pane, open a link in the reading pane, or resume editing a search from its row"},
 				{"double-click", "open a message or draft (same as enter); on a sidebar row, expand/collapse or sync like enter"},
 				{"scroll wheel", "moves the selection in the sidebar and message list; scrolls the reading pane; never changes focus"},
-				{"right-click", "select the row and open the command palette for it"},
+				{"right-click", "select the row and open a menu of its actions (folder, account, or message); enter or click runs one, esc closes"},
 				{"overlays", "mouse input is ignored while Settings, Accounts, Compose, or any other overlay is open"},
 			},
 		},

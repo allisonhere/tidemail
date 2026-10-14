@@ -260,26 +260,6 @@ func TestMouseDoubleClickOnDifferentRowsDoesNotOpen(t *testing.T) {
 	}
 }
 
-func TestMouseRightClickSelectsRowAndOpensPalette(t *testing.T) {
-	m := messageListTestModel(t, 5)
-	rightClick := tea.MouseMsg{X: m.feedsPaneWidth() + 5, Y: messageRowY(m, 2), Action: tea.MouseActionPress, Button: tea.MouseButtonRight}
-
-	next, _ := m.Update(rightClick)
-	got := next.(Model)
-	if got.messageCursor != 2 {
-		t.Fatalf("expected right-click to select row 2, got %d", got.messageCursor)
-	}
-	if got.overlay != overlayCommandPalette {
-		t.Fatalf("expected right-click to open the command palette, got overlay %v", got.overlay)
-	}
-
-	// Further mouse input is ignored while the palette is open.
-	next, _ = got.Update(rightClick)
-	if next.(Model).overlay != overlayCommandPalette {
-		t.Fatalf("expected the palette to stay open")
-	}
-}
-
 func TestMouseSearchRowClickReentersEditing(t *testing.T) {
 	m := messageListTestModel(t, 3)
 	m.searchMode = true

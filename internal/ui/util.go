@@ -156,6 +156,23 @@ func nextContentFocusLine(current, delta int, focusable []bool, lineCount int) i
 }
 
 func overlayOnBase(base, box string, width, height int, bg lipgloss.Color, shadow bool) string {
+	boxLines := strings.Split(box, "\n")
+	boxW := 0
+	for _, l := range boxLines {
+		if w := lipgloss.Width(l); w > boxW {
+			boxW = w
+		}
+	}
+
+	// Center position — matches lipgloss.Center, lipgloss.Center
+	overlayX := max(0, (width-boxW)/2)
+	overlayY := max(0, (height-len(boxLines))/2)
+	return overlayAt(base, box, overlayX, overlayY, width, height, bg, shadow)
+}
+
+// overlayAt composites box over base with its top-left corner at (overlayX,
+// overlayY); the caller keeps it on screen.
+func overlayAt(base, box string, overlayX, overlayY, width, height int, bg lipgloss.Color, shadow bool) string {
 	base = clampView(base, width, height, bg)
 
 	boxLines := strings.Split(box, "\n")
@@ -165,16 +182,6 @@ func overlayOnBase(base, box string, width, height int, bg lipgloss.Color, shado
 		if w := lipgloss.Width(l); w > boxW {
 			boxW = w
 		}
-	}
-
-	// Center position — matches lipgloss.Center, lipgloss.Center
-	overlayX := (width - boxW) / 2
-	overlayY := (height - boxH) / 2
-	if overlayX < 0 {
-		overlayX = 0
-	}
-	if overlayY < 0 {
-		overlayY = 0
 	}
 	rightStart := overlayX + boxW
 

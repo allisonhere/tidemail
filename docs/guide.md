@@ -856,8 +856,13 @@ click-drag text selection and copy keep working untouched. Turn it on to use:
 - **Scroll wheel** over the sidebar or message list moves the selection three
   rows at a time; over the reading pane it scrolls the message. The wheel never
   changes which pane is focused.
-- **Right-click** a row to select it and open the command palette, which offers
-  reply, archive, move, delete, folder actions, and the rest for that selection.
+- **Right-click** a row to select it and open a small menu at the pointer with
+  just the actions for what you clicked: a folder offers sync, new, rename,
+  hide/unhide, and delete; an account offers new folder, sync all, and manage
+  accounts; a message (in the list or the reading pane) offers reply, reply all,
+  forward, archive, move, delete, read/unread, and snooze. Click an item to run
+  it, or use `j`/`k` (or the arrows) and `Enter`; `Esc` or a click elsewhere
+  closes it. The full command palette is still on `:` / `Ctrl+P`.
 
 Clicks and the wheel do nothing while Settings, the Account Manager, Compose, or
 any other overlay is open. Turning mouse support on trades away your terminal's

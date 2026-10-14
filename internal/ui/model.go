@@ -108,6 +108,7 @@ const (
 	overlayClassification
 	overlaySyncAllConfirm
 	overlayFolderDeleteConfirm
+	overlayContextMenu
 )
 
 type commandPaletteContext int
@@ -180,6 +181,7 @@ type Model struct {
 	lastClickAt      time.Time // double-click detection (mouse)
 	lastClickPane    pane
 	lastClickIdx     int
+	ctxMenu          contextMenu // right-click menu, valid while overlay == overlayContextMenu
 	searchQuery      string
 	searchMode       bool
 	searchEditing    bool
@@ -2654,6 +2656,9 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 // It is reached only when Display.MouseSupport is on and the event is a
 // left-button press (see the tea.MouseMsg case in update).
 func (m Model) handleMouseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.overlay == overlayContextMenu {
+		return m.handleContextMenuClick(msg)
+	}
 	if m.overlay != overlayNone {
 		// Phase 1 scope: a click while any overlay (Settings, Account
 		// Manager, confirm dialogs, etc.) is open is a no-op. Clicking
@@ -2775,10 +2780,13 @@ func (m Model) selectMessageKeepFocus(idx int) (tea.Model, tea.Cmd) {
 	return nm, cmd
 }
 
-// handleMouseRightClick selects the row under the pointer and opens the
-// command palette, whose main-context actions (reply, archive, move, delete,
-// folder actions...) already act on the current selection.
+// handleMouseRightClick selects the row under the pointer and opens a context
+// menu there with only the actions that apply to it (see context_menu.go). A
+// right-click while a menu is already open moves it to the new position.
 func (m Model) handleMouseRightClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.overlay == overlayContextMenu {
+		m.closeContextMenu()
+	}
 	if m.overlay != overlayNone {
 		return m, nil
 	}
@@ -2806,7 +2814,7 @@ func (m Model) handleMouseRightClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	nm := model.(Model)
 	nm.lastClickAt = time.Time{} // a right-click never starts a double-click
-	nm.openCommandPalette(overlayNone, commandPaletteMain)
+	nm.openContextMenu(msg.X, msg.Y, nm.contextMenuItems(target))
 	return nm, cmd
 }
 
@@ -3051,6 +3059,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case overlayMoveMessage:
 		return m.handleMovePicker(msg)
+
+	case overlayContextMenu:
+		return m.handleContextMenuKey(msg)
 
 	case overlayPlugins, overlayPluginPicker, overlayPluginResult, overlayPluginAnnotations, overlayPluginConfirm, overlayPluginSettings:
 		return m.handlePluginKey(msg)
