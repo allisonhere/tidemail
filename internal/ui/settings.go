@@ -368,6 +368,8 @@ type Settings struct {
 	aboutGradientFrame int
 	aboutRevealFrame   int
 	aboutRevealActive  bool
+	aboutUseWaveScreen bool // prototype: press `w` on About to toggle the wave screen
+	aboutWaveFrame     int
 	supportPulseFrame  int
 	aiValidatePending  bool
 	aiTestError        string
@@ -824,6 +826,9 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		return fields
 
 	case ssAbout:
+		if s.aboutUseWaveScreen {
+			return []settingsField{sfBackToSections, sfAboutSupport, sfAboutRepo, sfAboutIssues}
+		}
 		return []settingsField{sfBackToSections, sfAboutHeart, sfAboutSupport, sfAboutRepo, sfAboutIssues}
 	default:
 		return nil
@@ -885,9 +890,19 @@ func (s Settings) supportPulseCmd() tea.Cmd {
 
 func (s Settings) decorativePulseCmd() tea.Cmd {
 	if s.activeSection == ssAbout {
+		if s.aboutUseWaveScreen {
+			return s.aboutWavePulseCmd()
+		}
 		return s.aboutPulseCmd()
 	}
 	return s.supportPulseCmd()
+}
+
+func (s Settings) aboutWavePulseCmd() tea.Cmd {
+	if s.activeSection != ssAbout || !s.aboutUseWaveScreen {
+		return nil
+	}
+	return settingsAboutWaveCmd()
 }
 
 func (s Settings) nextField() settingsField {
@@ -1104,6 +1119,18 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 		}
 		return s, settingsAboutPulseCmd(), false
 	}
+	if _, ok := msg.(settingsAboutWaveMsg); ok {
+		if s.activeSection != ssAbout || !s.aboutUseWaveScreen {
+			return s, nil, false
+		}
+		s.aboutWaveFrame++
+		if s.aboutWaveFrame >= settingsAboutWaveSettleFrame {
+			// Settled: stop ticking until a keypress (the toggle key, or
+			// anything else handled below) resumes it via decorativePulseCmd.
+			return s, nil, false
+		}
+		return s, settingsAboutWaveCmd(), false
+	}
 
 	if res, ok := msg.(AIValidateDoneMsg); ok {
 		s.aiValidatePending = false
@@ -1169,6 +1196,19 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 		default:
 			return s, nil, false
 		}
+	}
+
+	// Prototype: `w` on the About section's detail pane flips between the
+	// original hero and the wave screen. A bare literal key check, not a
+	// real keybinding — About has no text inputs, so "w" is free here, and
+	// this is deliberately hidden rather than documented.
+	if s.activeSection == ssAbout && key.String() == "w" {
+		s.aboutUseWaveScreen = !s.aboutUseWaveScreen
+		s.aboutWaveFrame = 0
+		if fields := s.visibleFields(); len(fields) > 0 {
+			s.setFocusedField(fields[0])
+		}
+		return s, s.decorativePulseCmd(), false
 	}
 
 	if s.isTextInput() && key.Type == tea.KeyLeft {
@@ -1889,7 +1929,12 @@ func settingsScrollOffset(totalLines, anchorLine, height int) int {
 
 func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSectionBody {
 	if s.activeSection == ssAbout {
-		body := s.renderAboutSection(width, chrome)
+		var body settingsSectionBody
+		if s.aboutUseWaveScreen {
+			body = s.renderAboutWaveSection(width, chrome)
+		} else {
+			body = s.renderAboutSection(width, chrome)
+		}
 		body = s.prependBackLink(body, width, chrome)
 		return body
 	}
