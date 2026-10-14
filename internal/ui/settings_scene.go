@@ -16,7 +16,7 @@ type sceneRGB struct{ r, g, b uint8 }
 
 func sceneHex(s string) sceneRGB {
 	var c sceneRGB
-	fmt.Sscanf(s, "#%02x%02x%02x", &c.r, &c.g, &c.b)
+	_, _ = fmt.Sscanf(s, "#%02x%02x%02x", &c.r, &c.g, &c.b)
 	return c
 }
 

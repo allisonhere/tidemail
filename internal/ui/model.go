@@ -2786,7 +2786,7 @@ func (m Model) handleMouseRightClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	var model tea.Model = m
+	var model tea.Model
 	var cmd tea.Cmd
 	switch target {
 	case paneAccounts:

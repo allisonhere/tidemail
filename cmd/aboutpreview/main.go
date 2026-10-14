@@ -24,7 +24,7 @@ type rgb struct{ r, g, b uint8 }
 
 func hex(s string) rgb {
 	var c rgb
-	fmt.Sscanf(s, "#%02x%02x%02x", &c.r, &c.g, &c.b)
+	_, _ = fmt.Sscanf(s, "#%02x%02x%02x", &c.r, &c.g, &c.b)
 	return c
 }
 
@@ -854,7 +854,7 @@ func lighthouse(c *canvas, f int) {
 				if ch == ' ' {
 					continue
 				}
-				col := dark
+				var col rgb
 				switch {
 				case r == 0:
 					col = hex("#8e2b22")
@@ -1074,7 +1074,8 @@ func cafe(c *canvas, f int) {
 				for x := sx - 6; x <= sx+6; x++ {
 					hx := (float64(x) - hcx) / 5.5
 					hy := -(float64(py) - hcy) / 6
-					v := math.Pow(hx*hx+hy*hy-1, 3) - hx*hx*hy*hy*hy
+					t := hx*hx + hy*hy - 1
+					v := t*t*t - hx*hx*hy*hy*hy
 					if v <= 0 {
 						if p := c.at(x, py/2); p != nil {
 							c.plot(x, py, lerp(p.bg, pal.steam, heart*0.55))

@@ -251,7 +251,8 @@ func cafeMug(c *sceneCanvas, f float64, mx, my int) {
 		for x := sx - 6; x <= sx+6; x++ {
 			hx := (float64(x) - hcx) / 5.5
 			hy := -(float64(py) - hcy) / 6
-			if math.Pow(hx*hx+hy*hy-1, 3)-hx*hx*hy*hy*hy <= 0 {
+			t := hx*hx + hy*hy - 1
+			if t*t*t-hx*hx*hy*hy*hy <= 0 {
 				if p := c.at(x, py/2); p != nil {
 					c.plot(x, py, sceneLerp(p.bg, cafeSteam, heart*0.55))
 				}
