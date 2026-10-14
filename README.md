@@ -92,6 +92,11 @@ One inbox, several built-in themes.
   and undo. Portable skills for Codex, Claude, Pi, and Hermes let an agent send
   mail within capabilities and approval you configure. See the
   [CLI reference](docs/cli.md).
+- **Prefer the mouse?** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
+  Turn on **Settings → Display → Mouse support** (off by default, so your
+  terminal's native text selection keeps working). Then click rows and panes,
+  double-click a message to open it, use the scroll wheel over any pane, and
+  right-click a folder, account, or message for a menu of just its actions.
 - **Optional support, kept out of your way.** Open **Settings → Support** to
   visit or copy Tidemail's Ko-fi link; **About** and **Support** are small
   animated scenes. No donation prompts appear during normal email use.
@@ -306,11 +311,6 @@ read-only queries are covered in [queries](docs/plugins/queries.md) and
 | `:` / `Ctrl+P` | Command palette |
 | `?` | Searchable help |
 | `q` | Quit |
-
-Prefer the mouse? Turn on **Settings → Display → Mouse support** (off by default, so
-your terminal's native text selection keeps working). Then click rows and panes,
-double-click a message to open it, use the scroll wheel over any pane, and right-click
-a folder, account, or message for a menu of just its actions.
 
 ## First account
 
