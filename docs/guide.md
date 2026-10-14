@@ -844,13 +844,23 @@ the focused pane's title and shortcuts appear in the bottom status line instead.
 Global message search uses a dedicated row above message subjects while active.
 
 **Mouse support** is off by default, so your terminal's own native
-click-drag text selection and copy keep working untouched. Turn it on to
-click a sidebar row, a message row, or a pane to focus or select it, and to
-click a link in HTML mail (reusing whatever the focused reading line already
-resolves to, so it needs **Focus line** on to reliably open the clicked
-line's link rather than whichever link `Ctrl+N`/`Ctrl+P` last cycled to).
-There's no scroll-wheel support yet, and clicking inside Settings or the
-Account Manager does nothing. Turning it on trades away your terminal's
+click-drag text selection and copy keep working untouched. Turn it on to use:
+
+- **Click** a sidebar row, a message row, or a pane to focus or select it, and
+  click a link in HTML mail (reusing whatever the focused reading line already
+  resolves to, so it needs **Focus line** on to reliably open the clicked
+  line's link rather than whichever link `Ctrl+N`/`Ctrl+P` last cycled to).
+  While message search is active, clicking its search row resumes editing the query.
+- **Double-click** a message row (or draft) to open it, the same as `Enter`; on a
+  sidebar row it does what `Enter` does there (expand/collapse, or sync the folder).
+- **Scroll wheel** over the sidebar or message list moves the selection three
+  rows at a time; over the reading pane it scrolls the message. The wheel never
+  changes which pane is focused.
+- **Right-click** a row to select it and open the command palette, which offers
+  reply, archive, move, delete, folder actions, and the rest for that selection.
+
+Clicks and the wheel do nothing while Settings, the Account Manager, Compose, or
+any other overlay is open. Turning mouse support on trades away your terminal's
 native click-drag text selection while it's enabled.
 
 - Display: theme, icons, annotation tag style and colors, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, mouse support, and quit confirmation

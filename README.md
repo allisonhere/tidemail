@@ -307,6 +307,11 @@ read-only queries are covered in [queries](docs/plugins/queries.md) and
 | `?` | Searchable help |
 | `q` | Quit |
 
+Prefer the mouse? Turn on **Settings → Display → Mouse support** (off by default, so
+your terminal's native text selection keeps working). Then click rows and panes,
+double-click a message to open it, use the scroll wheel over any pane, and right-click
+a row for the command palette.
+
 ## First account
 
 Press `M`, add your incoming and outgoing mail settings, then save with

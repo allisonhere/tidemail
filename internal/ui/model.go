@@ -177,6 +177,9 @@ type Model struct {
 	drafts           []db.Draft
 	messageCursor    int
 	listOffset       int
+	lastClickAt      time.Time // double-click detection (mouse)
+	lastClickPane    pane
+	lastClickIdx     int
 	searchQuery      string
 	searchMode       bool
 	searchEditing    bool
@@ -558,12 +561,20 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// all when this is off, so no tea.MouseMsg should normally arrive.
 			return m, nil
 		}
-		if tea.MouseEvent(msg).IsWheel() || msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
-			// v1 scope: left-click press only. Right-click, release, motion,
-			// and wheel events are left as no-ops.
+		if tea.MouseEvent(msg).IsWheel() {
+			return m.handleMouseWheel(msg)
+		}
+		if msg.Action != tea.MouseActionPress {
+			// Release and motion events are ignored.
 			return m, nil
 		}
-		return m.handleMouseClick(msg)
+		switch msg.Button {
+		case tea.MouseButtonLeft:
+			return m.handleMouseClick(msg)
+		case tea.MouseButtonRight:
+			return m.handleMouseRightClick(msg)
+		}
+		return m, nil
 
 	case spinner.TickMsg:
 		// The spinner self-perpetuates: Update returns a fresh Tick on every
@@ -2650,21 +2661,153 @@ func (m Model) handleMouseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	mainH := m.mainHeight()
-	if msg.Y >= mainH {
+	target, y, paneTop, ok := m.paneAt(msg.X, msg.Y)
+	if !ok {
 		// The status bar row.
 		return m, nil
 	}
-
-	if msg.X < m.feedsPaneWidth() {
-		return m.handleSidebarClick(msg.Y)
+	switch target {
+	case paneAccounts:
+		return m.handleSidebarClick(y)
+	case paneMessages:
+		return m.handleMessagesClick(y)
 	}
+	return m.handleContentClick(y, paneTop)
+}
 
-	messagesH := m.articlesPaneOuterHeight()
-	if msg.Y < messagesH {
-		return m.handleMessagesClick(msg.Y)
+// paneAt resolves absolute terminal coordinates to the pane under them. It
+// returns the pane, the Y coordinate (unchanged), the Y where that pane's top
+// border starts, and false for the status bar row. Shared by click, wheel,
+// and right-click handling so they all agree on the layout.
+func (m Model) paneAt(x, y int) (pane, int, int, bool) {
+	if y >= m.mainHeight() {
+		return paneAccounts, y, 0, false
 	}
-	return m.handleContentClick(msg.Y, messagesH)
+	if x < m.feedsPaneWidth() {
+		return paneAccounts, y, 0, true
+	}
+	if messagesH := m.articlesPaneOuterHeight(); y >= messagesH {
+		return paneContent, y, messagesH, true
+	}
+	return paneMessages, y, 0, true
+}
+
+// isDoubleClick records this click and reports whether it repeats the
+// previous click on the same pane and row within the double-click window.
+func (m *Model) isDoubleClick(p pane, idx int) bool {
+	now := time.Now()
+	double := !m.lastClickAt.IsZero() && m.lastClickPane == p && m.lastClickIdx == idx &&
+		now.Sub(m.lastClickAt) <= doubleClickWindow
+	if double {
+		m.lastClickAt = time.Time{} // a third click starts a new sequence
+	} else {
+		m.lastClickAt, m.lastClickPane, m.lastClickIdx = now, p, idx
+	}
+	return double
+}
+
+// openOnDoubleClick runs the Enter key's action for the focused pane, so a
+// double-click does exactly what pressing Enter on that row does.
+func (m Model) openOnDoubleClick() (tea.Model, tea.Cmd) {
+	return m.handleMainKey(tea.KeyMsg{Type: tea.KeyEnter})
+}
+
+const (
+	doubleClickWindow = 400 * time.Millisecond
+	wheelStepRows     = 3
+)
+
+// handleMouseWheel scrolls the pane under the pointer without changing
+// focus: the sidebar and message list move their selection (same side effects
+// as Up/Down) and the reading pane scrolls its viewport.
+func (m Model) handleMouseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.overlay != overlayNone {
+		return m, nil
+	}
+	target, _, _, ok := m.paneAt(msg.X, msg.Y)
+	if !ok {
+		return m, nil
+	}
+	dir := 1
+	switch msg.Button {
+	case tea.MouseButtonWheelUp:
+		dir = -1
+	case tea.MouseButtonWheelDown:
+	default:
+		return m, nil // horizontal wheel
+	}
+	switch target {
+	case paneAccounts:
+		idx := clamp(m.sidebarCursor+dir*wheelStepRows, 0, max(0, len(m.sidebarRows)-1))
+		return m.selectSidebarKeepFocus(idx)
+	case paneMessages:
+		count := m.activeMessageRowCount()
+		if m.selectedDraftsMailbox() {
+			count = len(m.drafts)
+		}
+		idx := clamp(m.messageCursor+dir*wheelStepRows, 0, max(0, count-1))
+		return m.selectMessageKeepFocus(idx)
+	}
+	if dir < 0 {
+		m.viewport.ScrollUp(wheelStepRows)
+	} else {
+		m.viewport.ScrollDown(wheelStepRows)
+	}
+	return m, nil
+}
+
+// selectSidebarKeepFocus / selectMessageKeepFocus run the row-selection side
+// effects but leave keyboard focus where it was, since scrolling over a pane
+// shouldn't steal focus.
+func (m Model) selectSidebarKeepFocus(idx int) (tea.Model, tea.Cmd) {
+	prev := m.focused
+	next, cmd := m.selectSidebarRow(idx)
+	nm := next.(Model)
+	nm.focused = prev
+	return nm, cmd
+}
+
+func (m Model) selectMessageKeepFocus(idx int) (tea.Model, tea.Cmd) {
+	prev := m.focused
+	next, cmd := m.selectMessageRow(idx)
+	nm := next.(Model)
+	nm.focused = prev
+	return nm, cmd
+}
+
+// handleMouseRightClick selects the row under the pointer and opens the
+// command palette, whose main-context actions (reply, archive, move, delete,
+// folder actions...) already act on the current selection.
+func (m Model) handleMouseRightClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.overlay != overlayNone {
+		return m, nil
+	}
+	target, y, _, ok := m.paneAt(msg.X, msg.Y)
+	if !ok {
+		return m, nil
+	}
+	var model tea.Model = m
+	var cmd tea.Cmd
+	switch target {
+	case paneAccounts:
+		if idx, ok := m.sidebarRowAt(y); ok {
+			model, cmd = m.selectSidebarRow(idx)
+		} else {
+			model, _ = m.focusPane(paneAccounts)
+		}
+	case paneMessages:
+		if idx, ok := m.messageRowAt(y); ok {
+			model, cmd = m.selectMessageRow(idx)
+		} else {
+			model, _ = m.focusPane(paneMessages)
+		}
+	default:
+		model, _ = m.focusPane(paneContent)
+	}
+	nm := model.(Model)
+	nm.lastClickAt = time.Time{} // a right-click never starts a double-click
+	nm.openCommandPalette(overlayNone, commandPaletteMain)
+	return nm, cmd
 }
 
 // handleSidebarClick maps a click's Y coordinate (already known to be inside
@@ -2672,40 +2815,81 @@ func (m Model) handleMouseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // selectSidebarRow so the side effects match a keyboard Up/Down landing on
 // the same row.
 func (m Model) handleSidebarClick(y int) (tea.Model, tea.Cmd) {
-	interiorTop := 1 + m.paneHeaderHeight() // +1 for the pane's top border
-	if y < interiorTop || m.folderPrompt.active {
-		// A folder rename/create prompt inserts an extra row whose height
-		// isn't accounted for below; just focus the pane rather than risk
-		// selecting the wrong row while it's active.
+	idx, ok := m.sidebarRowAt(y)
+	if !ok {
 		return m.focusPane(paneAccounts)
 	}
-	stride := m.styles.ListItemLineStride()
-	idx := m.sidebarOffset + (y-interiorTop)/stride
-	if idx < 0 || idx >= len(m.sidebarRows) {
-		return m.focusPane(paneAccounts)
+	double := m.isDoubleClick(paneAccounts, idx)
+	next, cmd := m.selectSidebarRow(idx)
+	if !double {
+		return next, cmd
 	}
-	return m.selectSidebarRow(idx)
+	// Double-click acts like Enter on the row (toggle account/section/folder,
+	// or sync the folder).
+	nm := next.(Model)
+	next, enterCmd := nm.openOnDoubleClick()
+	return next, tea.Batch(cmd, enterCmd)
 }
 
-// handleMessagesClick maps a click's Y coordinate (already known to be
-// inside the messages pane) to a message row and selects it, reusing
-// selectMessageRow so the side effects match a keyboard Up/Down landing on
-// the same row.
-func (m Model) handleMessagesClick(y int) (tea.Model, tea.Cmd) {
+// sidebarRowAt maps a click's Y to a sidebar row index. It reports false for
+// the header, empty space past the last row, or while the folder prompt is
+// active (it inserts a row whose height isn't accounted for below).
+func (m Model) sidebarRowAt(y int) (int, bool) {
+	interiorTop := 1 + m.paneHeaderHeight() // +1 for the pane's top border
+	if y < interiorTop || m.folderPrompt.active {
+		return 0, false
+	}
+	idx := m.sidebarOffset + (y-interiorTop)/m.styles.ListItemLineStride()
+	if idx < 0 || idx >= len(m.sidebarRows) {
+		return 0, false
+	}
+	return idx, true
+}
+
+// messageRowAt maps a click's Y to a message-list row index, reporting false
+// for the header, the search row, or empty space past the last row.
+func (m Model) messageRowAt(y int) (int, bool) {
 	interiorTop := 1 + m.paneHeaderHeight() + m.messageSearchRowHeight()
 	if y < interiorTop {
-		return m.focusPane(paneMessages)
+		return 0, false
 	}
-	stride := m.styles.ListItemLineStride()
-	idx := m.listOffset + (y-interiorTop)/stride
+	idx := m.listOffset + (y-interiorTop)/m.styles.ListItemLineStride()
 	count := m.activeMessageRowCount()
 	if m.selectedDraftsMailbox() {
 		count = len(m.drafts)
 	}
 	if idx < 0 || idx >= count {
+		return 0, false
+	}
+	return idx, true
+}
+
+// handleMessagesClick maps a click's Y coordinate (already known to be
+// inside the messages pane) to a message row and selects it, reusing
+// selectMessageRow so the side effects match a keyboard Up/Down landing on
+// the same row. A click on the search row (visible only in search mode)
+// re-enters search editing; a double-click on a row opens it like Enter.
+func (m Model) handleMessagesClick(y int) (tea.Model, tea.Cmd) {
+	if m.searchMode && y == 1+m.paneHeaderHeight() {
+		next, cmd := m.focusPane(paneMessages)
+		nm := next.(Model)
+		nm.searchEditing = true
+		nm.searchInput.SetValue(nm.searchQuery)
+		nm.searchInput.Focus()
+		return nm, cmd
+	}
+	idx, ok := m.messageRowAt(y)
+	if !ok {
 		return m.focusPane(paneMessages)
 	}
-	return m.selectMessageRow(idx)
+	double := m.isDoubleClick(paneMessages, idx)
+	next, cmd := m.selectMessageRow(idx)
+	if !double {
+		return next, cmd
+	}
+	nm := next.(Model)
+	opened, openCmd := nm.openOnDoubleClick()
+	return opened, tea.Batch(cmd, openCmd)
 }
 
 // handleContentClick maps a click's Y coordinate (already known to be inside

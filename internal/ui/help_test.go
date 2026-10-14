@@ -269,3 +269,12 @@ func TestHelpStatusBarIntroWrapsInsteadOfClipping(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderHelpDocumentsMouse(t *testing.T) {
+	view := ansi.Strip(renderHelp(100, BuildStyles(CatppuccinMocha, "comfortable", "square"), DefaultKeys, ""))
+	for _, want := range []string{"Mouse support", "double-click", "scroll wheel", "right-click"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("expected help to document mouse term %q, got %q", want, view)
+		}
+	}
+}

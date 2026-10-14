@@ -265,6 +265,17 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 			},
 		},
 		{
+			name: "Mouse",
+			entries: []entry{
+				{"enable", "Settings → Display → Mouse support (off by default; keeps native text selection while off)"},
+				{"click", "select a sidebar or message row, focus a pane, open a link in the reading pane, or resume editing a search from its row"},
+				{"double-click", "open a message or draft (same as enter); on a sidebar row, expand/collapse or sync like enter"},
+				{"scroll wheel", "moves the selection in the sidebar and message list; scrolls the reading pane; never changes focus"},
+				{"right-click", "select the row and open the command palette for it"},
+				{"overlays", "mouse input is ignored while Settings, Accounts, Compose, or any other overlay is open"},
+			},
+		},
+		{
 			name: "Security And Storage",
 			entries: []entry{
 				{"keychain", "passwords / API keys / OAuth refresh tokens stored in system keychain"},

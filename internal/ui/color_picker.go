@@ -3,7 +3,7 @@ package ui
 // A visual color picker for the Tag colors editor (see tag_colors.go),
 // ported from the RGB-sliders / HSL-field picker in zellit
 // (github.com/allisonhere/zellit, src/ui/color_picker.rs). Unlike that
-// version this is keyboard-only — TideMail has no mouse handling anywhere,
+// version this is keyboard-only — mouse input is ignored inside overlays,
 // so drag targets and click-to-focus don't apply here.
 //
 // Colors always stay live in cp.rgb; every adjustment (slider, field, typed
