@@ -11,8 +11,11 @@ the good seat.
 Need the full settings and shortcut reference? Open the
 [setup and usage guide](docs/guide.md).
 
-For shell scripts and AI agents, see the [CLI reference](docs/cli.md). TideMail's
-headless commands use your configured accounts and persistent queue:
+For shell scripts and AI agents, see the [CLI reference](docs/cli.md).
+![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square) TideMail's
+headless commands use your configured accounts and persistent queue to list,
+search, and read cached mail, draft and send with Markdown or attachments, and
+process the outbox:
 
 ```bash
 tidemail messages list --unread --json
@@ -22,8 +25,15 @@ tidemail outbox process --json
 tidemail install-skill codex
 ```
 
+`install-skill` packages a portable agent skill for Codex, Claude, Pi, or
+Hermes, so an AI agent can read, draft, and send through TideMail without
+touching your IMAP/SMTP credentials directly. Agent capabilities and an
+invocation-approval step separate reading, drafting, and sending, so a script
+or agent only gets as much access as you grant it.
+
 For guided CLI workflows, run `tidemail cli` for the command menu or
-`tidemail send` for the step-by-step composer and attachment browser.
+`tidemail send` for the step-by-step composer and attachment browser, with
+Ripple key hints, an attachment browser, a review step, and undo.
 [Interactive CLI help](docs/cli.md#interactive-command-menu-and-composer) covers
 keyboard navigation and script-friendly prompt controls. **Settings → CLI**
 has switches for quitting after a send, skipping review, and the default signature.
@@ -59,7 +69,7 @@ One inbox, several built-in themes.
   clipboard, undo and redo, and word movement. You can switch on Vim motions
   and commands instead. Optional AI tools can summarize mail, proofread a
   draft, and build local filters from plain English.
-- **See the pictures, not just the alt text.** ![NEW](https://img.shields.io/badge/NEW-red?style=flat-square)
+- **See the pictures, not just the alt text.** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
   On Ghostty, Kitty, and Rio, images in HTML mail render inline in the reading
   pane, sized to fit and loaded in the background so browsing stays quick.
   Remote images wait until
@@ -72,9 +82,16 @@ One inbox, several built-in themes.
 - **Match your desktop.** On [Omarchy](https://omarchy.org), the `match-omarchy`
   theme follows your current desktop theme — contrast-corrected to the same
   bar as the built-ins — and repaints live when you switch it.
-- **[Experimental plugins](docs/plugins.md).** ![NEW](https://img.shields.io/badge/NEW-red?style=flat-square)
+- **[Experimental plugins](docs/plugins.md).** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
   Install trusted plugins such as TideMail Smart (JEV) to classify mail with
   local annotations, Needs You signals, and optional TypeSafe/Jev analysis.
+- **Script it, or hand it to an agent.** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
+  The `tidemail` CLI shares the client's accounts and queue: list, search, and
+  read cached mail, and draft or send with JSON output for scripts, or run
+  `tidemail cli` for a guided compose wizard with attachment browsing, review,
+  and undo. Portable skills for Codex, Claude, Pi, and Hermes let an agent send
+  mail within capabilities and approval you configure. See the
+  [CLI reference](docs/cli.md).
 - **Optional support, kept out of your way.** Open **Settings → Support** to
   visit or copy Tidemail's Ko-fi link. No donation prompts appear during normal
   email use.
