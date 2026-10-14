@@ -93,8 +93,8 @@ One inbox, several built-in themes.
   mail within capabilities and approval you configure. See the
   [CLI reference](docs/cli.md).
 - **Optional support, kept out of your way.** Open **Settings → Support** to
-  visit or copy Tidemail's Ko-fi link. No donation prompts appear during normal
-  email use.
+  visit or copy Tidemail's Ko-fi link; **About** and **Support** are small
+  animated scenes. No donation prompts appear during normal email use.
 
 ## Install
 

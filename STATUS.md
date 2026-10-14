@@ -100,7 +100,9 @@ Current release: **v1.0.28**.
 - **Settings**: theme, display density, pane corners, pane header bars, modal
   drop shadow, AI provider config, editor, update checks, a dedicated Plugins
   section with inline administration and configuration, and an optional
-  Support page with open/copy actions for the confirmed Ko-fi link.
+  Support page with open/copy actions for the confirmed Ko-fi link. About is an
+  animated "Ocean night" scene and Support an animated "Café" scene; plain
+  (VT52) themes keep the original static pages.
 - **Mouse support** (opt-in, Settings → Display): click to select rows/focus panes/open links,
   double-click to open a message, scroll wheel over the sidebar, list, and reading pane,
   right-click to open the command palette on a row, and click the search row to resume

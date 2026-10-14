@@ -875,8 +875,9 @@ native click-drag text selection while it's enabled.
 - Updates: check, install, restart, or copy a manual install command
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings
 - Advanced: logs and feed max body size
-- Support: choose the Ko-fi Open or Copy link button with Up/Down and press Enter; Ctrl+C also copies the link, and Esc returns to Settings sections
-- About: Support Tidemail, repository, and issue links
+- Support: an animated café scene (swaying string lights, a steaming mug, Pac-Man chasing a coffee cup). Choose the Ko-fi Open or Copy link button with Up/Down and press Enter; Ctrl+C also copies the link, and Esc returns to Settings sections
+- About: Support Tidemail, repository, and issue links, shown over an animated night-sea scene (stars, moon, a self-drawing TIDEMAIL wordmark, and rolling waves). The animation settles after about 40 seconds
+- Plain (VT52) themes keep the original static About and Support pages instead of the animated scenes
 
 Open the command palette with `:` or `Ctrl+P` and choose **Support Tidemail**
 to go directly to the same Support page. Browser-launch failures leave the URL
