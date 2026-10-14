@@ -6,6 +6,33 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.3.1
+
+### Added
+
+- **CLI for shell scripts and AI agents**: `tidemail messages`, `draft`, `send`, and `outbox`
+  share the client's configured accounts and durable queue. Cached inbox list/search/read,
+  account and outbox metadata, Markdown and attachment support, and JSON output throughout.
+  `tidemail cli` opens a guided command menu, and `tidemail send` without `--yes` walks through
+  a step-by-step composer with an attachment browser, review, and undo. `install-skill` packages
+  a portable agent skill for Codex, Claude, Pi, and Hermes; capabilities and an
+  invocation-approval step separate reading, drafting, and sending. See the
+  [CLI reference](docs/cli.md).
+- **Settings → CLI**: switches for quitting after a send or draft, skipping the review step
+  (drafts, or sends with an undo countdown), and a default for the wizard's signature choice.
+  Scripted, JSON, and agent runs ignore all three.
+- `Up`/`Down` step through compose's From, To, Cc, Bcc, and Subject fields like
+  `Tab`/`Shift+Tab`, without wrapping from the top row into the body. The recipient suggestion
+  dropdown and the body editor keep their own Up/Down handling.
+
+### Fixed
+
+- `outbox process` now marks queued entries whose account is no longer configured as failed
+  instead of reporting them on every run. Unknown `messages`/`accounts`/`outbox` subcommands
+  name the supported ones and point to `messages search`.
+- Gmail's standard folders (Sent Mail, Drafts, and others) stay visible under their unselectable
+  server containers instead of disappearing from the sidebar.
+
 ## v1.3.0
 
 ### Fixed
