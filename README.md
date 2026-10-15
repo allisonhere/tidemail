@@ -103,7 +103,8 @@ One inbox, several built-in themes.
 
 ## Install
 
-Linux and macOS builds are available for Intel and ARM machines.
+Linux and macOS builds are available for Intel and ARM machines. Windows
+builds are experimental; see [Windows](#windows-experimental) below.
 
 ### Arch Linux
 
@@ -139,6 +140,19 @@ exact cleanup command.
 
 You can also grab an archive from the
 [latest release](https://github.com/allisonhere/tidemail/releases/latest).
+
+### Windows (experimental)
+
+Download `tidemail-windows-x86_64.zip` (or `-aarch64` for ARM) from the
+[latest release](https://github.com/allisonhere/tidemail/releases/latest),
+unzip it, and run `tidemail.exe` from Windows Terminal or PowerShell. Things to
+know:
+
+- In-app updates are not available; download each new release by hand.
+- There is no system keychain support yet, so passwords and tokens are saved in
+  plain text in `%USERPROFILE%\.config\tidemail\config.toml`.
+- Windows is less tested than Linux and macOS. Please report anything that
+  misbehaves.
 
 ## One screen, three useful panes
 

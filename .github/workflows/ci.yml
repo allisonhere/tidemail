@@ -39,6 +39,16 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # Windows is a cross-compiled release target. Vetting for it type-checks
+      # the app and its tests, so Unix-only code without a build tag fails here.
+      - name: Build & vet for Windows
+        env:
+          CGO_ENABLED: "0"
+          GOOS: windows
+        run: |
+          GOARCH=amd64 go vet ./...
+          GOARCH=arm64 go build ./...
+
       # The race detector needs cgo, which ubuntu-latest provides via gcc.
       - name: Test
         run: go test ./... -race

@@ -6,6 +6,12 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Experimental Windows builds (x86_64 and ARM64) are now attached to each release as zip files.
+  In-app updates and keychain storage are not available on Windows yet; passwords are stored in
+  the config file.
+
 ## v1.4.0
 
 ### Added

@@ -40,9 +40,21 @@ jobs:
             "linux   arm64 tidemail-linux-aarch64"
             "darwin  amd64 tidemail-darwin-x86_64"
             "darwin  arm64 tidemail-darwin-aarch64"
+            "windows amd64 tidemail-windows-x86_64"
+            "windows arm64 tidemail-windows-aarch64"
           )
           for entry in "${targets[@]}"; do
             read -r goos goarch name <<< "$entry"
+            if [ "$goos" = windows ]; then
+              # Windows gets a zip holding tidemail.exe. The in-app updater does
+              # not support Windows, so this archive is for manual installs only.
+              mkdir -p "dist/$name"
+              GOOS=$goos GOARCH=$goarch bash scripts/build-release.sh "$RELEASE_VERSION" "dist/$name/tidemail.exe"
+              ( cd "dist/$name" && zip -q "../$name.zip" tidemail.exe )
+              rm -r "dist/$name"
+              echo "Built dist/$name.zip"
+              continue
+            fi
             GOOS=$goos GOARCH=$goarch bash scripts/build-release.sh "$RELEASE_VERSION" "dist/$name"
             tar -czf "dist/$name.tar.gz" -C dist "$name"
             rm "dist/$name"
@@ -50,7 +62,7 @@ jobs:
           done
           # Checksums for in-app self-update integrity verification. The updater
           # refuses to install an archive whose SHA-256 isn't listed here.
-          ( cd dist && sha256sum *.tar.gz > SHA256SUMS )
+          ( cd dist && sha256sum *.tar.gz *.zip > SHA256SUMS )
           echo "----- SHA256SUMS -----"
           cat dist/SHA256SUMS
 
@@ -81,4 +93,5 @@ jobs:
           body_path: release-notes.md
           files: |
             dist/*.tar.gz
+            dist/*.zip
             dist/SHA256SUMS

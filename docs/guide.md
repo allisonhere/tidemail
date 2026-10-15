@@ -37,6 +37,16 @@ curl -fsSL https://raw.githubusercontent.com/allisonhere/tidemail/main/install.s
 You can also download a binary from the
 [latest release](https://github.com/allisonhere/tidemail/releases/latest).
 
+### Windows (experimental)
+
+Download `tidemail-windows-x86_64.zip` (or `tidemail-windows-aarch64.zip` on
+ARM) from the
+[latest release](https://github.com/allisonhere/tidemail/releases/latest),
+unzip it, and run `tidemail.exe` from Windows Terminal or PowerShell. In-app
+updates are not available on Windows, so download new releases by hand. There
+is no keychain support yet: passwords and tokens are stored in plain text in
+`%USERPROFILE%\.config\tidemail\config.toml`.
+
 ### App launcher entry (optional)
 
 The Arch Linux package (`tidemail-bin`) installs a desktop entry and the
@@ -432,7 +442,9 @@ from the keychain. Saving Settings moves loaded secrets into the keychain and
 clears them from the config file.
 
 If `secret-tool` is unavailable on Linux, TideMail writes these secrets to
-`~/.config/tidemail/config.toml`. Keep that file private.
+`~/.config/tidemail/config.toml`. Keep that file private. Windows has no
+keychain support yet, so it always stores these secrets in
+`%USERPROFILE%\.config\tidemail\config.toml`.
 
 - Gmail: Google Account → Security → App passwords (requires 2-Step Verification),
   or sign in with OAuth (below)
