@@ -28,7 +28,7 @@ All notable changes to TideMail are documented in this file.
   `F8` signs and `F9` encrypts (PGP/MIME); the plugin runs before the message is
   queued, so the Outbox and the Sent copy hold the protected message, and any
   failure (no key for a recipient, cancelled passphrase) sends nothing. The
-  first-party `tidemail-pgp` plugin in `examples/plugins/pgp/` uses your own
+  `pgp` plugin in the plugins repository uses your own
   GnuPG keyring. Plugins also inherit `GNUPGHOME`, `DISPLAY`, `WAYLAND_DISPLAY`
   and `XDG_RUNTIME_DIR` now. The subject and headers of encrypted mail are not
   encrypted, `tidemail send` does not sign or encrypt, and attachments inside

@@ -859,7 +859,7 @@ near TideMail. A plugin that is allowed to do this declares the `message_raw`
 one you trust: while it is doing its job it sees the part of the message it is
 working on.
 
-TideMail's plugin repository has a ready-made one, `tidemail-pgp`: install it
+TideMail's plugin repository has a ready-made one, `pgp`: install it
 from **Settings → Plugins → `b`**. It needs `gpg` (GnuPG 2.x) installed, with
 your key and the keys of the people you write to in your keyring.
 

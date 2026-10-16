@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -71,10 +72,15 @@ func commandIDs(m Model) []string {
 
 func TestPluginCommandsHiddenWithoutPlugins(t *testing.T) {
 	m, _ := newMailboxListModel(7, 1)
+	// Browsing the catalog is how a first plugin gets installed, so it is the
+	// one plugin command that is always offered.
 	for _, id := range commandIDs(m) {
-		if strings.HasPrefix(id, "plugin") {
+		if strings.HasPrefix(id, "plugin") && id != "plugin-catalog" {
 			t.Fatalf("plugin command %q shown with no plugin manager", id)
 		}
+	}
+	if !slices.Contains(commandIDs(m), "plugin-catalog") {
+		t.Fatal("browse available plugins must be offered even with no plugins installed")
 	}
 	// An empty (or missing) plugins directory looks the same.
 	mgr, err := plugin.Discover(filepath.Join(t.TempDir(), "missing"))
@@ -83,7 +89,7 @@ func TestPluginCommandsHiddenWithoutPlugins(t *testing.T) {
 	}
 	m.SetPlugins(mgr, "", nil)
 	for _, id := range commandIDs(m) {
-		if strings.HasPrefix(id, "plugin") {
+		if strings.HasPrefix(id, "plugin") && id != "plugin-catalog" {
 			t.Fatalf("plugin command %q shown with no plugins installed", id)
 		}
 	}

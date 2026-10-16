@@ -56,7 +56,7 @@ Small, tested example plugins are in
 [`examples/plugins/example/`](../examples/plugins/example/) and
 [`examples/plugins/analytics/`](../examples/plugins/analytics/) (a report). A
 GnuPG plugin that decrypts, verifies, signs and encrypts mail is in
-[`examples/plugins/pgp/`](../examples/plugins/pgp/README.md).
+[`plugins/pgp` in the plugins repository](https://github.com/allisonhere/tidemail-plugins/tree/main/plugins/pgp).
 
 ## For TideMail contributors
 

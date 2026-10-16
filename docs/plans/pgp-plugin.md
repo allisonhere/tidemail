@@ -20,7 +20,7 @@ dependency on a PGP library, enters TideMail.
 | Reading pane: `D`, status line, in-memory-only result | `internal/ui/pgp.go` |
 | PGP/MIME assembly (`multipart/signed`, `multipart/encrypted`), deterministic boundaries | `internal/smtp/protection.go` |
 | Protect before queueing, fail closed | `internal/mailapp/protect.go`, `internal/ui/pgp_compose.go` |
-| The GnuPG plugin | `examples/plugins/pgp` |
+| The GnuPG plugin | `plugins/pgp` in the tidemail-plugins repository (end-to-end test: `internal/pgpmail/e2e_test.go`) |
 
 ## Deviations from the first plan
 
