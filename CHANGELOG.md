@@ -6,6 +6,12 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- The grammar check preview no longer runs off the bottom of the screen on a long email: it fits the
+  terminal, keeps the accept/cancel hints in view, and scrolls with the arrow keys, `PgUp`/`PgDn`,
+  and `Home`/`End`.
+
 ### Added
 
 - Settings → Editor → **Spell check in compose** (off by default): misspelled words are underlined

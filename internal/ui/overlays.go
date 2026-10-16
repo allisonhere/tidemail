@@ -193,9 +193,7 @@ func (m Model) renderOverlay(base string) string {
 		box = renderSoftPanelBox(inner, winW, "tidemail", "filters", chrome)
 
 	case overlayGrammarPreview:
-		winW := min(m.width-10, 70)
-		winH := min(m.height-6, 24)
-		box = m.renderGrammarPreview(winW, winH)
+		box = m.renderGrammarPreview()
 
 	case overlaySpellDictionary:
 		winW := min(m.width-6, 56)
@@ -593,34 +591,6 @@ func updateProgressBar(pct int, width int, chrome managerChrome) string {
 		Foreground(chrome.muted).
 		Render(strings.Repeat("░", width-filled))
 	return full + empty
-}
-
-func (m Model) renderGrammarPreview(width, height int) string {
-	t := m.styles.Theme
-	bg := modalSurface(t)
-	border := t.OverlayBorder
-	if border == "" {
-		border = t.BorderFocus
-	}
-
-	title := lipgloss.NewStyle().Background(bg).Foreground(t.BorderFocus).Bold(true).Width(width).Padding(0, 1).Render("Grammar Preview")
-	correctedText := m.grammarCorrected
-	if correctedText == "" {
-		correctedText = "(no changes)"
-	}
-
-	bodyW := max(1, width-4)
-	bodyStyle := lipgloss.NewStyle().Background(bg).Foreground(t.Fg).Width(bodyW)
-	body := bodyStyle.Render(correctedText)
-
-	hints := lipgloss.NewStyle().Background(bg).Foreground(readableText(t.Dimmed, bg, 3.0)).Width(width).Padding(0, 1).Render("y  accept    n  cancel")
-
-	return lipgloss.NewStyle().
-		Background(bg).
-		Border(lipPaneBorder(m.styles.PlainUI)).
-		BorderForeground(border).
-		Width(width).Height(height).
-		Render(lipgloss.JoinVertical(lipgloss.Left, title, "", body, "", hints))
 }
 
 func (m Model) renderLogViewer(width, height int) string {

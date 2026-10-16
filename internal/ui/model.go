@@ -184,6 +184,7 @@ type Model struct {
 	lastClickIdx     int
 	ctxMenu          contextMenu // right-click menu, valid while overlay == overlayContextMenu
 	spellDict        spellDictState
+	grammarVP        viewport.Model // scrollable body of the grammar preview
 	searchQuery      string
 	searchMode       bool
 	searchEditing    bool
@@ -1623,7 +1624,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.grammarOriginal = m.compose.bodyInput.Value()
 			m.grammarCorrected = msg.Corrected
-			m.overlay = overlayGrammarPreview
+			m.openGrammarPreview()
 		}
 		return m, nil
 
@@ -3094,24 +3095,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleFilterManager(msg)
 
 	case overlayGrammarPreview:
-		switch {
-		case keyMatches(msg, m.keys.Yes):
-			m.compose.bodyInput.SetValue(m.grammarCorrected + m.grammarQuoteSuffix)
-			m.grammarQuoteSuffix = ""
-			m.compose.statusMsg = "grammar checked"
-			m.compose.isErr = false
-			m.overlay = overlayCompose
-			// Return focus to the body at the top in Insert mode — SetValue parks
-			// the caret at the end (inside the quote, off-screen), which made it
-			// look like typing did nothing.
-			m.compose.focusBodyAtStart()
-		case keyMatches(msg, m.keys.No), keyMatches(msg, m.keys.Cancel):
-			m.grammarQuoteSuffix = ""
-			m.compose.statusMsg = ""
-			m.overlay = overlayCompose
-			m.compose.focusBodyAtStart()
-		}
-		return m, nil
+		return m.handleGrammarPreviewKey(msg)
 
 	case overlayLogViewer:
 		if keyMatches(msg, m.keys.Cancel, m.keys.Back) {
