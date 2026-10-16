@@ -26,6 +26,12 @@ type Permissions struct {
 	// Annotations allows the plugin to return annotations for TideMail to
 	// store and display.
 	Annotations bool `toml:"annotations"`
+	// MessageRaw allows TideMail to send the encrypted or signed parts of a
+	// received message, on the user's explicit open, to message.decode.
+	MessageRaw bool `toml:"message_raw"`
+	// MessageCompose allows TideMail to send an outgoing message's content to
+	// message.prepare, which signs and/or encrypts it.
+	MessageCompose bool `toml:"message_compose"`
 
 	// The read-only query permissions below let TideMail disclose selected
 	// structured data to a plugin during a report (see query.go). They never
@@ -57,6 +63,8 @@ func (p Permissions) Names() []string {
 		{p.MessageBody, "body"},
 		{p.Network, "network"},
 		{p.Annotations, "annotations"},
+		{p.MessageRaw, "raw message"},
+		{p.MessageCompose, "compose"},
 		{p.MessagesQuery, "messages query"},
 		{p.ThreadsQuery, "threads query"},
 		{p.AnnotationsQuery, "annotations query"},

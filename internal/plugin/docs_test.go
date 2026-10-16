@@ -99,7 +99,7 @@ func TestDocsEventsAndCapabilities(t *testing.T) {
 
 func TestDocsMethods(t *testing.T) {
 	got := lines(driftBlocks(t, readDoc(t, "protocol.md"), "methods")[0])
-	want := []string{MethodPing, MethodMessageMetadata, EventMessageReceived, MethodTest, MethodReportRun}
+	want := []string{MethodPing, MethodMessageMetadata, EventMessageReceived, MethodTest, MethodReportRun, MethodMessageDecode, MethodMessagePrepare}
 	if !slices.Equal(got, want) {
 		t.Fatalf("documented methods %v, want %v", got, want)
 	}

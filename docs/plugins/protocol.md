@@ -117,7 +117,7 @@ A failed call never changes stored annotations.
 
 ## Methods
 
-API v1 has five methods:
+API v1 has seven methods:
 
 <!-- drift:methods -->
 ```text
@@ -126,6 +126,8 @@ message.metadata
 message.received
 plugin.test
 report.run
+message.decode
+message.prepare
 ```
 
 | Method | Caller and timing | Requires | `data` sent | Your `data` |
@@ -135,6 +137,8 @@ report.run
 | `message.received` | TideMail, automatically, for newly arrived mail | `message_metadata`, `events = ["message.received"]`, and the user's opt-in | the same metadata | the same as `message.metadata` |
 | `plugin.test` | the user, from the plugin's settings form | `capabilities = ["plugin.test"]` | none | `{"ok": true, "message": "Connected"}`; shown only |
 | `report.run` | the user, with `enter` in the plugin list; once per round | `capabilities = ["report.run"]` | the round, context, your state, and query results | `{"queries": …, "state": …}`, `{"report": …}`, or `{"view": …}`; see [queries.md](queries.md) and [views.md](views.md) |
+| `message.decode` | the user opening a received message that is encrypted or signed; once per protected part | `message_raw` | one [decode request](#messagedecode) | the plaintext and a signature verdict |
+| `message.prepare` | the user sending a message with Sign or Encrypt on | `message_compose` | one [prepare request](#messageprepare) | an armored signature or an armored encrypted message |
 
 `message.metadata` and `message.received` go through the same permission
 checks, validation, and storage. Treat them the same way; the method name
@@ -187,4 +191,68 @@ Empty string and array fields are omitted.
 TideMail **does not send**: the body text, HTML, raw headers, attachments,
 AI summaries, OAuth tokens, passwords, API keys, other plugins' settings or
 secrets, TideMail's configuration, or file paths. The `message_body`
-permission is reserved; no method sends a body in API v1.
+permission is reserved. The only methods that send message content are
+`message.decode` and `message.prepare`, which are described below and need
+their own permissions.
+
+### `message.decode`
+
+Sent, with the `message_raw` permission, when the user opens a message that
+has an encrypted or signed part. TideMail does all the MIME parsing and sends
+only the part to decrypt or verify, one request per part. Byte fields are
+base64 strings.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | integer | TideMail's identifier for the message. |
+| `kind` | string | `decrypt` or `verify`. |
+| `data` | base64 | `decrypt`: an ASCII-armored encrypted or clear-signed message. `verify`: the signed MIME entity, exactly as signed. |
+| `signature` | base64 | `verify` only: the detached ASCII-armored signature. |
+
+Answer with:
+
+```json
+{"data": "<base64 plaintext>", "signature": {"status": "good", "signer": "Ann <ann@example.com>", "fingerprint": "0123…"}}
+```
+
+- `data` is the decrypted MIME entity, or text for an inline message. Omit it
+  for `verify`; TideMail rejects a `verify` reply that carries data.
+- `signature.status` is one of `none`, `good`, `bad`, `unknown_key`,
+  `expired`. Anything else is rejected. `signer` (200 characters) and
+  `fingerprint` (80) are shown to the user, so they must be plain text.
+- To report a failure, answer `ok=false` with a code such as `no_secret_key`
+  or `needs_passphrase` and a short message. TideMail shows the message.
+
+TideMail keeps the plaintext in memory only: it is never stored in the
+database or the search index, and the message is decoded again each time it
+is opened.
+
+### `message.prepare`
+
+Sent, with the `message_compose` permission, when the user sends a message
+with Sign or Encrypt on. TideMail builds the MIME entity and the final
+`multipart/signed` or `multipart/encrypted` message itself; you only perform
+the cryptographic step.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `from` | string | The sender's address, to choose the signing key. |
+| `recipients` | array of strings | Every To, Cc, and Bcc address; empty when only signing. |
+| `entity` | base64 | The canonical MIME entity to protect (CRLF line endings), exactly the bytes to sign or encrypt. |
+| `sign`, `encrypt` | boolean | At least one is true. |
+
+Answer with exactly one of:
+
+```json
+{"signature": "<base64 armored detached signature>", "micalg": "pgp-sha256"}
+{"encrypted": "<base64 armored PGP MESSAGE>"}
+```
+
+The first is for `sign` without `encrypt`. The second is for `encrypt`; when
+`sign` is also true, sign inside the encrypted message. A reply of the wrong
+shape (plaintext, or a signature when encryption was asked for) is an error.
+**Any error stops the send**: TideMail never falls back to sending the message
+unprotected.
+
+Both methods may wait on a passphrase or smartcard prompt, so they get the
+manifest's `timeout` (up to 120 seconds) instead of the 5-second default.

@@ -66,7 +66,7 @@ These do not exist in API v1. Do not rely on them:
   queries;
 - direct database access, SQL, or arbitrary query expressions;
 - long-running background daemons: every call is one short-lived process;
-- message bodies (the `message_body` permission is reserved).
+- message bodies beyond the encrypted or signed parts sent by `message.decode` and `message.prepare` (the `message_body` permission is reserved).
 
 Plugin support in TideMail is experimental. The protocol rules above apply to
 API v1, but the plugin UI and runtime policy may change freely, and there is no

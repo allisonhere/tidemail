@@ -43,6 +43,7 @@ description = "Tag invoices as billing"  # optional, shown in the picker and plu
 homepage = "https://example.com/tidemail-plugin"  # optional, https only
 api = 1                              # required; the protocol version
 command = "tidemail-plugin-example"  # required; relative to the plugin directory
+timeout = 60                         # optional; seconds for message.decode/prepare (max 120)
 events = ["message.received"]        # optional; automatic events
 capabilities = ["plugin.test"]       # optional; extra protocol features
 
@@ -51,6 +52,8 @@ message_metadata = true
 annotations = true
 network = false
 message_body = false
+message_raw = false                  # decrypt/verify received mail (message.decode)
+message_compose = false              # sign/encrypt outgoing mail (message.prepare)
 messages_query = false               # read-only queries (report.run)
 threads_query = false
 annotations_query = false
@@ -143,8 +146,8 @@ report.run
 
 ### `[permissions]` (optional)
 
-Eight booleans, all `false` by default: `message_metadata`, `annotations`,
-`network`, `message_body`, and the read-only query permissions
+Ten booleans, all `false` by default: `message_metadata`, `annotations`,
+`network`, `message_body`, `message_raw`, `message_compose`, and the read-only query permissions
 `messages_query`, `threads_query`, `annotations_query`, `analytics_read`. What
 each one allows (and what it cannot prevent) is in
 [permissions.md](permissions.md).

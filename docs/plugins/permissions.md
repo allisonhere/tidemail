@@ -9,6 +9,8 @@ message_metadata = true
 annotations = true
 network = false
 message_body = false
+message_raw = false
+message_compose = false
 messages_query = false
 threads_query = false
 annotations_query = false
@@ -21,10 +23,19 @@ analytics_read = false
 | `annotations` | Allows TideMail to store the `annotations` a metadata response returns. Without it the plugin still runs and its response is shown, but nothing is stored. | **Yes**, on every response. |
 | `network` | A declaration that the plugin talks to online services. Shown in the plugin list. | **No.** TideMail cannot stop a process from using the network. |
 | `message_body` | Reserved. No API v1 method sends message bodies, whatever this says. | Not applicable. |
+| `message_raw` | Allows `message.decode`: when you open an encrypted or signed message, TideMail sends the plugin the encrypted or signed part so it can decrypt or verify it. See [protocol.md](protocol.md#messagedecode). | **Yes**, before the process starts, on every call. |
+| `message_compose` | Allows `message.prepare`: when you send with Sign or Encrypt on, TideMail sends the plugin the outgoing message content so it can sign or encrypt it. See [protocol.md](protocol.md#messageprepare). | **Yes**, before the process starts, on every call. |
 | `messages_query` | Allows the `query.messages` report query: allowlisted header fields of messages in a scope, a bounded page at a time. | **Yes**, for every query, before it runs. |
 | `threads_query` | Allows `query.threads`: conversation summaries (participants, counts, latest message, Needs You / Waiting on Them state). | **Yes**, for every query. |
 | `annotations_query` | Allows `query.annotations`: stored plugin annotations on messages you name. With `analytics_read` it also allows `query.classification`. | **Yes**, for every query. |
 | `analytics_read` | Allows the `analytics.*` queries: computed counts and statistics, not message records. | **Yes**, for every query. |
+
+`message_raw` and `message_compose` are the deliberate exceptions to "plugins
+never see message content": they exist for cryptography plugins such as PGP.
+They are separate from the query permissions and from each other, they are
+listed prominently in the plugin list, and a plugin that declares them can
+read every message you open or send with those features on. Only grant them
+to a plugin you trust with your mail.
 
 The four query permissions are read-only and independent: none implies
 another, `analytics_read` never grants message records, and none of them lets

@@ -30,8 +30,9 @@ A plugin can:
   tables) that TideMail draws in the user's theme colors.
 
 A plugin cannot change mail, send mail, trigger TideMail actions, add UI,
-choose colors, access TideMail's database directly, or read message bodies.
-It sees another plugin's annotations only through `query.annotations`, with
+choose colors, or access TideMail's database directly. It reads message
+content only if it declares `message_raw` or `message_compose` (for
+cryptography plugins; see [permissions.md](permissions.md)). It sees another plugin's annotations only through `query.annotations`, with
 permission. Anything a plugin returns other than annotations is only
 displayed.
 

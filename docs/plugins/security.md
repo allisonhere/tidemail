@@ -15,7 +15,12 @@ it *hands* a plugin, how it *runs* it, and what it *keeps* from the result.
   settings.
 - Its own secrets, as `TIDEMAIL_SECRET_*` environment variables, and nothing
   else secret.
-- Never message bodies, HTML, raw headers, attachments, AI summaries,
+- Message content only through `message.decode` and `message.prepare`, and
+  only to plugins that declare `message_raw` or `message_compose`: the
+  encrypted or signed part of a message you open, or the content of a
+  message you send with Sign or Encrypt on. TideMail keeps decrypted text in
+  memory and never stores it.
+- Otherwise never message bodies, HTML, raw headers, attachments, AI summaries,
   database paths or handles, SQL, account passwords, OAuth tokens, API keys,
   other plugins' settings or secrets, TideMail's configuration, or file
   paths. Other plugins' stored annotations only through `query.annotations`,

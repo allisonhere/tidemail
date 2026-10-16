@@ -1111,6 +1111,8 @@ func permissionChecklist(p plugin.Permissions, plain bool) []string {
 		mark(p.MessageMetadata, "Message details (sender, subject, date)"),
 		mark(p.Annotations, "Save tags"),
 		mark(p.MessageBody, "Message body"),
+		mark(p.MessageRaw, "Decrypt/verify received mail"),
+		mark(p.MessageCompose, "Sign/encrypt outgoing mail"),
 		mark(p.Network, "Network"),
 	}
 	for _, q := range []struct {

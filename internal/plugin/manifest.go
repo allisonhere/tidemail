@@ -60,7 +60,10 @@ type Manifest struct {
 	Description string `toml:"description"`
 	Homepage    string `toml:"homepage"`
 
-	Command     string      `toml:"command"`
+	Command string `toml:"command"`
+	// Timeout is how many seconds message.decode and message.prepare may run
+	// (they can wait on a passphrase prompt). Zero means DefaultTimeout.
+	Timeout     int         `toml:"timeout"`
 	Permissions Permissions `toml:"permissions"`
 	// Events lists the automatic events the plugin wants. Declaring one only
 	// makes the plugin eligible; the user still has to enable it.
@@ -152,6 +155,9 @@ func (m Manifest) Validate() error {
 			errs = append(errs, fmt.Errorf("event %q is listed twice", e))
 		}
 		seenEvents[e] = true
+	}
+	if m.Timeout < 0 || m.Timeout > MaxCryptoTimeoutSeconds {
+		errs = append(errs, fmt.Errorf("timeout must be between 0 and %d seconds", MaxCryptoTimeoutSeconds))
 	}
 	errs = append(errs, validateCapabilities(m.Capabilities)...)
 	errs = append(errs, validateSettings(m.Settings)...)

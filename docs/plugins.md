@@ -12,7 +12,10 @@ plugin returns is treated as an instruction.
 - TideMail writes one JSON request to its stdin; it writes one JSON response to
   stdout. Any language works.
 - Plugins receive header-level metadata only (sender, recipients, subject,
-  date, flags), never message bodies, passwords, or tokens.
+  date, flags), never passwords or tokens. The one exception is a
+  cryptography plugin that declares `message_raw` or `message_compose`: it is
+  handed the encrypted or signed part of a message you open, or the content of
+  a message you send with Sign or Encrypt on.
 - Report plugins can ask TideMail read-only, allowlisted queries (message and
   thread lists, stored annotations, aggregate analytics). TideMail runs them
   itself; plugins never get database access.

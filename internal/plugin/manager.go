@@ -219,7 +219,8 @@ func (m *Manager) Errors() []DiscoveryError {
 // Methods that carry mail data have their own permission-checked entry points
 // (MessageMetadata) and are refused here, so the check cannot be bypassed.
 func (m *Manager) Call(ctx context.Context, pluginID, method string, data json.RawMessage) (Response, error) {
-	if method == MethodMessageMetadata || method == EventMessageReceived || method == MethodReportRun {
+	if method == MethodMessageMetadata || method == EventMessageReceived || method == MethodReportRun ||
+		method == MethodMessageDecode || method == MethodMessagePrepare {
 		return Response{}, fmt.Errorf("plugin %q: %s must go through its permission-checked entry point", pluginID, method)
 	}
 	p, ok := m.Plugin(pluginID)
@@ -307,13 +308,17 @@ func (m *Manager) runMetadata(ctx context.Context, pluginID, method string, meta
 }
 
 func (m *Manager) call(ctx context.Context, p Plugin, method string, data json.RawMessage) (Response, error) {
+	return m.callTimeout(ctx, p, method, data, m.timeout())
+}
+
+func (m *Manager) callTimeout(ctx context.Context, p Plugin, method string, data json.RawMessage, timeout time.Duration) (Response, error) {
 	pluginID := p.Manifest.ID
 	req, err := NewRequest(method, data)
 	if err != nil {
 		return Response{}, err
 	}
 	secrets := m.applySettings(p, &req)
-	resp, err := invoke(ctx, p, req, m.timeout(), secrets)
+	resp, err := invoke(ctx, p, req, timeout, secrets)
 	if err != nil {
 		return Response{}, err
 	}
