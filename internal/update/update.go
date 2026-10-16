@@ -158,7 +158,7 @@ func (u *Updater) Download(release ReleaseInfo) (DownloadedAsset, error) {
 	// executable: the download host must be GitHub, and the archive's SHA-256
 	// must match the signed-by-channel SHA256SUMS asset. A release missing
 	// checksums is rejected rather than installed unverified.
-	if !isTrustedAssetHost(release.DownloadURL) {
+	if !TrustedAssetHost(release.DownloadURL) {
 		return DownloadedAsset{}, fmt.Errorf("refusing to download update from untrusted host: %s", release.DownloadURL)
 	}
 	if release.ChecksumsURL == "" {
@@ -226,7 +226,7 @@ func (u *Updater) Download(release ReleaseInfo) (DownloadedAsset, error) {
 // problem — untrusted host, download failure, missing entry, or mismatch — is a
 // hard error so a tampered or corrupt archive is never extracted and installed.
 func (u *Updater) verifyArchiveChecksum(release ReleaseInfo, archivePath string) error {
-	if !isTrustedAssetHost(release.ChecksumsURL) {
+	if !TrustedAssetHost(release.ChecksumsURL) {
 		return fmt.Errorf("refusing to fetch checksums from untrusted host: %s", release.ChecksumsURL)
 	}
 
@@ -291,9 +291,9 @@ func sha256File(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// isTrustedAssetHost restricts update downloads to GitHub-hosted HTTPS URLs so a
+// TrustedAssetHost restricts downloads (updates, plugin installs) to GitHub-hosted HTTPS URLs so a
 // tampered API response can't redirect the updater to an attacker's host.
-func isTrustedAssetHost(rawURL string) bool {
+func TrustedAssetHost(rawURL string) bool {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Scheme != "https" {
 		return false

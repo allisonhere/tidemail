@@ -17,21 +17,21 @@ var ErrPermissionDenied = errors.New("permission denied")
 type Permissions struct {
 	// MessageMetadata allows TideMail to send headers such as sender, subject,
 	// and date.
-	MessageMetadata bool `toml:"message_metadata"`
+	MessageMetadata bool `toml:"message_metadata" json:"message_metadata,omitempty"`
 	// MessageBody allows TideMail to send message bodies.
-	MessageBody bool `toml:"message_body"`
+	MessageBody bool `toml:"message_body" json:"message_body,omitempty"`
 	// Network declares that the plugin makes network requests. TideMail cannot
 	// enforce this; it exists so the user can see what the plugin claims.
-	Network bool `toml:"network"`
+	Network bool `toml:"network" json:"network,omitempty"`
 	// Annotations allows the plugin to return annotations for TideMail to
 	// store and display.
-	Annotations bool `toml:"annotations"`
+	Annotations bool `toml:"annotations" json:"annotations,omitempty"`
 	// MessageRaw allows TideMail to send the encrypted or signed parts of a
 	// received message, on the user's explicit open, to message.decode.
-	MessageRaw bool `toml:"message_raw"`
+	MessageRaw bool `toml:"message_raw" json:"message_raw,omitempty"`
 	// MessageCompose allows TideMail to send an outgoing message's content to
 	// message.prepare, which signs and/or encrypts it.
-	MessageCompose bool `toml:"message_compose"`
+	MessageCompose bool `toml:"message_compose" json:"message_compose,omitempty"`
 
 	// The read-only query permissions below let TideMail disclose selected
 	// structured data to a plugin during a report (see query.go). They never
@@ -40,15 +40,15 @@ type Permissions struct {
 
 	// MessagesQuery allows query.messages: allowlisted header fields of
 	// messages in a scope, a bounded page at a time.
-	MessagesQuery bool `toml:"messages_query"`
+	MessagesQuery bool `toml:"messages_query" json:"messages_query,omitempty"`
 	// ThreadsQuery allows query.threads: conversation summaries.
-	ThreadsQuery bool `toml:"threads_query"`
+	ThreadsQuery bool `toml:"threads_query" json:"threads_query,omitempty"`
 	// AnnotationsQuery allows query.annotations: stored plugin annotations.
 	// With AnalyticsRead it also allows query.classification.
-	AnnotationsQuery bool `toml:"annotations_query"`
+	AnnotationsQuery bool `toml:"annotations_query" json:"annotations_query,omitempty"`
 	// AnalyticsRead allows the analytics.* queries: computed counts and
 	// statistics, not message records.
-	AnalyticsRead bool `toml:"analytics_read"`
+	AnalyticsRead bool `toml:"analytics_read" json:"analytics_read,omitempty"`
 }
 
 // Names lists the granted permissions with short display names, in a fixed

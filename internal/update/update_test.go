@@ -161,7 +161,7 @@ func TestIsTrustedAssetHost(t *testing.T) {
 		"https://release-assets.githubusercontent.com/abc",
 	}
 	for _, u := range trusted {
-		if !isTrustedAssetHost(u) {
+		if !TrustedAssetHost(u) {
 			t.Errorf("expected %q to be trusted", u)
 		}
 	}
@@ -174,7 +174,7 @@ func TestIsTrustedAssetHost(t *testing.T) {
 		"",
 	}
 	for _, u := range untrusted {
-		if isTrustedAssetHost(u) {
+		if TrustedAssetHost(u) {
 			t.Errorf("expected %q to be untrusted", u)
 		}
 	}
