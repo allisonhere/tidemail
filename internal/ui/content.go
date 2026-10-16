@@ -80,6 +80,9 @@ func (m Model) renderMessageContentImages(msg db.Message) (string, []renderImage
 		metaStr += "  From: " + msg.From
 	}
 	meta := " " + m.styles.ContentMeta.Width(contentWidth).Render(truncate(metaStr, metaWidth))
+	if line := m.pgpStatusLine(msg, contentWidth); line != "" {
+		meta += "\n" + line
+	}
 
 	// Full headers block (togglable via ctrl+e)
 	var fullHeaders string
@@ -563,6 +566,9 @@ func (m Model) threadMessageHeader(msg db.Message, width int) string {
 		line = truncate(line, width)
 	}
 	header := m.styles.ContentMeta.Width(width).Render(line)
+	if status := m.pgpStatusLine(msg, width); status != "" {
+		header += "\n" + status
+	}
 	if m.contentShowHeaders {
 		if block := m.renderFullHeaders(msg, width); block != "" {
 			header += "\n" + block

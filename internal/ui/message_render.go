@@ -28,6 +28,7 @@ type messageRenderResult struct {
 type messageRenderer func(messageRenderContext) messageRenderResult
 
 func (m Model) renderMessageForDisplay(msg db.Message, width int) messageRenderResult {
+	msg = m.pgpOverlay(msg)
 	key := bodyCacheKey{
 		messageID:   msg.ID,
 		width:       width,

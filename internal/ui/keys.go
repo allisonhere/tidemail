@@ -22,6 +22,7 @@ type KeyMap struct {
 	NeedsYouDismiss key.Binding
 	Snooze          key.Binding
 	RunPlugin       key.Binding
+	PGPDecode       key.Binding
 	EditTags        key.Binding
 	MarkAllRead     key.Binding
 	ToggleStar      key.Binding
@@ -122,7 +123,10 @@ var DefaultKeys = KeyMap{
 	// views until later (in Snoozed it unsnoozes). z is quoted-text toggling.
 	Snooze: key.NewBinding(key.WithKeys("Z"), key.WithHelp("Z", "snooze")),
 	// RunPlugin picks a plugin to run on the current message or selection.
-	RunPlugin:     key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "run plugin")),
+	RunPlugin: key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "run plugin")),
+	// PGPDecode decrypts and verifies the current message through a plugin
+	// that holds the message_raw permission.
+	PGPDecode:     key.NewBinding(key.WithKeys("D"), key.WithHelp("D", "decrypt / verify (PGP)")),
 	EditTags:      key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit tags")),
 	MarkAllRead:   key.NewBinding(key.WithKeys("R", "ctrl+x"), key.WithHelp("R/ctrl+x", "mark all read")),
 	ToggleStar:    key.NewBinding(key.WithKeys("*"), key.WithHelp("*", "star")),

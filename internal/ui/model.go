@@ -263,6 +263,7 @@ type Model struct {
 	classification classificationEditor
 
 	plugins pluginUI // experimental; see plugins.go
+	pgp     pgpState // decrypted messages, memory only; see pgp.go
 
 	helpVP                viewport.Model
 	helpSearchInput       textinput.Model
@@ -1271,6 +1272,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rebuildSidebar()
 		return m, nil
 
+	case PGPDecodedMsg:
+		return m.handlePGPDecoded(msg)
+
 	case AddressBookLoadedMsg:
 		if msg.Err == nil {
 			m.addressBook = msg.Addresses
@@ -1843,6 +1847,11 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleSnoozeKeyPress()
 	case keyMatches(msg, m.keys.RunPlugin) && m.focused != paneAccounts && m.pluginsVisible():
 		return m.executePluginCommand("plugin-run")
+	case keyMatches(msg, m.keys.PGPDecode) && m.focused != paneAccounts && !m.selectedDraftsMailbox():
+		if cur := m.commandMessage(); cur != nil {
+			return m.startPGPDecode(*cur)
+		}
+		return m, nil
 	case keyMatches(msg, m.keys.EditTags) && m.focused != paneAccounts && !m.selectedDraftsMailbox():
 		return m.openClassificationEditor()
 
