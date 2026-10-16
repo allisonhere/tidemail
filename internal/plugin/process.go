@@ -35,6 +35,9 @@ const (
 // TideMail's process.
 var envAllowlist = []string{
 	"PATH", "HOME", "USER", "LANG", "LC_ALL", "LC_CTYPE", "LC_MESSAGES", "TMPDIR", "TZ",
+	// Where the user's GnuPG keyring is, and the display a graphical
+	// passphrase prompt (pinentry) opens on. None of these is a secret.
+	"GNUPGHOME", "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR",
 }
 
 func pluginEnv() []string {

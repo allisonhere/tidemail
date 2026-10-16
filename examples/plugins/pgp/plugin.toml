@@ -1,0 +1,22 @@
+# OpenPGP for TideMail: decrypt and verify received mail, sign and encrypt
+# outgoing mail, using your own GnuPG keyring. See README.md.
+id = "pgp"
+name = "PGP (GnuPG)"
+version = "0.1.0"
+description = "Decrypt, verify, sign and encrypt mail with GnuPG"
+api = 1
+command = "tidemail-pgp"
+# Passphrase prompts (pinentry) can take a while.
+timeout = 120
+
+[permissions]
+message_raw = true
+message_compose = true
+
+[[settings]]
+key = "trust"
+label = "Key trust"
+type = "select"
+options = ["gpg", "always"]
+default = "gpg"
+help = "gpg: use GnuPG's own trust rules, so recipients' keys must be signed or trusted. always: encrypt to any key in your keyring."

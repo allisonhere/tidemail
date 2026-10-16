@@ -42,7 +42,7 @@ it *hands* a plugin, how it *runs* it, and what it *keeps* from the result.
 | No `$PATH` lookup | `command = "python3"` means the file in the plugin directory. |
 | No arguments | Input arrives only on stdin. |
 | Working directory | The plugin directory. |
-| Trimmed environment | Only `PATH`, `HOME`, `USER`, `LANG`, `LC_ALL`, `LC_CTYPE`, `LC_MESSAGES`, `TMPDIR`, `TZ`, plus the plugin's own secrets. TideMail's own environment (client secrets, provider keys) is not passed on. |
+| Trimmed environment | Only `PATH`, `HOME`, `USER`, `LANG`, `LC_ALL`, `LC_CTYPE`, `LC_MESSAGES`, `TMPDIR`, `TZ`, the non-secret `GNUPGHOME`, `DISPLAY`, `WAYLAND_DISPLAY`, and `XDG_RUNTIME_DIR` (so a GnuPG plugin finds your keyring and can open a passphrase prompt), plus the plugin's own secrets. TideMail's own environment (client secrets, provider keys) is not passed on. |
 | Timeout | 5 seconds per call, from start to exit. A report (several rounds) must finish within 30 seconds. |
 | Process-tree kill | On timeout, cancellation, or quit, the whole process group is killed (Unix), so child processes do not linger. |
 | Output limit | stdout above 1 MiB fails the call. |
