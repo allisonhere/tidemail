@@ -26,13 +26,14 @@ require (
 
 require (
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
+	github.com/allisonhere/tidespell v0.1.0 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/sahilm/fuzzy v0.1.1 // indirect
 )
 
 require (
 	github.com/alecthomas/chroma/v2 v2.20.0 // indirect
-	github.com/allisonhere/ripple v0.2.0
+	github.com/allisonhere/ripple v0.3.0
 	github.com/andybalholm/cascadia v1.3.2 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
@@ -68,3 +69,5 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
+
+replace github.com/allisonhere/ripple => ../ripple

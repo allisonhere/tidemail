@@ -80,6 +80,11 @@ func (db *DB) migrate() error {
 			UNIQUE(account_id, name)
 		);
 
+		-- The user's personal spell-check words (names, jargon), stored lowercase.
+		CREATE TABLE IF NOT EXISTS spell_words (
+			word TEXT PRIMARY KEY
+		);
+
 		-- Local-only folder view preferences (never sent to the server), keyed by
 		-- folder name so they survive a re-sync that reassigns mailbox ids.
 		CREATE TABLE IF NOT EXISTS mailbox_prefs (

@@ -826,7 +826,9 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Ctrl+R` in compose | Remove the last attachment |
 | `Ctrl+D` | Save attachments to folder |
 | `Ctrl+G` | AI grammar & spell check (compose) |
+| `F7` | Offline spell check (compose); needs Settings → Editor → Spell check |
 | Standard compose editor | Selection, system clipboard, undo/redo, word movement, and Home/End |
+| Spell check in compose | Off by default. Turn on **Settings → Editor → Spell check in compose (F7)** to underline misspelled words in the body as you type. Press `F7` to step through them: `Enter` replaces with the highlighted suggestion (or press `1`–`5`), `←`/`→` choose another, `s` skips, `i` ignores the word until you restart, `a` adds it to your personal dictionary (kept in TideMail's database), and `Esc` closes. English only (US and GB spellings); it works offline and never sends text anywhere. It ignores URLs, email addresses, numbers, ALL-CAPS words and quoted or forwarded text. `Ctrl+G` still runs the AI grammar check |
 | Vim keys in compose | Enable in Settings → Editor. `:w`/`:wq` send; `:q` or double `Esc` cancels |
 | `?` | Help |
 | `q` | Quit |
@@ -881,7 +883,7 @@ any other overlay is open. Turning mouse support on trades away your terminal's
 native click-drag text selection while it's enabled.
 
 - Display: theme, icons, annotation tag style and colors, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, mouse support, and quit confirmation
-- Editor: compose keys, send delay, and maximum delivery attempts
+- Editor: compose keys, vim keys, spell check, send delay, and maximum delivery attempts
 - CLI: quit after send or draft, skip the review step, and the default signature for the interactive `tidemail cli` wizard
 - Accounts: connection details, From address, signature, color, and sync interval.
   An account's color accents its own mailbox pane (unread text, the focused

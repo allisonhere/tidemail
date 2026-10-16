@@ -68,7 +68,9 @@ One inbox, several built-in themes.
 - **Compose your way.** The standard editor supports text selection, the system
   clipboard, undo and redo, and word movement. You can switch on Vim motions
   and commands instead. Optional AI tools can summarize mail, proofread a
-  draft, and build local filters from plain English.
+  draft, and build local filters from plain English. An optional offline spell
+  check (**Settings → Editor**, off by default) underlines misspelled words and
+  steps through fixes with `F7`, with no AI provider needed.
 - **See the pictures, not just the alt text.** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
   On Ghostty, Kitty, and Rio, images in HTML mail render inline in the reading
   pane, sized to fit and loaded in the background so browsing stays quick.

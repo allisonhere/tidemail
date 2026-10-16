@@ -79,6 +79,10 @@ Current release: **v1.0.28**.
   TideMail uses text placeholders automatically; email text and attachment
   saving still work.
 - **Undo** for destructive message actions and for sending.
+- **Spell check** (opt-in, Settings → Editor): offline English spell check in compose via the
+  `tidespell` library. Misspellings are underlined in the body (ripple `StyleKey` hooks), `F7`
+  steps through them with suggestions, skip, ignore, and add-to-dictionary (stored in the
+  `spell_words` table). Quoted and forwarded text is never checked.
 - **AI**: summaries and grammar across OpenAI, Claude, Gemini, and Ollama. Mail rules
   are AI-generated once into reviewed JSON, then matched locally and deterministically —
   no per-message AI cost.

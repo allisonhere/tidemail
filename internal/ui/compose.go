@@ -73,7 +73,16 @@ type ComposeModel struct {
 	// senderPickerOpen exposes the account choice behind the From row without
 	// changing accountIndex until the highlighted option is confirmed.
 	senderPickerOpen bool
-	senderCursor     int
+
+	// Offline spell check panel (see spell.go). spellAdded collects words the
+	// user added to their dictionary; the model persists and clears them.
+	spellOpen    bool
+	spellIdx     int
+	spellPick    int
+	spellFixed   int
+	spellSuggest []string
+	spellAdded   []string
+	senderCursor int
 
 	// Recipient autocomplete: addressBook holds "Name <addr>" candidates;
 	// suggestions is the dropdown for the segment being typed in the focused
@@ -591,6 +600,9 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 	if c.senderPickerOpen {
 		return c.updateSenderPicker(km, keys)
 	}
+	if c.spellOpen {
+		return c.updateSpell(km, keys)
+	}
 
 	// Normal compose mode
 	switch {
@@ -613,6 +625,10 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 
 	case km.String() == "ctrl+s" || km.String() == "ctrl+d":
 		return c.send()
+
+	case keyMatches(km, keys.SpellCheck):
+		c.openSpell()
+		return c, nil, false
 
 	case keyMatches(km, keys.Tab):
 		// With the dropdown open, Tab accepts the selected suggestion, then
@@ -1257,6 +1273,9 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 	keyStyle := base.Foreground(chrome.text)
 	lblStyle := base.Foreground(chrome.muted)
 
+	if c.spellOpen {
+		return c.spellPanel(width, chrome)
+	}
 	if c.busy {
 		// While sending, the status line carries the message; keep a blank footer.
 		return padStyled(base.Render("  "), width, chrome.baseBg)
@@ -1272,6 +1291,9 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 	}
 
 	pairs := []string{"^s", "send", "^p", "schedule", "^g", "grammar", "^u", "sender"}
+	if editorSpell != nil {
+		pairs = append(pairs, "f7", "spell")
+	}
 	if c.senderPickerOpen {
 		pairs = []string{"↑↓", "choose sender", "enter", "select", "esc", "cancel"}
 	} else {

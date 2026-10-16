@@ -118,6 +118,7 @@ func (m Model) composeCommandItems() []commandItem {
 	return []commandItem{
 		{id: "compose-send", label: "Send message", enabled: true},
 		{id: "compose-schedule", label: "Schedule send", enabled: true},
+		{id: "compose-spell", label: "Spell check (offline)", enabled: editorSpell != nil},
 		{id: "compose-grammar", label: "Run grammar check", enabled: true},
 		{id: "compose-attach", label: "Attach file", enabled: true},
 		{id: "compose-remove-attach", label: "Remove last attachment", enabled: canRemove},
@@ -283,6 +284,8 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 	case "compose-schedule":
 		m.openScheduleSend()
 		return m, nil
+	case "compose-spell":
+		return m.handleCompose(tea.KeyMsg{Type: tea.KeyF7})
 	case "compose-grammar":
 		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlG})
 	case "compose-attach":

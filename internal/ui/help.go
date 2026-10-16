@@ -139,6 +139,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.CycleSender.Help().Key, "cycle sender account; From opens the full picker"},
 				{keys.PasteText.Help().Key, "paste clipboard into focused field"},
 				{keys.GrammarCheck.Help().Key, "AI grammar & spell check"},
+				{keys.SpellCheck.Help().Key, "offline spell check: step through misspelled words (Settings → Editor → Spell check)"},
 				{"autosave", "save the draft under the chosen sender while you type"},
 				{keys.Undo.Help().Key, "cancel a queued send during the delay set in Settings"},
 				{keys.Cancel.Help().Key, "close compose; prompts to save/discard draft"},

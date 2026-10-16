@@ -65,6 +65,7 @@ SaveAccount,"ctrl+s,f2",ctrl+s,save account,account_manager
 TestAccount,"ctrl+t,f5",ctrl+t,test account,account_manager
 AttachFile,ctrl+a,ctrl+a,attach file,compose
 GrammarCheck,ctrl+g,ctrl+g,AI grammar check,compose
+SpellCheck,f7,f7,offline spell check (needs Settings → Editor → Spell check),compose
 RemoveAttach,ctrl+r,ctrl+r,remove attachment,compose
 CycleSender,ctrl+u,ctrl+u,change sender,compose
 Confirm,enter,enter,confirm,overlay

@@ -83,6 +83,7 @@ const (
 	sfNotifications
 	sfMouseSupport
 	sfComposeVim
+	sfComposeSpell
 	sfSendDelay
 	sfSendMaxAttempts
 	sfCLIQuitAfterSend
@@ -327,6 +328,7 @@ type Settings struct {
 	notifications         bool
 	mouseSupport          bool
 	composeVim            bool
+	composeSpell          bool
 	cliQuitAfterSend      bool
 	cliSkipReview         bool
 	cliSignature          bool
@@ -446,6 +448,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		notifications:         cfg.Display.Notifications,
 		mouseSupport:          cfg.Display.MouseSupport,
 		composeVim:            cfg.Display.ComposeVim,
+		composeSpell:          cfg.Display.ComposeSpell,
 		cliQuitAfterSend:      cfg.Display.CLIQuitAfterSend,
 		cliSkipReview:         cfg.Display.CLISkipReview,
 		cliSignature:          cfg.Display.CLISignature,
@@ -535,6 +538,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.Notifications = s.notifications
 	cfg.Display.MouseSupport = s.mouseSupport
 	cfg.Display.ComposeVim = s.composeVim
+	cfg.Display.ComposeSpell = s.composeSpell
 	cfg.Display.CLIQuitAfterSend = s.cliQuitAfterSend
 	cfg.Display.CLISkipReview = s.cliSkipReview
 	cfg.Display.CLISignature = s.cliSignature
@@ -788,7 +792,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		fields = append(fields, sfReadingWidth, sfShowHeaders, sfMarkReadOnOpen, sfMarkReadOnFocus, sfActionableLinks, sfFilterLinks, sfImages)
 		return append(fields, sfBrowser, sfConfirmQuit, sfNotifications, sfMouseSupport)
 	case ssEditor:
-		return []settingsField{sfBackToSections, sfComposeVim, sfSendDelay, sfSendMaxAttempts}
+		return []settingsField{sfBackToSections, sfComposeVim, sfComposeSpell, sfSendDelay, sfSendMaxAttempts}
 	case ssCLI:
 		return []settingsField{sfBackToSections, sfCLIQuitAfterSend, sfCLISkipReview, sfCLISignature}
 	case ssUpdates:
@@ -1497,6 +1501,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfComposeSpell:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.composeSpell = !s.composeSpell
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfCLIQuitAfterSend:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.cliQuitAfterSend = !s.cliQuitAfterSend
@@ -2003,6 +2016,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 	case ssEditor:
 		b.addGroup("Compose")
 		b.addToggle("Vim keys in compose", s.composeVim, sfComposeVim)
+		b.addToggle("Spell check in compose (F7)", s.composeSpell, sfComposeSpell)
 		b.addInput("Send delay (seconds)", s.sendDelayInput, sfSendDelay)
 		b.addInput("Maximum send attempts", s.sendMaxAttemptsInput, sfSendMaxAttempts)
 

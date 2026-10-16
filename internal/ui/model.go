@@ -402,6 +402,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 	// Compose body editors pick up vim mode from config via this package var
 	// (read in newEditorArea), the same way the clipboard is injected.
 	setEditorVimMode(cfg.Display.ComposeVim)
+	setEditorSpell(cfg.Display.ComposeSpell, loadSpellWords(database))
 
 	si := textinput.New()
 	si.Placeholder = "search messages... (#tag for tags)"
@@ -3332,6 +3333,7 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.contentShowHeaders = m.cfg.Display.ShowHeaders
 			// Apply the vim toggle to future compose editors (read in newEditorArea).
 			setEditorVimMode(m.cfg.Display.ComposeVim)
+			setEditorSpell(m.cfg.Display.ComposeSpell, loadSpellWords(m.db))
 			merged, _ := MergedThemeFromConfig(m.cfg)
 			m.setStyles(BuildStyles(merged, m.cfg.Display.Density, m.cfg.Display.PaneCorners))
 			if ThemeUsesASCII(merged.Name) {
@@ -3466,6 +3468,7 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.compose.SetWidth(composeOverlayWidth(m.width))
 	newC, cmd, exit := m.compose.Update(msg, m.keys)
 	m.compose = newC
+	m.persistSpellWords()
 	if km, ok := msg.(tea.KeyMsg); ok && km.Paste {
 		m.setStatus(fmt.Sprintf("pasted %d chars", len(km.Runes)), false)
 		m.compose.dirty = true

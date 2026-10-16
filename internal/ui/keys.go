@@ -85,6 +85,7 @@ type KeyMap struct {
 	RemoveAttach key.Binding
 	CycleSender  key.Binding
 	GrammarCheck key.Binding
+	SpellCheck   key.Binding
 
 	// Overlay / input
 	Confirm   key.Binding
@@ -184,6 +185,7 @@ var DefaultKeys = KeyMap{
 	AttachFile: key.NewBinding(key.WithKeys("alt+f"), key.WithHelp("alt+f", "attach file")),
 
 	GrammarCheck: key.NewBinding(key.WithKeys("ctrl+g"), key.WithHelp("ctrl+g", "fix grammar")),
+	SpellCheck:   key.NewBinding(key.WithKeys("f7"), key.WithHelp("f7", "spell check")),
 
 	RemoveAttach: key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "remove attachment")),
 

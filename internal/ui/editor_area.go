@@ -3,6 +3,7 @@ package ui
 import (
 	"github.com/allisonhere/ripple"
 	"github.com/allisonhere/tidemail/internal/clipboard"
+	"github.com/allisonhere/tidespell"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -27,6 +28,37 @@ var editorVimMode bool
 // setEditorVimMode sets whether new compose editors use vim modal editing.
 func setEditorVimMode(on bool) { editorVimMode = on }
 
+// editorSpell is the offline spell checker shared by every compose editor, or
+// nil when Settings → Editor → Spell check is off. editorSpellGen bumps on any
+// change that can alter results (toggle, ignore, add) so cached results are
+// recomputed. Mirrors the editorVimMode package-var pattern.
+var (
+	editorSpell    *tidespell.Checker
+	editorSpellGen int
+)
+
+// setEditorSpell enables or disables spell checking and seeds the personal
+// dictionary. Turning it on again keeps no stale state: a fresh Checker is built.
+func setEditorSpell(on bool, personal []string) {
+	editorSpellGen++
+	if !on {
+		editorSpell = nil
+		return
+	}
+	editorSpell = tidespell.New()
+	editorSpell.Add(personal...)
+}
+
+// typoCache memoizes the last spell check of one editor so View, which runs
+// on every frame, only re-checks when the text or the dictionary changed.
+type typoCache struct {
+	text  string
+	gen   int
+	ok    bool
+	spans []tidespell.Span
+	flags []bool
+}
+
 // editorArea adapts ripple.Model to the subset of the Bubble Tea textarea API
 // that compose relies on (Value/SetValue/Focus/Blur/SetWidth/SetHeight/Update/
 // View), so swapping the textarea for the owned editor is a minimal diff.
@@ -41,6 +73,8 @@ type editorArea struct {
 	CursorStyle      lipgloss.Style
 	SelectedStyle    lipgloss.Style
 	PlaceholderStyle lipgloss.Style
+	TypoStyle        lipgloss.Style // underline for misspelled words
+	typo             *typoCache
 }
 
 func newEditorArea() editorArea {
@@ -54,6 +88,8 @@ func newEditorArea() editorArea {
 		CursorStyle:      lipgloss.NewStyle().Reverse(true),
 		SelectedStyle:    lipgloss.NewStyle().Reverse(true),
 		PlaceholderStyle: lipgloss.NewStyle().Faint(true),
+		TypoStyle:        lipgloss.NewStyle().Underline(true).Foreground(lipgloss.Color("#e5707c")),
+		typo:             &typoCache{},
 	}
 }
 
@@ -108,6 +144,21 @@ func (e editorArea) View() string {
 		Selected:    func(s string) string { return e.SelectedStyle.Render(s) },
 		Placeholder: func(s string) string { return e.PlaceholderStyle.Render(s) },
 	}
+	if flags := e.typoFlags(); flags != nil {
+		opts.StyleKey = func(off int) string {
+			if off >= 0 && off < len(flags) && flags[off] {
+				return "typo"
+			}
+			return ""
+		}
+		opts.Style = func(key, s string) string {
+			// Style sees every run, including the unflagged ones (key "").
+			if key != "typo" {
+				return s
+			}
+			return e.TypoStyle.Render(s)
+		}
+	}
 	switch e.ed.Mode() {
 	case "INSERT":
 		// A thin bar marks Insert mode, distinct from the Normal block.
@@ -131,4 +182,51 @@ func (e editorArea) barCursor() string {
 		Foreground(e.CursorStyle.GetBackground()).
 		Background(e.CursorStyle.GetForeground()).
 		Render("▏")
+}
+
+// Misspellings returns the misspelled words in what the user wrote (the quoted
+// or forwarded original is never checked), or nil when spell check is off.
+func (e editorArea) Misspellings() []tidespell.Span {
+	e.refreshTypos()
+	if e.typo == nil {
+		return nil
+	}
+	return e.typo.spans
+}
+
+// typoFlags is a per-rune "is part of a misspelling" lookup, or nil when there
+// is nothing to underline.
+func (e editorArea) typoFlags() []bool {
+	e.refreshTypos()
+	if e.typo == nil || len(e.typo.spans) == 0 {
+		return nil
+	}
+	return e.typo.flags
+}
+
+func (e editorArea) refreshTypos() {
+	if editorSpell == nil || e.typo == nil {
+		if e.typo != nil {
+			*e.typo = typoCache{}
+		}
+		return
+	}
+	text := e.Value()
+	if e.typo.ok && e.typo.text == text && e.typo.gen == editorSpellGen {
+		return
+	}
+	reply, _ := splitReplyAndQuote(text)
+	spans := editorSpell.Check(reply)
+	flags := make([]bool, len([]rune(text)))
+	for _, sp := range spans {
+		for i := sp.Start; i < sp.End && i < len(flags); i++ {
+			flags[i] = true
+		}
+	}
+	*e.typo = typoCache{text: text, gen: editorSpellGen, ok: true, spans: spans, flags: flags}
+}
+
+// ReplaceSpan swaps one misspelled word for text as a single undo step.
+func (e *editorArea) ReplaceSpan(sp tidespell.Span, text string) {
+	e.ed.ReplaceRange(sp.Start, sp.End, text)
 }
