@@ -118,7 +118,8 @@ func (m Model) mainCommandItems() []commandItem {
 func (m Model) composeCommandItems() []commandItem {
 	canRemove := len(m.compose.attachments) > 0
 	canCycleSender := len(m.compose.accounts) > 1
-	return []commandItem{
+	_, hasPGP := m.pgpComposePlugin()
+	items := []commandItem{
 		{id: "compose-send", label: "Send message", enabled: true},
 		{id: "compose-schedule", label: "Schedule send", enabled: true},
 		{id: "compose-spell", label: "Spell check (offline)", enabled: editorSpell != nil},
@@ -128,6 +129,12 @@ func (m Model) composeCommandItems() []commandItem {
 		{id: "compose-cycle-sender", label: "Change sender", enabled: canCycleSender},
 		{id: "compose-close", label: "Close compose", enabled: true},
 	}
+	if hasPGP {
+		items = append(items,
+			commandItem{id: "compose-pgp-sign", label: pgpToggleLabel("Sign message (PGP)", m.compose.pgpSign), enabled: true},
+			commandItem{id: "compose-pgp-encrypt", label: pgpToggleLabel("Encrypt message (PGP)", m.compose.pgpEncrypt), enabled: true})
+	}
+	return items
 }
 
 func (m Model) summaryCommandItems() []commandItem {
@@ -294,6 +301,10 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "compose-spell":
 		return m.handleCompose(tea.KeyMsg{Type: tea.KeyF7})
+	case "compose-pgp-sign":
+		return m.handleCompose(tea.KeyMsg{Type: tea.KeyF8})
+	case "compose-pgp-encrypt":
+		return m.handleCompose(tea.KeyMsg{Type: tea.KeyF9})
 	case "compose-grammar":
 		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlG})
 	case "compose-attach":

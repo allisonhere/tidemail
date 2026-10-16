@@ -127,7 +127,7 @@ func (m *Model) scheduleOutbox(id int64) tea.Cmd {
 		// Queued entries loaded on startup must retain a future delivery time;
 		// there is no transient undo window to complete after a restart.
 		Scheduled: item.NextAttempt > time.Now().Unix(),
-		Compose:   NewComposeFromDraft(draft, m.cfg.Accounts, m.addressBook),
+		Compose:   m.composeRestored(draft, item.MessageJSON),
 		Runtime:   newOutboxRuntime(m.db, m.sessions, id, account, m.deleteDraftCmd(item.DraftID)),
 	})
 	delay := time.Until(time.Unix(item.NextAttempt, 0))
@@ -261,7 +261,7 @@ func (m Model) handleOutboxKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.removePendingSend(uint64(item.ID))
 		m.refreshOutbox()
-		m.compose = NewComposeFromDraft(draft, m.cfg.Accounts, m.addressBook)
+		m.compose = m.composeRestored(draft, item.MessageJSON)
 		m.overlay = overlayCompose
 	case "d":
 		if item.State != db.OutboxSent {

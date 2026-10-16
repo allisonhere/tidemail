@@ -99,6 +99,12 @@ type ComposeModel struct {
 	dirty          bool
 	lastAutosaved  time.Time
 
+	// PGP toggles (see pgp_compose.go). pgpAvailable is set by the model from
+	// the installed plugins before each update and render.
+	pgpAvailable bool
+	pgpSign      bool
+	pgpEncrypt   bool
+
 	busy      bool
 	statusMsg string
 	isErr     bool
@@ -630,6 +636,12 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 		c.openSpell()
 		return c, nil, false
 
+	case keyMatches(km, keys.PGPSign):
+		return c.togglePGP("sign"), nil, false
+
+	case keyMatches(km, keys.PGPEncrypt):
+		return c.togglePGP("encrypt"), nil, false
+
 	case keyMatches(km, keys.Tab):
 		// With the dropdown open, Tab accepts the selected suggestion, then
 		// advances to the next field either way.
@@ -1049,12 +1061,18 @@ func (c ComposeModel) send() (ComposeModel, tea.Cmd, bool) {
 		c.isErr = true
 		return c, nil, false
 	}
+	if (c.pgpSign || c.pgpEncrypt) && !c.pgpAvailable {
+		c.statusMsg = "PGP is on but no PGP plugin is installed; turn it off or install one"
+		c.isErr = true
+		return c, nil, false
+	}
 	c.busy = true
 	c.statusMsg = "Sending..."
 	c.isErr = false
+	sign, encrypt := c.pgpSign, c.pgpEncrypt
 	// The model owns dispatch: it either sends immediately or holds the
 	// message for the send-delay undo window (see handleSendQueued).
-	return c, func() tea.Msg { return SendQueuedMsg{Account: acfg, Msg: msg} }, false
+	return c, func() tea.Msg { return SendQueuedMsg{Account: acfg, Msg: msg, Sign: sign, Encrypt: encrypt} }, false
 }
 
 func parseAddressList(s string) []string {
@@ -1293,6 +1311,9 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 	pairs := []string{"^s", "send", "^p", "schedule", "^g", "grammar", "^u", "sender"}
 	if editorSpell != nil {
 		pairs = append(pairs, "f7", "spell")
+	}
+	if c.pgpAvailable {
+		pairs = append(pairs, "f8", pgpToggleLabel("sign", c.pgpSign), "f9", pgpToggleLabel("encrypt", c.pgpEncrypt))
 	}
 	if c.senderPickerOpen {
 		pairs = []string{"↑↓", "choose sender", "enter", "select", "esc", "cancel"}
@@ -1632,3 +1653,27 @@ func (c ComposeModel) pickerView(width, height int, chrome managerChrome) string
 // statusMsg helpers used by model.go
 func (c ComposeModel) StatusMsg() string { return c.statusMsg }
 func (c ComposeModel) IsErr() bool       { return c.isErr }
+
+// togglePGP flips one PGP option, or explains why it can't be turned on.
+func (c ComposeModel) togglePGP(name string) ComposeModel {
+	if !c.pgpAvailable {
+		c.statusMsg = "No PGP plugin installed (it must declare the message_compose permission)"
+		c.isErr = true
+		return c
+	}
+	on := &c.pgpSign
+	if name == "encrypt" {
+		on = &c.pgpEncrypt
+	}
+	*on = !*on
+	c.isErr = false
+	state := "off"
+	if *on {
+		state = "on"
+	}
+	c.statusMsg = fmt.Sprintf("PGP %s: %s", name, state)
+	if name == "encrypt" && *on {
+		c.statusMsg += " (the subject and the header fields are not encrypted)"
+	}
+	return c
+}

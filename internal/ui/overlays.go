@@ -140,7 +140,9 @@ func (m Model) renderOverlay(base string) string {
 		winW := composeOverlayWidth(m.width)
 		winH := min(m.height-4, 36)
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
-		inner := m.compose.View(winW, winH, m.styles)
+		view := m.compose
+		_, view.pgpAvailable = m.pgpComposePlugin()
+		inner := view.View(winW, winH, m.styles)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		title := m.compose.softTitle()
 		if m.compose.picker.active {

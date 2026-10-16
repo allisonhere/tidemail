@@ -12,6 +12,7 @@ import (
 	"html"
 	"mime"
 	"mime/multipart"
+	"mime/quotedprintable"
 	"net"
 	"net/smtp"
 	"net/textproto"
@@ -55,6 +56,11 @@ type OutgoingMessage struct {
 	// delivered. Generating them inside buildRaw would differ per call.
 	Date      time.Time
 	MessageID string
+	// Protected, when set, replaces the content: the message was already
+	// signed or encrypted before it was queued (see Protection). The plain
+	// Body, HTMLBody and Attachments are then empty, so an encrypted message's
+	// text is never stored with the outgoing mail.
+	Protected *Protection `json:"protected,omitempty"`
 }
 
 // EnsureIdentity stamps the Date and Message-ID if they are not set yet. Call
@@ -300,8 +306,6 @@ func crlf(s string) string {
 }
 
 func buildRaw(from string, msg OutgoingMessage) []byte {
-	msg.Body = crlf(msg.Body)
-	msg.HTMLBody = crlf(msg.HTMLBody)
 	var hdr strings.Builder
 	hdr.WriteString("From: " + from + "\r\n")
 	hdr.WriteString("To: " + strings.Join(msg.To, ", ") + "\r\n")
@@ -322,15 +326,37 @@ func buildRaw(from string, msg OutgoingMessage) []byte {
 		hdr.WriteString("References: " + msg.References + "\r\n")
 	}
 	hdr.WriteString("MIME-Version: 1.0\r\n")
+	if msg.Protected != nil {
+		return append([]byte(hdr.String()), msg.Protected.assemble()...)
+	}
+	return append([]byte(hdr.String()), buildEntity(msg, false)...)
+}
+
+// BuildEntity returns the message's content as a MIME entity (its Content-*
+// headers and body, CRLF line endings) without the envelope headers. It is
+// what gets signed or encrypted. With mailSafe the text parts are
+// quoted-printable, so no mail server can re-encode them in transit and break
+// a signature that covers them.
+func BuildEntity(msg OutgoingMessage, mailSafe bool) []byte { return buildEntity(msg, mailSafe) }
+
+func buildEntity(msg OutgoingMessage, mailSafe bool) []byte {
+	msg.Body = crlf(msg.Body)
+	msg.HTMLBody = crlf(msg.HTMLBody)
+	var hdr strings.Builder
 
 	if len(msg.Attachments) == 0 {
 		if msg.HTMLBody == "" {
 			hdr.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+			body := msg.Body
+			if mailSafe {
+				hdr.WriteString("Content-Transfer-Encoding: quoted-printable\r\n")
+				body = quotedPrintable(body)
+			}
 			hdr.WriteString("\r\n")
-			hdr.WriteString(msg.Body)
+			hdr.WriteString(body)
 			// net/smtp ends the DATA stream with CRLF when the body does not; end it here so
 			// the bytes match what is transmitted. (Multipart output already ends in CRLF.)
-			if !strings.HasSuffix(msg.Body, "\r\n") {
+			if !strings.HasSuffix(body, "\r\n") {
 				hdr.WriteString("\r\n")
 			}
 			return []byte(hdr.String())
@@ -341,8 +367,8 @@ func buildRaw(from string, msg OutgoingMessage) []byte {
 		hdr.WriteString("Content-Type: multipart/alternative; boundary=\"" + mw.Boundary() + "\"\r\n")
 		hdr.WriteString("\r\n")
 		buf.WriteString(hdr.String())
-		addTextPart(mw, msg.Body)
-		addHTMLPart(mw, msg.HTMLBody)
+		addTextPart(mw, msg.Body, mailSafe)
+		addHTMLPart(mw, msg.HTMLBody, mailSafe)
 		mw.Close()
 		return buf.Bytes()
 	}
@@ -361,13 +387,11 @@ func buildRaw(from string, msg OutgoingMessage) []byte {
 		altPart, _ := mw.CreatePart(altHdr)
 		altHeader := fmt.Sprintf("Content-Type: multipart/alternative; boundary=\"%s\"\r\n\r\n", altWriter.Boundary())
 		_, _ = altPart.Write([]byte(altHeader))
-		addTextPart(altWriter, msg.Body)
-		addHTMLPart(altWriter, msg.HTMLBody)
+		addTextPart(altWriter, msg.Body, mailSafe)
+		addHTMLPart(altWriter, msg.HTMLBody, mailSafe)
 		altWriter.Close()
 	} else {
-		bodyHdr := textproto.MIMEHeader{"Content-Type": {"text/plain; charset=utf-8"}}
-		w, _ := mw.CreatePart(bodyHdr)
-		_, _ = w.Write([]byte(msg.Body))
+		addTextPart(mw, msg.Body, mailSafe)
 	}
 
 	// Attachment parts
@@ -392,16 +416,31 @@ func buildRaw(from string, msg OutgoingMessage) []byte {
 	return buf.Bytes()
 }
 
-func addTextPart(mw *multipart.Writer, body string) {
-	hdr := textproto.MIMEHeader{"Content-Type": {"text/plain; charset=utf-8"}}
+func addTextPart(mw *multipart.Writer, body string, mailSafe bool) {
+	addTextual(mw, "text/plain; charset=utf-8", body, mailSafe)
+}
+
+func addHTMLPart(mw *multipart.Writer, html string, mailSafe bool) {
+	addTextual(mw, "text/html; charset=utf-8", html, mailSafe)
+}
+
+func addTextual(mw *multipart.Writer, contentType, body string, mailSafe bool) {
+	hdr := textproto.MIMEHeader{"Content-Type": {contentType}}
+	if mailSafe {
+		hdr.Set("Content-Transfer-Encoding", "quoted-printable")
+		body = quotedPrintable(body)
+	}
 	w, _ := mw.CreatePart(hdr)
 	_, _ = w.Write([]byte(body))
 }
 
-func addHTMLPart(mw *multipart.Writer, html string) {
-	hdr := textproto.MIMEHeader{"Content-Type": {"text/html; charset=utf-8"}}
-	w, _ := mw.CreatePart(hdr)
-	_, _ = w.Write([]byte(html))
+// quotedPrintable encodes text that already has CRLF line endings.
+func quotedPrintable(s string) string {
+	var buf bytes.Buffer
+	w := quotedprintable.NewWriter(&buf)
+	_, _ = w.Write([]byte(s))
+	_ = w.Close()
+	return buf.String()
 }
 
 // MarkdownToHTML converts Markdown text to HTML using goldmark.

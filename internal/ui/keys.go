@@ -23,6 +23,8 @@ type KeyMap struct {
 	Snooze          key.Binding
 	RunPlugin       key.Binding
 	PGPDecode       key.Binding
+	PGPSign         key.Binding
+	PGPEncrypt      key.Binding
 	EditTags        key.Binding
 	MarkAllRead     key.Binding
 	ToggleStar      key.Binding
@@ -190,6 +192,8 @@ var DefaultKeys = KeyMap{
 
 	GrammarCheck: key.NewBinding(key.WithKeys("ctrl+g"), key.WithHelp("ctrl+g", "fix grammar")),
 	SpellCheck:   key.NewBinding(key.WithKeys("f7"), key.WithHelp("f7", "spell check")),
+	PGPSign:      key.NewBinding(key.WithKeys("f8"), key.WithHelp("f8", "sign (PGP)")),
+	PGPEncrypt:   key.NewBinding(key.WithKeys("f9"), key.WithHelp("f9", "encrypt (PGP)")),
 
 	RemoveAttach: key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "remove attachment")),
 

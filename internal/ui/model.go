@@ -1653,7 +1653,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.clearStatusCmd()
 
 	case SendQueuedMsg:
+		if msg.Sign || msg.Encrypt {
+			return m.protectOutgoing(msg)
+		}
 		return m.handleSendQueued(msg)
+
+	case OutgoingProtectedMsg:
+		return m.handleOutgoingProtected(msg)
 
 	case CommitSendMsg:
 		return m, m.commitPendingSend(msg.ID)
@@ -3436,6 +3442,7 @@ func (m Model) handleContactManager(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
+	_, m.compose.pgpAvailable = m.pgpComposePlugin()
 	// Keep the stored body editor sized to the SAME width and height View renders
 	// with, so vertical navigation and the viewport track what the user sees. View
 	// sizes only a copy (it's a value receiver), so the stored editor must be

@@ -234,6 +234,9 @@ type SendQueuedMsg struct {
 	Account     config.AccountConfig
 	Msg         smtp.OutgoingMessage
 	ScheduledAt time.Time // zero uses the configured undo-delay send time
+	// Sign and Encrypt ask for PGP protection before the message is queued
+	// (see pgp_compose.go). They are cleared once Msg.Protected is set.
+	Sign, Encrypt bool
 }
 
 // CommitSendMsg fires when a pending send's grace period elapses.

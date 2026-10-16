@@ -238,3 +238,24 @@ func TestStatusParsingAndEscapes(t *testing.T) {
 		t.Errorf("verdict = %+v", v)
 	}
 }
+
+// trustAll marks every key in the current keyring ultimately trusted, as a
+// user would after verifying them, so encryption does not need trust=always.
+func trustAll(t *testing.T) {
+	t.Helper()
+	out, err := exec.Command("gpg", "--batch", "--with-colons", "--list-keys").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var trust strings.Builder
+	for _, line := range strings.Split(string(out), "\n") {
+		if f := strings.Split(line, ":"); len(f) > 9 && f[0] == "fpr" {
+			trust.WriteString(f[9] + ":6:\n")
+		}
+	}
+	cmd := exec.Command("gpg", "--batch", "--import-ownertrust")
+	cmd.Stdin = strings.NewReader(trust.String())
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("ownertrust: %v\n%s", err, out)
+	}
+}
