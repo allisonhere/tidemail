@@ -204,6 +204,13 @@ func (m Model) renderOverlay(base string) string {
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderSoftPanelBox(inner, winW, "tidemail", "personal dictionary", chrome)
 
+	case overlayPluginCatalog:
+		winW := min(m.width-6, 78)
+		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
+		inner := m.renderPluginCatalog(winW, chrome)
+		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
+		box = renderSoftPanelBox(inner, winW, "tidemail", "available plugins", chrome)
+
 	case overlayLogViewer:
 		winW := min(m.width-6, 90)
 		winH := min(m.height-4, 38)

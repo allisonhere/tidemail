@@ -109,6 +109,7 @@ func (m Model) mainCommandItems() []commandItem {
 	items = append(items, m.needsYouCommandItems()...)
 	items = append(items, m.waitingCommandItems()...)
 	items = append(items, m.snoozeCommandItems()...)
+	items = append(items, commandItem{id: "plugin-catalog", label: "Browse available plugins…", enabled: true})
 	if _, ok := m.pgpPlugin(); ok {
 		items = append(items, commandItem{id: "pgp-decode", label: "Decrypt / verify (PGP)", enabled: hasMessage || m.contentMessageID != 0})
 	}
@@ -281,6 +282,9 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		}
 		m.overlay = overlaySettings
 		return m, m.settings.supportPulseCmd()
+	case "plugin-catalog":
+		cmd := m.openPluginCatalog(overlayNone)
+		return m, cmd
 	case "pgp-decode":
 		if cur := m.commandMessage(); cur != nil {
 			return m.startPGPDecode(*cur)

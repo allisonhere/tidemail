@@ -110,6 +110,7 @@ const (
 	overlayFolderDeleteConfirm
 	overlayContextMenu
 	overlaySpellDictionary
+	overlayPluginCatalog
 )
 
 type commandPaletteContext int
@@ -262,8 +263,9 @@ type Model struct {
 	colorPicker    colorPicker    // see color_picker.go
 	classification classificationEditor
 
-	plugins pluginUI // experimental; see plugins.go
-	pgp     pgpState // decrypted messages, memory only; see pgp.go
+	plugins pluginUI  // experimental; see plugins.go
+	pgp     pgpState  // decrypted messages, memory only; see pgp.go
+	catalog catalogUI // available plugins; see plugin_catalog.go
 
 	helpVP                viewport.Model
 	helpSearchInput       textinput.Model
@@ -1271,6 +1273,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.rebuildSidebar()
 		return m, nil
+
+	case CatalogLoadedMsg:
+		return m.handleCatalogLoaded(msg)
+
+	case CatalogChangedMsg:
+		return m.handleCatalogChanged(msg)
 
 	case PGPDecodedMsg:
 		return m.handlePGPDecoded(msg)
@@ -3086,6 +3094,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case overlaySpellDictionary:
 		return m.handleSpellDictionaryKey(msg)
+
+	case overlayPluginCatalog:
+		return m.handleCatalogKey(msg)
 
 	case overlayPlugins, overlayPluginPicker, overlayPluginResult, overlayPluginAnnotations, overlayPluginConfirm, overlayPluginSettings:
 		return m.handlePluginKey(msg)

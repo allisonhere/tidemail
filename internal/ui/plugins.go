@@ -641,6 +641,7 @@ func (m Model) pluginListHintPairs() []string {
 	if m.plugins.result != nil && !resumable {
 		pairs = append(pairs, "r", "last result")
 	}
+	pairs = append(pairs, "b", "browse available")
 
 	return pairs
 }
@@ -815,7 +816,7 @@ func (m Model) pluginListLines(width int, chrome managerChrome) ([]string, []int
 		blank()
 	}
 	if len(lines) == 0 {
-		add(muted, "no plugins installed", false, "")
+		add(muted, "no plugins installed. Press b to browse the available ones.", false, "")
 	}
 	if m.plugins.running != "" {
 		add(muted, m.bulkProgressLine(), false, "")
