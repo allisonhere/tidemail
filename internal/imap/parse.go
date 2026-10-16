@@ -146,6 +146,36 @@ func (c *Client) FetchByUID(ctx context.Context, mailboxName string, uid uint32)
 	return msgs[0], nil
 }
 
+// FetchRaw returns one message's complete RFC 822 bytes without marking it
+// read. It is for features that need the exact bytes, such as verifying a
+// signature; the caller must not store the result.
+func (c *Client) FetchRaw(ctx context.Context, mailboxName string, uid uint32) ([]byte, error) {
+	if c.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	defer c.applyDeadline(ctx)()
+
+	if _, err := c.conn.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
+		return nil, fmt.Errorf("select %s: %w", mailboxName, err)
+	}
+	section := &imap.FetchItemBodySection{Peek: true}
+	msgs, err := c.conn.Fetch(imap.UIDSetNum(imap.UID(uid)), &imap.FetchOptions{
+		UID:         true,
+		BodySection: []*imap.FetchItemBodySection{section},
+	}).Collect()
+	if err != nil {
+		return nil, fmt.Errorf("fetch: %w", err)
+	}
+	for _, msg := range msgs {
+		for _, s := range msg.BodySection {
+			if len(s.Bytes) > 0 {
+				return s.Bytes, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("message uid %d not found", uid)
+}
+
 // fetchNumSet fetches and parses a set of messages. Parse failures skip the
 // individual message rather than failing the batch — one malformed message
 // must not cost the user the whole page.
@@ -225,35 +255,51 @@ func parseIMAPMessage(msg *imapclient.FetchMessageBuffer) (db.Message, error) {
 			m.References = sanitizeControl(parseHeaderValue(raw, "References"))
 			continue
 		}
-		text, html, atts := parseBody(raw)
-		if text != "" {
-			m.BodyText = sanitizeControl(text)
-		}
-		if html != "" {
-			// Raw control bytes are stripped here; HTML entity-encoded escapes
-			// (e.g. &#27;) are neutralized downstream after decoding, before the
-			// text is styled and written to the terminal.
-			m.BodyHTML = sanitizeControl(html)
-		}
-		if len(atts) > 0 {
-			m.HasAttachment = true
-			m.AttachmentData = make([]db.Attachment, len(atts))
-			for i, a := range atts {
-				m.AttachmentData[i] = db.Attachment{
-					Filename:        sanitizeControl(a.Filename),
-					ContentType:     a.ContentType,
-					ContentID:       sanitizeControl(a.ContentID),
-					Disposition:     a.Disposition,
-					ContentLocation: sanitizeControl(a.ContentLocation),
-					Inline:          a.Inline,
-					Data:            a.Data,
-					Size:            int64(len(a.Data)),
-				}
-			}
-		}
+		applyBody(&m, raw)
 	}
 
 	return m, nil
+}
+
+// applyBody parses a raw RFC 822 body into m's text, HTML, and attachments,
+// sanitizing the text the same way for every caller.
+func applyBody(m *db.Message, raw []byte) {
+	text, html, atts := parseBody(raw)
+	if text != "" {
+		m.BodyText = sanitizeControl(text)
+	}
+	if html != "" {
+		// Raw control bytes are stripped here; HTML entity-encoded escapes
+		// (e.g. &#27;) are neutralized downstream after decoding, before the
+		// text is styled and written to the terminal.
+		m.BodyHTML = sanitizeControl(html)
+	}
+	if len(atts) > 0 {
+		m.HasAttachment = true
+		m.AttachmentData = make([]db.Attachment, len(atts))
+		for i, a := range atts {
+			m.AttachmentData[i] = db.Attachment{
+				Filename:        sanitizeControl(a.Filename),
+				ContentType:     a.ContentType,
+				ContentID:       sanitizeControl(a.ContentID),
+				Disposition:     a.Disposition,
+				ContentLocation: sanitizeControl(a.ContentLocation),
+				Inline:          a.Inline,
+				Data:            a.Data,
+				Size:            int64(len(a.Data)),
+			}
+		}
+	}
+}
+
+// DecodeBody parses a raw MIME entity into a message carrying only the body
+// fields (BodyText, BodyHTML, HasAttachment, AttachmentData), exactly as sync
+// would store them. It is used for content that never reaches the database,
+// such as a decrypted message.
+func DecodeBody(raw []byte) db.Message {
+	var m db.Message
+	applyBody(&m, raw)
+	return m
 }
 
 // sanitizeControl strips C0 control bytes (and DEL) that a terminal would
