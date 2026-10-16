@@ -115,6 +115,54 @@ func (m Model) pgpStatusLine(msg db.Message, width int) string {
 	return " " + style.Render(truncate(sanitizePluginLine(text), max(1, width-m.styles.ContentMeta.GetHorizontalFrameSize())))
 }
 
+func (m Model) hasPGPPlugin() bool { _, ok := m.pgpPlugin(); return ok }
+
+// pgpHintApplies says whether the key hints should offer the decrypt key: a
+// PGP plugin is installed and the message in the content pane is protected and
+// not yet decoded (a failed decode keeps the hint, as a retry).
+func (m Model) pgpHintApplies() bool {
+	if _, ok := m.pgpPlugin(); !ok || m.contentMessageID == 0 {
+		return false
+	}
+	msg := m.currentContentMessage()
+	if msg == nil || !pgpLooksProtected(*msg, m.contentAttachments) {
+		return false
+	}
+	e := m.pgp.entries[msg.ID]
+	return e == nil || (e.view == nil && !e.pending)
+}
+
+// pgpEncryptedUnread reports a PGP/MIME encrypted message with no text of its
+// own, which would otherwise render as "No message body." It reads the stored
+// attachment list instead of the content pane's, so it is right for any
+// message it is asked about, in any view.
+func (m Model) pgpEncryptedUnread(msg db.Message) bool {
+	if !msg.HasAttachment || m.db == nil || strings.TrimSpace(msg.BodyText) != "" || strings.TrimSpace(msg.BodyHTML) != "" {
+		return false
+	}
+	if e := m.pgp.entries[msg.ID]; e != nil && (e.pending || e.view != nil) {
+		return false
+	}
+	atts, err := m.db.GetAttachmentsMeta(msg.ID)
+	if err != nil {
+		return false
+	}
+	for _, a := range atts {
+		if strings.EqualFold(a.ContentType, "application/pgp-encrypted") {
+			return true
+		}
+	}
+	return false
+}
+
+// pgpCallout is shown in place of "No message body." for such a message.
+func (m Model) pgpCallout() string {
+	if _, ok := m.pgpPlugin(); ok {
+		return "This message is PGP-encrypted. Press " + m.keyHint(m.keys.PGPDecode) + " to decrypt it."
+	}
+	return "This message is PGP-encrypted. Install a PGP plugin to read it: Settings → Plugins → b."
+}
+
 func describePGP(v pgpmail.View) (text string, bad bool) {
 	prefix := "PGP: "
 	if v.Encrypted {

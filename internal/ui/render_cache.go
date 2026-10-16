@@ -99,6 +99,9 @@ type bodyCacheKey struct {
 	// consent for this message, remote-load generation) so a body rendered
 	// before or after images arrived is not reused.
 	imageKey string
+	// pgpPlugin is whether a PGP plugin is installed: the callout shown for an
+	// encrypted message differs with it.
+	pgpPlugin bool
 }
 
 // viewportCacheKey identifies the finished content of the reading pane. The

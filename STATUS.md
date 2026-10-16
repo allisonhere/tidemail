@@ -110,8 +110,8 @@ Current release: **v1.0.28**.
   files only, atomic swap, never run during install, live reload). Needs a
   published plugins release; Windows plugin builds are not offered yet.
 - **PGP via plugin** (experimental): a plugin with the `message_raw` and
-  `message_compose` permissions decrypts/verifies received mail (`D`, shown in
-  the reading pane, memory only) and signs/encrypts outgoing mail (`Alt+S`/`Alt+E` in
+  `message_compose` permissions decrypts/verifies received mail (`D`, offered in the
+  reading pane and key hints, memory only) and signs/encrypts outgoing mail (`Alt+S`/`Alt+E` in
   compose; PGP/MIME, fails closed). The `pgp` plugin in the plugins repository uses
   GnuPG. Not yet: attachments inside encrypted mail, encrypted-mail search,
   CLI sending, key management.

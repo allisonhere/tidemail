@@ -3624,6 +3624,9 @@ func (m Model) renderPaneHint(p pane) string {
 			m.keyHint(m.keys.Archive) + " archive  " + m.keyHint(m.keys.Move) + " move  " + m.keyHint(m.keys.Delete) + " delete  " +
 			m.keyHint(m.keys.Sync) + " sync  " +
 			m.keyHint(m.keys.Command) + " command"
+		if m.pgpHintApplies() {
+			hint += "  " + m.keyHint(m.keys.PGPDecode) + " decrypt"
+		}
 	case paneContent:
 		progress := ""
 		if m.contentLineCount > 0 {
@@ -3643,6 +3646,9 @@ func (m Model) renderPaneHint(p pane) string {
 		}
 		if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
 			hint += "  " + m.keyHint(m.keys.PrevLink) + "/" + m.keyHint(m.keys.NextLink) + " links"
+		}
+		if m.pgpHintApplies() {
+			hint += "  " + m.keyHint(m.keys.PGPDecode) + " decrypt"
 		}
 	}
 	if hint == "" {
@@ -3695,13 +3701,11 @@ func (m Model) statusBarKeyHintStrip() string {
 		}
 		return m.styles.StatusHint.Render(keyStr + " " + desc)
 	}
-	return m.statusBarJoin(
-		seg(k.Command),
-		seg(k.AccountManager),
-		seg(k.Settings),
-		seg(k.Search),
-		seg(k.Help),
-	)
+	parts := []string{seg(k.Command), seg(k.AccountManager), seg(k.Settings), seg(k.Search), seg(k.Help)}
+	if m.pgpHintApplies() {
+		parts = append([]string{seg(k.PGPDecode)}, parts...)
+	}
+	return m.statusBarJoin(parts...)
 }
 
 func (m Model) statusBarContextHintStrip() string {

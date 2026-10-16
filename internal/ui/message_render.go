@@ -37,6 +37,7 @@ func (m Model) renderMessageForDisplay(msg db.Message, width int) messageRenderR
 		filterLinks: m.cfg.Display.FilterLinks,
 		fingerprint: len(msg.BodyHTML) + len(msg.BodyText),
 		imageKey:    m.imageRenderKey(msg.ID),
+		pgpPlugin:   m.hasPGPPlugin(),
 	}
 	// A message with no ID has no stable identity to cache under — a preview
 	// of something not yet stored — so it always renders fresh.
@@ -62,6 +63,9 @@ func (m Model) renderMessageForDisplay(msg db.Message, width int) messageRenderR
 		images:      m.imageContext(msg, width),
 	}
 	result := renderMessageWithContext(ctx)
+	if m.pgpEncryptedUnread(msg) {
+		result.body = indentBlock(ctx.bodyStyle.Render(m.pgpCallout()), 1)
+	}
 	if len(result.links) == 0 {
 		result.links = collectMessageLinks(msg)
 	}

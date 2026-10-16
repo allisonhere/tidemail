@@ -864,7 +864,11 @@ from **Settings → Plugins → `b`**. It needs `gpg` (GnuPG 2.x) installed, wit
 your key and the keys of the people you write to in your keyring.
 
 **Reading.** A message that contains PGP data shows
-`PGP-protected message. Press D to decrypt or verify.` under its date line.
+`PGP-protected message. Press D to decrypt or verify.` under its date line, and
+`D decrypt` appears in the key hints at the bottom while it is selected. An
+encrypted message has no readable text of its own, so where "No message body."
+would be, the pane says `This message is PGP-encrypted. Press D to decrypt it.`
+(or, without a PGP plugin, where to get one: Settings → Plugins → `b`).
 Press `D` (or choose **Decrypt / verify (PGP)** in the command palette). TideMail
 fetches that one message, hands the encrypted or signed part to the plugin,
 and shows the result in the reading pane with a line such as

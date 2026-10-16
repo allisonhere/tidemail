@@ -30,8 +30,9 @@ All notable changes to TideMail are documented in this file.
   failure (no key for a recipient, cancelled passphrase) sends nothing. The
   `pgp` plugin in the plugins repository uses your own
   GnuPG keyring. Plugins also inherit `GNUPGHOME`, `DISPLAY`, `WAYLAND_DISPLAY`
-  and `XDG_RUNTIME_DIR` now. The subject and headers of encrypted mail are not
-  encrypted, `tidemail send` does not sign or encrypt, and attachments inside
+  and `XDG_RUNTIME_DIR` now. An encrypted message says so in the reading pane (instead of
+  "No message body.") and the key hints offer `D decrypt` while it is selected. The subject and
+  headers of encrypted mail are not encrypted, `tidemail send` does not sign or encrypt, and attachments inside
   encrypted mail are not shown yet.
 
 - Settings → Editor → **Spell check in compose** (off by default): misspelled words are underlined

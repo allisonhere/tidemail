@@ -232,6 +232,8 @@ func (m Model) handleCatalogChanged(msg CatalogChangedMsg) (tea.Model, tea.Cmd) 
 		return m, nil
 	}
 	m.LoadPlugins()
+	m.bodyCache.clear()
+	m.viewportCache.clear()
 	m.settings.pluginsAvailable = m.pluginsVisible()
 	m.settings.pluginPaneLoaded = false
 	switch msg.Action {
