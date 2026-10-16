@@ -841,7 +841,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Ctrl+G` | AI grammar & spell check (compose). The preview fits the screen and scrolls with `↑`/`↓`, `PgUp`/`PgDn`, and `Home`/`End`; `y` accepts, `n` or `Esc` cancels |
 | `F7` | Offline spell check (compose); needs Settings → Editor → Spell check |
 | `D` | Decrypt and verify the open PGP message (needs a PGP plugin) |
-| `F8` / `F9` in compose | Sign / encrypt the message with PGP (needs a PGP plugin) |
+| `Alt+S` / `Alt+E` in compose | Sign / encrypt the message with PGP (needs a PGP plugin); `F8` / `F9` also work if your terminal or desktop doesn't claim them |
 | Standard compose editor | Selection, system clipboard, undo/redo, word movement, and Home/End |
 | Spell check in compose | Off by default. Turn on **Settings → Editor → Spell check in compose (F7)** to underline misspelled words in the body as you type (the word you are still typing is left alone until you move on). Press `F7` to step through them: `Enter` replaces with the highlighted suggestion (or press `1`–`5`), `←`/`→` choose another, `s` skips, `i` ignores the word until you restart, `a` adds it to your personal dictionary (kept in TideMail's database), and `Esc` closes. To see, add, or remove those words later, open **Settings → Editor → Personal dictionary** (`a` adds, `d` removes, `Esc` goes back); changes apply right away. English only (US and GB spellings); it works offline and never sends text anywhere. It ignores URLs, email addresses, numbers, ALL-CAPS words and quoted or forwarded text, and it accepts the names, addresses and domains of people in your mail, so correspondents are not flagged. Suggestions put the likeliest fix first: swapped or doubled letters, neighbouring-key slips and sound-alikes are weighed, favouring everyday words. `Ctrl+G` still runs the AI grammar check |
 | Vim keys in compose | Enable in Settings → Editor. `:w`/`:wq` send; `:q` or double `Esc` cancels |
@@ -877,8 +877,11 @@ is gone when you quit, so encrypted mail is not searchable and you press `D`
 again after restarting. Attachments inside an encrypted message are not
 available yet.
 
-**Sending.** In compose, press `F8` to sign and `F9` to encrypt (also in the
-command palette); the footer shows ✓ when each is on. They are per message and
+**Sending.** In compose, press `Alt+S` to sign and `Alt+E` to encrypt (also in
+the command palette; `F8` and `F9` work too if your terminal or desktop doesn't
+claim them). Each press shows `PGP encrypt: on` (or `sign`, or `off`) on the
+status line, and the footer shows ✓ when one is on. If you see no message, the
+key never reached TideMail; use the palette instead. They are per message and
 start off. When you press send, the plugin signs or encrypts first (your
 passphrase prompt may appear then), and only then is the message queued, so
 the Outbox, retries and the copy in your Sent folder all hold the protected

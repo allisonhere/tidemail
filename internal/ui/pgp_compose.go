@@ -14,7 +14,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/smtp"
 )
 
-// Sending PGP mail. Sign (F8) and Encrypt (F9) are per-message toggles in
+// Sending PGP mail. Sign (Alt+S) and Encrypt (Alt+E; F8 and F9 also work) are per-message toggles in
 // compose, offered when a plugin with the message_compose permission is
 // installed. The plugin runs after the user sends and before the message is
 // queued, so the Outbox, retries, and the Sent copy all hold the protected

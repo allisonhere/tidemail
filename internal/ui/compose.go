@@ -1313,7 +1313,7 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 		pairs = append(pairs, "f7", "spell")
 	}
 	if c.pgpAvailable {
-		pairs = append(pairs, "f8", pgpToggleLabel("sign", c.pgpSign), "f9", pgpToggleLabel("encrypt", c.pgpEncrypt))
+		pairs = append(pairs, "alt+s", pgpToggleLabel("sign", c.pgpSign), "alt+e", pgpToggleLabel("encrypt", c.pgpEncrypt))
 	}
 	if c.senderPickerOpen {
 		pairs = []string{"↑↓", "choose sender", "enter", "select", "esc", "cancel"}

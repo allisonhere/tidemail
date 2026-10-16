@@ -89,7 +89,7 @@ One inbox, several built-in themes.
   local annotations, Needs You signals, and optional TypeSafe/Jev analysis.
 - **PGP, through a plugin.** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
   Install the `pgp` plugin from **Settings → Plugins → `b`** (it uses your own GnuPG) to read encrypted
-  and signed mail (`D`) and to sign (`F8`) and encrypt (`F9`) what you send.
+  and signed mail (`D`) and to sign (`Alt+S`) and encrypt (`Alt+E`) what you send.
   Nothing is sent if encryption fails. See
   [PGP encryption and signing](docs/guide.md#pgp-encryption-and-signing).
 - **Script it, or hand it to an agent.** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)

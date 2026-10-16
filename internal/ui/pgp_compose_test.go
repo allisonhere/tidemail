@@ -69,7 +69,7 @@ func TestPGPTogglesNeedAPlugin(t *testing.T) {
 	m := newSendTestModel(t, 5)
 	m.compose = NewCompose(config.AccountConfig{}, nil, nil)
 	m.overlay = overlayCompose
-	next, _ := m.handleCompose(tea.KeyMsg{Type: tea.KeyF9})
+	next, _ := m.handleCompose(altKey('e'))
 	m = next.(Model)
 	if m.compose.pgpEncrypt || !strings.Contains(m.compose.statusMsg, "No PGP plugin") {
 		t.Fatalf("encrypt on without a plugin: on=%v status=%q", m.compose.pgpEncrypt, m.compose.statusMsg)
@@ -78,16 +78,27 @@ func TestPGPTogglesNeedAPlugin(t *testing.T) {
 	m = pgpSendModel(t, `{}`)
 	m.compose = NewCompose(config.AccountConfig{}, nil, nil)
 	m.overlay = overlayCompose
-	for _, k := range []tea.KeyType{tea.KeyF8, tea.KeyF9} {
-		next, _ := m.handleCompose(tea.KeyMsg{Type: k})
+	for _, k := range []tea.KeyMsg{altKey('s'), altKey('e')} {
+		next, _ := m.handleCompose(k)
 		m = next.(Model)
 	}
 	if !m.compose.pgpSign || !m.compose.pgpEncrypt {
 		t.Fatalf("toggles: sign=%v encrypt=%v", m.compose.pgpSign, m.compose.pgpEncrypt)
 	}
-	next, _ = m.handleCompose(tea.KeyMsg{Type: tea.KeyF9})
+	if !strings.Contains(m.compose.statusMsg, "PGP encrypt: on") {
+		t.Errorf("a toggle should say so on the status line, got %q", m.compose.statusMsg)
+	}
+	next, _ = m.handleCompose(altKey('e'))
 	if next.(Model).compose.pgpEncrypt {
-		t.Error("a second F9 should turn encrypt off")
+		t.Error("a second Alt+E should turn encrypt off")
+	}
+	// F8 and F9 still work for terminals that pass them through.
+	for _, k := range []tea.KeyType{tea.KeyF8, tea.KeyF9} {
+		next, _ := m.handleCompose(tea.KeyMsg{Type: k})
+		m = next.(Model)
+	}
+	if m.compose.pgpSign || m.compose.pgpEncrypt {
+		t.Errorf("F8/F9 should toggle too (both were on): sign=%v encrypt=%v", m.compose.pgpSign, m.compose.pgpEncrypt)
 	}
 }
 
@@ -193,3 +204,5 @@ func mustJSON(t *testing.T, v any) []byte {
 	}
 	return b
 }
+
+func altKey(r rune) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}, Alt: true} }

@@ -25,7 +25,7 @@ All notable changes to TideMail are documented in this file.
   encrypt mail you send), with matching `message.decode` and `message.prepare`
   methods in Plugin API v1. Press `D` on a PGP message to decrypt and verify it;
   the result is shown in the reading pane and kept in memory only. In compose,
-  `F8` signs and `F9` encrypts (PGP/MIME); the plugin runs before the message is
+  `Alt+S` signs and `Alt+E` encrypts (PGP/MIME; `F8`/`F9` also work where the terminal passes them on); the plugin runs before the message is
   queued, so the Outbox and the Sent copy hold the protected message, and any
   failure (no key for a recipient, cancelled passphrase) sends nothing. The
   `pgp` plugin in the plugins repository uses your own

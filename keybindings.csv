@@ -68,8 +68,8 @@ TestAccount,"ctrl+t,f5",ctrl+t,test account,account_manager
 AttachFile,ctrl+a,ctrl+a,attach file,compose
 GrammarCheck,ctrl+g,ctrl+g,AI grammar check,compose
 SpellCheck,f7,f7,offline spell check (needs Settings → Editor → Spell check),compose
-PGPSign,f8,f8,sign with PGP (needs a PGP plugin),compose
-PGPEncrypt,f9,f9,encrypt with PGP (needs a PGP plugin),compose
+PGPSign,"alt+s,f8",alt+s,sign with PGP (needs a PGP plugin),compose
+PGPEncrypt,"alt+e,f9",alt+e,encrypt with PGP (needs a PGP plugin),compose
 RemoveAttach,ctrl+r,ctrl+r,remove attachment,compose
 CycleSender,ctrl+u,ctrl+u,change sender,compose
 Confirm,enter,enter,confirm,overlay

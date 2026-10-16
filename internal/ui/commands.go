@@ -306,9 +306,9 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 	case "compose-spell":
 		return m.handleCompose(tea.KeyMsg{Type: tea.KeyF7})
 	case "compose-pgp-sign":
-		return m.handleCompose(tea.KeyMsg{Type: tea.KeyF8})
+		return m.handleCompose(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s"), Alt: true})
 	case "compose-pgp-encrypt":
-		return m.handleCompose(tea.KeyMsg{Type: tea.KeyF9})
+		return m.handleCompose(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e"), Alt: true})
 	case "compose-grammar":
 		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlG})
 	case "compose-attach":
