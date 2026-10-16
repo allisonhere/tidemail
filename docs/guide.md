@@ -614,6 +614,17 @@ its body, and they never change your mail. The one exception is a PGP plugin,
 which you install for that purpose (see
 [PGP encryption and signing](#pgp-encryption-and-signing)).
 
+**Installing plugins.** Open **Settings → Plugins** (or the command palette's
+**Browse available plugins…**) and press `b` to list the official plugins from
+the [tidemail-plugins](https://github.com/allisonhere/tidemail-plugins)
+repository. Select one and press `i` to install it, `u` to update it when a
+newer version exists, or `x` to remove an installed one. TideMail asks first and
+shows what the plugin will be able to do; it downloads from GitHub, checks the
+release's checksum, and never runs the plugin while installing. The new plugin
+appears in the list straight away, with automatic processing still off. The
+list is fetched only when you open it. Plugins from elsewhere can still be
+copied into the plugins directory by hand.
+
 **Run plugin** runs a plugin you choose on mail, whether or not it has already
 been classified, for example after updating a plugin or changing its settings.
 Press `p` in the message list or reader, or use the command palette. The
@@ -848,10 +859,9 @@ near TideMail. A plugin that is allowed to do this declares the `message_raw`
 one you trust: while it is doing its job it sees the part of the message it is
 working on.
 
-TideMail ships a ready-made one, `tidemail-pgp`, in
-[`examples/plugins/pgp/`](../examples/plugins/pgp/README.md). It needs `gpg`
-(GnuPG 2.x) installed, with your key and the keys of the people you write to in
-your keyring.
+TideMail's plugin repository has a ready-made one, `tidemail-pgp`: install it
+from **Settings → Plugins → `b`**. It needs `gpg` (GnuPG 2.x) installed, with
+your key and the keys of the people you write to in your keyring.
 
 **Reading.** A message that contains PGP data shows
 `PGP-protected message. Press D to decrypt or verify.` under its date line.

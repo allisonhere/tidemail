@@ -104,6 +104,11 @@ Current release: **v1.0.28**.
   sidebar count updates for delete/archive/move and undo, result cards
   with technical Details, and a host-owned `u` unsubscribe action that uses TideMail's existing confirmed flow without
   exposing unsubscribe links to plugins.
+- **Plugin catalog**: Settings → Plugins → `b` (and the palette) lists the
+  official plugins from the plugins repository's release `catalog.json` and
+  installs, updates and removes them (HTTPS GitHub only, SHA-256 checked, plain
+  files only, atomic swap, never run during install, live reload). Needs a
+  published plugins release; Windows plugin builds are not offered yet.
 - **PGP via plugin** (experimental): a plugin with the `message_raw` and
   `message_compose` permissions decrypts/verifies received mail (`D`, shown in
   the reading pane, memory only) and signs/encrypts outgoing mail (`F8`/`F9` in

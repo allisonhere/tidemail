@@ -14,6 +14,12 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- **Browse and install plugins from inside TideMail.** In Settings → Plugins (or the
+  command palette's *Browse available plugins…*), press `b` to see the official plugins from
+  the plugins repository; `i` installs, `u` updates, `x` removes. TideMail asks first and lists
+  the plugin's permissions, downloads only from GitHub over HTTPS, checks the release's
+  SHA-256, unpacks plain files only, and never runs the plugin while installing. The plugin
+  list updates without a restart. The list is fetched only when you open it.
 - **PGP through a plugin.** Plugins can now be granted two new permissions,
   `message_raw` (decrypt and verify mail you open) and `message_compose` (sign and
   encrypt mail you send), with matching `message.decode` and `message.prepare`

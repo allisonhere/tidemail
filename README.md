@@ -88,7 +88,7 @@ One inbox, several built-in themes.
   Install trusted plugins such as TideMail Smart (JEV) to classify mail with
   local annotations, Needs You signals, and optional TypeSafe/Jev analysis.
 - **PGP, through a plugin.** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
-  Install the `tidemail-pgp` plugin (it uses your own GnuPG) to read encrypted
+  Install the `tidemail-pgp` plugin from **Settings → Plugins → `b`** (it uses your own GnuPG) to read encrypted
   and signed mail (`D`) and to sign (`F8`) and encrypt (`F9`) what you send.
   Nothing is sent if encryption fails. See
   [PGP encryption and signing](docs/guide.md#pgp-encryption-and-signing).
@@ -288,9 +288,11 @@ database access.
 Administer installed plugins directly in **Settings → Plugins**. Select a
 plugin and press `s` to edit its settings in the right-hand pane.
 
-To install TideMail Smart (JEV), build it from the
-[TideMail plugin collection](https://github.com/allisonhere/tidemail-plugins/tree/main/plugins/smart)
-repository and copy its binary and `plugin.toml` into the plugins directory.
+To install one, open **Settings → Plugins** and press `b` to browse the
+official [TideMail plugin collection](https://github.com/allisonhere/tidemail-plugins):
+`i` installs, `u` updates, `x` removes. TideMail shows the permissions first and
+checks the download's checksum. You can also copy a plugin's binary and
+`plugin.toml` into the plugins directory by hand.
 The full user guide is in [docs/guide.md](docs/guide.md#plugins-experimental).
 
 If you are writing a plugin, start with the

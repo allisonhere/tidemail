@@ -7,6 +7,15 @@ A plugin runs with the user's own privileges. It can read the user's files
 and use the network regardless of its manifest. What TideMail controls is what
 it *hands* a plugin, how it *runs* it, and what it *keeps* from the result.
 
+## Installing from the catalog
+
+Plugins from the in-app catalog (Settings → Plugins → `b`) are downloaded only
+from GitHub over HTTPS, checked against the release's SHA-256, unpacked as plain
+files, and validated against the catalog before they replace anything. The
+plugin is not run during install, and the confirm step lists the permissions
+first. The checksum comes from the same release, so it does not protect against a
+compromised plugins repository. Details: [distribution.md](distribution.md).
+
 ## What TideMail hands a plugin
 
 - Only the request: message metadata for metadata methods (see

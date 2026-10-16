@@ -67,6 +67,7 @@ displayed.
 | [analytics.md](analytics.md) | aggregate statistics: volume, categories, attention, response times, contacts |
 | [views.md](views.md) | structured report views: tiles, sparklines, bars, heatmaps, tables, drawn in the user's theme |
 | [security.md](security.md) | the trust model and every runtime restriction |
+| [distribution.md](distribution.md) | the official catalog: release layout, `catalog.json`, and how TideMail installs |
 | [compatibility.md](compatibility.md) | what API v1 promises, and what may change |
 
 Complete, tested examples live in

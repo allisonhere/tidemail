@@ -49,6 +49,7 @@ The developer documentation is in [`docs/plugins/`](plugins/README.md):
 | [analytics](plugins/analytics.md) | aggregate statistics |
 | [views](plugins/views.md) | structured report views drawn in the user's theme |
 | [security](plugins/security.md) | trust model and runtime restrictions |
+| [distribution](plugins/distribution.md) | the official catalog and how TideMail installs plugins |
 | [compatibility](plugins/compatibility.md) | what API v1 promises |
 
 Small, tested example plugins are in

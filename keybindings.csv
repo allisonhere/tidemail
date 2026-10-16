@@ -15,6 +15,7 @@ Snooze,Z,Z,snooze (in Snoozed: unsnooze),main
 RunPlugin,p,p,run plugin,main
 PGPDecode,D,D,decrypt and verify PGP message (needs a PGP plugin),main
 EditTags,e,e,edit current message tags and classification,message list+content
+PluginCatalog,b,b,browse available plugins (i install / u update / x remove),plugin list
 PluginCardUnsubscribe,u,u,unsubscribe when offered,plugin result card
 MarkAllRead,"R,ctrl+x",R/ctrl+x,mark all read,main
 OpenBrowser,o,o,open in browser,main
