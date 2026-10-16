@@ -259,3 +259,35 @@ func trustAll(t *testing.T) {
 		t.Fatalf("ownertrust: %v\n%s", err, out)
 	}
 }
+
+// A key whose passphrase can't be asked for (the pinentry fails, as a terminal
+// pinentry does under TideMail) must read as a passphrase problem, not as a
+// missing key: gpg itself reports NO_SECKEY in this case.
+func TestUnavailablePassphraseIsNotReportedAsAMissingKey(t *testing.T) {
+	needGPG(t)
+	nope, err := exec.LookPath("false")
+	if err != nil {
+		t.Skip("no false(1) to stand in for a failing pinentry")
+	}
+	home := keyring(t)
+	if err := os.WriteFile(home+"/gpg-agent.conf", []byte("pinentry-program "+nope+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command("gpg", "--batch", "--pinentry-mode", "loopback", "--passphrase", "hunter2",
+		"--quick-generate-key", "Pat <pat@example.test>", "default", "default", "never").CombinedOutput()
+	if err != nil {
+		t.Fatalf("generate: %v\n%s", err, out)
+	}
+	enc, err := prepare(real, prepareIn{From: "pat@example.test", Recipients: []string{"pat@example.test"}, Entity: []byte(entity), Encrypt: true}, options{AlwaysTrust: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = decode(real, decodeIn{Kind: "decrypt", Data: enc.Encrypted})
+	if ce, ok := err.(*codedError); !ok || ce.code != "passphrase" {
+		t.Errorf("decrypt: err = %v, want a passphrase error", err)
+	}
+	_, err = prepare(real, prepareIn{From: "pat@example.test", Entity: []byte(entity), Sign: true}, options{})
+	if ce, ok := err.(*codedError); !ok || ce.code != "passphrase" {
+		t.Errorf("sign: err = %v, want a passphrase error", err)
+	}
+}

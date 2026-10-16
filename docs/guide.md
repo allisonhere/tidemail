@@ -610,7 +610,9 @@ TideMail can run external plugins placed in
 When any are installed, the command palette (`:`) gains **Plugins
 (experimental)**, a read-only list of installed plugins, and **Run plugin**.
 Plugins receive a message's sender, recipients, subject, date, and flags, never
-its body, and they never change your mail.
+its body, and they never change your mail. The one exception is a PGP plugin,
+which you install for that purpose (see
+[PGP encryption and signing](#pgp-encryption-and-signing)).
 
 **Run plugin** runs a plugin you choose on mail, whether or not it has already
 been classified, for example after updating a plugin or changing its settings.
@@ -827,11 +829,75 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Ctrl+D` | Save attachments to folder |
 | `Ctrl+G` | AI grammar & spell check (compose). The preview fits the screen and scrolls with `↑`/`↓`, `PgUp`/`PgDn`, and `Home`/`End`; `y` accepts, `n` or `Esc` cancels |
 | `F7` | Offline spell check (compose); needs Settings → Editor → Spell check |
+| `D` | Decrypt and verify the open PGP message (needs a PGP plugin) |
+| `F8` / `F9` in compose | Sign / encrypt the message with PGP (needs a PGP plugin) |
 | Standard compose editor | Selection, system clipboard, undo/redo, word movement, and Home/End |
 | Spell check in compose | Off by default. Turn on **Settings → Editor → Spell check in compose (F7)** to underline misspelled words in the body as you type (the word you are still typing is left alone until you move on). Press `F7` to step through them: `Enter` replaces with the highlighted suggestion (or press `1`–`5`), `←`/`→` choose another, `s` skips, `i` ignores the word until you restart, `a` adds it to your personal dictionary (kept in TideMail's database), and `Esc` closes. To see, add, or remove those words later, open **Settings → Editor → Personal dictionary** (`a` adds, `d` removes, `Esc` goes back); changes apply right away. English only (US and GB spellings); it works offline and never sends text anywhere. It ignores URLs, email addresses, numbers, ALL-CAPS words and quoted or forwarded text, and it accepts the names, addresses and domains of people in your mail, so correspondents are not flagged. Suggestions put the likeliest fix first: swapped or doubled letters, neighbouring-key slips and sound-alikes are weighed, favouring everyday words. `Ctrl+G` still runs the AI grammar check |
 | Vim keys in compose | Enable in Settings → Editor. `:w`/`:wq` send; `:q` or double `Esc` cancels |
 | `?` | Help |
 | `q` | Quit |
+
+### PGP encryption and signing
+
+TideMail can read and send PGP mail (the PGP/MIME and inline formats) through a
+**PGP plugin**. TideMail does not contain any cryptography itself: the plugin
+runs your own GnuPG against your own keyring, so your private key never goes
+near TideMail. A plugin that is allowed to do this declares the `message_raw`
+(read) and `message_compose` (send) permissions, shown in the plugin list as
+✓ Decrypt/verify received mail and ✓ Sign/encrypt outgoing mail. Only install
+one you trust: while it is doing its job it sees the part of the message it is
+working on.
+
+TideMail ships a ready-made one, `tidemail-pgp`, in
+[`examples/plugins/pgp/`](../examples/plugins/pgp/README.md). It needs `gpg`
+(GnuPG 2.x) installed, with your key and the keys of the people you write to in
+your keyring.
+
+**Reading.** A message that contains PGP data shows
+`PGP-protected message. Press D to decrypt or verify.` under its date line.
+Press `D` (or choose **Decrypt / verify (PGP)** in the command palette). TideMail
+fetches that one message, hands the encrypted or signed part to the plugin,
+and shows the result in the reading pane with a line such as
+`PGP: decrypted · good signature from Ann <ann@example.com>`. The line says
+`BAD SIGNATURE` if the message was changed after it was signed, tells you when
+it is signed with a key you don't have, and shows the plugin's reason if it
+can't decrypt (for example, you don't have the secret key). Decrypted text is
+kept in memory only: it is not saved to TideMail's database or search index and
+is gone when you quit, so encrypted mail is not searchable and you press `D`
+again after restarting. Attachments inside an encrypted message are not
+available yet.
+
+**Sending.** In compose, press `F8` to sign and `F9` to encrypt (also in the
+command palette); the footer shows ✓ when each is on. They are per message and
+start off. When you press send, the plugin signs or encrypts first (your
+passphrase prompt may appear then), and only then is the message queued, so
+the Outbox, retries and the copy in your Sent folder all hold the protected
+form. **If anything goes wrong, nothing is sent**: a recipient you have no key
+for, a cancelled passphrase prompt or a plugin error stops the send with the
+reason, and compose stays open. TideMail never falls back to sending the
+message unprotected. Encrypted messages are also encrypted to you, so you can
+read your own Sent copy. Editing a queued message brings its toggles back.
+
+Things to know:
+
+- The **subject and the From/To/Date headers are not encrypted**; only the
+  body and attachments are (this is how PGP/MIME works). Keep secrets out of
+  the subject line.
+- Encrypted mail is addressed to **every recipient including Bcc**, and PGP
+  messages name the keys they were encrypted to, so a Bcc recipient's key can
+  be recognized by the other recipients. Avoid Bcc on encrypted mail you want
+  to keep private.
+- While you compose, and while a message waits in the Outbox, TideMail's local
+  database keeps the plain text of your draft (it is deleted once the message
+  is sent). Only your own computer holds it; drafts are not uploaded to the
+  server.
+- `tidemail send` on the command line does not sign or encrypt.
+- Your passphrase prompt comes from GnuPG's pinentry, which must be graphical
+  or served by an agent that has your passphrase cached; a terminal pinentry
+  cannot draw over TideMail and fails with a clear error.
+- Key trust follows GnuPG's rules by default, so a recipient's key must be
+  signed or trusted. In the plugin's settings, **Key trust → always** encrypts
+  to any key in your keyring.
 
 ## Themes
 

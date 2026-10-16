@@ -14,6 +14,20 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- **PGP through a plugin.** Plugins can now be granted two new permissions,
+  `message_raw` (decrypt and verify mail you open) and `message_compose` (sign and
+  encrypt mail you send), with matching `message.decode` and `message.prepare`
+  methods in Plugin API v1. Press `D` on a PGP message to decrypt and verify it;
+  the result is shown in the reading pane and kept in memory only. In compose,
+  `F8` signs and `F9` encrypts (PGP/MIME); the plugin runs before the message is
+  queued, so the Outbox and the Sent copy hold the protected message, and any
+  failure (no key for a recipient, cancelled passphrase) sends nothing. The
+  first-party `tidemail-pgp` plugin in `examples/plugins/pgp/` uses your own
+  GnuPG keyring. Plugins also inherit `GNUPGHOME`, `DISPLAY`, `WAYLAND_DISPLAY`
+  and `XDG_RUNTIME_DIR` now. The subject and headers of encrypted mail are not
+  encrypted, `tidemail send` does not sign or encrypt, and attachments inside
+  encrypted mail are not shown yet.
+
 - Settings → Editor → **Spell check in compose** (off by default): misspelled words are underlined
   in the message body as you type, and `F7` steps through them with suggestions, skip, ignore, and
   add-to-dictionary. It is English-only, works offline with no AI provider, and never checks quoted

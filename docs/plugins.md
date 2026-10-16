@@ -53,7 +53,9 @@ The developer documentation is in [`docs/plugins/`](plugins/README.md):
 
 Small, tested example plugins are in
 [`examples/plugins/example/`](../examples/plugins/example/) and
-[`examples/plugins/analytics/`](../examples/plugins/analytics/) (a report).
+[`examples/plugins/analytics/`](../examples/plugins/analytics/) (a report). A
+GnuPG plugin that decrypts, verifies, signs and encrypts mail is in
+[`examples/plugins/pgp/`](../examples/plugins/pgp/README.md).
 
 ## For TideMail contributors
 

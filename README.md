@@ -87,6 +87,11 @@ One inbox, several built-in themes.
 - **[Experimental plugins](docs/plugins.md).** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
   Install trusted plugins such as TideMail Smart (JEV) to classify mail with
   local annotations, Needs You signals, and optional TypeSafe/Jev analysis.
+- **PGP, through a plugin.** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
+  Install the `tidemail-pgp` plugin (it uses your own GnuPG) to read encrypted
+  and signed mail (`D`) and to sign (`F8`) and encrypt (`F9`) what you send.
+  Nothing is sent if encryption fails. See
+  [PGP encryption and signing](docs/guide.md#pgp-encryption-and-signing).
 - **Script it, or hand it to an agent.** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
   The `tidemail` CLI shares the client's accounts and queue: list, search, and
   read cached mail, and draft or send with JSON output for scripts, or run
@@ -297,7 +302,9 @@ and [permissions](docs/plugins/permissions.md) references. Reports and
 read-only queries are covered in [queries](docs/plugins/queries.md) and
 [analytics](docs/plugins/analytics.md). Complete local examples are in
 [examples/plugins/example](examples/plugins/example/) and
-[examples/plugins/analytics](examples/plugins/analytics/).
+[examples/plugins/analytics](examples/plugins/analytics/). The PGP plugin
+[examples/plugins/pgp](examples/plugins/pgp/) shows the `message_raw` and
+`message_compose` permissions.
 
 ## Keys worth learning
 

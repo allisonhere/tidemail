@@ -174,7 +174,9 @@ func unescape(s string) string {
 }
 
 func decryptError(status []statusLine, rest string) error {
-	if _, ok := find(status, "NO_SECKEY"); ok {
+	// gpg also reports NO_SECKEY when the key is there but its passphrase
+	// couldn't be obtained, so go by its final message, not by that status.
+	if strings.Contains(strings.ToLower(rest), "decryption failed: no secret key") {
 		return coded("no_secret_key", "you don't have the secret key this message was encrypted to")
 	}
 	return gpgError(status, rest, errors.New("decryption failed"))
@@ -184,6 +186,8 @@ func decryptError(status []statusLine, rest string) error {
 func gpgError(status []statusLine, rest string, err error) error {
 	low := strings.ToLower(rest)
 	switch {
+	case strings.Contains(low, "bad passphrase"):
+		return coded("passphrase", "wrong passphrase")
 	case strings.Contains(low, "inappropriate ioctl") || strings.Contains(low, "pinentry") ||
 		strings.Contains(low, "cancelled") || strings.Contains(low, "canceled"):
 		return coded("passphrase", "gpg couldn't get your passphrase (cancelled, or no graphical pinentry available): %s", firstLine(rest))

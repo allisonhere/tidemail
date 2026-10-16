@@ -104,6 +104,12 @@ Current release: **v1.0.28**.
   sidebar count updates for delete/archive/move and undo, result cards
   with technical Details, and a host-owned `u` unsubscribe action that uses TideMail's existing confirmed flow without
   exposing unsubscribe links to plugins.
+- **PGP via plugin** (experimental): a plugin with the `message_raw` and
+  `message_compose` permissions decrypts/verifies received mail (`D`, shown in
+  the reading pane, memory only) and signs/encrypts outgoing mail (`F8`/`F9` in
+  compose; PGP/MIME, fails closed). The first-party `tidemail-pgp` plugin uses
+  GnuPG. Not yet: attachments inside encrypted mail, encrypted-mail search,
+  CLI sending, key management.
 - **Settings**: theme, display density, pane corners, pane header bars, modal
   drop shadow, AI provider config, editor, update checks, a dedicated Plugins
   section with inline administration and configuration, a read-only Changelog

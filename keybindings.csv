@@ -13,6 +13,7 @@ MarkRead,x,x,mark read,main
 NeedsYouDismiss,X,X,dismiss from Needs You / stop waiting,main
 Snooze,Z,Z,snooze (in Snoozed: unsnooze),main
 RunPlugin,p,p,run plugin,main
+PGPDecode,D,D,decrypt and verify PGP message (needs a PGP plugin),main
 EditTags,e,e,edit current message tags and classification,message list+content
 PluginCardUnsubscribe,u,u,unsubscribe when offered,plugin result card
 MarkAllRead,"R,ctrl+x",R/ctrl+x,mark all read,main
@@ -66,6 +67,8 @@ TestAccount,"ctrl+t,f5",ctrl+t,test account,account_manager
 AttachFile,ctrl+a,ctrl+a,attach file,compose
 GrammarCheck,ctrl+g,ctrl+g,AI grammar check,compose
 SpellCheck,f7,f7,offline spell check (needs Settings → Editor → Spell check),compose
+PGPSign,f8,f8,sign with PGP (needs a PGP plugin),compose
+PGPEncrypt,f9,f9,encrypt with PGP (needs a PGP plugin),compose
 RemoveAttach,ctrl+r,ctrl+r,remove attachment,compose
 CycleSender,ctrl+u,ctrl+u,change sender,compose
 Confirm,enter,enter,confirm,overlay
