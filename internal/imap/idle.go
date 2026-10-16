@@ -63,7 +63,7 @@ func (c *Client) IdleWait(ctx context.Context) error {
 			c.netConn.SetDeadline(time.Now()) //nolint:errcheck
 		}
 		idle.Close() //nolint:errcheck
-		<-waitErr
+		<-waitErr    //nolint:errcheck // the Wait result is moot once ctx is done
 		return ctx.Err()
 	case err := <-waitErr:
 		if err == nil {
