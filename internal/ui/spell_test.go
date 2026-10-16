@@ -213,3 +213,79 @@ func TestSpellUnderlineOnlyOnMisspelledWord(t *testing.T) {
 		t.Fatalf("underlined text = %q; want exactly the misspelled word\n%q", underlined.String(), raw)
 	}
 }
+
+func TestSpellNameWordsExtractsNamesLocalPartsAndDomains(t *testing.T) {
+	got := spellNameWords([]string{
+		"Priya Natarajan <priya.n@acme-corp.com>",
+		`"O'Brien, Siobhán" <sobrien@example.co.uk>`,
+		"not an address",
+		"x@y.io", // fragments too short to keep
+	})
+	for _, want := range []string{"priya", "natarajan", "acme", "corp", "o'brien", "siobhán", "sobrien", "example"} {
+		if !slices.Contains(got, want) {
+			t.Errorf("missing %q in %v", want, got)
+		}
+	}
+	for _, bad := range []string{"com", "uk", "n", "io"} {
+		if slices.Contains(got, bad) {
+			t.Errorf("should not keep %q: %v", bad, got)
+		}
+	}
+	if len(slices.Compact(slices.Clone(got))) != len(got) {
+		t.Errorf("duplicates in %v", got)
+	}
+}
+
+func TestSpellAcceptsCorrespondentNamesAndKeepsThemAcrossToggle(t *testing.T) {
+	editorSpellNames = nil
+	t.Cleanup(func() { editorSpellNames = nil; setEditorSpell(false, nil) })
+	setEditorSpell(true, nil)
+
+	c := spellCompose(t, "Thanks Priya, Natarajan from Acme says hi")
+	if got := misspelled(c); len(got) == 0 {
+		t.Fatalf("test needs names to start out flagged, got none")
+	}
+	addSpellNames([]string{"Priya Natarajan <priya@acme.com>"})
+	c = spellCompose(t, "Thanks Priya, Natarajan from Acme says hi")
+	if got := misspelled(c); len(got) != 0 {
+		t.Fatalf("correspondent names should not be flagged, got %v", got)
+	}
+	// Turning the setting off and on again rebuilds the Checker; names survive.
+	setEditorSpell(false, nil)
+	setEditorSpell(true, nil)
+	c = spellCompose(t, "Thanks Priya, Natarajan from Acme says hi")
+	if got := misspelled(c); len(got) != 0 {
+		t.Fatalf("names must survive a settings re-save, got %v", got)
+	}
+}
+
+func TestSpellDoesNotUnderlineTheWordBeingTyped(t *testing.T) {
+	c := spellCompose(t, "I recieve it") // SetValue parks the caret at the end
+	flagged := func() string {
+		var sb strings.Builder
+		for i, f := range c.bodyInput.typoFlags() {
+			if f {
+				sb.WriteRune([]rune(c.bodyInput.Value())[i])
+			}
+		}
+		return sb.String()
+	}
+	if got := flagged(); got != "recieve" {
+		t.Fatalf("caret after the word 'it' should leave 'recieve' underlined, got %q", got)
+	}
+
+	// Caret right after the misspelled word: still being typed, so not underlined.
+	c.bodyInput.SetValue("I recieve")
+	if got := flagged(); got != "" {
+		t.Fatalf("a word under the caret must not be underlined, got %q", got)
+	}
+	// ...but the F7 list still sees it.
+	if got := misspelled(c); !slices.Equal(got, []string{"recieve"}) {
+		t.Fatalf("Misspellings must include the caret word, got %v", got)
+	}
+	// Typing a space moves the caret off the word, which is now flagged.
+	c = spellKey(c, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	if got := flagged(); got != "recieve" {
+		t.Fatalf("after a space the word should be underlined, got %q", got)
+	}
+}

@@ -18,6 +18,8 @@ github.com/allisonhere/ripple v0.4.0 h1:mrAH3fXhizLjz121nkQ2UOI2EmhNzAq5FS0hYp7A
 github.com/allisonhere/ripple v0.4.0/go.mod h1:tUOwwHoip07xZ2C+xDtwLFF5dkPCUliQ8OqL6FEbO+I=
 github.com/allisonhere/tidespell v0.1.0 h1:5t5+sb09xm0DqKS5waq5a96K40NYS0DkqpqMO7EZ+Xw=
 github.com/allisonhere/tidespell v0.1.0/go.mod h1:7XLWUf19/N/Kxt9dVAW0esN31qjTRTAlfHazvNJljnU=
+github.com/allisonhere/tidespell v0.2.0 h1:L4yNK+IljpdaqtLlNMWmBtvod4IYwpfYhxxTm0hwfQ0=
+github.com/allisonhere/tidespell v0.2.0/go.mod h1:7XLWUf19/N/Kxt9dVAW0esN31qjTRTAlfHazvNJljnU=
 github.com/allisonhere/tideui v0.2.2 h1:+YLMA1ZsnlPDtvNyIhMxuqvXVgKYvJuxNOHYQdDYZPs=
 github.com/allisonhere/tideui v0.2.2/go.mod h1:5PuSjpG2GO1HN1yQZi1ZpEbJOqKYhaLY/Wkb+cj/mAQ=
 github.com/andybalholm/cascadia v1.3.2 h1:3Xi6Dw5lHF15JtdcmAHD3i1+T8plmv7BQ/nsViSLyss=

@@ -11,7 +11,9 @@ All notable changes to TideMail are documented in this file.
 - Settings → Editor → **Spell check in compose** (off by default): misspelled words are underlined
   in the message body as you type, and `F7` steps through them with suggestions, skip, ignore, and
   add-to-dictionary. It is English-only, works offline with no AI provider, and never checks quoted
-  or forwarded text. Your added words are saved in TideMail's database.
+  or forwarded text. Your added words are saved in TideMail's database. The word you are typing is
+  not underlined until you move on, names and domains of people you correspond with are accepted,
+  and suggestions rank swapped letters, doubled letters, sound-alikes and everyday words first.
 - Experimental Windows builds (x86_64 and ARM64) are now attached to each release as zip files.
   In-app updates and keychain storage are not available on Windows yet; passwords are stored in
   the config file.

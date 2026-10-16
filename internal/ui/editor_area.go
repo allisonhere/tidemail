@@ -35,6 +35,9 @@ func setEditorVimMode(on bool) { editorVimMode = on }
 var (
 	editorSpell    *tidespell.Checker
 	editorSpellGen int
+	// editorSpellNames are words from people's names and domains (see
+	// spellNameWords), kept so a rebuilt Checker is seeded with them again.
+	editorSpellNames []string
 )
 
 // setEditorSpell enables or disables spell checking and seeds the personal
@@ -47,6 +50,21 @@ func setEditorSpell(on bool, personal []string) {
 	}
 	editorSpell = tidespell.New()
 	editorSpell.Add(personal...)
+	editorSpell.Add(editorSpellNames...)
+}
+
+// addSpellNames teaches the checker the names, addresses and domains of the
+// people the user corresponds with, so "Priya" or "Kowalski" is not flagged.
+func addSpellNames(addresses []string) {
+	words := spellNameWords(addresses)
+	if len(words) == 0 {
+		return
+	}
+	editorSpellNames = append(editorSpellNames, words...)
+	if editorSpell != nil {
+		editorSpell.Add(words...)
+		editorSpellGen++
+	}
 }
 
 // typoCache memoizes the last spell check of one editor so View, which runs
@@ -55,8 +73,8 @@ type typoCache struct {
 	text  string
 	gen   int
 	ok    bool
+	runes int // rune count of text
 	spans []tidespell.Span
-	flags []bool
 }
 
 // editorArea adapts ripple.Model to the subset of the Bubble Tea textarea API
@@ -194,14 +212,30 @@ func (e editorArea) Misspellings() []tidespell.Span {
 	return e.typo.spans
 }
 
-// typoFlags is a per-rune "is part of a misspelling" lookup, or nil when there
-// is nothing to underline.
+// typoFlags is a per-rune "is part of a misspelling" lookup for underlining,
+// or nil when there is nothing to underline. The word the caret is in or just
+// after is left alone: it is most likely still being typed, and underlining
+// "recie" halfway through "receive" is noise. Misspellings (used by the F7
+// panel) still lists it.
 func (e editorArea) typoFlags() []bool {
 	e.refreshTypos()
 	if e.typo == nil || len(e.typo.spans) == 0 {
 		return nil
 	}
-	return e.typo.flags
+	caret := e.ed.CursorIndex()
+	var flags []bool
+	for _, sp := range e.typo.spans {
+		if sp.Start <= caret && caret <= sp.End {
+			continue
+		}
+		if flags == nil {
+			flags = make([]bool, e.typo.runes)
+		}
+		for i := sp.Start; i < sp.End && i < len(flags); i++ {
+			flags[i] = true
+		}
+	}
+	return flags
 }
 
 func (e editorArea) refreshTypos() {
@@ -216,14 +250,10 @@ func (e editorArea) refreshTypos() {
 		return
 	}
 	reply, _ := splitReplyAndQuote(text)
-	spans := editorSpell.Check(reply)
-	flags := make([]bool, len([]rune(text)))
-	for _, sp := range spans {
-		for i := sp.Start; i < sp.End && i < len(flags); i++ {
-			flags[i] = true
-		}
+	*e.typo = typoCache{
+		text: text, gen: editorSpellGen, ok: true,
+		runes: len([]rune(text)), spans: editorSpell.Check(reply),
 	}
-	*e.typo = typoCache{text: text, gen: editorSpellGen, ok: true, spans: spans, flags: flags}
 }
 
 // ReplaceSpan swaps one misspelled word for text as a single undo step.

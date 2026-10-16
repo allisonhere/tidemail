@@ -403,6 +403,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 	// (read in newEditorArea), the same way the clipboard is injected.
 	setEditorVimMode(cfg.Display.ComposeVim)
 	setEditorSpell(cfg.Display.ComposeSpell, loadSpellWords(database))
+	addSpellNames(accountSpellEntries(cfg))
 
 	si := textinput.New()
 	si.Placeholder = "search messages... (#tag for tags)"
@@ -1270,6 +1271,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case AddressBookLoadedMsg:
 		if msg.Err == nil {
 			m.addressBook = msg.Addresses
+			addSpellNames(msg.Addresses)
 		}
 		return m, nil
 

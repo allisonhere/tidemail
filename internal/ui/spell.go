@@ -2,11 +2,14 @@ package ui
 
 import (
 	"fmt"
+	"net/mail"
 	"strings"
+	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidespell"
 )
@@ -176,4 +179,76 @@ func (m *Model) persistSpellWords() {
 		}
 	}
 	m.compose.spellAdded = nil
+}
+
+// accountSpellEntries lists the user's own accounts as "Name <addr>" strings so
+// their name and domain are never flagged.
+func accountSpellEntries(cfg config.Config) []string {
+	var out []string
+	for _, a := range cfg.Accounts {
+		if a.From != "" {
+			out = append(out, a.From)
+		}
+		if strings.Contains(a.User, "@") {
+			out = append(out, a.Name+" <"+a.User+">")
+		}
+	}
+	return out
+}
+
+// spellNameWords turns "Priya Natarajan <priya.n@acme-corp.com>" style strings
+// into dictionary words: the display name's words, the pieces of the address's
+// local part, and the domain's main label ("acme", "corp"). Short fragments,
+// digits and top-level domains are dropped.
+func spellNameWords(addresses []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(w string) {
+		w = strings.ToLower(strings.Trim(w, ".'’-_"))
+		if len([]rune(w)) < 3 || seen[w] {
+			return
+		}
+		for _, r := range w {
+			if !unicode.IsLetter(r) && r != '\'' && r != '’' {
+				return
+			}
+		}
+		seen[w] = true
+		out = append(out, w)
+	}
+	split := func(s string) []string {
+		return strings.FieldsFunc(s, func(r rune) bool {
+			return !unicode.IsLetter(r) && r != '\'' && r != '’'
+		})
+	}
+	for _, entry := range addresses {
+		a, err := mail.ParseAddress(entry)
+		if err != nil {
+			continue
+		}
+		for _, w := range split(a.Name) {
+			add(w)
+		}
+		local, domain, ok := strings.Cut(a.Address, "@")
+		if !ok {
+			continue
+		}
+		for _, w := range split(local) {
+			add(w)
+		}
+		labels := strings.Split(domain, ".")
+		if len(labels) >= 2 {
+			main := labels[len(labels)-2] // "acme-corp" in acme-corp.com
+			switch main {
+			case "co", "com", "org", "net", "gov", "edu", "ac":
+				if len(labels) >= 3 { // example.co.uk: skip the generic label
+					main = labels[len(labels)-3]
+				}
+			}
+			for _, w := range split(main) {
+				add(w)
+			}
+		}
+	}
+	return out
 }

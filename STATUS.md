@@ -82,7 +82,10 @@ Current release: **v1.0.28**.
 - **Spell check** (opt-in, Settings → Editor): offline English spell check in compose via the
   `tidespell` library. Misspellings are underlined in the body (ripple `StyleKey` hooks), `F7`
   steps through them with suggestions, skip, ignore, and add-to-dictionary (stored in the
-  `spell_words` table). Quoted and forwarded text is never checked.
+  `spell_words` table). Quoted and forwarded text is never checked. The word under the caret is
+  not underlined while typing; correspondents' names, local parts and domains from the mail cache
+  are accepted; suggestions use `tidespell` v0.2.0 scored ranking (edit distance, typing patterns,
+  phonetics, frequency tiers).
 - **AI**: summaries and grammar across OpenAI, Claude, Gemini, and Ollama. Mail rules
   are AI-generated once into reviewed JSON, then matched locally and deterministically —
   no per-message AI cost.
