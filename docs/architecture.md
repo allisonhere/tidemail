@@ -55,7 +55,7 @@ and scheduled send before `internal/smtp` delivers them.
 
 ### Android bridge
 
-The separate `tidemail-android` repository builds a gomobile AAR from its Go
+The separate, private `tidemail-android` repository builds a gomobile AAR from its Go
 bridge. That bridge imports `mailcore` from a pinned TideMail revision; it does
 not import `internal/*` or ship Android app code in this repository.
 

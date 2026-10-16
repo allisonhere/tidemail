@@ -41,9 +41,10 @@ has switches for quitting after a send, skipping review, and the default signatu
 `send` saves a draft unless you authorize delivery. `--yes` queues mail with the
 configured delay. The client or `outbox process` delivers due queued mail.
 
-The Android app and its Go bridge live in the separate
-[TideMail Android repository](https://github.com/allisonhere/tidemail-android).
-Desktop releases are built from this repository.
+An Android app is in beta; you can
+[apply to join the beta](https://mylivelab.com/tide/tidemail-android/beta/login.php#apply).
+It is developed in a separate repository, and desktop releases are built from
+this one.
 
 ![TideMail running in several terminal themes](banner.png)
 
