@@ -14,6 +14,7 @@ All notable changes to TideMail are documented in this file.
   or forwarded text. Your added words are saved in TideMail's database. The word you are typing is
   not underlined until you move on, names and domains of people you correspond with are accepted,
   and suggestions rank swapped letters, doubled letters, sound-alikes and everyday words first.
+  Settings → Editor → **Personal dictionary** lists the words you added and lets you add or remove them.
 - Experimental Windows builds (x86_64 and ARM64) are now attached to each release as zip files.
   In-app updates and keychain storage are not available on Windows yet; passwords are stored in
   the config file.

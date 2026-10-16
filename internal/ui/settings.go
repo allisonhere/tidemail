@@ -84,6 +84,7 @@ const (
 	sfMouseSupport
 	sfComposeVim
 	sfComposeSpell
+	sfSpellDictionary
 	sfSendDelay
 	sfSendMaxAttempts
 	sfCLIQuitAfterSend
@@ -130,6 +131,7 @@ const (
 	settingsActionOpenRepo
 	settingsActionOpenIssues
 	settingsActionViewLogs
+	settingsActionSpellDictionary
 	settingsActionCopyManualInstall
 	settingsActionTagColors
 	settingsActionOpenSupport
@@ -792,7 +794,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		fields = append(fields, sfReadingWidth, sfShowHeaders, sfMarkReadOnOpen, sfMarkReadOnFocus, sfActionableLinks, sfFilterLinks, sfImages)
 		return append(fields, sfBrowser, sfConfirmQuit, sfNotifications, sfMouseSupport)
 	case ssEditor:
-		return []settingsField{sfBackToSections, sfComposeVim, sfComposeSpell, sfSendDelay, sfSendMaxAttempts}
+		return []settingsField{sfBackToSections, sfComposeVim, sfComposeSpell, sfSpellDictionary, sfSendDelay, sfSendMaxAttempts}
 	case ssCLI:
 		return []settingsField{sfBackToSections, sfCLIQuitAfterSend, sfCLISkipReview, sfCLISignature}
 	case ssUpdates:
@@ -1667,6 +1669,16 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfSpellDictionary:
+		switch {
+		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter):
+			s.action = settingsActionSpellDictionary
+		case keyMatches(key, keys.Down):
+			s.setFocusedField(s.nextField())
+		case keyMatches(key, keys.Up):
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfViewLogs:
 		switch {
 		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter):
@@ -2017,6 +2029,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addGroup("Compose")
 		b.addToggle("Vim keys in compose", s.composeVim, sfComposeVim)
 		b.addToggle("Spell check in compose (F7)", s.composeSpell, sfComposeSpell)
+		b.addAction("Personal dictionary", "view, add, or remove words you taught spell check", sfSpellDictionary)
 		b.addInput("Send delay (seconds)", s.sendDelayInput, sfSendDelay)
 		b.addInput("Maximum send attempts", s.sendMaxAttemptsInput, sfSendMaxAttempts)
 

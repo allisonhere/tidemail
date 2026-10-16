@@ -197,6 +197,13 @@ func (m Model) renderOverlay(base string) string {
 		winH := min(m.height-6, 24)
 		box = m.renderGrammarPreview(winW, winH)
 
+	case overlaySpellDictionary:
+		winW := min(m.width-6, 56)
+		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
+		inner := m.renderSpellDictionary(winW, chrome)
+		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
+		box = renderSoftPanelBox(inner, winW, "tidemail", "personal dictionary", chrome)
+
 	case overlayLogViewer:
 		winW := min(m.width-6, 90)
 		winH := min(m.height-4, 38)

@@ -109,6 +109,7 @@ const (
 	overlaySyncAllConfirm
 	overlayFolderDeleteConfirm
 	overlayContextMenu
+	overlaySpellDictionary
 )
 
 type commandPaletteContext int
@@ -182,6 +183,7 @@ type Model struct {
 	lastClickPane    pane
 	lastClickIdx     int
 	ctxMenu          contextMenu // right-click menu, valid while overlay == overlayContextMenu
+	spellDict        spellDictState
 	searchQuery      string
 	searchMode       bool
 	searchEditing    bool
@@ -3066,6 +3068,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayContextMenu:
 		return m.handleContextMenuKey(msg)
 
+	case overlaySpellDictionary:
+		return m.handleSpellDictionaryKey(msg)
+
 	case overlayPlugins, overlayPluginPicker, overlayPluginResult, overlayPluginAnnotations, overlayPluginConfirm, overlayPluginSettings:
 		return m.handlePluginKey(msg)
 
@@ -3301,6 +3306,9 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case settingsActionViewLogs:
 		m.overlay = overlayLogViewer
+		return m, nil
+	case settingsActionSpellDictionary:
+		m.openSpellDictionary()
 		return m, nil
 	case settingsActionTagColors:
 		return m.openTagColors(overlaySettings)
