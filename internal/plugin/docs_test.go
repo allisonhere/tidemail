@@ -204,12 +204,12 @@ func TestDocsProtocolExamples(t *testing.T) {
 	encoded, _ := json.Marshal(full)
 	var fields map[string]any
 	_ = json.Unmarshal(encoded, &fields)
-	for _, name := range []string{"id", "message_id", "from", "to", "cc", "reply_to", "subject", "date", "read", "starred", "has_attachment", "flags", "account_name", "mailbox_name"} {
+	for _, name := range []string{"id", "message_id", "from", "to", "cc", "reply_to", "subject", "date", "read", "starred", "has_attachment", "flags", "account_name", "mailbox_name", "auth"} {
 		if _, ok := fields[name]; !ok {
 			t.Errorf("metadata example lacks %q", name)
 		}
 	}
-	if len(fields) != 14 {
+	if len(fields) != 15 {
 		t.Errorf("MessageMetadata has %d fields; document new ones", len(fields))
 	}
 }

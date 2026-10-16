@@ -130,6 +130,7 @@ var tagFallbacks = map[string]string{
 	"category.github":       "#8250df",
 	"category.shipping":     "#b0703a",
 	"category.security":     "#c2410c",
+	"category.suspicious":   "#b91c1c",
 	"category.calendar":     "#2f80ed",
 	"category.newsletter":   "#0f9d8a",
 	"category.support":      "#2e9d4f",

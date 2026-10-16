@@ -29,6 +29,8 @@ compromised plugins repository. Details: [distribution.md](distribution.md).
   encrypted or signed part of a message you open, or the content of a
   message you send with Sign or Encrypt on. TideMail keeps decrypted text in
   memory and never stores it.
+- Sender-check results (`auth` in the metadata: SPF, DKIM and DMARC as pass/fail
+  values, and the server's spam flag) but not the headers they come from.
 - Otherwise never message bodies, HTML, raw headers, attachments, AI summaries,
   database paths or handles, SQL, account passwords, OAuth tokens, API keys,
   other plugins' settings or secrets, TideMail's configuration, or file

@@ -14,6 +14,9 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- Plugins now receive the sender-check results the mail server recorded (SPF, DKIM and DMARC as
+  pass/fail values, plus the server's spam flag) as an `auth` field in the message metadata, never the
+  headers themselves. A new `suspicious` tag category (a warning color) is available to plugins.
 - **Browse and install plugins from inside TideMail.** In Settings → Plugins (or the
   command palette's *Browse available plugins…*), press `b` to see the official plugins from
   the plugins repository; `i` installs, `u` updates, `x` removes. TideMail asks first and lists

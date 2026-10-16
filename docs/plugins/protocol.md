@@ -170,7 +170,8 @@ The `data` of `message.metadata` and `message.received`:
   "has_attachment": true,
   "flags": ["\\Seen"],
   "account_name": "Work",
-  "mailbox_name": "INBOX"
+  "mailbox_name": "INBOX",
+  "auth": {"spf": "pass", "dkim": "pass", "dmarc": "pass", "spam_flag": false}
 }
 ```
 
@@ -185,8 +186,14 @@ The `data` of `message.metadata` and `message.received`:
 | `flags` | array of strings | IMAP flags. |
 | `account_name` | string | The account's display name. |
 | `mailbox_name` | string | The folder the message is in. |
+| `auth` | object | What the user's mail server recorded about the sender: `spf`, `dkim`, `dmarc` (each `pass`, `fail`, `softfail`, `neutral`, `none`, `temperror`, `permerror`, `policy`, or `other`; omitted when not reported) and `spam_flag` (true when the server's own spam filter marked it). Omitted entirely when the message has none of these headers. |
 
 Empty string and array fields are omitted.
+
+`auth` holds only those enum values, never the headers they came from. They are
+**evidence, not proof**: a mail server that doesn't strip a forged
+`Authentication-Results` header lets a sender claim `pass`, and forwarding can
+make a genuine message `fail` SPF. Treat an absent `auth` as "unknown".
 
 TideMail **does not send**: the body text, HTML, raw headers, attachments,
 AI summaries, OAuth tokens, passwords, API keys, other plugins' settings or

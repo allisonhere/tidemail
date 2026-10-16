@@ -48,6 +48,9 @@ type MessageMetadata struct {
 	Flags         []string `json:"flags,omitempty"`
 	AccountName   string   `json:"account_name,omitempty"`
 	MailboxName   string   `json:"mailbox_name,omitempty"`
+	// Auth is what the mail server recorded about SPF, DKIM and DMARC. Absent
+	// when the message carries no such headers.
+	Auth *MessageAuth `json:"auth,omitempty"`
 }
 
 // Request is the envelope TideMail writes to a plugin's stdin.

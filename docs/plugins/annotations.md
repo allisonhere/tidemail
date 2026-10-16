@@ -116,7 +116,8 @@ have meaning in TideMail's own views:
   stored but never becomes a tag.
 - Known categories with their own colors: `github`, `shipping`, `security`,
   `calendar`, `newsletter`, `support`, `social`, `billing`, `receipt`,
-  `notification`, `personal`. Any other valid category (say `project`) gets
+  `notification`, `personal`, `suspicious` (a warning for mail that looks like
+  phishing or spam). Any other valid category (say `project`) gets
   the generic category color.
 
 TideMail may apply a local user correction on top of these annotations. A

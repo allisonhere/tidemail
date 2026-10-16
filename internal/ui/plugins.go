@@ -336,6 +336,7 @@ func (m Model) pluginMessageMetadata(msg db.Message) plugin.MessageMetadata {
 		Flags:         append([]string(nil), msg.Flags...),
 		AccountName:   msg.AccountName,
 		MailboxName:   msg.MailboxName,
+		Auth:          plugin.AuthFromHeaders(msg.Headers),
 	}
 	if !msg.Date.IsZero() {
 		meta.Date = msg.Date.Format(time.RFC3339)

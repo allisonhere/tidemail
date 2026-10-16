@@ -522,7 +522,7 @@ func printScaffoldHelp(w io.Writer) {
 
 func loadMetadata(path string) (plugin.MessageMetadata, error) {
 	if path == "" {
-		return plugin.MessageMetadata{ID: 1, MessageID: "<fixture@example.com>", From: "alice@example.com", To: "me@example.com", Subject: "Invoice review requested", Date: "2026-09-27T10:00:00Z", HasAttachment: true, AccountName: "test", MailboxName: "Inbox"}, nil
+		return plugin.MessageMetadata{ID: 1, MessageID: "<fixture@example.com>", From: "alice@example.com", To: "me@example.com", Subject: "Invoice review requested", Date: "2026-09-27T10:00:00Z", HasAttachment: true, AccountName: "test", MailboxName: "Inbox", Auth: &plugin.MessageAuth{SPF: "pass", DKIM: "pass", DMARC: "pass"}}, nil
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
