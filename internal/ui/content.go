@@ -136,9 +136,10 @@ func (m Model) renderAttachmentListFor(atts []db.Attachment, width int) string {
 		return ""
 	}
 	th := m.styles.Theme
-	accent := lipgloss.NewStyle().Foreground(messageLinkColor(th))
-	dimmed := lipgloss.NewStyle().Foreground(messageMutedColor(th))
-	body := m.styles.ContentBody.Width(width)
+	accent := lipgloss.NewStyle().Background(th.Bg).Foreground(messageLinkColor(th))
+	dimmed := lipgloss.NewStyle().Background(th.Bg).Foreground(messageMutedColor(th))
+	body := m.styles.ContentBody
+	indent := lipgloss.NewStyle().Background(th.Bg).Render(" ")
 
 	header := accent.Render("── " + strings.ToUpper("Attachments") + " ──")
 	lines := []string{
@@ -157,20 +158,27 @@ func (m Model) renderAttachmentListFor(atts []db.Attachment, width int) string {
 		// Truncate the filename so a long name can't overflow the pane and shove
 		// the size column off-screen; leave room for the icon, size, and gap.
 		nameW := max(1, width-ansi.StringWidth(iconStyled)-maxSizeLen-3)
-		line := iconStyled + truncate(a.Filename, nameW)
+		name := truncate(a.Filename, nameW)
 		paddedSize := fmt.Sprintf("%*s", maxSizeLen, sizeStr)
 		// Right-align size by padding to column end
-		used := ansi.StringWidth(line)
+		used := ansi.StringWidth(iconStyled) + ansi.StringWidth(name)
 		pad := width - used - maxSizeLen - 2
 		if pad < 1 {
 			pad = 1
 		}
-		line += strings.Repeat(" ", pad) + dimmed.Render(paddedSize)
+		line := iconStyled + body.Render(name+strings.Repeat(" ", pad)) + dimmed.Render(paddedSize)
 		lines = append(lines, line)
 	}
 	lines = append(lines, "")
 	lines = append(lines, dimmed.Render("  ctrl+d  save all to folder"))
-	return indentBlock(body.Render(strings.Join(lines, "\n")), 1)
+	for i, line := range lines {
+		line = ansi.Truncate(line, width, "")
+		if pad := width - ansi.StringWidth(line); pad > 0 {
+			line += body.Render(strings.Repeat(" ", pad))
+		}
+		lines[i] = indent + line
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) renderContentLinks(width int) string {

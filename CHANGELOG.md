@@ -8,6 +8,8 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Attachment headings and rows now paint the reading pane background, including
+  on signed and encrypted messages.
 - The grammar check preview no longer runs off the bottom of the screen on a long email: it fits the
   terminal, keeps the accept/cancel hints in view, and scrolls with the arrow keys, `PgUp`/`PgDn`,
   and `Home`/`End`.
