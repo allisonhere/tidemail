@@ -6,6 +6,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.5.0
+
 ### Fixed
 
 - Changing or clearing an address after server discovery now clears its inferred
