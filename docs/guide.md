@@ -83,7 +83,7 @@ tidemail
 ```
 
 Press `M` to open the account manager, then add your IMAP and SMTP details.
-Gmail, Outlook, Yahoo and iCloud have their servers built in. For a **Custom**
+Gmail, Outlook, Yahoo, and iCloud have their servers built in. For a **Custom**
 account, TideMail can look the servers up from your email address: type the
 address in the **Email / login** row at the top of the form and move on, and
 if both host rows are still empty it looks the domain up. Press `Ctrl+L` to
@@ -114,9 +114,11 @@ authenticated (and the autoconfig file is found through DNS), so check the
 servers it found before you save. If nothing is
 published, the status line says so and you enter the details yourself. If your
 provider requires an app password, create one before saving the account.
+
 Changing or clearing the email removes settings still filled by its previous
 lookup, including an MX-selected provider. Server values you edited yourself
 stay; use `Ctrl+L` to replace them for the new address.
+
 The status line sits one blank row below the form and keeps its place when
 there is no message, so updates do not shift the fields.
 
@@ -829,7 +831,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Space` in Accounts | Mark the highlighted account `★ [default]` — the sender for new messages |
 | `Shift+J` / `Shift+K` in Accounts | Move the highlighted account down / up the list |
 | `Ctrl+T` in the account form | Test the connection without saving |
-| `Ctrl+L` in the account form | Look up a Custom account's servers from its email domain (DNS SRV, then MX) |
+| `Ctrl+L` in the account form | Look up a Custom account's servers from its email domain (DNS SRV, MX, then HTTPS autoconfig) |
 | `s` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
 | `Enter` on a folder | Fetch that folder now; on a folder with subfolders, collapse or expand it |
 | `n` / `r` / `d` in Accounts | New, rename, delete the selected folder (see Managing folders) |

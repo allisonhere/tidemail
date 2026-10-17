@@ -12,6 +12,7 @@ behaviour see [`guide.md`](guide.md); for contribution rules see
 | `internal/ui` | The whole TUI: the `Model`, key handling, panes, overlays, compose, settings, account and contact managers, sync orchestration, and message rendering. |
 | `internal/db` | SQLite storage for accounts, messages, attachments, drafts, outbox, contacts, filter rules, and experimental plugin annotations, plus folder reconciliation. |
 | `internal/imap` | IMAP client, connection pool, IDLE push, message parsing, and XOAUTH2. |
+| `internal/autodiscover` | Looks up mail server settings from RFC 6186 SRV records, known MX providers, and the domain's HTTPS autoconfig file. |
 | `internal/smtp` | Message assembly (including attachments) and SMTP/STARTTLS sending with password or XOAUTH2 auth. |
 | `mailcore` | Small public Go API over TideMail's IMAP and SMTP internals for the separate Android repository's Go bridge. It exposes connection settings, mailbox/message projections, and the mail operations Android uses; credential storage and UI state stay with Android. |
 | `internal/auth` | Google and Microsoft OAuth flows and token refresh. |

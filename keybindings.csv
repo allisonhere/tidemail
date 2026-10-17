@@ -65,7 +65,7 @@ Edit,e,e,edit account,account_manager
 Delete,d,d,delete,account_manager+main
 SaveAccount,"ctrl+s,f2",ctrl+s,save account,account_manager
 TestAccount,"ctrl+t,f5",ctrl+t,test account,account_manager
-DiscoverServers,ctrl+l,ctrl+l,look up servers from the email domain (Custom accounts),account_manager
+DiscoverServers,ctrl+l,ctrl+l,look up Custom account servers (DNS SRV, MX, HTTPS autoconfig),account_manager
 AttachFile,ctrl+a,ctrl+a,attach file,compose
 GrammarCheck,ctrl+g,ctrl+g,AI grammar check,compose
 SpellCheck,f7,f7,offline spell check (needs Settings → Editor → Spell check),compose

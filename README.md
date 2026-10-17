@@ -332,6 +332,7 @@ shows the `message_raw` and `message_compose` permissions.
 | `Ctrl+E` | Show or hide full headers |
 | `i` | Load remote images blocked for the open message |
 | `M` / `S` / `T` | Accounts, settings, or themes |
+| `Ctrl+L` in the account form | Look up a Custom account's mail servers |
 | `Space` in Accounts | Mark the highlighted account `★ [default]` — the sender for new messages |
 | `Shift+J` / `Shift+K` in Accounts | Move the highlighted account down or up the list |
 | `:` / `Ctrl+P` | Command palette |
@@ -340,12 +341,19 @@ shows the `message_raw` and `message_compose` permissions.
 
 ## First account
 
-Press `M`, add your incoming and outgoing mail settings, then save with
-`Ctrl+S`. Gmail, Yahoo, and iCloud require an app password. Outlook can sign in
-with OAuth; Gmail OAuth is temporarily unavailable while Google approval is
-pending (see below). Any other IMAP/SMTP server — including an
-on-premises Microsoft Exchange server — uses the **Custom** provider with a
-username and password.
+Press `M` to add an account. Enter the address in the first row. For a
+**Custom** account, moving to the next row looks up server settings from the
+address's domain. TideMail tries DNS SRV records, known MX providers, and the
+domain's HTTPS autoconfig file. Check the settings before saving with `Ctrl+S`;
+the lookup does not connect or save. `Ctrl+L` repeats the lookup and replaces
+the server settings. Changing or clearing the address removes settings from its
+previous lookup, while keeping server values you edited yourself.
+
+Gmail, Outlook, Yahoo, and iCloud have server settings built in. Gmail, Yahoo,
+and iCloud require an app password. Outlook can sign in with OAuth; Gmail OAuth
+is temporarily unavailable while Google approval is pending (see below). Any
+other IMAP/SMTP server, including an on-premises Microsoft Exchange server,
+uses **Custom** with a username and password.
 
 TideMail stores passwords, AI keys, and OAuth refresh tokens in libsecret on
 Linux or Keychain on macOS. If `secret-tool` is missing on Linux, TideMail falls
