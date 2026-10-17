@@ -78,6 +78,7 @@ type KeyMap struct {
 	Delete          key.Binding
 	Save            key.Binding
 	TestAccount     key.Binding
+	DiscoverServers key.Binding
 	OAuthSignIn     key.Binding
 	MoveAccountUp   key.Binding
 	MoveAccountDown key.Binding
@@ -180,7 +181,9 @@ var DefaultKeys = KeyMap{
 	Delete:      key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
 	Save:        key.NewBinding(key.WithKeys("ctrl+s", "f2"), key.WithHelp("ctrl+s", "save")),
 	TestAccount: key.NewBinding(key.WithKeys("ctrl+t", "f5"), key.WithHelp("ctrl+t", "test")),
-	OAuthSignIn: key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "sign in")),
+	// Look up a Custom account's servers from its email domain's DNS records.
+	DiscoverServers: key.NewBinding(key.WithKeys("ctrl+l"), key.WithHelp("ctrl+l", "look up servers")),
+	OAuthSignIn:     key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "sign in")),
 	// Shift-cased J/K: key.Matches compares msg.String() verbatim, so these
 	// never shadow the lowercase Up/Down movement keys.
 	MoveAccountUp:   key.NewBinding(key.WithKeys("K"), key.WithHelp("shift+k", "move account up")),

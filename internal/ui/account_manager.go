@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/mail"
 	"strconv"
@@ -18,6 +19,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/allisonhere/tidemail/internal/auth"
+	"github.com/allisonhere/tidemail/internal/autodiscover"
 	"github.com/allisonhere/tidemail/internal/clipboard"
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
@@ -30,6 +32,7 @@ type managerChrome struct {
 	baseBg             lipgloss.Color
 	surfaceBg          lipgloss.Color
 	fieldBg            lipgloss.Color
+	statusBg           lipgloss.Color // the status line's band: a darker gray than the form
 	accent             lipgloss.Color
 	accentFg           lipgloss.Color
 	highlight          lipgloss.Color
@@ -62,6 +65,9 @@ func newManagerChrome(width int, t Theme, plainUI bool) managerChrome {
 	}
 	surfaceBg := adjustLightness(baseBg, surfaceDelta)
 	fieldBg := adjustLightness(baseBg, fieldDelta)
+	// Darker than the form on dark and light themes alike, and grayed so it
+	// reads as a neutral band under the form rather than a tinted panel.
+	statusBg := desaturate(adjustLightness(baseBg, -0.05), 0.35)
 	accent := t.BorderFocus
 	if accent == "" {
 		accent = t.OverlayBorder
@@ -94,6 +100,7 @@ func newManagerChrome(width int, t Theme, plainUI bool) managerChrome {
 	if successFg == "" {
 		successFg = accent
 	}
+	successFg = accentReadableOn(greener(successFg), baseBg, 4.5)
 	pendingFg := t.BorderFocus
 	if pendingFg == "" {
 		pendingFg = accent
@@ -102,6 +109,7 @@ func newManagerChrome(width int, t Theme, plainUI bool) managerChrome {
 	return managerChrome{
 		baseBg:      baseBg,
 		surfaceBg:   surfaceBg,
+		statusBg:    statusBg,
 		fieldBg:     fieldBg,
 		plainUI:     plainUI,
 		accent:      accent,
@@ -210,7 +218,10 @@ const (
 type amField int
 
 const (
-	amFieldProvider amField = iota
+	// The login comes first: it is what server discovery reads, so the rows
+	// below can fill in from it.
+	amFieldUser amField = iota
+	amFieldProvider
 	amFieldName
 	amFieldColor
 	amFieldIMAPHost
@@ -219,7 +230,6 @@ const (
 	amFieldSMTPHost
 	amFieldSMTPPort
 	amFieldSMTPTLS
-	amFieldUser
 	amFieldAuthMethod
 	amFieldPass
 	amFieldOAuthSignIn
@@ -328,6 +338,13 @@ type AccountManager struct {
 	busy      bool
 	busyMsg   string
 	statusMsg string
+
+	// discoveredFor is the address the last server lookup ran for, so leaving
+	// the Email row again with the same address doesn't repeat it.
+	discoveredFor string
+	// Keep the applied result so editing the address clears only inferred rows.
+	discoveredResult autodiscover.Result
+	discoveredFrom   bool
 
 	// The row the last save or test rejected, marked red until it is edited or
 	// the next attempt replaces it. Tracked separately from statusMsg because
@@ -658,11 +675,25 @@ func (am AccountManager) statusForeground(chrome managerChrome) lipgloss.Color {
 	switch {
 	case strings.HasPrefix(msg, "CONNECTED:"), strings.HasPrefix(msg, "SAVED:"), strings.HasPrefix(msg, "DELETED"),
 		strings.HasPrefix(msg, "SIGNED IN"), strings.HasPrefix(msg, "SIGN-IN URL"),
-		strings.HasPrefix(msg, "DEFAULT SENDER"):
+		strings.HasPrefix(msg, "DEFAULT SENDER"), strings.HasPrefix(msg, "FOUND:"):
 		return chrome.successFg
+	case isDiscoveryRemark(msg):
+		return chrome.muted
 	default:
 		return chrome.errorFg
 	}
+}
+
+// isDiscoveryRemark matches server-lookup messages that only report on an
+// optional helper: a lookup in progress, nothing published, or a lookup that
+// doesn't apply. None of them stopped anything, so none is styled as a failure.
+func isDiscoveryRemark(msg string) bool {
+	for _, p := range []string{"LOOKING UP SERVERS", "NO SERVER SETTINGS PUBLISHED", "SERVER LOOKUP IS FOR CUSTOM", "ENTER AN EMAIL ADDRESS IN THE"} {
+		if strings.HasPrefix(msg, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // fieldLabelFg picks a row label's color: red when validation rejected that
@@ -687,7 +718,10 @@ func (am AccountManager) statusIsFailure(chrome managerChrome) bool {
 	if am.statusForeground(chrome) != chrome.errorFg {
 		return false
 	}
-	return !strings.HasPrefix(strings.ToUpper(strings.TrimSpace(am.statusMsg)), "NOTE:")
+	// A failed server lookup is worth noticing but blocked nothing either: the
+	// form is still there to fill in by hand.
+	msg := strings.ToUpper(strings.TrimSpace(am.statusMsg))
+	return !strings.HasPrefix(msg, "NOTE:") && !strings.HasPrefix(msg, "SERVER LOOKUP FAILED")
 }
 
 // renderStatusBar draws the message under the account manager. A failure is a
@@ -700,23 +734,29 @@ func (am AccountManager) renderStatusBar(width int, chrome managerChrome) string
 	}
 	text := am.redactSensitive(am.statusMsg)
 	if !am.statusIsFailure(chrome) {
-		return lipgloss.NewStyle().
-			Background(chrome.baseBg).
-			Foreground(am.statusForeground(chrome)).
-			Width(width).
-			Padding(0, 1).
-			Render(text)
+		return statusBand(width, chrome, am.statusForeground(chrome), text)
 	}
-	// The badge hugs its text and sits one cell in, lining up with the padded
-	// rows above it rather than flooding the whole width with red.
+	// The badge hugs its text, so the red still means "this stopped"; the band
+	// around it stays gray.
 	badge := lipgloss.NewStyle().
 		Background(chrome.errorFg).
 		Foreground(contrastFg(chrome.errorFg)).
 		Bold(true).
 		Padding(0, 1).
 		Render(truncate(text, max(1, width-4)))
-	indent := lipgloss.NewStyle().Background(chrome.baseBg).Render(" ")
-	return padStyled(indent+badge, width, chrome.baseBg)
+	return lipgloss.PlaceHorizontal(width, lipgloss.Center, badge, lipgloss.WithWhitespaceBackground(chrome.statusBg))
+}
+
+// statusBand draws a status or progress message centered on the status line's
+// gray band.
+func statusBand(width int, chrome managerChrome, fg lipgloss.Color, text string) string {
+	return lipgloss.NewStyle().
+		Background(chrome.statusBg).
+		Foreground(fg).
+		Width(width).
+		Padding(0, 1).
+		Align(lipgloss.Center).
+		Render(truncate(text, max(1, width-2)))
 }
 
 func (am AccountManager) redactSensitive(s string) string {
@@ -741,7 +781,14 @@ func (am AccountManager) Update(msg tea.Msg, keys KeyMap) (AccountManager, tea.C
 	case amList:
 		return am.updateList(msg, keys)
 	case amAdd, amEdit:
-		return am.updateForm(msg, keys)
+		left := am.focusedField == amFieldUser
+		am, cmd, done := am.updateForm(msg, keys)
+		if left && am.focusedField != amFieldUser && (am.mode == amAdd || am.mode == amEdit) {
+			var lookup tea.Cmd
+			am, lookup, _ = am.startDiscovery(true)
+			cmd = tea.Batch(cmd, lookup)
+		}
+		return am, cmd, done
 	case amConfirmDelete:
 		return am.updateConfirmDelete(msg, keys)
 	}
@@ -777,13 +824,13 @@ func (am AccountManager) updateList(msg tea.Msg, keys KeyMap) (AccountManager, t
 		// A new account gets its identity here, not at save time, so the OAuth
 		// sign-in that may happen mid-form already keys its token on it.
 		am.editConfigID = config.NewAccountID()
-		am.focusField(amFieldProvider)
+		am.focusField(amFieldUser)
 	case keyMatches(km, keys.Edit):
 		if acc := am.selectedAccount(); acc != nil {
 			am.mode = amEdit
 			am.editAccountID = acc.ID
 			am.resetForm()
-			am.focusField(amFieldProvider)
+			am.focusField(amFieldUser)
 			if acfg, ok := am.configForAccount(*acc); ok {
 				am.populateFormFrom(acfg)
 			} else {
@@ -825,7 +872,11 @@ func (am *AccountManager) updateFocusedInput(msg tea.Msg) tea.Cmd {
 	case amFieldSMTPPort:
 		am.smtpPortInput, cmd = am.smtpPortInput.Update(msg)
 	case amFieldUser:
+		before := am.userInput.Value()
 		am.userInput, cmd = am.userInput.Update(msg)
+		if am.userInput.Value() != before && strings.TrimSpace(am.userInput.Value()) != am.discoveredFor {
+			am.clearDiscoveredSettings()
+		}
 	case amFieldPass:
 		am.passInput, cmd = am.passInput.Update(msg)
 	case amFieldOAuthCode:
@@ -956,27 +1007,15 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 		for i, p := range providerList {
 			if p == am.provider {
 				if keyMatches(km, keys.Right) {
-					am.provider = providerList[(i+1)%len(providerList)]
+					am.setProvider(providerList[(i+1)%len(providerList)])
 				} else {
-					am.provider = providerList[(i-1+len(providerList))%len(providerList)]
+					am.setProvider(providerList[(i-1+len(providerList))%len(providerList)])
 				}
 				break
 			}
 		}
-		am.cancelOAuth() // abandon any in-flight sign-in
-		if am.provider == am.origProvider {
-			// Cycled back to the account's original provider — restore its
-			// loaded auth state so a stray arrow keypress leaves nothing changed.
-			am.useOAuth = am.origAuthMethod == config.AuthOAuth2
-			am.oauthRefreshToken = am.origRefreshToken
-			am.oauthSignedIn = am.origRefreshToken != ""
-		} else {
-			// A genuinely different provider: drop the previous provider's
-			// sign-in and take the new provider's default.
-			am.oauthSignedIn = false
-			am.oauthRefreshToken = ""
-			am.useOAuth = am.defaultUseOAuth()
-		}
+	case keyMatches(km, keys.DiscoverServers):
+		return am.startDiscovery(false)
 	case am.focusedField == amFieldColor && (keyMatches(km, keys.Left) || keyMatches(km, keys.Right)):
 		if keyMatches(km, keys.Right) {
 			am.colorIdx = (am.colorIdx + 1) % len(accountColorList)
@@ -1067,6 +1106,167 @@ func (am AccountManager) testForm() (AccountManager, tea.Cmd, bool) {
 	am.busyMsg = "TESTING ACCOUNT..."
 	am.statusMsg = ""
 	return am, testAccountCmd(acfg), false
+}
+
+// setProvider switches the form's provider, abandoning any in-flight sign-in.
+// Returning to the account's original provider restores its loaded auth state,
+// so a stray arrow keypress leaves nothing changed; any other provider drops
+// the previous sign-in and takes the new provider's default auth method.
+func (am *AccountManager) setProvider(p string) {
+	am.provider = p
+	am.cancelOAuth()
+	if am.provider == am.origProvider {
+		am.useOAuth = am.origAuthMethod == config.AuthOAuth2
+		am.oauthRefreshToken = am.origRefreshToken
+		am.oauthSignedIn = am.origRefreshToken != ""
+	} else {
+		am.oauthSignedIn = false
+		am.oauthRefreshToken = ""
+		am.useOAuth = am.defaultUseOAuth()
+	}
+}
+
+// presetHost names the company behind each preset, for the discovery status.
+var presetHost = map[string]string{"Gmail": "Google", "Outlook": "Microsoft", "Yahoo": "Yahoo", "iCloud": "Apple"}
+
+// discoverServers is a seam so tests don't query real DNS.
+var discoverServers = autodiscover.Discover
+
+// startDiscovery looks up a Custom account's servers from its email domain.
+// The lookup runs in the background and the form stays editable; the result
+// only pre-fills rows for the user to check and is never saved or connected
+// on its own, because DNS answers are unauthenticated. An auto lookup (from
+// leaving the Email row) runs once per address and only while both host rows
+// are empty; Ctrl+L always runs and may replace what is there.
+func (am AccountManager) startDiscovery(auto bool) (AccountManager, tea.Cmd, bool) {
+	email := strings.TrimSpace(am.userInput.Value())
+	if am.provider != "Custom" {
+		if !auto {
+			am.statusMsg = "SERVER LOOKUP IS FOR CUSTOM ACCOUNTS — THIS PROVIDER'S SERVERS ARE BUILT IN"
+		}
+		return am, nil, false
+	}
+	if !isEmailAddress(email) {
+		if !auto {
+			am.statusMsg = "ENTER AN EMAIL ADDRESS IN THE EMAIL / LOGIN ROW TO LOOK UP ITS SERVERS"
+		}
+		return am, nil, false
+	}
+	if auto && (am.discoveredFor == email || !am.hostRowsEmpty()) {
+		return am, nil, false
+	}
+	am.discoveredFor = email
+	am.statusMsg = "LOOKING UP SERVERS FOR " + email + "…"
+	return am, discoverServersCmd(email, auto), false
+}
+
+func (am AccountManager) hostRowsEmpty() bool {
+	return strings.TrimSpace(am.imapHostInput.Value()) == "" && strings.TrimSpace(am.smtpHostInput.Value()) == ""
+}
+
+// clearDiscoveredSettings removes values still owned by the previous lookup.
+// Rows edited by the user remain available for a manual lookup or save.
+func (am *AccountManager) clearDiscoveredSettings() {
+	if am.discoveredFor == "" {
+		return
+	}
+	res := am.discoveredResult
+	if res.Preset != "" && am.provider == res.Preset {
+		am.setProvider("Custom")
+	}
+	if res.Preset == "" && res.IMAPHost != "" {
+		if am.imapHostInput.Value() == res.IMAPHost {
+			am.imapHostInput.Reset()
+		}
+		if am.imapPortInput.Value() == strconv.Itoa(res.IMAPPort) {
+			am.imapPortInput.SetValue("993")
+		}
+		if am.imapTLS == res.IMAPTLS {
+			am.imapTLS = true
+		}
+		if am.smtpHostInput.Value() == res.SMTPHost {
+			am.smtpHostInput.Reset()
+		}
+		if am.smtpPortInput.Value() == strconv.Itoa(res.SMTPPort) {
+			am.smtpPortInput.SetValue("587")
+		}
+		if am.smtpTLS == res.SMTPTLS {
+			am.smtpTLS = true
+		}
+	}
+	if am.discoveredFrom && am.fromInput.Value() == am.discoveredFor {
+		am.fromInput.Reset()
+	}
+	am.discoveredFor = ""
+	am.discoveredResult = autodiscover.Result{}
+	am.discoveredFrom = false
+	for _, prefix := range []string{"LOOKING UP SERVERS", "FOUND:", "NO SERVER SETTINGS PUBLISHED", "SERVER LOOKUP FAILED"} {
+		if strings.HasPrefix(am.statusMsg, prefix) {
+			am.statusMsg = ""
+			break
+		}
+	}
+}
+
+func discoverServersCmd(email string, auto bool) tea.Cmd {
+	return func() tea.Msg {
+		// DNS plus up to two HTTPS autoconfig fetches.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		res, err := discoverServers(ctx, email)
+		return ServersDiscoveredMsg{Email: email, Auto: auto, Result: res, Err: err}
+	}
+}
+
+// applyDiscovery fills the form from a lookup. Results for a form that has
+// closed, a different address, or (for auto lookups) a form the user has
+// since started filling in by hand or moved off Custom are dropped.
+func (am AccountManager) applyDiscovery(msg ServersDiscoveredMsg) AccountManager {
+	if (am.mode != amAdd && am.mode != amEdit) || strings.TrimSpace(am.userInput.Value()) != msg.Email {
+		return am
+	}
+	if msg.Auto && (am.provider != "Custom" || !am.hostRowsEmpty()) {
+		if strings.HasPrefix(am.statusMsg, "LOOKING UP SERVERS") {
+			am.statusMsg = ""
+		}
+		return am
+	}
+	domain := msg.Email[strings.LastIndex(msg.Email, "@")+1:]
+	switch {
+	case errors.Is(msg.Err, autodiscover.ErrNotFound):
+		am.statusMsg = "NO SERVER SETTINGS PUBLISHED FOR " + domain + " — ENTER THEM BELOW"
+		return am
+	case msg.Err != nil:
+		am.statusMsg = "SERVER LOOKUP FAILED: " + am.redactSensitive(msg.Err.Error())
+		return am
+	}
+	if p := msg.Result.Preset; p != "" {
+		am.discoveredResult = msg.Result
+		am.setProvider(p)
+		am.statusMsg = fmt.Sprintf("FOUND: %s IS HOSTED BY %s — USING %s SETTINGS", domain, strings.ToUpper(presetHost[p]), strings.ToUpper(p))
+		return am
+	}
+	s := msg.Result.Servers
+	am.discoveredResult = msg.Result
+	am.discoveredFrom = false
+	am.imapHostInput.SetValue(s.IMAPHost)
+	am.imapPortInput.SetValue(strconv.Itoa(s.IMAPPort))
+	am.imapTLS = s.IMAPTLS
+	am.smtpHostInput.SetValue(s.SMTPHost)
+	am.smtpPortInput.SetValue(strconv.Itoa(s.SMTPPort))
+	am.smtpTLS = s.SMTPTLS
+	am.statusMsg = fmt.Sprintf("FOUND: %s:%d / %s:%d", s.IMAPHost, s.IMAPPort, s.SMTPHost, s.SMTPPort)
+	if login := msg.Result.Username; login != "" {
+		// The host logs in with something other than the address. A login that
+		// isn't an address makes From required, so keep the address there.
+		am.userInput.SetValue(login)
+		if strings.TrimSpace(am.fromInput.Value()) == "" {
+			am.fromInput.SetValue(msg.Email)
+			am.discoveredFrom = true
+		}
+		am.statusMsg = fmt.Sprintf("FOUND: %s:%d / %s:%d, LOGIN %s", s.IMAPHost, s.IMAPPort, s.SMTPHost, s.SMTPPort, login)
+	}
+	return am
 }
 
 // clipboardCopy is a seam so tests don't touch the real clipboard.
@@ -1412,13 +1612,15 @@ func hashForAtError(label, value string) string {
 	return label + " HAS # WHERE @ BELONGS"
 }
 
-// userFieldLabel matches what the form prints beside the field, so a failure
-// names the row the reader is looking at.
+// userFieldLabel is what the form prints beside the login row, and what
+// validation (uppercased) calls it, so a failure names the row the reader is
+// looking at. A preset's login is the address; a Custom host may issue a bare
+// login instead, but an address is what server discovery reads.
 func userFieldLabel(provider string) string {
 	if _, ok := providerPresets[provider]; ok {
-		return "EMAIL"
+		return "Email"
 	}
-	return "USERNAME"
+	return "Email / login"
 }
 
 func parseSyncMinutes(raw string) (int, bool) {
@@ -1497,7 +1699,7 @@ func validateAccountForConnect(acfg config.AccountConfig) formFailure {
 	if status := hostFormatError("SMTP HOST", acfg.SMTPHost); status != "" {
 		return fail(amFieldSMTPHost, status)
 	}
-	userLabel := userFieldLabel(acfg.Provider)
+	userLabel := strings.ToUpper(userFieldLabel(acfg.Provider))
 	if acfg.User == "" {
 		return fail(amFieldUser, userLabel+" IS REQUIRED")
 	}
@@ -1606,6 +1808,9 @@ func (am *AccountManager) advanceField(delta int) {
 
 func (am *AccountManager) resetForm() {
 	am.editConfigID = ""
+	am.discoveredFor = ""
+	am.discoveredResult = autodiscover.Result{}
+	am.discoveredFrom = false
 	am.provider = "Custom"
 	am.colorIdx = 0
 	am.nameInput.Reset()
@@ -1936,6 +2141,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	}
 
 	addSection("Account")
+	addControl(amFieldUser, row(userFieldLabel(am.provider), am.userInput, amFieldUser))
 	addControl(amFieldProvider, providerRow(amFieldProvider))
 	addBlank()
 	addControl(amFieldName, row("Name", am.nameInput, amFieldName))
@@ -1950,10 +2156,8 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 		addControl(amFieldSMTPPort, row("SMTP Port", am.smtpPortInput, amFieldSMTPPort))
 		addControl(amFieldSMTPTLS, tlsRow("SMTP TLS", am.smtpTLS, amFieldSMTPTLS))
 	}
-	userLabel := "Username"
 	passInput := am.passInput
 	if preset, ok := providerPresets[am.provider]; ok {
-		userLabel = "Email"
 		passInput.Placeholder = preset.PassHint
 	}
 	// A muted continuation line under a field, aligned to the field column.
@@ -1964,7 +2168,6 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	}
 
 	addSection("Credentials")
-	addControl(amFieldUser, row(userLabel, am.userInput, amFieldUser))
 
 	if !am.providerSupportsOAuth() {
 		// Providers without an OAuth path: app password only.
@@ -2087,6 +2290,15 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 			st.EndOfBuffer = style(lipgloss.NewStyle()).Foreground(bg)
 			st.Prompt = style(lipgloss.NewStyle())
 		}
+		// bubbles renders through a pointer to its own Focused/BlurredStyle, and
+		// on this copy it still points at the original's unstyled fields;
+		// Focus/Blur re-point it at the styles just set.
+		if focused {
+			_ = ta.Focus()
+			ta.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(accentReadableOn(chrome.text, chrome.accent, 4.5))
+		} else {
+			ta.Blur()
+		}
 		ta.SetWidth(fieldW)
 		ta.SetHeight(signatureFieldHeight)
 
@@ -2106,7 +2318,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 			if i < len(fieldLines) {
 				line = fieldLines[i]
 			}
-			rightLines = append(rightLines, lipgloss.NewStyle().Background(bg).Width(fieldW).Render(truncateStyled(line, fieldW, bg)))
+			rightLines = append(rightLines, fillLineBg(line, fieldW, lipgloss.NewStyle().Background(bg).Foreground(chrome.text)))
 		}
 		return lipgloss.JoinHorizontal(lipgloss.Top,
 			lipgloss.JoinVertical(lipgloss.Left, leftLines...),
@@ -2133,12 +2345,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 
 	statusLine := am.renderStatusBar(width, chrome)
 	if am.busyMsg != "" {
-		statusLine = lipgloss.NewStyle().
-			Background(chrome.baseBg).
-			Foreground(chrome.pendingFg).
-			Width(width).
-			Padding(0, 1).
-			Render(am.redactSensitive(am.busyMsg))
+		statusLine = statusBand(width, chrome, chrome.pendingFg, am.redactSensitive(am.busyMsg))
 	}
 
 	bodyH := max(1, height-3)
@@ -2147,11 +2354,13 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 		offset = settingsScrollOffset(viewLineCount(rows), anchor, bodyH)
 	}
 	end := min(len(rows), offset+bodyH)
+	content := strings.Join(rows[offset:end], "\n")
+	// A form shorter than the window keeps its spare rows below the status
+	// line, so the message stays near the form and the keys stay at the bottom.
+	contentH := min(bodyH, strings.Count(content, "\n")+1)
 	body := clampView(
-		lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(
-			strings.Join(rows[offset:end], "\n"),
-		),
-		width, bodyH, chrome.baseBg,
+		lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(content),
+		width, contentH, chrome.baseBg,
 	)
 
 	var actionPairs []string
@@ -2160,9 +2369,16 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	}
 	actions := renderSoftHints(width, chrome, actionPairs...)
 
-	parts := []string{body}
-	if statusLine != "" {
-		parts = append(parts, statusLine)
+	// Keep the spacer and status row even when there is no message. The
+	// surrounding overlay is centered, so changing its height moves the form.
+	statusSpacer := clampView("", width, 1, chrome.baseBg)
+	parts := []string{body, statusSpacer}
+	if statusLine == "" {
+		statusLine = statusSpacer
+	}
+	parts = append(parts, statusLine)
+	if spare := bodyH - contentH; spare > 0 {
+		parts = append(parts, clampView("", width, spare, chrome.baseBg))
 	}
 	parts = append(parts, actions)
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)

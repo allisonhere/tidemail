@@ -327,7 +327,7 @@ func TestAccountManagerFormStaysCompactInShortView(t *testing.T) {
 
 	view := am.View(74, 28, BuildStyles(CatppuccinMocha, "compact", "square"))
 
-	for _, want := range []string{"Account", "Incoming mail", "Outgoing mail", "Credentials", "Sending identity", "Name", "Color", "IMAP Host", "SMTP Host", "Username", "From", "test", "cancel"} {
+	for _, want := range []string{"Account", "Incoming mail", "Outgoing mail", "Credentials", "Sending identity", "Name", "Color", "IMAP Host", "SMTP Host", "Email / login", "From", "test", "cancel"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expected compact account form to keep %q visible, got %q", want, view)
 		}
@@ -528,8 +528,8 @@ func TestAccountManagerEditPreloadsConfigForSelectedAccount(t *testing.T) {
 	if next.mode != amEdit {
 		t.Fatalf("expected edit mode, got %v", next.mode)
 	}
-	if next.focusedField != amFieldProvider {
-		t.Fatalf("opening the form should focus Provider, got %v", next.focusedField)
+	if next.focusedField != amFieldUser {
+		t.Fatalf("opening the form should focus the Email / login row, got %v", next.focusedField)
 	}
 	if next.imapHostInput.Value() != "imap.example.com" {
 		t.Fatalf("expected IMAP host from config, got %q", next.imapHostInput.Value())

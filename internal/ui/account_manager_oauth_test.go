@@ -155,13 +155,13 @@ func TestAuthMethodSelectorAbsentForNonGmail(t *testing.T) {
 	am := NewAccountManager(nil)
 	am.mode = amAdd
 	am.provider = "Custom"
-	am.focusField(amFieldUser)
+	am.focusField(amFieldSMTPTLS) // the row before the credentials
 	am.advanceField(1)
 	if am.focusedField == amFieldAuthMethod || am.focusedField == amFieldOAuthSignIn || am.focusedField == amFieldOAuthCode {
 		t.Fatalf("non-Gmail form landed on a Gmail-only row: %v", am.focusedField)
 	}
 	if am.focusedField != amFieldPass {
-		t.Fatalf("non-Gmail form should go User → Password, got %v", am.focusedField)
+		t.Fatalf("non-Gmail form should go SMTP TLS → Password, got %v", am.focusedField)
 	}
 }
 
@@ -170,7 +170,7 @@ func TestDisabledGoogleOAuthHidesSelectorAndShowsUserMessage(t *testing.T) {
 	am.oauthCfg.GoogleDisabled = true
 	am.mode = amAdd
 	am.useOAuth = false
-	am.focusField(amFieldUser)
+	am.focusField(amFieldColor) // presets hide the host rows, so Color precedes the credentials
 	am.advanceField(1)
 	if am.focusedField != amFieldPass {
 		t.Fatalf("disabled Google OAuth should navigate directly to Password, got %v", am.focusedField)
@@ -373,7 +373,7 @@ func TestOutlookSelectorShownAndDefaultsToOAuth(t *testing.T) {
 	if !am.useOAuth {
 		t.Fatal("Outlook should default to OAuth (Thunderbird client always configured)")
 	}
-	am.focusField(amFieldUser)
+	am.focusField(amFieldColor) // presets hide the host rows, so Color precedes the credentials
 	am.advanceField(1)
 	if am.focusedField != amFieldAuthMethod {
 		t.Fatalf("focus = %v, want amFieldAuthMethod for Outlook", am.focusedField)

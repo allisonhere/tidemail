@@ -8,14 +8,27 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Changing or clearing an address after server discovery now clears its inferred
+  settings, so another address can be looked up in the same account form.
 - Attachment headings and rows now paint the reading pane background, including
   on signed and encrypted messages.
+- The account form's Signature box no longer shows the terminal's own background through
+  the field, whether empty, typed in, or focused; its cursor now uses the accent colour like
+  the other rows.
 - The grammar check preview no longer runs off the bottom of the screen on a long email: it fits the
   terminal, keeps the accept/cancel hints in view, and scrolls with the arrow keys, `PgUp`/`PgDn`,
   and `Home`/`End`.
 
 ### Added
 
+- Adding a Custom account can now look up its servers from the email address. The
+  address is now the first row of the account form (**Email**, or **Email / login** on
+  Custom) and new and edited accounts start there. Leaving it with an address (or pressing
+  `Ctrl+L`) looks the domain up: RFC 6186 SRV records first, then MX records that show the
+  domain is hosted by Google, Microsoft 365, iCloud or Yahoo (which switch the form to that
+  provider), then the Mozilla autoconfig file the domain itself publishes over HTTPS, as
+  cPanel hosts do. Only the user's own domain is asked; Thunderbird's shared database is
+  not. Results only pre-fill the form; nothing connects or saves until you test or save.
 - Plugins now receive the sender-check results the mail server recorded (SPF, DKIM and DMARC as
   pass/fail values, plus the server's spam flag) as an `auth` field in the message metadata, never the
   headers themselves. A new `suspicious` tag category (a warning color) is available to plugins.

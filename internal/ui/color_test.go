@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math"
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
@@ -47,5 +48,36 @@ func TestAccentReadableOnEmptyAccent(t *testing.T) {
 	got := accentReadableOn("", lipgloss.Color("#ffffff"), 3)
 	if got != "" {
 		t.Fatalf("expected empty, got %q", got)
+	}
+}
+
+func hueOf(t *testing.T, c lipgloss.Color) float64 {
+	t.Helper()
+	r, g, b, ok := hexToRGB(c)
+	if !ok {
+		t.Fatalf("bad colour %q", c)
+	}
+	h, _, _ := rgbToHSL(r, g, b)
+	return h * 360
+}
+
+func TestGreenerShiftsCyanTowardGreenOnly(t *testing.T) {
+	foam := lipgloss.Color("#9ccfd8") // Rose Pine's Unread, the account manager's success colour
+	if got := hueOf(t, greener(foam)); math.Abs(got-162) > 3 {
+		t.Fatalf("rose pine foam hue %.0f°, want about 162°", got)
+	}
+	if pink := lipgloss.Color("#eb6f92"); greener(pink) != pink {
+		t.Fatalf("pink changed to %s", greener(pink))
+	}
+	if gray := lipgloss.Color("#808080"); greener(gray) != gray {
+		t.Fatalf("gray changed to %s", greener(gray))
+	}
+	if green := lipgloss.Color("#a6e3a1"); math.Abs(hueOf(t, greener(green))-hueOf(t, green)) > 15 {
+		t.Fatalf("an already-green colour moved too far: %s -> %s", green, greener(green))
+	}
+
+	chrome := newManagerChrome(80, RosePine, false)
+	if got := hueOf(t, chrome.successFg); math.Abs(got-162) > 6 || contrastRatio(chrome.successFg, chrome.baseBg) < 4.5 {
+		t.Fatalf("rose pine success colour %s (hue %.0f°, contrast %.1f)", chrome.successFg, got, contrastRatio(chrome.successFg, chrome.baseBg))
 	}
 }

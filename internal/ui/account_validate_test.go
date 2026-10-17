@@ -198,7 +198,7 @@ func TestValidateFormCatchesHashTypedForAt(t *testing.T) {
 	for _, tc := range []struct {
 		field, provider, value, want string
 	}{
-		{"user", "Custom", "info#thebeautyanswer.com", "USERNAME HAS # WHERE @ BELONGS"},
+		{"user", "Custom", "info#thebeautyanswer.com", "EMAIL / LOGIN HAS # WHERE @ BELONGS"},
 		{"user", "Gmail", "alice#gmail.com", "EMAIL HAS # WHERE @ BELONGS"},
 		{"from", "Custom", "info#thebeautyanswer.com", "FROM HAS # WHERE @ BELONGS"},
 		{"from", "Custom", "Alice <alice#example.com>", "FROM HAS # WHERE @ BELONGS"},

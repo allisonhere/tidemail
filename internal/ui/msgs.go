@@ -6,6 +6,7 @@ import (
 
 	"golang.org/x/oauth2"
 
+	"github.com/allisonhere/tidemail/internal/autodiscover"
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidemail/internal/filter"
@@ -97,6 +98,15 @@ type AccountDatabaseSavedMsg struct {
 	NextCfg     config.Config
 	WasNew      bool
 	Err         error
+}
+
+// ServersDiscoveredMsg carries a DNS server lookup for the account form. Auto
+// lookups (started by leaving the Email row) only fill rows still empty.
+type ServersDiscoveredMsg struct {
+	Email  string
+	Auto   bool
+	Result autodiscover.Result
+	Err    error
 }
 
 type AccountTestedMsg struct {

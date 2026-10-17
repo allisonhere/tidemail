@@ -63,9 +63,9 @@ func TestAccountManagerFailureStatusIsFilledRed(t *testing.T) {
 	if !strings.Contains(line, foreground(t, contrastFg(chrome.errorFg))) {
 		t.Fatalf("expected the failure label to use a contrasting foreground, got %q", line)
 	}
-	// The fill hugs the message; the rest of the row stays on the form's own
-	// background rather than becoming a full-width red bar.
-	if !strings.Contains(line, background(t, chrome.baseBg)) {
+	// The fill hugs the message; the rest of the row stays on the status
+	// line's gray band rather than becoming a full-width red bar.
+	if !strings.Contains(line, background(t, chrome.statusBg)) {
 		t.Fatalf("expected the failure label to stop short of the full width, got %q", line)
 	}
 }
@@ -177,5 +177,44 @@ func TestAccountManagerListStatusRedactsPassword(t *testing.T) {
 	}
 	if !strings.Contains(ansi.Strip(view), "[redacted]") {
 		t.Fatalf("expected the account list status to show the redaction marker, got %q", ansi.Strip(view))
+	}
+}
+
+// Status text sits centered on a darker gray band and stays readable on it.
+func TestAccountManagerStatusBandIsCentered(t *testing.T) {
+	trueColor(t)
+	centered := func(t *testing.T, line, text string) {
+		t.Helper()
+		plain := strings.TrimRight(ansi.Strip(line), " ")
+		left := strings.Index(plain, text)
+		right := 80 - (left + len(text))
+		if left < 0 || left-right > 1 || right-left > 1 {
+			t.Fatalf("%q not centered: %d cells left, %d right", text, left, right)
+		}
+	}
+	for _, theme := range []Theme{RosePine, CatppuccinMocha, CatppuccinLatte} {
+		chrome := newManagerChrome(80, theme, false)
+		if luminance(chrome.statusBg) >= luminance(chrome.baseBg) {
+			t.Fatalf("%s: status band %s is not darker than the form %s", theme.Name, chrome.statusBg, chrome.baseBg)
+		}
+		am := NewAccountManager(nil)
+		am.mode = amAdd
+		am.resetForm()
+		am.statusMsg = "FOUND: mail.example.org:993 / mail.example.org:465"
+		status := lineContaining(t, am.viewForm(80, 60, chrome), "FOUND:")
+		if !strings.Contains(status, background(t, chrome.statusBg)) {
+			t.Fatalf("%s: status line is not on the gray band: %q", theme.Name, status)
+		}
+		if r := contrastRatio(chrome.successFg, chrome.statusBg); r < 4.5 {
+			t.Fatalf("%s: success text contrast %.1f on the band", theme.Name, r)
+		}
+		centered(t, status, am.statusMsg)
+
+		am.statusMsg = "FROM NEEDS AN EMAIL ADDRESS"
+		badge := lineContaining(t, am.viewForm(80, 60, chrome), "FROM NEEDS")
+		if !strings.Contains(badge, background(t, chrome.statusBg)) {
+			t.Fatalf("%s: failure badge is not on the gray band: %q", theme.Name, badge)
+		}
+		centered(t, badge, am.statusMsg)
 	}
 }

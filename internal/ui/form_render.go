@@ -235,6 +235,28 @@ func renderFormBadgeStyled(text string, width int, bg, fg lipgloss.Color, bold b
 		Render(text)
 }
 
+// fillLineBg clamps line to width, pads it, and paints it with style, re-applying
+// style after every SGR reset. Bubbles widgets end each styled segment with
+// \033[0m and pad with unstyled spaces, which otherwise show the terminal's own
+// background through the field.
+func fillLineBg(line string, width int, style lipgloss.Style) string {
+	line = ansi.Truncate(line, width, "")
+	if gap := width - ansi.StringWidth(line); gap > 0 {
+		line += strings.Repeat(" ", gap)
+	}
+	if !strings.Contains(line, "\033[0m") {
+		return style.Render(line)
+	}
+	segs := strings.Split(line, "\033[0m")
+	for j, seg := range segs {
+		segs[j] = style.Render(seg)
+		if j < len(segs)-1 {
+			segs[j] += "\033[0m"
+		}
+	}
+	return strings.Join(segs, "")
+}
+
 func truncateStyled(s string, width int, bg lipgloss.Color) string {
 	if lipgloss.Width(s) <= width {
 		return s

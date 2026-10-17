@@ -320,6 +320,45 @@ func hslToRGB(h, s, l float64) (r, g, b float64) {
 	return hue2rgb(p, q, h+1.0/3), hue2rgb(p, q, h), hue2rgb(p, q, h-1.0/3)
 }
 
+// greener moves a color's hue halfway toward green and adds a little
+// saturation, so a theme's cyan or yellow-green reads as "success". Hues
+// outside that range (pinks, purples, reds) are returned unchanged rather than
+// dragged through blue on the way to green.
+func greener(c lipgloss.Color) lipgloss.Color {
+	r, g, b, ok := hexToRGB(c)
+	if !ok {
+		return c
+	}
+	h, s, l := rgbToHSL(r, g, b)
+	const target = 135.0 / 360
+	if s == 0 || h < 60.0/360 || h > 220.0/360 {
+		return c
+	}
+	h += (target - h) / 2
+	s = math.Min(1, s+0.1)
+	nr, ng, nb := hslToRGB(h, s, l)
+	return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x",
+		uint8(math.Round(nr*255)),
+		uint8(math.Round(ng*255)),
+		uint8(math.Round(nb*255)),
+	))
+}
+
+// desaturate scales a color's HSL saturation by keep (0 = gray, 1 = unchanged).
+func desaturate(c lipgloss.Color, keep float64) lipgloss.Color {
+	r, g, b, ok := hexToRGB(c)
+	if !ok {
+		return c
+	}
+	h, s, l := rgbToHSL(r, g, b)
+	nr, ng, nb := hslToRGB(h, s*math.Max(0, math.Min(1, keep)), l)
+	return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x",
+		uint8(math.Round(nr*255)),
+		uint8(math.Round(ng*255)),
+		uint8(math.Round(nb*255)),
+	))
+}
+
 // adjustLightness nudges a color's HSL lightness by delta (positive = lighter).
 // Returns the original color unchanged on parse failure.
 func adjustLightness(c lipgloss.Color, delta float64) lipgloss.Color {

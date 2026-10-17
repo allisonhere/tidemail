@@ -196,6 +196,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.Left.Help().Key + "/" + keys.Right.Help().Key, "change provider, color, or the Auth method"},
 				{keys.Save.Help().Key, "save account form"},
 				{keys.TestAccount.Help().Key, "test account form"},
+				{keys.DiscoverServers.Help().Key, "look up a Custom account's servers from its email domain (DNS)"},
 				{keys.OAuthSignIn.Help().Key, "sign in (Gmail / Outlook provider with Auth: OAuth)"},
 				{"From address", "blank sends as the username; a display name needs an address: Name <you@example.com>"},
 				{"Signature", "enter starts a new line in the account form; tab moves on"},

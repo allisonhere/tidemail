@@ -34,6 +34,11 @@ Current release: **v1.0.28**.
   Config, database rows, drafts, queued sends, sessions, OAuth caches, and
   keychain entries share a stable account ID, so renames and duplicate display
   names cannot cross-wire accounts.
+- **Server discovery** (`internal/autodiscover`): a Custom account's servers are
+  looked up from the email domain: RFC 6186 SRV (implicit-TLS IMAP only), then MX
+  mapped to the Gmail/Outlook/Yahoo/iCloud presets, then the domain's own Mozilla
+  autoconfig file over HTTPS (no ISPDB). It pre-fills the form only. Changing the
+  address clears inferred settings while preserving server values the user edited.
 - **Connection model**: a per-account session pool (`internal/imap/pool.go`) keeps one
   reusable connection per account, serializes that account's operations, revalidates
   with NOOP, redials on config change, and reaps after 3 minutes idle. Every UI

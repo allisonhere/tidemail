@@ -1290,6 +1290,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case ServersDiscoveredMsg:
+		m.accountManager = m.accountManager.applyDiscovery(msg)
+		return m, nil
+
 	case AccountTestedMsg:
 		m.accountManager.busy = false
 		m.accountManager.busyMsg = ""

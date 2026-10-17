@@ -83,8 +83,42 @@ tidemail
 ```
 
 Press `M` to open the account manager, then add your IMAP and SMTP details.
-TideMail can discover common server settings from your email address. If your
+Gmail, Outlook, Yahoo and iCloud have their servers built in. For a **Custom**
+account, TideMail can look the servers up from your email address: type the
+address in the **Email / login** row at the top of the form and move on, and
+if both host rows are still empty it looks the domain up. Press `Ctrl+L` to
+look up again at any time; that replaces whatever the host rows hold. TideMail
+tries, in order:
+
+- **SRV records** (RFC 6186): `_imaps._tcp` for IMAP over TLS, then
+  `_submissions._tcp` (port 465) or `_submission._tcp` for sending. A plain
+  `_imap._tcp` record is ignored, because TideMail doesn't do IMAP STARTTLS and
+  using it would send your password unencrypted.
+- **MX records**: a domain whose mail is handled by Google (Workspace),
+  Microsoft 365, iCloud or Yahoo switches the form to that provider, so its
+  sign-in options apply.
+- **Autoconfig file**: the Mozilla autoconfig file your own mail domain
+  publishes, which cPanel and many other hosting panels serve automatically.
+  TideMail asks only your domain, over HTTPS only:
+  `https://autoconfig.<domain>/mail/config-v1.1.xml`, then
+  `https://<domain>/.well-known/autoconfig/mail/config-v1.1.xml`, passing your
+  address so the host can fill in your login. It never asks Thunderbird's
+  shared provider database. It uses only servers TideMail can reach securely
+  (IMAP over TLS, sending over TLS or STARTTLS) with a password. If the file
+  says your login is not your full address, the login row takes that login and
+  your address moves to **From address**.
+
+The lookup runs in the background and only fills in the form: nothing
+connects or saves until you press `Ctrl+T` or `Ctrl+S`. DNS answers aren't
+authenticated (and the autoconfig file is found through DNS), so check the
+servers it found before you save. If nothing is
+published, the status line says so and you enter the details yourself. If your
 provider requires an app password, create one before saving the account.
+Changing or clearing the email removes settings still filled by its previous
+lookup, including an MX-selected provider. Server values you edited yourself
+stay; use `Ctrl+L` to replace them for the new address.
+The status line sits one blank row below the form and keeps its place when
+there is no message, so updates do not shift the fields.
 
 `Ctrl+S` and `Ctrl+T` check the form before anything connects, so a typo comes
 back as a labeled field rather than a login failure. A rejected row turns red
@@ -94,7 +128,7 @@ mark. Both hosts are required and are hostnames, not URLs, paths, or
 number between 1 and 65535. Leave a port blank to take the standard one. On
 the Gmail, Outlook, Yahoo, and iCloud
 providers the **Email** row must be a full address; a **Custom** account's
-**Username** is whatever your host issues, which need not be an address at all
+**Email / login** is whatever your host issues, which need not be an address at all
 — cPanel's `alice+example.com`, an Exchange `DOMAIN\alice`, a bare ISP login.
 When it is not an address, the **From address** row becomes required: there is
 no address to send as otherwise, and the form says so rather than leaving the
@@ -795,6 +829,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Space` in Accounts | Mark the highlighted account `★ [default]` — the sender for new messages |
 | `Shift+J` / `Shift+K` in Accounts | Move the highlighted account down / up the list |
 | `Ctrl+T` in the account form | Test the connection without saving |
+| `Ctrl+L` in the account form | Look up a Custom account's servers from its email domain (DNS SRV, then MX) |
 | `s` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
 | `Enter` on a folder | Fetch that folder now; on a folder with subfolders, collapse or expand it |
 | `n` / `r` / `d` in Accounts | New, rename, delete the selected folder (see Managing folders) |

@@ -1428,25 +1428,9 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	pad := lipgloss.NewStyle().Background(chrome.baseBg).Render("  ")
 	var lines []string
 	for _, line := range strings.Split(raw, "\n") {
-		line = ansi.Truncate(line, bodyInputW, "")
-		if gap := bodyInputW - ansi.StringWidth(line); gap > 0 {
-			line += strings.Repeat(" ", gap)
-		}
-		// Re-apply bodyBg after every reset so the cursor/selection styles (whose
-		// trailing \033[0m clears the background) don't punch holes in the line.
-		if strings.Contains(line, "\033[0m") {
-			segs := strings.Split(line, "\033[0m")
-			for j, seg := range segs {
-				segs[j] = bgWrap.Render(seg)
-				if j < len(segs)-1 {
-					segs[j] += "\033[0m"
-				}
-			}
-			line = strings.Join(segs, "")
-		} else {
-			line = bgWrap.Render(line)
-		}
-		lines = append(lines, pad+line+pad)
+		// fillLineBg re-applies bodyBg after every reset so the cursor/selection
+		// styles (whose trailing \033[0m clears the background) don't punch holes.
+		lines = append(lines, pad+fillLineBg(line, bodyInputW, bgWrap)+pad)
 	}
 	bodyRow := strings.Join(lines, "\n")
 
