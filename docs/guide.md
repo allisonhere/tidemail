@@ -279,6 +279,10 @@ nothing is classified and nothing goes online.
   needed.
 - It leaves as soon as someone else's reply arrives, and returns when you
   answer again.
+- On a new install, only mail you send after TideMail was first set up can
+  start a wait, so the first sync of years of Sent mail doesn't fill the view
+  with old, already-handled conversations. Existing installs keep their
+  current waits.
 - Mail in Inbox, Sent, Archive, and other folders counts, so archiving a
   conversation doesn't hide it. Trash, Spam, and Drafts are ignored.
 - Mail between your own addresses, and mail only to robots or lists

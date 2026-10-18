@@ -94,7 +94,7 @@ func parseParticipants(fields ...string) []participant {
 // computeWaiting finds waiting conversations (see conversation.ComputeWaiting);
 // stopped cycles are left out. The oldest wait comes first.
 func computeWaiting(candidates []db.Message, me map[string]bool, stoppedKeys map[string]bool) ([]waitingThread, map[int64]string) {
-	threads, stopped, _ := computeWaitingWithSnoozes(candidates, me, stoppedKeys, nil)
+	threads, stopped, _ := computeWaitingWithSnoozes(candidates, me, stoppedKeys, nil, time.Time{})
 	return threads, stopped
 }
 
@@ -102,8 +102,8 @@ func computeWaiting(candidates []db.Message, me map[string]bool, stoppedKeys map
 // snoozes whose cycle has ended: someone replied, or the user wrote again. A
 // snooze belongs to one wait, like Stop waiting, so those are deleted rather
 // than left to hide a new wait.
-func computeWaitingWithSnoozes(candidates []db.Message, me, stoppedKeys, snoozedKeys map[string]bool) ([]waitingThread, map[int64]string, []string) {
-	waiting, stopped, stale := conversation.ComputeWaiting(candidates, me, stoppedKeys, snoozedKeys)
+func computeWaitingWithSnoozes(candidates []db.Message, me, stoppedKeys, snoozedKeys map[string]bool, since time.Time) ([]waitingThread, map[int64]string, []string) {
+	waiting, stopped, stale := conversation.ComputeWaiting(candidates, me, stoppedKeys, snoozedKeys, since)
 	var out []waitingThread
 	for _, w := range waiting {
 		names := make([]string, len(w.WaitingFor))
@@ -138,6 +138,10 @@ func (m *Model) loadWaitingCmd() tea.Cmd {
 		if err != nil {
 			return waitingLoadedMsg{Err: err}
 		}
+		since, err := database.WaitingSince()
+		if err != nil {
+			return waitingLoadedMsg{Err: err}
+		}
 		snoozes, err := database.ListSnoozes()
 		if err != nil {
 			return waitingLoadedMsg{Err: err}
@@ -148,7 +152,7 @@ func (m *Model) loadWaitingCmd() tea.Cmd {
 				snoozedKeys[sn.TargetKey] = true
 			}
 		}
-		threads, stopped, stale := computeWaitingWithSnoozes(candidates, me, stoppedKeys, snoozedKeys)
+		threads, stopped, stale := computeWaitingWithSnoozes(candidates, me, stoppedKeys, snoozedKeys, since)
 		// Snoozes of waits that ended (a reply, or a new message of mine) go.
 		snoozesChanged := len(stale) > 0 && database.DeleteSnoozeKeys(db.SnoozeThread, stale) == nil
 		ids := make([]int64, len(threads))

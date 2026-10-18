@@ -37,6 +37,7 @@ func newHarness(t *testing.T, f Fixture) *harness {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { database.Close() })
+	_ = database.SetSetting("waiting_since", "") // fixtures predate the fresh-install baseline
 	if err := f.Load(database); err != nil {
 		t.Fatal(err)
 	}

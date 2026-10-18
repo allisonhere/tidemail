@@ -185,6 +185,7 @@ func newWaitingModel(t *testing.T) (Model, *waitingFixture) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { database.Close() })
+	_ = database.SetSetting("waiting_since", "") // fixtures predate the fresh-install baseline
 	acc, _ := database.AddAccount("acct-work", "Work", "")
 	mk := func(name string, flags ...string) int64 {
 		id, err := database.UpsertMailbox(db.Mailbox{AccountID: acc, Name: name, Delimiter: "/", Flags: flags})

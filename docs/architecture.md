@@ -214,7 +214,10 @@ Qualification never refers to a specific plugin.
 Trash, Junk, and Drafts; the existing `buildMessageThreads` groups them by
 Message-ID, In-Reply-To, and References (no subject matching); and a thread
 qualifies when its newest meaningful message (not a draft, not from a robot) is
-from one of the user's configured addresses and went to someone else. Refreshes
+from one of the user's configured addresses and went to someone else, and was
+sent at or after the `waiting_since` setting (`db.WaitingSince`), which a fresh
+database sets to its creation time so first-sync Sent history never starts a
+wait; a database that already had messages leaves it unset. Refreshes
 are coalesced (one computation at a time, one queued) and run after every sync,
 at startup and account changes, after archive/delete/move, and after Stop or
 Resume; a successful send triggers a sync of that account's Sent folder, so
