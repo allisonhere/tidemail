@@ -92,6 +92,8 @@ type ComposeModel struct {
 	tmplIdx     int
 	tmplEd      editorArea // preview (browse) or editor (tmplEditing) for tmplList[tmplIdx]
 	tmplEditing bool
+	tmplNaming  bool            // prompting for the name of a new template
+	tmplName    textinput.Model // that prompt's input
 
 	// Recipient autocomplete: addressBook holds "Name <addr>" candidates;
 	// suggestions is the dropdown for the segment being typed in the focused

@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -148,6 +149,8 @@ func (c *ComposeModel) openTemplates() {
 	c.tmplIdx = 0
 	c.tmplOpen = true
 	c.tmplEditing = false
+	c.tmplNaming = false
+	c.tmplName = newComposeInput("name for the new template")
 	c.tmplEd = newEditorArea()
 	c.syncTemplatePreview()
 }
@@ -180,6 +183,20 @@ func (c *ComposeModel) syncTemplatePreview() {
 }
 
 func (c ComposeModel) updateTemplates(km tea.KeyMsg, keys KeyMap) (ComposeModel, tea.Cmd, bool) {
+	if c.tmplNaming {
+		switch {
+		case keyMatches(km, keys.Cancel):
+			c.tmplNaming = false
+			c.tmplName.Blur()
+		case keyMatches(km, keys.Confirm), keyMatches(km, keys.Enter):
+			c.createTemplate()
+		default:
+			var cmd tea.Cmd
+			c.tmplName, cmd = c.tmplName.Update(km)
+			return c, cmd, false
+		}
+		return c, nil, false
+	}
 	if c.tmplEditing {
 		switch {
 		case keyMatches(km, keys.Save):
@@ -208,6 +225,11 @@ func (c ComposeModel) updateTemplates(km tea.KeyMsg, keys KeyMap) (ComposeModel,
 	case km.String() == "e":
 		c.tmplEditing = true
 		c.syncTemplatePreview()
+	case km.String() == "n":
+		c.tmplNaming = true
+		c.tmplName.SetValue("")
+		c.tmplName.Focus()
+		c.statusMsg, c.isErr = "", false
 	case keyMatches(km, keys.Confirm), keyMatches(km, keys.Enter):
 		c.insertTemplate(c.tmplList[c.tmplIdx])
 		c.tmplOpen = false
@@ -215,36 +237,92 @@ func (c ComposeModel) updateTemplates(km tea.KeyMsg, keys KeyMap) (ComposeModel,
 	return c, nil, false
 }
 
-// saveTemplate writes the edited text to <templates dir>/<name>.md. Editing a
-// built-in writes a same-named file, which overrides it on the next load.
-func (c *ComposeModel) saveTemplate() {
-	name := c.tmplList[c.tmplIdx].name
-	text := c.tmplEd.Value()
-	fail := func(msg string) { c.statusMsg, c.isErr = msg, true }
+// writeTemplate writes text to <templates dir>/<name>.md, creating the folder.
+func writeTemplate(name, text string) error {
 	if len(text) > maxTemplateBytes {
-		fail("template too large to save")
-		return
+		return fmt.Errorf("template too large to save")
 	}
 	dir, err := config.TemplatesDir()
-	if err == nil {
-		err = os.MkdirAll(dir, 0o700)
-	}
-	if err == nil {
-		err = os.WriteFile(filepath.Join(dir, name+".md"), []byte(text), 0o600)
-	}
 	if err != nil {
-		fail("couldn't save template: " + err.Error())
-		return
+		return err
 	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, name+".md"), []byte(text), 0o600)
+}
+
+// reloadTemplates re-reads the list and selects the template called name.
+func (c *ComposeModel) reloadTemplates(name string) {
+	dir, _ := config.TemplatesDir()
 	c.tmplList = loadTemplates(dir)
 	for i, t := range c.tmplList {
 		if strings.EqualFold(t.name, name) {
 			c.tmplIdx = i
 		}
 	}
-	c.tmplEditing = false
 	c.syncTemplatePreview()
+}
+
+// saveTemplate writes the edited text over the highlighted template. Editing a
+// built-in writes a same-named file, which overrides it on the next load.
+func (c *ComposeModel) saveTemplate() {
+	name := c.tmplList[c.tmplIdx].name
+	if err := writeTemplate(name, c.tmplEd.Value()); err != nil {
+		c.statusMsg, c.isErr = "couldn't save template: "+err.Error(), true
+		return
+	}
+	c.tmplEditing = false
+	c.reloadTemplates(name)
 	c.statusMsg, c.isErr = "saved template: "+name, false
+}
+
+// cleanTemplateName turns what was typed into a template name that is safe as
+// a filename and survives a round trip through loadTemplates.
+func cleanTemplateName(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", fmt.Errorf("type a name for the template")
+	}
+	if strings.HasPrefix(s, ".") || strings.ContainsAny(s, `/\:`) || strings.IndexFunc(s, unicode.IsControl) >= 0 {
+		return "", fmt.Errorf(`names can't start with "." or contain / \ : or control characters`)
+	}
+	if utf8.RuneCountInString(s) > 60 {
+		return "", fmt.Errorf("name is too long (60 characters at most)")
+	}
+	return s, nil
+}
+
+// createTemplate saves what the user wrote in the message (not the quoted
+// original) as a new template under the typed name.
+func (c *ComposeModel) createTemplate() {
+	fail := func(msg string) { c.statusMsg, c.isErr = msg, true }
+	name, err := cleanTemplateName(c.tmplName.Value())
+	if err != nil {
+		fail(err.Error())
+		return
+	}
+	for _, t := range c.tmplList {
+		if strings.EqualFold(t.name, name) {
+			fail(`"` + t.name + `" already exists; esc, then e to edit it`)
+			return
+		}
+	}
+	body, _ := splitReplyAndQuote(c.bodyInput.Value())
+	body = strings.TrimSpace(body)
+	if body == "" {
+		fail("nothing to save: write your message first")
+		return
+	}
+	text := serializeTemplate(mailTemplate{subject: strings.TrimSpace(c.subjectInput.Value()), body: body + "\n"})
+	if err := writeTemplate(name, text); err != nil {
+		fail("couldn't save template: " + err.Error())
+		return
+	}
+	c.tmplNaming = false
+	c.tmplName.Blur()
+	c.reloadTemplates(name)
+	c.statusMsg, c.isErr = "saved new template: "+name, false
 }
 
 // insertTemplate puts t's body at the caret (one undo step) and sets the
@@ -273,9 +351,14 @@ func (c ComposeModel) templatesPanel(width int, chrome managerChrome) string {
 		base.Foreground(chrome.muted).Render("  "+truncateRunes(preview, max(10, width-len(t.name)-24)))
 	keyStyle := base.Foreground(chrome.text)
 	lblStyle := base.Foreground(chrome.muted)
-	pairs := []string{"enter", "insert", "e", "edit", "←→", "choose", "esc", "close"}
+	pairs := []string{"enter", "insert", "e", "edit", "n", "new from message", "←→", "choose", "esc", "close"}
 	if c.tmplEditing {
 		pairs = []string{"ctrl+s", "save", "esc", "cancel edit"}
+	}
+	if c.tmplNaming {
+		pairs = []string{"enter", "save", "esc", "back"}
+		head = base.Foreground(chrome.muted).Render("  new template name: ") +
+			renderTextInput(c.tmplName, max(10, width-26), true, false, chrome)
 	}
 	var parts []string
 	for i := 0; i+1 < len(pairs); i += 2 {

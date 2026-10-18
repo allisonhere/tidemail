@@ -235,3 +235,112 @@ func TestTemplateEditOversizeRefused(t *testing.T) {
 		t.Error("oversize save must not write")
 	}
 }
+
+func tmplKey(c ComposeModel, s string) ComposeModel {
+	km := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+	switch s {
+	case "enter":
+		km = tea.KeyMsg{Type: tea.KeyEnter}
+	case "esc":
+		km = tea.KeyMsg{Type: tea.KeyEsc}
+	}
+	c, _, _ = c.updateTemplates(km, DefaultKeys)
+	return c
+}
+
+func tmplType(c ComposeModel, name string) ComposeModel {
+	for _, r := range name {
+		c = tmplKey(c, string(r))
+	}
+	return c
+}
+
+func TestCreateTemplateFromBody(t *testing.T) {
+	c := tmplCompose(t)
+	c.bodyInput.SetValue("Hi {first_name}, my standard answer.\n\nThanks")
+	c.subjectInput.SetValue("Quick note")
+	c = tmplKey(c, "n")
+	if !c.tmplNaming {
+		t.Fatal("n should open the name prompt")
+	}
+	c = tmplType(c, "My answer")
+	c = tmplKey(c, "enter")
+	if c.tmplNaming || c.isErr {
+		t.Fatalf("save failed: naming=%v status=%q", c.tmplNaming, c.statusMsg)
+	}
+	dir, _ := config.TemplatesDir()
+	data, err := os.ReadFile(filepath.Join(dir, "My answer.md"))
+	if err != nil || !strings.Contains(string(data), "subject: Quick note") || !strings.Contains(string(data), "my standard answer.") {
+		t.Fatalf("file = %q, %v", data, err)
+	}
+	if got := c.tmplList[c.tmplIdx]; got.name != "My answer" || got.subject != "Quick note" {
+		t.Errorf("selected = %+v", got)
+	}
+}
+
+func TestCreateTemplateSkipsQuotedOriginal(t *testing.T) {
+	c := tmplCompose(t)
+	c.bodyInput.SetValue("My reply\n\nOn Bob wrote:\n> old text\n")
+	c = tmplKey(c, "n")
+	c = tmplType(c, "Reply")
+	c = tmplKey(c, "enter")
+	dir, _ := config.TemplatesDir()
+	data, _ := os.ReadFile(filepath.Join(dir, "Reply.md"))
+	if strings.Contains(string(data), "old text") || !strings.Contains(string(data), "My reply") {
+		t.Errorf("saved %q; want only the user's own text", data)
+	}
+}
+
+func TestCreateTemplateRefusals(t *testing.T) {
+	c := tmplCompose(t)
+	c.bodyInput.SetValue("some text")
+	dir, _ := config.TemplatesDir()
+	for name, typed := range map[string]string{
+		"empty":    "",
+		"built-in": "thanks", // case-insensitive match of "Thanks"
+		"dot":      ".hidden",
+		"slash":    "a/b",
+		"too long": strings.Repeat("x", 61),
+	} {
+		d := tmplKey(c, "n")
+		d = tmplType(d, typed)
+		d = tmplKey(d, "enter")
+		if !d.isErr || !d.tmplNaming {
+			t.Errorf("%s: want refusal with the prompt still open, status=%q", name, d.statusMsg)
+		}
+	}
+	empty := tmplCompose(t)
+	empty = tmplKey(empty, "n")
+	empty = tmplType(empty, "Fine")
+	empty = tmplKey(empty, "enter")
+	if !empty.isErr {
+		t.Error("an empty body should be refused")
+	}
+	if _, err := os.Stat(dir); err == nil {
+		t.Error("refusals must not create the templates folder")
+	}
+}
+
+func TestCreateTemplateEscWritesNothing(t *testing.T) {
+	c := tmplCompose(t)
+	c.bodyInput.SetValue("text")
+	c = tmplKey(c, "n")
+	c = tmplType(c, "Nope")
+	c = tmplKey(c, "esc")
+	dir, _ := config.TemplatesDir()
+	if c.tmplNaming || !c.tmplOpen {
+		t.Error("esc should return to browsing the picker")
+	}
+	if _, err := os.Stat(dir); err == nil {
+		t.Error("esc must not write")
+	}
+}
+
+func TestTemplatePanelShowsNamePrompt(t *testing.T) {
+	c := tmplCompose(t)
+	c = tmplKey(c, "n")
+	c = tmplType(c, "Abc")
+	if p := c.templatesPanel(120, managerChrome{}); !strings.Contains(p, "new template name") || !strings.Contains(p, "Abc") {
+		t.Errorf("panel missing the prompt:\n%s", p)
+	}
+}
