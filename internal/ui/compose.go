@@ -84,6 +84,11 @@ type ComposeModel struct {
 	spellAdded   []string
 	senderCursor int
 
+	// Template picker (see templates.go).
+	tmplOpen bool
+	tmplList []mailTemplate
+	tmplIdx  int
+
 	// Recipient autocomplete: addressBook holds "Name <addr>" candidates;
 	// suggestions is the dropdown for the segment being typed in the focused
 	// To/CC/BCC field. Esc dismisses the dropdown until the value changes.
@@ -609,6 +614,9 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 	if c.spellOpen {
 		return c.updateSpell(km, keys)
 	}
+	if c.tmplOpen {
+		return c.updateTemplates(km, keys)
+	}
 
 	// Normal compose mode
 	switch {
@@ -634,6 +642,10 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 
 	case keyMatches(km, keys.SpellCheck):
 		c.openSpell()
+		return c, nil, false
+
+	case keyMatches(km, keys.Templates):
+		c.openTemplates()
 		return c, nil, false
 
 	case keyMatches(km, keys.PGPSign):
@@ -1293,6 +1305,9 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 
 	if c.spellOpen {
 		return c.spellPanel(width, chrome)
+	}
+	if c.tmplOpen {
+		return c.templatesPanel(width, chrome)
 	}
 	if c.busy {
 		// While sending, the status line carries the message; keep a blank footer.

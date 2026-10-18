@@ -141,6 +141,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.CycleSender.Help().Key, "cycle sender account; From opens the full picker"},
 				{keys.PasteText.Help().Key, "paste clipboard into focused field"},
 				{keys.GrammarCheck.Help().Key, "AI grammar & spell check (preview scrolls with arrows/pgup/pgdn; y accepts, n cancels)"},
+				{keys.Templates.Help().Key, "insert a template at the cursor (built-ins plus files in the templates folder next to config.toml)"},
 				{keys.SpellCheck.Help().Key, "offline spell check: step through misspelled words (Settings → Editor → Spell check)"},
 				{keys.PGPSign.Help().Key, "sign this message with PGP (needs a PGP plugin; nothing is sent if signing fails)"},
 				{keys.PGPEncrypt.Help().Key, "encrypt this message with PGP (needs a PGP plugin; nothing is sent if encryption fails)"},

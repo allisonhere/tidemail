@@ -271,3 +271,8 @@ func (e editorArea) refreshTypos() {
 func (e *editorArea) ReplaceSpan(sp tidespell.Span, text string) {
 	e.ed.ReplaceRange(sp.Start, sp.End, text)
 }
+
+// InsertText inserts s at the caret as a single undo step.
+func (e *editorArea) InsertText(s string) {
+	e.ed.InsertString(s)
+}

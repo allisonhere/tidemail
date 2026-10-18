@@ -860,6 +860,16 @@ func PluginDir() (string, error) {
 	return filepath.Join(filepath.Dir(cfgPath), "plugins"), nil
 }
 
+// TemplatesDir returns the directory of mail template files (alongside
+// config.toml). It may not exist.
+func TemplatesDir() (string, error) {
+	cfgPath, err := configPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(cfgPath), "templates"), nil
+}
+
 // NormalizeSendMaxAttempts bounds automatic delivery attempts. One disables retries.
 func NormalizeSendMaxAttempts(n int) int {
 	if n < 1 {
