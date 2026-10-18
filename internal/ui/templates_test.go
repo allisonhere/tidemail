@@ -157,3 +157,14 @@ func TestTemplatePickerKeys(t *testing.T) {
 		t.Error("esc should close the picker")
 	}
 }
+
+func TestTemplatePreviewShowsFilledBody(t *testing.T) {
+	c := NewCompose(config.AccountConfig{}, nil, nil)
+	c.bodyInput.SetSize(60, 10)
+	c.toInput.SetValue("Priya Natarajan <p@x.com>")
+	c.tmplList = []mailTemplate{{name: "T", body: "Hi {first_name}, thanks."}}
+	c.tmplOpen = true
+	if out := c.templatePreview(); !strings.Contains(out, "Hi Priya, thanks.") {
+		t.Errorf("preview missing filled body:\n%s", out)
+	}
+}

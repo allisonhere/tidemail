@@ -1431,6 +1431,9 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	}
 
 	raw := c.bodyInput.View()
+	if c.tmplOpen && len(c.tmplList) > 0 {
+		raw = c.templatePreview()
+	}
 	// The editor is authoritative on wrapping — it has already fit each line to
 	// bodyInputW. We must only FRAME that output, never re-wrap it: letting
 	// lipgloss.Width() reflow the lines re-measures grapheme widths with a

@@ -178,6 +178,21 @@ func (c *ComposeModel) insertTemplate(t mailTemplate) {
 	c.isErr = false
 }
 
+// templatePreview renders the highlighted template, placeholders filled, in a
+// throwaway editor of the body's size, so it looks as it will once inserted.
+func (c ComposeModel) templatePreview() string {
+	t := c.tmplList[c.tmplIdx]
+	vars := templateVars(c.toInput.Value(), c.accountCfg.Name, time.Now())
+	text := fillTemplate(t.body, vars)
+	if t.subject != "" {
+		text = "Subject: " + fillTemplate(t.subject, vars) + "\n\n" + text
+	}
+	p := newEditorArea()
+	p.SetSize(c.bodyInput.w, c.bodyInput.h)
+	p.SetValue(text)
+	return p.View()
+}
+
 // templatesPanel renders the footer shown while choosing a template.
 func (c ComposeModel) templatesPanel(width int, chrome managerChrome) string {
 	base := lipgloss.NewStyle().Background(chrome.baseBg)
