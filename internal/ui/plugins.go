@@ -531,6 +531,10 @@ func (m Model) handlePluginKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case msg.String() == "u" && m.plugins.result != nil && m.plugins.result.message != nil &&
 			messageUnsubscribeTarget(*m.plugins.result.message) != "":
 			return m.handleUnsubscribe(*m.plugins.result.message)
+		case msg.String() == "c" || msg.String() == "s" || msg.String() == "p":
+			if next, cmd, ok := m.handleReportExportKey(msg.String()); ok {
+				return next, cmd
+			}
 		case keyMatches(msg, m.keys.Cancel, m.keys.Back, m.keys.Confirm):
 			m.overlay = m.plugins.resultOrigin
 			m.plugins.resultOrigin = overlayNone
@@ -581,6 +585,9 @@ func (m Model) renderPluginOverlay() string {
 			pairs = append(pairs, "u", "unsubscribe")
 		}
 		pairs = append(pairs, "enter", "done")
+		if m.plugins.result.exportable() {
+			pairs = append(pairs, "c", "copy", "s", "save", "p", "print")
+		}
 		if r := m.plugins.result; r != nil && len(r.details) > 0 {
 			if r.showDetails {
 				pairs = append(pairs, "d", "summary")
