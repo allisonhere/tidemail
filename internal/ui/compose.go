@@ -2,9 +2,11 @@ package ui
 
 import (
 	"fmt"
+	"mime"
 	"net/mail"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -281,10 +283,8 @@ func newReplyBase(original db.Message, acfg config.AccountConfig, accounts []con
 	c.references = strings.TrimSpace(original.References + " " + original.MessageID)
 
 	// Quote the original body text
-	if original.BodyText != "" {
-		plain := ansi.Strip(original.BodyText)
-		quoted := quoteReply(plain, original.From)
-		c.bodyInput.SetValue(quoted)
+	if plain := quotableText(original); plain != "" {
+		c.bodyInput.SetValue(quoteReply(plain, original.From))
 	}
 
 	// Park the body caret above the quote so typing lands there once focus
@@ -308,17 +308,22 @@ func NewForward(original db.Message, acfg config.AccountConfig, accounts []confi
 	c.subjectInput.SetValue(subject)
 
 	// Quote the original body text with a forward header
-	if original.BodyText != "" {
-		plain := ansi.Strip(original.BodyText)
-		quoted := quoteForward(plain, original)
-		c.bodyInput.SetValue(quoted)
+	if plain := quotableText(original); plain != "" {
+		c.bodyInput.SetValue(quoteForward(plain, original))
 		c.moveBodyCursorToStart()
 	}
 
 	// Include original attachments
-	for _, att := range original.AttachmentData {
+	for i, att := range original.AttachmentData {
+		name := att.Filename
+		if name == "" { // embedded images often have no filename
+			name = fmt.Sprintf("attachment-%d", i+1)
+			if exts, _ := mime.ExtensionsByType(att.ContentType); len(exts) > 0 {
+				name += exts[0]
+			}
+		}
 		c.attachments = append(c.attachments, attachmentFile{
-			Name: att.Filename,
+			Name: name,
 			Path: "",
 			Data: att.Data,
 		})
@@ -347,6 +352,41 @@ func (c *ComposeModel) focusBodyAtStart() {
 	c.bodyInput, _ = c.bodyInput.Update(tea.KeyMsg{Type: tea.KeyCtrlHome})
 	c.bodyInput.EnterInsert()
 }
+
+// quotableText is the original message as plain text for quoting. It uses the
+// same HTML rendering the reader shows (so alt text, link targets and spacer
+// markup don't pile up as they do in tag-stripped text), falling back to the
+// stored plain body. Image-only lines and runs of blank lines are dropped.
+func quotableText(m db.Message) string {
+	text := ""
+	if m.BodyHTML != "" {
+		text = ansi.Strip(renderHTMLBodyOpts(m.BodyHTML, 76, Theme{}, true, true))
+	}
+	if strings.TrimSpace(text) == "" {
+		text = ansi.Strip(m.BodyText)
+	}
+	var out []string
+	blank := true // also trims leading blank lines
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimRight(line, " \t")
+		if t := strings.TrimSpace(line); imageOnlyLineRe.MatchString(t) {
+			continue
+		} else if t == "" {
+			if blank {
+				continue
+			}
+			blank = true
+		} else {
+			blank = false
+		}
+		out = append(out, line)
+	}
+	return strings.TrimRight(strings.Join(out, "\n"), "\n")
+}
+
+// imageOnlyLineRe matches a line that is just an image placeholder or a bare
+// image URL, as left by HTML-to-text conversion.
+var imageOnlyLineRe = regexp.MustCompile(`(?i)^(!\[[^\]]*\]\([^)]*\)|\[?(image|img|photo)[^\]]{0,40}\]?|https?://\S+\.(png|jpe?g|gif|webp)(\?\S*)?)$`)
 
 // quoteReply formats a quoted reply block from the original message.
 func quoteReply(body, from string) string {

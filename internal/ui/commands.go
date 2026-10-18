@@ -232,7 +232,17 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 			m.setStatus("forward failed: "+err.Error(), true)
 			return m, m.clearStatusCmd()
 		}
-		m.compose = NewForward(*msg, acfg, m.cfg.Accounts, m.addressBook)
+		fwd := *msg
+		if fwd.HasAttachment && m.db != nil {
+			// AttachmentData is transient, so a stored message has none; load the
+			// contents (embedded images included) so they travel with the forward.
+			atts, err := m.db.GetAttachments(fwd.ID)
+			if err != nil {
+				m.setStatus("couldn't load attachments to forward: "+err.Error(), true)
+			}
+			fwd.AttachmentData = atts
+		}
+		m.compose = NewForward(fwd, acfg, m.cfg.Accounts, m.addressBook)
 		m.overlay = overlayCompose
 		return m, nil
 	case "archive":
