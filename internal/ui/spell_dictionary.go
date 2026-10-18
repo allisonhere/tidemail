@@ -41,7 +41,7 @@ func (m *Model) reloadSpellDictionary() {
 // refreshSpellChecker rebuilds the live checker from the database so an added
 // or removed word takes effect in open and future compose windows.
 func (m *Model) refreshSpellChecker() {
-	setEditorSpell(m.cfg.Display.ComposeSpell, loadSpellWords(m.db))
+	setEditorSpell(m.cfg.Display.ComposeSpell, m.cfg.Display.ComposeSpellLang, loadSpellWords(m.db))
 }
 
 func validSpellWord(w string) bool {

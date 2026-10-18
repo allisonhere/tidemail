@@ -14,8 +14,8 @@ func dictModel(t *testing.T) Model {
 	m := settingsSaveTestModel(t, false)
 	m.width, m.height = 100, 40
 	m.cfg.Display.ComposeSpell = true
-	setEditorSpell(true, nil)
-	t.Cleanup(func() { setEditorSpell(false, nil); editorSpellNames = nil })
+	setEditorSpell(true, "", nil)
+	t.Cleanup(func() { setEditorSpell(false, "", nil); editorSpellNames = nil })
 	m.openSpellDictionary()
 	return m
 }
