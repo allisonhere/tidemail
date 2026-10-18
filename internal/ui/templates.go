@@ -147,22 +147,104 @@ func (c *ComposeModel) openTemplates() {
 	c.tmplList = loadTemplates(dir)
 	c.tmplIdx = 0
 	c.tmplOpen = true
+	c.tmplEditing = false
+	c.tmplEd = newEditorArea()
+	c.syncTemplatePreview()
+}
+
+// serializeTemplate is the file form of t: a "subject:" block when there is a
+// subject, then the body. It is the inverse of parseTemplate.
+func serializeTemplate(t mailTemplate) string {
+	if t.subject == "" {
+		return t.body
+	}
+	return "---\nsubject: " + t.subject + "\n---\n" + t.body
+}
+
+// syncTemplatePreview loads the highlighted template, raw so its {tags} show,
+// into tmplEd: as the file form when editing, otherwise as a read-only preview
+// with the subject as a first line.
+func (c *ComposeModel) syncTemplatePreview() {
+	t := c.tmplList[c.tmplIdx]
+	text := serializeTemplate(t)
+	if !c.tmplEditing && t.subject != "" {
+		text = "Subject: " + t.subject + "\n\n" + t.body
+	}
+	c.tmplEd.SetSize(c.bodyInput.w, c.bodyInput.h)
+	c.tmplEd.SetValue(text)
+	if c.tmplEditing {
+		c.tmplEd.Focus()
+	} else {
+		c.tmplEd.Blur()
+	}
 }
 
 func (c ComposeModel) updateTemplates(km tea.KeyMsg, keys KeyMap) (ComposeModel, tea.Cmd, bool) {
+	if c.tmplEditing {
+		switch {
+		case keyMatches(km, keys.Save):
+			c.saveTemplate()
+		case keyMatches(km, keys.Cancel) && c.tmplEd.Mode() != "INSERT" && c.tmplEd.Mode() != "VISUAL":
+			c.tmplEditing = false
+			c.syncTemplatePreview()
+			c.statusMsg, c.isErr = "edit discarded", false
+		default:
+			var cmd tea.Cmd
+			c.tmplEd, cmd = c.tmplEd.Update(km)
+			return c, cmd, false
+		}
+		return c, nil, false
+	}
 	n := len(c.tmplList)
 	switch {
 	case keyMatches(km, keys.Cancel):
 		c.tmplOpen = false
 	case keyMatches(km, keys.Left), keyMatches(km, keys.Up):
 		c.tmplIdx = (c.tmplIdx + n - 1) % n
+		c.syncTemplatePreview()
 	case keyMatches(km, keys.Right), keyMatches(km, keys.Down), keyMatches(km, keys.Tab):
 		c.tmplIdx = (c.tmplIdx + 1) % n
+		c.syncTemplatePreview()
+	case km.String() == "e":
+		c.tmplEditing = true
+		c.syncTemplatePreview()
 	case keyMatches(km, keys.Confirm), keyMatches(km, keys.Enter):
 		c.insertTemplate(c.tmplList[c.tmplIdx])
 		c.tmplOpen = false
 	}
 	return c, nil, false
+}
+
+// saveTemplate writes the edited text to <templates dir>/<name>.md. Editing a
+// built-in writes a same-named file, which overrides it on the next load.
+func (c *ComposeModel) saveTemplate() {
+	name := c.tmplList[c.tmplIdx].name
+	text := c.tmplEd.Value()
+	fail := func(msg string) { c.statusMsg, c.isErr = msg, true }
+	if len(text) > maxTemplateBytes {
+		fail("template too large to save")
+		return
+	}
+	dir, err := config.TemplatesDir()
+	if err == nil {
+		err = os.MkdirAll(dir, 0o700)
+	}
+	if err == nil {
+		err = os.WriteFile(filepath.Join(dir, name+".md"), []byte(text), 0o600)
+	}
+	if err != nil {
+		fail("couldn't save template: " + err.Error())
+		return
+	}
+	c.tmplList = loadTemplates(dir)
+	for i, t := range c.tmplList {
+		if strings.EqualFold(t.name, name) {
+			c.tmplIdx = i
+		}
+	}
+	c.tmplEditing = false
+	c.syncTemplatePreview()
+	c.statusMsg, c.isErr = "saved template: "+name, false
 }
 
 // insertTemplate puts t's body at the caret (one undo step) and sets the
@@ -178,20 +260,8 @@ func (c *ComposeModel) insertTemplate(t mailTemplate) {
 	c.isErr = false
 }
 
-// templatePreview renders the highlighted template, placeholders filled, in a
-// throwaway editor of the body's size, so it looks as it will once inserted.
-func (c ComposeModel) templatePreview() string {
-	t := c.tmplList[c.tmplIdx]
-	vars := templateVars(c.toInput.Value(), c.accountCfg.Name, time.Now())
-	text := fillTemplate(t.body, vars)
-	if t.subject != "" {
-		text = "Subject: " + fillTemplate(t.subject, vars) + "\n\n" + text
-	}
-	p := newEditorArea()
-	p.SetSize(c.bodyInput.w, c.bodyInput.h)
-	p.SetValue(text)
-	return p.View()
-}
+// templatePreview renders tmplEd: the raw template, or the editor on it.
+func (c ComposeModel) templatePreview() string { return c.tmplEd.View() }
 
 // templatesPanel renders the footer shown while choosing a template.
 func (c ComposeModel) templatesPanel(width int, chrome managerChrome) string {
@@ -203,7 +273,10 @@ func (c ComposeModel) templatesPanel(width int, chrome managerChrome) string {
 		base.Foreground(chrome.muted).Render("  "+truncateRunes(preview, max(10, width-len(t.name)-24)))
 	keyStyle := base.Foreground(chrome.text)
 	lblStyle := base.Foreground(chrome.muted)
-	pairs := []string{"enter", "insert", "←→", "choose", "esc", "close"}
+	pairs := []string{"enter", "insert", "e", "edit", "←→", "choose", "esc", "close"}
+	if c.tmplEditing {
+		pairs = []string{"ctrl+s", "save", "esc", "cancel edit"}
+	}
 	var parts []string
 	for i := 0; i+1 < len(pairs); i += 2 {
 		parts = append(parts, keyStyle.Render(pairs[i])+lblStyle.Render(" "+pairs[i+1]))
@@ -212,8 +285,22 @@ func (c ComposeModel) templatesPanel(width int, chrome managerChrome) string {
 	if dir, err := config.TemplatesDir(); err == nil {
 		hints += lblStyle.Render("   files in " + dir)
 	}
+	vars := templateVars(c.toInput.Value(), c.accountCfg.Name, time.Now())
+	var legend []string
+	seen := map[string]bool{}
+	for _, m := range placeholderRe.FindAllString(serializeTemplate(t), -1) {
+		if v, ok := vars[m[1:len(m)-1]]; ok && !seen[m] {
+			seen[m] = true
+			legend = append(legend, m+"="+v)
+		}
+	}
+	legendLine := base.Foreground(chrome.muted).Render("  tags: " + strings.Join(legend, "  "))
+	if len(legend) == 0 {
+		legendLine = base.Foreground(chrome.muted).Render("  no {tags} in this template")
+	}
 	return lipgloss.JoinVertical(lipgloss.Left,
 		padStyled(head, width, chrome.baseBg),
+		padStyled(legendLine, width, chrome.baseBg),
 		padStyled(hints, width, chrome.baseBg))
 }
 

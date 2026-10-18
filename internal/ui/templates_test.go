@@ -158,13 +158,80 @@ func TestTemplatePickerKeys(t *testing.T) {
 	}
 }
 
-func TestTemplatePreviewShowsFilledBody(t *testing.T) {
-	c := NewCompose(config.AccountConfig{}, nil, nil)
+func tmplCompose(t *testing.T) ComposeModel {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	c := NewCompose(config.AccountConfig{Name: "Allie"}, nil, nil)
 	c.bodyInput.SetSize(60, 10)
 	c.toInput.SetValue("Priya Natarajan <p@x.com>")
-	c.tmplList = []mailTemplate{{name: "T", body: "Hi {first_name}, thanks."}}
-	c.tmplOpen = true
-	if out := c.templatePreview(); !strings.Contains(out, "Hi Priya, thanks.") {
-		t.Errorf("preview missing filled body:\n%s", out)
+	c.openTemplates()
+	return c
+}
+
+func TestTemplatePreviewShowsRawTagsAndLegend(t *testing.T) {
+	c := tmplCompose(t)
+	if out := c.templatePreview(); !strings.Contains(out, "{first_name}") {
+		t.Errorf("preview should show the raw tag:\n%s", out)
+	}
+	panel := c.templatesPanel(120, managerChrome{})
+	if !strings.Contains(panel, "{first_name}=Priya") || !strings.Contains(panel, "{my_name}=Allie") {
+		t.Errorf("legend missing tag values:\n%s", panel)
+	}
+}
+
+func TestSerializeParseRoundTrip(t *testing.T) {
+	for _, in := range []mailTemplate{{body: "hi\n"}, {subject: "Re: x", body: "hi {name}\n"}} {
+		if got := parseTemplate(serializeTemplate(in)); got != in {
+			t.Errorf("round trip %+v -> %+v", in, got)
+		}
+	}
+}
+
+func TestTemplateEditSave(t *testing.T) {
+	c := tmplCompose(t)
+	name := c.tmplList[c.tmplIdx].name // a built-in
+	c, _, _ = c.updateTemplates(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")}, DefaultKeys)
+	if !c.tmplEditing {
+		t.Fatal("e should start editing")
+	}
+	c, _, _ = c.updateTemplates(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("Z")}, DefaultKeys)
+	c, _, _ = c.updateTemplates(tea.KeyMsg{Type: tea.KeyCtrlS}, DefaultKeys)
+	if c.tmplEditing || c.isErr {
+		t.Fatalf("save failed: editing=%v status=%q", c.tmplEditing, c.statusMsg)
+	}
+	dir, _ := config.TemplatesDir()
+	data, err := os.ReadFile(filepath.Join(dir, name+".md"))
+	if err != nil || !strings.Contains(string(data), "Z") || !strings.Contains(string(data), "{first_name}") {
+		t.Fatalf("saved file = %q, %v", data, err)
+	}
+	if got := c.tmplList[c.tmplIdx]; got.name != name || !strings.Contains(got.body, "Z") {
+		t.Errorf("reloaded template = %+v; want edited %q selected", got, name)
+	}
+}
+
+func TestTemplateEditCancelWritesNothing(t *testing.T) {
+	c := tmplCompose(t)
+	c, _, _ = c.updateTemplates(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")}, DefaultKeys)
+	c, _, _ = c.updateTemplates(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("Z")}, DefaultKeys)
+	c, _, _ = c.updateTemplates(tea.KeyMsg{Type: tea.KeyEsc}, DefaultKeys)
+	if c.tmplEditing || !c.tmplOpen || strings.Contains(c.templatePreview(), "Z") {
+		t.Errorf("esc should discard and stay in the picker")
+	}
+	dir, _ := config.TemplatesDir()
+	if _, err := os.Stat(dir); err == nil {
+		t.Error("cancel must not create the templates folder")
+	}
+}
+
+func TestTemplateEditOversizeRefused(t *testing.T) {
+	c := tmplCompose(t)
+	c.tmplEditing = true
+	c.tmplEd.SetValue(strings.Repeat("x", maxTemplateBytes+1))
+	c.saveTemplate()
+	dir, _ := config.TemplatesDir()
+	if !c.isErr {
+		t.Error("oversize save should report an error")
+	}
+	if _, err := os.Stat(dir); err == nil {
+		t.Error("oversize save must not write")
 	}
 }

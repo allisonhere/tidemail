@@ -85,9 +85,11 @@ type ComposeModel struct {
 	senderCursor int
 
 	// Template picker (see templates.go).
-	tmplOpen bool
-	tmplList []mailTemplate
-	tmplIdx  int
+	tmplOpen    bool
+	tmplList    []mailTemplate
+	tmplIdx     int
+	tmplEd      editorArea // preview (browse) or editor (tmplEditing) for tmplList[tmplIdx]
+	tmplEditing bool
 
 	// Recipient autocomplete: addressBook holds "Name <addr>" candidates;
 	// suggestions is the dropdown for the segment being typed in the focused
