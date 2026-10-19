@@ -240,7 +240,7 @@ func TestTemplatePanelShowsNamePrompt(t *testing.T) {
 	}
 }
 
-func TestTemplateHintOnlyInBodyAndPaletteEntry(t *testing.T) {
+func TestTemplateHintInEveryFieldAndPaletteEntry(t *testing.T) {
 	c := tmplCompose(t)
 	chrome := newManagerChrome(100, CatppuccinMocha, false)
 	c.tmplOpen = false
@@ -248,9 +248,11 @@ func TestTemplateHintOnlyInBodyAndPaletteEntry(t *testing.T) {
 	if h := ansi.Strip(c.composeHints(120, chrome)); !strings.Contains(h, "f6 templates") {
 		t.Errorf("body footer should hint f6 templates:\n%s", h)
 	}
-	c.focusedField = composeFieldSubject
-	if h := ansi.Strip(c.composeHints(120, chrome)); strings.Contains(h, "templates") {
-		t.Errorf("header fields should not show the hint:\n%s", h)
+	for _, f := range []composeField{composeFieldFrom, composeFieldSubject} {
+		c.focusedField = f
+		if h := ansi.Strip(c.composeHints(120, chrome)); !strings.Contains(h, "f6 templates") {
+			t.Errorf("field %v footer should hint f6 templates:\n%s", f, h)
+		}
 	}
 	m, _, _ := newIdentityModel(t, acct("Personal", "imap.example.com", "me@example.com", "pw"))
 	found := false

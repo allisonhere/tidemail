@@ -1386,8 +1386,10 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 		}
 		if c.focusedField == composeFieldBody {
 			// Copy/cut act on the editor selection, so only show them in the body.
-			pairs = append(pairs, "^c", "copy", "^x", "cut", "f6", "templates")
+			pairs = append(pairs, "^c", "copy", "^x", "cut")
 		}
+		// F6 opens the template picker from any field, so the hint is always shown.
+		pairs = append(pairs, "f6", "templates")
 		pairs = append(pairs, "esc", "cancel")
 	}
 	for i := 0; i+1 < len(pairs); i += 2 {
