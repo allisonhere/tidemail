@@ -40,8 +40,10 @@ type provider struct {
 // providers are tried in order. Both print the entered text to standard output
 // and exit 1 when canceled.
 var providers = []provider{
+	// zenity's password dialog has no text option (only a title), so the
+	// message goes in the title.
 	{"zenity", func(title, message string) []string {
-		return []string{"--password", "--title=" + title, "--text=" + message}
+		return []string{"--password", "--title=" + title + ": " + message}
 	}},
 	{"kdialog", func(title, message string) []string {
 		return []string{"--title", title, "--password", message}

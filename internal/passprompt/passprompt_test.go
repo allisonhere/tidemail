@@ -37,6 +37,9 @@ func TestAskReturnsThePasswordWithoutPuttingItInArguments(t *testing.T) {
 	if strings.Contains(string(recorded), "s3cret") {
 		t.Errorf("the secret must never be on the command line: %q", recorded)
 	}
+	if strings.Contains(string(recorded), "--text") {
+		t.Errorf("zenity's password dialog does not accept --text (it would exit 1 and look canceled): %q", recorded)
+	}
 	if !strings.Contains(string(recorded), "--password") || !strings.Contains(string(recorded), "me@example.com") {
 		t.Errorf("unexpected arguments: %q", recorded)
 	}
