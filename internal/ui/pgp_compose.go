@@ -3,7 +3,10 @@ package ui
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -80,12 +83,48 @@ func (m Model) handleOutgoingProtected(msg OutgoingProtectedMsg) (tea.Model, tea
 		if m.overlay == overlayCompose {
 			m.compose.busy = false
 			m.compose.isErr = true
-			m.compose.statusMsg = "Not sent. PGP: " + sanitizePluginLine(msg.Err.Error())
+			m.compose.statusMsg = humanPGPError(msg.Err)
 		}
 		return m, nil
 	}
 	next, cmd := m.handleSendQueued(msg.Queued)
 	return next, cmd
+}
+
+var noKeyRe = regexp.MustCompile(`^no usable key for (\S+)(?: \((.*)\))?$`)
+
+// humanPGPError turns a PGP plugin failure into one short line for compose's
+// status row, which is a single line cut at the window width: the part that
+// matters (what, and for whom) comes first and the way out is brief. Anything
+// not recognised keeps the plugin's own text.
+func humanPGPError(err error) string {
+	var perr *plugin.Error
+	if !errors.As(err, &perr) {
+		return "Not sent. PGP: " + sanitizePluginLine(err.Error())
+	}
+	text := sanitizePluginLine(perr.Message)
+	lower := strings.ToLower(text)
+	switch {
+	case perr.Code == "no_public_key":
+		if m := noKeyRe.FindStringSubmatch(text); m != nil {
+			if m[2] == "" || m[2] == "no such key" {
+				return fmt.Sprintf("Not sent: no PGP key for %s (alt+e turns encryption off)", m[1])
+			}
+			return fmt.Sprintf("Not sent: can't use the PGP key for %s: %s (alt+e turns encryption off)", m[1], m[2])
+		}
+		return "Not sent: a recipient has no usable PGP key (alt+e turns encryption off)"
+	case perr.Code == "no_secret_key" || strings.HasPrefix(lower, "no secret key to sign"):
+		who := strings.TrimSpace(strings.TrimPrefix(text, "no secret key to sign as"))
+		if who != "" && who != text {
+			return fmt.Sprintf("Not sent: no PGP signing key for %s (alt+s turns signing off)", who)
+		}
+		return "Not sent: you have no PGP signing key for this sender (alt+s turns signing off)"
+	case strings.Contains(lower, "bad passphrase"):
+		return "Not sent: wrong passphrase"
+	case strings.Contains(lower, "couldn't get your passphrase"):
+		return "Not sent: GnuPG got no passphrase (cancelled, or no prompt could open)"
+	}
+	return "Not sent. PGP: " + text
 }
 
 // protectionFlags reports which toggles a queued message was sent with, so
