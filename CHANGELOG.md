@@ -6,6 +6,12 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- `Ctrl+O` shows a message's complete source, fetched from the server without
+  marking it read; `c` copies it to the clipboard. Also in the command palette
+  as "View message source".
+
 ## v1.5.0
 
 ### Fixed

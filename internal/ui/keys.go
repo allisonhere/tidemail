@@ -69,6 +69,7 @@ type KeyMap struct {
 	ContentSearch key.Binding
 	ToggleQuote   key.Binding
 	ToggleHeaders key.Binding
+	ViewSource    key.Binding
 	ToggleImages  key.Binding
 	SaveAttach    key.Binding
 
@@ -174,6 +175,7 @@ var DefaultKeys = KeyMap{
 	ContentSearch: key.NewBinding(key.WithKeys("ctrl+f"), key.WithHelp("ctrl+f", "find")),
 	ToggleQuote:   key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "toggle quoted text")),
 	ToggleHeaders: key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "headers")),
+	ViewSource:    key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "source")),
 	ToggleImages:  key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "load images")),
 
 	Add:         key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),

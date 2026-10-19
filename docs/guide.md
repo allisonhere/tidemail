@@ -182,7 +182,11 @@ Type `#` and a tag name to search by the tags shown on message rows:
 tags must all match, and they combine with words: `invoice #billing` finds
 billing mail mentioning an invoice. Your corrections count, so a message you
 recategorized is found under its new tag, not the plugin's. In the content pane, `Ctrl+E` shows
-the full headers and authentication results. `Ctrl+U` opens the mailing list's
+the full headers and authentication results. `Ctrl+O` shows the message's
+complete source exactly as the server stores it, fetched fresh and without
+marking the message read; press `c` there to copy all of it to the clipboard.
+It also works from the message list and the command palette ("View message
+source"). `Ctrl+U` opens the mailing list's
 unsubscribe option when the message provides one.
 
 ### Managing folders
@@ -866,6 +870,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Ctrl+N` / `Alt+N` | Next content link |
 | `Alt+P` | Previous content link |
 | `Ctrl+E` | Toggle email headers on/off |
+| `Ctrl+O` | View the message source; `c` copies it, `Esc` closes |
 | `Ctrl+F` | Find in message |
 | `v` / `V` | Visual select line range / whole message |
 | `` ` `` | AI summary |
