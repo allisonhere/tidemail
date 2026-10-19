@@ -268,6 +268,8 @@ type Model struct {
 	catalog catalogUI // available plugins; see plugin_catalog.go
 
 	helpVP                viewport.Model
+	helpCat               int  // selected category in the two-pane help
+	helpRight             bool // keys scroll the right pane instead of choosing a category
 	helpSearchInput       textinput.Model
 	helpSearchActive      bool
 	overlay               overlayMode
@@ -1901,6 +1903,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keyMatches(msg, m.keys.Help):
 		m.overlay = overlayHelp
+		m.helpCat, m.helpRight = 0, false
 		m.resetHelpVP()
 		return m, nil
 
@@ -3147,6 +3150,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.helpSearchActive = false
 				m.helpSearchInput.SetValue("")
 				m.helpSearchInput.Blur()
+				m.helpCat = 0
 				m.resetHelpVP()
 			case keyMatches(msg, m.keys.Confirm):
 				// Stop editing but keep the filter so the list stays scrollable.
@@ -3155,6 +3159,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			default:
 				var cmd tea.Cmd
 				m.helpSearchInput, cmd = m.helpSearchInput.Update(msg)
+				m.helpCat = 0
 				m.resetHelpVP()
 				return m, cmd
 			}
@@ -3169,12 +3174,28 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// esc/q/? first clear an applied filter, then close.
 			if m.helpSearchInput.Value() != "" && keyMatches(msg, m.keys.Back) {
 				m.helpSearchInput.SetValue("")
+				m.helpCat = 0
 				m.resetHelpVP()
 				return m, nil
 			}
 			m.overlay = overlayNone
 			m.helpSearchActive = false
 			m.helpSearchInput.SetValue("")
+			return m, nil
+		case keyMatches(msg, m.keys.Left) || msg.String() == "shift+tab":
+			m.helpRight = false
+			return m, nil
+		case keyMatches(msg, m.keys.Right, m.keys.Tab, m.keys.Enter):
+			m.helpRight = true
+			return m, nil
+		case !m.helpRight && keyMatches(msg, m.keys.Up, m.keys.Down):
+			n := len(m.helpSectionsFiltered())
+			if keyMatches(msg, m.keys.Up) {
+				m.helpCat = max(0, m.helpCat-1)
+			} else {
+				m.helpCat = min(max(0, n-1), m.helpCat+1)
+			}
+			m.resetHelpVP()
 			return m, nil
 		}
 		var cmd tea.Cmd

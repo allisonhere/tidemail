@@ -951,13 +951,21 @@ func (m Model) emptyAccountsHint() string {
 	return "  press M to add accounts"
 }
 
+// helpSectionsFiltered is the help categories matching the search, if any.
+func (m Model) helpSectionsFiltered() []helpSection {
+	sections, _ := filterHelpSections(helpSections(m.keys), m.helpSearchInput.Value())
+	return sections
+}
+
+// resetHelpVP rebuilds the right pane for the selected category, scrolled to
+// the top.
 func (m *Model) resetHelpVP() {
-	winW := min(m.width-6, 90)
-	winH := min(m.height-4, 38)
-	vpW := winW
-	vpH := max(1, winH-4) // soft box: title line + bottom border + blank + footer
-	m.helpVP = viewport.New(vpW, vpH)
-	m.helpVP.SetContent(renderHelp(vpW, m.styles, m.keys, m.helpSearchInput.Value()))
+	_, _, rightW, paneH := helpLayout(m.width, m.height)
+	sections := m.helpSectionsFiltered()
+	m.helpCat = min(max(m.helpCat, 0), max(0, len(sections)-1))
+	chrome := newManagerChrome(rightW, m.styles.Theme, m.styles.PlainUI)
+	m.helpVP = viewport.New(rightW, paneH)
+	m.helpVP.SetContent(helpPaneContent(sections, m.helpCat, m.helpSearchInput.Value(), rightW, chrome))
 }
 
 func renderChromeOverlayBox(inner string, width int, chrome managerChrome, border lipgloss.Color) string {
