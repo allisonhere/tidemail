@@ -142,3 +142,33 @@ func TestWaitingStoppedPersistsAndPrunes(t *testing.T) {
 func itoa(n int64) string {
 	return WaitingKey(Message{ID: n})[len("row:"):]
 }
+
+func TestWaitingSinceStartsOnlyOnFreshDatabase(t *testing.T) {
+	d := newTestDB(t)
+	if err := d.initWaitingSince(); err != nil {
+		t.Fatal(err)
+	}
+	since, err := d.WaitingSince()
+	if err != nil || since.IsZero() {
+		t.Fatalf("fresh database baseline = %v, %v", since, err)
+	}
+
+	old := newTestDB(t)
+	if err := old.SetSetting(waitingSinceKey, ""); err != nil { // as if created before the baseline existed
+		t.Fatal(err)
+	}
+	acc, _ := old.AddAccount("", "Work", "")
+	mb, err := old.UpsertMailbox(Mailbox{AccountID: acc, Name: "INBOX", Delimiter: "/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := old.UpsertMessage(Message{MailboxID: mb, UID: 1, MessageID: "<a@x>", From: "a@x", To: "b@y", Date: time.Unix(1000, 0)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := old.initWaitingSince(); err != nil {
+		t.Fatal(err)
+	}
+	if since, _ := old.WaitingSince(); !since.IsZero() {
+		t.Fatalf("existing database got baseline %v", since)
+	}
+}

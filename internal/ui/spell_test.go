@@ -16,8 +16,8 @@ import (
 
 func spellCompose(t *testing.T, body string) ComposeModel {
 	t.Helper()
-	setEditorSpell(true, nil)
-	t.Cleanup(func() { setEditorSpell(false, nil) })
+	setEditorSpell(true, "", nil)
+	t.Cleanup(func() { setEditorSpell(false, "", nil) })
 	c := NewCompose(config.AccountConfig{}, nil, nil)
 	c.focusedField = composeFieldBody
 	c.bodyInput.Focus()
@@ -43,7 +43,7 @@ func misspelled(c ComposeModel) []string {
 }
 
 func TestSpellOffByDefaultDoesNothing(t *testing.T) {
-	setEditorSpell(false, nil)
+	setEditorSpell(false, "", nil)
 	c := NewCompose(config.AccountConfig{}, nil, nil)
 	c.focusedField = composeFieldBody
 	c.bodyInput.SetValue("I recieve teh email")
@@ -160,8 +160,8 @@ func TestSpellCleanTextReportsNoMisspellings(t *testing.T) {
 
 func TestSpellAddedWordsArePersisted(t *testing.T) {
 	m := settingsSaveTestModel(t, false)
-	setEditorSpell(true, nil)
-	t.Cleanup(func() { setEditorSpell(false, nil) })
+	setEditorSpell(true, "", nil)
+	t.Cleanup(func() { setEditorSpell(false, "", nil) })
 	m.compose = NewCompose(config.AccountConfig{}, nil, nil)
 	m.compose.spellAdded = []string{"Zorblax"}
 	m.persistSpellWords()
@@ -238,8 +238,8 @@ func TestSpellNameWordsExtractsNamesLocalPartsAndDomains(t *testing.T) {
 
 func TestSpellAcceptsCorrespondentNamesAndKeepsThemAcrossToggle(t *testing.T) {
 	editorSpellNames = nil
-	t.Cleanup(func() { editorSpellNames = nil; setEditorSpell(false, nil) })
-	setEditorSpell(true, nil)
+	t.Cleanup(func() { editorSpellNames = nil; setEditorSpell(false, "", nil) })
+	setEditorSpell(true, "", nil)
 
 	c := spellCompose(t, "Thanks Priya, Natarajan from Acme says hi")
 	if got := misspelled(c); len(got) == 0 {
@@ -251,8 +251,8 @@ func TestSpellAcceptsCorrespondentNamesAndKeepsThemAcrossToggle(t *testing.T) {
 		t.Fatalf("correspondent names should not be flagged, got %v", got)
 	}
 	// Turning the setting off and on again rebuilds the Checker; names survive.
-	setEditorSpell(false, nil)
-	setEditorSpell(true, nil)
+	setEditorSpell(false, "", nil)
+	setEditorSpell(true, "", nil)
 	c = spellCompose(t, "Thanks Priya, Natarajan from Acme says hi")
 	if got := misspelled(c); len(got) != 0 {
 		t.Fatalf("names must survive a settings re-save, got %v", got)

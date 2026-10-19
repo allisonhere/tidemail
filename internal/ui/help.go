@@ -8,22 +8,32 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
-	type entry struct{ key, desc string }
-	type section struct {
-		name    string
-		entries []entry
-	}
+type helpEntry struct{ key, desc string }
 
-	bind := func(b key.Binding) entry {
+type helpSection struct {
+	name    string
+	entries []helpEntry
+}
+
+// helpSections is the whole help text as data: the two-pane overlay shows one
+// section at a time, and renderHelp flattens them all.
+func helpSections(keys KeyMap) []helpSection {
+	bind := func(b key.Binding) helpEntry {
 		h := b.Help()
-		return entry{h.Key, h.Desc}
+		return helpEntry{h.Key, h.Desc}
 	}
 
-	sections := []section{
+	return []helpSection{
+		{
+			name: "Status bar",
+			entries: []helpEntry{
+				{"Pane headers on", "shows M accounts · C contacts · S settings · / search · ? help"},
+				{"Pane headers off", "shows the focused pane title and shortcuts; Accounts also keeps the global shortcuts"},
+			},
+		},
 		{
 			name: "Global",
-			entries: []entry{
+			entries: []helpEntry{
 				bind(keys.Help),
 				bind(keys.Command),
 				bind(keys.AccountManager),
@@ -38,7 +48,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		},
 		{
 			name: "Main Panes",
-			entries: []entry{
+			entries: []helpEntry{
 				{keys.NextPane.Help().Key, "next pane"},
 				{keys.PrevPane.Help().Key, "previous pane"},
 				{keys.Left.Help().Key, "move left across panes"},
@@ -55,7 +65,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		},
 		{
 			name: "Accounts Pane",
-			entries: []entry{
+			entries: []helpEntry{
 				{keys.Enter.Help().Key + "/" + keys.Space.Help().Key, "expand or collapse selected account/section"},
 				{keys.Enter.Help().Key, "on a folder row, fetch that folder now; on a folder with subfolders, collapse or expand it"},
 				{"←/→", "on a folder: ← collapses it, or jumps to its parent; → expands it"},
@@ -79,7 +89,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		},
 		{
 			name: "Message List",
-			entries: []entry{
+			entries: []helpEntry{
 				{keys.Enter.Help().Key, "open selected message; in Drafts, reopen draft compose"},
 				{"auto", "moving down past the last message loads older mail from the server"},
 				{keys.Space.Help().Key, "select message and advance"},
@@ -93,6 +103,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.Snooze.Help().Key, "snooze message(s) or a waiting conversation from Needs You / Waiting on Them; in Snoozed: unsnooze"},
 				{keys.RunPlugin.Help().Key, "run a plugin on the current message or selection (when plugins are installed)"},
 				{"b (plugin list)", "browse the official plugins: i installs, u updates, x removes; also in the palette as Browse available plugins"},
+				{"c / s / p (report result)", "copy a plugin report as text, save it to ~/Downloads/tidemail-reports/, or print it with lp/lpr"},
 				{keys.EditTags.Help().Key, "edit the current message's tags and classification; corrections stay local"},
 				{keys.PGPDecode.Help().Key, "decrypt and verify the current PGP message through a PGP plugin (shown when one is installed)"},
 				{"u (result card)", "unsubscribe when TideMail offers it; uses the normal confirmed unsubscribe flow"},
@@ -106,7 +117,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		},
 		{
 			name: "Content Pane",
-			entries: []entry{
+			entries: []helpEntry{
 				{keys.Up.Help().Key + "/" + keys.Down.Help().Key, "move focus line; scroll only when needed"},
 				{keys.Back.Help().Key, "return to message list"},
 				{keys.Enter.Help().Key, "open link on focus line, else selected link"},
@@ -130,7 +141,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		},
 		{
 			name: "Compose Modal",
-			entries: []entry{
+			entries: []helpEntry{
 				{keys.Tab.Help().Key + "/shift+tab", "next/previous field; From opens the sender picker"},
 				{"up/down", "previous/next header row (suggestions first); body moves the cursor"},
 				{keys.Enter.Help().Key, "open sender picker or advance header fields"},
@@ -141,17 +152,41 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.CycleSender.Help().Key, "cycle sender account; From opens the full picker"},
 				{keys.PasteText.Help().Key, "paste clipboard into focused field"},
 				{keys.GrammarCheck.Help().Key, "AI grammar & spell check (preview scrolls with arrows/pgup/pgdn; y accepts, n cancels)"},
+				{keys.Templates.Help().Key, "templates: insert a canned reply at the cursor (see the Templates section)"},
 				{keys.SpellCheck.Help().Key, "offline spell check: step through misspelled words (Settings → Editor → Spell check)"},
 				{keys.PGPSign.Help().Key, "sign this message with PGP (needs a PGP plugin; nothing is sent if signing fails)"},
 				{keys.PGPEncrypt.Help().Key, "encrypt this message with PGP (needs a PGP plugin; nothing is sent if encryption fails)"},
+				{"PGP: no key for…", "every recipient (To, Cc and Bcc) needs a public key in your GnuPG keyring: gpg --list-keys ADDRESS to check, gpg --locate-keys ADDRESS to fetch it, or have them send theirs and gpg --import it. For another address of your own, add it to your key with gpg --quick-add-uid KEYID \"Name <address>\". alt+e sends without encryption"},
+				{"PGP passphrase", "asked by GnuPG's pinentry (graphical, from your desktop), not by TideMail; gpg-agent remembers it for a few minutes. If the prompt looks wrong, check pinentry-program in ~/.gnupg/gpg-agent.conf and run gpgconf --reload gpg-agent"},
 				{"autosave", "save the draft under the chosen sender while you type"},
 				{keys.Undo.Help().Key, "cancel a queued send during the delay set in Settings"},
 				{keys.Cancel.Help().Key, "close compose; prompts to save/discard draft"},
 			},
 		},
 		{
+			name: "Templates",
+			entries: []helpEntry{
+				{keys.Templates.Help().Key, "in compose: open the template picker; the highlighted template is previewed in the message area, {tags} shown as written"},
+				{"←→ / ↑↓ / tab", "choose a template"},
+				{"enter", "insert at the cursor (one undo step) with the tags filled in; the subject is set only if it is empty"},
+				{"e", "edit the highlighted template right there; ctrl+s saves it, esc discards the edit. Editing a built-in saves your own copy, which replaces it"},
+				{"n", "save the message you are writing as a new template: type a name, enter saves. Quoted text in a reply or forward is left out; names can't repeat, start with \".\" or contain / \\ :"},
+				{"esc", "close the picker"},
+				{"built-ins", "Thanks, Got it, Out of office, Propose a meeting, Polite decline, Follow up"},
+				{"folder", "your templates live in the templates folder next to config.toml (~/.config/tidemail/templates); the picker shows the path"},
+				{"files", "one .md or .txt file per template; the file name is the template's name. A file named like a built-in replaces it; delete the file to get the built-in back"},
+				{"subject", "start a file with a --- block holding subject: Your subject, then --- on its own line, to set the subject too"},
+				{"skipped", "hidden files, files over 64 KB, files that aren't UTF-8 text, and symlinks pointing outside the folder"},
+				{"{first_name}", "first word of the display name on the first To recipient, e.g. Priya; \"there\" when that address has no name or To is empty"},
+				{"{name}", "the full display name on the first To recipient, e.g. Priya Natarajan (empty if the address has none)"},
+				{"{my_name}", "the Name set on the account you are sending from; changes if you switch the From account"},
+				{"{date}", "today's date, e.g. October 18, 2026"},
+				{"tags", "only the first To recipient is used (not CC/BCC); values are read when you insert, so fill in To first. Unknown {tags} stay as written"},
+			},
+		},
+		{
 			name: "Message Body Editor",
-			entries: []entry{
+			entries: []helpEntry{
 				{"ctrl+a", "select all body text"},
 				{"shift+arrows", "extend selection by character/line"},
 				{"ctrl+shift+arrows", "extend selection by word"},
@@ -164,7 +199,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		},
 		{
 			name: "Message Body Editor — Vim Mode",
-			entries: []entry{
+			entries: []helpEntry{
 				{"enable", "Settings → Editor → \"Vim keys in compose\" (off by default)"},
 				{"i a o O I A", "enter Insert mode (the body starts in Insert)"},
 				{"esc", "Insert → Normal; a second esc from Normal cancels (save/discard prompt)"},
@@ -179,7 +214,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		},
 		{
 			name: "Account Manager Modal",
-			entries: []entry{
+			entries: []helpEntry{
 				{keys.Up.Help().Key + "/" + keys.Down.Help().Key, "move through accounts or form fields"},
 				{keys.Add.Help().Key, "add account from the account list"},
 				{keys.Edit.Help().Key, "edit selected account from the account list"},
@@ -196,6 +231,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 				{keys.Left.Help().Key + "/" + keys.Right.Help().Key, "change provider, color, or the Auth method"},
 				{keys.Save.Help().Key, "save account form"},
 				{keys.TestAccount.Help().Key, "test account form"},
+				{keys.PasswordDialog.Help().Key, "on the Password row: enter the password in a native dialog (zenity or kdialog, desktop sessions only; not over SSH); ctrl+s saves it to the keychain like a typed one"},
 				{keys.DiscoverServers.Help().Key, "look up Custom account servers (DNS SRV, MX, HTTPS autoconfig); replaces filled hosts"},
 				{"Email / login", "leave with an address to look up empty Custom hosts; changing it clears settings from that lookup"},
 				{"Form status", "stays below the form; a lookup fills settings without connecting or saving"},
@@ -212,7 +248,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		},
 		{
 			name: "Contact Manager Modal",
-			entries: []entry{
+			entries: []helpEntry{
 				{keys.Space.Help().Key, "select contact and advance"},
 				{"c", "compose to selected contact(s)"},
 				{"n", "new contact for compose autocomplete"},
@@ -227,7 +263,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		},
 		{
 			name: "Filters Modal",
-			entries: []entry{
+			entries: []helpEntry{
 				{"n", "new rule: choose account, then describe rule in plain English"},
 				{keys.Space.Help().Key, "enable or disable selected rule"},
 				{keys.Delete.Help().Key, "delete selected rule"},
@@ -242,7 +278,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		},
 		{
 			name: "Settings Modal",
-			entries: []entry{
+			entries: []helpEntry{
 				{keys.Up.Help().Key + "/" + keys.Down.Help().Key, "move through sections or fields"},
 				{keys.Right.Help().Key + "/" + keys.Enter.Help().Key, "enter selected settings section"},
 				{keys.Left.Help().Key, "return from detail to sections"},
@@ -263,7 +299,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		},
 		{
 			name: "Pickers And Overlays",
-			entries: []entry{
+			entries: []helpEntry{
 				{"Command palette", ": or ctrl+p opens it (contextual commands in compose, summary, save attachments); in a vim compose body : is the editor's command line, so use ctrl+p there"},
 				{"Theme picker", "up/down previews; enter saves; esc cancels"},
 				{"Move picker", "enter opens/moves; n creates folder; h/left parent; letters jump"},
@@ -276,7 +312,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		},
 		{
 			name: "Mouse",
-			entries: []entry{
+			entries: []helpEntry{
 				{"enable", "Settings → Display → Mouse support (off by default; keeps native text selection while off)"},
 				{"click", "select a sidebar or message row, focus a pane, open a link in the reading pane, or resume editing a search from its row"},
 				{"double-click", "open a message or draft (same as enter); on a sidebar row, expand/collapse or sync like enter"},
@@ -287,7 +323,7 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		},
 		{
 			name: "Security And Storage",
-			entries: []entry{
+			entries: []helpEntry{
 				{"keychain", "passwords / API keys / OAuth refresh tokens stored in system keychain"},
 				{"config", "~/.config/tidemail/config.toml (no plain-text secrets after save)"},
 				{"secrets", "passwords, API keys, and OAuth tokens are redacted from errors/status"},
@@ -295,42 +331,74 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 			},
 		},
 	}
+}
 
-	// Filter by query: an entry matches on its key or description; a matching
-	// section name keeps the whole section.
+// filterHelpSections keeps the entries matching query (on key or description);
+// a matching section name keeps the whole section. It also returns how many
+// entries matched.
+func filterHelpSections(sections []helpSection, query string) ([]helpSection, int) {
 	query = strings.TrimSpace(strings.ToLower(query))
-	matchCount := 0
-	if query != "" {
-		filtered := sections[:0]
-		for _, s := range sections {
-			if strings.Contains(strings.ToLower(s.name), query) {
-				filtered = append(filtered, s)
-				matchCount += len(s.entries)
-				continue
-			}
-			var kept []entry
-			for _, e := range s.entries {
-				if strings.Contains(strings.ToLower(e.key), query) ||
-					strings.Contains(strings.ToLower(e.desc), query) {
-					kept = append(kept, e)
-				}
-			}
-			if len(kept) > 0 {
-				filtered = append(filtered, section{name: s.name, entries: kept})
-				matchCount += len(kept)
+	if query == "" {
+		return sections, 0
+	}
+	var out []helpSection
+	count := 0
+	for _, s := range sections {
+		if strings.Contains(strings.ToLower(s.name), query) {
+			out = append(out, s)
+			count += len(s.entries)
+			continue
+		}
+		var kept []helpEntry
+		for _, e := range s.entries {
+			if strings.Contains(strings.ToLower(e.key), query) ||
+				strings.Contains(strings.ToLower(e.desc), query) {
+				kept = append(kept, e)
 			}
 		}
-		sections = filtered
+		if len(kept) > 0 {
+			out = append(out, helpSection{name: s.name, entries: kept})
+			count += len(kept)
+		}
 	}
+	return out, count
+}
+
+// helpSectionLines renders one section: its title, then a row per entry. With
+// wrap, long descriptions continue on following lines instead of being cut off.
+func helpSectionLines(s helpSection, width int, chrome managerChrome, wrap bool) []string {
+	keyW := min(20, max(8, width/3))
+	descW := max(1, width-keyW)
+	lines := []string{renderSoftGroupTitle(s.name, width, chrome)}
+	for _, e := range s.entries {
+		parts := []string{e.desc}
+		if wrap {
+			parts = strings.Split(wrapWords(e.desc, max(1, descW-1)), "\n")
+		}
+		for i, part := range parts {
+			k := ""
+			if i == 0 {
+				k = e.key
+			}
+			keyCell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Width(keyW).Render(truncate(" "+k, max(1, keyW-1)))
+			descCell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render(part)
+			if !wrap {
+				descCell = truncateStyled(descCell, descW, chrome.baseBg)
+			}
+			lines = append(lines, keyCell+padStyled(descCell, descW, chrome.baseBg))
+		}
+	}
+	return lines
+}
+
+// renderHelp renders every section (filtered by query) as one scrolling text.
+func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
+	sections, matchCount := filterHelpSections(helpSections(keys), query)
+	query = strings.TrimSpace(strings.ToLower(query))
 
 	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
 	contentW := max(1, width)
-	keyW := min(20, max(8, contentW/3))
-	descW := max(1, contentW-keyW)
 	blank := lipgloss.NewStyle().Background(chrome.baseBg).Width(contentW).Render("")
-	muted := func(s string) string {
-		return padStyled(lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render("  "+s), contentW, chrome.baseBg)
-	}
 
 	var lines []string
 	if query != "" {
@@ -338,38 +406,62 @@ func renderHelp(width int, styles Styles, keys KeyMap, query string) string {
 		if matchCount == 0 {
 			summary = fmt.Sprintf("No shortcuts match %q.", query)
 		}
-		lines = append(lines, muted(summary), blank)
-	} else {
-		// Same key/description layout as the shortcut rows below, but wrapped:
-		// these two are prose, and truncating them clipped the sentence.
-		lines = append(lines, renderSoftGroupTitle("Status bar", contentW, chrome))
-		for _, e := range []entry{
-			{"Pane headers on", "shows M accounts · C contacts · S settings · / search · ? help"},
-			{"Pane headers off", "shows the focused pane title and shortcuts; Accounts also keeps the global shortcuts"},
-		} {
-			for i, part := range strings.Split(wrapWords(e.desc, max(1, descW-1)), "\n") {
-				k := ""
-				if i == 0 {
-					k = e.key
-				}
-				keyCell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Width(keyW).Render(truncate(" "+k, max(1, keyW-1)))
-				descCell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render(part)
-				lines = append(lines, keyCell+padStyled(descCell, descW, chrome.baseBg))
-			}
-		}
-		lines = append(lines, blank)
+		lines = append(lines, padStyled(lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render("  "+summary), contentW, chrome.baseBg), blank)
 	}
-
 	for _, s := range sections {
-		lines = append(lines, renderSoftGroupTitle(s.name, contentW, chrome))
-		for _, e := range s.entries {
-			keyCell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Width(keyW).Render(truncate(" "+e.key, max(1, keyW-1)))
-			descCell := truncateStyled(lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render(e.desc), descW, chrome.baseBg)
-			lines = append(lines, keyCell+padStyled(descCell, descW, chrome.baseBg))
-		}
+		// The status-bar intro is prose; wrap it rather than clip the sentence.
+		lines = append(lines, helpSectionLines(s, contentW, chrome, s.name == "Status bar")...)
 		lines = append(lines, blank)
 	}
-
 	content := strings.TrimRight(strings.Join(lines, "\n"), "\n")
 	return lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(content)
+}
+
+// helpLayout is the two-pane overlay's geometry: a category list on the left,
+// the selected category on the right.
+func helpLayout(termW, termH int) (winW, leftW, rightW, paneH int) {
+	winW = max(30, min(termW-6, 104))
+	leftW = 24
+	if winW < 70 {
+		leftW = 18
+	}
+	rightW = max(10, winW-leftW-1)
+	winH := min(termH-4, 38)
+	paneH = max(1, winH-4) // title line + bottom border + blank + footer
+	return
+}
+
+// renderHelpCategories draws the left pane: one row per section, the selected
+// one marked, scrolled so it stays visible.
+func renderHelpCategories(sections []helpSection, cat int, focused bool, width, height int, chrome managerChrome) string {
+	base := lipgloss.NewStyle().Background(chrome.baseBg)
+	start := 0
+	if cat >= height {
+		start = cat - height + 1
+	}
+	rows := make([]string, 0, height)
+	for i := start; i < len(sections) && len(rows) < height; i++ {
+		label := truncate(sections[i].name, max(1, width-4))
+		switch {
+		case i == cat && focused:
+			rows = append(rows, padStyled(base.Foreground(chrome.accent).Bold(true).Render(" ▸ "+label), width, chrome.baseBg))
+		case i == cat:
+			rows = append(rows, padStyled(base.Foreground(chrome.text).Bold(true).Render(" ▸ "+label), width, chrome.baseBg))
+		default:
+			rows = append(rows, padStyled(base.Foreground(chrome.muted).Render("   "+label), width, chrome.baseBg))
+		}
+	}
+	for len(rows) < height {
+		rows = append(rows, padStyled(base.Render(""), width, chrome.baseBg))
+	}
+	return strings.Join(rows, "\n")
+}
+
+// helpPaneContent is the right pane's text for the selected section.
+func helpPaneContent(sections []helpSection, cat int, query string, width int, chrome managerChrome) string {
+	base := lipgloss.NewStyle().Background(chrome.baseBg)
+	if len(sections) == 0 {
+		return padStyled(base.Foreground(chrome.muted).Render(fmt.Sprintf("  No shortcuts match %q.", strings.TrimSpace(query))), width, chrome.baseBg)
+	}
+	return strings.Join(helpSectionLines(sections[min(max(cat, 0), len(sections)-1)], width, chrome, true), "\n")
 }

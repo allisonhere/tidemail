@@ -79,6 +79,7 @@ type KeyMap struct {
 	Save            key.Binding
 	TestAccount     key.Binding
 	DiscoverServers key.Binding
+	PasswordDialog  key.Binding
 	OAuthSignIn     key.Binding
 	MoveAccountUp   key.Binding
 	MoveAccountDown key.Binding
@@ -90,6 +91,7 @@ type KeyMap struct {
 	CycleSender  key.Binding
 	GrammarCheck key.Binding
 	SpellCheck   key.Binding
+	Templates    key.Binding
 
 	// Overlay / input
 	Confirm   key.Binding
@@ -184,6 +186,7 @@ var DefaultKeys = KeyMap{
 	// Look up a Custom account's servers from its email domain's DNS records.
 	DiscoverServers: key.NewBinding(key.WithKeys("ctrl+l"), key.WithHelp("ctrl+l", "look up servers")),
 	OAuthSignIn:     key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "sign in")),
+	PasswordDialog:  key.NewBinding(key.WithKeys("alt+p"), key.WithHelp("alt+p", "password dialog")),
 	// Shift-cased J/K: key.Matches compares msg.String() verbatim, so these
 	// never shadow the lowercase Up/Down movement keys.
 	MoveAccountUp:   key.NewBinding(key.WithKeys("K"), key.WithHelp("shift+k", "move account up")),
@@ -195,6 +198,7 @@ var DefaultKeys = KeyMap{
 
 	GrammarCheck: key.NewBinding(key.WithKeys("ctrl+g"), key.WithHelp("ctrl+g", "fix grammar")),
 	SpellCheck:   key.NewBinding(key.WithKeys("f7"), key.WithHelp("f7", "spell check")),
+	Templates:    key.NewBinding(key.WithKeys("f6"), key.WithHelp("f6", "templates")),
 	PGPSign:      key.NewBinding(key.WithKeys("alt+s", "f8"), key.WithHelp("alt+s", "sign (PGP)")),
 	PGPEncrypt:   key.NewBinding(key.WithKeys("alt+e", "f9"), key.WithHelp("alt+e", "encrypt (PGP)")),
 

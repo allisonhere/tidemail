@@ -3,6 +3,7 @@ package ui
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -173,7 +174,7 @@ func TestFailedProtectionQueuesNothingAndKeepsComposeOpen(t *testing.T) {
 	if len(m.pendingSends) != 0 || m.overlay != overlayCompose {
 		t.Fatalf("a failed protect must leave compose open: pending=%d overlay=%v", len(m.pendingSends), m.overlay)
 	}
-	if m.compose.busy || !m.compose.isErr || !strings.Contains(m.compose.statusMsg, "Not sent") || !strings.Contains(m.compose.statusMsg, "bob@example.com") {
+	if m.compose.busy || !m.compose.isErr || !strings.Contains(m.compose.statusMsg, "Not sent") || !strings.Contains(m.compose.statusMsg, "no PGP key for bob@example.com") {
 		t.Errorf("status = %q busy=%v", m.compose.statusMsg, m.compose.busy)
 	}
 	if items, _ := m.db.ListOutbox(); len(items) != 0 {
@@ -206,3 +207,30 @@ func mustJSON(t *testing.T, v any) []byte {
 }
 
 func altKey(r rune) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}, Alt: true} }
+
+func TestHumanPGPError(t *testing.T) {
+	wrap := func(code, msg string) error {
+		return fmt.Errorf("plugin %q: %w", "pgp", &plugin.Error{Code: code, Message: msg})
+	}
+	for _, c := range []struct {
+		err  error
+		want string
+	}{
+		{wrap("no_public_key", "no usable key for drbayless@outlook.com (no such key)"), "Not sent: no PGP key for drbayless@outlook.com (alt+e turns encryption off)"},
+		{wrap("no_public_key", "no usable key for bob@example.com"), "Not sent: no PGP key for bob@example.com (alt+e turns encryption off)"},
+		{wrap("no_public_key", "no usable key for bob@example.com (expired)"), "Not sent: can't use the PGP key for bob@example.com: expired (alt+e turns encryption off)"},
+		{wrap("no_secret_key", "no secret key to sign as me@example.com"), "Not sent: no PGP signing key for me@example.com (alt+s turns signing off)"},
+		{wrap("bad_passphrase", "bad passphrase"), "Not sent: wrong passphrase"},
+		{wrap("pinentry", "gpg couldn't get your passphrase (cancelled, or no graphical pinentry available): x"), "Not sent: GnuPG got no passphrase (cancelled, or no prompt could open)"},
+		{wrap("weird", "something odd"), "Not sent. PGP: something odd"},
+		{errors.New("plugin \"pgp\": timed out"), "Not sent. PGP: plugin \"pgp\": timed out"},
+	} {
+		got := humanPGPError(c.err)
+		if got != c.want {
+			t.Errorf("humanPGPError(%v)\n got  %q\n want %q", c.err, got, c.want)
+		}
+		if strings.HasPrefix(got, "Not sent:") && len(got) > 95 {
+			t.Errorf("%q is %d characters; the status row is one line", got, len(got))
+		}
+	}
+}

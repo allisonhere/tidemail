@@ -84,6 +84,7 @@ const (
 	sfMouseSupport
 	sfComposeVim
 	sfComposeSpell
+	sfSpellLang
 	sfSpellDictionary
 	sfSendDelay
 	sfSendMaxAttempts
@@ -255,6 +256,15 @@ func dateFormatIndex(s string) int {
 	return 0 // default to Relative
 }
 
+func spellLangIndex(id string) int {
+	for i, l := range spellLangs {
+		if l.id == id {
+			return i
+		}
+	}
+	return 0 // default to English
+}
+
 func providerIndex(id string) int {
 	for i, p := range aiProviderIDs {
 		if p == id {
@@ -331,6 +341,7 @@ type Settings struct {
 	mouseSupport          bool
 	composeVim            bool
 	composeSpell          bool
+	spellLangIdx          int
 	cliQuitAfterSend      bool
 	cliSkipReview         bool
 	cliSignature          bool
@@ -451,6 +462,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		mouseSupport:          cfg.Display.MouseSupport,
 		composeVim:            cfg.Display.ComposeVim,
 		composeSpell:          cfg.Display.ComposeSpell,
+		spellLangIdx:          spellLangIndex(cfg.Display.ComposeSpellLang),
 		cliQuitAfterSend:      cfg.Display.CLIQuitAfterSend,
 		cliSkipReview:         cfg.Display.CLISkipReview,
 		cliSignature:          cfg.Display.CLISignature,
@@ -541,6 +553,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.MouseSupport = s.mouseSupport
 	cfg.Display.ComposeVim = s.composeVim
 	cfg.Display.ComposeSpell = s.composeSpell
+	cfg.Display.ComposeSpellLang = spellLangs[s.spellLangIdx].id
 	cfg.Display.CLIQuitAfterSend = s.cliQuitAfterSend
 	cfg.Display.CLISkipReview = s.cliSkipReview
 	cfg.Display.CLISignature = s.cliSignature
@@ -794,7 +807,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		fields = append(fields, sfReadingWidth, sfShowHeaders, sfMarkReadOnOpen, sfMarkReadOnFocus, sfActionableLinks, sfFilterLinks, sfImages)
 		return append(fields, sfBrowser, sfConfirmQuit, sfNotifications, sfMouseSupport)
 	case ssEditor:
-		return []settingsField{sfBackToSections, sfComposeVim, sfComposeSpell, sfSpellDictionary, sfSendDelay, sfSendMaxAttempts}
+		return []settingsField{sfBackToSections, sfComposeVim, sfComposeSpell, sfSpellLang, sfSpellDictionary, sfSendDelay, sfSendMaxAttempts}
 	case ssCLI:
 		return []settingsField{sfBackToSections, sfCLIQuitAfterSend, sfCLISkipReview, sfCLISignature}
 	case ssUpdates:
@@ -1090,7 +1103,7 @@ func (s Settings) focusedTextInputCursorPosition() int {
 
 func (s Settings) isPickerField() bool {
 	switch s.focusedField {
-	case sfProvider, sfDisplayDensity, sfPaneCorners, sfTagStyle, sfImages, sfTheme, sfDateFormat,
+	case sfProvider, sfDisplayDensity, sfPaneCorners, sfTagStyle, sfImages, sfTheme, sfDateFormat, sfSpellLang,
 		sfOpenAIModel, sfClaudeModel, sfGeminiModel, sfOllamaModel:
 		return true
 	}
@@ -1282,6 +1295,19 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 	case sfShowPaneHeaders:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.showPaneHeaders = !s.showPaneHeaders
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
+	case sfSpellLang:
+		if keyMatches(key, keys.Left) {
+			s.spellLangIdx = (s.spellLangIdx + len(spellLangs) - 1) % len(spellLangs)
+			s.setFocusedField(sfSpellLang)
+		} else if keyMatches(key, keys.Right) || keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.spellLangIdx = (s.spellLangIdx + 1) % len(spellLangs)
+			s.setFocusedField(sfSpellLang)
 		} else if keyMatches(key, keys.Down) {
 			s.setFocusedField(s.nextField())
 		} else if keyMatches(key, keys.Up) {
@@ -2029,6 +2055,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addGroup("Compose")
 		b.addToggle("Vim keys in compose", s.composeVim, sfComposeVim)
 		b.addToggle("Spell check in compose (F7)", s.composeSpell, sfComposeSpell)
+		b.addControl("Spell check language", sfSpellLang, renderSettingsPicker(min(max(12, b.contentW-b.labelW-2), 18), spellLangs[s.spellLangIdx].label, s.focusedField == sfSpellLang, b.chrome))
 		b.addAction("Personal dictionary", "view, add, or remove words you taught spell check", sfSpellDictionary)
 		b.addInput("Send delay (seconds)", s.sendDelayInput, sfSendDelay)
 		b.addInput("Maximum send attempts", s.sendMaxAttemptsInput, sfSendMaxAttempts)

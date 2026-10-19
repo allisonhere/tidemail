@@ -217,7 +217,7 @@ func (m Model) renderOverlay(base string) string {
 		box = m.renderLogViewer(winW, winH)
 
 	case overlayHelp:
-		winW := min(m.width-6, 90)
+		winW, leftW, _, paneH := helpLayout(m.width, m.height)
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		m.helpVP.Style = lipgloss.NewStyle().Background(chrome.baseBg)
 		var footer string
@@ -239,11 +239,14 @@ func (m Model) renderOverlay(base string) string {
 			input.Cursor.Style = lipgloss.NewStyle().Background(chrome.accent).Foreground(accentReadableOn(chrome.text, chrome.accent, 4.5))
 			footer = padStyled("  "+inputViewWithCursor(input, true), winW, chrome.baseBg)
 		case m.helpSearchInput.Value() != "":
-			footer = renderSoftHints(winW, chrome, "/", "edit search", "esc", "clear", "?/q", "close", "j/k", "scroll")
+			footer = renderSoftHints(winW, chrome, "/", "edit search", "esc", "clear", "?/q", "close", "↑↓", "choose/scroll", "←→", "pane")
 		default:
-			footer = renderSoftHints(winW, chrome, "/", "search", "esc/?/q", "close", "j/k", "scroll")
+			footer = renderSoftHints(winW, chrome, "/", "search", "esc/?/q", "close", "↑↓", "choose/scroll", "←→", "pane")
 		}
-		inner := m.helpVP.View() + "\n\n" + footer
+		left := renderHelpCategories(m.helpSectionsFiltered(), m.helpCat, !m.helpRight, leftW, paneH, chrome)
+		divider := strings.TrimSuffix(strings.Repeat(lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render("│")+"\n", paneH), "\n")
+		panes := lipgloss.JoinHorizontal(lipgloss.Top, left, divider, m.helpVP.View())
+		inner := panes + "\n\n" + footer
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderSoftPanelBox(inner, winW, "tidemail", "help", chrome)
 

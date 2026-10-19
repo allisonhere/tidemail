@@ -24,6 +24,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidemail/internal/imap"
+	"github.com/allisonhere/tidemail/internal/passprompt"
 )
 
 // ── managerChrome ─────────────────────────────────────────────────────────────
@@ -1016,6 +1017,8 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 		}
 	case keyMatches(km, keys.DiscoverServers):
 		return am.startDiscovery(false)
+	case keyMatches(km, keys.PasswordDialog):
+		return am.startPasswordDialog()
 	case am.focusedField == amFieldColor && (keyMatches(km, keys.Left) || keyMatches(km, keys.Right)):
 		if keyMatches(km, keys.Right) {
 			am.colorIdx = (am.colorIdx + 1) % len(accountColorList)
@@ -1206,6 +1209,49 @@ func (am *AccountManager) clearDiscoveredSettings() {
 			break
 		}
 	}
+}
+
+// startPasswordDialog opens the native password dialog for the Password row.
+// It is an addition to typing in the field, never a replacement: with no
+// graphical session (SSH, headless) or no dialog program it says so and the
+// terminal field keeps working.
+func (am AccountManager) startPasswordDialog() (AccountManager, tea.Cmd, bool) {
+	if am.focusedField != amFieldPass {
+		return am, nil, false
+	}
+	if !passprompt.Available() {
+		am.statusMsg = "NO GRAPHICAL PASSWORD DIALOG HERE — TYPE THE PASSWORD IN THE FIELD"
+		return am, nil, false
+	}
+	login := strings.TrimSpace(am.userInput.Value())
+	message := "Password for " + login
+	if login == "" {
+		message = "Account password"
+	}
+	am.statusMsg = "WAITING FOR THE PASSWORD DIALOG…"
+	return am, func() tea.Msg {
+		secret, err := passprompt.Ask("TideMail", message)
+		return PasswordDialogMsg{Secret: secret, Err: err}
+	}, false
+}
+
+// applyPasswordDialog puts the entered password in the Password row. It is saved
+// with the account like a typed one, through the same keychain path. Cancelling
+// leaves the field as it was.
+func (am AccountManager) applyPasswordDialog(msg PasswordDialogMsg) AccountManager {
+	if am.mode != amAdd && am.mode != amEdit {
+		return am // the form closed while the dialog was open
+	}
+	switch {
+	case errors.Is(msg.Err, passprompt.ErrCanceled):
+		am.statusMsg = "PASSWORD ENTRY CANCELED — NOTHING CHANGED"
+	case msg.Err != nil:
+		am.statusMsg = "PASSWORD DIALOG FAILED — TYPE THE PASSWORD IN THE FIELD"
+	default:
+		am.passInput.SetValue(msg.Secret)
+		am.statusMsg = "PASSWORD SET — PRESS CTRL+S TO SAVE THE ACCOUNT"
+	}
+	return am
 }
 
 func discoverServersCmd(email string, auto bool) tea.Cmd {
@@ -2366,6 +2412,9 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	var actionPairs []string
 	if !am.busy {
 		actionPairs = []string{"↑↓", "move", "^s", "save", "^t", "test", "space", "toggle", "esc", "cancel"}
+		if am.focusedField == amFieldPass && passprompt.Available() {
+			actionPairs = append([]string{"alt+p", "dialog"}, actionPairs...)
+		}
 	}
 	actions := renderSoftHints(width, chrome, actionPairs...)
 

@@ -125,6 +125,7 @@ func (m Model) composeCommandItems() []commandItem {
 		{id: "compose-schedule", label: "Schedule send", enabled: true},
 		{id: "compose-spell", label: "Spell check (offline)", enabled: editorSpell != nil},
 		{id: "compose-grammar", label: "Run grammar check", enabled: true},
+		{id: "compose-template", label: "Insert template…", enabled: true},
 		{id: "compose-attach", label: "Attach file", enabled: true},
 		{id: "compose-remove-attach", label: "Remove last attachment", enabled: canRemove},
 		{id: "compose-cycle-sender", label: "Change sender", enabled: canCycleSender},
@@ -232,7 +233,17 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 			m.setStatus("forward failed: "+err.Error(), true)
 			return m, m.clearStatusCmd()
 		}
-		m.compose = NewForward(*msg, acfg, m.cfg.Accounts, m.addressBook)
+		fwd := *msg
+		if fwd.HasAttachment && m.db != nil {
+			// AttachmentData is transient, so a stored message has none; load the
+			// contents (embedded images included) so they travel with the forward.
+			atts, err := m.db.GetAttachments(fwd.ID)
+			if err != nil {
+				m.setStatus("couldn't load attachments to forward: "+err.Error(), true)
+			}
+			fwd.AttachmentData = atts
+		}
+		m.compose = NewForward(fwd, acfg, m.cfg.Accounts, m.addressBook)
 		m.overlay = overlayCompose
 		return m, nil
 	case "archive":
@@ -311,6 +322,8 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		return m.handleCompose(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e"), Alt: true})
 	case "compose-grammar":
 		return m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlG})
+	case "compose-template":
+		return m.handleCompose(tea.KeyMsg{Type: tea.KeyF6})
 	case "compose-attach":
 		return m.handleCompose(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f"), Alt: true})
 	case "compose-remove-attach":

@@ -24,6 +24,12 @@ var version = "dev"
 //go:embed CHANGELOG.md
 var changelog string
 
+// manPage is the manual page, printed by "tidemail man" and installed by
+// install.sh and the AUR package, so it always matches this build.
+//
+//go:embed man/tidemail.1
+var manPage string
+
 type startupOptions struct {
 	previewManualUpdate   bool
 	previewUpdateProgress bool
@@ -81,6 +87,7 @@ func run() (code int, restartExec string) {
 		return cli.Run(os.Args[2:], os.Stdout, os.Stderr), ""
 	}
 	startupArgs := os.Args[1:]
+	cli.ManPage = manPage
 	if len(startupArgs) > 0 && cli.IsMailCommand(startupArgs[0]) {
 		code := cli.RunHeadless(startupArgs, os.Stdin, os.Stdout, os.Stderr)
 		if code != cli.OpenInbox {
@@ -159,7 +166,9 @@ func run() (code int, restartExec string) {
 		defer uiModel.CloseSessions()
 	}
 
-	p := tea.NewProgram(model, programOptions(cfg)...)
+	// Frames go through SerializedStdout so image uploads (written to /dev/tty)
+	// cannot land in the middle of one.
+	p := tea.NewProgram(model, append(programOptions(cfg), tea.WithOutput(ui.SerializedStdout()))...)
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -204,15 +213,25 @@ func formatConfigLoadError(path string, err error, cfg config.Config) string {
 	return fmt.Sprintf("error: could not load or migrate config %s: %s\nFix the file or permissions shown above, then restart TideMail; it will start once the config parses and any required migration can be saved.", path, detail)
 }
 
+// googleClientFromEnv reports whether the developer environment names a whole
+// Google client: both the ID and the secret.
+func googleClientFromEnv() bool {
+	return strings.TrimSpace(os.Getenv("TIDEMAIL_GOOGLE_CLIENT_ID")) != "" &&
+		strings.TrimSpace(os.Getenv("TIDEMAIL_GOOGLE_CLIENT_SECRET")) != ""
+}
+
 func applyStartupOverrides(cfg *config.Config, opts startupOptions) {
 	if cfg == nil {
 		return
 	}
 	// Google must approve TideMail's restricted Gmail scope before new OAuth
-	// authorizations can be offered. Keep this runtime-only so existing OAuth
-	// accounts and their saved credentials are never rewritten.
-	cfg.OAuth.GoogleDisabled = true
+	// authorizations can be offered. A developer who supplies their own Google
+	// client (see docs/google-oauth.md) can still sign in, for example with a
+	// test user on a project in Testing. Keep this runtime-only so existing
+	// OAuth accounts and their saved credentials are never rewritten.
+	cfg.OAuth.GoogleDisabled = !googleClientFromEnv()
 	if opts.disableGoogleOAuth {
+		cfg.OAuth.GoogleDisabled = true
 		// Retain this development/test flag's former behavior: it also simulates
 		// a build without a configured Google client.
 		cfg.OAuth.GoogleClientID = ""

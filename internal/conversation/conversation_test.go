@@ -32,8 +32,14 @@ func TestComputeWaiting(t *testing.T) {
 		{ID: 2, MessageID: "<2@x>", InReplyTo: "<1@x>", From: "me@x.example", To: "Ann <ann@y.example>, noreply@y.example", Date: at(2)},
 		{ID: 3, MessageID: "<3@x>", From: "me@x.example", To: "me@x.example", Date: at(3)}, // self-mail
 	}
-	waiting, _, _ := ComputeWaiting(msgs, me, nil, nil)
+	waiting, _, _ := ComputeWaiting(msgs, me, nil, nil, time.Time{})
 	if len(waiting) != 1 || waiting[0].Message.ID != 2 || len(waiting[0].WaitingFor) != 1 || waiting[0].WaitingFor[0].Addr != "ann@y.example" {
 		t.Fatalf("waiting = %+v", waiting)
+	}
+	if got, _, _ := ComputeWaiting(msgs, me, nil, nil, at(2)); len(got) != 1 {
+		t.Fatalf("message sent at the baseline: %+v", got)
+	}
+	if got, _, _ := ComputeWaiting(msgs, me, nil, nil, at(3)); len(got) != 0 {
+		t.Fatalf("message sent before the baseline still waits: %+v", got)
 	}
 }

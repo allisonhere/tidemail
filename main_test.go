@@ -95,6 +95,8 @@ func TestDisableGoogleOAuthOverrideIsRuntimeOnlyAndProviderSpecific(t *testing.T
 }
 
 func TestGoogleOAuthIsDisabledWhileApprovalIsPending(t *testing.T) {
+	t.Setenv("TIDEMAIL_GOOGLE_CLIENT_ID", "")
+	t.Setenv("TIDEMAIL_GOOGLE_CLIENT_SECRET", "")
 	cfg := config.DefaultConfig()
 	cfg.OAuth.GoogleClientID = "google-id"
 	cfg.OAuth.GoogleClientSecret = "google-secret"
@@ -132,5 +134,31 @@ func TestHeadlessHelpRouting(t *testing.T) {
 	code, restart := run()
 	if code != 0 || restart != "" {
 		t.Fatalf("headless help returned %d %q", code, restart)
+	}
+}
+
+func TestGoogleOAuthEnabledByDeveloperClientInEnvironment(t *testing.T) {
+	cases := []struct {
+		name         string
+		id, secret   string
+		disableFlag  bool
+		wantDisabled bool
+	}{
+		{"both set", "id.apps.googleusercontent.com", "secret", false, false},
+		{"id only", "id.apps.googleusercontent.com", "", false, true},
+		{"secret only", "", "secret", false, true},
+		{"blank values", " ", " ", false, true},
+		{"flag wins over the environment", "id.apps.googleusercontent.com", "secret", true, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("TIDEMAIL_GOOGLE_CLIENT_ID", c.id)
+			t.Setenv("TIDEMAIL_GOOGLE_CLIENT_SECRET", c.secret)
+			cfg := config.DefaultConfig()
+			applyStartupOverrides(&cfg, startupOptions{disableGoogleOAuth: c.disableFlag})
+			if cfg.OAuth.GoogleDisabled != c.wantDisabled {
+				t.Fatalf("GoogleDisabled = %v, want %v", cfg.OAuth.GoogleDisabled, c.wantDisabled)
+			}
+		})
 	}
 }

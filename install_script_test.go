@@ -19,7 +19,7 @@ func TestInstallScriptDefaultsToUserLocalBinWithoutSudo(t *testing.T) {
 	writeInstallTestTools(t, bin, archive, "")
 
 	cmd := exec.Command("sh", "install.sh")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(installBaseEnv(),
 		"HOME="+tmp,
 		"PATH="+installTestPath(t, bin),
 	)
@@ -55,7 +55,7 @@ func TestInstallScriptRemovesWritableStaleBinaryEarlierOnPath(t *testing.T) {
 	}
 
 	cmd := exec.Command("sh", "install.sh")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(installBaseEnv(),
 		"HOME="+tmp,
 		"PATH="+installTestPath(t, fakeBin, staleBin, filepath.Join(tmp, ".local", "bin")),
 	)
@@ -88,7 +88,7 @@ func TestInstallScriptLeavesExistingBinaryWhenDownloadedBinaryFailsVersionCheck(
 	writeInstallTestTools(t, fakeBin, archive, "")
 
 	cmd := exec.Command("sh", "install.sh")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(installBaseEnv(),
 		"HOME="+tmp,
 		"INSTALL_DIR="+installDir,
 		"PATH="+installTestPath(t, fakeBin),
@@ -143,7 +143,7 @@ func TestInstallScriptCleansStagedBinaryWhenInstallVerificationFails(t *testing.
 	writeInstallTestTools(t, fakeBin, archive, fakeInstall)
 
 	cmd := exec.Command("sh", "install.sh")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(installBaseEnv(),
 		"HOME="+tmp,
 		"INSTALL_DIR="+installDir,
 		"PATH="+installTestPath(t, fakeBin),
@@ -164,11 +164,18 @@ func TestInstallScriptCleansStagedBinaryWhenInstallVerificationFails(t *testing.
 
 func writeInstallTestArchive(t *testing.T, dir, version string, exitCode int) string {
 	t.Helper()
+	return writeInstallTestArchiveWithMan(t, dir, version, exitCode, "echo '.TH FAKE 1'; exit 0")
+}
+
+// writeInstallTestArchiveWithMan is the same fake release archive, with a
+// chosen shell body for "tidemail man".
+func writeInstallTestArchiveWithMan(t *testing.T, dir, version string, exitCode int, manBody string) string {
+	t.Helper()
 	path := filepath.Join(dir, "tidemail-linux-x86_64.tar.gz")
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
-	body := "#!/bin/sh\nif [ \"${1:-}\" = \"--version\" ]; then echo " + shellQuote(version) + "; exit " + strconv.Itoa(exitCode) + "; fi\n"
+	body := "#!/bin/sh\nif [ \"${1:-}\" = \"--version\" ]; then echo " + shellQuote(version) + "; exit " + strconv.Itoa(exitCode) + "; fi\nif [ \"${1:-}\" = \"man\" ]; then " + manBody + "; fi\n"
 	if err := tw.WriteHeader(&tar.Header{Name: "tidemail-linux-x86_64", Mode: 0o755, Size: int64(len(body))}); err != nil {
 		t.Fatal(err)
 	}
@@ -256,4 +263,60 @@ func installTestSystemDir(t *testing.T) string {
 
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+func TestInstallScriptInstallsTheManPageForTheUser(t *testing.T) {
+	tmp := t.TempDir()
+	archive := writeInstallTestArchive(t, tmp, "tidemail test-version", 0)
+	bin := filepath.Join(tmp, "fakebin")
+	writeInstallTestTools(t, bin, archive, "")
+
+	cmd := exec.Command("sh", "install.sh")
+	cmd.Env = append(installBaseEnv(), "HOME="+tmp, "PATH="+installTestPath(t, bin))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("install.sh failed: %v\n%s", err, out)
+	}
+	page, err := os.ReadFile(filepath.Join(tmp, ".local", "share", "man", "man1", "tidemail.1"))
+	if err != nil || !strings.Contains(string(page), ".TH FAKE 1") {
+		t.Fatalf("expected the man page under ~/.local/share/man/man1: %q, %v\n%s", page, err, out)
+	}
+	if !strings.Contains(string(out), "man tidemail") {
+		t.Errorf("expected a note about the man page, got:\n%s", out)
+	}
+}
+
+func TestInstallScriptSurvivesAManPageFailure(t *testing.T) {
+	tmp := t.TempDir()
+	archive := writeInstallTestArchiveWithMan(t, tmp, "tidemail test-version", 0, "exit 7")
+	bin := filepath.Join(tmp, "fakebin")
+	writeInstallTestTools(t, bin, archive, "")
+
+	cmd := exec.Command("sh", "install.sh")
+	cmd.Env = append(installBaseEnv(), "HOME="+tmp, "PATH="+installTestPath(t, bin))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("a man page failure must not fail the install: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, ".local", "bin", "tidemail")); err != nil {
+		t.Fatalf("binary should be installed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, ".local", "share", "man", "man1", "tidemail.1")); err == nil {
+		t.Error("no page should be written when the binary cannot produce one")
+	}
+	if !strings.Contains(string(out), "Could not install the manual page") {
+		t.Errorf("expected a quiet warning, got:\n%s", out)
+	}
+}
+
+// installBaseEnv is the host environment without XDG_DATA_HOME, so no test can
+// write a (fake) man page into the real ~/.local/share.
+func installBaseEnv() []string {
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "XDG_DATA_HOME=") {
+			env = append(env, kv)
+		}
+	}
+	return env
 }

@@ -4,6 +4,7 @@ import (
 	"github.com/allisonhere/ripple"
 	"github.com/allisonhere/tidemail/internal/clipboard"
 	"github.com/allisonhere/tidespell"
+	"github.com/allisonhere/tidespell/lang/es"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -40,15 +41,25 @@ var (
 	editorSpellNames []string
 )
 
+// spellLangs are the spell check languages offered in settings. The first is
+// the default, and also what an empty or unknown config value means.
+var spellLangs = []struct {
+	id, label string
+	lang      *tidespell.Language
+}{
+	{"en", "English", tidespell.English},
+	{"es", "Español", es.Language},
+}
+
 // setEditorSpell enables or disables spell checking and seeds the personal
 // dictionary. Turning it on again keeps no stale state: a fresh Checker is built.
-func setEditorSpell(on bool, personal []string) {
+func setEditorSpell(on bool, lang string, personal []string) {
 	editorSpellGen++
 	if !on {
 		editorSpell = nil
 		return
 	}
-	editorSpell = tidespell.New()
+	editorSpell = tidespell.New(tidespell.WithLanguage(spellLangs[spellLangIndex(lang)].lang))
 	editorSpell.Add(personal...)
 	editorSpell.Add(editorSpellNames...)
 }
@@ -259,4 +270,9 @@ func (e editorArea) refreshTypos() {
 // ReplaceSpan swaps one misspelled word for text as a single undo step.
 func (e *editorArea) ReplaceSpan(sp tidespell.Span, text string) {
 	e.ed.ReplaceRange(sp.Start, sp.End, text)
+}
+
+// InsertText inserts s at the caret as a single undo step.
+func (e *editorArea) InsertText(s string) {
+	e.ed.InsertString(s)
 }

@@ -704,3 +704,31 @@ func TestAdoptionNeverStealsALiveAccountsRow(t *testing.T) {
 		}
 	}
 }
+
+func TestForwardCommandCarriesStoredAttachments(t *testing.T) {
+	m, _, _ := newIdentityModel(t, acct("Personal", "imap.example.com", "me@example.com", "pw"))
+	mailboxID, err := m.db.UpsertMailbox(db.Mailbox{AccountID: m.accounts[0].ID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	message := db.Message{MailboxID: mailboxID, UID: 1, MessageID: "<a@x>", Subject: "Pics", BodyText: "see image", HasAttachment: true}
+	if err := m.db.UpsertMessage(message); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := m.db.ListMessages(mailboxID)
+	if err != nil || len(stored) != 1 {
+		t.Fatalf("messages = %v, %v", stored, err)
+	}
+	if _, err := m.db.SaveAttachment(stored[0].ID, db.Attachment{ContentType: "image/png", Inline: true, Data: []byte{1, 2, 3}, Size: 3}); err != nil {
+		t.Fatal(err)
+	}
+	m.mailboxes, _ = m.db.ListMailboxes(m.accounts[0].ID)
+	m.messages, m.filteredMessages = stored, stored
+	m.focused = paneMessages
+
+	next, _ := m.executeCommand("forward")
+	m = next.(Model)
+	if m.overlay != overlayCompose || len(m.compose.attachments) != 1 || len(m.compose.attachments[0].Data) != 3 {
+		t.Fatalf("overlay=%v attachments=%+v status=%q", m.overlay, m.compose.attachments, m.statusMsg)
+	}
+}

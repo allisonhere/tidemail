@@ -105,6 +105,14 @@ shows **No changes**.
 Raw keys, values, confidence decimals, storage outcome, and the full response
 are always one keypress away: `d` in the result card toggles **Details**.
 
+## Exporting a report
+
+In a report's result the user can press `c` to copy it as plain text, `s` to
+save it as a `.txt` in `~/Downloads/tidemail-reports/`, or `p` to print it with
+the system's `lp` (or `lpr`). TideMail does this itself from the text and view
+the plugin returned; a plugin cannot choose the file, run a printer, or
+add export actions. Error cards and the details view are not exported.
+
 ## Previewing
 
 ```sh

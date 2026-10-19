@@ -249,6 +249,10 @@ func (e *Executor) currentWaiting(env env) ([]conversation.WaitingThread, error)
 	if err != nil {
 		return nil, err
 	}
+	since, err := e.DB.WaitingSince()
+	if err != nil {
+		return nil, err
+	}
 	snoozes, err := e.DB.ListSnoozes()
 	if err != nil {
 		return nil, err
@@ -259,6 +263,6 @@ func (e *Executor) currentWaiting(env env) ([]conversation.WaitingThread, error)
 			snoozed[sn.TargetKey] = true
 		}
 	}
-	waiting, _, _ := conversation.ComputeWaiting(candidates, e.Me, stopped, snoozed)
+	waiting, _, _ := conversation.ComputeWaiting(candidates, e.Me, stopped, snoozed, since)
 	return waiting, nil
 }

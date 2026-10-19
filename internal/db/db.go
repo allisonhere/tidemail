@@ -342,6 +342,9 @@ func (db *DB) migrate() error {
 	if err := db.PruneDeletedMessageTombstones(); err != nil {
 		return err
 	}
+	if err := db.initWaitingSince(); err != nil {
+		return err
+	}
 	if err := db.PruneWaitingDismissals(); err != nil {
 		return err
 	}

@@ -2,9 +2,11 @@ package ui
 
 import (
 	"fmt"
+	"mime"
 	"net/mail"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -19,6 +21,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/conversation"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidemail/internal/mailapp"
+	"github.com/allisonhere/tidemail/internal/mailtemplate"
 )
 
 type composeField int
@@ -83,6 +86,15 @@ type ComposeModel struct {
 	spellSuggest []string
 	spellAdded   []string
 	senderCursor int
+
+	// Template picker (see templates.go).
+	tmplOpen    bool
+	tmplList    []mailtemplate.Template
+	tmplIdx     int
+	tmplEd      editorArea // preview (browse) or editor (tmplEditing) for tmplList[tmplIdx]
+	tmplEditing bool
+	tmplNaming  bool            // prompting for the name of a new template
+	tmplName    textinput.Model // that prompt's input
 
 	// Recipient autocomplete: addressBook holds "Name <addr>" candidates;
 	// suggestions is the dropdown for the segment being typed in the focused
@@ -274,10 +286,8 @@ func newReplyBase(original db.Message, acfg config.AccountConfig, accounts []con
 	c.references = strings.TrimSpace(original.References + " " + original.MessageID)
 
 	// Quote the original body text
-	if original.BodyText != "" {
-		plain := ansi.Strip(original.BodyText)
-		quoted := quoteReply(plain, original.From)
-		c.bodyInput.SetValue(quoted)
+	if plain := quotableText(original); plain != "" {
+		c.bodyInput.SetValue(quoteReply(plain, original.From))
 	}
 
 	// Park the body caret above the quote so typing lands there once focus
@@ -301,17 +311,22 @@ func NewForward(original db.Message, acfg config.AccountConfig, accounts []confi
 	c.subjectInput.SetValue(subject)
 
 	// Quote the original body text with a forward header
-	if original.BodyText != "" {
-		plain := ansi.Strip(original.BodyText)
-		quoted := quoteForward(plain, original)
-		c.bodyInput.SetValue(quoted)
+	if plain := quotableText(original); plain != "" {
+		c.bodyInput.SetValue(quoteForward(plain, original))
 		c.moveBodyCursorToStart()
 	}
 
 	// Include original attachments
-	for _, att := range original.AttachmentData {
+	for i, att := range original.AttachmentData {
+		name := att.Filename
+		if name == "" { // embedded images often have no filename
+			name = fmt.Sprintf("attachment-%d", i+1)
+			if exts, _ := mime.ExtensionsByType(att.ContentType); len(exts) > 0 {
+				name += exts[0]
+			}
+		}
 		c.attachments = append(c.attachments, attachmentFile{
-			Name: att.Filename,
+			Name: name,
 			Path: "",
 			Data: att.Data,
 		})
@@ -340,6 +355,41 @@ func (c *ComposeModel) focusBodyAtStart() {
 	c.bodyInput, _ = c.bodyInput.Update(tea.KeyMsg{Type: tea.KeyCtrlHome})
 	c.bodyInput.EnterInsert()
 }
+
+// quotableText is the original message as plain text for quoting. It uses the
+// same HTML rendering the reader shows (so alt text, link targets and spacer
+// markup don't pile up as they do in tag-stripped text), falling back to the
+// stored plain body. Image-only lines and runs of blank lines are dropped.
+func quotableText(m db.Message) string {
+	text := ""
+	if m.BodyHTML != "" {
+		text = ansi.Strip(renderHTMLBodyOpts(m.BodyHTML, 76, Theme{}, true, true))
+	}
+	if strings.TrimSpace(text) == "" {
+		text = ansi.Strip(m.BodyText)
+	}
+	var out []string
+	blank := true // also trims leading blank lines
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimRight(line, " \t")
+		if t := strings.TrimSpace(line); imageOnlyLineRe.MatchString(t) {
+			continue
+		} else if t == "" {
+			if blank {
+				continue
+			}
+			blank = true
+		} else {
+			blank = false
+		}
+		out = append(out, line)
+	}
+	return strings.TrimRight(strings.Join(out, "\n"), "\n")
+}
+
+// imageOnlyLineRe matches a line that is just an image placeholder or a bare
+// image URL, as left by HTML-to-text conversion.
+var imageOnlyLineRe = regexp.MustCompile(`(?i)^(!\[[^\]]*\]\([^)]*\)|\[?(image|img|photo)[^\]]{0,40}\]?|https?://\S+\.(png|jpe?g|gif|webp)(\?\S*)?)$`)
 
 // quoteReply formats a quoted reply block from the original message.
 func quoteReply(body, from string) string {
@@ -609,6 +659,9 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 	if c.spellOpen {
 		return c.updateSpell(km, keys)
 	}
+	if c.tmplOpen {
+		return c.updateTemplates(km, keys)
+	}
 
 	// Normal compose mode
 	switch {
@@ -634,6 +687,10 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 
 	case keyMatches(km, keys.SpellCheck):
 		c.openSpell()
+		return c, nil, false
+
+	case keyMatches(km, keys.Templates):
+		c.openTemplates()
 		return c, nil, false
 
 	case keyMatches(km, keys.PGPSign):
@@ -1294,6 +1351,9 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 	if c.spellOpen {
 		return c.spellPanel(width, chrome)
 	}
+	if c.tmplOpen {
+		return c.templatesPanel(width, chrome)
+	}
 	if c.busy {
 		// While sending, the status line carries the message; keep a blank footer.
 		return padStyled(base.Render("  "), width, chrome.baseBg)
@@ -1326,7 +1386,7 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 		}
 		if c.focusedField == composeFieldBody {
 			// Copy/cut act on the editor selection, so only show them in the body.
-			pairs = append(pairs, "^c", "copy", "^x", "cut")
+			pairs = append(pairs, "^c", "copy", "^x", "cut", "f6", "templates")
 		}
 		pairs = append(pairs, "esc", "cancel")
 	}
@@ -1416,6 +1476,9 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	}
 
 	raw := c.bodyInput.View()
+	if c.tmplOpen && len(c.tmplList) > 0 {
+		raw = c.templatePreview()
+	}
 	// The editor is authoritative on wrapping — it has already fit each line to
 	// bodyInputW. We must only FRAME that output, never re-wrap it: letting
 	// lipgloss.Width() reflow the lines re-measures grapheme widths with a

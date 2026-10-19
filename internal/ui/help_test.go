@@ -278,3 +278,103 @@ func TestRenderHelpDocumentsMouse(t *testing.T) {
 		}
 	}
 }
+
+func helpModel(t *testing.T, w, h int) Model {
+	t.Helper()
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	database, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	next, _ := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
+	m = next.(Model)
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+	return next.(Model)
+}
+
+func helpPress(m Model, k tea.KeyMsg) Model {
+	next, _ := m.Update(k)
+	return next.(Model)
+}
+
+func TestHelpTwoPaneNavigation(t *testing.T) {
+	m := helpModel(t, 120, 40)
+	sections := m.helpSectionsFiltered()
+	if m.helpCat != 0 || m.helpRight {
+		t.Fatalf("help should open on the first category, left pane: cat=%d right=%v", m.helpCat, m.helpRight)
+	}
+	first := ansi.Strip(m.helpVP.View())
+	m = helpPress(m, tea.KeyMsg{Type: tea.KeyDown})
+	if m.helpCat != 1 || ansi.Strip(m.helpVP.View()) == first {
+		t.Errorf("down should choose the next category and change the right pane (cat=%d)", m.helpCat)
+	}
+	m = helpPress(m, tea.KeyMsg{Type: tea.KeyUp})
+	m = helpPress(m, tea.KeyMsg{Type: tea.KeyUp})
+	if m.helpCat != 0 {
+		t.Errorf("up should stop at the first category, got %d", m.helpCat)
+	}
+	m = helpPress(m, tea.KeyMsg{Type: tea.KeyRight})
+	if !m.helpRight {
+		t.Fatal("right should focus the content pane")
+	}
+	before := m.helpCat
+	m = helpPress(m, tea.KeyMsg{Type: tea.KeyDown})
+	if m.helpCat != before {
+		t.Error("down in the content pane scrolls; it must not change the category")
+	}
+	m = helpPress(m, tea.KeyMsg{Type: tea.KeyLeft})
+	if m.helpRight {
+		t.Error("left should return to the category list")
+	}
+	for i := 0; i < len(sections)+3; i++ {
+		m = helpPress(m, tea.KeyMsg{Type: tea.KeyDown})
+	}
+	if m.helpCat != len(sections)-1 {
+		t.Errorf("down should stop at the last category, got %d of %d", m.helpCat, len(sections))
+	}
+}
+
+func TestHelpTwoPaneRendersBothPanes(t *testing.T) {
+	for _, size := range [][2]int{{120, 40}, {64, 24}} {
+		m := helpModel(t, size[0], size[1])
+		view := ansi.Strip(m.View())
+		if !strings.Contains(view, "Status bar") || !strings.Contains(view, "Global") || !strings.Contains(view, "│") {
+			t.Errorf("%v: expected a category list and divider:\n%s", size, view)
+		}
+		for _, line := range strings.Split(view, "\n") {
+			if w := len([]rune(line)); w > size[0] {
+				t.Errorf("%v: line wider than the terminal (%d): %q", size, w, line)
+			}
+		}
+	}
+}
+
+func TestHelpDocumentsTemplatesAndTags(t *testing.T) {
+	chrome := newManagerChrome(100, CatppuccinMocha, false)
+	var text string
+	for _, sec := range helpSections(DefaultKeys) {
+		if sec.name == "Templates" {
+			text = ansi.Strip(strings.Join(helpSectionLines(sec, 100, chrome, true), "\n"))
+		}
+	}
+	flat := strings.Join(strings.Fields(text), " ")
+	for _, want := range []string{"{first_name}", "{name}", "{my_name}", "{date}", "first To recipient", "templates folder"} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("Templates help missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestHelpSearchNoMatchShowsMessage(t *testing.T) {
+	m := helpModel(t, 120, 40)
+	m = helpPress(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	for _, r := range "zzzzqq" {
+		m = helpPress(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	if v := ansi.Strip(m.helpVP.View()); !strings.Contains(v, "No shortcuts match") {
+		t.Errorf("pane = %q", v)
+	}
+}

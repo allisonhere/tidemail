@@ -63,6 +63,7 @@ func newNeedsYouModel(t *testing.T) (Model, *needsYouFixture) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { database.Close() })
+	_ = database.SetSetting("waiting_since", "") // fixtures predate the fresh-install baseline
 	acc, _ := database.AddAccount("acct-personal", "Personal", "")
 	inbox, _ := database.UpsertMailbox(db.Mailbox{AccountID: acc, Name: "INBOX", Delimiter: "/"})
 	trash, _ := database.UpsertMailbox(db.Mailbox{AccountID: acc, Name: "Trash", Delimiter: "/", Flags: []string{"\\Trash"}})

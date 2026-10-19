@@ -615,8 +615,8 @@ func (s *uiImageStore) clearImages() {
 }
 
 // writeTTY writes an escape sequence straight to the controlling terminal.
-// It is called during Update, while Bubble Tea's renderer is not writing, so
-// the APC upload cannot be interleaved with a frame.
+// The write holds termMu, the same lock Bubble Tea's stdout is wrapped in
+// (SerializedStdout), so the APC upload cannot be interleaved with a frame.
 func (s *uiImageStore) writeTTY(data []byte) {
 	if len(data) == 0 {
 		return
@@ -634,7 +634,7 @@ func (s *uiImageStore) writeTTY(data []byte) {
 		}
 		s.tty = f
 	}
-	_, _ = s.tty.Write(data)
+	_, _ = writeLocked(s.tty, data)
 }
 
 // imageContext builds the per-message rendering context, or nil when raster

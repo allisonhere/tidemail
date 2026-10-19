@@ -1233,3 +1233,35 @@ func TestComposeJKStillTypeInHeaderFields(t *testing.T) {
 		t.Fatalf("j/k must insert text, value %q field %v", got, c.focusedField)
 	}
 }
+
+func TestQuotedTextFromHTMLIsReadable(t *testing.T) {
+	msg := db.Message{
+		From:     "news@example.com",
+		BodyText: "Hello\nhttps://cdn.example.com/spacer.gif\nhttps://track.example.com/open?x=1\nWorld",
+		BodyHTML: `<p>Hello there</p><img src="https://cdn.example.com/hero.png"><p>World</p>`,
+	}
+	for name, body := range map[string]string{
+		"reply":   NewReply(msg, config.AccountConfig{}, nil, nil).bodyInput.Value(),
+		"forward": NewForward(msg, config.AccountConfig{}, nil, nil).bodyInput.Value(),
+	} {
+		if !strings.Contains(body, "Hello there") || !strings.Contains(body, "World") {
+			t.Errorf("%s: missing text: %q", name, body)
+		}
+		if strings.Contains(body, "spacer.gif") || strings.Contains(body, "track.example.com") || strings.Contains(body, "\n> \n> \n> \n") {
+			t.Errorf("%s: noise in quote: %q", name, body)
+		}
+	}
+	plain := db.Message{From: "a@b.c", BodyText: "just text"}
+	if got := quotableText(plain); got != "just text" {
+		t.Errorf("plain text should be unchanged, got %q", got)
+	}
+}
+
+func TestForwardNamesNamelessInlineImage(t *testing.T) {
+	c := NewForward(db.Message{BodyText: "x", AttachmentData: []db.Attachment{
+		{ContentType: "image/png", Data: []byte{1, 2, 3}},
+	}}, config.AccountConfig{}, nil, nil)
+	if len(c.attachments) != 1 || !strings.HasSuffix(c.attachments[0].Name, ".png") || len(c.attachments[0].Data) != 3 {
+		t.Errorf("attachments = %+v", c.attachments)
+	}
+}

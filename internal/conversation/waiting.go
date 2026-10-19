@@ -28,8 +28,10 @@ type WaitingThread struct {
 // real person who is not the user. Stopped and snoozed cycles are left out;
 // stopped maps the row ID of a stopped cycle's message to its key. stale lists
 // snoozed keys whose cycle has ended (someone replied, or the user wrote
-// again). The oldest wait comes first.
-func ComputeWaiting(candidates []db.Message, me, stoppedKeys, snoozedKeys map[string]bool) (waiting []WaitingThread, stopped map[int64]string, stale []string) {
+// again). Threads whose latest message predates since are left out, so old
+// Sent history doesn't surface as waits; the zero time keeps everything. The
+// oldest wait comes first.
+func ComputeWaiting(candidates []db.Message, me, stoppedKeys, snoozedKeys map[string]bool, since time.Time) (waiting []WaitingThread, stopped map[int64]string, stale []string) {
 	stopped = map[int64]string{}
 	if len(me) == 0 {
 		return nil, stopped, nil
@@ -51,7 +53,7 @@ func ComputeWaiting(candidates []db.Message, me, stoppedKeys, snoozedKeys map[st
 				stale = append(stale, key)
 			}
 		}
-		if latest == nil || !me[BareAddress(latest.From)] {
+		if latest == nil || !me[BareAddress(latest.From)] || latest.Date.Before(since) {
 			continue
 		}
 		var waitingFor []Participant

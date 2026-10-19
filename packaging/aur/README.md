@@ -18,6 +18,7 @@ working out of the box.
 | `PKGBUILD.in` | The template. Edit this, never a rendered `PKGBUILD`. |
 | `render-pkgbuild.sh` | Substitutes version, `pkgrel`, and checksums into the template. |
 | `../linux/tidemail.desktop` | Desktop entry the package installs to `/usr/share/applications`. |
+| `tidemail man` | Output of the released binary (embedded `man/tidemail.1`), installed to `/usr/share/man/man1/tidemail.1`; skipped for releases that predate the command. |
 | `../../images/tidemail-icon.png` | Icon (1024×1024 PNG) the package installs to `/usr/share/pixmaps/tidemail.png`. |
 
 Placeholders: `@PKGVER@`, `@PKGREL@`, `@SHA256_X86_64@`, `@SHA256_AARCH64@`,

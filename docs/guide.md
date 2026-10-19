@@ -279,6 +279,10 @@ nothing is classified and nothing goes online.
   needed.
 - It leaves as soon as someone else's reply arrives, and returns when you
   answer again.
+- On a new install, only mail you send after TideMail was first set up can
+  start a wait, so the first sync of years of Sent mail doesn't fill the view
+  with old, already-handled conversations. Existing installs keep their
+  current waits.
 - Mail in Inbox, Sent, Archive, and other folders counts, so archiving a
   conversation doesn't hide it. Trash, Spam, and Drafts are ignored.
 - Mail between your own addresses, and mail only to robots or lists
@@ -931,6 +935,25 @@ for, a cancelled passphrase prompt or a plugin error stops the send with the
 reason, and compose stays open. TideMail never falls back to sending the
 message unprotected. Encrypted messages are also encrypted to you, so you can
 read your own Sent copy. Editing a queued message brings its toggles back.
+
+**Before you send encrypted mail.** Encryption needs three things on your
+computer; if one is missing, nothing is sent and the status line says which:
+
+1. **A public key for every recipient** (To, Cc and Bcc) in your GnuPG keyring.
+   Check with `gpg --list-keys ADDRESS`. Fetch a missing one with
+   `gpg --locate-keys ADDRESS` (it tries the recipient's domain and key
+   servers), or import a key they sent you with `gpg --import FILE.asc`. If
+   there is no key, `Alt+E` turns encryption off for that message. TideMail
+   shows `Not sent: no PGP key for ADDRESS`.
+2. **Your own key, under the address you send from.** A key only matches the
+   addresses on it. To use another address of yours, add it:
+   `gpg --quick-add-uid KEYID "Your Name <address>"` (this asks for your
+   passphrase), then re-publish your public key if you shared it.
+3. **A graphical pinentry** to ask for your passphrase (GNOME, KDE and
+   Omarchy ship one; GnuPG picks it, TideMail does not). If a prompt looks
+   broken, check `pinentry-program` in `~/.gnupg/gpg-agent.conf`, then run
+   `gpgconf --reload gpg-agent`. `gpg-agent` remembers your passphrase for a
+   few minutes, so you are not asked on every message.
 
 Things to know:
 

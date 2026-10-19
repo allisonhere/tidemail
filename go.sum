@@ -20,6 +20,8 @@ github.com/allisonhere/tidespell v0.1.0 h1:5t5+sb09xm0DqKS5waq5a96K40NYS0DkqpqMO
 github.com/allisonhere/tidespell v0.1.0/go.mod h1:7XLWUf19/N/Kxt9dVAW0esN31qjTRTAlfHazvNJljnU=
 github.com/allisonhere/tidespell v0.2.0 h1:L4yNK+IljpdaqtLlNMWmBtvod4IYwpfYhxxTm0hwfQ0=
 github.com/allisonhere/tidespell v0.2.0/go.mod h1:7XLWUf19/N/Kxt9dVAW0esN31qjTRTAlfHazvNJljnU=
+github.com/allisonhere/tidespell v0.3.0 h1:PvK1S1kfk/qBRinsgo/ZRC0WWuzefg8CVg/xtU3xDjs=
+github.com/allisonhere/tidespell v0.3.0/go.mod h1:7XLWUf19/N/Kxt9dVAW0esN31qjTRTAlfHazvNJljnU=
 github.com/allisonhere/tideui v0.2.2 h1:+YLMA1ZsnlPDtvNyIhMxuqvXVgKYvJuxNOHYQdDYZPs=
 github.com/allisonhere/tideui v0.2.2/go.mod h1:5PuSjpG2GO1HN1yQZi1ZpEbJOqKYhaLY/Wkb+cj/mAQ=
 github.com/andybalholm/cascadia v1.3.2 h1:3Xi6Dw5lHF15JtdcmAHD3i1+T8plmv7BQ/nsViSLyss=

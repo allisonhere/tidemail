@@ -34,6 +34,36 @@ func ExcludedFromWaiting(mb Mailbox) bool {
 	return false
 }
 
+const waitingSinceKey = "waiting_since"
+
+// initWaitingSince starts the Waiting on Them baseline on a fresh database,
+// before the first sync pulls in years of Sent mail. A database that already
+// has messages predates the baseline and keeps its current waits.
+func (db *DB) initWaitingSince() error {
+	if v, err := db.GetSetting(waitingSinceKey); err != nil || v != "" {
+		return err
+	}
+	var any int
+	if err := db.QueryRow(`SELECT EXISTS (SELECT 1 FROM messages)`).Scan(&any); err != nil || any != 0 {
+		return err
+	}
+	return db.SetSetting(waitingSinceKey, strconv.FormatInt(time.Now().Unix(), 10))
+}
+
+// WaitingSince returns the baseline before which sent mail never starts a
+// wait. The zero time means no baseline.
+func (db *DB) WaitingSince() (time.Time, error) {
+	v, err := db.GetSetting(waitingSinceKey)
+	if err != nil || v == "" {
+		return time.Time{}, err
+	}
+	secs, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return time.Time{}, nil
+	}
+	return time.Unix(secs, 0), nil
+}
+
 var excludedFolderNames = map[string]bool{
 	"trash": true, "deleted items": true, "deleted messages": true, "bin": true,
 	"junk": true, "spam": true, "junk email": true, "junk e-mail": true, "drafts": true,

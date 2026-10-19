@@ -91,7 +91,8 @@ One inbox, several built-in themes.
 - **PGP, through a plugin.** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
   Install the `pgp` plugin from **Settings → Plugins → `b`** (it uses your own GnuPG) to read encrypted
   and signed mail (`D`) and to sign (`Alt+S`) and encrypt (`Alt+E`) what you send.
-  Nothing is sent if encryption fails. See
+  Nothing is sent if encryption fails, and every recipient needs a public key in
+  your keyring (`gpg --locate-keys ADDRESS`). See
   [PGP encryption and signing](docs/guide.md#pgp-encryption-and-signing).
 - **Script it, or hand it to an agent.** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
   The `tidemail` CLI shares the client's accounts and queue: list, search, and
@@ -145,6 +146,11 @@ system password. Set `INSTALL_DIR=/path/to/bin` on the `sh` command if you want
 a different writable destination. If an older `tidemail` earlier on `PATH`
 would still run first, the installer removes it when possible or prints the
 exact cleanup command.
+
+The installer also puts a manual page in `~/.local/share/man/man1`, so
+`man tidemail` works. The page is built into the program: if you installed some
+other way, `tidemail man | man -l -` shows it, and `tidemail man > tidemail.1`
+saves it for you to install.
 
 You can also grab an archive from the
 [latest release](https://github.com/allisonhere/tidemail/releases/latest).

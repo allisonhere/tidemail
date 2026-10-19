@@ -23,7 +23,7 @@ Use the installed tidemail CLI and the user's existing accounts. Run tidemail --
 Discover accounts with tidemail accounts list --agent --json. Select a stable account ID, especially when display names are ambiguous.
 Read cached metadata with tidemail messages list --unread --agent --json or tidemail messages search "invoice" --agent --json. Lists do not include full bodies. Use limits and pagination. Ordinary cached reads do not synchronize the server.
 Retrieve a particular message with tidemail messages read MESSAGE_ID --agent --json only when the user authorized its content. Summarize only authorized content. Do not fetch attachments or other private content merely because metadata access was granted.
-Create a draft with tidemail draft create --account ACCOUNT_ID --to recipient@example.com --subject "Follow-up" --body-file response.md --agent --json. Add files only when authorized, using repeatable --attach PATH. Use --markdown PATH for Markdown mail.
+Create a draft with tidemail draft create --account ACCOUNT_ID --to recipient@example.com --subject "Follow-up" --body-file response.md --agent --json. Add files only when authorized, using repeatable --attach PATH. Use --markdown PATH for Markdown mail. The user keeps canned replies: tidemail templates list shows them, and --template NAME fills the body (not combinable with --body, --file or --markdown). Prefer a matching template when the user asks for a standard reply, and still show the user the final text before sending.
 
 ## Approval and sending
 
