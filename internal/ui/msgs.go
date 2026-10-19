@@ -109,6 +109,13 @@ type ServersDiscoveredMsg struct {
 	Err    error
 }
 
+// PasswordDialogMsg carries the result of the native password dialog opened
+// from the account form. Secret is empty unless Err is nil.
+type PasswordDialogMsg struct {
+	Secret string
+	Err    error
+}
+
 type AccountTestedMsg struct {
 	MailboxCount int
 	Err          error

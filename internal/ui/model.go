@@ -1296,6 +1296,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.accountManager = m.accountManager.applyDiscovery(msg)
 		return m, nil
 
+	case PasswordDialogMsg:
+		m.accountManager = m.accountManager.applyPasswordDialog(msg)
+		return m, nil
+
 	case AccountTestedMsg:
 		m.accountManager.busy = false
 		m.accountManager.busyMsg = ""

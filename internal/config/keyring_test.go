@@ -1,6 +1,12 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+)
 
 // fillSecrets / stripSecrets shell out to secret-tool; without it every keychain
 // lookup returns "" and every store fails. These tests exercise the parts that
@@ -48,5 +54,63 @@ func TestStripSecretsLeavesTokenOnPasswordAccountUntouched(t *testing.T) {
 	stripSecrets(cfg)
 	if got := cfg.Accounts[0].RefreshToken; got != "keep-me" {
 		t.Fatalf("stripSecrets wiped a token off an app-password account: %q", got)
+	}
+}
+
+// fakeSecretTool installs a secret-tool that keeps items in files and logs every
+// invocation's arguments, so a test can see exactly what reached the backend.
+func fakeSecretTool(t *testing.T) (argLog string) {
+	t.Helper()
+	dir := t.TempDir()
+	store := filepath.Join(dir, "items")
+	if err := os.MkdirAll(store, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	argLog = filepath.Join(dir, "args.log")
+	script := `#!/bin/sh
+cmd=$1
+for a; do key=$a; done
+printf '%s\n' "$*" >> ` + argLog + `
+case "$cmd" in
+  store) cat > "` + store + `/$key" ;;
+  lookup) [ -f "` + store + `/$key" ] && cat "` + store + `/$key" || exit 1 ;;
+  clear) rm -f "` + store + `/$key" ;;
+  *) exit 2 ;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(dir, "secret-tool"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("TIDEMAIL_DISABLE_KEYRING", "")
+	keyringProbeOnce = sync.Once{}
+	t.Cleanup(func() { keyringProbeOnce = sync.Once{} })
+	return argLog
+}
+
+// A password entered anywhere (typed or via the graphical dialog) is saved
+// through StoreAccountPassword. It must reach secret-tool on stdin, never in the
+// command line, and read back unchanged.
+func TestStoreAccountPasswordKeepsTheSecretOutOfArguments(t *testing.T) {
+	argLog := fakeSecretTool(t)
+	const secret = "pa55 w0rd/with spaces"
+	if !StoreAccountPassword("acct-1", secret) {
+		t.Fatal("StoreAccountPassword failed against the fake backend")
+	}
+	if got := GetAccountPassword("acct-1", ""); got != secret {
+		t.Errorf("round trip = %q, want %q", got, secret)
+	}
+	logged, err := os.ReadFile(argLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(logged), "pa55") {
+		t.Errorf("the secret appeared in secret-tool arguments:\n%s", logged)
+	}
+	if !strings.Contains(string(logged), "store --label=tidemail application tidemail key") {
+		t.Errorf("expected a libsecret store call, got:\n%s", logged)
+	}
+	if StoreAccountPassword("acct-2", "") {
+		t.Error("an empty password (a canceled dialog) must not be stored")
 	}
 }

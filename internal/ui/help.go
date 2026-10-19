@@ -229,6 +229,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{keys.Left.Help().Key + "/" + keys.Right.Help().Key, "change provider, color, or the Auth method"},
 				{keys.Save.Help().Key, "save account form"},
 				{keys.TestAccount.Help().Key, "test account form"},
+				{keys.PasswordDialog.Help().Key, "on the Password row: enter the password in a native dialog (zenity or kdialog, desktop sessions only; not over SSH); ctrl+s saves it to the keychain like a typed one"},
 				{keys.DiscoverServers.Help().Key, "look up Custom account servers (DNS SRV, MX, HTTPS autoconfig); replaces filled hosts"},
 				{"Email / login", "leave with an address to look up empty Custom hosts; changing it clears settings from that lookup"},
 				{"Form status", "stays below the form; a lookup fills settings without connecting or saving"},
