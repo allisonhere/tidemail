@@ -16,6 +16,9 @@ All notable changes to TideMail are documented in this file.
 - An optional native password dialog (`Alt+P`) on the account form, through
   `zenity` or `kdialog`, with the terminal field as the fallback.
 - A man page: `man tidemail`, or `tidemail man`.
+- `Ctrl+O` shows a message's complete source, fetched from the server without
+  marking it read; `c` copies it to the clipboard. Also in the command palette
+  as "View message source".
 
 ### Fixed
 

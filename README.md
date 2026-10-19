@@ -269,7 +269,7 @@ requires Kitty Unicode placeholders; WezTerm does not support those placeholders
 Email text and attachment saving still work.
 
 Full headers are one `Ctrl+E` away, with SPF, DKIM, and DMARC results called out
-in color.
+in color. `Ctrl+O` shows the complete message source, ready to copy.
 
 ## Optional AI tools
 
@@ -339,6 +339,7 @@ shows the `message_raw` and `message_compose` permissions.
 | `Alt+F` / `Ctrl+R` | Attach a file while composing; remove the last attachment |
 | `Ctrl+D` | Save attachments from the open message |
 | `Ctrl+E` | Show or hide full headers |
+| `Ctrl+O` | View the message source (`c` copies it) |
 | `i` | Load remote images blocked for the open message |
 | `M` / `S` / `T` | Accounts, settings, or themes |
 | `Ctrl+L` in the account form | Look up a Custom account's mail servers |

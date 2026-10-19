@@ -109,6 +109,7 @@ func (m Model) mainCommandItems() []commandItem {
 	items = append(items, m.needsYouCommandItems()...)
 	items = append(items, m.waitingCommandItems()...)
 	items = append(items, m.snoozeCommandItems()...)
+	items = append(items, commandItem{id: "view-source", label: "View message source", enabled: hasMessage || m.contentMessageID != 0})
 	items = append(items, commandItem{id: "plugin-catalog", label: "Browse available plugins…", enabled: true})
 	if _, ok := m.pgpPlugin(); ok {
 		items = append(items, commandItem{id: "pgp-decode", label: "Decrypt / verify (PGP)", enabled: hasMessage || m.contentMessageID != 0})
@@ -296,6 +297,11 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 	case "plugin-catalog":
 		cmd := m.openPluginCatalog(overlayNone)
 		return m, cmd
+	case "view-source":
+		if cur := m.commandMessage(); cur != nil {
+			return m.openSource(*cur)
+		}
+		return m, nil
 	case "pgp-decode":
 		if cur := m.commandMessage(); cur != nil {
 			return m.startPGPDecode(*cur)

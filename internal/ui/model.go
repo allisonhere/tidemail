@@ -111,6 +111,7 @@ const (
 	overlayContextMenu
 	overlaySpellDictionary
 	overlayPluginCatalog
+	overlaySource
 )
 
 type commandPaletteContext int
@@ -263,9 +264,10 @@ type Model struct {
 	colorPicker    colorPicker    // see color_picker.go
 	classification classificationEditor
 
-	plugins pluginUI  // experimental; see plugins.go
-	pgp     pgpState  // decrypted messages, memory only; see pgp.go
-	catalog catalogUI // available plugins; see plugin_catalog.go
+	plugins pluginUI    // experimental; see plugins.go
+	pgp     pgpState    // decrypted messages, memory only; see pgp.go
+	catalog catalogUI   // available plugins; see plugin_catalog.go
+	source  sourceState // raw message source, memory only; see source.go
 
 	helpVP                viewport.Model
 	helpCat               int  // selected category in the two-pane help
@@ -564,6 +566,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.overlay == overlayHelp {
 			m.resetHelpVP()
+		}
+		if m.overlay == overlaySource {
+			m.layoutSource()
 		}
 		return m, nil
 
@@ -1751,6 +1756,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.clearStatusCmd()
 
+	case SourceFetchedMsg:
+		return m.handleSourceFetched(msg)
+
 	case ClipboardCopiedMsg:
 		if msg.Err != nil {
 			m.setStatus("copy failed: "+msg.Err.Error(), true)
@@ -2433,6 +2441,14 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.focused == paneContent && m.contentMessageID != 0 {
 			m.contentShowHeaders = !m.contentShowHeaders
 			m.setViewportForCurrentRow()
+		}
+		return m, nil
+
+	case keyMatches(msg, m.keys.ViewSource):
+		if m.focused != paneAccounts && !m.selectedDraftsMailbox() {
+			if cur := m.commandMessage(); cur != nil {
+				return m.openSource(*cur)
+			}
 		}
 		return m, nil
 
@@ -3261,6 +3277,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlaySummary:
 		return m.handleSummaryKey(msg)
 
+	case overlaySource:
+		return m.handleSourceKey(msg)
+
 	case overlayContentSearch:
 		switch {
 		case keyMatches(msg, m.keys.Cancel):
@@ -3673,6 +3692,7 @@ func (m Model) renderPaneHint(p pane) string {
 			m.keyHint(m.keys.Reply) + " reply  " + m.keyHint(m.keys.ReplyAll) + " all  " + m.keyHint(m.keys.Forward) + " fwd  " +
 			m.keyHint(m.keys.Search) + " find  " +
 			m.keyHint(m.keys.ToggleHeaders) + " headers  " +
+			m.keyHint(m.keys.ViewSource) + " source  " +
 			m.keyHint(m.keys.Back) + " back"
 		if m.images != nil && m.images.graphics() {
 			hint += "  " + m.keyHint(m.keys.ToggleImages) + " images"
