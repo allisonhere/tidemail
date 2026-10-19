@@ -166,7 +166,9 @@ func run() (code int, restartExec string) {
 		defer uiModel.CloseSessions()
 	}
 
-	p := tea.NewProgram(model, programOptions(cfg)...)
+	// Frames go through SerializedStdout so image uploads (written to /dev/tty)
+	// cannot land in the middle of one.
+	p := tea.NewProgram(model, append(programOptions(cfg), tea.WithOutput(ui.SerializedStdout()))...)
 
 	defer func() {
 		if r := recover(); r != nil {

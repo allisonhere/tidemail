@@ -17,6 +17,12 @@ All notable changes to TideMail are documented in this file.
   `zenity` or `kdialog`, with the terminal field as the fallback.
 - A man page: `man tidemail`, or `tidemail man`.
 
+### Fixed
+
+- Inline images no longer sometimes print their raw data as text under the screen
+  the first time they load: image uploads and screen redraws are now written to
+  the terminal one at a time.
+
 ### Changed
 
 - Forwards keep attachments, and replies and forwards quote the readable text

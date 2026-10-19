@@ -2,11 +2,37 @@ package ui
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// termMu orders every write that reaches the terminal. Image uploads go to
+// /dev/tty while Bubble Tea's renderer flushes frames to stdout from its own
+// goroutine; a frame landing inside a large upload carries an ESC that ends the
+// image escape early, and the rest of the base64 prints as text. Holding one
+// lock around each upload and each frame flush keeps them from interleaving.
+var termMu sync.Mutex
+
+// serializedFile is os.File with Write held under termMu. It embeds the file so
+// it still has Fd, which Bubble Tea needs to detect a terminal and its size.
+type serializedFile struct{ *os.File }
+
+func (f serializedFile) Write(p []byte) (int, error) { return writeLocked(f.File, p) }
+
+// writeLocked writes p to w while holding termMu.
+func writeLocked(w io.Writer, p []byte) (int, error) {
+	termMu.Lock()
+	defer termMu.Unlock()
+	return w.Write(p)
+}
+
+// SerializedStdout returns os.Stdout wrapped so its writes cannot interleave
+// with image uploads. Pass it to tea.WithOutput.
+func SerializedStdout() io.Writer { return serializedFile{os.Stdout} }
 
 // openTTY opens /dev/tty for writing terminal control sequences safely,
 // without going through BubbleTea's renderer-owned stdout.
