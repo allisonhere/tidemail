@@ -171,6 +171,31 @@ Today's date.
 Unknown tags are left as written.
 .B \-\-subject
 overrides a template's subject.
+.SH PGP
+Signing and encryption are done by the
+.B pgp
+plugin, which runs your own GnuPG; they are available in the interface only
+(\fBAlt+S\fR and \fBAlt+E\fR in compose), not in
+.BR "tidemail send" .
+Encrypting needs a public key for every recipient (To, Cc and Bcc) in your
+GnuPG keyring, and your own key must carry the address you send from.
+If a key is missing nothing is sent. Useful commands:
+.PP
+.RS
+.nf
+gpg \-\-list\-keys ADDRESS
+gpg \-\-locate\-keys ADDRESS
+gpg \-\-import FILE.asc
+gpg \-\-quick\-add\-uid KEYID "Name <address>"
+.fi
+.RE
+.PP
+The passphrase prompt comes from GnuPG's pinentry, which must be graphical.
+It is chosen by
+.B pinentry\-program
+in
+.IR ~/.gnupg/gpg\-agent.conf ,
+not by TideMail.
 .SH EXIT STATUS
 .TP
 .B 0

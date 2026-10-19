@@ -6,6 +6,24 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Message templates: `F6` in compose opens a picker with built-in templates and
+  your own files from the templates folder; `e` edits one, `n` saves the body
+  as a new one, `tidemail templates list` and `tidemail send --template NAME`.
+- A spell-check language setting (English, Spanish).
+- Plugin reports can be copied (`c`), saved (`s`) or printed (`p`).
+- An optional native password dialog (`Alt+P`) on the account form, through
+  `zenity` or `kdialog`, with the terminal field as the fallback.
+- A man page: `man tidemail`, or `tidemail man`.
+
+### Changed
+
+- Forwards keep attachments, and replies and forwards quote the readable text
+  of HTML mail.
+- Sending PGP mail with a missing recipient key now says which address and how
+  to fix it, and the guide, help and man page list the setup steps.
+
 ## v1.5.0
 
 ### Fixed

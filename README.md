@@ -91,7 +91,8 @@ One inbox, several built-in themes.
 - **PGP, through a plugin.** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
   Install the `pgp` plugin from **Settings → Plugins → `b`** (it uses your own GnuPG) to read encrypted
   and signed mail (`D`) and to sign (`Alt+S`) and encrypt (`Alt+E`) what you send.
-  Nothing is sent if encryption fails. See
+  Nothing is sent if encryption fails, and every recipient needs a public key in
+  your keyring (`gpg --locate-keys ADDRESS`). See
   [PGP encryption and signing](docs/guide.md#pgp-encryption-and-signing).
 - **Script it, or hand it to an agent.** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
   The `tidemail` CLI shares the client's accounts and queue: list, search, and

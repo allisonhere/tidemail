@@ -77,8 +77,8 @@ func TestSendTemplateSubjectFlagWinsAndConflicts(t *testing.T) {
 		if code != 2 {
 			t.Errorf("%s: want usage error 2, got %d %s", name, code, out.String())
 		}
-	}
-	if !strings.Contains(out.String(), "template_not_found") {
-		t.Errorf("missing template should say so: %s", out.String())
+		if name == "missing" && !strings.Contains(out.String(), "template_not_found") {
+			t.Errorf("missing template should say so: %s", out.String())
+		}
 	}
 }

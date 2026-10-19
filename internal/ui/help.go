@@ -157,6 +157,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{keys.PGPSign.Help().Key, "sign this message with PGP (needs a PGP plugin; nothing is sent if signing fails)"},
 				{keys.PGPEncrypt.Help().Key, "encrypt this message with PGP (needs a PGP plugin; nothing is sent if encryption fails)"},
 				{"PGP: no key for…", "every recipient (To, Cc and Bcc) needs a public key in your GnuPG keyring: gpg --list-keys ADDRESS to check, gpg --locate-keys ADDRESS to fetch it, or have them send theirs and gpg --import it. For another address of your own, add it to your key with gpg --quick-add-uid KEYID \"Name <address>\". alt+e sends without encryption"},
+				{"PGP passphrase", "asked by GnuPG's pinentry (graphical, from your desktop), not by TideMail; gpg-agent remembers it for a few minutes. If the prompt looks wrong, check pinentry-program in ~/.gnupg/gpg-agent.conf and run gpgconf --reload gpg-agent"},
 				{"autosave", "save the draft under the chosen sender while you type"},
 				{keys.Undo.Help().Key, "cancel a queued send during the delay set in Settings"},
 				{keys.Cancel.Help().Key, "close compose; prompts to save/discard draft"},
