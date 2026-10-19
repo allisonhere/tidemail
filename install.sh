@@ -141,6 +141,22 @@ INSTALL_TMP=""
 success "Installed ${VERSION} to ${INSTALL_DIR}/${BINARY}"
 notice "Google OAuth is waiting for Google's approval. Use a Google App Password for Gmail."
 
+# ── Man page ──────────────────────────────────────────────────────────────
+# The page is embedded in the binary, so it always matches this version. Best
+# effort: a failure here never fails the install. man-db finds
+# ~/.local/share/man from a ~/.local/bin entry on PATH.
+if [ -n "${XDG_DATA_HOME:-}" ] || [ -n "${HOME:-}" ]; then
+  MAN_DIR="${XDG_DATA_HOME:-${HOME}/.local/share}/man/man1"
+  if mkdir -p "$MAN_DIR" 2>/dev/null \
+    && "${INSTALL_DIR}/${BINARY}" man > "${TMP}/${BINARY}.1" 2>/dev/null \
+    && [ -s "${TMP}/${BINARY}.1" ] \
+    && install -m 0644 "${TMP}/${BINARY}.1" "${MAN_DIR}/${BINARY}.1" 2>/dev/null; then
+    success "Installed the manual page: man ${BINARY}"
+  else
+    warn "Could not install the manual page; read it with: ${BINARY} man | man -l -"
+  fi
+fi
+
 # Resolve a directory to its canonical, symlink-free form so alternate
 # spellings of the same directory on PATH ("..", symlinks, trailing slashes)
 # are recognised as our install dir and never deleted as a "stale" copy.

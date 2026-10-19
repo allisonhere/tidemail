@@ -146,6 +146,11 @@ a different writable destination. If an older `tidemail` earlier on `PATH`
 would still run first, the installer removes it when possible or prints the
 exact cleanup command.
 
+The installer also puts a manual page in `~/.local/share/man/man1`, so
+`man tidemail` works. The page is built into the program: if you installed some
+other way, `tidemail man | man -l -` shows it, and `tidemail man > tidemail.1`
+saves it for you to install.
+
 You can also grab an archive from the
 [latest release](https://github.com/allisonhere/tidemail/releases/latest).
 

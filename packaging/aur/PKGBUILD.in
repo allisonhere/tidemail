@@ -39,4 +39,9 @@ package() {
   install -Dm644 "$srcdir/LICENSE-$pkgver" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 "$srcdir/tidemail-$pkgver.png" "$pkgdir/usr/share/pixmaps/tidemail.png"
   install -Dm644 "$srcdir/tidemail-$pkgver.desktop" "$pkgdir/usr/share/applications/tidemail.desktop"
+  # The manual page is embedded in the binary, so it matches this release.
+  # Releases that predate `tidemail man` simply ship without one.
+  if "$srcdir/tidemail-linux-$CARCH" man > "$srcdir/tidemail.1" 2>/dev/null && [ -s "$srcdir/tidemail.1" ]; then
+    install -Dm644 "$srcdir/tidemail.1" "$pkgdir/usr/share/man/man1/tidemail.1"
+  fi
 }

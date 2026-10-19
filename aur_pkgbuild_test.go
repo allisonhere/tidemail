@@ -71,6 +71,7 @@ func TestRenderPKGBUILDFillsEveryPlaceholder(t *testing.T) {
 		"/raw/v$pkgver/packaging/linux/tidemail.desktop",
 		"/usr/share/pixmaps/tidemail.png",
 		"/usr/share/applications/tidemail.desktop",
+		"/usr/share/man/man1/tidemail.1",
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Errorf("rendered PKGBUILD missing %q", want)
