@@ -1,0 +1,260 @@
+.TH TIDEMAIL 1 "" "tidemail" "User Commands"
+.SH NAME
+tidemail \- keyboard-first terminal email client
+.SH SYNOPSIS
+.B tidemail
+.br
+.B tidemail
+.I command
+.RI [ options ]
+.SH DESCRIPTION
+.B tidemail
+is a terminal email client with multiple accounts, a unified inbox, drafts,
+contacts, search, and optional AI tools.
+Run without arguments it opens the three-pane client.
+With a command it runs headless, using the same accounts, credentials, drafts,
+and mail cache as the client.
+Mail results go to standard output and diagnostics to standard error.
+Output is plain when redirected, and
+.B NO_COLOR
+disables color.
+.PP
+This page covers the command line.
+Keyboard shortcuts are listed in the client's help (press
+.BR ? ).
+Full detail is in the project's
+.IR docs/cli.md .
+.SH COMMANDS
+Run
+.B tidemail \fIcommand\fB \-\-help
+for the options of any command.
+.TP
+.B send
+Validate a message and save it as a draft, or queue it with
+.BR \-\-yes .
+.TP
+.B draft create
+Save a draft; it never authorizes delivery.
+.TP
+.B messages list | search | read
+Read the cached mail.
+.B list
+and
+.B search
+return metadata;
+.B read
+returns the cached bodies of one message.
+.TP
+.B accounts list
+List configured accounts (never passwords or tokens).
+.TP
+.B outbox list | status | process | retry | cancel
+Inspect and drive the queue of outgoing mail.
+.B process
+delivers the due entries and exits, so it can run from cron.
+.TP
+.B templates list
+List canned replies: the built-ins and the files in the templates folder.
+.TP
+.B skill
+.TQ
+.B install-skill
+Print or install portable agent guidance for Codex, Claude, Pi, or Hermes.
+.TP
+.B plugin validate | test | scaffold
+Developer tools for TideMail plugins.
+.TP
+.B cli
+Open the interactive command menu.
+.TP
+.B man
+Print this manual page.
+For example:
+.B tidemail man | man \-l \-
+.SH SEND OPTIONS
+These apply to
+.B send
+and
+.BR "draft create" .
+.TP
+.BI \-\-account " ID"
+Stable account ID or unambiguous account name.
+Without it the configured default sender is used.
+.TP
+.BI \-\-to " LIST"
+Comma-separated recipients.
+.TP
+.BI \-\-cc " LIST"
+CC recipients.
+.TP
+.BI \-\-bcc " LIST"
+BCC recipients.
+.TP
+.BI \-\-subject " TEXT"
+Subject.
+.TP
+.BI \-\-body " TEXT"
+Literal body text.
+.TP
+.BI \-\-file " PATH, " \-\-body\-file " PATH"
+Read the body from a file.
+.TP
+.BI \-\-markdown " PATH"
+Read the body as Markdown.
+.TP
+.BI \-\-template " NAME"
+Fill the body from a template; see
+.BR TEMPLATES .
+Not combinable with the other body options.
+Piped standard input is the body when none of these is given.
+.TP
+.BI \-\-attach " PATH"
+Attach a file; may be repeated.
+.TP
+.B \-\-signature\fR, \fB\-\-no\-signature
+Append, or omit, the account signature (on by default).
+.TP
+.B \-\-yes
+Authorize sending this one invocation.
+Without it a complete message is saved as a draft.
+Approval is never read from piped input.
+.TP
+.B \-\-send\-now
+Skip the configured send delay (still needs authorization).
+.TP
+.B \-\-dry\-run
+Validate and build the message without saving, queueing, or sending.
+.TP
+.B \-\-preview
+Open the editable review wizard on the controlling terminal.
+.TP
+.B \-\-interactive\fR, \fB\-\-no\-interactive
+Force, or suppress, the compose wizard.
+.TP
+.B \-\-agent
+Enforce the configured agent permissions.
+.TP
+.B \-\-json
+Print a versioned JSON result.
+.SH TEMPLATES
+A template is a plain-text file, one per canned reply, in the templates folder
+(see
+.BR FILES ).
+The file name without
+.B .md
+or
+.B .txt
+is its name.
+A file may begin with a
+.B \-\-\-
+block containing a
+.B subject:
+line.
+A file named like a built-in replaces it.
+.PP
+Tags are filled when a template is used:
+.TP
+.B {first_name}
+First word of the display name on the first recipient, or
+.I there
+if it has none.
+.TP
+.B {name}
+The full display name on the first recipient.
+.TP
+.B {my_name}
+The name of the sending account.
+.TP
+.B {date}
+Today's date.
+.PP
+Unknown tags are left as written.
+.B \-\-subject
+overrides a template's subject.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+The operation failed.
+.TP
+.B 2
+Invalid usage.
+.TP
+.B 3
+Permission denied.
+.SH FILES
+.TP
+.I ~/.config/tidemail/config.toml
+Configuration. Passwords, API keys, and tokens are kept in the system keychain,
+not here.
+.TP
+.I ~/.config/tidemail/templates/
+Template files.
+.TP
+.I ~/.local/share/tidemail/
+The mail cache and database.
+.TP
+.I ~/Downloads/tidemail-reports/
+Plugin reports saved from the client.
+.PP
+The locations follow
+.B XDG_CONFIG_HOME
+and
+.BR XDG_DATA_HOME .
+.SH ENVIRONMENT
+.TP
+.B XDG_CONFIG_HOME\fR, \fBXDG_DATA_HOME
+Base directories for configuration and data.
+.TP
+.B NO_COLOR
+Disable color output.
+.TP
+.B TIDEMAIL_PLUGINS_DIR
+Directory searched for plugins.
+.TP
+.B TIDEMAIL_IMAGE_PROTOCOL
+Choose the terminal image protocol.
+.TP
+.B TIDEMAIL_DISABLE_KEYRING
+Do not use the system keychain.
+.TP
+.B TIDEMAIL_MS_CLIENT_ID
+Microsoft OAuth client ID for device-code sign-in.
+.TP
+.B TIDEMAIL_GOOGLE_CLIENT_ID\fR, \fBTIDEMAIL_GOOGLE_CLIENT_SECRET
+Google OAuth client credentials.
+.SH EXAMPLES
+Save a draft:
+.PP
+.RS
+.nf
+tidemail send \-\-to me@example.com \-\-subject Hello \-\-body "Hi"
+.fi
+.RE
+.PP
+Send a canned reply, using the Thanks template:
+.PP
+.RS
+.nf
+tidemail send \-\-template Thanks \-\-to "Priya <p@example.com>" \-\-yes
+.fi
+.RE
+.PP
+Search the cache as JSON:
+.PP
+.RS
+.nf
+tidemail messages search invoice \-\-limit 25 \-\-json
+.fi
+.RE
+.SH SEE ALSO
+.IR docs/cli.md ,
+.UR https://github.com/allisonhere/tidemail
+the tidemail project
+.UE
+.SH BUGS
+Report problems at
+.UR https://github.com/allisonhere/tidemail/issues
+.UE .

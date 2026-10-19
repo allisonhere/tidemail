@@ -21,9 +21,13 @@ import (
 	"time"
 )
 
+// ManPage is the manual page printed by "tidemail man"; the main package
+// embeds man/tidemail.1 and sets it at start-up.
+var ManPage string
+
 func IsMailCommand(s string) bool {
 	switch s {
-	case "cli", "send", "draft", "messages", "accounts", "outbox", "templates", "skill", "install-skill", "--help", "-h", "help":
+	case "cli", "send", "draft", "messages", "accounts", "outbox", "templates", "man", "skill", "install-skill", "--help", "-h", "help":
 		return true
 	}
 	return false
@@ -38,7 +42,7 @@ func RunHeadless(args []string, in io.Reader, out, errOut io.Writer) int {
 	}
 	switch args[0] {
 	case "help", "--help", "-h":
-		_, _ = fmt.Fprintln(out, paint(out, "TideMail", 124, 58, 237)+" — terminal email\n\nUsage: tidemail [command]\n\nNo arguments opens the three-pane client.\nCommands: cli (interactive menu), send, draft create, messages list|search|read, accounts list,\n          outbox list|status|process|retry|cancel, templates list, skill, install-skill, plugin\nRun tidemail COMMAND --help for options.\nExit codes: 0 success, 1 operation failed, 2 invalid usage, 3 permission denied.")
+		_, _ = fmt.Fprintln(out, paint(out, "TideMail", 124, 58, 237)+" — terminal email\n\nUsage: tidemail [command]\n\nNo arguments opens the three-pane client.\nCommands: cli (interactive menu), send, draft create, messages list|search|read, accounts list,\n          outbox list|status|process|retry|cancel, templates list, man, skill, install-skill, plugin\nRun tidemail COMMAND --help for options.\nExit codes: 0 success, 1 operation failed, 2 invalid usage, 3 permission denied.")
 		return 0
 	case "skill":
 		return RunSkill(args[1:], out, errOut)
@@ -53,6 +57,19 @@ func RunHeadless(args []string, in io.Reader, out, errOut io.Writer) int {
 		return RunMailRead(args[0], args[1:], out, errOut)
 	case "templates":
 		return runTemplates(args[1:], out, errOut)
+	case "man":
+		if hasHelpFlag(args[1:]) {
+			_, _ = fmt.Fprintln(out, "Usage: tidemail man\nPrint the manual page (roff). View it with: tidemail man | man -l -")
+			return 0
+		}
+		if ManPage == "" {
+			_, _ = fmt.Fprintln(errOut, "error: this build has no manual page")
+			return 1
+		}
+		if _, err := io.WriteString(out, ManPage); err != nil {
+			return 1
+		}
+		return 0
 	case "send":
 		return runComposeCLI(false, args[1:], in, out, errOut)
 	case "draft":

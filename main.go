@@ -24,6 +24,12 @@ var version = "dev"
 //go:embed CHANGELOG.md
 var changelog string
 
+// manPage is the manual page, printed by "tidemail man" and installed by
+// install.sh and the AUR package, so it always matches this build.
+//
+//go:embed man/tidemail.1
+var manPage string
+
 type startupOptions struct {
 	previewManualUpdate   bool
 	previewUpdateProgress bool
@@ -81,6 +87,7 @@ func run() (code int, restartExec string) {
 		return cli.Run(os.Args[2:], os.Stdout, os.Stderr), ""
 	}
 	startupArgs := os.Args[1:]
+	cli.ManPage = manPage
 	if len(startupArgs) > 0 && cli.IsMailCommand(startupArgs[0]) {
 		code := cli.RunHeadless(startupArgs, os.Stdin, os.Stdout, os.Stderr)
 		if code != cli.OpenInbox {
