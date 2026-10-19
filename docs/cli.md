@@ -411,3 +411,11 @@ In command menus, account selection, attachment browsing, and review, `q` leaves
 the current screen. The top-level command menu quits. Unfinished compose content
 uses the existing save/discard confirmation; during a send countdown, `q` undoes
 the queued send. In text fields and the Ripple body editor, `q` remains text.
+
+## Man page
+
+`man tidemail` shows a reference for the commands, options, exit codes, files and
+environment variables on this page. The installer puts it in
+`~/.local/share/man/man1`, and the Arch package installs it system-wide.
+`tidemail man` prints the page that is built into the binary, so
+`tidemail man | man -l -` works anywhere and always matches the version you run.

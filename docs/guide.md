@@ -65,6 +65,13 @@ If your launcher or installer asks for an icon URL instead (Omarchy's TUI
 installer does), use the 1024×1024 PNG with a transparent background:
 `https://raw.githubusercontent.com/allisonhere/tidemail/main/images/tidemail-icon.png`
 
+### Man page
+
+`man tidemail` shows the command-line reference. The installer puts the page in
+`~/.local/share/man/man1`; the Arch package installs it system-wide. Anywhere
+else, `tidemail man | man -l -` prints the page that matches the version you
+are running.
+
 ### Build from source
 
 ```bash
@@ -463,6 +470,37 @@ Enable Vim keys under Settings → Editor if you prefer modes, motions, counts,
 operators such as `dw`, `cw`, and `dd`, and a command line. `:w` sends the
 message, while `:q` cancels it.
 
+Replies and forwards quote the readable text of an HTML message, not its markup,
+and a forward keeps the original's attachments.
+
+### Templates
+
+Press `F6` in compose (the footer shows `f6 templates` in every field) to open
+the template picker: canned replies you can insert at the cursor. The built-ins
+are **Thanks**, **Got it**, **Out of office**, **Propose a meeting**, **Polite
+decline** and **Follow up**. Choose one with `←`/`→` or `↑`/`↓` (the highlighted
+template is previewed in the message area, tags shown as written) and press
+`Enter` to insert it as one undo step. The subject is set only if it is empty.
+Without an `F6` key, use **Insert template…** in the command palette.
+
+- `e` edits the highlighted template in place: `Ctrl+S` saves it, `Esc`
+  discards the edit. Editing a built-in saves your own copy, which replaces it.
+- `n` saves the message you are writing as a new template: type a name and
+  press `Enter`. Quoted text in a reply or forward is left out. Names can't
+  repeat, start with `.`, or contain `/`, `\` or `:`.
+- Tags are filled when you insert: `{first_name}` (first word of the first
+  recipient's display name, or "there"), `{name}` (the full display name),
+  `{my_name}` (the sending account's name) and `{date}` (today). Unknown tags
+  stay as written.
+
+Templates are plain files. Any `.md` or `.txt` file in the `templates` folder
+next to `config.toml` (`~/.config/tidemail/templates`) is a template named after
+the file without its extension, and a file named like a built-in replaces it.
+A file may start with a `---` block holding `subject: ...`; the rest is the
+body. Files over 64 KiB, hidden files and files that are not UTF-8 text are
+ignored. `tidemail templates list` and `tidemail send --template NAME` use the
+same templates; see the [command line](cli.md).
+
 ## Contacts
 
 Press `C` to open Contacts. Press `n` to add someone, `f` to browse addresses
@@ -496,6 +534,14 @@ keychain support yet, so it always stores these secrets in
   username and password (basic auth over TLS)
 
 If you expose an app password, revoke it and create a new one.
+
+**Typing a password in a window of its own (optional).** On the account form,
+press `Alt+P` on the Password row to enter the password in your desktop's
+native dialog (`zenity` or `kdialog`, whichever is installed) instead of the
+terminal field. The password never appears in a command line or log, and
+Cancel leaves the stored password unchanged. The dialog is not offered over
+SSH, without a display, or when neither program is installed; the terminal
+field always works.
 
 Gmail currently requires an app password while Google approval is pending. Turn
 on 2-Step Verification, generate one at
@@ -869,6 +915,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Ctrl+U` in compose | Cycle the sending account; focus From and press `Enter` to open the account picker |
 | `Ctrl+N` / `Alt+N` | Next content link |
 | `Alt+P` | Previous content link |
+| `Alt+P` on the account form's Password row | Enter the password in a native dialog (`zenity` or `kdialog`) |
 | `Ctrl+E` | Toggle email headers on/off |
 | `Ctrl+F` | Find in message |
 | `v` / `V` | Visual select line range / whole message |
@@ -881,10 +928,11 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Ctrl+D` | Save attachments to folder |
 | `Ctrl+G` | AI grammar & spell check (compose). The preview fits the screen and scrolls with `↑`/`↓`, `PgUp`/`PgDn`, and `Home`/`End`; `y` accepts, `n` or `Esc` cancels |
 | `F7` | Offline spell check (compose); needs Settings → Editor → Spell check |
+| `F6` in compose | Template picker; `Enter` inserts, `e` edits, `n` saves the message as a new template |
 | `D` | Decrypt and verify the open PGP message (needs a PGP plugin) |
 | `Alt+S` / `Alt+E` in compose | Sign / encrypt the message with PGP (needs a PGP plugin); `F8` / `F9` also work if your terminal or desktop doesn't claim them |
 | Standard compose editor | Selection, system clipboard, undo/redo, word movement, and Home/End |
-| Spell check in compose | Off by default. Turn on **Settings → Editor → Spell check in compose (F7)** to underline misspelled words in the body as you type (the word you are still typing is left alone until you move on). Press `F7` to step through them: `Enter` replaces with the highlighted suggestion (or press `1`–`5`), `←`/`→` choose another, `s` skips, `i` ignores the word until you restart, `a` adds it to your personal dictionary (kept in TideMail's database), and `Esc` closes. To see, add, or remove those words later, open **Settings → Editor → Personal dictionary** (`a` adds, `d` removes, `Esc` goes back); changes apply right away. English only (US and GB spellings); it works offline and never sends text anywhere. It ignores URLs, email addresses, numbers, ALL-CAPS words and quoted or forwarded text, and it accepts the names, addresses and domains of people in your mail, so correspondents are not flagged. Suggestions put the likeliest fix first: swapped or doubled letters, neighbouring-key slips and sound-alikes are weighed, favouring everyday words. `Ctrl+G` still runs the AI grammar check |
+| Spell check in compose | Off by default. Turn on **Settings → Editor → Spell check in compose (F7)** to underline misspelled words in the body as you type (the word you are still typing is left alone until you move on). Press `F7` to step through them: `Enter` replaces with the highlighted suggestion (or press `1`–`5`), `←`/`→` choose another, `s` skips, `i` ignores the word until you restart, `a` adds it to your personal dictionary (kept in TideMail's database), and `Esc` closes. To see, add, or remove those words later, open **Settings → Editor → Personal dictionary** (`a` adds, `d` removes, `Esc` goes back); changes apply right away. The language is **Settings → Editor → Spell check language**: English (US and GB spellings) or Español. It works offline and never sends text anywhere. It ignores URLs, email addresses, numbers, ALL-CAPS words and quoted or forwarded text, and it accepts the names, addresses and domains of people in your mail, so correspondents are not flagged. Suggestions put the likeliest fix first: swapped or doubled letters, neighbouring-key slips and sound-alikes are weighed, favouring everyday words. `Ctrl+G` still runs the AI grammar check |
 | Vim keys in compose | Enable in Settings → Editor. `:w`/`:wq` send; `:q` or double `Esc` cancels |
 | `?` | Help |
 | `q` | Quit |
@@ -1026,7 +1074,7 @@ any other overlay is open. Turning mouse support on trades away your terminal's
 native click-drag text selection while it's enabled.
 
 - Display: theme, icons, annotation tag style and colors, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, mouse support, and quit confirmation
-- Editor: compose keys, vim keys, spell check, send delay, and maximum delivery attempts
+- Editor: compose keys, vim keys, spell check and its language, send delay, and maximum delivery attempts
 - CLI: quit after send or draft, skip the review step, and the default signature for the interactive `tidemail cli` wizard
 - Accounts: connection details, From address, signature, color, and sync interval.
   An account's color accents its own mailbox pane (unread text, the focused

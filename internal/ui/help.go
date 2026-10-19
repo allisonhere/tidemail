@@ -153,7 +153,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{keys.PasteText.Help().Key, "paste clipboard into focused field"},
 				{keys.GrammarCheck.Help().Key, "AI grammar & spell check (preview scrolls with arrows/pgup/pgdn; y accepts, n cancels)"},
 				{keys.Templates.Help().Key, "templates: insert a canned reply at the cursor (see the Templates section)"},
-				{keys.SpellCheck.Help().Key, "offline spell check: step through misspelled words (Settings → Editor → Spell check)"},
+				{keys.SpellCheck.Help().Key, "offline spell check: step through misspelled words (Settings → Editor → Spell check; pick English or Español under Spell check language)"},
 				{keys.PGPSign.Help().Key, "sign this message with PGP (needs a PGP plugin; nothing is sent if signing fails)"},
 				{keys.PGPEncrypt.Help().Key, "encrypt this message with PGP (needs a PGP plugin; nothing is sent if encryption fails)"},
 				{"PGP: no key for…", "every recipient (To, Cc and Bcc) needs a public key in your GnuPG keyring: gpg --list-keys ADDRESS to check, gpg --locate-keys ADDRESS to fetch it, or have them send theirs and gpg --import it. For another address of your own, add it to your key with gpg --quick-add-uid KEYID \"Name <address>\". alt+e sends without encryption"},

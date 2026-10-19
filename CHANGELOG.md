@@ -29,6 +29,10 @@ All notable changes to TideMail are documented in this file.
   of HTML mail.
 - Sending PGP mail with a missing recipient key now says which address and how
   to fix it, and the guide, help and man page list the setup steps.
+- Waiting on Them on a new install only counts mail you send after TideMail was
+  first set up, so the first sync of old Sent mail doesn't fill the view.
+  Existing installs keep their current waits.
+- The compose footer shows `f6 templates` in every field, not only the body.
 
 ## v1.5.0
 
