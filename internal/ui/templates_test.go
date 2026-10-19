@@ -5,111 +5,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/allisonhere/tidemail/internal/config"
+	"github.com/allisonhere/tidemail/internal/mailtemplate"
 	"github.com/charmbracelet/x/ansi"
 )
-
-func templateNames(ts []mailTemplate) []string {
-	var out []string
-	for _, t := range ts {
-		out = append(out, t.name)
-	}
-	return out
-}
-
-func find(ts []mailTemplate, name string) (mailTemplate, bool) {
-	for _, t := range ts {
-		if t.name == name {
-			return t, true
-		}
-	}
-	return mailTemplate{}, false
-}
-
-func TestLoadTemplates(t *testing.T) {
-	dir := t.TempDir()
-	write := func(name, body string) {
-		t.Helper()
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("Invoice.md", "---\nsubject: Your invoice\n---\nHi {first_name}\n")
-	write("plain.txt", "just text")
-	write("Thanks.txt", "my own thanks")
-	write(".hidden.md", "no")
-	write("notes.pdf", "no")
-	write("big.md", strings.Repeat("x", maxTemplateBytes+1))
-	outside := t.TempDir()
-	if err := os.WriteFile(filepath.Join(outside, "secret.md"), []byte("secret"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(filepath.Join(outside, "secret.md"), filepath.Join(dir, "escape.md")); err != nil {
-		t.Fatal(err)
-	}
-
-	got := loadTemplates(dir)
-	inv, ok := find(got, "Invoice")
-	if !ok || inv.subject != "Your invoice" || inv.body != "Hi {first_name}\n" {
-		t.Errorf("Invoice = %+v", inv)
-	}
-	if p, ok := find(got, "plain"); !ok || p.body != "just text" || p.subject != "" {
-		t.Errorf("plain = %+v", p)
-	}
-	if th, _ := find(got, "Thanks"); th.body != "my own thanks" {
-		t.Errorf("a file should replace the built-in of the same name, got %q", th.body)
-	}
-	for _, bad := range []string{".hidden", "notes", "big", "escape", "secret"} {
-		if _, ok := find(got, bad); ok {
-			t.Errorf("%q should have been skipped: %v", bad, templateNames(got))
-		}
-	}
-	if len(got) != len(builtinTemplates)+2 { // Invoice and plain added, Thanks replaced
-		t.Errorf("got %d templates: %v", len(got), templateNames(got))
-	}
-}
-
-func TestLoadTemplatesMissingDir(t *testing.T) {
-	got := loadTemplates(filepath.Join(t.TempDir(), "nope"))
-	if len(got) != len(builtinTemplates) {
-		t.Errorf("a missing folder should give just the built-ins, got %v", templateNames(got))
-	}
-}
-
-func TestParseTemplate(t *testing.T) {
-	for in, want := range map[string]mailTemplate{
-		"body only":                        {body: "body only"},
-		"---\nsubject: Hi\n---\nbody":      {subject: "Hi", body: "body"},
-		"---\nsubject: Hi\r\n---\r\nbody":  {subject: "Hi", body: "body"},
-		"---\nother: x\n---\nbody":         {body: "body"},
-		"---\nsubject: unterminated\nbody": {body: "---\nsubject: unterminated\nbody"},
-		"---\nsubject: Only\n---":          {subject: "Only"},
-	} {
-		if got := parseTemplate(in); got != want {
-			t.Errorf("parseTemplate(%q) = %+v; want %+v", in, got, want)
-		}
-	}
-}
-
-func TestFillTemplate(t *testing.T) {
-	now := time.Date(2026, 10, 18, 0, 0, 0, 0, time.UTC)
-	v := templateVars(`"Priya Natarajan" <p@acme.com>`, "Allie", now)
-	got := fillTemplate("Hi {first_name} ({name}), {date}, {my_name} {unknown} {Not}", v)
-	want := "Hi Priya (Priya Natarajan), October 18, 2026, Allie {unknown} {Not}"
-	if got != want {
-		t.Errorf("got %q; want %q", got, want)
-	}
-	if v := templateVars("p@acme.com", "A", now); v["first_name"] != "there" || v["name"] != "" {
-		t.Errorf("without a display name first_name should be 'there': %v", v)
-	}
-	if v := templateVars("", "A", now); v["first_name"] != "there" {
-		t.Errorf("empty To: %v", v)
-	}
-}
 
 func TestInsertTemplate(t *testing.T) {
 	c := NewCompose(config.AccountConfig{Name: "Allie"}, nil, nil)
@@ -118,14 +20,14 @@ func TestInsertTemplate(t *testing.T) {
 	c.bodyInput.Focus()
 	c.bodyInput, _ = c.bodyInput.Update(tea.KeyMsg{Type: tea.KeyCtrlHome})
 	c.bodyInput, _ = c.bodyInput.Update(tea.KeyMsg{Type: tea.KeyRight})
-	c.insertTemplate(mailTemplate{subject: "Hello {first_name}", body: "[{first_name}]"})
+	c.insertTemplate(mailtemplate.Template{Subject: "Hello {first_name}", Body: "[{first_name}]"})
 	if got := c.bodyInput.Value(); got != "A[Sam]B" {
 		t.Errorf("body = %q; want insertion at the caret", got)
 	}
 	if got := c.subjectInput.Value(); got != "Hello Sam" {
 		t.Errorf("empty subject should be set, got %q", got)
 	}
-	c.insertTemplate(mailTemplate{subject: "Other", body: ""})
+	c.insertTemplate(mailtemplate.Template{Subject: "Other", Body: ""})
 	if got := c.subjectInput.Value(); got != "Hello Sam" {
 		t.Errorf("a typed subject must not be replaced, got %q", got)
 	}
@@ -135,7 +37,7 @@ func TestTemplatePickerKeys(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	c := NewCompose(config.AccountConfig{Name: "Allie"}, nil, nil)
 	c.openTemplates()
-	if !c.tmplOpen || len(c.tmplList) != len(builtinTemplates) {
+	if !c.tmplOpen || len(c.tmplList) != len(mailtemplate.Builtins) {
 		t.Fatalf("open = %v, %d templates", c.tmplOpen, len(c.tmplList))
 	}
 	c, _, _ = c.updateTemplates(tea.KeyMsg{Type: tea.KeyRight}, DefaultKeys)
@@ -147,7 +49,7 @@ func TestTemplatePickerKeys(t *testing.T) {
 	if c.tmplIdx != len(c.tmplList)-1 {
 		t.Errorf("left should wrap, idx = %d", c.tmplIdx)
 	}
-	want := c.tmplList[c.tmplIdx].name
+	want := c.tmplList[c.tmplIdx].Name
 	c, _, _ = c.updateTemplates(tea.KeyMsg{Type: tea.KeyEnter}, DefaultKeys)
 	if c.tmplOpen || !strings.Contains(c.statusMsg, want) || c.bodyInput.Value() == "" {
 		t.Errorf("enter should insert %q and close: open=%v status=%q", want, c.tmplOpen, c.statusMsg)
@@ -179,17 +81,9 @@ func TestTemplatePreviewShowsRawTagsAndLegend(t *testing.T) {
 	}
 }
 
-func TestSerializeParseRoundTrip(t *testing.T) {
-	for _, in := range []mailTemplate{{body: "hi\n"}, {subject: "Re: x", body: "hi {name}\n"}} {
-		if got := parseTemplate(serializeTemplate(in)); got != in {
-			t.Errorf("round trip %+v -> %+v", in, got)
-		}
-	}
-}
-
 func TestTemplateEditSave(t *testing.T) {
 	c := tmplCompose(t)
-	name := c.tmplList[c.tmplIdx].name // a built-in
+	name := c.tmplList[c.tmplIdx].Name // a built-in
 	c, _, _ = c.updateTemplates(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")}, DefaultKeys)
 	if !c.tmplEditing {
 		t.Fatal("e should start editing")
@@ -204,7 +98,7 @@ func TestTemplateEditSave(t *testing.T) {
 	if err != nil || !strings.Contains(string(data), "Z") || !strings.Contains(string(data), "{first_name}") {
 		t.Fatalf("saved file = %q, %v", data, err)
 	}
-	if got := c.tmplList[c.tmplIdx]; got.name != name || !strings.Contains(got.body, "Z") {
+	if got := c.tmplList[c.tmplIdx]; got.Name != name || !strings.Contains(got.Body, "Z") {
 		t.Errorf("reloaded template = %+v; want edited %q selected", got, name)
 	}
 }
@@ -226,7 +120,7 @@ func TestTemplateEditCancelWritesNothing(t *testing.T) {
 func TestTemplateEditOversizeRefused(t *testing.T) {
 	c := tmplCompose(t)
 	c.tmplEditing = true
-	c.tmplEd.SetValue(strings.Repeat("x", maxTemplateBytes+1))
+	c.tmplEd.SetValue(strings.Repeat("x", mailtemplate.MaxBytes+1))
 	c.saveTemplate()
 	dir, _ := config.TemplatesDir()
 	if !c.isErr {
@@ -274,7 +168,7 @@ func TestCreateTemplateFromBody(t *testing.T) {
 	if err != nil || !strings.Contains(string(data), "subject: Quick note") || !strings.Contains(string(data), "my standard answer.") {
 		t.Fatalf("file = %q, %v", data, err)
 	}
-	if got := c.tmplList[c.tmplIdx]; got.name != "My answer" || got.subject != "Quick note" {
+	if got := c.tmplList[c.tmplIdx]; got.Name != "My answer" || got.Subject != "Quick note" {
 		t.Errorf("selected = %+v", got)
 	}
 }

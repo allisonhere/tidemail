@@ -21,6 +21,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/conversation"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidemail/internal/mailapp"
+	"github.com/allisonhere/tidemail/internal/mailtemplate"
 )
 
 type composeField int
@@ -88,7 +89,7 @@ type ComposeModel struct {
 
 	// Template picker (see templates.go).
 	tmplOpen    bool
-	tmplList    []mailTemplate
+	tmplList    []mailtemplate.Template
 	tmplIdx     int
 	tmplEd      editorArea // preview (browse) or editor (tmplEditing) for tmplList[tmplIdx]
 	tmplEditing bool
