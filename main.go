@@ -213,15 +213,25 @@ func formatConfigLoadError(path string, err error, cfg config.Config) string {
 	return fmt.Sprintf("error: could not load or migrate config %s: %s\nFix the file or permissions shown above, then restart TideMail; it will start once the config parses and any required migration can be saved.", path, detail)
 }
 
+// googleClientFromEnv reports whether the developer environment names a whole
+// Google client: both the ID and the secret.
+func googleClientFromEnv() bool {
+	return strings.TrimSpace(os.Getenv("TIDEMAIL_GOOGLE_CLIENT_ID")) != "" &&
+		strings.TrimSpace(os.Getenv("TIDEMAIL_GOOGLE_CLIENT_SECRET")) != ""
+}
+
 func applyStartupOverrides(cfg *config.Config, opts startupOptions) {
 	if cfg == nil {
 		return
 	}
 	// Google must approve TideMail's restricted Gmail scope before new OAuth
-	// authorizations can be offered. Keep this runtime-only so existing OAuth
-	// accounts and their saved credentials are never rewritten.
-	cfg.OAuth.GoogleDisabled = true
+	// authorizations can be offered. A developer who supplies their own Google
+	// client (see docs/google-oauth.md) can still sign in, for example with a
+	// test user on a project in Testing. Keep this runtime-only so existing
+	// OAuth accounts and their saved credentials are never rewritten.
+	cfg.OAuth.GoogleDisabled = !googleClientFromEnv()
 	if opts.disableGoogleOAuth {
+		cfg.OAuth.GoogleDisabled = true
 		// Retain this development/test flag's former behavior: it also simulates
 		// a build without a configured Google client.
 		cfg.OAuth.GoogleClientID = ""

@@ -24,6 +24,13 @@ Use the existing Google project for initial development:
    go run .
    ```
 
+Setting **both** variables is also what turns Google sign-in on: without them
+TideMail keeps it off for everyone, whatever the project's state, until Google
+approves the Gmail scope. `--disable-google-oauth` still forces it off.
+
+While the project is in Testing, Google expires the test user's refresh token
+after 7 days. Sign in again when TideMail reports the Google sign-in as ended.
+
 These exports now override saved settings, including empty credentials left by
 older versions. No config-file edit is needed. Both values must belong to the
 same client. Nonempty environment values take precedence over saved custom
