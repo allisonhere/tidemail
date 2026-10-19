@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/allisonhere/tidemail/internal/config"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func templateNames(ts []mailTemplate) []string {
@@ -342,5 +343,29 @@ func TestTemplatePanelShowsNamePrompt(t *testing.T) {
 	c = tmplType(c, "Abc")
 	if p := c.templatesPanel(120, managerChrome{}); !strings.Contains(p, "new template name") || !strings.Contains(p, "Abc") {
 		t.Errorf("panel missing the prompt:\n%s", p)
+	}
+}
+
+func TestTemplateHintOnlyInBodyAndPaletteEntry(t *testing.T) {
+	c := tmplCompose(t)
+	chrome := newManagerChrome(100, CatppuccinMocha, false)
+	c.tmplOpen = false
+	c.focusedField = composeFieldBody
+	if h := ansi.Strip(c.composeHints(120, chrome)); !strings.Contains(h, "f6 templates") {
+		t.Errorf("body footer should hint f6 templates:\n%s", h)
+	}
+	c.focusedField = composeFieldSubject
+	if h := ansi.Strip(c.composeHints(120, chrome)); strings.Contains(h, "templates") {
+		t.Errorf("header fields should not show the hint:\n%s", h)
+	}
+	m, _, _ := newIdentityModel(t, acct("Personal", "imap.example.com", "me@example.com", "pw"))
+	found := false
+	for _, it := range m.composeCommandItems() {
+		if it.id == "compose-template" && it.enabled {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("compose palette should offer Insert template…")
 	}
 }
