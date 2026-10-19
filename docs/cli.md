@@ -62,6 +62,7 @@ nonempty body or an attachment. Incomplete messages cannot authorize delivery.
 | `--body` | Literal body text |
 | `--file`, `--body-file` | Read the body from a file |
 | `--markdown PATH` | Read Markdown through TideMail's existing renderer |
+| `--template NAME` | Fill the body from a template (case-insensitive name; see below). One body source only; `--subject` overrides the template's subject |
 | `--attach PATH` | Add a file, repeatable |
 | `--signature` | Append the configured account signature, enabled by default |
 | `--no-signature` | Omit the configured signature |
@@ -94,6 +95,21 @@ tidemail send --to me@example.com --subject "Validate" \
 `--dry-run` reports `validated`, MIME size, and attachment count. It does not
 print the message body or create a draft. Preview requires a controlling terminal
 and displays private message content there, including BCC recipients.
+
+## Templates
+
+`tidemail templates list` prints the canned replies you can use: the built-ins
+plus the `.md` and `.txt` files in the templates folder next to `config.toml`
+(`~/.config/tidemail/templates`), the same ones the F6 picker in compose offers.
+`--json` returns them as `{"templates":[{"name","subject"}]}`.
+
+`tidemail send --template Thanks --to "Priya <p@example.com>"` fills the body.
+Tags are filled as in compose: `{first_name}` and `{name}` come from the display
+name on the first `--to` address (`{first_name}` is "there" when it has none),
+`{my_name}` is the sending account's name, and `{date}` is today. Unknown tags
+stay as written. Nothing else changes: without `--yes` the result is a draft,
+and `--template` cannot be combined with `--body`, `--file` or `--markdown`.
+Creating and editing templates is done in the app (F6) or as files.
 
 ## Drafts
 

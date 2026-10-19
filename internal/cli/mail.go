@@ -11,6 +11,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/db"
 	imapClient "github.com/allisonhere/tidemail/internal/imap"
 	"github.com/allisonhere/tidemail/internal/mailapp"
+	"github.com/allisonhere/tidemail/internal/mailtemplate"
 	"github.com/allisonhere/tidemail/internal/smtp"
 	"golang.org/x/term"
 	"io"
@@ -22,7 +23,7 @@ import (
 
 func IsMailCommand(s string) bool {
 	switch s {
-	case "cli", "send", "draft", "messages", "accounts", "outbox", "skill", "install-skill", "--help", "-h", "help":
+	case "cli", "send", "draft", "messages", "accounts", "outbox", "templates", "skill", "install-skill", "--help", "-h", "help":
 		return true
 	}
 	return false
@@ -37,7 +38,7 @@ func RunHeadless(args []string, in io.Reader, out, errOut io.Writer) int {
 	}
 	switch args[0] {
 	case "help", "--help", "-h":
-		_, _ = fmt.Fprintln(out, paint(out, "TideMail", 124, 58, 237)+" — terminal email\n\nUsage: tidemail [command]\n\nNo arguments opens the three-pane client.\nCommands: cli (interactive menu), send, draft create, messages list|search|read, accounts list,\n          outbox list|status|process|retry|cancel, skill, install-skill, plugin\nRun tidemail COMMAND --help for options.\nExit codes: 0 success, 1 operation failed, 2 invalid usage, 3 permission denied.")
+		_, _ = fmt.Fprintln(out, paint(out, "TideMail", 124, 58, 237)+" — terminal email\n\nUsage: tidemail [command]\n\nNo arguments opens the three-pane client.\nCommands: cli (interactive menu), send, draft create, messages list|search|read, accounts list,\n          outbox list|status|process|retry|cancel, templates list, skill, install-skill, plugin\nRun tidemail COMMAND --help for options.\nExit codes: 0 success, 1 operation failed, 2 invalid usage, 3 permission denied.")
 		return 0
 	case "skill":
 		return RunSkill(args[1:], out, errOut)
@@ -50,6 +51,8 @@ func RunHeadless(args []string, in io.Reader, out, errOut io.Writer) int {
 			return runOutboxAction(args[1:], out, errOut)
 		}
 		return RunMailRead(args[0], args[1:], out, errOut)
+	case "templates":
+		return runTemplates(args[1:], out, errOut)
 	case "send":
 		return runComposeCLI(false, args[1:], in, out, errOut)
 	case "draft":
@@ -114,7 +117,7 @@ func mailResult(out, errOut io.Writer, j bool, data any, code int, id, message s
 func runComposeCLI(draftOnly bool, args []string, in io.Reader, out, errOut io.Writer) int {
 	fs := flag.NewFlagSet("send", flag.ContinueOnError)
 	fs.SetOutput(errOut)
-	var account, to, cc, bcc, subject, body, file, markdown string
+	var account, to, cc, bcc, subject, body, file, markdown, templateName string
 	var attachments []string
 	var yes, now, j, dry, preview, noSignature, signature, agent, interactive, noInteractive bool
 	fs.StringVar(&account, "account", "", "stable account ID or unambiguous name")
@@ -126,6 +129,7 @@ func runComposeCLI(draftOnly bool, args []string, in io.Reader, out, errOut io.W
 	fs.StringVar(&file, "file", "", "body file")
 	fs.StringVar(&file, "body-file", "", "body file")
 	fs.StringVar(&markdown, "markdown", "", "Markdown body file")
+	fs.StringVar(&templateName, "template", "", "fill the body from a template (see: tidemail templates list)")
 	fs.Var(stringList(&attachments), "attach", "attachment path, repeatable")
 	fs.BoolVar(&signature, "signature", true, "append configured signature")
 	fs.BoolVar(&noSignature, "no-signature", false, "omit signature")
@@ -147,7 +151,7 @@ func runComposeCLI(draftOnly bool, args []string, in io.Reader, out, errOut io.W
 		usageOut = out
 	}
 	fs.Usage = func() {
-		_, _ = fmt.Fprintln(usageOut, "Usage: tidemail send [options]\nIn a terminal, missing fields open the wizard. Complete scripted commands\nwithout --yes save a draft. Bodies come from one of\n--body, --file, --markdown, or piped stdin. Queue processing: outbox process.")
+		_, _ = fmt.Fprintln(usageOut, "Usage: tidemail send [options]\nIn a terminal, missing fields open the wizard. Complete scripted commands\nwithout --yes save a draft. Bodies come from one of\n--body, --file, --markdown, --template, or piped stdin. Queue processing: outbox process.")
 		fs.SetOutput(usageOut)
 		fs.PrintDefaults()
 	}
@@ -165,7 +169,7 @@ func runComposeCLI(draftOnly bool, args []string, in io.Reader, out, errOut io.W
 	signatureFlag := false
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
-		case "body", "file", "body-file", "markdown":
+		case "body", "file", "body-file", "markdown", "template":
 			sources++
 		case "signature", "no-signature":
 			signatureFlag = true
@@ -219,6 +223,17 @@ func runComposeCLI(draftOnly bool, args []string, in io.Reader, out, errOut io.W
 			return fail(1, "body_read_error", "cannot read body file")
 		}
 		body = string(raw)
+	}
+	if templateName != "" {
+		t, ok := findTemplate(templateName)
+		if !ok {
+			return fail(2, "template_not_found", fmt.Sprintf("no template named %q; run: tidemail templates list", templateName))
+		}
+		vars := mailtemplate.Vars(to, a.Name, time.Now())
+		body = mailtemplate.Fill(t.Body, vars)
+		if strings.TrimSpace(subject) == "" {
+			subject = mailtemplate.Fill(t.Subject, vars)
+		}
 	}
 	d := db.Draft{To: to, CC: cc, BCC: bcc, Subject: subject, BodyText: body}
 	for _, p := range attachments {
