@@ -79,6 +79,11 @@ func TestReportEndToEnd(t *testing.T) {
 	if err := fixture.Load(database); err != nil {
 		t.Fatal(err)
 	}
+	// A new database starts the Waiting on Them baseline at the real clock, which
+	// is later than the fixture's dates; clear it so the fixture's sent mail counts.
+	if err := database.SetSetting("waiting_since", ""); err != nil {
+		t.Fatal(err)
+	}
 	exec := &pluginquery.Executor{DB: database, Me: conversation.MyAddresses(fixture.Me...), Location: time.UTC}
 	rc := plugin.ReportContext{Now: fixture.Now, Timezone: "UTC"}
 	res, err := plugin.RunReport(context.Background(), p, rc, exec, plugin.ReportOptions{})
