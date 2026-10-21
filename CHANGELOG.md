@@ -6,6 +6,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.6.0
+
 ### Added
 
 - Message templates: `F6` in compose opens a picker with built-in templates and
@@ -18,7 +20,7 @@ All notable changes to TideMail are documented in this file.
 - A man page: `man tidemail`, or `tidemail man`.
 - `Ctrl+O` shows a message's complete source, fetched from the server without
   marking it read; `c` copies it to the clipboard. Also in the command palette
-  as "View message source".
+  as "View message source". Thanks @jaytaph
 
 ### Fixed
 
