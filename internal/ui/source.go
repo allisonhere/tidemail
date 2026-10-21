@@ -136,9 +136,9 @@ func (m Model) sourceContent(width int, chrome managerChrome) string {
 	muted := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted)
 	switch {
 	case m.source.pending:
-		return muted.Render(" Fetching message source…")
+		return muted.Width(width).Render(" Fetching message source…")
 	case m.source.err != "":
-		return lipgloss.NewStyle().Background(chrome.baseBg).Foreground(m.styles.Theme.Error).
+		return lipgloss.NewStyle().Background(chrome.baseBg).Foreground(m.styles.Theme.Error).Width(width).
 			Render(" " + sanitizePluginLine(m.source.err))
 	}
 	shown, note := m.source.raw, ""
@@ -148,10 +148,10 @@ func (m Model) sourceContent(width int, chrome managerChrome) string {
 	}
 	lines := sourceDisplayLines(shown, max(1, width-1))
 	for i, l := range lines {
-		lines[i] = text.Render(" " + l)
+		lines[i] = text.Width(width).Render(" " + l)
 	}
 	if note != "" {
-		lines = append(lines, muted.Render(" "+note))
+		lines = append(lines, muted.Width(width).Render(" "+note))
 	}
 	return strings.Join(lines, "\n")
 }

@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 
 	"github.com/allisonhere/tidemail/internal/config"
 )
@@ -102,5 +104,23 @@ func TestSourceDisplayLines(t *testing.T) {
 	want := []string{"A:  ", "    ", "b", "]52;", "c;ev", "ilxy", "abcd", "efgh"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("sourceDisplayLines = %q, want %q", got, want)
+	}
+}
+
+// Padding after a styled source line must keep the panel background; a reset
+// before the pad left the cell to the terminal's default colour.
+func TestSourceRowsPadWithPanelBackground(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(prev) })
+	m := openSourceOverlay(t, sourceModel(t))
+	m.width, m.height = 100, 30
+	m.source.pending = false
+	m.source.raw = "From: a@example.com\r\nSubject: hi\r\n"
+	m.layoutSource()
+	for _, row := range strings.Split(m.source.vp.View(), "\n")[:2] {
+		if strings.Contains(row, "\x1b[0m  ") || strings.Contains(row, "\x1b[m  ") {
+			t.Fatalf("source row has unstyled padding: %q", row)
+		}
 	}
 }
