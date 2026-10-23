@@ -80,6 +80,8 @@ func (m Model) renderAccountsPane() string {
 type folderView struct {
 	prefs      map[int64]map[string]db.MailboxPref
 	showHidden bool
+	// hideNeedsYou and hideWaiting drop those standing rows (Settings → Display).
+	hideNeedsYou, hideWaiting bool
 }
 
 func (v folderView) pref(mb db.Mailbox) db.MailboxPref { return v.prefs[mb.AccountID][mb.Name] }
@@ -126,8 +128,12 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 	rows := make([]sidebarRow, 0, len(accounts)+len(mailboxes)+2)
 	if len(accounts) > 0 {
 		rows = append(rows, sidebarRow{kind: rowKindUnified})
-		rows = append(rows, sidebarRow{kind: rowKindNeedsYou})
-		rows = append(rows, sidebarRow{kind: rowKindWaiting})
+		if !view.hideNeedsYou {
+			rows = append(rows, sidebarRow{kind: rowKindNeedsYou})
+		}
+		if !view.hideWaiting {
+			rows = append(rows, sidebarRow{kind: rowKindWaiting})
+		}
 		rows = append(rows, sidebarRow{kind: rowKindSnoozed})
 		// Beside the Unified Inbox, because outgoing mail spans accounts the
 		// same way — and because a stuck message needs somewhere to be seen.

@@ -534,3 +534,37 @@ func TestNeedsYouCountUpdatesDuringDestructiveActions(t *testing.T) {
 		})
 	}
 }
+
+func TestHidingAttentionViewsDropsTheirSidebarRows(t *testing.T) {
+	acc := []db.Account{{ID: 1}}
+	has := func(rows []sidebarRow, kind sidebarRowKind) bool {
+		for _, r := range rows {
+			if r.kind == kind {
+				return true
+			}
+		}
+		return false
+	}
+	rows := buildSidebarRows(acc, nil, map[int64]bool{}, map[string]bool{}, folderView{hideNeedsYou: true})
+	if has(rows, rowKindNeedsYou) || !has(rows, rowKindWaiting) || !has(rows, rowKindSnoozed) {
+		t.Fatal("hideNeedsYou should drop only the Needs You row")
+	}
+	rows = buildSidebarRows(acc, nil, map[int64]bool{}, map[string]bool{}, folderView{hideWaiting: true})
+	if has(rows, rowKindWaiting) || !has(rows, rowKindNeedsYou) || !has(rows, rowKindSnoozed) {
+		t.Fatal("hideWaiting should drop only the Waiting on Them row")
+	}
+}
+
+func TestRebuildSidebarOmitsNeedsYouWhenConfigured(t *testing.T) {
+	m, _ := newNeedsYouModel(t)
+	m = openNeedsYou(t, m)
+	cfg := m.cfg
+	cfg.Display.ShowNeedsYou = false
+	m.cfg = cfg
+	m.rebuildSidebar()
+	for _, r := range m.sidebarRows {
+		if r.kind == rowKindNeedsYou {
+			t.Fatal("Needs You row should be gone")
+		}
+	}
+}

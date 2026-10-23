@@ -294,6 +294,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{"Changelog", "read the bundled release notes; j/k or arrows scroll, PgUp/PgDn page, g/G jump to top/bottom"},
 				{"Support", "select Open or Copy link with arrows; Enter activates; ctrl+c copies"},
 				{"Pane header bars", "show titles and shortcuts above panes; off restores one row and moves focused-pane details to the status bar"},
+				{"Needs You / Waiting on Them in sidebar", "off hides that row from the sidebar; nothing is deleted"},
 				{keys.Cancel.Help().Key, "back to sections, then cancel from the section list"},
 				{"q", "discard and close from the section list"},
 			},

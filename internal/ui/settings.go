@@ -33,6 +33,8 @@ type settingsField int
 const (
 	sfIcons settingsField = iota
 	sfShowPaneHeaders
+	sfShowNeedsYou
+	sfShowWaiting
 	sfDateFormat
 	sfMarkReadOnOpen
 	sfMarkReadOnFocus
@@ -321,6 +323,8 @@ type Settings struct {
 	// Display
 	icons                 bool
 	showPaneHeaders       bool
+	showNeedsYou          bool
+	showWaiting           bool
 	dateFormatIdx         int // 0=Relative, 1=Absolute, 2=None
 	markReadOnOpen        bool
 	markReadOnFocus       bool
@@ -437,6 +441,8 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 	s := Settings{
 		icons:                 cfg.Display.Icons,
 		showPaneHeaders:       cfg.Display.ShowPaneHeaders,
+		showNeedsYou:          cfg.Display.ShowNeedsYou,
+		showWaiting:           cfg.Display.ShowWaiting,
 		themeName:             cfg.Theme,
 		themeIdx:              themeIdx,
 		retroBgInput:          mkInput(retroTweak.Bg, "optional #rrggbb", false),
@@ -531,6 +537,8 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	}
 	cfg.Display.Icons = s.icons
 	cfg.Display.ShowPaneHeaders = s.showPaneHeaders
+	cfg.Display.ShowNeedsYou = s.showNeedsYou
+	cfg.Display.ShowWaiting = s.showWaiting
 	cfg.Display.DateFormat = strings.ToLower(dateFormatLabels[s.dateFormatIdx])
 	cfg.Display.MarkReadOnOpen = s.markReadOnOpen
 	cfg.Display.MarkReadOnFocus = s.markReadOnFocus
@@ -799,7 +807,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 	case ssDisplay:
 		// Keep this order in lockstep with the ssDisplay case in viewSectionBody:
 		// Appearance, Terminal colors (retro themes), Message list, Reading, Behavior.
-		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfPaneCorners, sfIcons, sfShowPaneHeaders, sfDateFormat, sfFocusLine, sfShadow, sfTagStyle, sfTagColors}
+		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfPaneCorners, sfIcons, sfShowPaneHeaders, sfShowNeedsYou, sfShowWaiting, sfDateFormat, sfFocusLine, sfShadow, sfTagStyle, sfTagColors}
 		if config.IsRetroTerminalTheme(s.themeName) {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
@@ -1295,6 +1303,24 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 	case sfShowPaneHeaders:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.showPaneHeaders = !s.showPaneHeaders
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
+	case sfShowNeedsYou:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.showNeedsYou = !s.showNeedsYou
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
+	case sfShowWaiting:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.showWaiting = !s.showWaiting
 		} else if keyMatches(key, keys.Down) {
 			s.setFocusedField(s.nextField())
 		} else if keyMatches(key, keys.Up) {
@@ -2006,6 +2032,8 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addPaneCornersSelector()
 		b.addToggle("Icons", s.icons, sfIcons)
 		b.addToggle("Pane header bars", s.showPaneHeaders, sfShowPaneHeaders)
+		b.addToggle("Needs You in sidebar", s.showNeedsYou, sfShowNeedsYou)
+		b.addToggle("Waiting on Them in sidebar", s.showWaiting, sfShowWaiting)
 		b.addDateFormatSelector()
 		b.addToggle("Focus line", s.focusLine, sfFocusLine)
 		b.addToggle("Modal drop shadow", s.shadow, sfShadow)
@@ -3227,6 +3255,10 @@ func (s Settings) fieldHint(field settingsField) string {
 		return "highlight the current readable line in the content pane"
 	case sfShowPaneHeaders:
 		return "show pane titles and shortcuts above content; when off, both move to the status line"
+	case sfShowNeedsYou:
+		return "show the Needs You view in the sidebar; when off, only the row is hidden"
+	case sfShowWaiting:
+		return "show the Waiting on Them view in the sidebar; when off, only the row is hidden"
 	case sfShadow:
 		return "draw a soft drop shadow behind modal overlays"
 	case sfTagStyle:

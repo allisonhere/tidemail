@@ -6,6 +6,10 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Settings → Display can hide the Needs You and Waiting on Them rows from the sidebar.
+
 ## v1.6.0
 
 ### Added

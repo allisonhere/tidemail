@@ -1053,6 +1053,12 @@ each pane. When disabled, those rows disappear to make more room for content;
 the focused pane's title and shortcuts appear in the bottom status line instead.
 Global message search uses a dedicated row above message subjects while active.
 
+**Needs You in sidebar** and **Waiting on Them in sidebar** (both on by default)
+hide those two rows when turned off. Only the row goes away: nothing is deleted,
+`Z` snooze and dismissals still work, and turning the setting back on restores the
+view as it was. If you turn off the view you have open, TideMail returns to the
+Unified Inbox.
+
 **Mouse support** is off by default, so your terminal's own native
 click-drag text selection and copy keep working untouched. Turn it on to use:
 

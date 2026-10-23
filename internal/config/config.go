@@ -184,6 +184,8 @@ type RetroTerminalTweak struct {
 type DisplayConfig struct {
 	Icons                 bool   `toml:"icons"`
 	ShowPaneHeaders       bool   `toml:"show_pane_headers"`
+	ShowNeedsYou          bool   `toml:"show_needs_you"` // Needs You sidebar row
+	ShowWaiting           bool   `toml:"show_waiting"`   // Waiting on Them sidebar row
 	DateFormat            string `toml:"date_format"`
 	MarkReadOnOpen        bool   `toml:"mark_read_on_open"`
 	MarkReadOnFocus       bool   `toml:"mark_read_on_focus"`
@@ -591,6 +593,8 @@ func DefaultConfig() Config {
 		Display: DisplayConfig{
 			Icons:                 true,
 			ShowPaneHeaders:       true,
+			ShowNeedsYou:          true,
+			ShowWaiting:           true,
 			DateFormat:            "relative",
 			MarkReadOnOpen:        true,
 			FocusLine:             true,

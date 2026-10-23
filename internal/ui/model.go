@@ -3425,6 +3425,14 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.overlay = overlayNone
 			m.clearMessages()
 			cmds := []tea.Cmd{m.loadAccountsCmd(), omarchyCmd}
+			// A view just hidden can't stay open; fall back to the Unified
+			// Inbox, always the first sidebar row.
+			if prevKind, _ := m.currentSidebarSelection(); (prevKind == rowKindNeedsYou && !m.cfg.Display.ShowNeedsYou) || (prevKind == rowKindWaiting && !m.cfg.Display.ShowWaiting) {
+				m.rebuildSidebar()
+				m.sidebarCursor = 0
+				m.clampSidebarOffset()
+				cmds = append(cmds, m.virtualViewCmd())
+			}
 			// The mouse ProgramOption is only set once at startup; flip the
 			// terminal's live mouse-capture mode too so the toggle doesn't
 			// need a restart to take effect.
@@ -4137,7 +4145,7 @@ func (m *Model) rebuildSidebar() {
 		row := m.sidebarRows[m.sidebarCursor]
 		selected = &row
 	}
-	m.sidebarRows = buildSidebarRows(m.accounts, m.mailboxes, m.collapsedAccounts, m.collapsedSections, folderView{prefs: m.mailboxPrefs, showHidden: m.showHiddenFolders})
+	m.sidebarRows = buildSidebarRows(m.accounts, m.mailboxes, m.collapsedAccounts, m.collapsedSections, folderView{prefs: m.mailboxPrefs, showHidden: m.showHiddenFolders, hideNeedsYou: !m.cfg.Display.ShowNeedsYou, hideWaiting: !m.cfg.Display.ShowWaiting})
 	m.refreshDraftCounts()
 	// Rows come and go (folders created, pruned, hidden). Keep the highlight on
 	// the same row rather than the same position, or it slides onto a different
