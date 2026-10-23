@@ -25,6 +25,7 @@ var omarchyIndex = len(BuiltinThemes)
 var omarchyPlaceholderTheme = func() Theme {
 	t := CatppuccinMocha
 	t.Name = ThemeNameMatchOmarchy
+	t.Family, t.Variant = "", "" // not part of the Catppuccin group in the picker
 	return t
 }()
 

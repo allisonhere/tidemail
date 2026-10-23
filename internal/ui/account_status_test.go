@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"github.com/allisonhere/tideui"
 	"strings"
 	"testing"
 
@@ -192,7 +193,7 @@ func TestAccountManagerStatusBandIsCentered(t *testing.T) {
 			t.Fatalf("%q not centered: %d cells left, %d right", text, left, right)
 		}
 	}
-	for _, theme := range []Theme{RosePine, CatppuccinMocha, CatppuccinLatte} {
+	for _, theme := range []Theme{tideui.RosePine, CatppuccinMocha, tideui.CatppuccinLatte} {
 		chrome := newManagerChrome(80, theme, false)
 		if luminance(chrome.statusBg) >= luminance(chrome.baseBg) {
 			t.Fatalf("%s: status band %s is not darker than the form %s", theme.Name, chrome.statusBg, chrome.baseBg)

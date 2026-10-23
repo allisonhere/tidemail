@@ -290,8 +290,8 @@ func TestThemePickerKeepsMidListCursorVisible(t *testing.T) {
 	m.width = 60
 	m.height = 14
 	m.overlay = overlayThemePicker
-	m.themeCursor = 9 // a theme partway down the list
-	want := PickableThemes()[9].Name
+	m.themeCursor = 9                   // a theme partway down the list
+	want := PickableThemes()[9].Variant // the picker shows the variant under its family header
 
 	if out := m.View(); !strings.Contains(out, want) {
 		t.Errorf("mid-list cursor theme %q not visible on a short terminal", want)

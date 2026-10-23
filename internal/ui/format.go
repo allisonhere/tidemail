@@ -171,7 +171,7 @@ func renderQuoteRun(lines []string, width int, th Theme, plainUI bool) string {
 	if plainUI {
 		bar = "| "
 	}
-	base := lipgloss.NewStyle().Background(th.Bg).Foreground(messageMutedColor(th))
+	base := lipgloss.NewStyle().Background(th.Bg).Foreground(messageQuoteColor(th))
 
 	var out []string
 	for i := 0; i < len(lines); {
@@ -571,7 +571,12 @@ func messageHeadingColor(th Theme) lipgloss.Color {
 }
 
 func messageLinkColor(th Theme) lipgloss.Color {
-	return accentReadableOn(th.BorderFocus, th.Bg, 4.5)
+	return th.LinkColor()
+}
+
+// messageQuoteColor is the color of quoted text and its bars.
+func messageQuoteColor(th Theme) lipgloss.Color {
+	return th.QuoteColor()
 }
 
 func messageMutedColor(th Theme) lipgloss.Color {

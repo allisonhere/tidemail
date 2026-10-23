@@ -245,8 +245,8 @@ func BuildStyles(t Theme, density string, paneCorners string) Styles {
 			Background(contentFocusBg).
 			Foreground(readableText(t.Fg, contentFocusBg, 4.5)),
 		SearchMatch: lipgloss.NewStyle().
-			Background(t.BorderFocus).
-			Foreground(accentReadableOn(t.Fg, t.BorderFocus, 4.5)),
+			Background(t.MatchColor()).
+			Foreground(accentReadableOn(t.Fg, t.MatchColor(), 4.5)),
 
 		StatusBar: lipgloss.NewStyle().
 			Background(t.StatusBar).

@@ -1464,7 +1464,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	// Style the owned editor for this render: accent block cursor, a muted
 	// selection highlight, and a dim placeholder. The per-line background
 	// wrapping below covers the remainder of each line.
-	c.bodyInput.CursorStyle = lipgloss.NewStyle().Background(chrome.accent).Foreground(bodyBg)
+	c.bodyInput.CursorStyle = lipgloss.NewStyle().Background(chrome.cursor).Foreground(bodyBg)
 	c.bodyInput.SelectedStyle = lipgloss.NewStyle().Background(chrome.muted).Foreground(chrome.text)
 	c.bodyInput.PlaceholderStyle = lipgloss.NewStyle().Background(bodyBg).Foreground(chrome.muted)
 

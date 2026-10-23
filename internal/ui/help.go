@@ -303,7 +303,7 @@ func helpSections(keys KeyMap) []helpSection {
 			name: "Pickers And Overlays",
 			entries: []helpEntry{
 				{"Command palette", ": or ctrl+p opens it (contextual commands in compose, summary, save attachments); in a vim compose body : is the editor's command line, so use ctrl+p there"},
-				{"Theme picker", "up/down previews; enter saves; esc cancels"},
+				{"Theme picker", "up/down previews; / searches; enter saves; esc cancels"},
 				{"Move picker", "enter opens/moves; n creates folder; h/left parent; letters jump"},
 				{"Attach file", "enter opens dir/attaches file; h/left parent; . toggles hidden files; letters jump"},
 				{"Save attachments", "enter opens/selects folder; h/left parent; . toggles hidden files; letters jump"},

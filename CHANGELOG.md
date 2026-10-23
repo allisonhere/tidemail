@@ -9,6 +9,14 @@ All notable changes to TideMail are documented in this file.
 ### Added
 
 - Settings → Display can hide the Needs You and Waiting on Them rows from the sidebar.
+- A new theme collection: 52 themes in 24 families, including every variant of Catppuccin, Tokyo Night, Rosé Pine, Gruvbox, Solarized, Nightfox, Kanagawa, Ayu and GitHub, plus Dracula, Nord, One Dark Pro, Everforest, Night Owl, Palenight, SynthWave '84, Shades of Purple, Oxocarbon and Cyberdream. Palettes are copied from each project's source; see [docs/themes.md](docs/themes.md) for sources and licenses. Saved theme names keep working.
+- The theme picker (`T`) groups themes by family, searches with `/`, shows a color swatch for each, and previews the highlighted theme with a sample of selection, text, link, quote and status colors.
+- Themes now supply link, quote, search-match, success, warning, tag and cursor colors, so those follow the theme.
+
+### Changed
+
+- `vt52` now uses a charcoal-black background instead of pure black.
+- Quoted text uses its theme's quote color, a category tag without its own color follows the theme's tag color, and starred rows use the warning color.
 
 ## v1.6.0
 

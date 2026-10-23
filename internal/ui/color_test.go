@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"github.com/allisonhere/tideui"
 	"math"
 	"testing"
 
@@ -76,7 +77,7 @@ func TestGreenerShiftsCyanTowardGreenOnly(t *testing.T) {
 		t.Fatalf("an already-green colour moved too far: %s -> %s", green, greener(green))
 	}
 
-	chrome := newManagerChrome(80, RosePine, false)
+	chrome := newManagerChrome(80, tideui.RosePine, false)
 	if got := hueOf(t, chrome.successFg); math.Abs(got-162) > 6 || contrastRatio(chrome.successFg, chrome.baseBg) < 4.5 {
 		t.Fatalf("rose pine success colour %s (hue %.0f°, contrast %.1f)", chrome.successFg, got, contrastRatio(chrome.successFg, chrome.baseBg))
 	}

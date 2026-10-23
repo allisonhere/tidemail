@@ -635,9 +635,10 @@ func renderArticleRowWithSender(prefix, star, sender, title, age string, width, 
 	return padRight(row, width)
 }
 
-// starColor is the warm accent used to derive the subtle starred-row tint.
+// starColor is the warm accent used to derive the subtle starred-row tint: the
+// theme's warning color.
 func starColor(t Theme) lipgloss.Color {
-	return accentReadableOn(lipgloss.Color("#f9c74f"), t.Bg, 3)
+	return t.WarningColor()
 }
 
 func starredRowBackground(t Theme) lipgloss.Color {

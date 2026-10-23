@@ -48,7 +48,7 @@ this one.
 
 ![TideMail running in several terminal themes](banner.png)
 
-One inbox, several built-in themes. 
+One inbox, 52 built-in themes in 24 families — Catppuccin, Tokyo Night, Rosé Pine, Gruvbox, Nord, Solarized and more, with their variants ([the list](docs/themes.md)). 
 
 ## Highlights
 

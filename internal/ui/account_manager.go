@@ -43,6 +43,7 @@ type managerChrome struct {
 	muted              lipgloss.Color
 	errorFg            lipgloss.Color
 	successFg          lipgloss.Color
+	cursor             lipgloss.Color // text cursor
 	pendingFg          lipgloss.Color
 	header             lipgloss.Style
 	sectionLabel       lipgloss.Style
@@ -97,11 +98,25 @@ func newManagerChrome(width int, t Theme, plainUI bool) managerChrome {
 	if errorFg == "" {
 		errorFg = accent
 	}
-	successFg := t.Unread
+	// A theme names its success color (a bare Theme literal falls back to its
+	// unread/accent color). greener nudges a cyan one, like Rosé Pine's foam,
+	// toward green so success still reads as success, and leaves other hues
+	// alone. The status band below the form is darker than the form, so the
+	// text must clear both.
+	successFg := t.Success
+	if successFg == "" {
+		successFg = t.Unread
+	}
 	if successFg == "" {
 		successFg = accent
 	}
 	successFg = accentReadableOn(greener(successFg), baseBg, 4.5)
+	successFg = accentReadableOn(successFg, statusBg, 4.5)
+	cursor := t.Cursor
+	if cursor == "" {
+		cursor = accent
+	}
+	cursor = accentReadableOn(cursor, baseBg, 3)
 	pendingFg := t.BorderFocus
 	if pendingFg == "" {
 		pendingFg = accent
@@ -122,6 +137,7 @@ func newManagerChrome(width int, t Theme, plainUI bool) managerChrome {
 		muted:       muted,
 		errorFg:     errorFg,
 		successFg:   successFg,
+		cursor:      cursor,
 		pendingFg:   pendingFg,
 		header: lipgloss.NewStyle().
 			Width(width).

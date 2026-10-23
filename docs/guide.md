@@ -1031,8 +1031,21 @@ Things to know:
 
 ## Themes
 
-Cycle the theme with `T`, or pick one under Settings → Display. Every built-in
-theme is checked against WCAG-style contrast minimums by automated tests.
+Press `T` to open the theme picker, or pick one under Settings → Display. There
+are 52 built-in themes in 24 families (Catppuccin, Tokyo Night, Rosé Pine,
+Gruvbox, Nord, Solarized, Nightfox, Kanagawa, GitHub and others, plus the retro
+`vt100` and `vt52` and three original palettes), grouped by family in the
+picker. `↑`/`↓` preview a theme across the whole app, `Enter` keeps it and saves
+it, and `Esc` puts the previous one back. Press `/` and type to search: every
+word must match the family, the variant, the theme's name, or `light` / `dark`
+(`rose dawn`, `light`, `night`). Each row has a swatch of the theme's accent,
+success, warning, error and tag colors, and a sample below the list shows how
+selection, text, links, quotes and status colors look in the highlighted theme.
+
+Every built-in theme is checked against WCAG-style contrast minimums by
+automated tests. The full list of themes and variants, with where each palette
+comes from and its license, is in [themes.md](themes.md). Saved theme names from
+earlier versions keep working.
 
 `match-omarchy` is a special entry for [Omarchy](https://omarchy.org) users: it
 follows your current Omarchy desktop theme, remapped and contrast-corrected so

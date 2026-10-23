@@ -11,7 +11,7 @@ so this branch begins de-forking it, starting with the lowest-risk layer.
 | Commit | Change | Risk |
 |---|---|---|
 | Alias `ui.Theme` to `tideui.Theme` | `type Theme = tideui.Theme`. The struct is field-identical; no method is defined on it; every call site and theme var compiles unchanged. The two Theme types can no longer drift. | none (type identity) |
-| Source the stock palettes from tideui | The 17 non-VT themes were verified byte-identical (`reflect.DeepEqual` over every field) and are now `var CatppuccinMocha = tideui.CatppuccinMocha` shims. `themes.go`: 391 → 130 lines. | none (proven value-equal) |
+| Source the stock palettes from tideui | (Superseded: tideui now owns the whole theme collection, see [themes.md](themes.md).) The 17 non-VT themes were verified byte-identical (`reflect.DeepEqual` over every field) and are now `var CatppuccinMocha = tideui.CatppuccinMocha` shims. `themes.go`: 391 → 130 lines. | none (proven value-equal) |
 | Defer `MergeRetroTweak` to `tideui.ThemeOverrides.Apply` | Identical field mapping; `theme_merge_test.go` pins it. | none (exact equivalence, tested) |
 
 VT52 / VT100 stay defined locally: TideMail dims their focus/selection accent

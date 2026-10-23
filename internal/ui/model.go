@@ -285,6 +285,8 @@ type Model struct {
 	activeTheme    int
 	styles         Styles
 	themeCursor    int
+	themeFilter    string // theme picker search text
+	themeFiltering bool   // typing into the theme picker search
 	// bodyCache memoises rendered message bodies and viewportCache the
 	// finished reading-pane content. Held by pointer so writes survive
 	// Model's value receivers.
@@ -1933,8 +1935,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.ThemePicker):
-		m.overlay = overlayThemePicker
-		m.themeCursor = m.confirmedTheme
+		m.openThemePicker()
 		return m, nil
 
 	case keyMatches(msg, m.keys.Search):
@@ -3062,48 +3063,7 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case overlayThemePicker:
-		prevTheme := m.activeTheme
-		var themeCmd tea.Cmd
-		switch {
-		case keyMatches(msg, m.keys.Up):
-			if m.themeCursor > 0 {
-				m.themeCursor--
-				m.activeTheme = m.themeCursor
-				m.setStyles(BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners))
-				if m.activeMessageRowCount() > 0 {
-					m.setViewportForCurrentRow()
-				}
-			}
-		case keyMatches(msg, m.keys.Down):
-			if m.themeCursor < len(PickableThemes())-1 {
-				m.themeCursor++
-				m.activeTheme = m.themeCursor
-				m.setStyles(BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners))
-				if m.activeMessageRowCount() > 0 {
-					m.setViewportForCurrentRow()
-				}
-			}
-		case keyMatches(msg, m.keys.Confirm):
-			m.confirmedTheme = m.themeCursor
-			m.overlay = overlayNone
-			m.cfg.Theme = pickableThemeNameAt(m.confirmedTheme)
-			_ = m.saveConfig()
-			themeCmd = m.startOmarchyWatchIfNeeded()
-			if m.activeMessageRowCount() > 0 {
-				m.setViewportForCurrentRow()
-			}
-		case keyMatches(msg, m.keys.Cancel):
-			m.activeTheme = m.confirmedTheme
-			m.setStyles(BuildStyles(MergedBuiltinThemeAtIndex(m.cfg, m.activeTheme), m.cfg.Display.Density, m.cfg.Display.PaneCorners))
-			m.overlay = overlayNone
-			if m.activeMessageRowCount() > 0 {
-				m.setViewportForCurrentRow()
-			}
-		}
-		if m.activeTheme != prevTheme {
-			return m, tea.Batch(themeCmd, setTermColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg))
-		}
-		return m, themeCmd
+		return m.handleThemePickerKey(msg)
 
 	case overlayAccountManager:
 		return m.handleAccountManager(msg)

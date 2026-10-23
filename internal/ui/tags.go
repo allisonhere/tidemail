@@ -176,7 +176,11 @@ func themeTagColor(t Theme, key string) config.TagColor {
 		return config.TagColor{Bg: string(starColor(t))}
 	case tagKeyCategory:
 		if t.Bg != "" && t.Fg != "" {
-			return config.TagColor{Bg: string(mixColors(t.Bg, t.Fg, 0.3)), Fg: string(t.Fg)}
+			// The category default follows the theme's tag hue, softened
+			// toward the background so it stays secondary to the attention
+			// kinds. The foreground is left to resolveTagColor, which picks
+			// black or white for contrast with whatever the mix produced.
+			return config.TagColor{Bg: string(mixColors(t.Bg, t.TagColor(), 0.55))}
 		}
 	}
 	return config.TagColor{}

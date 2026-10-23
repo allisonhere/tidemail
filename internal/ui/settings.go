@@ -3253,6 +3253,8 @@ func (s Settings) fieldHint(field settingsField) string {
 		return "strip bare URLs from the article body text"
 	case sfFocusLine:
 		return "highlight the current readable line in the content pane"
+	case sfTheme:
+		return "← → step through themes; T opens the picker, grouped by family with search"
 	case sfShowPaneHeaders:
 		return "show pane titles and shortcuts above content; when off, both move to the status line"
 	case sfShowNeedsYou:

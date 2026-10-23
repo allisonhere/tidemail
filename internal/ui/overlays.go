@@ -113,8 +113,8 @@ func (m Model) renderOverlay(base string) string {
 		box = renderSoftPanelBox(inner, winW, "tidemail", "delete messages?", chrome)
 
 	case overlayThemePicker:
-		winW := min(m.width-4, 40)
-		winH := min(m.height-4, len(PickableThemes())+3)
+		winW := min(m.width-4, 46)
+		winH := min(m.height-4, 26)
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		inner := m.renderThemePicker(winW, winH, chrome)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
@@ -656,35 +656,4 @@ func (m Model) renderLogViewer(width, height int) string {
 		BorderForeground(border).
 		Width(width).Height(height).
 		Render(lipgloss.JoinVertical(lipgloss.Left, title, m.helpVP.View(), footer))
-}
-
-func (m Model) renderThemePicker(width, height int, chrome managerChrome) string {
-	labelW := max(1, width-2) // minus the 2-cell rail
-	pt := PickableThemes()
-
-	// Window the list so the box stays inside its border on short terminals:
-	// scroll to keep the cursor visible instead of letting rows spill past the
-	// frame. height already excludes the outer chrome; -1 leaves the hints line.
-	listH := max(1, height-1)
-	if listH > len(pt) {
-		listH = len(pt)
-	}
-	start := 0
-	if m.themeCursor >= listH {
-		start = m.themeCursor - listH + 1
-	}
-	if maxStart := len(pt) - listH; start > maxStart {
-		start = max(0, maxStart)
-	}
-	end := min(start+listH, len(pt))
-
-	rows := make([]string, 0, listH)
-	for i := start; i < end; i++ {
-		selected := i == m.themeCursor
-		label := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Render(" " + truncate(pt[i].Name, max(1, labelW-1)))
-		rows = append(rows, softRail(chrome, selected, chrome.baseBg)+padStyled(label, labelW, chrome.baseBg))
-	}
-	body := clampView(lipgloss.JoinVertical(lipgloss.Left, rows...), width, len(rows), chrome.baseBg)
-	hints := renderSoftHints(width, chrome, "enter", "confirm", "esc", "revert")
-	return lipgloss.JoinVertical(lipgloss.Left, body, hints)
 }
