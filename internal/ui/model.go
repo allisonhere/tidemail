@@ -106,6 +106,7 @@ const (
 	overlayTagColors
 	overlayColorPicker
 	overlayClassification
+	overlayMailTags
 	overlaySyncAllConfirm
 	overlayFolderDeleteConfirm
 	overlayContextMenu
@@ -262,6 +263,7 @@ type Model struct {
 	snooze         snoozeState    // see snooze.go
 	tagColors      tagColorEditor // see tag_colors.go
 	colorPicker    colorPicker    // see color_picker.go
+	mailTags       mailTagUI
 	classification classificationEditor
 
 	plugins pluginUI    // experimental; see plugins.go
@@ -849,9 +851,17 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case MessagesLoadedMsg:
 		m.initialLoading = false
+		if msg.Err == nil && m.db != nil && m.mailTags.operation > 0 {
+			if err := m.db.RefreshMailFlags(msg.Messages); err != nil {
+				msg.Err = err
+			}
+		}
 		if msg.Search {
 			if strings.TrimSpace(m.searchQuery) != strings.TrimSpace(msg.Query) {
 				return m, nil
+			}
+			if msg.MailTagVersion != m.mailTags.searchVersion {
+				return m, m.searchAllMessagesCmd(m.searchQuery)
 			}
 			if msg.Err != nil {
 				m.clearMessages()
@@ -863,6 +873,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				currentID = current.ID
 			}
 			m.messages = msg.Messages
+			m.reloadMailTags()
+			m.refreshMailTagTarget(msg.Messages)
 			m.plugins.annotations = msg.Annotations
 			m.plugins.overrides = msg.Overrides
 			m.applyFilter()
@@ -903,6 +915,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			m.messages = msg.Messages
+			m.reloadMailTags()
+			m.refreshMailTagTarget(msg.Messages)
 			m.plugins.annotations = msg.Annotations
 			m.plugins.overrides = msg.Overrides
 			if msg.NeedsYou || msg.Waiting || msg.Snoozed {
@@ -1539,6 +1553,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pluginSecretPresenceMsg, pluginSecretSavedMsg, pluginTestResultMsg:
 		return m.handlePluginSettingsMsg(msg)
+
+	case mailTagChangedMsg:
+		return m.handleMailTagChanged(msg)
 
 	case classificationOverrideMsg:
 		return m.handleClassificationMsg(msg)
@@ -3101,6 +3118,8 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayColorPicker:
 		return m.handleColorPickerKey(msg)
 
+	case overlayMailTags:
+		return m.handleMailTagKey(msg)
 	case overlayClassification:
 		return m.handleClassificationKey(msg)
 
@@ -3332,6 +3351,8 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case settingsActionSpellDictionary:
 		m.openSpellDictionary()
 		return m, nil
+	case settingsActionMailTags:
+		return m.openMailTagSettings()
 	case settingsActionTagColors:
 		return m.openTagColors(overlaySettings)
 	case settingsActionCopyManualInstall:

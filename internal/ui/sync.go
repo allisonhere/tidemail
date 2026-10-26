@@ -267,13 +267,14 @@ func (m *Model) searchAllMessagesCmd(query string) tea.Cmd {
 	database := m.db
 	unreadFirst := m.cfg.Display.UnreadFirst
 	query = strings.TrimSpace(query)
+	tagVersion := m.mailTags.searchVersion
 	return func() tea.Msg {
 		msgs, err := database.SearchAllMessages(query, unreadFirst)
 		if err != nil {
-			return MessagesLoadedMsg{Search: true, Query: query, Err: err}
+			return MessagesLoadedMsg{Search: true, Query: query, MailTagVersion: tagVersion, Err: err}
 		}
 		anns, overrides := loadMessageClassification(database, msgs)
-		return MessagesLoadedMsg{Search: true, Query: query, Messages: msgs, Annotations: anns, Overrides: overrides}
+		return MessagesLoadedMsg{Search: true, Query: query, MailTagVersion: tagVersion, Messages: msgs, Annotations: anns, Overrides: overrides}
 	}
 }
 
@@ -945,15 +946,22 @@ func (m *Model) syncMailboxCmdWithMode(mailboxID int64, manual, passive bool) te
 				reconcileSet := make([]uint32, 0, len(serverMsgs)+len(msgs))
 				seenByUID := make(map[uint32]bool, len(serverMsgs))
 				flaggedByUID := make(map[uint32]bool, len(serverMsgs))
+				flagsByUID := make(map[uint32][]string, len(serverMsgs))
 				for _, sm := range serverMsgs {
 					reconcileSet = append(reconcileSet, sm.UID)
 					seenByUID[sm.UID] = sm.Seen
 					flaggedByUID[sm.UID] = sm.Flagged
+					flagsByUID[sm.UID] = sm.Flags
 				}
 				for _, fm := range msgs {
 					reconcileSet = append(reconcileSet, fm.UID)
+					flagsByUID[fm.UID] = fm.Flags
 				}
 				_, _ = database.ReconcileMailboxUIDs(mailboxID, reconcileSet) //nolint:errcheck
+				if err := database.ApplyServerFlags(mailboxID, flagsByUID); err != nil {
+					result = MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual, Passive: passive}
+					return nil
+				}
 				// Adopt server read/unread state for messages we still hold, before
 				// the unread count is recomputed below.
 				_, _ = database.ApplyServerReadStates(mailboxID, seenByUID) //nolint:errcheck

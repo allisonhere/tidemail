@@ -518,7 +518,14 @@ func (m Model) handleColorPickerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case cpFocusMode:
 			cp.toggleMode()
 		default:
-			m.setTagColor(cp.key, cp.field, cp.hex())
+			if cp.origin == overlayMailTags || cp.origin == overlayClassification {
+				if err := m.saveMailTagColor(cp.key, cp.hex()); err != nil {
+					cp.message = err.Error()
+					return m, nil
+				}
+			} else {
+				m.setTagColor(cp.key, cp.field, cp.hex())
+			}
 			m.overlay = cp.origin
 		}
 	case msg.String() == "shift+left":
@@ -571,7 +578,11 @@ func (m Model) renderColorPicker() string {
 	muted := base.Foreground(chrome.muted)
 	bodyW := max(1, winW-4)
 
-	title := tagColorLabel(cp.key) + " · " + map[string]string{"bg": "background", "fg": "foreground"}[cp.field]
+	label := tagColorLabel(cp.key)
+	if cp.origin == overlayMailTags || cp.origin == overlayClassification {
+		label = "Mail tag: " + cp.key
+	}
+	title := label + " · " + map[string]string{"bg": "background", "fg": "foreground"}[cp.field]
 	lines := []string{
 		muted.Render(truncate(title, bodyW)),
 		"",

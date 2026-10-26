@@ -1,6 +1,7 @@
 package db
 
 import (
+	"regexp"
 	"strings"
 )
 
@@ -21,14 +22,23 @@ type SearchTerms struct {
 func ParseSearch(query string) SearchTerms {
 	var words []string
 	var terms SearchTerms
-	for _, f := range strings.Fields(query) {
+	for _, f := range searchTokenPattern.FindAllString(query, -1) {
 		if !strings.HasPrefix(f, "#") {
 			words = append(words, f)
 			continue
 		}
+		raw := strings.TrimLeft(f, "#")
+		if strings.HasPrefix(raw, "\"") {
+			tag := strings.TrimSuffix(strings.TrimPrefix(raw, "\""), "\"")
+			tag = strings.ToLower(strings.NewReplacer(`\"`, `"`, `\\`, `\`).Replace(tag))
+			if tag != "" {
+				terms.Tags = append(terms.Tags, tag)
+			}
+			continue
+		}
 		tag := strings.Map(func(r rune) rune {
 			switch {
-			case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '_', r == '-', r == '.':
+			case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '_', r == '-', r == '.', r == '$', r == '+':
 				return r
 			}
 			return -1
@@ -40,6 +50,8 @@ func ParseSearch(query string) SearchTerms {
 	terms.Text = strings.Join(words, " ")
 	return terms
 }
+
+var searchTokenPattern = regexp.MustCompile(`#+"(?:[^"\\\n]|\\.)*(?:"|$)|\S+`)
 
 // Attention tags as they appear on rows, with accepted spellings.
 var attentionTagNames = []struct {
@@ -80,6 +92,11 @@ func tagPredicate(tag string) (string, []any) {
 			AND EXISTS (SELECT 1 FROM plugin_annotations pa
 				WHERE pa.message_id = messages.id AND pa.key = 'category'
 				AND lower(trim(pa.value)) LIKE ? ESCAPE '\')))`)
+	args = append(args, like, like)
+	parts = append(parts, `(EXISTS (SELECT 1 FROM json_each(messages.flags) mf
+ JOIN mailboxes mtmb ON mtmb.id = messages.mailbox_id
+ JOIN mail_tags mt ON mt.account_id = mtmb.account_id AND mt.keyword = mf.value COLLATE NOCASE
+ WHERE lower(mt.keyword) LIKE ? ESCAPE '\' OR mt.name_search LIKE ? ESCAPE '\'))`)
 	args = append(args, like, like)
 	return "(" + strings.Join(parts, " OR ") + ")", args
 }

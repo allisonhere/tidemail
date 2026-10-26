@@ -7,10 +7,14 @@ package ui
 // used as a color or style: tags are built from a fixed set of kinds, and a
 // category value is only a short lower-case identifier looked up by name.
 //
+// IMAP tags reuse this renderer with names and colors from local account
+// mappings; they do not change plugin classification.
+//
 // One renderer serves every list (mailboxes, Unified Inbox, search, Needs
 // You, Waiting on Them, Snoozed), so a tag means the same thing everywhere.
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -27,6 +31,7 @@ const (
 	tagUrgent
 	tagImportant
 	tagCategory
+	tagMail
 )
 
 // annotationTag is one tag on a row: a kind, plus the category name for
@@ -34,6 +39,7 @@ const (
 type annotationTag struct {
 	kind     tagKind
 	category string
+	color    string
 }
 
 // Semantic color keys. Theme authors and users set colors by these names.
@@ -69,6 +75,8 @@ func (t annotationTag) colorKey() string {
 		return tagKeyUrgent
 	case tagImportant:
 		return tagKeyImportant
+	case tagMail:
+		return tagKeyCategory
 	}
 	for _, c := range knownTagCategories {
 		if t.category == c {
@@ -238,6 +246,7 @@ type tagChip struct {
 	colorKey string
 	filled   bool
 	colored  bool
+	color    string
 	// ends is the pill's end style (config.TagEnds*), for filled chips.
 	ends string
 }
@@ -311,9 +320,16 @@ func categoryGlyph(category string, icons bool) string {
 
 // chipFor lays out one tag in a style at a level.
 func chipFor(t annotationTag, style string, level tagLevel, icons bool) tagChip {
-	c := tagChip{colorKey: t.colorKey()}
-	isCategory := t.kind == tagCategory
+	c := tagChip{colorKey: t.colorKey(), color: t.color}
+	isCategory := t.kind == tagCategory || t.kind == tagMail
 	switch style {
+	case config.TagStyleIcons:
+		c.colored = true
+		c.text = "#"
+		if icons {
+			c.text = "\uf02b"
+		}
+		return c
 	case config.TagStyleGlyphPills:
 		c.colored = true
 		c.filled = level != tagNarrow
@@ -370,6 +386,11 @@ func chipFor(t annotationTag, style string, level tagLevel, icons bool) tagChip 
 // tags, and finally nothing. The subject's room is decided by the caller, so
 // tags never crowd it out.
 func layoutTags(tags []annotationTag, style, ends string, icons bool, budget int) []tagChip {
+	for _, t := range tags {
+		if t.kind == tagMail {
+			return layoutMailTags(tags, style, ends, icons, budget)
+		}
+	}
 	for len(tags) > 0 && budget > 0 {
 		for _, level := range []tagLevel{tagWide, tagMedium, tagNarrow} {
 			chips := make([]tagChip, len(tags))
@@ -432,9 +453,16 @@ func renderChipsWith(chips []tagChip, colorFor func(string) tagColor, rowBg lipg
 		if i > 0 {
 			b.WriteString(row.Render(" "))
 		}
+		var col tagColor
+		if c.filled || c.colored {
+			col = colorFor(c.colorKey)
+			if color, ok := config.NormalizeTagHex(c.color); ok {
+				col.bg = lipgloss.Color(color)
+				col.fg = contrastFg(col.bg)
+			}
+		}
 		switch {
 		case c.filled:
-			col := colorFor(c.colorKey)
 			body := lipgloss.NewStyle().Background(col.bg).Foreground(col.fg).Bold(true)
 			switch c.ends {
 			case config.TagEndsNone:
@@ -446,7 +474,6 @@ func renderChipsWith(chips []tagChip, colorFor func(string) tagColor, rowBg lipg
 				b.WriteString(body.Render(" " + c.text + " "))
 			}
 		case c.colored:
-			col := colorFor(c.colorKey)
 			b.WriteString(row.Foreground(accentReadableOn(col.bg, rowBg, 3)).Render(c.text))
 		default:
 			b.WriteString(row.Render(c.text))
@@ -569,4 +596,24 @@ func (m Model) renderMessageRow(style lipgloss.Style, prefix, star, sender strin
 		line += inline.Render(padRight(right, rest))
 	}
 	return style.Width(width).Render(line)
+}
+
+func layoutMailTags(tags []annotationTag, style, ends string, icons bool, budget int) []tagChip {
+	for count := len(tags); count >= 0; count-- {
+		for _, level := range []tagLevel{tagWide, tagMedium, tagNarrow} {
+			var chips []tagChip
+			for _, t := range tags[:count] {
+				chip := chipFor(t, style, level, icons)
+				chip.ends = ends
+				chips = append(chips, chip)
+			}
+			if count < len(tags) {
+				chips = append(chips, tagChip{text: fmt.Sprintf("+%d", len(tags)-count)})
+			}
+			if chipsWidth(chips) <= budget {
+				return chips
+			}
+		}
+	}
+	return nil
 }

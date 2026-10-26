@@ -46,6 +46,10 @@ Using controlled messages or test-account mail, verify:
 
 ## Corrections and reclassification
 
+- [ ] Press `e` to open classification directly. Category includes the five
+      Thunderbird choices once each; selecting one saves its IMAP tag without
+      erasing other tags. Smart/JEV runs do not assign server tags.
+
 - [ ] Correct a false-positive **Needs reply** result to **No**; the reply
       pill and Needs You membership update immediately.
 - [ ] Correct a missed **Needs reply** result to **Yes**; the pill, count,

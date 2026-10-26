@@ -273,6 +273,21 @@ Email text and attachment saving still work.
 Full headers are one `Ctrl+E` away, with SPF, DKIM, and DMARC results called out
 in color. `Ctrl+O` shows the complete message source, ready to copy.
 
+## Thunderbird / IMAP tags
+
+Press `e` to correct a message's classification. The Category choices include
+Important, Work, Personal, To Do, and Later. Selecting one with `Enter` also saves
+its Thunderbird-compatible tag to the mail server. Checked choices are already
+saved; `Space` toggles a tag without removing other assignments. Existing custom
+tags appear in the same choices after sync. Changes require a connection and
+server support. AI/JEV does not publish tags automatically.
+
+Find tags by keyword or name with `#tag`, including `#"To Do"`. Custom names and
+colors are local to each client; edit discovered tags in **Settings → Display →
+Tag names and colors**. Choose **Tag icons** under **Tag style** for colored,
+Thunderbird-like tag glyphs, with `#` when icons are disabled. Existing appearance
+settings stay unchanged. See the [user guide](docs/guide.md#thunderbird--imap-mail-tags).
+
 ## Optional AI tools
 
 Connect OpenAI, Claude, Gemini, or a local Ollama server if you want message
@@ -289,7 +304,7 @@ TideMail can run external plugins from
 receive message metadata, never message bodies, and can add annotations such as
 `needs_reply=true` or `category=shipping`. TideMail uses those annotations for
 tags and views such as **Needs You**, while keeping the original plugin output
-inspectable. Press `e` on a message to correct its tags locally; plugin reruns
+inspectable. Press `e` on a message to correct its classification locally; plugin reruns
 do not erase your correction. Result cards can offer `u` when TideMail itself
 finds an unsubscribe option; the plugin never receives the link, and TideMail still
 shows its normal confirmation before acting. Report plugins (press `enter` on one in **Plugins

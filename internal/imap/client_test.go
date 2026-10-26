@@ -51,6 +51,11 @@ func TestApplyDeadlineHonorsContext(t *testing.T) {
 // and returns the port and a cleanup function.
 func startTestServer(t *testing.T) (int, func()) {
 	t.Helper()
+	return startTestServerWithSession(t, nil)
+}
+
+func startTestServerWithSession(t *testing.T, wrap func(imapserver.Session, *imapserver.Conn) imapserver.Session) (int, func()) {
+	t.Helper()
 
 	memServer := imapmemserver.New()
 	user := imapmemserver.NewUser("testuser", "testpass")
@@ -69,7 +74,11 @@ func startTestServer(t *testing.T) (int, func()) {
 
 	be := &imapserver.Options{
 		NewSession: func(conn *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
-			return memServer.NewSession(), nil, nil
+			session := imapserver.Session(memServer.NewSession())
+			if wrap != nil {
+				session = wrap(session, conn)
+			}
+			return session, nil, nil
 		},
 		InsecureAuth: true,
 	}

@@ -14,7 +14,7 @@ NeedsYouDismiss,X,X,dismiss from Needs You / stop waiting,main
 Snooze,Z,Z,snooze (in Snoozed: unsnooze),main
 RunPlugin,p,p,run plugin,main
 PGPDecode,D,D,decrypt and verify PGP message (needs a PGP plugin),main
-EditTags,e,e,edit current message tags and classification,message list+content
+EditTags,e,e,correct classification and manage current message tags,message list+content
 PluginCatalog,b,b,browse available plugins (i install / u update / x remove),plugin list
 PluginCardUnsubscribe,u,u,unsubscribe when offered,plugin result card
 MarkAllRead,"R,ctrl+x",R/ctrl+x,mark all read,main
@@ -82,3 +82,8 @@ Yes,y,y,yes,overlay
 No,n,n,no,overlay
 Tab,tab,tab,next field,overlay
 Backspace,backspace,backspace,delete,overlay
+MailTagToggle,space,space,toggle the selected server tag without changing other assignments,classification Category
+MailTagRename,e,e,rename the selected tag locally,tag names and colors settings
+MailTagColor,c,c,open the selected tag color picker,tag names and colors settings
+MailTagThemeColor,r,r,reset the selected tag to the theme color,tag names and colors settings
+MailTagAccount,left/right,left/right,choose the account for tag mappings,tag names and colors settings

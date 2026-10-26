@@ -51,7 +51,8 @@ const (
 	sfDisplayDensity
 	sfPaneCorners
 	sfShadow
-	sfTagStyle  // Appearance → Annotation Tags
+	sfTagStyle // Appearance → Annotation Tags
+	sfMailTags
 	sfTagColors // opens the tag color editor
 	sfBrowser
 	sfFeedMaxBody
@@ -137,6 +138,7 @@ const (
 	settingsActionSpellDictionary
 	settingsActionCopyManualInstall
 	settingsActionTagColors
+	settingsActionMailTags
 	settingsActionOpenSupport
 	settingsActionCopySupport
 )
@@ -182,8 +184,8 @@ type settingsSectionBody struct {
 var (
 	layoutDensityLabels   = []string{"Comfortable", "Compact"}
 	paneCornersLabels     = []string{"Square", "Round"}
-	tagStyleLabels        = []string{"Pills", "Compact", "Plain", "Glyph Pills (Round)"}
-	tagStyleValues        = []string{config.TagStylePills, config.TagStyleCompact, config.TagStylePlain, config.TagStyleGlyphPills}
+	tagStyleLabels        = []string{"Pills", "Compact", "Plain", "Glyph Pills (Round)", "Tag icons"}
+	tagStyleValues        = []string{config.TagStylePills, config.TagStyleCompact, config.TagStylePlain, config.TagStyleGlyphPills, config.TagStyleIcons}
 	tagEndsValues         = []string{config.TagEndsSquare, config.TagEndsRound, config.TagEndsNone}
 	dateFormatLabels      = []string{"Relative", "Absolute", "None"}
 	aiProviderLabels      = []string{"none", "OpenAI", "Claude", "Gemini", "Ollama"}
@@ -219,10 +221,13 @@ var tagAppearanceOptions = []tagAppearanceOption{
 	{label: "Compact", style: config.TagStyleCompact, ends: config.TagEndsSquare},
 	{label: "Plain", style: config.TagStylePlain, ends: config.TagEndsSquare},
 	{label: "Glyph Pills (Round)", style: config.TagStyleGlyphPills, ends: config.TagEndsRound},
+	{label: "Tag icons", style: config.TagStyleIcons, ends: config.TagEndsNone},
 }
 
 func tagAppearanceIndex(style, ends string) int {
 	switch config.NormalizeTagStyle(style) {
+	case config.TagStyleIcons:
+		return 6
 	case config.TagStyleGlyphPills:
 		return 5
 	case config.TagStyleCompact:
@@ -807,7 +812,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 	case ssDisplay:
 		// Keep this order in lockstep with the ssDisplay case in viewSectionBody:
 		// Appearance, Terminal colors (retro themes), Message list, Reading, Behavior.
-		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfPaneCorners, sfIcons, sfShowPaneHeaders, sfShowNeedsYou, sfShowWaiting, sfDateFormat, sfFocusLine, sfShadow, sfTagStyle, sfTagColors}
+		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfPaneCorners, sfIcons, sfShowPaneHeaders, sfShowNeedsYou, sfShowWaiting, sfDateFormat, sfFocusLine, sfShadow, sfTagStyle, sfTagColors, sfMailTags}
 		if config.IsRetroTerminalTheme(s.themeName) {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
@@ -1383,6 +1388,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfMailTags:
+		switch {
+		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter):
+			s.action = settingsActionMailTags
+		case keyMatches(key, keys.Down):
+			s.setFocusedField(s.nextField())
+		case keyMatches(key, keys.Up):
+			s.setFocusedField(s.prevField())
+		}
 	case sfTagColors:
 		switch {
 		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter):
@@ -2037,9 +2051,10 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addDateFormatSelector()
 		b.addToggle("Focus line", s.focusLine, sfFocusLine)
 		b.addToggle("Modal drop shadow", s.shadow, sfShadow)
-		b.addGroup("Annotation Tags")
+		b.addGroup("Message tags")
 		b.addTagStyleSelector()
 		b.addAction("Tag colors", "unset colors follow the theme", sfTagColors)
+		b.addAction("Tag names and colors", "rename discovered tags and choose their colors by account", sfMailTags)
 		if config.IsRetroTerminalTheme(s.themeName) {
 			b.addGroup("Terminal colors")
 			b.addInput("VT background (#rrggbb)", s.retroBgInput, sfRetroBg)
@@ -3264,7 +3279,7 @@ func (s Settings) fieldHint(field settingsField) string {
 	case sfShadow:
 		return "draw a soft drop shadow behind modal overlays"
 	case sfTagStyle:
-		return "← → to compare Pills (Square/Round/None), Compact, Plain, and Glyph Pills (Round); Round needs a Nerd Font"
+		return "← → to compare Pills (Square/Round/None), Compact, Plain, Glyph Pills (Round), and Tag icons; Round and Tag icons need a Nerd Font"
 	case sfShowSender:
 		return "show the sender's name in a column before the subject in the message list"
 	case sfThreadedConversations:

@@ -270,3 +270,26 @@ images are visible. Encoding and upload happen in a debounced background
 command, and uploaded images stay resident in the terminal under an LRU budget.
 Cell geometry is re-read on every resize. Remote images require per-message
 consent (`i`) and are fetched through `richmail`'s SSRF-checked client.
+
+### IMAP mail tags
+
+`internal/mailtag` owns keyword validation, status-keyword exclusions, and
+Thunderbird's default labels. Message membership remains in `messages.flags`;
+`mail_tags` stores account-specific display names and colors. A one-time backfill
+registers keywords already present in the cache without changing their membership.
+
+The existing full-mailbox state reconciliation updates keywords even on old mail
+outside the incremental body fetch. `internal/imap.SetKeyword` checks UIDVALIDITY
+and permanent flags, changes one keyword with additive or removal STORE, and
+fetches the confirmed result. The UI holds the account session lock through the
+cache update. It never queues offline changes or replaces the whole flag set.
+
+The `e` editor includes server tags in the existing Category choices. Selecting
+a default compatible category writes its IMAP keyword before saving the local
+correction. Space changes only that keyword, preserving other assignments.
+Discovered custom tags can be added or removed without changing the category.
+Both use the existing row renderer. Search joins cached flag membership to
+account-specific definitions, including a normalized name for case-insensitive
+Unicode prefixes. Search versions reject results captured before a tag edit;
+message-list refreshes reload flags after local edits to avoid restoring stale
+assignments. AI annotations and classification overrides remain independent.

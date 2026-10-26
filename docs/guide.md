@@ -187,14 +187,57 @@ Type `#` and a tag name to search by the tags shown on message rows:
 `#github`, `#billing`, or any other category, and `#reply`, `#urgent`, or
 `#important`. Tags match as you type (`#git` already finds `#github`), several
 tags must all match, and they combine with words: `invoice #billing` finds
-billing mail mentioning an invoice. Your corrections count, so a message you
-recategorized is found under its new tag, not the plugin's. In the content pane, `Ctrl+E` shows
-the full headers and authentication results. `Ctrl+O` shows the message's
+billing mail mentioning an invoice. Mail tags also match their IMAP keyword or
+local name: `#$label4` or `#"To Do"`. Quote names containing spaces or punctuation.
+Your corrections count, so a recategorized message is found under its new tag.
+In the content pane, `Ctrl+E` shows the full headers and authentication results. `Ctrl+O` shows the message's
 complete source exactly as the server stores it, fetched fresh and without
 marking the message read; press `c` there to copy all of it to the clipboard.
 It also works from the message list and the command palette ("View message
 source"). `Ctrl+U` opens the mailing list's
 unsubscribe option when the message provides one.
+
+### Thunderbird / IMAP mail tags
+
+TideMail recognizes message tags stored as IMAP keywords, including Thunderbird's
+five default tags: Important, Work, Personal, To Do, and Later. Custom keywords
+initially appear under their identifiers. Thunderbird keeps tag names and colors
+in its own settings, so TideMail cannot obtain custom names or colors from IMAP.
+
+With a message highlighted or open, press `e` to correct its classification.
+Use `↑`/`↓` to choose **Category** and `←`/`→` to select a choice. Important, Work,
+Personal, To Do, and Later appear alongside the existing categories, with one
+Personal choice. `Enter` saves the compatible tag to the server first, then saves
+the local category correction. Other categories remain local.
+
+`[x]` marks tags already saved on the server. `Space` explicitly adds or removes
+the selected compatible tag. Existing custom tags also appear in the Category
+choices; `Enter` adds one without changing the local category, and `Space`
+toggles it. A new category never removes other tags. **No category**, **Use plugin
+decision**, and `r` reset local corrections only; use `Space` to remove a server
+tag. Removing a tag does not change a local classification correction.
+
+A collapsed conversation edits only its representative message. Server changes
+require a connection and support for the keyword. A failed server write does not
+save a new local category correction. Cached tags remain visible offline, and
+Thunderbird changes appear after a normal or manual sync. `+N` on a message row
+indicates tags that do not fit. Open `e` to browse their names.
+
+Under **Settings → Display → Tag names and colors**, use `←`/`→` to choose an
+account, `↑`/`↓` to choose a discovered tag, `e` to rename its local label, `c` to
+choose its color, or `r` to use the theme color. These changes affect only
+TideMail, not Thunderbird's settings or server assignments. There is no keyword
+entry form.
+
+**Settings → Display → Tag style → Tag icons** shows colored tag-shaped glyphs
+in message rows. This requires a Nerd Font with the Font Awesome tag glyph
+`U+F02B` (``); disabling icons uses `#`. Settings previews the style, and the
+editor keeps readable names. Existing style preferences stay unchanged until
+you choose another style. This option changes appearance only.
+
+AI/JEV behavior is unchanged and does not assign IMAP tags automatically.
+Automatic Thunderbird profile import, offline queued edits, and bulk tagging are
+not supported.
 
 ### Managing folders
 
@@ -767,27 +810,30 @@ clears them. **Message annotations** in the palette lists all of a message's
 annotations. Running a plugin can move messages into or out of Needs You at once;
 snoozed messages stay snoozed, and Waiting on Them does not use annotations.
 
-With a message highlighted or open, press `e` to edit its tags. You can also
+### Local classification corrections
+
+Press `e` to open the classification editor. You can also
 search the command palette for **Edit tags / Correct classification**, or press
-`e` in **Message annotations**. Use `↑`/`↓` to choose a field, `←`/`→` to
-choose a value, and `Enter` to save it. You can correct needs reply, urgency,
+`e` in **Message annotations**.
+Use `↑`/`↓` to choose a field, `←`/`→` to choose a value, and `Enter` to save it. You can correct needs reply, urgency,
 importance, or category. A correction overrides every plugin for that field,
 while the original plugin annotations remain visible. **Use plugin decision**
 or **Reset all corrections** removes the local decision. Corrections survive
-plugin reruns, annotation cleanup, and plugin removal. They never leave your
-computer: they are not sent to Jev, TypeSafe, or any plugin with a message.
+plugin reruns, annotation cleanup, and plugin removal. They are not sent to Jev, TypeSafe, or any plugin with a message. Deliberately
+selecting a Thunderbird-compatible category also saves its tag to the mail
+server, as described above.
 The one exception is report plugins that declare permission to read
 classifications (`annotations_query` and `analytics_read`). Those can see a
 message's current classification, including that it came from your
 correction. Reports with `analytics_read` also see corrected categories as
 part of category totals.
 
-Choose how tags look under **Settings → Display → Appearance → Annotation
-Tags**:
+Choose how tags look under **Settings → Display → Appearance → Message
+tags**:
 
 - **Tag style**: use `←`/`→` on the single picker to choose **Pills (Square)**,
   **Pills (Round)**, **Pills (None)**, **Compact**, **Plain**, or
-  **Glyph Pills (Round)**. The picker
+  **Glyph Pills (Round)**, or **Tag icons**. The picker
   names and previews every choice. Square pills pad each side, Round uses
   rounded caps (needs a Nerd Font), and None removes the padding. Compact uses
   colored text such as `↩REPLY #github`; Plain uses uncolored
@@ -795,7 +841,7 @@ Tags**:
   glyph (for example, ⚙ for GitHub or ✉ for newsletters) inside rounded
   colored pills, even when full labels would fit. Unknown categories use ●;
   disabling icons uses ASCII markers. On narrow rows the caps may drop to
-  preserve subject space.
+  preserve subject space. Tag icons uses a colored tag glyph, or `#` with icons disabled.
 - **Tag colors** opens an editor for the background and foreground of each
   tag: needs reply, urgency, importance, the default category color, and the
   known categories (github, shipping, security, calendar, newsletter, support,
@@ -898,6 +944,9 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `d` in Drafts | Delete selected draft |
 | `r` | Reply to the selected or open message |
 | `Ctrl+R` | Reply all to the selected or open message |
+| `e` | Correct classification and manage tags for the current message |
+| `Space` in Category | Toggle the selected server tag, preserving other assignments |
+| `e` / `c` / `r` in Tag names and colors | Rename a discovered tag locally, choose its color, or use the theme color |
 | `x` | Mark selected message(s) read |
 | `*` | Toggle star (IMAP `\Flagged`) on selected message(s); syncs to the server |
 | `a` | Archive selected message |

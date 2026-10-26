@@ -56,6 +56,13 @@ func (db *DB) init() error {
 	if err := db.migrate(); err != nil {
 		return err
 	}
+	backfilled, err := db.GetSetting("mail_tags_backfill_v1")
+	if err != nil {
+		return err
+	}
+	if backfilled != "done" {
+		return db.DiscoverCachedMailTags()
+	}
 	return nil
 }
 
@@ -277,6 +284,14 @@ func (db *DB) migrate() error {
 			updated_at INTEGER NOT NULL
 		);
 
+		CREATE TABLE IF NOT EXISTS mail_tags (
+			account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+			keyword TEXT COLLATE NOCASE NOT NULL,
+			name TEXT NOT NULL,
+			name_search TEXT NOT NULL,
+			color TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY(account_id, keyword)
+		);
 		-- Explicit user corrections are separate from plugin judgments. One
 		-- value per supported semantic field; absence means use plugins.
 		CREATE TABLE IF NOT EXISTS classification_overrides (

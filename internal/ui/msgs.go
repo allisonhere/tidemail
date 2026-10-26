@@ -38,11 +38,12 @@ type AccountsLoadedMsg struct {
 }
 
 type MessagesLoadedMsg struct {
-	MailboxID int64
-	Messages  []db.Message
-	Search    bool
-	Query     string
-	Err       error
+	MailTagVersion uint64 // rejects searches captured before a tag edit or mapping change
+	MailboxID      int64
+	Messages       []db.Message
+	Search         bool
+	Query          string
+	Err            error
 	// Annotations holds plugin annotations for Messages, loaded in the same
 	// command so rendering never queries the database.
 	Annotations map[int64][]db.PluginAnnotation
