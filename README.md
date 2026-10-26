@@ -4,6 +4,8 @@
 
 **Mail for people who live in a terminal.**
 
+[![TideMail on The Terminal Index](https://cli.masoko.net/badge/tidemail.svg)](https://cli.masoko.net/tools/tidemail/)
+
 TideMail keeps your accounts, message list, and reading pane on one screen. It
 speaks IMAP and SMTP, stores its cache on your machine, and gives the keyboard
 the good seat.
