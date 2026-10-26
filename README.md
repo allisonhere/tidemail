@@ -273,6 +273,14 @@ Email text and attachment saving still work.
 Full headers are one `Ctrl+E` away, with SPF, DKIM, and DMARC results called out
 in color. `Ctrl+O` shows the complete message source, ready to copy.
 
+Open in Browser (`Ctrl+B`) works from the message list or reading pane. It fetches
+the original message without marking it read and opens its HTML as a private local
+`.html` file using the system default browser (`xdg-open` on Linux). Messages
+without HTML show a status message. HTML and links are preserved, with a UTF-8 byte-order mark added for correct
+character decoding; embedded CID images are not exported. Successful exports
+remain in the system temporary directory, subject to its cleanup policy;
+TideMail does not delete them automatically. Browser tab placement follows your browser settings.
+
 ## Optional AI tools
 
 Connect OpenAI, Claude, Gemini, or a local Ollama server if you want message
@@ -342,6 +350,7 @@ shows the `message_raw` and `message_compose` permissions.
 | `Ctrl+D` | Save attachments from the open message |
 | `Ctrl+E` | Show or hide full headers |
 | `Ctrl+O` | View the message source (`c` copies it) |
+| `Ctrl+B` | Open the message HTML in the system default browser |
 | `i` | Load remote images blocked for the open message |
 | `M` / `S` / `T` | Accounts, settings, or themes |
 | `Ctrl+L` in the account form | Look up a Custom account's mail servers |

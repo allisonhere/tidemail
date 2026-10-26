@@ -130,6 +130,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{"y/ctrl+c", "copy selected message text; ctrl+c copies focus line without selection"},
 				{keys.ToggleHeaders.Help().Key, "toggle full email headers"},
 				{keys.ViewSource.Help().Key, "view the message source; c copies it (also from the message list)"},
+				{keys.OpenInBrowser.Help().Key, "open the message HTML in your default browser (also from the message list)"},
 				{keys.EditTags.Help().Key, "edit this message's tags and classification"},
 				{keys.SaveAttach.Help().Key, "save all attachments to folder"},
 				{keys.ToggleImages.Help().Key, "load remote images (unsupported in foot/WezTerm)"},

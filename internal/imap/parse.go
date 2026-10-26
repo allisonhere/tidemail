@@ -480,6 +480,14 @@ func parseBody(raw []byte) (text, html string, attachments []bodyAttachment) {
 	return text, html, attachments
 }
 
+// ExtractHTML returns the original decoded HTML body, without the terminal
+// control-character filtering applied to stored messages. MIME attachments
+// are excluded using the same parser as message synchronization.
+func ExtractHTML(raw []byte) string {
+	_, html, _ := parseBody(raw)
+	return html
+}
+
 // normalizeCID strips the RFC 2045 angle brackets and surrounding whitespace
 // from a Content-ID header. HTML addresses these parts as src="cid:<id>",
 // where the id is the bare form, so the stored value must be the bare form too.
