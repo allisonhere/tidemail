@@ -242,6 +242,14 @@ AI/JEV behavior is unchanged and does not assign IMAP tags automatically.
 Automatic Thunderbird profile import, offline queued edits, and bulk tagging are
 not supported.
 
+Open in Browser (`Ctrl+B`) works from the message list or reading pane. It fetches
+the original message without marking it read and opens its HTML as a private local
+`.html` file using the system default browser (`xdg-open` on Linux). Messages
+without HTML show a status message. HTML and links are preserved, with a UTF-8 byte-order mark added for correct
+character decoding; embedded CID images are not exported. Successful exports
+remain in the system temporary directory, subject to its cleanup policy;
+TideMail does not delete them automatically. Browser tab placement follows your browser settings.
+
 ### Managing folders
 
 Gmail's standard folders appear in the System section: Sent Mail, Drafts, All
@@ -978,6 +986,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Alt+P` on the account form's Password row | Enter the password in a native dialog (`zenity` or `kdialog`) |
 | `Ctrl+E` | Toggle email headers on/off |
 | `Ctrl+O` | View the message source; `c` copies it, `Esc` closes |
+| `Ctrl+B` | Open the message HTML in the system default browser |
 | `Ctrl+F` | Find in message |
 | `v` / `V` | Visual select line range / whole message |
 | `` ` `` | AI summary |
