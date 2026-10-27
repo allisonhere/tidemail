@@ -287,6 +287,11 @@ type Model struct {
 	themeCursor    int
 	themeFilter    string // theme picker search text
 	themeFiltering bool   // typing into the theme picker search
+	// composeBackdrop caches only the main panes behind compose. Typing and
+	// successful autosaves do not alter them; every other event invalidates it.
+	// Pointer-owned so the render-time cache survives Model's value receivers.
+	composeBackdrop *composeBackdropCache
+
 	// bodyCache memoises rendered message bodies and viewportCache the
 	// finished reading-pane content. Held by pointer so writes survive
 	// Model's value receivers.
@@ -456,6 +461,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		omarchySig:             omarchySignature(),
 		omarchyWatchGeneration: 1,
 		styles:                 BuildStyles(merged, cfg.Display.Density, cfg.Display.PaneCorners),
+		composeBackdrop:        &composeBackdropCache{},
 		bodyCache:              newBoundedCache[bodyCacheKey, messageRenderResult](defaultBodyCacheLimit),
 		viewportCache:          newBoundedCache[viewportCacheKey, viewportContent](defaultViewportCacheLimit),
 		images:                 newUIImageStore(cfg.Display.Images),
@@ -538,6 +544,20 @@ func (m Model) Init() tea.Cmd {
 // ── Update ───────────────────────────────────────────────────────────────────
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Keys go exclusively to the open compose overlay. A successful autosave
+	// updates only compose state. Other events can change the panes underneath
+	// (sync, resize, theme, etc.), so let the next View rebuild the backdrop.
+	keepBackdrop := m.overlay == overlayCompose
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+	case DraftSavedMsg:
+		keepBackdrop = keepBackdrop && msg.Err == nil
+	default:
+		keepBackdrop = false
+	}
+	if !keepBackdrop && m.composeBackdrop != nil {
+		m.composeBackdrop.valid = false
+	}
 	next, cmd := m.update(msg)
 	// Any update may change the images on screen. Their upload is collected
 	// here so no individual handler has to thread the command through.
@@ -3580,14 +3600,22 @@ func (m Model) View() string {
 		return ""
 	}
 
-	right := lipgloss.JoinVertical(lipgloss.Left,
-		m.renderMessagesPane(),
-		m.renderContentPane(),
-	)
-	main := lipgloss.JoinHorizontal(lipgloss.Top,
-		m.renderAccountsPane(),
-		right,
-	)
+	var main string
+	if m.overlay == overlayCompose && m.composeBackdrop != nil && m.composeBackdrop.valid {
+		main = m.composeBackdrop.panes
+	} else {
+		right := lipgloss.JoinVertical(lipgloss.Left,
+			m.renderMessagesPane(),
+			m.renderContentPane(),
+		)
+		main = lipgloss.JoinHorizontal(lipgloss.Top,
+			m.renderAccountsPane(),
+			right,
+		)
+		if m.overlay == overlayCompose && m.composeBackdrop != nil {
+			m.composeBackdrop.panes, m.composeBackdrop.valid = main, true
+		}
+	}
 	view := lipgloss.JoinVertical(lipgloss.Left, main, m.renderStatusBar())
 
 	if m.overlay != overlayNone {
