@@ -102,6 +102,12 @@ func TestDefaultConfigShowsPaneHeaders(t *testing.T) {
 	}
 }
 
+func TestDefaultConfigShowsMessageTagsInHeader(t *testing.T) {
+	if !DefaultConfig().Display.ShowMessageTagsInHeader {
+		t.Fatal("message tags should default to visible in content headers")
+	}
+}
+
 func TestNormalizeDisplayDensity(t *testing.T) {
 	if got := NormalizeDisplayDensity(""); got != "compact" {
 		t.Fatalf("empty: got %q", got)

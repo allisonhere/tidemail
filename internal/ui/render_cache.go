@@ -110,17 +110,18 @@ type bodyCacheKey struct {
 type viewportCacheKey struct {
 	// id is the message ID, or the thread key prefixed so the two namespaces
 	// cannot collide.
-	id              string
-	width           int
-	paneWidth       int
-	theme           string
-	plainUI         bool
-	filterLinks     bool
-	showHeaders     bool
-	quotesCollapsed bool
-	actionableLinks bool
-	fingerprint     int
-	imageKey        string
+	id                      string
+	width                   int
+	paneWidth               int
+	theme                   string
+	plainUI                 bool
+	filterLinks             bool
+	showHeaders             bool
+	showMessageTagsInHeader bool
+	quotesCollapsed         bool
+	actionableLinks         bool
+	fingerprint             int
+	imageKey                string
 }
 
 // viewportContent is everything setViewportMessage/setViewportThread derives

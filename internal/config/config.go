@@ -182,35 +182,36 @@ type RetroTerminalTweak struct {
 }
 
 type DisplayConfig struct {
-	Icons                 bool   `toml:"icons"`
-	ShowPaneHeaders       bool   `toml:"show_pane_headers"`
-	ShowNeedsYou          bool   `toml:"show_needs_you"` // Needs You sidebar row
-	ShowWaiting           bool   `toml:"show_waiting"`   // Waiting on Them sidebar row
-	DateFormat            string `toml:"date_format"`
-	MarkReadOnOpen        bool   `toml:"mark_read_on_open"`
-	MarkReadOnFocus       bool   `toml:"mark_read_on_focus"`
-	FocusLine             bool   `toml:"focus_line"`
-	DefaultUnreadOnly     bool   `toml:"default_unread_only"`
-	ActionableLinks       bool   `toml:"actionable_links"`
-	MouseSupport          bool   `toml:"mouse_support"`
-	FilterLinks           bool   `toml:"filter_links"`
-	ShowSender            bool   `toml:"show_sender"`
-	ThreadedConversations bool   `toml:"threaded_conversations"`
-	ReadingWidth          int    `toml:"reading_width"`
-	AccountsWidthPercent  int    `toml:"accounts_width_percent"`
-	MessagesHeightPercent int    `toml:"messages_height_percent"`
-	ConfirmQuit           bool   `toml:"confirm_quit"`
-	ShowHeaders           bool   `toml:"show_headers"`
-	UnreadFirst           bool   `toml:"unread_first"`
-	StarredFirst          bool   `toml:"starred_first"`
-	Notifications         bool   `toml:"notifications"`
-	Browser               string `toml:"browser"`
-	Density               string `toml:"density"`
-	PaneCorners           string `toml:"pane_corners"` // "square" or "round"
-	Shadow                bool   `toml:"shadow"`       // drop shadow behind modal overlays
-	ComposeVim            bool   `toml:"compose_vim"`
-	ComposeSpell          bool   `toml:"compose_spell"`      // offline spell check in compose (off by default)
-	ComposeSpellLang      string `toml:"compose_spell_lang"` // spell check language code; empty means English
+	Icons                   bool   `toml:"icons"`
+	ShowPaneHeaders         bool   `toml:"show_pane_headers"`
+	ShowMessageTagsInHeader bool   `toml:"show_message_tags_in_header"`
+	ShowNeedsYou            bool   `toml:"show_needs_you"` // Needs You sidebar row
+	ShowWaiting             bool   `toml:"show_waiting"`   // Waiting on Them sidebar row
+	DateFormat              string `toml:"date_format"`
+	MarkReadOnOpen          bool   `toml:"mark_read_on_open"`
+	MarkReadOnFocus         bool   `toml:"mark_read_on_focus"`
+	FocusLine               bool   `toml:"focus_line"`
+	DefaultUnreadOnly       bool   `toml:"default_unread_only"`
+	ActionableLinks         bool   `toml:"actionable_links"`
+	MouseSupport            bool   `toml:"mouse_support"`
+	FilterLinks             bool   `toml:"filter_links"`
+	ShowSender              bool   `toml:"show_sender"`
+	ThreadedConversations   bool   `toml:"threaded_conversations"`
+	ReadingWidth            int    `toml:"reading_width"`
+	AccountsWidthPercent    int    `toml:"accounts_width_percent"`
+	MessagesHeightPercent   int    `toml:"messages_height_percent"`
+	ConfirmQuit             bool   `toml:"confirm_quit"`
+	ShowHeaders             bool   `toml:"show_headers"`
+	UnreadFirst             bool   `toml:"unread_first"`
+	StarredFirst            bool   `toml:"starred_first"`
+	Notifications           bool   `toml:"notifications"`
+	Browser                 string `toml:"browser"`
+	Density                 string `toml:"density"`
+	PaneCorners             string `toml:"pane_corners"` // "square" or "round"
+	Shadow                  bool   `toml:"shadow"`       // drop shadow behind modal overlays
+	ComposeVim              bool   `toml:"compose_vim"`
+	ComposeSpell            bool   `toml:"compose_spell"`      // offline spell check in compose (off by default)
+	ComposeSpellLang        string `toml:"compose_spell_lang"` // spell check language code; empty means English
 	// Interactive CLI only; scripted commands ignore these.
 	CLIQuitAfterSend bool               `toml:"cli_quit_after_send"` // leave `tidemail cli` after a successful send or draft
 	CLISkipReview    bool               `toml:"cli_skip_review"`     // skip the wizard's review step when undo or a draft makes it safe
@@ -220,7 +221,7 @@ type DisplayConfig struct {
 	Images           string             `toml:"images"`
 	VT52             RetroTerminalTweak `toml:"vt52"`
 	VT100            RetroTerminalTweak `toml:"vt100"`
-	// TagStyle is how classification and IMAP tags look in message rows: "pills"
+	// TagStyle is how classification and IMAP tags look in message rows and headers: "pills"
 	// (default), "glyph-pills", "compact", "plain", or "tag-icons".
 	TagStyle string `toml:"tag_style"`
 	// TagEnds is how pill tags end: "square" (default; a padded block),
@@ -594,28 +595,29 @@ func DefaultConfig() Config {
 	return Config{
 		Theme: "catppuccin-mocha",
 		Display: DisplayConfig{
-			Icons:                 true,
-			ShowPaneHeaders:       true,
-			ShowNeedsYou:          true,
-			ShowWaiting:           true,
-			DateFormat:            "relative",
-			MarkReadOnOpen:        true,
-			FocusLine:             true,
-			ShowSender:            true,
-			AccountsWidthPercent:  28,
-			MessagesHeightPercent: 40,
-			Density:               "compact",
-			TagStyle:              TagStylePills,
-			TagEnds:               TagEndsSquare,
-			PaneCorners:           "square",
-			Shadow:                true,
-			Images:                "auto",
-			ConfirmQuit:           true,
-			ShowHeaders:           true,
-			Notifications:         true,
-			SendDelaySeconds:      5,
-			SendMaxAttempts:       3,
-			CLISignature:          true,
+			Icons:                   true,
+			ShowPaneHeaders:         true,
+			ShowMessageTagsInHeader: true,
+			ShowNeedsYou:            true,
+			ShowWaiting:             true,
+			DateFormat:              "relative",
+			MarkReadOnOpen:          true,
+			FocusLine:               true,
+			ShowSender:              true,
+			AccountsWidthPercent:    28,
+			MessagesHeightPercent:   40,
+			Density:                 "compact",
+			TagStyle:                TagStylePills,
+			TagEnds:                 TagEndsSquare,
+			PaneCorners:             "square",
+			Shadow:                  true,
+			Images:                  "auto",
+			ConfirmQuit:             true,
+			ShowHeaders:             true,
+			Notifications:           true,
+			SendDelaySeconds:        5,
+			SendMaxAttempts:         3,
+			CLISignature:            true,
 		},
 		Updates: UpdatesConfig{
 			CheckOnStartup:     true,

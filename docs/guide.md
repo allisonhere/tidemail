@@ -203,6 +203,9 @@ TideMail recognizes message tags stored as IMAP keywords, including Thunderbird'
 five default tags: Important, Work, Personal, To Do, and Later. Custom keywords
 initially appear under their identifiers. Thunderbird keeps tag names and colors
 in its own settings, so TideMail cannot obtain custom names or colors from IMAP.
+Tags appear below the date and sender in the message pane as well as on message
+rows. Under **Settings → Display → Message tags**, turn off **Show tags in
+message header** to hide only that content-pane row.
 
 With a message highlighted or open, press `e` to correct its classification.
 Use `↑`/`↓` to choose **Category** and `←`/`→` to select a choice. Important, Work,
@@ -799,9 +802,10 @@ mail automatically, and does not affect that.
 
 A plugin that also declares the `annotations` permission can attach short
 notes to a message, such as "needs reply" or "category: github". TideMail
-stores them in its local cache and shows them as tags in message rows, the
-same way in every folder and view: `↩ REPLY`, `! URGENT`, `◆ IMPORTANT`, and
-the category name (`GITHUB`). On narrower screens tags shrink to their
+stores them in its local cache and shows them as tags in message rows. When
+enabled, they also appear below the date and sender in the content pane:
+`↩ REPLY`, `! URGENT`, `◆ IMPORTANT`, and the category name (`GITHUB`). On
+narrower screens tags shrink to their
 symbols, with the category becoming a single glyph chosen for that category
 (`↩ ◆ ⚙` for github), then to a plain `#github`, or disappear before the
 subject does. Each plugin run replaces
@@ -830,6 +834,9 @@ part of category totals.
 
 Choose how tags look under **Settings → Display → Appearance → Message
 tags**:
+
+- **Show tags in message header**: turn the content-pane tag row on or off;
+  message-list tags are unaffected.
 
 - **Tag style**: use `←`/`→` on the single picker to choose **Pills (Square)**,
   **Pills (Round)**, **Pills (None)**, **Compact**, **Plain**, or

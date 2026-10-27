@@ -243,6 +243,22 @@ func TestSettingsLoadsAndAppliesPaneHeaders(t *testing.T) {
 	}
 }
 
+func TestSettingsLoadsAndAppliesMessageTagsInHeader(t *testing.T) {
+	cfg := config.DefaultConfig()
+	if !cfg.Display.ShowMessageTagsInHeader {
+		t.Fatal("expected content-header tags to default on")
+	}
+
+	s := newSettings(cfg, settingsUpdateState{})
+	if !s.showMessageTagsInHeader {
+		t.Fatal("expected settings to load enabled content-header tags")
+	}
+	s.showMessageTagsInHeader = false
+	if next := s.ApplyTo(cfg); next.Display.ShowMessageTagsInHeader {
+		t.Fatal("expected ApplyTo to save disabled content-header tags")
+	}
+}
+
 func TestSettingsLoadsAndAppliesUnreadFirst(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Display.UnreadFirst = true

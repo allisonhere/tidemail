@@ -286,7 +286,9 @@ Find tags by keyword or name with `#tag`, including `#"To Do"`. Custom names and
 colors are local to each client; edit discovered tags in **Settings → Display →
 Tag names and colors**. Choose **Tag icons** under **Tag style** for colored,
 Thunderbird-like tag glyphs, with `#` when icons are disabled. Existing appearance
-settings stay unchanged. See the [user guide](docs/guide.md#thunderbird--imap-mail-tags).
+settings stay unchanged. Tags also appear below the date and sender in the
+content pane; use **Show tags in message header** under **Settings → Display →
+Message tags** to hide that row only. See the [user guide](docs/guide.md#thunderbird--imap-mail-tags).
 
 ## Optional AI tools
 

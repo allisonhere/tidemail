@@ -43,6 +43,56 @@ func TestRenderMessageContentAddsBlankLineAfterMessageID(t *testing.T) {
 	}
 }
 
+func TestRenderMessageContentShowsUnifiedTagsInHeader(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.width = 100
+	m.accounts = []db.Account{{ID: 1, Name: "Personal"}}
+	m.mailboxes = []db.Mailbox{{ID: 7, AccountID: 1, Name: "INBOX"}}
+	msg := db.Message{
+		ID:        1,
+		MailboxID: 7,
+		Subject:   "Tagged message",
+		From:      "alice@example.com",
+		Date:      time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC),
+		Flags:     []string{"$label1"},
+		BodyText:  "Body starts here.",
+	}
+	m.plugins.annotations = map[int64][]db.PluginAnnotation{msg.ID: {
+		cacheAnn("smart", "needs_reply", "true"),
+	}}
+
+	view := ansi.Strip(m.renderMessageContent(msg))
+	from := strings.Index(view, "From: alice@example.com")
+	reply := strings.Index(view, "REPLY")
+	important := strings.Index(view, "IMPORTANT")
+	body := strings.Index(view, "Body starts here.")
+	if from < 0 || reply < from || important < from || body < important {
+		t.Fatalf("expected tags between metadata and body, got %q", view)
+	}
+
+	m.cfg.Display.ShowMessageTagsInHeader = false
+	withoutTags := ansi.Strip(m.renderMessageContent(msg))
+	if strings.Contains(withoutTags, "REPLY") || strings.Contains(withoutTags, "IMPORTANT") {
+		t.Fatalf("disabled content-header tags leaked into %q", withoutTags)
+	}
+}
+
+func TestRenderThreadContentShowsTagsForEachMessageHeader(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.width = 100
+	m.accounts = []db.Account{{ID: 1, Name: "Personal"}}
+	m.mailboxes = []db.Mailbox{{ID: 7, AccountID: 1, Name: "INBOX"}}
+	first := db.Message{ID: 1, MailboxID: 7, From: "alice@example.com", Date: time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC), Flags: []string{"$label1"}, BodyText: "First body."}
+	second := db.Message{ID: 2, MailboxID: 7, From: "bob@example.com", Date: time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC), Flags: []string{"$label2"}, BodyText: "Second body."}
+	view := ansi.Strip(m.renderThreadContent(messageThread{Representative: second, Messages: []db.Message{first, second}, Count: 2}))
+
+	firstFrom, firstTag := strings.Index(view, "From: alice@example.com"), strings.Index(view, "IMPORTANT")
+	secondFrom, secondTag := strings.Index(view, "From: bob@example.com"), strings.Index(view, "WORK")
+	if firstFrom < 0 || firstTag < firstFrom || secondFrom < firstTag || secondTag < secondFrom {
+		t.Fatalf("expected each thread header to include its tags, got %q", view)
+	}
+}
+
 func TestRenderMessageTitleSpansPaneWhenReadingWidthIsCapped(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Display.ReadingWidth = 32
