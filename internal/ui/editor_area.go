@@ -112,8 +112,11 @@ func newEditorArea() editorArea {
 	if editorVimMode {
 		ed.SetInputMode(ripple.ModeVim)
 	}
+	w, h := ed.Size()
 	return editorArea{
 		ed:               ed,
+		w:                w,
+		h:                h,
 		CursorStyle:      lipgloss.NewStyle().Reverse(true),
 		SelectedStyle:    lipgloss.NewStyle().Reverse(true),
 		PlaceholderStyle: lipgloss.NewStyle().Faint(true),
@@ -134,14 +137,22 @@ func (e *editorArea) Blur() { e.ed.Blur() }
 
 // SetWidth and SetHeight mirror the textarea's separate sizing calls; the
 // editor takes both at once, so each remembers its dimension and re-applies.
-func (e *editorArea) SetWidth(w int)  { e.w = w; e.ed.SetSize(e.w, e.h) }
-func (e *editorArea) SetHeight(h int) { e.h = h; e.ed.SetSize(e.w, e.h) }
+func (e *editorArea) SetWidth(w int)  { e.SetSize(w, e.h) }
+func (e *editorArea) SetHeight(h int) { e.SetSize(e.w, h) }
 
 // SetSize sets width and height together so the editor's viewport is computed
-// once against both real dimensions. Sizing via SetWidth then SetHeight would
-// briefly clamp the still-unset dimension to 1 — and a height-1 pass pins the
-// viewport to the cursor row, which sticks the caret to the top of the body.
-func (e *editorArea) SetSize(w, h int) { e.w, e.h = w, h; e.ed.SetSize(w, h) }
+// once against both real dimensions. Unchanged dimensions do not ask Ripple
+// to recompute the document layout on every input event and render. The
+// constructor remembers Ripple's default dimensions so separate width/height
+// calls also preserve the other dimension without a temporary height-1 pass.
+func (e *editorArea) SetSize(w, h int) {
+	w, h = max(1, w), max(1, h)
+	if e.w == w && e.h == h {
+		return
+	}
+	e.w, e.h = w, h
+	e.ed.SetSize(w, h)
+}
 
 func (e editorArea) SelectedText() string { return e.ed.SelectedText() }
 

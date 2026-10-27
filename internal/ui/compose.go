@@ -57,6 +57,13 @@ type fileEntry struct {
 	size  int64
 }
 
+// composeBackdropCache holds the unchanged main panes while editing.
+// The compose overlay and status bar are always rendered from current state.
+type composeBackdropCache struct {
+	panes string
+	valid bool
+}
+
 type ComposeModel struct {
 	toInput      textinput.Model
 	ccInput      textinput.Model
