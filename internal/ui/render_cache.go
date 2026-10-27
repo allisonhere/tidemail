@@ -124,10 +124,17 @@ type viewportCacheKey struct {
 	imageKey                string
 }
 
+// renderedContent carries LINKS row locations through the final pane layout.
+type renderedContent struct {
+	content   string
+	images    []renderImage
+	linkStart int // first entry, or -1 when there is no LINKS section
+}
+
 // viewportContent is everything setViewportMessage/setViewportThread derives
-// from one render: the content itself and the three line-indexed views of it
-// that used to be recomputed with a full ansi.Strip each.
+// from one render, including the LINKS entry rows and full destinations.
 type viewportContent struct {
+	linkRows  []int
 	content   string
 	lines     []string
 	lineLinks []string
