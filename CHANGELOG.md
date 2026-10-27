@@ -6,6 +6,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.7.0
+
 ### Added
 
 - Recognize Thunderbird/IMAP tags, map their names and colors per account, search
