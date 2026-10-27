@@ -204,6 +204,7 @@ type ServerMessage struct {
 	UID     uint32
 	Seen    bool
 	Flagged bool
+	Flags   []string
 }
 
 // ServerState returns the state of every message currently in the mailbox plus
@@ -235,6 +236,7 @@ func (c *Client) ServerState(ctx context.Context, mailboxName string) (msgs []Se
 	for _, m := range fetched {
 		sm := ServerMessage{UID: uint32(m.UID)}
 		for _, f := range m.Flags {
+			sm.Flags = append(sm.Flags, string(f))
 			if f == imap.FlagSeen {
 				sm.Seen = true
 			}

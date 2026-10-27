@@ -80,6 +80,9 @@ func (m Model) renderMessageContentImages(msg db.Message) (string, []renderImage
 		metaStr += "  From: " + msg.From
 	}
 	meta := " " + m.styles.ContentMeta.Width(contentWidth).Render(truncate(metaStr, metaWidth))
+	if tags := m.renderContentMessageTags(msg, contentWidth); tags != "" {
+		meta += "\n" + tags
+	}
 	if line := m.pgpStatusLine(msg, contentWidth); line != "" {
 		meta += "\n" + line
 	}
@@ -263,17 +266,18 @@ func (m Model) focusedLineLink() (string, bool) {
 // only ever returned for an identical render.
 func (m Model) viewportContentKey(id string, fingerprint int, imageKey string) viewportCacheKey {
 	return viewportCacheKey{
-		id:              id,
-		width:           m.contentBodyWidth(),
-		paneWidth:       m.contentPaneContentWidth(),
-		theme:           m.styles.Theme.Name,
-		plainUI:         m.styles.PlainUI,
-		filterLinks:     m.cfg.Display.FilterLinks,
-		showHeaders:     m.contentShowHeaders,
-		quotesCollapsed: m.contentQuotesCollapsed,
-		actionableLinks: m.actionableLinksEnabled(),
-		fingerprint:     fingerprint,
-		imageKey:        imageKey,
+		id:                      id,
+		width:                   m.contentBodyWidth(),
+		paneWidth:               m.contentPaneContentWidth(),
+		theme:                   m.styles.Theme.Name,
+		plainUI:                 m.styles.PlainUI,
+		filterLinks:             m.cfg.Display.FilterLinks,
+		showHeaders:             m.contentShowHeaders,
+		showMessageTagsInHeader: m.cfg.Display.ShowMessageTagsInHeader,
+		quotesCollapsed:         m.contentQuotesCollapsed,
+		actionableLinks:         m.actionableLinksEnabled(),
+		fingerprint:             fingerprint,
+		imageKey:                imageKey,
 	}
 }
 
@@ -574,6 +578,9 @@ func (m Model) threadMessageHeader(msg db.Message, width int) string {
 		line = truncate(line, width)
 	}
 	header := m.styles.ContentMeta.Width(width).Render(line)
+	if tags := m.renderContentMessageTags(msg, width); tags != "" {
+		header += "\n" + tags
+	}
 	if status := m.pgpStatusLine(msg, width); status != "" {
 		header += "\n" + status
 	}
@@ -583,6 +590,22 @@ func (m Model) threadMessageHeader(msg db.Message, width int) string {
 		}
 	}
 	return header
+}
+
+// renderContentMessageTags renders the same combined local and IMAP tags as a
+// message row, but gives them the content header's full reading width. The
+// existing layout progressively compacts tags and ends with +N when needed.
+func (m Model) renderContentMessageTags(msg db.Message, width int) string {
+	if !m.cfg.Display.ShowMessageTagsInHeader || width < 1 {
+		return ""
+	}
+	tags := m.mergeMessageTags(m.annotationTags(msg.ID), msg)
+	chips := layoutTags(tags, m.tagStyle(), m.tagEnds(), m.iconsEnabled() && !m.styles.PlainUI, max(1, width-1))
+	if len(chips) == 0 {
+		return ""
+	}
+	base := lipgloss.NewStyle().Background(m.styles.Theme.Bg).Foreground(m.styles.Theme.Fg)
+	return base.Width(width).Render(" " + m.renderChips(chips, base))
 }
 
 // renderFullHeaders renders the toggleable full-header block (Date, From, To,

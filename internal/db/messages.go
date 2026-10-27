@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/allisonhere/tidemail/internal/mailtag"
 )
 
 type Message struct {
@@ -291,6 +293,12 @@ func (db *DB) UpsertMessage(m Message) error {
 		string(flagsJSON), read, starred, att, m.Headers)
 	if err != nil {
 		return err
+	}
+
+	if len(mailtag.Keywords(m.Flags)) > 0 {
+		if err := db.ApplyServerFlags(m.MailboxID, map[uint32][]string{m.UID: m.Flags}); err != nil {
+			return err
+		}
 	}
 
 	msgID := m.ID

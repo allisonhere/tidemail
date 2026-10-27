@@ -71,6 +71,7 @@ func (m Model) renderMessagesPane() string {
 			}
 			age := timeText
 			tags := m.annotationTags(m.rowBadgeIDs(msg2, thread)...)
+			tags = m.mergeMessageTags(tags, msg2)
 			style := msgRead
 			if threadUnread > 0 {
 				style = msgUnread

@@ -8,6 +8,12 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- Recognize Thunderbird/IMAP tags, map their names and colors per account, search
+  by tag name or keyword, and add or remove tags online from the `e` editor.
+  Thunderbird-compatible choices share the existing Category controls; selecting
+  one saves its server tag, while Space toggles individual tags. Other tags and
+  AI/JEV behavior stay unchanged. Optional Tag icons in Settings use colored
+  tag-shaped glyphs with an ASCII fallback.
 - Settings → Display can hide the Needs You and Waiting on Them rows from the sidebar.
 - A new theme collection: 52 themes in 24 families, including every variant of Catppuccin, Tokyo Night, Rosé Pine, Gruvbox, Solarized, Nightfox, Kanagawa, Ayu and GitHub, plus Dracula, Nord, One Dark Pro, Everforest, Night Owl, Palenight, SynthWave '84, Shades of Purple, Oxocarbon and Cyberdream. Palettes are copied from each project's source; see [docs/themes.md](docs/themes.md) for sources and licenses. Saved theme names keep working.
 - The theme picker (`T`) groups themes by family, searches with `/`, shows a color swatch for each, and previews the highlighted theme with a sample of selection, text, link, quote and status colors.
@@ -17,6 +23,13 @@ All notable changes to TideMail are documented in this file.
 
 - `vt52` now uses a charcoal-black background instead of pure black.
 - Quoted text uses its theme's quote color, a category tag without its own color follows the theme's tag color, and starred rows use the warning color.
+
+### Fixed
+
+- iCloud mailboxes no longer fail to sync with `expected (, got ")"`: TideMail no
+  longer requests BODYSTRUCTURE, which iCloud sends in a form the IMAP parser
+  rejected, so one message could block a whole mailbox (#62).
+- Windows builds work again (tideui v0.3.1).
 
 ## v1.6.0
 

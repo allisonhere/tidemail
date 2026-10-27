@@ -51,7 +51,9 @@ const (
 	sfDisplayDensity
 	sfPaneCorners
 	sfShadow
-	sfTagStyle  // Appearance → Annotation Tags
+	sfTagStyle // Appearance → Annotation Tags
+	sfShowMessageTagsInHeader
+	sfMailTags
 	sfTagColors // opens the tag color editor
 	sfBrowser
 	sfFeedMaxBody
@@ -137,6 +139,7 @@ const (
 	settingsActionSpellDictionary
 	settingsActionCopyManualInstall
 	settingsActionTagColors
+	settingsActionMailTags
 	settingsActionOpenSupport
 	settingsActionCopySupport
 )
@@ -182,8 +185,8 @@ type settingsSectionBody struct {
 var (
 	layoutDensityLabels   = []string{"Comfortable", "Compact"}
 	paneCornersLabels     = []string{"Square", "Round"}
-	tagStyleLabels        = []string{"Pills", "Compact", "Plain", "Glyph Pills (Round)"}
-	tagStyleValues        = []string{config.TagStylePills, config.TagStyleCompact, config.TagStylePlain, config.TagStyleGlyphPills}
+	tagStyleLabels        = []string{"Pills", "Compact", "Plain", "Glyph Pills (Round)", "Tag icons"}
+	tagStyleValues        = []string{config.TagStylePills, config.TagStyleCompact, config.TagStylePlain, config.TagStyleGlyphPills, config.TagStyleIcons}
 	tagEndsValues         = []string{config.TagEndsSquare, config.TagEndsRound, config.TagEndsNone}
 	dateFormatLabels      = []string{"Relative", "Absolute", "None"}
 	aiProviderLabels      = []string{"none", "OpenAI", "Claude", "Gemini", "Ollama"}
@@ -219,10 +222,13 @@ var tagAppearanceOptions = []tagAppearanceOption{
 	{label: "Compact", style: config.TagStyleCompact, ends: config.TagEndsSquare},
 	{label: "Plain", style: config.TagStylePlain, ends: config.TagEndsSquare},
 	{label: "Glyph Pills (Round)", style: config.TagStyleGlyphPills, ends: config.TagEndsRound},
+	{label: "Tag icons", style: config.TagStyleIcons, ends: config.TagEndsNone},
 }
 
 func tagAppearanceIndex(style, ends string) int {
 	switch config.NormalizeTagStyle(style) {
+	case config.TagStyleIcons:
+		return 6
 	case config.TagStyleGlyphPills:
 		return 5
 	case config.TagStyleCompact:
@@ -321,48 +327,49 @@ type Settings struct {
 	pluginEditing    bool
 
 	// Display
-	icons                 bool
-	showPaneHeaders       bool
-	showNeedsYou          bool
-	showWaiting           bool
-	dateFormatIdx         int // 0=Relative, 1=Absolute, 2=None
-	markReadOnOpen        bool
-	markReadOnFocus       bool
-	focusLine             bool
-	shadow                bool
-	showSender            bool
-	threadedConversations bool
-	defaultUnreadOnly     bool
-	unreadFirst           bool
-	starredFirst          bool
-	actionableLinks       bool
-	imagesOff             bool
-	imagesSupported       bool
-	filterLinks           bool
-	confirmQuit           bool
-	showHeaders           bool
-	notifications         bool
-	mouseSupport          bool
-	composeVim            bool
-	composeSpell          bool
-	spellLangIdx          int
-	cliQuitAfterSend      bool
-	cliSkipReview         bool
-	cliSignature          bool
-	layoutDensityIdx      int // 0 = comfortable, 1 = compact
-	paneCornersIdx        int // 0 = square, 1 = round
-	tagStyleIdx           int // index into tagStyleValues
-	tagEndsIdx            int // index into tagEndsValues
-	tagPickerIdx          int // index into tagAppearanceOptions
-	readingWidthInput     textinput.Model
-	sendMaxAttemptsInput  textinput.Model
-	sendDelayInput        textinput.Model
-	browserInput          textinput.Model
-	feedMaxBodyInput      textinput.Model
-	updateCheckOnStartup  bool
-	update                settingsUpdateState
-	action                settingsAction
-	supportLinkIndex      int
+	icons                   bool
+	showPaneHeaders         bool
+	showMessageTagsInHeader bool
+	showNeedsYou            bool
+	showWaiting             bool
+	dateFormatIdx           int // 0=Relative, 1=Absolute, 2=None
+	markReadOnOpen          bool
+	markReadOnFocus         bool
+	focusLine               bool
+	shadow                  bool
+	showSender              bool
+	threadedConversations   bool
+	defaultUnreadOnly       bool
+	unreadFirst             bool
+	starredFirst            bool
+	actionableLinks         bool
+	imagesOff               bool
+	imagesSupported         bool
+	filterLinks             bool
+	confirmQuit             bool
+	showHeaders             bool
+	notifications           bool
+	mouseSupport            bool
+	composeVim              bool
+	composeSpell            bool
+	spellLangIdx            int
+	cliQuitAfterSend        bool
+	cliSkipReview           bool
+	cliSignature            bool
+	layoutDensityIdx        int // 0 = comfortable, 1 = compact
+	paneCornersIdx          int // 0 = square, 1 = round
+	tagStyleIdx             int // index into tagStyleValues
+	tagEndsIdx              int // index into tagEndsValues
+	tagPickerIdx            int // index into tagAppearanceOptions
+	readingWidthInput       textinput.Model
+	sendMaxAttemptsInput    textinput.Model
+	sendDelayInput          textinput.Model
+	browserInput            textinput.Model
+	feedMaxBodyInput        textinput.Model
+	updateCheckOnStartup    bool
+	update                  settingsUpdateState
+	action                  settingsAction
+	supportLinkIndex        int
 
 	// AI
 	providerIdx         int
@@ -439,68 +446,69 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 	}
 	_, themeIdx := ThemeByName(cfg.Theme)
 	s := Settings{
-		icons:                 cfg.Display.Icons,
-		showPaneHeaders:       cfg.Display.ShowPaneHeaders,
-		showNeedsYou:          cfg.Display.ShowNeedsYou,
-		showWaiting:           cfg.Display.ShowWaiting,
-		themeName:             cfg.Theme,
-		themeIdx:              themeIdx,
-		retroBgInput:          mkInput(retroTweak.Bg, "optional #rrggbb", false),
-		retroFgInput:          mkInput(retroTweak.Fg, "optional #rrggbb", false),
-		retroAccentInput:      mkInput(retroTweak.Accent, "optional #rrggbb", false),
-		dateFormatIdx:         dateFormatIndex(cfg.Display.DateFormat),
-		markReadOnOpen:        cfg.Display.MarkReadOnOpen,
-		markReadOnFocus:       cfg.Display.MarkReadOnFocus,
-		focusLine:             cfg.Display.FocusLine,
-		shadow:                cfg.Display.Shadow,
-		showSender:            cfg.Display.ShowSender,
-		threadedConversations: cfg.Display.ThreadedConversations,
-		defaultUnreadOnly:     cfg.Display.DefaultUnreadOnly,
-		unreadFirst:           cfg.Display.UnreadFirst,
-		starredFirst:          cfg.Display.StarredFirst,
-		actionableLinks:       cfg.Display.ActionableLinks,
-		filterLinks:           cfg.Display.FilterLinks,
-		imagesOff:             strings.EqualFold(strings.TrimSpace(cfg.Display.Images), "off"),
-		imagesSupported:       termimage.DetectFromEnv().GraphicsEnabled(),
-		confirmQuit:           cfg.Display.ConfirmQuit,
-		showHeaders:           cfg.Display.ShowHeaders,
-		notifications:         cfg.Display.Notifications,
-		mouseSupport:          cfg.Display.MouseSupport,
-		composeVim:            cfg.Display.ComposeVim,
-		composeSpell:          cfg.Display.ComposeSpell,
-		spellLangIdx:          spellLangIndex(cfg.Display.ComposeSpellLang),
-		cliQuitAfterSend:      cfg.Display.CLIQuitAfterSend,
-		cliSkipReview:         cfg.Display.CLISkipReview,
-		cliSignature:          cfg.Display.CLISignature,
-		layoutDensityIdx:      layoutIdx,
-		paneCornersIdx:        paneCornersIdx,
-		tagStyleIdx:           max(0, slices.Index(tagStyleValues, config.NormalizeTagStyle(cfg.Display.TagStyle))),
-		tagEndsIdx:            max(0, slices.Index(tagEndsValues, config.NormalizeTagEnds(cfg.Display.TagEnds))),
-		tagPickerIdx:          tagAppearanceIndex(cfg.Display.TagStyle, cfg.Display.TagEnds),
-		readingWidthInput:     mkInput(strconv.Itoa(cfg.Display.ReadingWidth), "0 (no limit)", false),
-		sendMaxAttemptsInput:  mkInput(strconv.Itoa(config.NormalizeSendMaxAttempts(cfg.Display.SendMaxAttempts)), "3 (1 = no retries)", false),
-		sendDelayInput:        mkInput(strconv.Itoa(cfg.Display.SendDelaySeconds), "5 (0 = immediate)", false),
-		browserInput:          mkInput(cfg.Display.Browser, "xdg-open", false),
-		feedMaxBodyInput:      mkInput(strconv.Itoa(cfg.Feed.MaxBodyMiB), "10", false),
-		updateCheckOnStartup:  cfg.Updates.CheckOnStartup,
-		update:                updateState,
-		providerIdx:           providerIndex(cfg.AI.Provider),
-		openaiModelIdx:        openaiModelIndex(cfg.AI.OpenAIModel),
-		claudeModelIdx:        claudeModelIndex(cfg.AI.ClaudeModel),
-		geminiModelIdx:        geminiModelIndex(cfg.AI.GeminiModel),
-		ollamaModelIdx:        ollamaModelIndex(cfg.AI.OllamaModel),
-		openaiInput:           mkInput(cfg.AI.OpenAIKey, "sk-...", true),
-		openaiModelInput:      mkInput(cfg.AI.OpenAIModel, "gpt-4o-mini", false),
-		claudeInput:           mkInput(cfg.AI.ClaudeKey, "sk-ant-...", true),
-		claudeModelInput:      mkInput(cfg.AI.ClaudeModel, "claude-sonnet-4", false),
-		geminiInput:           mkInput(cfg.AI.GeminiKey, "AIza...", true),
-		geminiModelInput:      mkInput(cfg.AI.GeminiModel, "gemini-1.5-flash", false),
-		ollamaURLInput:        mkInput(cfg.AI.OllamaURL, "http://localhost:11434", false),
-		ollamaModelInput:      mkInput(cfg.AI.OllamaModel, "llama3.2", false),
-		savePathInput:         mkInput(cfg.AI.SavePath, "~/", false),
-		markReadOnSummarize:   cfg.AI.MarkReadOnSummarize,
-		activeSection:         ssDisplay,
-		focusedPane:           settingsPaneSidebar,
+		icons:                   cfg.Display.Icons,
+		showPaneHeaders:         cfg.Display.ShowPaneHeaders,
+		showMessageTagsInHeader: cfg.Display.ShowMessageTagsInHeader,
+		showNeedsYou:            cfg.Display.ShowNeedsYou,
+		showWaiting:             cfg.Display.ShowWaiting,
+		themeName:               cfg.Theme,
+		themeIdx:                themeIdx,
+		retroBgInput:            mkInput(retroTweak.Bg, "optional #rrggbb", false),
+		retroFgInput:            mkInput(retroTweak.Fg, "optional #rrggbb", false),
+		retroAccentInput:        mkInput(retroTweak.Accent, "optional #rrggbb", false),
+		dateFormatIdx:           dateFormatIndex(cfg.Display.DateFormat),
+		markReadOnOpen:          cfg.Display.MarkReadOnOpen,
+		markReadOnFocus:         cfg.Display.MarkReadOnFocus,
+		focusLine:               cfg.Display.FocusLine,
+		shadow:                  cfg.Display.Shadow,
+		showSender:              cfg.Display.ShowSender,
+		threadedConversations:   cfg.Display.ThreadedConversations,
+		defaultUnreadOnly:       cfg.Display.DefaultUnreadOnly,
+		unreadFirst:             cfg.Display.UnreadFirst,
+		starredFirst:            cfg.Display.StarredFirst,
+		actionableLinks:         cfg.Display.ActionableLinks,
+		filterLinks:             cfg.Display.FilterLinks,
+		imagesOff:               strings.EqualFold(strings.TrimSpace(cfg.Display.Images), "off"),
+		imagesSupported:         termimage.DetectFromEnv().GraphicsEnabled(),
+		confirmQuit:             cfg.Display.ConfirmQuit,
+		showHeaders:             cfg.Display.ShowHeaders,
+		notifications:           cfg.Display.Notifications,
+		mouseSupport:            cfg.Display.MouseSupport,
+		composeVim:              cfg.Display.ComposeVim,
+		composeSpell:            cfg.Display.ComposeSpell,
+		spellLangIdx:            spellLangIndex(cfg.Display.ComposeSpellLang),
+		cliQuitAfterSend:        cfg.Display.CLIQuitAfterSend,
+		cliSkipReview:           cfg.Display.CLISkipReview,
+		cliSignature:            cfg.Display.CLISignature,
+		layoutDensityIdx:        layoutIdx,
+		paneCornersIdx:          paneCornersIdx,
+		tagStyleIdx:             max(0, slices.Index(tagStyleValues, config.NormalizeTagStyle(cfg.Display.TagStyle))),
+		tagEndsIdx:              max(0, slices.Index(tagEndsValues, config.NormalizeTagEnds(cfg.Display.TagEnds))),
+		tagPickerIdx:            tagAppearanceIndex(cfg.Display.TagStyle, cfg.Display.TagEnds),
+		readingWidthInput:       mkInput(strconv.Itoa(cfg.Display.ReadingWidth), "0 (no limit)", false),
+		sendMaxAttemptsInput:    mkInput(strconv.Itoa(config.NormalizeSendMaxAttempts(cfg.Display.SendMaxAttempts)), "3 (1 = no retries)", false),
+		sendDelayInput:          mkInput(strconv.Itoa(cfg.Display.SendDelaySeconds), "5 (0 = immediate)", false),
+		browserInput:            mkInput(cfg.Display.Browser, "xdg-open", false),
+		feedMaxBodyInput:        mkInput(strconv.Itoa(cfg.Feed.MaxBodyMiB), "10", false),
+		updateCheckOnStartup:    cfg.Updates.CheckOnStartup,
+		update:                  updateState,
+		providerIdx:             providerIndex(cfg.AI.Provider),
+		openaiModelIdx:          openaiModelIndex(cfg.AI.OpenAIModel),
+		claudeModelIdx:          claudeModelIndex(cfg.AI.ClaudeModel),
+		geminiModelIdx:          geminiModelIndex(cfg.AI.GeminiModel),
+		ollamaModelIdx:          ollamaModelIndex(cfg.AI.OllamaModel),
+		openaiInput:             mkInput(cfg.AI.OpenAIKey, "sk-...", true),
+		openaiModelInput:        mkInput(cfg.AI.OpenAIModel, "gpt-4o-mini", false),
+		claudeInput:             mkInput(cfg.AI.ClaudeKey, "sk-ant-...", true),
+		claudeModelInput:        mkInput(cfg.AI.ClaudeModel, "claude-sonnet-4", false),
+		geminiInput:             mkInput(cfg.AI.GeminiKey, "AIza...", true),
+		geminiModelInput:        mkInput(cfg.AI.GeminiModel, "gemini-1.5-flash", false),
+		ollamaURLInput:          mkInput(cfg.AI.OllamaURL, "http://localhost:11434", false),
+		ollamaModelInput:        mkInput(cfg.AI.OllamaModel, "llama3.2", false),
+		savePathInput:           mkInput(cfg.AI.SavePath, "~/", false),
+		markReadOnSummarize:     cfg.AI.MarkReadOnSummarize,
+		activeSection:           ssDisplay,
+		focusedPane:             settingsPaneSidebar,
 		sectionField: [settingsSectionCount]settingsField{
 			ssDisplay:   sfBackToSections,
 			ssEditor:    sfBackToSections,
@@ -537,6 +545,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	}
 	cfg.Display.Icons = s.icons
 	cfg.Display.ShowPaneHeaders = s.showPaneHeaders
+	cfg.Display.ShowMessageTagsInHeader = s.showMessageTagsInHeader
 	cfg.Display.ShowNeedsYou = s.showNeedsYou
 	cfg.Display.ShowWaiting = s.showWaiting
 	cfg.Display.DateFormat = strings.ToLower(dateFormatLabels[s.dateFormatIdx])
@@ -807,7 +816,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 	case ssDisplay:
 		// Keep this order in lockstep with the ssDisplay case in viewSectionBody:
 		// Appearance, Terminal colors (retro themes), Message list, Reading, Behavior.
-		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfPaneCorners, sfIcons, sfShowPaneHeaders, sfShowNeedsYou, sfShowWaiting, sfDateFormat, sfFocusLine, sfShadow, sfTagStyle, sfTagColors}
+		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfPaneCorners, sfIcons, sfShowPaneHeaders, sfShowNeedsYou, sfShowWaiting, sfDateFormat, sfFocusLine, sfShadow, sfTagStyle, sfShowMessageTagsInHeader, sfTagColors, sfMailTags}
 		if config.IsRetroTerminalTheme(s.themeName) {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
@@ -1309,6 +1318,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfShowMessageTagsInHeader:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.showMessageTagsInHeader = !s.showMessageTagsInHeader
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfShowNeedsYou:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.showNeedsYou = !s.showNeedsYou
@@ -1383,6 +1401,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfMailTags:
+		switch {
+		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter):
+			s.action = settingsActionMailTags
+		case keyMatches(key, keys.Down):
+			s.setFocusedField(s.nextField())
+		case keyMatches(key, keys.Up):
+			s.setFocusedField(s.prevField())
+		}
 	case sfTagColors:
 		switch {
 		case keyMatches(key, keys.Space) || keyMatches(key, keys.Enter):
@@ -2037,9 +2064,11 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addDateFormatSelector()
 		b.addToggle("Focus line", s.focusLine, sfFocusLine)
 		b.addToggle("Modal drop shadow", s.shadow, sfShadow)
-		b.addGroup("Annotation Tags")
+		b.addGroup("Message tags")
 		b.addTagStyleSelector()
+		b.addToggle("Show tags in message header", s.showMessageTagsInHeader, sfShowMessageTagsInHeader)
 		b.addAction("Tag colors", "unset colors follow the theme", sfTagColors)
+		b.addAction("Tag names and colors", "rename discovered tags and choose their colors by account", sfMailTags)
 		if config.IsRetroTerminalTheme(s.themeName) {
 			b.addGroup("Terminal colors")
 			b.addInput("VT background (#rrggbb)", s.retroBgInput, sfRetroBg)
@@ -3257,6 +3286,8 @@ func (s Settings) fieldHint(field settingsField) string {
 		return "← → step through themes; T opens the picker, grouped by family with search"
 	case sfShowPaneHeaders:
 		return "show pane titles and shortcuts above content; when off, both move to the status line"
+	case sfShowMessageTagsInHeader:
+		return "show a message's tags below its date and sender in the content pane"
 	case sfShowNeedsYou:
 		return "show the Needs You view in the sidebar; when off, only the row is hidden"
 	case sfShowWaiting:
@@ -3264,7 +3295,7 @@ func (s Settings) fieldHint(field settingsField) string {
 	case sfShadow:
 		return "draw a soft drop shadow behind modal overlays"
 	case sfTagStyle:
-		return "← → to compare Pills (Square/Round/None), Compact, Plain, and Glyph Pills (Round); Round needs a Nerd Font"
+		return "← → to compare Pills (Square/Round/None), Compact, Plain, Glyph Pills (Round), and Tag icons; Round and Tag icons need a Nerd Font"
 	case sfShowSender:
 		return "show the sender's name in a column before the subject in the message list"
 	case sfThreadedConversations:

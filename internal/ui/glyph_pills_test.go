@@ -50,3 +50,37 @@ func TestRoundGlyphPillsSelection(t *testing.T) {
 		t.Fatal("missing ASCII fallback")
 	}
 }
+
+func TestTagIconsSelectionPreviewAndFallback(t *testing.T) {
+	cfg := config.DefaultConfig()
+	s := newSettings(cfg, settingsUpdateState{})
+	if got := s.ApplyTo(cfg).Display.TagStyle; got != cfg.Display.TagStyle {
+		t.Fatal("opening settings changed existing tag style")
+	}
+	s.tagPickerIdx = tagAppearanceIndex(config.TagStyleIcons, config.TagEndsSquare)
+	s.applyTagAppearanceSelection()
+	cfg = s.ApplyTo(cfg)
+	if cfg.Display.TagStyle != config.TagStyleIcons || newSettings(cfg, settingsUpdateState{}).tagPickerIdx != s.tagPickerIdx {
+		t.Fatal("tag icon preference did not survive reopening settings")
+	}
+	for _, icons := range []bool{true, false} {
+		want := "#"
+		if icons {
+			want = "\uf02b"
+		}
+		preview := ansi.Strip(renderTagExample(cfg.Display.TagStyle, cfg.Display.TagEnds, icons, "#000000"))
+		if preview != want {
+			t.Fatalf("preview = %q, want %q", preview, want)
+		}
+		tag := annotationTag{kind: tagMail, category: "Personal", color: "#009900"}
+		chips := layoutTags([]annotationTag{tag}, cfg.Display.TagStyle, cfg.Display.TagEnds, icons, 10)
+		if len(chips) != 1 || chips[0].text != want || chips[0].color != tag.color || !chips[0].colored || chips[0].filled {
+			t.Fatalf("icon rendering: %+v", chips)
+		}
+		for budget := 0; budget < 5; budget++ {
+			if chipsWidth(layoutTags([]annotationTag{tag, tag, tag}, cfg.Display.TagStyle, cfg.Display.TagEnds, icons, budget)) > budget {
+				t.Fatalf("icons exceed budget %d", budget)
+			}
+		}
+	}
+}

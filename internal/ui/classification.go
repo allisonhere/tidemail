@@ -6,6 +6,7 @@ import (
 
 	"github.com/allisonhere/tidemail/internal/attention"
 	"github.com/allisonhere/tidemail/internal/db"
+	"github.com/allisonhere/tidemail/internal/mailtag"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -25,12 +26,13 @@ type classificationEditor struct {
 	field     classificationField
 	choice    int
 	choices   []string
+	tags      []mailtag.Definition
 	custom    bool
 	input     textinput.Model
 }
 
 var classificationFieldNames = []string{"Needs reply", "Urgency", "Importance", "Category"}
-var categoryChoices = []string{"plugin", "none", "github", "receipt", "shipping", "security", "calendar", "newsletter", "support", "social", "billing", "notification", "personal", "custom"}
+var categoryChoices = []string{"plugin", "none", "github", "receipt", "shipping", "security", "calendar", "newsletter", "support", "social", "billing", "notification", "personal", "important", "work", "to-do", "later", "custom"}
 
 func (m Model) openClassificationEditor() (tea.Model, tea.Cmd) {
 	msg := m.commandMessage()
@@ -42,6 +44,8 @@ func (m Model) openClassificationEditor() (tea.Model, tea.Cmd) {
 
 func (m Model) openClassificationEditorFor(messageID int64) (tea.Model, tea.Cmd) {
 	m.classification = classificationEditor{messageID: messageID}
+	m.prepareMessageMailTags(messageID)
+	m.classification.tags = m.accountMailTags(m.mailTags.editor.accountID)
 	m.classification.setChoices(m.effectiveClassification(messageID))
 	m.overlay = overlayClassification
 	return m, nil
@@ -74,7 +78,13 @@ func (e *classificationEditor) setChoices(c attention.EffectiveClassification) {
 			e.choice = 2
 		}
 	case classificationCategory:
-		e.choices = categoryChoices
+		e.choices = append([]string(nil), categoryChoices[:len(categoryChoices)-1]...)
+		for _, tag := range e.tags {
+			if !isDefaultTag(tag.Keyword) {
+				e.choices = append(e.choices, "tag:"+tag.Keyword)
+			}
+		}
+		e.choices = append(e.choices, "custom")
 		value := c.Category
 		if c.CategorySource == attention.SourceUser && value == "" {
 			value = db.ClassificationNone
@@ -113,6 +123,11 @@ func (e *classificationEditor) key() string {
 }
 
 func (e *classificationEditor) displayChoice(choice string) string {
+	for _, tag := range e.tags {
+		if keyword := categoryKeyword(choice); keyword != "" && strings.EqualFold(keyword, tag.Keyword) {
+			return sanitizePluginLine(tag.Name)
+		}
+	}
 	switch choice {
 	case "plugin":
 		return "Use plugin decision"
@@ -124,6 +139,8 @@ func (e *classificationEditor) displayChoice(choice string) string {
 		return "Normal"
 	case "none":
 		return "No category"
+	case "to-do":
+		return "To Do"
 	case "custom":
 		return "Custom…"
 	}
@@ -177,6 +194,9 @@ func (m Model) handleClassificationMsg(msg classificationOverrideMsg) (tea.Model
 
 func (m Model) handleClassificationKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	e := &m.classification
+	if m.mailTags.busy && !keyMatches(msg, m.keys.Cancel, m.keys.Back) {
+		return m, nil
+	}
 	if e.custom {
 		switch {
 		case keyMatches(msg, m.keys.Cancel):
@@ -188,7 +208,7 @@ func (m Model) handleClassificationKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.setStatus("invalid custom category", true)
 				return m, nil
 			}
-			return m, classificationOverrideCmd(m.db, e.messageID, e.key(), value, false)
+			return m.saveClassificationChoice(value)
 		}
 		e.input, _ = e.input.Update(msg)
 		return m, nil
@@ -210,6 +230,10 @@ func (m Model) handleClassificationKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		e.choice = max(0, e.choice-1)
 	case keyMatches(msg, m.keys.Right):
 		e.choice = min(len(e.choices)-1, e.choice+1)
+	case keyMatches(msg, m.keys.Space) && e.field == classificationCategory:
+		if keyword := categoryKeyword(e.choices[e.choice]); keyword != "" {
+			return m.saveCategoryTag(keyword, !mailtag.Has(m.mailTags.editor.message.Flags, keyword), "")
+		}
 	case keyMatches(msg, m.keys.Confirm):
 		value := e.choices[e.choice]
 		if e.field == classificationCategory && value == "custom" {
@@ -219,7 +243,7 @@ func (m Model) handleClassificationKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			e.input.Focus()
 			return m, textinput.Blink
 		}
-		return m, classificationOverrideCmd(m.db, e.messageID, e.key(), value, false)
+		return m.saveClassificationChoice(value)
 	}
 	return m, nil
 }
@@ -242,12 +266,47 @@ func (m Model) renderClassificationOverlay() string {
 		lines = append(lines, base.Render(marker+name))
 	}
 	lines = append(lines, "", base.Bold(true).Render(nameForClassificationField(e.field)+":"))
-	for i, choice := range e.choices {
+	visible := max(1, m.height-23)
+	start := max(0, e.choice-visible+1)
+	end := min(len(e.choices), start+visible)
+	if start > 0 {
+		lines = append(lines, base.Render("… more above"))
+	}
+	for i := start; i < end; i++ {
+		choice := e.choices[i]
 		marker := "  "
 		if i == e.choice {
 			marker = "● "
 		}
-		lines = append(lines, base.Render(marker+e.displayChoice(choice)))
+		label := e.displayChoice(choice)
+		if e.field == classificationCategory && categoryKeyword(choice) != "" {
+			checked := "[ ] "
+			if mailtag.Has(m.mailTags.editor.message.Flags, categoryKeyword(choice)) {
+				checked = "[x] "
+			}
+			label = checked + label
+		}
+		lines = append(lines, base.Render(truncate(marker+label, max(1, width-4))))
+	}
+	if end < len(e.choices) {
+		lines = append(lines, base.Render("… more below"))
+	}
+	assigned := m.mailTagsForMessage(m.mailTags.editor.message)
+	if len(assigned) > 0 {
+		names := make([]string, len(assigned))
+		for i, tag := range assigned {
+			names[i] = tag.category
+		}
+		lines = append(lines, base.Render(truncate("Saved tags: "+strings.Join(names, ", "), width-4)))
+	}
+	if e.field == classificationCategory {
+		lines = append(lines, base.Render("[x] saved on server; space toggles selected tag"))
+	}
+	if m.mailTags.busy {
+		lines = append(lines, base.Render("Saving tag to server…"))
+	}
+	if m.mailTags.editor.error != "" {
+		lines = append(lines, base.Render(truncate(m.mailTags.editor.error, width-4)))
 	}
 	lines = append(lines, "", base.Render("↑↓ field  ←→ choice  enter save  r reset all  esc cancel"))
 	body := base.Padding(1, 2).Width(width).Render(strings.Join(lines, "\n"))
@@ -298,4 +357,66 @@ func (m Model) effectiveClassificationFor(messageIDs ...int64) attention.Effecti
 		}
 	}
 	return out
+}
+
+func categoryKeyword(category string) string {
+	if strings.HasPrefix(category, "tag:") {
+		return strings.TrimPrefix(category, "tag:")
+	}
+	switch category {
+	case "important":
+		return "$label1"
+	case "work":
+		return "$label2"
+	case "personal":
+		return "$label3"
+	case "to-do":
+		return "$label4"
+	case "later":
+		return "$label5"
+	}
+	return ""
+}
+
+func (m Model) saveCategoryTag(keyword string, enabled bool, category string) (tea.Model, tea.Cmd) {
+	m.mailTags.busy = true
+	m.mailTags.editor.error = ""
+	m.mailTags.operation++
+	m.mailTags.searchVersion++
+	change := m.changeMailTagCmd(m.mailTags.editor.message, keyword, enabled, m.mailTags.operation)
+	database, messageID := m.db, m.classification.messageID
+	return m, func() tea.Msg {
+		result := change().(mailTagChangedMsg)
+		if result.err == nil && category != "" {
+			correction := classificationOverrideCmd(database, messageID, db.ClassificationCategory, category, false)().(classificationOverrideMsg)
+			result.classification = &correction
+			if correction.Err != nil {
+				result.err = fmt.Errorf("tag saved on server; local category failed: %w", correction.Err)
+			}
+		}
+		return result
+	}
+}
+
+func isDefaultTag(keyword string) bool {
+	for _, category := range categoryChoices {
+		if mapped := categoryKeyword(category); mapped != "" && strings.EqualFold(mapped, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+func (m Model) saveClassificationChoice(value string) (tea.Model, tea.Cmd) {
+	m.classification.custom = false
+	if m.classification.field == classificationCategory {
+		if keyword := categoryKeyword(value); keyword != "" {
+			category := value
+			if strings.HasPrefix(value, "tag:") {
+				category = ""
+			}
+			return m.saveCategoryTag(keyword, true, category)
+		}
+	}
+	return m, classificationOverrideCmd(m.db, m.classification.messageID, m.classification.key(), value, false)
 }

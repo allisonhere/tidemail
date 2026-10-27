@@ -175,6 +175,8 @@ func (m Model) renderOverlay(base string) string {
 	case overlayColorPicker:
 		box = m.renderColorPicker()
 
+	case overlayMailTags:
+		box = m.renderMailTagsOverlay()
 	case overlayClassification:
 		box = m.renderClassificationOverlay()
 

@@ -103,6 +103,13 @@ Current release: **v1.0.28**.
   defaults to Thunderbird's shared public client (paste-back flow) or a custom
   `TIDEMAIL_MS_CLIENT_ID` (device-code). XOAUTH2 for IMAP and SMTP; refresh
   token stored in the keychain and rotation-persisted.
+- **Thunderbird / IMAP mail tags**: discover server keywords, display default
+  Thunderbird labels, map custom names and colors per account, search by keyword
+  or name, and manage tags within the Category choices in `e`. Compatible category
+  selections save to IMAP; Space toggles individual tags and preserves the rest.
+  Optional Tag icons use colored tag glyphs with an ASCII fallback. External changes refresh on sync;
+  unsupported servers reject edits without claiming success. No profile import,
+  offline queue, bulk tagging, or automatic AI assignment.
 - **Search**, unread-only filtering, command palette, desktop notifications.
 - **Experimental plugins**: manual and automatic metadata classification,
   stored tags with local corrections (`e` on a message), Needs You with immediate
