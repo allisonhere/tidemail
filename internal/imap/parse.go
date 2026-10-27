@@ -182,13 +182,14 @@ func (c *Client) FetchRaw(ctx context.Context, mailboxName string, uid uint32) (
 func (c *Client) fetchNumSet(numSet imap.NumSet) ([]db.Message, error) {
 	bodySection := &imap.FetchItemBodySection{}
 	headerSection := &imap.FetchItemBodySection{Specifier: imap.PartSpecifierHeader}
+	// No BODYSTRUCTURE: the body is parsed from BodySection, and iCloud sends
+	// multipart structures go-imap can't parse, failing the whole fetch (#62).
 	fetchOptions := &imap.FetchOptions{
-		UID:           true,
-		Flags:         true,
-		Envelope:      true,
-		InternalDate:  true,
-		BodyStructure: &imap.FetchItemBodyStructure{},
-		BodySection:   []*imap.FetchItemBodySection{bodySection, headerSection},
+		UID:          true,
+		Flags:        true,
+		Envelope:     true,
+		InternalDate: true,
+		BodySection:  []*imap.FetchItemBodySection{bodySection, headerSection},
 	}
 
 	cmd := c.conn.Fetch(numSet, fetchOptions)
