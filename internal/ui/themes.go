@@ -85,13 +85,3 @@ func pickableThemeNameAt(idx int) string {
 	}
 	return pt[idx].Name
 }
-
-// pickableThemeLabelAt returns the human-readable label (family and variant) of
-// the theme at idx into PickableThemes(), clamping like pickableThemeNameAt.
-func pickableThemeLabelAt(idx int) string {
-	pt := PickableThemes()
-	if idx < 0 || idx >= len(pt) {
-		idx = 0
-	}
-	return pt[idx].Label()
-}
