@@ -24,6 +24,13 @@ All notable changes to TideMail are documented in this file.
 - `vt52` now uses a charcoal-black background instead of pure black.
 - Quoted text uses its theme's quote color, a category tag without its own color follows the theme's tag color, and starred rows use the warning color.
 
+### Fixed
+
+- iCloud mailboxes no longer fail to sync with `expected (, got ")"`: TideMail no
+  longer requests BODYSTRUCTURE, which iCloud sends in a form the IMAP parser
+  rejected, so one message could block a whole mailbox (#62).
+- Windows builds work again (tideui v0.3.1).
+
 ## v1.6.0
 
 ### Added
