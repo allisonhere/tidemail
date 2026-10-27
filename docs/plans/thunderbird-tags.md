@@ -1,13 +1,11 @@
 # Thunderbird-compatible tags plan
 
-Status: implemented in the working tree on `feat/thunderbird-tags`; validation
-is recorded below.
+Status: implemented on `feat/thunderbird-tags`; validation is recorded below.
 
 Issue: https://github.com/allisonhere/tidemail/issues/54
 
-Working branch: `feat/thunderbird-tags`. The implementation remains
-uncommitted. This revision replaces the separate Mail tags and Classification
-tabs while retaining the useful backend work.
+This revision replaces the separate Mail tags and Classification tabs while
+retaining the useful backend work.
 
 ## Intended experience
 
@@ -95,8 +93,7 @@ shown once in message rows.
   users' appearance preferences or synchronization behavior.
 - Backend safety checks and relevant synchronization tests continue to pass;
   revised editor behavior receives focused verification.
-- Verify interoperability with Thunderbird when available. Live Thunderbird
-  validation has not yet been performed because it is not installed.
+- Verify interoperability with Thunderbird.
 
 ## Verification
 
@@ -104,15 +101,15 @@ Focused tests cover the unified editor, account isolation, local names/colors,
 server-write failures, pending operations, and the icon preference and fallback.
 A two-client IMAP test verifies category writes preserve existing custom and
 default tags, and that external assignments refresh on synchronization. Live
-Thunderbird validation remains outstanding because Thunderbird is not installed.
+Thunderbird validation confirmed tags assigned in either client appear in the
+other.
 
 Validation completed for this revision:
 
 - `go build ./...` and `go vet ./...` passed.
 - `go test ./... -race` passed; focused race tests also passed after the final
   editor layout and sync-refresh changes.
-- Changed-code lint reported zero issues. Full lint retains the pre-existing
-  unused `pickableThemeLabelAt` helper in `internal/ui/themes.go`.
+- `golangci-lint run` reported zero issues.
 - `govulncheck` reported no vulnerabilities affecting this code; six findings
   exist in required modules that the code does not appear to call.
 - `git diff --check` passed.
