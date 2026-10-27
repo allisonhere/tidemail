@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	xhtml "golang.org/x/net/html"
 )
 
 var httpURLPattern = regexp.MustCompile(`https?://[^\s<>"'\[]+`)
@@ -36,35 +37,209 @@ func extractActionableLinks(content, articleURL string) []string {
 }
 
 func extractActionableLinksFromHTML(content, articleURL string) []string {
-	seen := map[string]struct{}{}
-	links := make([]string, 0, 8)
+	links, _ := extractHTMLLinks(content, articleURL)
+	return links
+}
 
-	appendLink := func(raw string) {
-		link := cleanDetectedURL(raw)
-		if link == "" {
-			return
+// Explicit anchors also support mail actions. Unlike detected prose URLs,
+// their mailto payload must not be trimmed, unescaped again, or rewritten.
+func cleanAnchorDestination(raw string) string {
+	target := strings.TrimSpace(raw)
+	if isMailtoDestination(target) {
+		for _, r := range target {
+			if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
+				return ""
+			}
 		}
-		if _, exists := seen[link]; exists {
-			return
-		}
-		seen[link] = struct{}{}
-		links = append(links, link)
+		return target
 	}
+	return cleanDetectedURL(target)
+}
 
-	appendLink(articleURL)
+func isMailtoDestination(target string) bool {
+	return len(target) > len("mailto:") && strings.EqualFold(target[:len("mailto:")], "mailto:")
+}
+
+// Collect destinations and labels together so both use the same normalized DOM.
+// The original DOM is needed only for Outlook fallbacks and input captions.
+func extractHTMLLinks(content, articleURL string) ([]string, map[string]string) {
+	seen := make(map[string]bool)
+	var links []string
+	labels := make(map[string]string)
+	appendLink := func(target string) {
+		if target != "" && !seen[target] {
+			seen[target] = true
+			links = append(links, target)
+		}
+	}
+	setLabel := func(target, label string) {
+		if target != "" && label != "" && label != target && labels[target] == "" {
+			labels[target] = label
+		}
+	}
+	appendLink(cleanDetectedURL(articleURL))
+	// Preserve the existing Reddit policy, including posts inside layouts that
+	// generic body normalization intentionally removes.
 	for _, link := range extractRedditPostLinks(content) {
 		appendLink(link)
 	}
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(normalizeHTMLForRendering(content)))
-	if err == nil {
-		doc.Find("a[href], img[src], img[data-src]").Each(func(_ int, s *goquery.Selection) {
-			appendLink(attrFirst(s, "href", "src", "data-src"))
+	if err != nil {
+		return links, labels
+	}
+	doc.Find("a[href]").Each(func(_ int, anchor *goquery.Selection) {
+		target := cleanAnchorDestination(attrFirst(anchor, "href"))
+		appendLink(target)
+		setLabel(target, descriptiveLinkLabel(anchor))
+	})
+	for _, match := range httpURLPattern.FindAllString(visibleHTMLLinkText(doc), -1) {
+		appendLink(cleanDetectedURL(match))
+	}
+
+	lower := strings.ToLower(content)
+	if !strings.Contains(lower, "mso-hide") && !strings.Contains(lower, "<input") {
+		return links, labels
+	}
+	raw, err := goquery.NewDocumentFromReader(strings.NewReader(content))
+	if err != nil {
+		return links, labels
+	}
+	raw.Find("script,style,noscript,template,head,meta,link").Remove()
+	raw.Find("a[href]").Each(func(_ int, anchor *goquery.Selection) {
+		target := cleanAnchorDestination(attrFirst(anchor, "href"))
+		if target == "" {
+			return
+		}
+		msoHidden, visible := fallbackLabelVisibility(anchor)
+		if !visible {
+			return
+		}
+		if msoHidden {
+			appendLink(target)
+		}
+		if !seen[target] || labels[target] != "" {
+			return
+		}
+		var button string
+		anchor.Find("input").EachWithBreak(func(_ int, input *goquery.Selection) bool {
+			kind := strings.ToLower(strings.TrimSpace(attrFirst(input, "type")))
+			if kind != "button" && kind != "submit" {
+				return true
+			}
+			if _, visible := fallbackLabelVisibility(input); !visible {
+				return true
+			}
+			button = cleanLinkLabel(attrFirst(input, "value"))
+			return button == ""
+		})
+		if !msoHidden && button == "" {
+			return
+		}
+		label := descriptiveLinkLabel(anchor)
+		if label == "" {
+			label = button
+		}
+		setLabel(target, label)
+	})
+	return links, labels
+}
+
+// Only text nodes contribute bare URLs. Ordinary inline markup stays continuous;
+// anchor, block and line boundaries keep separate displayed URLs apart.
+// Image descriptions are labels, not another source of bare destinations.
+func visibleHTMLLinkText(doc *goquery.Document) string {
+	var out strings.Builder
+	var walk func(*xhtml.Node)
+	walk = func(n *xhtml.Node) {
+		if n.Type == xhtml.TextNode {
+			out.WriteString(n.Data)
+			return
+		}
+		if n.Type != xhtml.ElementNode && n.Type != xhtml.DocumentNode {
+			return
+		}
+		block := false
+		switch n.Data {
+		case "a", "address", "article", "aside", "blockquote", "br", "dd", "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "li", "main", "nav", "ol", "p", "pre", "section", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul", "img":
+			block = true
+		}
+		if block {
+			out.WriteByte('\n')
+		}
+		for child := n.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+		if block {
+			out.WriteByte('\n')
+		}
+	}
+	for _, root := range doc.Find("body").Nodes {
+		walk(root)
+	}
+	return out.String()
+}
+
+// Reddit's specialized renderer supplies its own targets; reuse HTML label
+// recovery without adding destinations outside that renderer's policy.
+func extractLinkLabels(content string, targets []string) map[string]string {
+	if len(targets) == 0 {
+		return nil
+	}
+	_, available := extractHTMLLinks(content, "")
+	labels := make(map[string]string)
+	for _, target := range targets {
+		if label := available[target]; label != "" {
+			labels[target] = label
+		}
+	}
+	return labels
+}
+
+func cleanLinkLabel(text string) string { return sanitizePluginLine(unescapeDisplayText(text)) }
+
+func descriptiveLinkLabel(sel *goquery.Selection) string {
+	label := cleanLinkLabel(sel.Text())
+	if label == "" {
+		images := sel.Find("img")
+		if sel.Is("img") {
+			images = sel
+		}
+		images.EachWithBreak(func(_ int, image *goquery.Selection) bool {
+			if alt := cleanLinkLabel(attrFirst(image, "alt", "title", "aria-label")); alt != "" {
+				label = "[image: " + alt + "]"
+				return false
+			}
+			return true
 		})
 	}
-	for _, match := range httpURLPattern.FindAllString(content, -1) {
-		appendLink(match)
+	if label == "" {
+		label = cleanLinkLabel(attrFirst(sel, "aria-label", "title"))
 	}
-	return links
+	return label
+}
+
+// fallbackLabelVisibility ignores only mso-hide, not general hidden content.
+// Parent styles matter because Outlook fallbacks can be hidden on a table cell.
+func fallbackLabelVisibility(sel *goquery.Selection) (msoHidden, visible bool) {
+	visible = true
+	sel.AddSelection(sel.Parents()).EachWithBreak(func(_ int, node *goquery.Selection) bool {
+		_, hidden := node.Attr("hidden")
+		if hidden || strings.EqualFold(strings.TrimSpace(attrFirst(node, "aria-hidden")), "true") {
+			visible = false
+			return false
+		}
+		style := parseInlineStyle(attrFirst(node, "style"))
+		if strings.Contains(style["mso-hide"], "all") {
+			msoHidden = true
+		}
+		delete(style, "mso-hide")
+		if hiddenByInlineStyle(style) {
+			visible = false
+			return false
+		}
+		return true
+	})
+	return msoHidden, visible
 }
 
 func filterLinksFromContent(content string) string {

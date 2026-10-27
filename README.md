@@ -273,6 +273,13 @@ Email text and attachment saving still work.
 Full headers are one `Ctrl+E` away, with SPF, DKIM, and DMARC results called out
 in color. `Ctrl+O` shows the complete message source, ready to copy.
 
+With **Actionable links** enabled, the reader's **LINKS** section uses anchor text
+or image descriptions. `Ctrl+N` / `Alt+N` and `Alt+P` move the visible selection
+and scroll it into view. `o` or `Enter` opens the destination; `Ctrl+C` on a LINKS
+row copies its full URL when no text selection is active. Email actions appear
+as `[mailto: description]` and open through the configured URI handler without
+sending a message. HTML resource and metadata URLs are excluded from LINKS.
+
 ## Optional AI tools
 
 Connect OpenAI, Claude, Gemini, or a local Ollama server if you want message

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/allisonhere/tidemail/internal/db"
@@ -19,10 +20,11 @@ type messageRenderContext struct {
 }
 
 type messageRenderResult struct {
-	body   string
-	links  []string
-	images []renderImage
-	ok     bool
+	body       string
+	links      []string
+	linkLabels map[string]string
+	images     []renderImage
+	ok         bool
 }
 
 type messageRenderer func(messageRenderContext) messageRenderResult
@@ -48,6 +50,7 @@ func (m Model) renderMessageForDisplay(msg db.Message, width int) messageRenderR
 			// and a shared backing array would let one caller's edits reach
 			// the cached result.
 			res.links = append([]string(nil), res.links...)
+			res.linkLabels = maps.Clone(res.linkLabels)
 			res.images = append([]renderImage(nil), res.images...)
 			return res
 		}
@@ -66,12 +69,10 @@ func (m Model) renderMessageForDisplay(msg db.Message, width int) messageRenderR
 	if m.pgpEncryptedUnread(msg) {
 		result.body = indentBlock(ctx.bodyStyle.Render(m.pgpCallout()), 1)
 	}
-	if len(result.links) == 0 {
-		result.links = collectMessageLinks(msg)
-	}
 	if cacheable {
 		stored := result
 		stored.links = append([]string(nil), result.links...)
+		stored.linkLabels = maps.Clone(result.linkLabels)
 		stored.images = append([]renderImage(nil), result.images...)
 		m.bodyCache.put(key, stored)
 	}
@@ -103,9 +104,8 @@ func renderMessageWithContext(ctx messageRenderContext) messageRenderResult {
 		}
 	}
 	return messageRenderResult{
-		body:  indentBlock(ctx.bodyStyle.Render("No message body."), 1),
-		links: collectMessageLinks(ctx.msg),
-		ok:    true,
+		body: indentBlock(ctx.bodyStyle.Render("No message body."), 1),
+		ok:   true,
 	}
 }
 
@@ -117,10 +117,12 @@ func renderRedditMessage(ctx messageRenderContext) messageRenderResult {
 	if !ok {
 		return messageRenderResult{}
 	}
+	links := extractRedditPostLinks(ctx.msg.BodyHTML)
 	return messageRenderResult{
-		body:  indentBlock(ctx.bodyStyle.Render(rendered), 1),
-		links: mergeActionableLinks(extractActionableLinks(ctx.msg.BodyText, ""), extractRedditPostLinks(ctx.msg.BodyHTML)),
-		ok:    true,
+		body:       indentBlock(ctx.bodyStyle.Render(rendered), 1),
+		links:      links,
+		linkLabels: extractLinkLabels(ctx.msg.BodyHTML, links),
+		ok:         true,
 	}
 }
 
@@ -132,11 +134,13 @@ func renderHTMLMessage(ctx messageRenderContext) messageRenderResult {
 	if strings.TrimSpace(body) == "" {
 		return messageRenderResult{}
 	}
+	links, labels := extractHTMLLinks(ctx.msg.BodyHTML, "")
 	return messageRenderResult{
-		body:   body,
-		links:  collectMessageLinks(ctx.msg),
-		images: images,
-		ok:     true,
+		body:       body,
+		links:      links,
+		linkLabels: labels,
+		images:     images,
+		ok:         true,
 	}
 }
 
@@ -150,15 +154,7 @@ func renderPlainTextMessage(ctx messageRenderContext) messageRenderResult {
 	}
 	return messageRenderResult{
 		body:  indentBlock(ctx.bodyStyle.Render(formatArticleBody(content, ctx.width, ctx.theme, ctx.plainUI)), 1),
-		links: collectMessageLinks(ctx.msg),
+		links: extractActionableLinks(ctx.msg.BodyText, ""),
 		ok:    true,
 	}
-}
-
-func collectMessageLinks(msg db.Message) []string {
-	links := extractActionableLinks(msg.BodyText, "")
-	if msg.BodyHTML != "" {
-		links = mergeActionableLinks(links, extractActionableLinksFromHTML(msg.BodyHTML, ""))
-	}
-	return links
 }

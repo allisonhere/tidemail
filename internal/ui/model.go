@@ -213,18 +213,20 @@ type Model struct {
 	// the server, so a second one can't start from names that are about to change.
 	folderOpBusy bool
 
-	viewport         viewport.Model
-	contentLinks     []string
-	contentLinkIdx   int
-	contentMessageID int64
-	contentDraftID   int64
-	contentFocusLine int
-	contentLineCount int
-	contentFocusable []bool
-	contentLines     []string
-	// contentLineLinks holds the OSC 8 hyperlink target for each contentLines
-	// entry, index-aligned with it, so a link that exists only inside an escape
-	// sequence can still be resolved from the focus line.
+	viewport          viewport.Model
+	contentLinks      []string
+	contentLinkLabels map[string]string
+	contentLinkRows   []int
+	contentLinkIdx    int
+	contentMessageID  int64
+	contentDraftID    int64
+	contentFocusLine  int
+	contentLineCount  int
+	contentFocusable  []bool
+	contentLines      []string
+	// contentLineLinks holds the hyperlink target for each contentLines entry,
+	// including explicit LINKS destinations when OSC 8 is unavailable. Body
+	// targets come from OSC 8 escapes stripped from the displayed text.
 	contentLineLinks       []string
 	contentSearchInput     textinput.Model
 	contentSearchQuery     string
@@ -2397,7 +2399,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.stepContentLink(1)
 			if m.activeMessageRowCount() > 0 {
 				m.setViewportForCurrentRow()
-				m.viewport.GotoBottom()
+				m.revealContentLink()
 			}
 		}
 		return m, nil
@@ -2407,7 +2409,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.stepContentLink(-1)
 			if m.activeMessageRowCount() > 0 {
 				m.setViewportForCurrentRow()
-				m.viewport.GotoBottom()
+				m.revealContentLink()
 			}
 		}
 		return m, nil
