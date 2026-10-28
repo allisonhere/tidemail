@@ -6,6 +6,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.7.1
+
 ### Added
 
 - One friendly, one-time note about supporting TideMail appears after about a
