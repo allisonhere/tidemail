@@ -16,6 +16,8 @@ the good seat.
 
 ![TideMail demo: browsing the unified inbox, link destinations, and switching themes](docs/demo/demo.gif)
 
+[Watch the 40-second intro video](https://mylivelab.com/assets/videos/tidemail-intro-web.mp4)
+
 Need the full settings and shortcut reference? Open the
 [setup and usage guide](docs/guide.md).
 
