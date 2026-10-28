@@ -1,7 +1,7 @@
 # TideMail README demo. Record it with docs/demo/record.sh (it builds TideMail, seeds a
 # throwaway sandbox of made-up mail, then runs this tape). Output: docs/demo/demo.gif.
 #
-# Keys used: Tab (next pane), j/k (move), Enter (open), T (theme picker), q (quit).
+# Keys used: Tab (next pane), Down/Up (move), Enter (open), Ctrl+N (next link), T (theme picker).
 # Adjust the Sleep values if your machine is slow.
 
 Output docs/demo/demo.gif
@@ -35,36 +35,28 @@ Sleep 700ms
 Up
 Sleep 700ms
 
-# Open the newsletter: links are listed with their real destination host,
-# and tracking pixels are left out.
+# Open the newsletter: the LINKS list shows each link with its real destination,
+# and leaves the tracking pixel out. Ctrl+N steps through the links.
 Down
 Down
 Sleep 400ms
 Enter
 Sleep 2s
-Tab
-Sleep 600ms
-Down
-Down
-Down
-Sleep 1.2s
+Ctrl+N
+Sleep 1.4s
+Ctrl+N
+Sleep 1.4s
 
-# Change themes on the fly (52 built in).
+# Change themes on the fly (52 built in), ending on a dark one.
 Type "T"
 Sleep 1.5s
 Down
-Sleep 900ms
+Sleep 1s
 Down
-Sleep 900ms
+Sleep 1s
 Down
-Sleep 900ms
+Sleep 1s
 Down
-Sleep 900ms
+Sleep 1s
 Enter
-Sleep 2s
-
-# Quit.
-Type "q"
-Sleep 500ms
-Type "y"
-Sleep 800ms
+Sleep 2.5s

@@ -15,8 +15,4 @@ The script builds TideMail, runs `cmd/demoseed` to fill a throwaway sandbox in
 result under about 5 MB; if it is larger, lower `Width`/`Height` or `FontSize`
 in the tape, or trim sleeps.
 
-When the GIF looks right, commit it and add this under the tagline in the README:
-
-```markdown
-![TideMail demo](docs/demo/demo.gif)
-```
+The README already embeds the GIF, so after re-recording just commit the new file.

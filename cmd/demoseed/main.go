@@ -57,6 +57,7 @@ func seed(dir string) error {
 
 	cfg := config.DefaultConfig()
 	cfg.Theme = "catppuccin-mocha"
+	cfg.Display.ActionableLinks = true
 	cfg.Accounts = []config.AccountConfig{
 		{ID: "demo-personal", Name: "Personal", Provider: "custom", User: "alex@example.com", From: "Alex Rivera <alex@example.com>", SyncMinutes: -1},
 		{ID: "demo-work", Name: "Work", Provider: "custom", User: "alex@acme.example", From: "Alex Rivera <alex@acme.example>", SyncMinutes: -1},
