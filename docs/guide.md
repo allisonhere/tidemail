@@ -1133,7 +1133,7 @@ Things to know:
 ## Themes
 
 Press `T` to open the theme picker, or pick one under Settings → Display. There
-are 52 built-in themes in 24 families (Catppuccin, Tokyo Night, Rosé Pine,
+are 51 built-in themes in 23 families (Catppuccin, Tokyo Night, Rosé Pine,
 Gruvbox, Nord, Solarized, Nightfox, Kanagawa, GitHub and others, plus the retro
 `vt100` and `vt52` and three original palettes), grouped by family in the
 picker. `↑`/`↓` preview a theme across the whole app, `Enter` keeps it and saves

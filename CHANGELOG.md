@@ -12,6 +12,29 @@ All notable changes to TideMail are documented in this file.
   week of use. It never repeats, and **Settings → Display → Support reminder**
   (`support_reminder = false`) turns it off.
 - README support section and badges, and a support line in release notes.
+- Links in the reader show a readable label and their destination host, and a
+  `!` warns when a link's text names a different site than the link goes to.
+  Open-tracking pixel links are left out of the LINKS list.
+- Press `Ctrl+B` to open an HTML message in your default browser. It uses the
+  browser you configured, blocks remote content, and a second `Ctrl+B` reopens it
+  with remote images. Exported files are pruned.
+
+### Changed
+
+- The theme picker (`T`) now comes from tideui, so TideMail and Tide share one
+  implementation. Family grouping, `/` search, swatches and the live preview are
+  unchanged for you.
+- The theme collection is now 51 themes in 23 families. Shades of Purple was
+  removed upstream, so a saved `shades-of-purple` falls back to the default theme.
+- `Enter` and `o` open a link only after you deliberately select it, from the
+  LINKS list or with the keyboard. Clicking the message body never opens a link.
+- The status bar shows `N links` until you select one, then `link i/N`.
+
+### Fixed
+
+- Typing in the composer no longer lags.
+- The Drafts list refreshes live while you compose.
+- Scrolling up in the reader brings the message header back into view.
 
 ## v1.7.0
 
