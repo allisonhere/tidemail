@@ -146,6 +146,10 @@ const (
 
 // ── Model ────────────────────────────────────────────────────────────────────
 
+// Model keeps Bubble Tea's value-receiver Init/Update/View contract. Read-only
+// rendering and layout helpers use pointer receivers to avoid repeatedly copying
+// the large modal state stored here; those helpers must not mutate value fields.
+// The existing pointer-owned rendering caches are intentionally shared.
 type Model struct {
 	db *db.DB
 	// sessions pools one live IMAP connection per account; all background
@@ -3725,11 +3729,11 @@ func (m Model) View() string {
 
 // ── Pane renderers ────────────────────────────────────────────────────────────
 
-func (m Model) renderPaneHeader(p pane, label string, focused bool, width int) string {
+func (m *Model) renderPaneHeader(p pane, label string, focused bool, width int) string {
 	return m.renderPaneHeaderWithAccent(p, label, focused, width, m.styles.PaneHeaderActive)
 }
 
-func (m Model) renderPaneHeaderWithAccent(p pane, label string, focused bool, width int, activeStyle lipgloss.Style) string {
+func (m *Model) renderPaneHeaderWithAccent(p pane, label string, focused bool, width int, activeStyle lipgloss.Style) string {
 	style := m.styles.PaneHeaderInactive
 	prefix := "    "
 	title := m.headerLabel(label)
@@ -3800,7 +3804,7 @@ func (m Model) renderPaneHint(p pane) string {
 	return hint
 }
 
-func (m Model) keyHint(binding key.Binding) string {
+func (m *Model) keyHint(binding key.Binding) string {
 	k := strings.TrimSpace(binding.Help().Key)
 	if k == "" {
 		return "?"
@@ -3941,7 +3945,7 @@ func (m Model) currentContentLink() (string, bool) {
 	return m.contentLinks[m.contentLinkIdx], true
 }
 
-func (m Model) renderStatusBar() string {
+func (m *Model) renderStatusBar() string {
 	w := m.width
 	updateInfoPart := m.statusUpdateInfoPart()
 	updateActionPart := m.statusUpdateActionPart()
@@ -4264,7 +4268,7 @@ func (m *Model) rebuildSidebar() {
 	m.clampSidebarOffset()
 }
 
-func (m Model) sidebarVisibleRows() int {
+func (m *Model) sidebarVisibleRows() int {
 	bodyLines := max(0, m.accountsPaneContentHeight()-m.paneHeaderHeight()-m.styles.ListItemLineStride())
 	return max(1, bodyLines/m.styles.ListItemLineStride())
 }
@@ -4426,25 +4430,25 @@ func (m Model) currentSidebarSelection() (sidebarRowKind, int64) {
 
 // selectedOutboxRow reports whether the cursor is on the sidebar's Outbox
 // entry, which Enter and Space open rather than treating as a folder.
-func (m Model) selectedOutboxRow() bool {
+func (m *Model) selectedOutboxRow() bool {
 	if m.sidebarCursor < 0 || m.sidebarCursor >= len(m.sidebarRows) {
 		return false
 	}
 	return m.sidebarRows[m.sidebarCursor].kind == rowKindOutbox
 }
 
-func (m Model) selectedUnifiedInbox() bool {
+func (m *Model) selectedUnifiedInbox() bool {
 	if m.sidebarCursor < 0 || m.sidebarCursor >= len(m.sidebarRows) {
 		return false
 	}
 	return m.sidebarRows[m.sidebarCursor].kind == rowKindUnified
 }
 
-func (m Model) searchActive() bool {
+func (m *Model) searchActive() bool {
 	return m.searchMode
 }
 
-func (m Model) selectedMailbox() *db.Mailbox {
+func (m *Model) selectedMailbox() *db.Mailbox {
 	if m.sidebarCursor < 0 || m.sidebarCursor >= len(m.sidebarRows) {
 		return nil
 	}
@@ -4475,7 +4479,7 @@ func (m Model) mailboxByID(mailboxID int64) *db.Mailbox {
 	return nil
 }
 
-func (m Model) accountByID(accountID int64) *db.Account {
+func (m *Model) accountByID(accountID int64) *db.Account {
 	for i := range m.accounts {
 		if m.accounts[i].ID == accountID {
 			return &m.accounts[i]
@@ -4717,7 +4721,7 @@ const (
 	messagesPaneStepPercent      = 5
 )
 
-func (m Model) accountsWidthPercent() int {
+func (m *Model) accountsWidthPercent() int {
 	pct := m.cfg.Display.AccountsWidthPercent
 	if pct <= 0 {
 		pct = defaultAccountsWidthPercent
@@ -4725,7 +4729,7 @@ func (m Model) accountsWidthPercent() int {
 	return clamp(pct, minAccountsWidthPercent, maxAccountsWidthPercent)
 }
 
-func (m Model) messagesHeightPercent() int {
+func (m *Model) messagesHeightPercent() int {
 	pct := m.cfg.Display.MessagesHeightPercent
 	if pct <= 0 {
 		pct = defaultMessagesHeightPercent
@@ -4759,20 +4763,20 @@ func (m *Model) refreshContentAfterPaneResize() {
 	}
 }
 
-func (m Model) feedsPaneWidth() int {
+func (m *Model) feedsPaneWidth() int {
 	w := m.width * m.accountsWidthPercent() / 100
 	return clamp(w, 1, max(1, m.width-1))
 }
 
-func (m Model) articlesPaneWidth() int { return m.width - m.feedsPaneWidth() }
-func (m Model) mainHeight() int        { return m.height - 1 }
+func (m *Model) articlesPaneWidth() int { return m.width - m.feedsPaneWidth() }
+func (m *Model) mainHeight() int        { return m.height - 1 }
 
 // accountsPaneContentWidth/Height are the accounts pane's inner content area
 // once its full 4-sided focus border is subtracted.
-func (m Model) accountsPaneContentWidth() int  { return max(1, m.feedsPaneWidth()-2) }
-func (m Model) accountsPaneContentHeight() int { return max(1, m.mainHeight()-2) }
+func (m *Model) accountsPaneContentWidth() int  { return max(1, m.feedsPaneWidth()-2) }
+func (m *Model) accountsPaneContentHeight() int { return max(1, m.mainHeight()-2) }
 
-func (m Model) articlesPaneOuterHeight() int {
+func (m *Model) articlesPaneOuterHeight() int {
 	h := m.mainHeight() * m.messagesHeightPercent() / 100
 	if m.mainHeight() <= 6 {
 		return max(1, h)
@@ -4782,40 +4786,40 @@ func (m Model) articlesPaneOuterHeight() int {
 
 // messagesPaneContentWidth is the messages pane's inner content width once
 // its full 4-sided focus border is subtracted.
-func (m Model) messagesPaneContentWidth() int { return max(1, m.articlesPaneWidth()-2) }
-func (m Model) articlesPaneContentHeight() int {
+func (m *Model) messagesPaneContentWidth() int { return max(1, m.articlesPaneWidth()-2) }
+func (m *Model) articlesPaneContentHeight() int {
 	return max(2, m.articlesPaneOuterHeight()-2)
 }
-func (m Model) articleRowsVisible() int {
+func (m *Model) articleRowsVisible() int {
 	stride := m.styles.ListItemLineStride()
 	bodyLines := max(0, m.articlesPaneContentHeight()-m.paneHeaderHeight()-m.messageSearchRowHeight())
 	return bodyLines / stride
 }
 
-func (m Model) messageSearchRowHeight() int {
+func (m *Model) messageSearchRowHeight() int {
 	if m.searchMode {
 		return 1
 	}
 	return 0
 }
 
-func (m Model) paneHeaderHeight() int {
+func (m *Model) paneHeaderHeight() int {
 	if m.cfg.Display.ShowPaneHeaders {
 		return 1
 	}
 	return 0
 }
-func (m Model) contentPaneOuterHeight() int {
+func (m *Model) contentPaneOuterHeight() int {
 	return max(3, m.mainHeight()-m.articlesPaneOuterHeight())
 }
 
 // contentPaneContentWidth is the content pane's inner content width once its
 // full 4-sided focus border is subtracted.
-func (m Model) contentPaneContentWidth() int { return max(1, m.articlesPaneWidth()-2) }
-func (m Model) contentBodyHeight() int {
+func (m *Model) contentPaneContentWidth() int { return max(1, m.articlesPaneWidth()-2) }
+func (m *Model) contentBodyHeight() int {
 	return max(1, m.contentPaneOuterHeight()-2-m.paneHeaderHeight())
 }
-func (m Model) contentBodyWidth() int {
+func (m *Model) contentBodyWidth() int {
 	w := m.contentPaneContentWidth()
 	if cap := m.cfg.Display.ReadingWidth; cap > 0 && cap < w {
 		return cap

@@ -97,7 +97,7 @@ const maxAnnotationTags = 3
 // order (reply, urgent, important, category), at most one per kind whichever
 // plugin set it. The value lists are shared with Needs You, so a tag and
 // Needs You always agree. It never queries the database.
-func (m Model) annotationTags(messageIDs ...int64) []annotationTag {
+func (m *Model) annotationTags(messageIDs ...int64) []annotationTag {
 	return tagsFromEffective(m.effectiveClassificationFor(messageIDs...))
 }
 
@@ -540,7 +540,7 @@ func tagBudget(titleSpace int) int {
 // renderMessageRow lays out one message row: prefix, star, optional sender
 // column, subject, tags, and the age column, styled with style. Rows without
 // tags are exactly the classic layout.
-func (m Model) renderMessageRow(style lipgloss.Style, prefix, star, sender string, showSender bool, senderW int, title string, tags []annotationTag, age string, width int) string {
+func (m *Model) renderMessageRow(style lipgloss.Style, prefix, star, sender string, showSender bool, senderW int, title string, tags []annotationTag, age string, width int) string {
 	classic := func(age string) string {
 		if showSender {
 			return style.Width(width).Render(renderArticleRowWithSender(prefix, star, sender, title, age, width, senderW))

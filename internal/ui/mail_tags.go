@@ -54,7 +54,7 @@ func (m *Model) reloadMailTags() {
 	m.mailTags.definitions = definitions
 }
 
-func (m Model) accountMailTags(accountID int64) []mailtag.Definition {
+func (m *Model) accountMailTags(accountID int64) []mailtag.Definition {
 	var out []mailtag.Definition
 	for _, d := range m.mailTags.definitions {
 		if d.AccountID == accountID {
@@ -64,7 +64,7 @@ func (m Model) accountMailTags(accountID int64) []mailtag.Definition {
 	return out
 }
 
-func (m Model) mailTagsForMessage(msg db.Message) []annotationTag {
+func (m *Model) mailTagsForMessage(msg db.Message) []annotationTag {
 	mailbox := m.mailboxByID(msg.MailboxID)
 	var accountID int64
 	if mailbox != nil {
@@ -403,7 +403,7 @@ func (m *Model) refreshMailTagTarget(messages []db.Message) {
 	}
 }
 
-func (m Model) mergeMessageTags(tags []annotationTag, message db.Message) []annotationTag {
+func (m *Model) mergeMessageTags(tags []annotationTag, message db.Message) []annotationTag {
 	merged := make([]annotationTag, 0, len(tags))
 	for _, tag := range tags {
 		if tag.kind == tagCategory && categoryKeyword(tag.category) != "" && mailtag.Has(message.Flags, categoryKeyword(tag.category)) {

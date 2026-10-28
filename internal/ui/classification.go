@@ -332,11 +332,11 @@ func loadMessageClassificationOverrides(database *db.DB, msgs []db.Message) map[
 	return overrides
 }
 
-func (m Model) effectiveClassification(messageID int64) attention.EffectiveClassification {
+func (m *Model) effectiveClassification(messageID int64) attention.EffectiveClassification {
 	return attention.FromDB(m.plugins.annotations[messageID], m.plugins.overrides[messageID])
 }
 
-func (m Model) effectiveClassificationFor(messageIDs ...int64) attention.EffectiveClassification {
+func (m *Model) effectiveClassificationFor(messageIDs ...int64) attention.EffectiveClassification {
 	var out attention.EffectiveClassification
 	for _, id := range messageIDs {
 		one := m.effectiveClassification(id)

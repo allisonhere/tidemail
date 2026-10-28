@@ -40,7 +40,7 @@ type (
 	}
 )
 
-func (m Model) selectedNeedsYou() bool {
+func (m *Model) selectedNeedsYou() bool {
 	if m.sidebarCursor < 0 || m.sidebarCursor >= len(m.sidebarRows) {
 		return false
 	}
@@ -284,7 +284,7 @@ func (m Model) displayNeedsYouCount() int {
 	return max(0, count)
 }
 
-func (m Model) renderNeedsYouRow(selected bool, width int) string {
+func (m *Model) renderNeedsYouRow(selected bool, width int) string {
 	badge := ""
 	if count := m.displayNeedsYouCount(); count > 0 {
 		badge = m.accountBadgeStyle(0, selected).Render(fmt.Sprintf("(%d)", count))
@@ -304,7 +304,7 @@ func (m Model) renderNeedsYouRow(selected bool, width int) string {
 // rowBadgeIDs are the messages whose annotations a list row's badges show:
 // the representative message, or in Needs You every message of a threaded
 // row, so a thread shows the signals that put it there.
-func (m Model) rowBadgeIDs(msg db.Message, thread messageThread) []int64 {
+func (m *Model) rowBadgeIDs(msg db.Message, thread messageThread) []int64 {
 	if m.selectedNeedsYou() && m.threadedMessagesEnabled() && len(thread.Messages) > 1 {
 		ids := make([]int64, len(thread.Messages))
 		for i, t := range thread.Messages {

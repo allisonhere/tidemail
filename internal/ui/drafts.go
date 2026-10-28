@@ -110,7 +110,7 @@ func draftSubject(d db.Draft) string {
 	return "(no subject)"
 }
 
-func (m Model) selectedDraftsMailbox() bool {
+func (m *Model) selectedDraftsMailbox() bool {
 	mb := m.selectedMailbox()
 	if mb == nil {
 		return false

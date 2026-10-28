@@ -120,7 +120,7 @@ func (m Model) hasPGPPlugin() bool { _, ok := m.pgpPlugin(); return ok }
 // pgpHintApplies says whether the key hints should offer the decrypt key: a
 // PGP plugin is installed and the message in the content pane is protected and
 // not yet decoded (a failed decode keeps the hint, as a retry).
-func (m Model) pgpHintApplies() bool {
+func (m *Model) pgpHintApplies() bool {
 	if _, ok := m.pgpPlugin(); !ok || m.contentMessageID == 0 {
 		return false
 	}

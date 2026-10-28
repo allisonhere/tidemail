@@ -21,7 +21,7 @@ const (
 	remoteDeleteMoveToTrash
 )
 
-func (m Model) renderMessagesPane() string {
+func (m *Model) renderMessagesPane() string {
 	w := m.messagesPaneContentWidth()
 	h := m.articlesPaneContentHeight()
 	msgUnread, msgRead, msgSelected, headerActive, borderColor, borderFocus := m.messageRowStyles()
@@ -211,7 +211,7 @@ func (m Model) outboxPreviewRows(width int, style lipgloss.Style) []string {
 	return rows
 }
 
-func (m Model) messagesPaneTitle() string {
+func (m *Model) messagesPaneTitle() string {
 	title := "Messages"
 	if m.selectedUnifiedInbox() {
 		title = "Unified Inbox"
@@ -259,7 +259,7 @@ func (m Model) renderMessageSearchRow(width int) string {
 	return lipgloss.NewStyle().Background(bg).Foreground(fg).Width(width).Render(truncateStyled(view, width, bg))
 }
 
-func (m Model) messageRowStyles() (lipgloss.Style, lipgloss.Style, lipgloss.Style, lipgloss.Style, lipgloss.Color, lipgloss.Color) {
+func (m *Model) messageRowStyles() (lipgloss.Style, lipgloss.Style, lipgloss.Style, lipgloss.Style, lipgloss.Color, lipgloss.Color) {
 	accent := m.selectedMailboxAccountColor()
 	unread := m.styles.ArticleUnread
 	read := m.styles.ArticleRead
@@ -332,7 +332,7 @@ func (m *Model) sortFilteredStarred() {
 	m.filteredMessages = sorted
 }
 
-func (m Model) messageRowTitle(msg db.Message) string {
+func (m *Model) messageRowTitle(msg db.Message) string {
 	subject := messageListDisplayText(unescapeDisplayText(msg.Subject))
 	if !m.searchActive() {
 		return subject
@@ -656,7 +656,7 @@ func applyMessageRowState(style, selected lipgloss.Style, starred, cursor bool, 
 	return style
 }
 
-func (m Model) messageRowPrefix(read bool) string {
+func (m *Model) messageRowPrefix(read bool) string {
 	if m.styles.PlainUI {
 		if read {
 			return "- "
@@ -679,7 +679,7 @@ func (m Model) messageRowPrefix(read bool) string {
 // It deliberately contains no ANSI styling: an inline reset would interrupt the
 // enclosing row background, leaving the star cells (and sometimes the remainder
 // of the row) with the terminal's default background.
-func (m Model) messageRowStar(starred bool) string {
+func (m *Model) messageRowStar(starred bool) string {
 	if !starred {
 		return "  "
 	}
