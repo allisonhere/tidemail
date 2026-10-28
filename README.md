@@ -5,6 +5,10 @@
 **Mail for people who live in a terminal.**
 
 [![TideMail on The Terminal Index](https://cli.masoko.net/badge/tidemail.svg)](https://cli.masoko.net/tools/tidemail/)
+[![Latest release](https://img.shields.io/github/v/release/allisonhere/tidemail?style=flat-square)](https://github.com/allisonhere/tidemail/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/allisonhere/tidemail?style=flat-square)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/allisonhere/tidemail?style=flat-square)](https://github.com/allisonhere/tidemail/stargazers)
+[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-support%20TideMail-FF5E5B?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/E1E31QQRI9)
 
 TideMail keeps your accounts, message list, and reading pane on one screen. It
 speaks IMAP and SMTP, stores its cache on your machine, and gives the keyboard
@@ -506,6 +510,23 @@ Run the test suite with:
 ```bash
 go test ./...
 ```
+
+## Support TideMail
+
+TideMail is free and MIT licensed, built and maintained by one person. If it
+saves you time, you can help keep it going:
+
+- **[Support on Ko-fi](https://ko-fi.com/E1E31QQRI9)**, one-time or recurring. It pays
+  for the test accounts, OAuth app reviews, and the hours that go into fixes and
+  new features.
+- **Star the repo** and tell a friend who still lives in a terminal. Reach matters
+  as much as money.
+- **Report bugs and share ideas** in [issues](https://github.com/allisonhere/tidemail/issues)
+  or [discussions](https://github.com/allisonhere/tidemail/discussions).
+
+In the app, **Settings → Support** has the same link. A single, friendly reminder
+appears after about a week of use; switch it off with **Settings → Display →
+Support reminder** (`support_reminder = false` in the config).
 
 ## Under the hood
 

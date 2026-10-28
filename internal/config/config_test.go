@@ -94,6 +94,9 @@ func TestDefaultConfigDisplayDensityCompact(t *testing.T) {
 	if !cfg.Display.FocusLine {
 		t.Fatal("expected focus line to default on")
 	}
+	if !cfg.Display.SupportReminder {
+		t.Fatal("expected the support reminder to default on")
+	}
 }
 
 func TestDefaultConfigShowsPaneHeaders(t *testing.T) {

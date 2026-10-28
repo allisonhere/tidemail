@@ -542,6 +542,9 @@ func (m Model) Init() tea.Cmd {
 	if cmd := loadNeedsYouCountCmd(m.db); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
+	if cmd := supportNudgeCmd(m.db, m.cfg.Display.SupportReminder, time.Now()); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 	// Overdue snoozes (TideMail was closed past their time) end now.
 	if cmd := expireSnoozesCmd(m.db); cmd != nil {
 		cmds = append(cmds, cmd)
@@ -643,6 +646,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case omarchyThemeTickMsg:
 		return m.handleOmarchyThemeTick(msg)
+
+	case SupportNudgeMsg:
+		return m.handleSupportNudge()
 
 	case StatusClearMsg:
 		m.statusMsg = ""

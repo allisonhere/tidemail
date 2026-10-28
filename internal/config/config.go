@@ -191,6 +191,7 @@ type DisplayConfig struct {
 	MarkReadOnOpen          bool   `toml:"mark_read_on_open"`
 	MarkReadOnFocus         bool   `toml:"mark_read_on_focus"`
 	FocusLine               bool   `toml:"focus_line"`
+	SupportReminder         bool   `toml:"support_reminder"`
 	DefaultUnreadOnly       bool   `toml:"default_unread_only"`
 	ActionableLinks         bool   `toml:"actionable_links"`
 	MouseSupport            bool   `toml:"mouse_support"`
@@ -603,6 +604,7 @@ func DefaultConfig() Config {
 			DateFormat:              "relative",
 			MarkReadOnOpen:          true,
 			FocusLine:               true,
+			SupportReminder:         true,
 			ShowSender:              true,
 			AccountsWidthPercent:    28,
 			MessagesHeightPercent:   40,
