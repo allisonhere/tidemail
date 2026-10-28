@@ -297,6 +297,7 @@ type Model struct {
 	// successful autosaves do not alter them; every other event invalidates it.
 	// Pointer-owned so the render-time cache survives Model's value receivers.
 	composeBackdrop *composeBackdropCache
+	readerPanes     *readerPaneCache
 
 	// bodyCache memoises rendered message bodies and viewportCache the
 	// finished reading-pane content. Held by pointer so writes survive
@@ -472,6 +473,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		omarchyWatchGeneration: 1,
 		styles:                 BuildStyles(merged, cfg.Display.Density, cfg.Display.PaneCorners),
 		composeBackdrop:        &composeBackdropCache{},
+		readerPanes:            &readerPaneCache{},
 		bodyCache:              newBoundedCache[bodyCacheKey, messageRenderResult](defaultBodyCacheLimit),
 		viewportCache:          newBoundedCache[viewportCacheKey, viewportContent](defaultViewportCacheLimit),
 		images:                 newUIImageStore(cfg.Display.Images),
@@ -557,6 +559,9 @@ func (m Model) Init() tea.Cmd {
 // ── Update ───────────────────────────────────────────────────────────────────
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.readerPanes != nil && !m.readerOnlyNavigation(msg) {
+		m.readerPanes.valid = false
+	}
 	// Keys go exclusively to the open compose overlay. A successful autosave
 	// updates only compose state. Other events can change the panes underneath
 	// (sync, resize, theme, etc.), so let the next View rebuild the backdrop.
@@ -3678,14 +3683,19 @@ func (m Model) View() string {
 	if m.overlay == overlayCompose && m.composeBackdrop != nil && m.composeBackdrop.valid {
 		main = m.composeBackdrop.panes
 	} else {
-		right := lipgloss.JoinVertical(lipgloss.Left,
-			m.renderMessagesPane(),
-			m.renderContentPane(),
-		)
-		main = lipgloss.JoinHorizontal(lipgloss.Top,
-			m.renderAccountsPane(),
-			right,
-		)
+		var accounts, messages string
+		cacheReader := m.overlay == overlayNone && m.focused == paneContent && m.readerPanes != nil
+		if cacheReader && m.readerPanes.valid {
+			accounts, messages = m.readerPanes.accounts, m.readerPanes.messages
+		} else {
+			accounts, messages = m.renderAccountsPane(), m.renderMessagesPane()
+			if cacheReader {
+				m.readerPanes.accounts, m.readerPanes.messages = accounts, messages
+				m.readerPanes.valid = true
+			}
+		}
+		right := lipgloss.JoinVertical(lipgloss.Left, messages, m.renderContentPane())
+		main = lipgloss.JoinHorizontal(lipgloss.Top, accounts, right)
 		if m.overlay == overlayCompose && m.composeBackdrop != nil {
 			m.composeBackdrop.panes, m.composeBackdrop.valid = main, true
 		}
@@ -4193,6 +4203,9 @@ func (m *Model) refreshDraftCounts() {
 // the Omarchy live-follow rebuilds colours under a fixed name — so the name
 // alone cannot catch it, and density or corner changes reshape layout too.
 func (m *Model) setStyles(s Styles) {
+	if m.readerPanes != nil {
+		m.readerPanes.valid = false
+	}
 	m.styles = s
 	m.bodyCache.clear()
 	m.viewportCache.clear()

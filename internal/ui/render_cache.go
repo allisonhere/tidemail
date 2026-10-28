@@ -151,3 +151,10 @@ const (
 	// is whatever the reader is scrolling through right now.
 	defaultViewportCacheLimit = 24
 )
+
+// Only reader navigation may reuse these panes. The reader and status remain
+// live. Pointer ownership lets View populate the cache with a value receiver.
+type readerPaneCache struct {
+	accounts, messages string
+	valid              bool
+}
