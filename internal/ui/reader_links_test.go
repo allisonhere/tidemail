@@ -352,3 +352,16 @@ func TestReaderLinksClearMetadataWhenChangingMessages(t *testing.T) {
 		t.Fatal("the new message retained a selected link")
 	}
 }
+
+func TestStatusBarLinkCounterHiddenUntilSelected(t *testing.T) {
+	m := Model{width: 120, contentLinks: []string{"https://a.example", "https://b.example"}, contentLinkIdx: -1}
+	m.cfg.Display.ActionableLinks = true
+	got := ansi.Strip(m.renderStatusBar())
+	if strings.Contains(got, "link 0/") || !strings.Contains(got, "2 links") {
+		t.Fatalf("unselected status = %q, want %q and no 0/N counter", got, "2 links")
+	}
+	m.contentLinkIdx = 1
+	if got := ansi.Strip(m.renderStatusBar()); !strings.Contains(got, "link 2/2") {
+		t.Fatalf("selected status = %q, want link 2/2", got)
+	}
+}
