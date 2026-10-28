@@ -63,21 +63,21 @@ func TestOpenLocalFileLauncher(t *testing.T) {
 	}
 	dir := t.TempDir()
 	t.Setenv("PATH", dir)
-	if err := OpenLocalFile("/tmp/email.html"); err == nil {
+	if err := OpenLocalFile("", "/tmp/email.html"); err == nil {
 		t.Fatal("missing opener must fail")
 	}
 	launcher := filepath.Join(dir, "xdg-open")
 	if err := os.WriteFile(launcher, []byte("#!/bin/sh\nexit 7\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := OpenLocalFile("/tmp/email.html"); err == nil {
+	if err := OpenLocalFile("", "/tmp/email.html"); err == nil {
 		t.Fatal("opener exit failure must be reported")
 	}
 	if err := os.WriteFile(launcher, []byte("#!/bin/sh\nexec /bin/sleep 3\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	start := time.Now()
-	if err := OpenLocalFile("/tmp/email.html"); err != nil {
+	if err := OpenLocalFile("", "/tmp/email.html"); err != nil {
 		t.Fatal(err)
 	}
 	if elapsed := time.Since(start); elapsed >= 3*time.Second {

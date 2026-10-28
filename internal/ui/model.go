@@ -1801,9 +1801,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.clearStatusCmd()
 
 	case emailBrowserOpenedMsg:
-		if msg.err != nil {
+		switch {
+		case msg.err != nil:
 			m.setStatus("Open in browser: "+msg.err.Error(), true)
-		} else {
+		case msg.blocked > 0:
+			m.setStatus(fmt.Sprintf("opened in browser (%d remote images blocked)", msg.blocked), false)
+		default:
 			m.setStatus("opened in browser", false)
 		}
 		return m, m.clearStatusCmd()

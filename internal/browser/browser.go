@@ -45,10 +45,11 @@ func Open(configured, target string) error {
 	return startCommand(name, args...)
 }
 
-// OpenLocalFile uses the platform default and notices early launcher failures.
-// It waits at most two seconds, even if the browser process stays open.
-func OpenLocalFile(target string) error {
-	name, args, err := Command(runtime.GOOS, "", target)
+// OpenLocalFile opens target like Open, using the configured command when set,
+// and also notices early launcher failures. It waits at most two seconds, even
+// if the browser process stays open.
+func OpenLocalFile(configured, target string) error {
+	name, args, err := Command(runtime.GOOS, configured, target)
 	if err != nil {
 		return err
 	}

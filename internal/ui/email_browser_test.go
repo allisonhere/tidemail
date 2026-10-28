@@ -34,14 +34,16 @@ func TestOpenEmailInBrowser(t *testing.T) {
 			}
 			return func() ([]byte, error) { fetched = true; return raw, nil }
 		}
-		openEmailBrowser = func(path string) error {
+		openEmailBrowser = func(_, path string) error {
 			opened = true
 			launchedPath = path
 			if !strings.HasSuffix(path, ".html") {
 				t.Fatalf("browser target: %q", path)
 			}
 			data, err := os.ReadFile(path)
-			if err != nil || string(data) != "\ufeff"+html {
+			if err != nil || !strings.HasPrefix(string(data), "\ufeff") ||
+				!strings.Contains(string(data), `<a href="https://example.com/?a=1&amp;b=2">Go</a>`) ||
+				!strings.Contains(string(data), "Content-Security-Policy") {
 				t.Fatalf("HTML = %q, err %v", data, err)
 			}
 			info, err := os.Stat(path)
@@ -77,20 +79,21 @@ func TestOpenEmailBrowserFailures(t *testing.T) {
 	original := openEmailBrowser
 	t.Cleanup(func() { openEmailBrowser = original })
 	calls := 0
-	openEmailBrowser = func(_ string) error { calls++; return errors.New("launcher failed") }
+	openEmailBrowser = func(_, _ string) error { calls++; return errors.New("launcher failed") }
 	for _, tc := range []struct{ raw, want string }{
 		{"Content-Type: text/plain\r\n\r\nhello", "no HTML body"},
 		{"Content-Type: text/html\r\n\r\n<a href='https://example.com'>hi</a>", "launcher failed"},
 	} {
-		err := openEmailHTML([]byte(tc.raw))
+		_, err := openEmailHTML([]byte(tc.raw), "")
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Fatalf("error = %v", err)
 		}
-		m, _ := sourceModel(t).Update(emailBrowserOpenedMsg{err})
+		m, _ := sourceModel(t).Update(emailBrowserOpenedMsg{err: err})
 		if !m.(Model).statusErr || !strings.Contains(m.(Model).statusMsg, tc.want) {
 			t.Fatal("failure not reported")
 		}
-		files, _ := os.ReadDir(dir)
+		exportDir, _ := emailExportDir()
+		files, _ := os.ReadDir(exportDir)
 		if len(files) != 0 {
 			t.Fatal("failed export leaked files")
 		}
@@ -121,8 +124,8 @@ func TestOpenEmailBrowserFetchFailure(t *testing.T) {
 
 func TestOpenEmailBrowserTempFailure(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir()+"/missing")
-	err := openEmailHTML([]byte("Content-Type: text/html\r\n\r\n<p>hello</p>"))
-	if err == nil || !strings.Contains(err.Error(), "create temporary HTML") {
+	_, err := openEmailHTML([]byte("Content-Type: text/html\r\n\r\n<p>hello</p>"), "")
+	if err == nil || !strings.Contains(err.Error(), "export directory") {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -138,19 +141,19 @@ func TestOpenEmailBrowserEncoding(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var path string
-			openEmailBrowser = func(target string) error { path = target; return nil }
+			openEmailBrowser = func(_, target string) error { path = target; return nil }
 			raw := "Content-Type: text/html; charset=" + tc.charset + "\r\n\r\n" + tc.body
-			if err := openEmailHTML([]byte(raw)); err != nil {
+			if _, err := openEmailHTML([]byte(raw), ""); err != nil {
 				t.Fatal(err)
 			}
 			data, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)
 			}
-			// A BOM has precedence over HTML charset declarations. The document
-			// following it must remain byte-for-byte identical to the decoded body.
-			if string(data) != "\ufeff"+tc.want {
-				t.Fatalf("export = %q, want BOM followed by %q", data, tc.want)
+			// A BOM has precedence over HTML charset declarations, and the text
+			// after it must be the decoded UTF-8 body.
+			if !strings.HasPrefix(string(data), "\ufeff") || strings.Count(string(data), "\ufeff") != 1 {
+				t.Fatalf("export = %q, want exactly one leading BOM", data)
 			}
 			decoded, err := charset.NewReader(bytes.NewReader(data), "text/html")
 			if err != nil {
