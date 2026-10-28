@@ -120,7 +120,7 @@ func TestReaderMultipartNavigationUsesOnlyHTMLDestinations(t *testing.T) {
 	var opened, copied string
 	browserOpen = func(_, target string) error { opened = target; return nil }
 	clipboardWriteCmd = func(text string) tea.Cmd { copied = text; return nil }
-	for i := 1; i < len(targets); i++ {
+	for i := 0; i < len(targets); i++ {
 		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlN})
 		m = next.(Model)
 		assertReaderLinkSelection(t, m, i)
@@ -183,6 +183,7 @@ func TestReaderThreadLinksMergeSelectedRepresentations(t *testing.T) {
 	if m.contentLinkLabels[want[0]] != "First HTML action" {
 		t.Fatalf("thread lost HTML label: %#v", m.contentLinkLabels)
 	}
+	m.stepContentLink(1)
 	m.stepContentLink(1)
 	m.setViewportThread(thread)
 	m.revealContentLink()

@@ -123,7 +123,7 @@ func TestMouseClickFocusesContentPaneOnNonLinkLine(t *testing.T) {
 	}
 }
 
-func TestMouseClickOpensContentLink(t *testing.T) {
+func TestMouseClickOnlyFocusesContentLink(t *testing.T) {
 	m := mouseTestModel(t)
 	m.focused = paneAccounts
 	m.filteredMessages = []db.Message{{ID: 1, Subject: "Hi"}}
@@ -144,8 +144,8 @@ func TestMouseClickOpensContentLink(t *testing.T) {
 	if got.contentFocusLine != 1 {
 		t.Fatalf("expected contentFocusLine 1, got %d", got.contentFocusLine)
 	}
-	if cmd == nil {
-		t.Fatalf("expected clicking a link line to return an open-browser command")
+	if cmd != nil {
+		t.Fatalf("clicking a link line must not return an open-browser command")
 	}
 }
 

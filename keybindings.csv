@@ -1,11 +1,11 @@
 GoField,Keys,HelpDisplay,Description,Context
-Up,"k,up",k/↑,up,global
-Down,"j,down",j/↓,down,global
+Up,"k,up",k/↑,up (select LINKS entry in content),global
+Down,"j,down",j/↓,down (select LINKS entry in content),global
 Left,"h,left",h/←,move left,global
 Right,"l,right",l/→,move right,global
 NextPane,"tab,]",tab/],next pane,global
 PrevPane,"shift+tab,[",shift+tab/[,prev pane,global
-Enter,enter,enter,"open or immediately sync a folder; in content opens the focus-line link",global
+Enter,enter,enter,"open or immediately sync a folder; in content opens an explicitly selected or keyboard-focused visible link",global
 Back,esc,esc,back,global
 Sync,s,s,sync mailbox,main
 SyncAll,"F,ctrl+s",F/ctrl+s,sync all,main
@@ -18,7 +18,7 @@ EditTags,e,e,correct classification and manage current message tags,message list
 PluginCatalog,b,b,browse available plugins (i install / u update / x remove),plugin list
 PluginCardUnsubscribe,u,u,unsubscribe when offered,plugin result card
 MarkAllRead,"R,ctrl+x",R/ctrl+x,mark all read,main
-OpenBrowser,o,o,open link,main
+OpenBrowser,o,o,open explicitly selected or keyboard-focused visible link,main
 Unsubscribe,ctrl+u,ctrl+u,unsubscribe,content
 NextLink,"ctrl+n,alt+n",ctrl+n,next LINKS entry (scroll into view; ctrl+c copies full URL),content
 PrevLink,alt+p,alt+p,previous LINKS entry (scroll into view),content

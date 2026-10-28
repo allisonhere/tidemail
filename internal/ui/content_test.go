@@ -1025,7 +1025,9 @@ func TestEnterOpensRedditDigestTitleAndReadPost(t *testing.T) {
 	const post = "https://www.reddit.com/r/omarchy/comments/1vxc6xv/free_ai_in_omarchy/"
 	for _, needle := range []string{"Free ai in Omarchy?", "[Read post]"} {
 		t.Run(needle, func(t *testing.T) {
-			m.contentFocusLine = indexContentLine(t, m, needle)
+			row := indexContentLine(t, m, needle)
+			m.contentFocusLine = row - 1
+			m.moveContentFocusLine(1)
 
 			link, ok := m.focusedLineLink()
 			if !ok {
