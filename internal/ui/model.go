@@ -3915,16 +3915,16 @@ func (m *Model) ensureContentFocusVisible() {
 
 // openContentLinkCmd accepts only explicit LINKS selection or keyboard focus.
 // Automatic focus, ordinary body clicks and wheel scrolling never arm a handler.
-func (m Model) openContentLinkCmd() (tea.Cmd, bool) {
+func (m *Model) openContentLinkCmd() (tea.Cmd, bool) {
 	if len(m.filteredMessages) == 0 || m.focused != paneContent {
 		return nil, false
 	}
 	if link, ok := m.currentContentLink(); ok && m.contentLinkIdx < len(m.contentLinkRows) && m.contentLineVisible(m.contentLinkRows[m.contentLinkIdx]) {
-		return m.openBrowserCmd(link), true
+		return m.openReaderLink(link), true
 	}
 	if m.contentFocusedLink != "" && m.contentLineVisible(m.contentFocusLine) {
 		if link, ok := m.focusedLineLink(); ok && link == m.contentFocusedLink {
-			return m.openBrowserCmd(link), true
+			return m.openReaderLink(link), true
 		}
 	}
 	return nil, false

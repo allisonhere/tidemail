@@ -278,8 +278,13 @@ image resources, scripts, or comments. A link that only wraps a hidden or 1x1
 tracking pixel is left out. Available Outlook fallback anchor text
 and button-input captions are also used when no ordinary anchor label is
 available. Email actions appear as `[mailto: Approve]` or, without a description,
-`[mailto: email action]`. Opening one passes the full URI to the configured
-opener to prepare an email; it does not send it. `Ctrl+N` / `Alt+N` and `Alt+P`
+`[mailto: email action]`. Deliberately opening one starts TideMail's composer
+using the account that received the source message, including in Unified Inbox.
+If that account is unavailable, TideMail uses your default sender; if no usable
+sender is available, it reports an error. The link can prefill To, CC, BCC,
+subject, and body. All fields remain editable, and the account's normal signature
+is added when you send, just as for a new message. Nothing is sent until you
+explicitly send it. `Ctrl+N` / `Alt+N` and `Alt+P`
 select the next or previous entry and scroll it into view; the chevron, highlight,
 and status counter follow together. New messages start unselected: the first Next
 selects the first entry, and the first Previous selects the last. Press `o` or
@@ -748,6 +753,11 @@ as `user`, which works only when `user` is itself an address. A display name on
 its own is not enough: the account form refuses to save one, because SMTP has
 no address to send from and would only fail once the message was already
 queued.
+
+Signatures are appended when sending, so they do not appear in the editable body
+or saved draft. They use the sending account selected in the composer, including
+after switching senders or reopening a draft. Leave the account's signature empty
+to omit it.
 
 The signature is a multi-line box in the account form — press `Enter` for a new
 line, `Tab` to move on, and `Ctrl+S` to save without leaving it. Arrow keys walk

@@ -193,7 +193,6 @@ func TestReaderActivationDestinationsAndResize(t *testing.T) {
 		{"image", `<p>Ordinary body text.</p><a href="https://example.com/image"><img src="cid:banner" alt="Banner"></a>`, "", "https://example.com/image"},
 		{"plain", "", "Ordinary body text.\n\nhttps://example.com/plain", "https://example.com/plain"},
 		{"initial-url", "", "https://example.com/initial", "https://example.com/initial"},
-		{"mailto", `<p>Ordinary body text.</p><a href="mailto:action@example.com?subject=Review&amp;body=Please%20review">Email action</a>`, "", "mailto:action@example.com?subject=Review&body=Please%20review"},
 	} {
 		for _, focus := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/focus=%v", fixture.name, focus), func(t *testing.T) {
@@ -214,9 +213,6 @@ func TestReaderActivationDestinationsAndResize(t *testing.T) {
 					}
 				} else if !reflect.DeepEqual(*requests, []string{fixture.target}) {
 					t.Fatalf("activation = %v, want %q", *requests, fixture.target)
-				}
-				if strings.Contains(fixture.name, "mailto") && m.overlay == overlayCompose {
-					t.Fatal("mailto unexpectedly opened internal compose")
 				}
 			})
 		}
