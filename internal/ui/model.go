@@ -1743,6 +1743,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.compose.dirty = false
 			m.compose.lastAutosaved = time.Now()
 		}
+		// Refresh the Drafts list behind the compose overlay so the edited
+		// row updates live. DraftsLoadedMsg invalidates the compose backdrop.
+		if mb := m.selectedMailbox(); mb != nil && m.isDraftsMailbox(*mb) {
+			return m, m.loadDraftsCmd(mb.ID)
+		}
 		return m, nil
 
 	case DraftDeletedMsg:

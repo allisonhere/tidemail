@@ -180,3 +180,36 @@ func TestComposeBackdropIncomingMailPreservesDraft(t *testing.T) {
 		t.Fatal("incoming mail changed the draft contents")
 	}
 }
+
+func TestDraftAutosaveRefreshesDraftsListBehindCompose(t *testing.T) {
+	preserveComposeEditorState(t)
+	m := composeEventModel(100, 40, false)
+	m.mailboxes[0].Name = "Drafts"
+	_ = m.View()
+
+	next, cmd := m.Update(DraftSavedMsg{DraftID: 1})
+	m = next.(Model)
+	if cmd == nil {
+		t.Fatal("autosave in the Drafts folder did not reload the list")
+	}
+	loaded, ok := cmd().(DraftsLoadedMsg)
+	if !ok {
+		t.Fatalf("expected DraftsLoadedMsg, got %T", cmd())
+	}
+	next, _ = m.Update(loaded)
+	m = next.(Model)
+	if m.composeBackdrop.valid {
+		t.Fatal("reloaded drafts kept a stale backdrop")
+	}
+	assertComposeBackdropMatchesFresh(t, m)
+}
+
+func TestDraftAutosaveOutsideDraftsDoesNotReload(t *testing.T) {
+	preserveComposeEditorState(t)
+	m := composeEventModel(100, 40, false)
+	_ = m.View()
+	_, cmd := m.Update(DraftSavedMsg{DraftID: 1})
+	if cmd != nil {
+		t.Fatal("autosave outside Drafts should not reload the list")
+	}
+}
