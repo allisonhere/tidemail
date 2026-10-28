@@ -2768,7 +2768,11 @@ func (m Model) handleUp() (tea.Model, tea.Cmd) {
 			return m.selectMessageRow(m.messageCursor - 1)
 		}
 	case paneContent:
-		m.moveContentFocusLine(-1)
+		if m.cfg.Display.FocusLine {
+			m.moveContentFocusLine(-1)
+		} else {
+			m.scrollContentWithoutFocus(-1)
+		}
 	}
 	return m, nil
 }
@@ -2797,7 +2801,11 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 			}
 		}
 	case paneContent:
-		m.moveContentFocusLine(1)
+		if m.cfg.Display.FocusLine {
+			m.moveContentFocusLine(1)
+		} else {
+			m.scrollContentWithoutFocus(1)
+		}
 	}
 	return m, nil
 }

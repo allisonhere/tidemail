@@ -52,3 +52,34 @@ func (m *Model) reconcileContentFocus(direction int) {
 	m.contentFocusLine = max(0, start)
 	m.contentFocusPending = true
 }
+
+// In viewport mode, only explicit selection enters LINKS navigation. Reaching
+// the bottom is inert; a further Down selects the first entry. Direct shortcuts
+// and clicks share this same selection state, styling and activation intent.
+func (m *Model) scrollContentWithoutFocus(delta int) {
+	if m.contentLinkIdx >= 0 && m.contentLinkIdx < len(m.contentLinks) {
+		index := m.contentLinkIdx + delta
+		if index < 0 {
+			m.clearContentLinkSelection()
+			return
+		}
+		if index < len(m.contentLinkRows) && index < len(m.contentLinks) {
+			m.selectContentLinkAt(m.contentLinkRows[index])
+			m.revealContentLink()
+		}
+		return
+	}
+	m.clearContentLinkSelection()
+	if delta > 0 && m.viewport.AtBottom() && len(m.contentLinkRows) > 0 {
+		if m.selectContentLinkAt(m.contentLinkRows[0]) {
+			m.revealContentLink()
+		}
+		return
+	}
+	if delta < 0 {
+		m.viewport.ScrollUp(1)
+	} else {
+		m.viewport.ScrollDown(1)
+	}
+	m.reconcileContentFocus(delta)
+}

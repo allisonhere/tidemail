@@ -90,7 +90,11 @@ func TestReaderWheelFocusContinuity(t *testing.T) {
 					}
 					want := nextContentFocusLine(m.contentFocusLine, delta, m.contentFocusable, m.contentLineCount)
 					navigated := apply(m, tea.KeyMsg{Type: key})
-					if navigated.contentFocusLine != want {
+					if !highlight {
+						if navigated.viewport.YOffset != m.viewport.YOffset+delta {
+							t.Fatal("viewport mode did not scroll immediately after wheel")
+						}
+					} else if navigated.contentFocusLine != want {
 						t.Fatalf("keyboard resumed at %d, want %d", navigated.contentFocusLine, want)
 					}
 					assertReaderFocusVisible(t, navigated)
@@ -163,9 +167,8 @@ func TestReaderBlankViewportAndBoundaries(t *testing.T) {
 	}
 }
 
-func TestReaderHighlightIsPresentational(t *testing.T) {
-	var states [2][]readerScrollState
-	for mode, highlight := range []bool{false, true} {
+func TestReaderMixedNavigationActivationSafety(t *testing.T) {
+	for _, highlight := range []bool{false, true} {
 		requests, apply := recordReaderActivations(t)
 		m := readerFocusFixture(t, highlight)
 		for i := 0; i < 100; i++ {
@@ -177,16 +180,12 @@ func TestReaderHighlightIsPresentational(t *testing.T) {
 				event = tea.KeyMsg{Type: tea.KeyUp}
 			}
 			m = apply(m, event)
-			states[mode] = append(states[mode], scrollState(m))
 			m = apply(m, tea.KeyMsg{Type: tea.KeyEnter})
 			if m.contentFocusedLink == "" && len(*requests) != 0 {
 				t.Fatal("automatic focus armed a link")
 			}
 			*requests = nil
 		}
-	}
-	if !reflect.DeepEqual(states[0], states[1]) {
-		t.Fatal("highlight setting changed navigation or selection")
 	}
 }
 

@@ -119,7 +119,7 @@ func helpSections(keys KeyMap) []helpSection {
 		{
 			name: "Content Pane",
 			entries: []helpEntry{
-				{keys.Up.Help().Key + "/" + keys.Down.Help().Key, "move reading position; select LINKS entries; Focus line only changes highlighting"},
+				{keys.Up.Help().Key + "/" + keys.Down.Help().Key, "Focus line on: move reading focus; off: scroll one row, Down at bottom enters LINKS; Up from first exits"},
 				{keys.Back.Help().Key, "return to message list"},
 				{keys.Enter.Help().Key, "open explicitly selected or keyboard-focused visible link"},
 				{keys.OpenBrowser.Help().Key, "open explicitly selected or keyboard-focused visible link"},

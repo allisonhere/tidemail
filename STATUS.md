@@ -139,7 +139,8 @@ Current release: **v1.7.0**.
   (VT52) themes keep the original static pages.
 - **Mouse support** (opt-in, Settings → Display): click to select rows/focus panes or select LINKS entries (clicks never open reader links),
   double-click to open a message, scroll wheel over the sidebar, list, and reading pane
-  (mouse/keyboard reading position stays synchronized; Focus line is visual only),
+  (continuous reading focus when enabled; immediate one-row viewport scrolling
+  when disabled, with deliberate LINKS entry at the bottom),
   right-click for a context menu of that row's actions (folder, account, or message), and click the search row to resume
   editing. Overlays and the status line are not yet clickable; no drag support.
 - **Update checker**: GitHub-releases check with checksum-verified self-update,

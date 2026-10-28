@@ -41,8 +41,9 @@ baseline is reproducible with the test-only flag (no production setting):
 TIDEMAIL_READER_NO_PANE_REUSE=1 go test ./internal/ui -run '^TestReaderScrollEventQueueDrain$' -count=1 -v
 ```
 
-Local results below show combined Update+View latency in milliseconds, final-view
-post-release drain in milliseconds, and total run time in seconds. Fixture sizes
+Historical measurements at `fa57421` below show combined Update+View latency
+in milliseconds, final-view post-release drain in milliseconds, and total run
+time in seconds. Fixture sizes
 are HTML source sizes. Each baseline and final case processed all 60 delivered
 events and matched every sequential navigation transition. Runs were sequential
 on the same development machine; these are observations, not timing guarantees.
@@ -72,13 +73,22 @@ priority; asynchronous rendering is not introduced here.
 
 Wheel movement remains three rows per event. Visible reading focus is retained;
 otherwise reconciliation chooses the nearest visible focusable edge without
-moving the viewport. A blank/header-only viewport keeps a visible pending anchor
-and advances one row per subsequent arrow event until focusable content appears.
+moving the viewport. In focus-enabled mode, a blank/header-only viewport keeps
+a visible pending anchor and advances one row per arrow until focusable content
+appears.
 Resize retains the viewport offset where possible and reconciles the new layout.
 Explicit LINKS navigation still reveals its selected target.
 
-Focus-line highlighting is purely presentational. Both modes use identical
-internal position, focusability, selection and arrow navigation. Automatic
+With Focus line enabled, arrows move the visible reading highlight and keep it
+in view. With it disabled, ordinary arrows scroll exactly one row regardless of
+internal focus. Reaching the bottom does not select a link: a further Down selects
+the first LINKS entry (immediately for a message that fits). Down advances without
+wrapping; Up from the first entry clears selection without scrolling, and the
+next Up scrolls one row. Without actionable links, arrows only scroll. Partially
+visible LINKS entries do not change this transition. Direct link shortcuts and
+clicks establish the same explicit selection, from which arrows navigate normally.
+Selected LINKS entries retain their existing local highlight and chevron in both
+modes; disabling Focus line never adds a full-width reading highlight. Automatic
 reconciliation cannot establish external-link activation intent. Wheel scrolling
 clears deliberate link selection and its chevron; only a subsequent deliberate
 selection or keyboard focus can arm a target.
