@@ -1,6 +1,6 @@
 # Themes
 
-TideMail ships 52 themes in 24 families, plus `match-omarchy`, which follows the
+TideMail ships 51 themes in 23 families, plus `match-omarchy`, which follows the
 current [Omarchy](https://omarchy.org) desktop theme. Press `T` to open the
 picker, or choose one under **Settings → Display → Theme**.
 
@@ -239,14 +239,6 @@ Upstream: <https://github.com/robb0wen/synthwave-vscode> · License: MIT
 |---|---|---|---|---|
 | `synthwave-84` | SynthWave '84 | `#262335` | `#ffffff` | `#ff7edb` |
 
-### Shades of Purple
-
-Upstream: <https://github.com/ahmadawais/shades-of-purple-vscode> · License: MIT
-
-| Name | Variant | Background | Text | Accent |
-|---|---|---|---|---|
-| `shades-of-purple` | Shades of Purple | `#2d2b55` | `#ffffff` | `#b362ff` |
-
 ### Oxocarbon
 
 Upstream: <https://github.com/nyoom-engineering/oxocarbon.nvim> · License: MIT
@@ -277,7 +269,6 @@ included one, or that only change editor chrome, are left out:
 - **GitHub**: the high-contrast and color-blind variants.
 - **Gruvbox** and **Everforest**: the hard and soft contrast levels; medium is included.
 - **Palenight**: the italic, mild-contrast and operator variants.
-- **Shades of Purple**: the Super Dark and italic variants.
 - **Night Owl**: the no-italic variants, which share colors with the included ones.
 - **Cyberdream**: the dimmed variant.
 - **SynthWave '84**: the neon glow is a CSS injection in the VS Code extension, not
@@ -316,7 +307,6 @@ TideMail reproduces only color values, not code or other assets.
 | [Palenight](https://github.com/whizkydee/vscode-palenight-theme) | MIT | © 2017-present Olaolu Olawuyi |
 | [Night Owl](https://github.com/sdras/night-owl-vscode-theme) | MIT | © 2018 Sarah Drasner |
 | [SynthWave '84](https://github.com/robb0wen/synthwave-vscode) | MIT | © 2019 Robb Owen |
-| [Shades of Purple](https://github.com/ahmadawais/shades-of-purple-vscode) | MIT | © 2015-∞ Ahmad Awais |
 | [Oxocarbon](https://github.com/nyoom-engineering/oxocarbon.nvim) | MIT | © 2022 Riccardo Mazzarini |
 | [Cyberdream](https://github.com/scottmckendry/cyberdream.nvim) | MIT | © 2023 Scott McKendry |
 
