@@ -10,6 +10,8 @@ TideMail keeps your accounts, message list, and reading pane on one screen. It
 speaks IMAP and SMTP, stores its cache on your machine, and gives the keyboard
 the good seat.
 
+![TideMail demo: browsing the unified inbox, link destinations, and switching themes](docs/demo/demo.gif)
+
 Need the full settings and shortcut reference? Open the
 [setup and usage guide](docs/guide.md).
 
