@@ -113,12 +113,8 @@ func (m Model) renderOverlay(base string) string {
 		box = renderSoftPanelBox(inner, winW, "tidemail", "delete messages?", chrome)
 
 	case overlayThemePicker:
-		winW := min(m.width-4, 46)
-		winH := min(m.height-4, 26)
-		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
-		inner := m.renderThemePicker(winW, winH, chrome)
-		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderSoftPanelBox(inner, winW, "tidemail", "theme", chrome)
+		winW, winH := themePickerSize(m.width, m.height)
+		box = m.renderThemePicker(winW, winH)
 
 	case overlayAccountManager:
 		winW := min(m.width-4, 74)

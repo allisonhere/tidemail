@@ -4,72 +4,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/allisonhere/tidemail/internal/config"
 )
-
-func themePickerNames(entries []themePickerEntry, pt []Theme) []string {
-	var out []string
-	for _, e := range entries {
-		if e.header == "" {
-			out = append(out, pt[e.idx].Name)
-		}
-	}
-	return out
-}
-
-func TestThemePickerGroupsVariantsUnderTheirFamily(t *testing.T) {
-	pt := PickableThemes()
-	entries := themePickerEntries(pt, "")
-	if entries[0].header != "Catppuccin" {
-		t.Fatalf("first entry = %+v, want the Catppuccin header", entries[0])
-	}
-	var solo []string
-	for _, e := range entries {
-		if e.solo {
-			solo = append(solo, pt[e.idx].Name)
-		}
-	}
-	for _, want := range []string{"nord", "palenight", "vt52", "match-omarchy"} {
-		found := false
-		for _, name := range solo {
-			found = found || name == want
-		}
-		if !found {
-			t.Errorf("%s should be a header-less single-theme row (solo = %v)", want, solo)
-		}
-	}
-	if got := len(themePickerNames(entries, pt)); got != len(pt) {
-		t.Fatalf("unfiltered picker lists %d themes, want all %d", got, len(pt))
-	}
-}
-
-func TestThemePickerFilter(t *testing.T) {
-	pt := PickableThemes()
-	names := func(filter string) []string { return themePickerNames(themePickerEntries(pt, filter), pt) }
-
-	if got := names("latte"); len(got) != 1 || got[0] != "catppuccin-latte" {
-		t.Errorf(`filter "latte" = %v`, got)
-	}
-	if got := names("rose dawn"); len(got) != 1 || got[0] != "rose-pine-dawn" {
-		t.Errorf(`filter "rose dawn" = %v, want every word to match`, got)
-	}
-	if got := names("zzzz"); len(got) != 0 {
-		t.Errorf(`filter "zzzz" = %v, want none`, got)
-	}
-	light := names("light")
-	if len(light) < 8 {
-		t.Fatalf(`filter "light" = %v, want the light themes`, light)
-	}
-	for _, name := range light {
-		th, _ := ThemeByName(name)
-		if !th.IsLight() {
-			t.Errorf(`filter "light" matched dark theme %s`, name)
-		}
-	}
-}
 
 func openedThemePickerModel(t *testing.T) Model {
 	t.Helper()
@@ -88,13 +28,28 @@ func pickerKey(m Model, key tea.KeyMsg) Model {
 	return next.(Model)
 }
 
+func typeThemeSearch(m Model, text string) Model {
+	for _, r := range text {
+		m = pickerKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	return m
+}
+
+// moveThemePicker presses Down n times.
+func moveThemePicker(m Model, n int) Model {
+	for range n {
+		m = pickerKey(m, tea.KeyMsg{Type: tea.KeyDown})
+	}
+	return m
+}
+
 func TestThemePickerPreviewsConfirmsAndReverts(t *testing.T) {
 	m := openedThemePickerModel(t)
 	startBg := m.styles.Theme.Bg
 
 	m = pickerKey(m, tea.KeyMsg{Type: tea.KeyDown})
-	if m.activeTheme != 1 || m.themeCursor != 1 {
-		t.Fatalf("down did not preview the next theme: active %d cursor %d", m.activeTheme, m.themeCursor)
+	if m.activeTheme != 1 {
+		t.Fatalf("down did not preview the next theme: active %d", m.activeTheme)
 	}
 	if m.styles.Theme.Name != BuiltinThemes[1].Name {
 		t.Fatalf("styles still use %q while previewing %q", m.styles.Theme.Name, BuiltinThemes[1].Name)
@@ -109,8 +64,7 @@ func TestThemePickerPreviewsConfirmsAndReverts(t *testing.T) {
 	}
 
 	m.openThemePicker()
-	m = pickerKey(m, tea.KeyMsg{Type: tea.KeyDown})
-	m = pickerKey(m, tea.KeyMsg{Type: tea.KeyDown})
+	m = moveThemePicker(m, 2)
 	want := BuiltinThemes[2].Name
 	m = pickerKey(m, tea.KeyMsg{Type: tea.KeyEnter})
 	if m.overlay != overlayNone || m.confirmedTheme != 2 || m.cfg.Theme != want {
@@ -121,37 +75,90 @@ func TestThemePickerPreviewsConfirmsAndReverts(t *testing.T) {
 func TestThemePickerSearchJumpsAndEscClears(t *testing.T) {
 	m := openedThemePickerModel(t)
 	m = pickerKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
-	if !m.themeFiltering {
+	if !m.themePicker.Filtering() {
 		t.Fatal("/ should start the search")
 	}
-	for _, r := range "nord" {
-		m = pickerKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
-	}
+	m = typeThemeSearch(m, "nord")
 	// "nord" also matches Nightfox's Nordfox; the cursor lands on the first match.
 	if got := m.styles.Theme.Name; got != "nord" {
 		t.Fatalf("typing a filter should preview the first match, got %s", got)
 	}
 	m = pickerKey(m, tea.KeyMsg{Type: tea.KeyEsc})
-	if m.themeFilter != "" || !m.themeFiltering {
-		t.Fatalf("first esc clears the filter and keeps searching: filter %q filtering %v", m.themeFilter, m.themeFiltering)
+	if m.themePicker.Filter() != "" || !m.themePicker.Filtering() {
+		t.Fatalf("first esc clears the filter and keeps searching: filter %q filtering %v", m.themePicker.Filter(), m.themePicker.Filtering())
 	}
 	m = pickerKey(m, tea.KeyMsg{Type: tea.KeyEsc})
-	if m.themeFiltering || m.overlay != overlayThemePicker {
+	if m.themePicker.Filtering() || m.overlay != overlayThemePicker {
 		t.Fatal("second esc leaves the search, not the picker")
+	}
+}
+
+func TestThemePickerSearchTextIsNotTreatedAsKeyBindings(t *testing.T) {
+	m := openedThemePickerModel(t)
+	m = pickerKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	// j, k and q are bound to navigation and quit elsewhere; in the search they are text.
+	m = typeThemeSearch(m, "jkq")
+	if got := m.themePicker.Filter(); got != "jkq" {
+		t.Fatalf("filter = %q, want the typed text", got)
+	}
+	if m.overlay != overlayThemePicker {
+		t.Fatal("typing in the search must not close the picker")
+	}
+}
+
+func TestThemePickerHonoursRemappedKeys(t *testing.T) {
+	m := openedThemePickerModel(t)
+	m.keys.Down = key.NewBinding(key.WithKeys("w"))
+	m.keys.Up = key.NewBinding(key.WithKeys("s"))
+	press := func(m Model, s string) Model {
+		return pickerKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)})
+	}
+
+	m = press(m, "w")
+	if m.activeTheme != 1 {
+		t.Fatalf("remapped down key did not move to the next theme: active %d", m.activeTheme)
+	}
+	m = press(m, "s")
+	if m.activeTheme != 0 {
+		t.Fatalf("remapped up key did not move back: active %d", m.activeTheme)
+	}
+	// j was Down in the default map; with it unbound the picker must ignore it.
+	m = press(m, "j")
+	if m.activeTheme != 0 {
+		t.Fatalf("an unbound key moved the picker: active %d", m.activeTheme)
 	}
 }
 
 func TestThemePickerRendersGroupsAndSample(t *testing.T) {
 	m := openedThemePickerModel(t)
-	chrome := newManagerChrome(46, m.styles.Theme, false)
-	view := ansi.Strip(m.renderThemePicker(46, 26, chrome))
+	view := ansi.Strip(m.renderThemePicker(46, 26))
 	for _, want := range []string{"/ to search", "Catppuccin", "Mocha", "selected row", "link", "quote", "error", "match"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("picker view is missing %q:\n%s", want, view)
 		}
 	}
-	m.themeFilter = "zzzz"
-	if view := ansi.Strip(m.renderThemePicker(46, 26, newManagerChrome(46, m.styles.Theme, false))); !strings.Contains(view, "no matching themes") {
+	m = pickerKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	m = typeThemeSearch(m, "zzzz")
+	if view := ansi.Strip(m.renderThemePicker(46, 26)); !strings.Contains(view, "no matching themes") {
 		t.Errorf("an empty result should say so:\n%s", view)
+	}
+}
+
+func TestMatchOmarchyIsListedWithoutASwatch(t *testing.T) {
+	m := openedThemePickerModel(t)
+	m = moveThemePicker(m, len(PickableThemes())-1)
+	// The vt52 theme draws swatches as '#', which makes them easy to find in plain text.
+	m.styles = BuildStyles(VT52, "comfortable", "square")
+	var row string
+	for _, line := range strings.Split(ansi.Strip(m.renderThemePicker(46, 26)), "\n") {
+		if strings.Contains(line, ThemeNameMatchOmarchy) {
+			row = line
+		}
+	}
+	if row == "" {
+		t.Fatal("match-omarchy row not found")
+	}
+	if strings.Contains(row, "#") {
+		t.Errorf("match-omarchy must not show a placeholder swatch: %q", row)
 	}
 }

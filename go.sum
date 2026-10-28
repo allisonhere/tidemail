@@ -18,8 +18,8 @@ github.com/allisonhere/ripple v0.4.0 h1:mrAH3fXhizLjz121nkQ2UOI2EmhNzAq5FS0hYp7A
 github.com/allisonhere/ripple v0.4.0/go.mod h1:tUOwwHoip07xZ2C+xDtwLFF5dkPCUliQ8OqL6FEbO+I=
 github.com/allisonhere/tidespell v0.3.0 h1:PvK1S1kfk/qBRinsgo/ZRC0WWuzefg8CVg/xtU3xDjs=
 github.com/allisonhere/tidespell v0.3.0/go.mod h1:7XLWUf19/N/Kxt9dVAW0esN31qjTRTAlfHazvNJljnU=
-github.com/allisonhere/tideui v0.3.1 h1:4NJfuXfwVpNGvIuu8CvVcSbvRJd0wysKKNJz6F39sFM=
-github.com/allisonhere/tideui v0.3.1/go.mod h1:hg3233H/76k3Fi8RP07d4wD309+7Jr60zJa06OebLZQ=
+github.com/allisonhere/tideui v0.3.2-0.20261028152459-84bd8dfa3832 h1:dpaL8LnKtXqn97DbHqY2xaLNRRh/gQ8FhZifaT/HEEI=
+github.com/allisonhere/tideui v0.3.2-0.20261028152459-84bd8dfa3832/go.mod h1:hg3233H/76k3Fi8RP07d4wD309+7Jr60zJa06OebLZQ=
 github.com/andybalholm/cascadia v1.3.2 h1:3Xi6Dw5lHF15JtdcmAHD3i1+T8plmv7BQ/nsViSLyss=
 github.com/andybalholm/cascadia v1.3.2/go.mod h1:7gtRlve5FxPPgIgX36uWBX58OdBsSS6lUvCFb+h7KvU=
 github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=

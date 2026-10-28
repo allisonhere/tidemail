@@ -21,6 +21,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/db"
 	imapClient "github.com/allisonhere/tidemail/internal/imap"
 	"github.com/allisonhere/tidemail/internal/update"
+	"github.com/allisonhere/tideui"
 )
 
 // ── Enums ────────────────────────────────────────────────────────────────────
@@ -291,9 +292,7 @@ type Model struct {
 	confirmedTheme int
 	activeTheme    int
 	styles         Styles
-	themeCursor    int
-	themeFilter    string // theme picker search text
-	themeFiltering bool   // typing into the theme picker search
+	themePicker    tideui.ThemePicker
 	// composeBackdrop caches only the main panes behind compose. Typing and
 	// successful autosaves do not alter them; every other event invalidates it.
 	// Pointer-owned so the render-time cache survives Model's value receivers.

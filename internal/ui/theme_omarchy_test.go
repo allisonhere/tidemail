@@ -268,8 +268,8 @@ func TestThemePickerWindowsToFitTerminal(t *testing.T) {
 			m := NewModel(nil, config.Config{Theme: theme, Display: config.DefaultConfig().Display}, "dev", false)
 			m.width = 60
 			m.height = h
-			m.overlay = overlayThemePicker
-			m.themeCursor = last // cursor on the final row (match-omarchy)
+			m.openThemePicker()
+			m = moveThemePicker(m, last) // cursor on the final row (match-omarchy)
 
 			out := m.View()
 			if !strings.Contains(out, ThemeNameMatchOmarchy) {
@@ -289,8 +289,8 @@ func TestThemePickerKeepsMidListCursorVisible(t *testing.T) {
 	m := NewModel(nil, config.Config{Theme: "catppuccin-mocha", Display: config.DefaultConfig().Display}, "dev", false)
 	m.width = 60
 	m.height = 14
-	m.overlay = overlayThemePicker
-	m.themeCursor = 9                   // a theme partway down the list
+	m.openThemePicker()
+	m = moveThemePicker(m, 9)           // a theme partway down the list
 	want := PickableThemes()[9].Variant // the picker shows the variant under its family header
 
 	if out := m.View(); !strings.Contains(out, want) {
