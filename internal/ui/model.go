@@ -3867,6 +3867,11 @@ func (m *Model) ensureContentFocusVisible() {
 	bottom := top + bodyH - 1
 	switch {
 	case m.contentFocusLine < top:
+		if !hasFocusableBefore(m.contentFocusable, m.contentFocusLine) {
+			// Nothing focusable above: the lines before it are the header.
+			m.viewport.SetYOffset(0)
+			return
+		}
 		m.viewport.SetYOffset(m.contentFocusLine)
 	case m.contentFocusLine > bottom:
 		m.viewport.SetYOffset(m.contentFocusLine - bodyH + 1)
