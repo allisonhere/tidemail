@@ -63,15 +63,15 @@ func TestReaderLinksWarmCacheNavigation(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
 	m := readerLinksModel(t, `<a href="https://example.com/first">First action</a><a href="https://example.com/second">Second action</a>`, "")
-	// The first selection is already in the viewport cache before any keypress.
+	// The viewport cache starts neutral; only navigation selects a link.
 	for _, step := range []struct {
 		key  tea.KeyMsg
 		want int
 	}{
-		{tea.KeyMsg{Type: tea.KeyCtrlN}, 1},
-		{tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}, Alt: true}, 0},
+		{tea.KeyMsg{Type: tea.KeyCtrlN}, 0},
 		{tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}, Alt: true}, 1},
-		{tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}, Alt: true}, 0},
+		{tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}, Alt: true}, 0},
+		{tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}, Alt: true}, 1},
 	} {
 		next, _ := m.Update(step.key)
 		m = next.(Model)
@@ -123,8 +123,8 @@ func TestReaderGraphicsAboveFooterPreservesLinkSelection(t *testing.T) {
 		key   tea.KeyMsg
 		index int
 	}{
-		{tea.KeyMsg{Type: tea.KeyCtrlN}, 1},
-		{tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}, Alt: true}, 0},
+		{tea.KeyMsg{Type: tea.KeyCtrlN}, 0},
+		{tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}, Alt: true}, 1},
 	} {
 		next, _ = m.Update(step.key)
 		m = next.(Model)
@@ -144,7 +144,7 @@ func TestReaderLinksScrollToSelectedEntry(t *testing.T) {
 		fmt.Fprintf(&html, `<p><a href="https://example.com/%d">Action %02d</a></p>`, i, i)
 	}
 	m := readerLinksModel(t, html.String(), "")
-	for i := 1; i < 82; i++ {
+	for i := 0; i < 82; i++ {
 		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlN})
 		m = next.(Model)
 		assertReaderLinkSelection(t, m, i)
@@ -163,7 +163,7 @@ func TestReaderCachedFooterSelectionAtReadingWidthCap(t *testing.T) {
 	m.cfg.Display.FocusLine = false
 	m.setViewportForCurrentRow()
 	cacheEntries := m.viewportCache.len()
-	for _, want := range []int{1, 0, 1} {
+	for _, want := range []int{0, 1, 0} {
 		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlN})
 		m = next.(Model)
 		assertReaderLinkSelection(t, m, want)
@@ -297,6 +297,7 @@ func TestReaderThreadLinksUseFinalRowOffsets(t *testing.T) {
 	thread := messageThread{Key: "test", Representative: first, Messages: []db.Message{first, second}, Count: 2}
 	m.setViewportThread(thread)
 	m.stepContentLink(1)
+	m.stepContentLink(1)
 	m.setViewportThread(thread)
 	m.revealContentLink()
 	assertReaderLinkSelection(t, m, 1)
@@ -335,7 +336,7 @@ func TestReaderLinksBeforeAttachmentsScrollToEntry(t *testing.T) {
 	m.setViewportForCurrentRow()
 	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlN})
 	m = next.(Model)
-	assertReaderLinkSelection(t, m, 1)
+	assertReaderLinkSelection(t, m, 0)
 	if m.viewport.YOffset == m.viewport.TotalLineCount()-m.viewport.Height {
 		t.Fatal("link navigation jumped to bottom of attachments")
 	}

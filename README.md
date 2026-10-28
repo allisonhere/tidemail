@@ -290,7 +290,10 @@ settings stay unchanged. Tags also appear below the date and sender in the
 content pane; use **Show tags in message header** under **Settings → Display →
 Message tags** to hide that row only. See the [user guide](docs/guide.md#thunderbird--imap-mail-tags).
 
-`o` opens a link; `Ctrl+B` views the whole message in your browser. Both use the
+`o` opens an explicitly selected LINKS entry or a visible link deliberately focused
+with keyboard navigation. `Enter` activates the same target. New messages have no
+selected link; body clicks and wheel scrolling clear link activation intent and
+never open a URL. `Ctrl+B` views the whole message in your browser. Both use the
 **Browser command** from Settings → Display when one is set.
 
 View in Browser (`Ctrl+B`) works from the message list or reading pane. It fetches
@@ -309,7 +312,8 @@ starts).
 
 With **Actionable links** enabled, the reader's **LINKS** section uses anchor text
 or image descriptions. `Ctrl+N` / `Alt+N` and `Alt+P` move the visible selection
-and scroll it into view. `o` or `Enter` opens the destination; `Ctrl+C` on a LINKS
+and scroll it into view. The first Next selects the first entry; the first Previous
+selects the last. `o` or `Enter` opens the selected destination; `Ctrl+C` on a LINKS
 row copies its full URL when no text selection is active. Email actions appear
 as `[mailto: description]` and open through the configured URI handler without
 sending a message. Each entry shows its real destination host in parentheses, and a

@@ -23,6 +23,8 @@ func newFocusLineModel(t *testing.T) Model {
 	cfg := config.DefaultConfig()
 	cfg.Display.FocusLine = true
 	m := NewModel(database, cfg, "dev", false)
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = next.(Model)
 	m.focused = paneContent
 	m.filteredMessages = []db.Message{{ID: 1, Subject: "Hi"}}
 	return m
@@ -41,6 +43,11 @@ func TestFocusedLineLinkOpensURLOnFocusLine(t *testing.T) {
 		t.Fatalf("link = %q", link)
 	}
 
+	// Deliberately navigate onto the link before pressing `o`.
+	m.contentLineCount = len(m.contentLines)
+	m.contentFocusable = []bool{true, true, true}
+	m.contentFocusLine = 0
+	m.moveContentFocusLine(1)
 	// Pressing `o` should dispatch the open-browser command.
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
 	if cmd == nil {
@@ -122,9 +129,12 @@ func TestFocusedLineLinkHandlesMissingLineLinks(t *testing.T) {
 
 func TestEnterOpensFocusedLineLink(t *testing.T) {
 	m := newFocusLineModel(t)
-	m.contentLines = []string{"[Read post]"}
-	m.contentLineLinks = []string{osc8TestPost}
+	m.contentLines = []string{"Ordinary text", "[Read post]"}
+	m.contentLineLinks = []string{"", osc8TestPost}
+	m.contentLineCount = 2
+	m.contentFocusable = []bool{true, true}
 	m.contentFocusLine = 0
+	m.moveContentFocusLine(1)
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {

@@ -112,8 +112,8 @@ func TestReaderRecoveredButtonsPreserveNavigationAndTargets(t *testing.T) {
 		index  int
 		target string
 	}{
-		{tea.KeyMsg{Type: tea.KeyCtrlN}, 1, approve},
-		{tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}, Alt: true}, 0, deny},
+		{tea.KeyMsg{Type: tea.KeyCtrlN}, 0, deny},
+		{tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}, Alt: true}, 1, approve},
 	} {
 		next, _ := m.Update(step.key)
 		m = next.(Model)

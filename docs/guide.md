@@ -242,7 +242,10 @@ AI/JEV behavior is unchanged and does not assign IMAP tags automatically.
 Automatic Thunderbird profile import, offline queued edits, and bulk tagging are
 not supported.
 
-`o` opens a link; `Ctrl+B` views the whole message in your browser. Both use the
+`o` opens an explicitly selected LINKS entry or a visible link deliberately focused
+with keyboard navigation. `Enter` activates the same target. New messages have no
+selected link; body clicks and wheel scrolling clear link activation intent and
+never open a URL. `Ctrl+B` views the whole message in your browser. Both use the
 **Browser command** from Settings → Display when one is set.
 
 View in Browser (`Ctrl+B`) works from the message list or reading pane. It fetches
@@ -272,8 +275,10 @@ available. Email actions appear as `[mailto: Approve]` or, without a description
 `[mailto: email action]`. Opening one passes the full URI to the configured
 opener to prepare an email; it does not send it. `Ctrl+N` / `Alt+N` and `Alt+P`
 select the next or previous entry and scroll it into view; the chevron, highlight,
-and status counter follow together. Press `o` or `Enter` to open it. `Ctrl+C` on
-a LINKS row without a visual selection copies its full destination, even when
+and status counter follow together. New messages start unselected: the first Next
+selects the first entry, and the first Previous selects the last. Press `o` or
+`Enter` to open the selected entry. Switching messages or threads clears selection.
+`Ctrl+C` on a LINKS row without a visual selection copies its full destination, even when
 the label is shortened or the URL is too long for a terminal hyperlink. Explicit
 text selections still copy the displayed text. Because the label is chosen by the
 sender, each entry also shows its real destination host in parentheses, and a label
@@ -1008,7 +1013,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Z` | Snooze from Needs You / Waiting on Them (local only); in Snoozed: unsnooze |
 | `Ctrl+Z` | Cancel a queued send; in Needs You or Waiting on Them, undo the latest dismiss or stop; otherwise undo the latest pending delete, archive, or move |
 | `O` | Open the Outbox |
-| `o` or `Enter` | Open link on the focus line (falls back to the selected content link) |
+| `o` or `Enter` | Open an explicitly selected LINKS entry or a visible link deliberately focused with the keyboard |
 | `Ctrl+U` | Unsubscribe from the mailing list for the open message |
 | `Ctrl+U` in compose | Cycle the sending account; focus From and press `Enter` to open the account picker |
 | `Ctrl+N` / `Alt+N` | Select the next LINKS entry and scroll it into view |
@@ -1170,10 +1175,9 @@ Unified Inbox.
 **Mouse support** is off by default, so your terminal's own native
 click-drag text selection and copy keep working untouched. Turn it on to use:
 
-- **Click** a sidebar row, a message row, or a pane to focus or select it, and
-  click a link in HTML mail (reusing whatever the focused reading line already
-  resolves to, so it needs **Focus line** on to reliably open the clicked
-  line's link rather than whichever link `Ctrl+N`/`Ctrl+P` last cycled to).
+- **Click** a sidebar row, a message row, or a pane to focus or select it.
+  Reading-pane clicks only position or focus the reader; they never open links,
+  including clicks on link text. Use keyboard link navigation and `o` to open one.
   While message search is active, clicking its search row resumes editing the query.
 - **Double-click** a message row (or draft) to open it, the same as `Enter`; on a
   sidebar row it does what `Enter` does there (expand/collapse, or sync the folder).

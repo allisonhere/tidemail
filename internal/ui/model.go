@@ -219,12 +219,15 @@ type Model struct {
 	contentLinkLabels map[string]string
 	contentLinkRows   []int
 	contentLinkIdx    int
-	contentMessageID  int64
-	contentDraftID    int64
-	contentFocusLine  int
-	contentLineCount  int
-	contentFocusable  []bool
-	contentLines      []string
+	// Activation intent is separate from automatic focus/layout changes.
+	contentLinkContext string
+	contentFocusedLink string
+	contentMessageID   int64
+	contentDraftID     int64
+	contentFocusLine   int
+	contentLineCount   int
+	contentFocusable   []bool
+	contentLines       []string
 	// contentLineLinks holds the hyperlink target for each contentLines entry,
 	// including explicit LINKS destinations when OSC 8 is unavailable. Body
 	// targets come from OSC 8 escapes stripped from the displayed text.
@@ -2746,6 +2749,7 @@ func (m Model) handleUp() (tea.Model, tea.Cmd) {
 		}
 	case paneContent:
 		if !m.cfg.Display.FocusLine {
+			m.clearContentLinkSelection()
 			m.viewport.ScrollUp(1)
 			return m, nil
 		}
@@ -2779,6 +2783,7 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 		}
 	case paneContent:
 		if !m.cfg.Display.FocusLine {
+			m.clearContentLinkSelection()
 			m.viewport.ScrollDown(1)
 			return m, nil
 		}
@@ -2870,6 +2875,9 @@ func (m Model) handleMouseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	target, _, _, ok := m.paneAt(msg.X, msg.Y)
 	if !ok {
 		return m, nil
+	}
+	if target == paneContent {
+		m.clearContentLinkSelection()
 	}
 	dir := 1
 	switch msg.Button {
@@ -3038,12 +3046,10 @@ func (m Model) handleMessagesClick(y int) (tea.Model, tea.Cmd) {
 	return opened, tea.Batch(cmd, openCmd)
 }
 
-// handleContentClick maps a click's Y coordinate (already known to be inside
-// the content pane, which starts at paneTop within the right-hand column) to
-// a logical content line and opens whatever link that line resolves to,
-// reusing the existing keyboard "actionable links" machinery
-// (contentFocusLine + openContentLinkCmd) unchanged.
+// Content clicks position the reader only. Opening requires keyboard intent;
+// a line-level target cannot reliably hit-test the character that was clicked.
 func (m Model) handleContentClick(y, paneTop int) (tea.Model, tea.Cmd) {
+	m.clearContentLinkSelection()
 	interiorTop := paneTop + 1 + m.paneHeaderHeight()
 	if y < interiorTop {
 		return m.focusPane(paneContent)
@@ -3053,9 +3059,8 @@ func (m Model) handleContentClick(y, paneTop int) (tea.Model, tea.Cmd) {
 		m = next.(Model)
 	}
 	line := m.viewport.YOffset + (y - interiorTop)
-	m.contentFocusLine = clamp(line, 0, max(0, m.contentLineCount-1))
-	if cmd, ok := m.openContentLinkCmd(); ok {
-		return m, cmd
+	if line >= 0 && line < m.contentLineCount && y < m.mainHeight()-1 {
+		m.contentFocusLine = line
 	}
 	return m, nil
 }
@@ -3880,20 +3885,25 @@ func (m *Model) ensureContentFocusVisible() {
 	}
 }
 
-// openContentLinkCmd resolves the link the content pane is pointing at: the one
-// on the focus line first, then the selected actionable link. Enter and the `o`
-// key both route through here so the two can never drift apart.
+// openContentLinkCmd accepts only deliberate keyboard selection or focus.
+// Automatic focus, clicks and wheel scrolling never arm an external handler.
 func (m Model) openContentLinkCmd() (tea.Cmd, bool) {
 	if len(m.filteredMessages) == 0 || m.focused != paneContent {
 		return nil, false
 	}
-	if link, ok := m.focusedLineLink(); ok {
+	if link, ok := m.currentContentLink(); ok && m.contentLinkIdx < len(m.contentLinkRows) && m.contentLineVisible(m.contentLinkRows[m.contentLinkIdx]) {
 		return m.openBrowserCmd(link), true
 	}
-	if link, ok := m.currentContentLink(); ok {
-		return m.openBrowserCmd(link), true
+	if m.contentFocusedLink != "" && m.contentLineVisible(m.contentFocusLine) {
+		if link, ok := m.focusedLineLink(); ok && link == m.contentFocusedLink {
+			return m.openBrowserCmd(link), true
+		}
 	}
 	return nil, false
+}
+
+func (m Model) contentLineVisible(line int) bool {
+	return line >= m.viewport.YOffset && line < m.viewport.YOffset+m.contentBodyHeight()
 }
 
 func (m Model) currentContentLink() (string, bool) {
@@ -3909,7 +3919,7 @@ func (m Model) renderStatusBar() string {
 	updateActionPart := m.statusUpdateActionPart()
 	linkPart := ""
 	if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
-		idx := clamp(m.contentLinkIdx, 0, len(m.contentLinks)-1) + 1
+		idx := m.contentLinkIdx + 1
 		linkPart = m.statusBarInlineText(m.styles.StatusBar, fmt.Sprintf("link %d/%d", idx, len(m.contentLinks)))
 	}
 	if prompt := m.destructiveUndoPrompt(); prompt != "" {

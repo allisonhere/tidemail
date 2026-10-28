@@ -137,7 +137,7 @@ Current release: **v1.0.28**.
   Support page with open/copy actions for the confirmed Ko-fi link. About is an
   animated "Ocean night" scene and Support an animated "Café" scene; plain
   (VT52) themes keep the original static pages.
-- **Mouse support** (opt-in, Settings → Display): click to select rows/focus panes/open links,
+- **Mouse support** (opt-in, Settings → Display): click to select rows/focus panes (reading-pane clicks never open links),
   double-click to open a message, scroll wheel over the sidebar, list, and reading pane,
   right-click for a context menu of that row's actions (folder, account, or message), and click the search row to resume
   editing. Overlays and the status line are not yet clickable; no drag support.

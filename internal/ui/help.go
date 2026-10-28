@@ -121,8 +121,8 @@ func helpSections(keys KeyMap) []helpSection {
 			entries: []helpEntry{
 				{keys.Up.Help().Key + "/" + keys.Down.Help().Key, "move focus line; scroll only when needed"},
 				{keys.Back.Help().Key, "return to message list"},
-				{keys.Enter.Help().Key, "open link on focus line, else selected link"},
-				{keys.OpenBrowser.Help().Key, "open link on focus line, else selected link"},
+				{keys.Enter.Help().Key, "open explicitly selected or keyboard-focused visible link"},
+				{keys.OpenBrowser.Help().Key, "open explicitly selected or keyboard-focused visible link"},
 				{keys.Unsubscribe.Help().Key, "unsubscribe from this sender's list"},
 				{keys.NextLink.Help().Key, "next LINKS entry; scroll into view"},
 				{keys.PrevLink.Help().Key, "previous LINKS entry; scroll into view"},
@@ -319,7 +319,7 @@ func helpSections(keys KeyMap) []helpSection {
 			name: "Mouse",
 			entries: []helpEntry{
 				{"enable", "Settings → Display → Mouse support (off by default; keeps native text selection while off)"},
-				{"click", "select a sidebar or message row, focus a pane, open a link in the reading pane, or resume editing a search from its row"},
+				{"click", "select a row or focus a pane; reading-pane clicks never open links; click a search row to edit"},
 				{"double-click", "open a message or draft (same as enter); on a sidebar row, expand/collapse or sync like enter"},
 				{"scroll wheel", "moves the selection in the sidebar and message list; scrolls the reading pane; never changes focus"},
 				{"right-click", "select the row and open a menu of its actions (folder, account, or message); enter or click runs one, esc closes"},
