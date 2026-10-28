@@ -22,6 +22,7 @@ type seedMessage struct {
 	from, to, subject, text, html string
 	ago                           time.Duration
 	read, starred, attachment     bool
+	flags                         []string // IMAP keywords, e.g. $label1 (Important)
 }
 
 func main() {
@@ -99,7 +100,7 @@ func seed(dir string) error {
 				MessageID: fmt.Sprintf("<demo-%s-%d@example.invalid>", acc.id, i+1),
 				Subject:   m.subject, From: m.from, To: m.to,
 				Date: now.Add(-m.ago), BodyText: m.text, BodyHTML: m.html,
-				Read: m.read, Starred: m.starred, HasAttachment: m.attachment,
+				Read: m.read, Starred: m.starred, HasAttachment: m.attachment, Flags: m.flags,
 			})
 			if err != nil {
 				return err
