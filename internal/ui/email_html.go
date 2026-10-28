@@ -14,6 +14,10 @@ import (
 // blocked.
 const emailExportCSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; base-uri 'none'; form-action 'none'"
 
+// emailExportCSPImages is the same policy with remote images allowed, for the
+// explicit "load images" reopen.
+const emailExportCSPImages = "default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline'; font-src data:; base-uri 'none'; form-action 'none'"
+
 var (
 	cssURL    = regexp.MustCompile(`(?i)url\(\s*(?:"[^"]*"|'[^']*'|[^)]*)\)`)
 	cssImport = regexp.MustCompile(`(?i)@import[^;{]*;?`)
@@ -22,7 +26,7 @@ var (
 // sanitizeEmailHTML returns src with remote content removed so a browser makes
 // no network requests when it opens the export. Links are preserved. blocked
 // counts the remote images that were dropped.
-func sanitizeEmailHTML(src string) (out string, blocked int, err error) {
+func sanitizeEmailHTML(src string, allowImages bool) (out string, blocked int, err error) {
 	doc, err := html.Parse(strings.NewReader(src))
 	if err != nil {
 		return "", 0, err
@@ -51,21 +55,25 @@ func sanitizeEmailHTML(src string) (out string, blocked int, err error) {
 				case atom.Style:
 					for t := c.FirstChild; t != nil; t = t.NextSibling {
 						if t.Type == html.TextNode {
-							t.Data = stripCSSRemote(t.Data)
+							t.Data = stripCSSRemote(t.Data, allowImages)
 						}
 					}
 				}
-				blocked += stripRemoteAttrs(c)
+				blocked += stripRemoteAttrs(c, allowImages)
 			}
 			walk(c)
 			c = next
 		}
 	}
 	walk(doc)
+	csp := emailExportCSP
+	if allowImages {
+		csp = emailExportCSPImages
+	}
 	if head != nil {
 		meta := &html.Node{Type: html.ElementNode, DataAtom: atom.Meta, Data: "meta", Attr: []html.Attribute{
 			{Key: "http-equiv", Val: "Content-Security-Policy"},
-			{Key: "content", Val: emailExportCSP},
+			{Key: "content", Val: csp},
 		}}
 		head.InsertBefore(meta, head.FirstChild)
 	}
@@ -87,7 +95,7 @@ func isMetaRefresh(n *html.Node) bool {
 
 // stripRemoteAttrs drops attributes that would load or phone home from n and
 // returns 1 when a remote image was removed.
-func stripRemoteAttrs(n *html.Node) (blocked int) {
+func stripRemoteAttrs(n *html.Node, allowImages bool) (blocked int) {
 	kept := n.Attr[:0]
 	removedImage := false
 	for _, a := range n.Attr {
@@ -96,18 +104,18 @@ func stripRemoteAttrs(n *html.Node) (blocked int) {
 		case strings.HasPrefix(key, "on"):
 			continue
 		case key == "srcset" || key == "imagesrcset":
-			if !isInlineSource(a.Val) {
+			if !isInlineSource(a.Val) && (!allowImages || n.DataAtom != atom.Img) {
 				removedImage = removedImage || n.DataAtom == atom.Img
 				continue
 			}
 		case key == "src" || key == "background" || key == "poster" || key == "data" ||
 			key == "lowsrc" || key == "dynsrc" || key == "longdesc" || key == "ping":
-			if !isInlineSource(a.Val) {
+			if !isInlineSource(a.Val) && (!allowImages || !imageAttr(n, key)) {
 				removedImage = removedImage || n.DataAtom == atom.Img
 				continue
 			}
 		case key == "style":
-			a.Val = stripCSSRemote(a.Val)
+			a.Val = stripCSSRemote(a.Val, allowImages)
 		}
 		kept = append(kept, a)
 	}
@@ -118,6 +126,18 @@ func stripRemoteAttrs(n *html.Node) (blocked int) {
 	return 0
 }
 
+// imageAttr reports whether key on n loads an image (not a script, frame or
+// tracking ping), so it can be kept when the user chose to load images.
+func imageAttr(n *html.Node, key string) bool {
+	switch key {
+	case "src", "lowsrc", "dynsrc":
+		return n.DataAtom == atom.Img || n.DataAtom == atom.Input
+	case "background":
+		return true
+	}
+	return false
+}
+
 // isInlineSource reports whether v carries its own data (or is empty or a
 // cid: reference that cannot hit the network).
 func isInlineSource(v string) bool {
@@ -125,12 +145,12 @@ func isInlineSource(v string) bool {
 	return v == "" || strings.HasPrefix(v, "data:") || strings.HasPrefix(v, "cid:")
 }
 
-func stripCSSRemote(css string) string {
+func stripCSSRemote(css string, allowImages bool) string {
 	css = cssImport.ReplaceAllString(css, "")
 	return cssURL.ReplaceAllStringFunc(css, func(m string) string {
 		inner := strings.TrimSpace(m[strings.Index(m, "(")+1 : len(m)-1])
 		inner = strings.Trim(inner, `"'`)
-		if isInlineSource(inner) && inner != "" {
+		if inner != "" && (isInlineSource(inner) || allowImages) {
 			return m
 		}
 		return "none"

@@ -323,6 +323,10 @@ type Model struct {
 	statusMsg string
 	statusErr bool
 
+	// browserReopen is the message whose browser export blocked remote images;
+	// pressing the open-in-browser key on it again reopens with images loaded.
+	browserReopen int64
+
 	syncing map[int64]bool
 	// syncVisible is the subset of syncing mailboxes that should animate in the
 	// sidebar/status line: only syncs the user explicitly requested. Background
@@ -641,6 +645,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case StatusClearMsg:
 		m.statusMsg = ""
 		m.statusErr = false
+		m.browserReopen = 0
 		return m, nil
 
 	case imageUploadMsg:
@@ -1805,7 +1810,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case msg.err != nil:
 			m.setStatus("Open in browser: "+msg.err.Error(), true)
 		case msg.blocked > 0:
-			m.setStatus(fmt.Sprintf("opened in browser (%d remote images blocked)", msg.blocked), false)
+			m.browserReopen = msg.msgID
+			m.setStatus(fmt.Sprintf("opened in browser, %d remote images blocked — %s again to load them", msg.blocked, m.keyHint(m.keys.OpenInBrowser)), false)
+		case msg.images:
+			m.setStatus("opened in browser (images loaded)", false)
 		default:
 			m.setStatus("opened in browser", false)
 		}
@@ -1876,6 +1884,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// The "reopen with images" offer lasts only until the next other key.
+	if !keyMatches(msg, m.keys.OpenInBrowser) {
+		m.browserReopen = 0
+	}
 	// Modal overlays get first claim on keys so main-pane shortcuts cannot leak through dialogs. -allie
 	// Overlay / window takes priority
 	if m.overlay != overlayNone {
@@ -2501,7 +2513,9 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.OpenInBrowser):
 		if m.focused != paneAccounts && !m.selectedDraftsMailbox() {
 			if cur := m.commandMessage(); cur != nil {
-				return m.openEmailInBrowser(*cur)
+				allowImages := m.browserReopen == cur.ID
+				m.browserReopen = 0
+				return m.openEmailInBrowser(*cur, allowImages)
 			}
 		}
 		return m, nil

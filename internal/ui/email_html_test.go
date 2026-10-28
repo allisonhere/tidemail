@@ -22,7 +22,7 @@ func TestSanitizeEmailHTMLBlocksRemoteContent(t *testing.T) {
 <iframe src="https://evil.example"></iframe>
 <a href="https://example.com/?a=1&amp;b=2">Go</a>
 </body></html>`
-	out, blocked, err := sanitizeEmailHTML(src)
+	out, blocked, err := sanitizeEmailHTML(src, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestSanitizeEmailHTMLBlocksRemoteContent(t *testing.T) {
 }
 
 func TestSanitizeEmailHTMLFragment(t *testing.T) {
-	out, blocked, err := sanitizeEmailHTML(`<p>hello <img src="http://t.example/p.gif"></p>`)
+	out, blocked, err := sanitizeEmailHTML(`<p>hello <img src="http://t.example/p.gif"></p>`, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestOpenEmailHTMLUsesConfiguredBrowser(t *testing.T) {
 	t.Cleanup(func() { openEmailBrowser = original })
 	var got string
 	openEmailBrowser = func(configured, _ string) error { got = configured; return nil }
-	blocked, err := openEmailHTML([]byte("Content-Type: text/html\r\n\r\n<img src='https://t.example/p.gif'>"), "firefox --new-tab")
+	blocked, err := openEmailHTML([]byte("Content-Type: text/html\r\n\r\n<img src='https://t.example/p.gif'>"), "firefox --new-tab", false)
 	if err != nil || got != "firefox --new-tab" || blocked != 1 {
 		t.Fatalf("configured=%q blocked=%d err=%v", got, blocked, err)
 	}
@@ -115,5 +115,31 @@ func TestEmailExportDirIsPrivate(t *testing.T) {
 	}
 	if _, err := emailExportDir(); err == nil {
 		t.Fatal("world-readable export dir must be rejected")
+	}
+}
+
+func TestSanitizeEmailHTMLAllowImages(t *testing.T) {
+	src := `<html><head><link rel="stylesheet" href="https://evil.example/a.css">
+<meta http-equiv="refresh" content="0;url=https://evil.example">
+<style>@import url(https://evil.example/i.css); p{background:url("https://img.example/bg.png")}</style>
+<script src="https://evil.example/x.js"></script></head>
+<body><img src="https://img.example/pixel.gif"><img srcset="https://img.example/a.png 1x">
+<iframe src="https://evil.example/f"></iframe><a href="https://example.com/">Go</a></body></html>`
+	out, blocked, err := sanitizeEmailHTML(src, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blocked != 0 {
+		t.Fatalf("blocked = %d, want 0 when images are allowed", blocked)
+	}
+	for _, want := range []string{"https://img.example/pixel.gif", "https://img.example/a.png 1x", "https://img.example/bg.png", "img-src data: https: http:", `href="https://example.com/"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("export lost %q:\n%s", want, out)
+		}
+	}
+	for _, bad := range []string{"evil.example", "<script", "<iframe", "<link", "refresh", "@import"} {
+		if strings.Contains(out, bad) {
+			t.Errorf("export still contains %q:\n%s", bad, out)
+		}
 	}
 }

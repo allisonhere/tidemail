@@ -297,7 +297,9 @@ one is set, otherwise the system default (`xdg-open` on Linux). Messages without
 HTML show a status message. Links are preserved. Remote content is blocked so
 opening a message does not load tracking pixels: remote images, scripts, frames,
 stylesheets, and web fonts are left out, and the status line reports how many
-remote images were dropped. Embedded CID images are not exported. Exports are
+remote images were dropped. Press `Ctrl+B` again right away to reopen the message
+with remote images loaded; this tells the sender the message was opened, so it only
+happens when you ask. Embedded CID images are not exported. Exports are
 written to a private per-user folder in the system temporary directory and
 deleted automatically after an hour (older ones are also pruned when TideMail
 starts).
