@@ -307,6 +307,16 @@ written to a private per-user folder in the system temporary directory and
 deleted automatically after an hour (older ones are also pruned when TideMail
 starts).
 
+With **Actionable links** enabled, the reader's **LINKS** section uses anchor text
+or image descriptions. `Ctrl+N` / `Alt+N` and `Alt+P` move the visible selection
+and scroll it into view. `o` or `Enter` opens the destination; `Ctrl+C` on a LINKS
+row copies its full URL when no text selection is active. Email actions appear
+as `[mailto: description]` and open through the configured URI handler without
+sending a message. Each entry shows its real destination host in parentheses, and a
+label that names a different site than the link goes to is marked with `!`, so a label
+cannot hide where a link leads. HTML resource and metadata URLs are excluded from LINKS, as are links that
+only wrap a hidden or 1x1 tracking pixel.
+
 ## Optional AI tools
 
 Connect OpenAI, Claude, Gemini, or a local Ollama server if you want message

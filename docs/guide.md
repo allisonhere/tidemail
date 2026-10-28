@@ -259,6 +259,27 @@ written to a private per-user folder in the system temporary directory and
 deleted automatically after an hour (older ones are also pruned when TideMail
 starts).
 
+When **Actionable links** is enabled in Display settings, the **LINKS** section
+near the end of the message uses links from the displayed representation: HTML
+links for HTML messages, or plain-text URLs when the reader displays plain text.
+It does not combine links from both MIME alternatives. Entries show anchor text
+or `[image: ALT TEXT]`, falling back to the URL when no description is available.
+HTML entries come from anchor destinations and visible body URLs, not metadata,
+image resources, scripts, or comments. A link that only wraps a hidden or 1x1
+tracking pixel is left out. Available Outlook fallback anchor text
+and button-input captions are also used when no ordinary anchor label is
+available. Email actions appear as `[mailto: Approve]` or, without a description,
+`[mailto: email action]`. Opening one passes the full URI to the configured
+opener to prepare an email; it does not send it. `Ctrl+N` / `Alt+N` and `Alt+P`
+select the next or previous entry and scroll it into view; the chevron, highlight,
+and status counter follow together. Press `o` or `Enter` to open it. `Ctrl+C` on
+a LINKS row without a visual selection copies its full destination, even when
+the label is shortened or the URL is too long for a terminal hyperlink. Explicit
+text selections still copy the displayed text. Because the label is chosen by the
+sender, each entry also shows its real destination host in parentheses, and a label
+that names a different site than the link goes to (for example "paypal.com" over a
+link to another domain) is marked with `!`.
+
 ### Managing folders
 
 Gmail's standard folders appear in the System section: Sent Mail, Drafts, All
@@ -990,8 +1011,8 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `o` or `Enter` | Open link on the focus line (falls back to the selected content link) |
 | `Ctrl+U` | Unsubscribe from the mailing list for the open message |
 | `Ctrl+U` in compose | Cycle the sending account; focus From and press `Enter` to open the account picker |
-| `Ctrl+N` / `Alt+N` | Next content link |
-| `Alt+P` | Previous content link |
+| `Ctrl+N` / `Alt+N` | Select the next LINKS entry and scroll it into view |
+| `Alt+P` | Select the previous LINKS entry and scroll it into view |
 | `Alt+P` on the account form's Password row | Enter the password in a native dialog (`zenity` or `kdialog`) |
 | `Ctrl+E` | Toggle email headers on/off |
 | `Ctrl+O` | View the message source; `c` copies it, `Esc` closes |

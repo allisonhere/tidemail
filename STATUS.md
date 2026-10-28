@@ -70,8 +70,10 @@ Current release: **v1.0.28**.
   Global search uses a dedicated row above message subjects. Threaded view, HTML
   rendering with inline raster images (Kitty graphics on Ghostty/Kitty/Rio,
   text placeholders elsewhere; remote images blocked until `i`), attachment
-  saving, message source view with copy (`Ctrl+O`), open HTML in the default
-  browser (`Ctrl+B`), contacts manager.
+  saving, message source view with copy (`Ctrl+O`), open HTML in the browser
+  (`Ctrl+B`), labelled actionable links that keep the selected entry visible,
+  full-URL copying, labelled `mailto:` actions, contacts manager. HTML LINKS
+  exclude source-only resource URLs.
 - **Receipt tables**: detect simple item/amount tables without semantic headers,
   preserve merged-cell totals, align amounts, and use labelled records in narrow
   panes. Complex row-spanning tables retain the text fallback.

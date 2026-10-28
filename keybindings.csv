@@ -20,8 +20,8 @@ PluginCardUnsubscribe,u,u,unsubscribe when offered,plugin result card
 MarkAllRead,"R,ctrl+x",R/ctrl+x,mark all read,main
 OpenBrowser,o,o,open link,main
 Unsubscribe,ctrl+u,ctrl+u,unsubscribe,content
-NextLink,"ctrl+n,alt+n",ctrl+n,next link,content
-PrevLink,alt+p,alt+p,prev link,content
+NextLink,"ctrl+n,alt+n",ctrl+n,next LINKS entry (scroll into view; ctrl+c copies full URL),content
+PrevLink,alt+p,alt+p,previous LINKS entry (scroll into view),content
 Search,/,/,search,main
 UnreadOnly,u,u,toggle unread only,main
 Compose,c,c,compose,main

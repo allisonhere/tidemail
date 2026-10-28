@@ -69,6 +69,11 @@ func (m Model) renderMessageContent(msg db.Message) string {
 }
 
 func (m Model) renderMessageContentImages(msg db.Message) (string, []renderImage) {
+	rendered := m.renderMessageContentLayout(msg)
+	return rendered.content, rendered.images
+}
+
+func (m Model) renderMessageContentLayout(msg db.Message) renderedContent {
 	paneWidth := m.contentPaneContentWidth()
 	contentWidth := m.contentBodyWidth()
 	bodyWidth := m.contentBodyWidth()
@@ -99,7 +104,11 @@ func (m Model) renderMessageContentImages(msg db.Message) (string, []renderImage
 
 	body = collapseQuoteBlocks(body, m.contentQuotesCollapsed)
 
+	prefix := title + "\n" + meta + "\n\n" + fullHeaders
+	linkStart := -1
 	if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
+		linkStart = strings.Count(normalizeHardBreaks(prefix+body+"\n\n"), "\n") + 1
+		m.contentLinkIdx = -1 // cache layout independently of selection
 		body += "\n\n" + m.renderContentLinks(bodyWidth)
 	}
 
@@ -110,9 +119,9 @@ func (m Model) renderMessageContentImages(msg db.Message) (string, []renderImage
 		body += "\n\n" + m.renderAttachmentListFor(visible, bodyWidth)
 	}
 
-	content := title + "\n" + meta + "\n\n" + fullHeaders + body
+	content := prefix + body
 	content = normalizeHardBreaks(content)
-	return fillViewWidth(content, paneWidth, m.styles.Theme.Bg), images
+	return renderedContent{content: fillViewWidth(content, paneWidth, m.styles.Theme.Bg), images: images, linkStart: linkStart}
 }
 
 func (m Model) renderMessageBody(msg db.Message, bodyWidth int) string {
@@ -185,28 +194,70 @@ func (m Model) renderAttachmentListFor(atts []db.Attachment, width int) string {
 }
 
 func (m Model) renderContentLinks(width int) string {
+	bodyWidth := max(1, width-1) // reserve the existing one-cell block indent
 	lines := make([]string, 0, len(m.contentLinks)+1)
-	lines = append(lines, strings.ToUpper("Links"))
-	activeStyle := lipgloss.NewStyle().
-		Background(m.styles.Theme.BorderFocus).
-		Foreground(accentReadableOn(m.styles.Theme.Fg, m.styles.Theme.BorderFocus, 4.5)).
-		Bold(true)
-	linkStyle := lipgloss.NewStyle().Foreground(messageLinkColor(m.styles.Theme))
-	for i, link := range m.contentLinks {
-		prefix := "  "
-		if i == m.contentLinkIdx {
-			prefix = "> "
-		}
-		line := truncate(prefix+link, max(8, width))
-		if i == m.contentLinkIdx {
-			line = activeStyle.Render(line)
-		} else {
-			line = linkStyle.Render(line)
-		}
-		// The click target is the full URL even when the visible text is cut.
-		lines = append(lines, osc8Link(link, line, m.styles.PlainUI))
+	lines = append(lines, indentBlock(m.styles.ContentBody.Width(bodyWidth).Render(truncate("LINKS", bodyWidth)), 1))
+	for i := range m.contentLinks {
+		lines = append(lines, m.renderContentLinkRow(i, width, i == m.contentLinkIdx))
 	}
-	return indentBlock(m.styles.ContentBody.Width(width).Render(strings.Join(lines, "\n")), 1)
+	return strings.Join(lines, "\n")
+}
+
+func (m Model) contentLinkText(index, width int, selected bool) string {
+	link := m.contentLinks[index]
+	prefix := "  "
+	if selected {
+		prefix = "> "
+	}
+	label := m.contentLinkLabels[link]
+	if isMailtoDestination(link) {
+		if label == "" {
+			label = "email action"
+		}
+		label = "[mailto: " + label + "]"
+		return truncate(prefix+label, width)
+	}
+	if label == "" || label == link {
+		return truncate(prefix+link, width)
+	}
+	// The label is chosen by the sender, so always show where the link really
+	// goes, and warn when the label names a different site than the target.
+	suffix := linkDestinationSuffix(link)
+	if linkLabelMismatch(label, link) {
+		label = "! " + label
+	}
+	room := width - lipgloss.Width(suffix)
+	if room < 8 {
+		return truncate(prefix+label+suffix, width)
+	}
+	return truncate(prefix+label, room) + suffix
+}
+
+func (m Model) renderContentLinkRow(index, width int, selected bool) string {
+	width = max(1, width-1)
+	link := m.contentLinks[index]
+	line := m.contentLinkText(index, width, selected)
+	style := lipgloss.NewStyle().Foreground(messageLinkColor(m.styles.Theme))
+	if selected {
+		style = lipgloss.NewStyle().
+			Background(m.styles.Theme.BorderFocus).
+			Foreground(accentReadableOn(m.styles.Theme.Fg, m.styles.Theme.BorderFocus, 4.5)).
+			Bold(true)
+	}
+	// The click target is the full URI even when the visible label is cut.
+	line = osc8Link(link, style.Render(line), m.styles.PlainUI)
+	return indentBlock(m.styles.ContentBody.Width(width).Render(line), 1)
+}
+
+// Cached layout contains neutral footer rows. Keep the selectable text view in
+// sync without mutating the cache's shared line index or rebuilding its body.
+func (m *Model) updateContentLinkLine() {
+	if m.contentLinkIdx < 0 || m.contentLinkIdx >= len(m.contentLinkRows) {
+		return
+	}
+	row := m.contentLinkRows[m.contentLinkIdx]
+	m.contentLines = append([]string(nil), m.contentLines...)
+	m.contentLines[row] = " " + m.contentLinkText(m.contentLinkIdx, max(1, m.contentBodyWidth()-1), true)
 }
 
 func (m Model) actionableLinksEnabled() bool {
@@ -245,7 +296,11 @@ func (m Model) focusedLineLink() (string, bool) {
 	if m.contentFocusLine < 0 || m.contentFocusLine >= len(m.contentLines) {
 		return "", false
 	}
-	// Visible text wins: what the reader can see is what they meant to open.
+	// LINKS rows have explicit targets, including URLs too long for OSC 8.
+	if link, ok := m.contentListLinkAt(m.contentFocusLine); ok {
+		return link, true
+	}
+	// Visible text wins elsewhere: what the reader sees is what they meant to open.
 	if links := extractActionableLinks(m.contentLines[m.contentFocusLine], ""); len(links) > 0 {
 		return links[0], true
 	}
@@ -286,13 +341,28 @@ func (m Model) viewportContentKey(id string, fingerprint int, imageKey string) v
 // costs milliseconds even with its body already rendered — mostly ansi width
 // scans over the whole content — and moving the cursor back onto a message
 // should not pay for it twice.
-func (m *Model) viewportContentFor(key viewportCacheKey, render func() (string, []renderImage)) viewportContent {
+func (m *Model) viewportContentFor(key viewportCacheKey, render func() renderedContent) viewportContent {
 	if vc, ok := m.viewportCache.get(key); ok {
 		return vc
 	}
-	content, images := render()
+	rendered := render()
+	content, images := rendered.content, rendered.images
 	lines, lineLinks := contentDisplayLines(content)
+	var linkRows []int
+	if rendered.linkStart >= 0 {
+		for i, target := range m.contentLinks {
+			row := rendered.linkStart + i
+			if row >= len(lines) {
+				break
+			}
+			linkRows = append(linkRows, row)
+			if row < len(lineLinks) {
+				lineLinks[row] = target
+			}
+		}
+	}
 	vc := viewportContent{
+		linkRows:  linkRows,
 		content:   content,
 		lines:     lines,
 		lineLinks: lineLinks,
@@ -327,13 +397,15 @@ func (m *Model) setViewportMessage(msg db.Message) {
 		len(msg.BodyHTML)+len(msg.BodyText)+len(m.contentAttachments),
 		m.imageRenderKey(msg.ID),
 	)
-	vc := m.viewportContentFor(key, func() (string, []renderImage) { return m.renderMessageContentImages(msg) })
+	vc := m.viewportContentFor(key, func() renderedContent { return m.renderMessageContentLayout(msg) })
 	m.contentSearchMatches = collectSearchMatches(vc.content, m.contentSearchQuery)
 	m.viewport.SetContent(vc.content)
 	m.applyViewportImages(vc.images)
 	m.contentMessageID = msg.ID
 	m.contentDraftID = 0
 	m.contentLines, m.contentLineLinks = vc.lines, vc.lineLinks
+	m.contentLinkRows = vc.linkRows
+	m.updateContentLinkLine()
 	m.contentLineCount = len(m.contentLines)
 	m.contentFocusable = vc.focusable
 	m.contentFocusLine = clamp(m.contentFocusLine, 0, max(0, m.contentLineCount-1))
@@ -423,6 +495,7 @@ func (m *Model) setViewportDraft(d db.Draft) {
 	m.contentMessageID = 0
 	m.contentDraftID = d.ID
 	m.contentLines, m.contentLineLinks = contentDisplayLines(content)
+	m.contentLinkRows = nil
 	m.contentLineCount = len(m.contentLines)
 	m.contentFocusable = focusableFromLines(m.contentLines)
 	m.contentFocusLine = clamp(m.contentFocusLine, 0, max(0, m.contentLineCount-1))
@@ -448,13 +521,15 @@ func (m *Model) setViewportThread(thread messageThread) {
 		fingerprint += len(tm.BodyHTML) + len(tm.BodyText)
 	}
 	key := m.viewportContentKey("thread:"+thread.Key, fingerprint, m.threadImageRenderKey(thread))
-	vc := m.viewportContentFor(key, func() (string, []renderImage) { return m.renderThreadContentImages(thread) })
+	vc := m.viewportContentFor(key, func() renderedContent { return m.renderThreadContentLayout(thread) })
 	m.contentSearchMatches = collectSearchMatches(vc.content, m.contentSearchQuery)
 	m.viewport.SetContent(vc.content)
 	m.applyViewportImages(vc.images)
 	m.contentMessageID = rep.ID
 	m.contentDraftID = 0
 	m.contentLines, m.contentLineLinks = vc.lines, vc.lineLinks
+	m.contentLinkRows = vc.linkRows
+	m.updateContentLinkLine()
 	m.contentLineCount = len(m.contentLines)
 	m.contentFocusable = vc.focusable
 	m.contentFocusLine = clamp(m.contentFocusLine, 0, max(0, m.contentLineCount-1))
@@ -513,6 +588,8 @@ func (m *Model) clearViewportMessage() {
 	m.clearViewportImages()
 	m.viewport.SetContent("")
 	m.contentLinks = nil
+	m.contentLinkLabels = nil
+	m.contentLinkRows = nil
 	m.contentLinkIdx = -1
 	m.contentMessageID = 0
 	m.contentDraftID = 0
@@ -533,8 +610,13 @@ func (m Model) renderThreadContent(thread messageThread) string {
 }
 
 func (m Model) renderThreadContentImages(thread messageThread) (string, []renderImage) {
+	rendered := m.renderThreadContentLayout(thread)
+	return rendered.content, rendered.images
+}
+
+func (m Model) renderThreadContentLayout(thread messageThread) renderedContent {
 	if len(thread.Messages) == 0 {
-		return "", nil
+		return renderedContent{linkStart: -1}
 	}
 	paneWidth := m.contentPaneContentWidth()
 	contentWidth := m.contentBodyWidth()
@@ -557,7 +639,10 @@ func (m Model) renderThreadContentImages(thread messageThread) (string, []render
 		blocks = append(blocks, header+"\n\n"+body)
 	}
 	body := collapseQuoteBlocks(strings.Join(blocks, "\n\n"), m.contentQuotesCollapsed)
+	linkStart := -1
 	if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
+		linkStart = strings.Count(normalizeHardBreaks(title+"\n\n"+body+"\n\n"), "\n") + 1
+		m.contentLinkIdx = -1 // cache layout independently of selection
 		body += "\n\n" + m.renderContentLinks(contentWidth)
 	}
 	if visible := filterRenderedInline(m.contentAttachments, images); len(visible) > 0 {
@@ -565,7 +650,7 @@ func (m Model) renderThreadContentImages(thread messageThread) (string, []render
 	}
 	content := title + "\n\n" + body
 	content = normalizeHardBreaks(content)
-	return fillViewWidth(content, paneWidth, m.styles.Theme.Bg), images
+	return renderedContent{content: fillViewWidth(content, paneWidth, m.styles.Theme.Bg), images: images, linkStart: linkStart}
 }
 
 func (m Model) threadMessageHeader(msg db.Message, width int) string {
@@ -729,6 +814,11 @@ func (m *Model) clearContentSelection() {
 }
 
 func (m Model) contentSelectionText(fallbackFocused bool) string {
+	if fallbackFocused && !m.contentSelectionActive {
+		if target, ok := m.contentListLinkAt(m.contentFocusLine); ok {
+			return target
+		}
+	}
 	if len(m.contentLines) == 0 {
 		return ""
 	}
@@ -784,8 +874,9 @@ func (m Model) renderContentFocusLine(body string, width, height int, focused bo
 	hasSearch := len(m.contentSearchMatches) > 0
 	hasFocus := m.cfg.Display.FocusLine && focused && m.contentLineCount > 0
 	hasSelection := m.contentSelectionActive && m.contentLineCount > 0
+	hasLink := m.contentLinkIdx >= 0 && m.contentLinkIdx < len(m.contentLinkRows)
 
-	if !hasSearch && !hasFocus && !hasSelection {
+	if !hasSearch && !hasFocus && !hasSelection && !hasLink {
 		return body
 	}
 	if width <= 0 || height <= 0 {
@@ -793,6 +884,14 @@ func (m Model) renderContentFocusLine(body string, width, height int, focused bo
 	}
 
 	lines := strings.Split(body, "\n")
+	// Only the visible selected footer row changes; the viewport's stored
+	// content stays neutral and reusable across every link selection.
+	if hasLink {
+		viewIdx := m.contentLinkRows[m.contentLinkIdx] - m.viewport.YOffset
+		if viewIdx >= 0 && viewIdx < height && viewIdx < len(lines) {
+			lines[viewIdx] = m.renderContentLinkRow(m.contentLinkIdx, m.contentBodyWidth(), true)
+		}
+	}
 
 	styleLine := func(lineIdx int, style lipgloss.Style) {
 		viewIdx := lineIdx - m.viewport.YOffset
@@ -809,6 +908,9 @@ func (m Model) renderContentFocusLine(body string, width, height int, focused bo
 			l += strings.Repeat(" ", pad)
 		}
 		lines[viewIdx] = style.Width(width).Render(l)
+		if target, ok := m.contentListLinkAt(lineIdx); ok {
+			lines[viewIdx] = osc8Link(target, lines[viewIdx], m.styles.PlainUI)
+		}
 	}
 
 	if hasSearch {
@@ -837,12 +939,15 @@ func (m Model) renderContentFocusLine(body string, width, height int, focused bo
 
 func (m *Model) syncContentLinks(msg db.Message) {
 	if !m.actionableLinksEnabled() {
+		m.contentLinkLabels = nil
 		m.contentLinks = nil
 		m.contentLinkIdx = -1
 		return
 	}
 
-	links := m.renderMessageForDisplay(msg, m.contentBodyWidth()).links
+	result := m.renderMessageForDisplay(msg, m.contentBodyWidth())
+	links := result.links
+	m.contentLinkLabels = result.linkLabels
 	if len(links) == 0 {
 		m.contentLinks = nil
 		m.contentLinkIdx = -1
@@ -865,13 +970,21 @@ func (m *Model) syncContentLinks(msg db.Message) {
 
 func (m *Model) syncThreadContentLinks(thread messageThread) {
 	if !m.actionableLinksEnabled() {
+		m.contentLinkLabels = nil
 		m.contentLinks = nil
 		m.contentLinkIdx = -1
 		return
 	}
 	var links []string
+	m.contentLinkLabels = make(map[string]string)
 	for _, msg := range thread.Messages {
-		links = mergeActionableLinks(links, m.renderMessageForDisplay(msg, m.contentBodyWidth()).links)
+		result := m.renderMessageForDisplay(msg, m.contentBodyWidth())
+		links = mergeActionableLinks(links, result.links)
+		for target, label := range result.linkLabels {
+			if m.contentLinkLabels[target] == "" {
+				m.contentLinkLabels[target] = label
+			}
+		}
 	}
 	if len(links) == 0 {
 		m.contentLinks = nil
@@ -922,4 +1035,23 @@ func (m *Model) stepContentLink(delta int) {
 		m.contentLinkIdx = 0
 	}
 	m.contentLinkIdx = (m.contentLinkIdx + delta + len(m.contentLinks)) % len(m.contentLinks)
+}
+
+// contentListLinkAt resolves only the existing LINKS footer, independent of
+// terminal hyperlink support and of the text chosen for display.
+func (m Model) contentListLinkAt(row int) (string, bool) {
+	for i, linkRow := range m.contentLinkRows {
+		if row == linkRow && i < len(m.contentLinks) {
+			return m.contentLinks[i], true
+		}
+	}
+	return "", false
+}
+
+func (m *Model) revealContentLink() {
+	if m.contentLinkIdx < 0 || m.contentLinkIdx >= len(m.contentLinkRows) {
+		return
+	}
+	m.contentFocusLine = m.contentLinkRows[m.contentLinkIdx]
+	m.ensureContentFocusVisible()
 }
