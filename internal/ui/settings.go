@@ -39,6 +39,7 @@ const (
 	sfMarkReadOnOpen
 	sfMarkReadOnFocus
 	sfFocusLine
+	sfSupportReminder
 	sfShowSender
 	sfThreadedConversations
 	sfDefaultUnreadOnly
@@ -336,6 +337,7 @@ type Settings struct {
 	markReadOnOpen          bool
 	markReadOnFocus         bool
 	focusLine               bool
+	supportReminder         bool
 	shadow                  bool
 	showSender              bool
 	threadedConversations   bool
@@ -460,6 +462,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		markReadOnOpen:          cfg.Display.MarkReadOnOpen,
 		markReadOnFocus:         cfg.Display.MarkReadOnFocus,
 		focusLine:               cfg.Display.FocusLine,
+		supportReminder:         cfg.Display.SupportReminder,
 		shadow:                  cfg.Display.Shadow,
 		showSender:              cfg.Display.ShowSender,
 		threadedConversations:   cfg.Display.ThreadedConversations,
@@ -552,6 +555,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.MarkReadOnOpen = s.markReadOnOpen
 	cfg.Display.MarkReadOnFocus = s.markReadOnFocus
 	cfg.Display.FocusLine = s.focusLine
+	cfg.Display.SupportReminder = s.supportReminder
 	cfg.Display.Shadow = s.shadow
 	cfg.Display.ShowSender = s.showSender
 	cfg.Display.ThreadedConversations = s.threadedConversations
@@ -816,7 +820,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 	case ssDisplay:
 		// Keep this order in lockstep with the ssDisplay case in viewSectionBody:
 		// Appearance, Terminal colors (retro themes), Message list, Reading, Behavior.
-		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfPaneCorners, sfIcons, sfShowPaneHeaders, sfShowNeedsYou, sfShowWaiting, sfDateFormat, sfFocusLine, sfShadow, sfTagStyle, sfShowMessageTagsInHeader, sfTagColors, sfMailTags}
+		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfPaneCorners, sfIcons, sfShowPaneHeaders, sfShowNeedsYou, sfShowWaiting, sfDateFormat, sfFocusLine, sfShadow, sfSupportReminder, sfTagStyle, sfShowMessageTagsInHeader, sfTagColors, sfMailTags}
 		if config.IsRetroTerminalTheme(s.themeName) {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
@@ -1473,6 +1477,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfSupportReminder:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.supportReminder = !s.supportReminder
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfFocusLine:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.focusLine = !s.focusLine
@@ -2064,6 +2077,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addDateFormatSelector()
 		b.addToggle("Focus line", s.focusLine, sfFocusLine)
 		b.addToggle("Modal drop shadow", s.shadow, sfShadow)
+		b.addToggle("Support reminder", s.supportReminder, sfSupportReminder)
 		b.addGroup("Message tags")
 		b.addTagStyleSelector()
 		b.addToggle("Show tags in message header", s.showMessageTagsInHeader, sfShowMessageTagsInHeader)
@@ -3282,6 +3296,8 @@ func (s Settings) fieldHint(field settingsField) string {
 		return "strip bare URLs from the article body text"
 	case sfFocusLine:
 		return "highlight the current readable line in the content pane"
+	case sfSupportReminder:
+		return "show a single friendly note about supporting TideMail after about a week of use; never repeats"
 	case sfTheme:
 		return "← → step through themes; T opens the picker, grouped by family with search"
 	case sfShowPaneHeaders:

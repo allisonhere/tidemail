@@ -6,6 +6,13 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- One friendly, one-time note about supporting TideMail appears after about a
+  week of use. It never repeats, and **Settings → Display → Support reminder**
+  (`support_reminder = false`) turns it off.
+- README support section and badges, and a support line in release notes.
+
 ## v1.7.0
 
 ### Added
