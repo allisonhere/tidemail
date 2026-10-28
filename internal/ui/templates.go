@@ -174,7 +174,7 @@ func (c *ComposeModel) createTemplate() {
 	}
 	body, _ := splitReplyAndQuote(c.bodyInput.Value())
 	body = strings.TrimSpace(body)
-	if body == "" {
+	if !hasComposeBodyContent(body) {
 		fail("nothing to save: write your message first")
 		return
 	}

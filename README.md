@@ -219,6 +219,11 @@ The From row becomes an account picker when you have more than one sender.
 TideMail uses the chosen account for SMTP, drafts, the From address, and its
 signature. Replies, forwards, and reopened drafts use the same picker.
 
+A standalone `⁂` in the compose body marks where the selected account's signature
+will be added when sending, before quoted text by default. Move it to change the
+position, or delete it to send unsigned. Drafts preserve it; drafts without a
+marker, including older drafts, send without an added signature.
+
 To, CC, and BCC suggest saved contacts first. TideMail follows with addresses
 found in mail you have synced. You can manage contacts in the app and move them
 through vCard files.
@@ -332,7 +337,8 @@ row copies its full URL when no text selection is active. Email actions appear
 as `[mailto: description]` and open TideMail's composer using the source message's
 account, including in Unified Inbox. Your default sender is the fallback if that
 account is unavailable. Recipients, subject, and body can be prefilled; your
-normal signature is preserved. Nothing is sent until you choose to send.
+signature is inserted at the `⁂` marker when you send. Nothing is sent until you
+choose to send.
 Each entry shows its real destination host in parentheses, and a
 label that names a different site than the link goes to is marked with `!`, so a label
 cannot hide where a link leads. HTML resource and metadata URLs are excluded from LINKS, as are links that

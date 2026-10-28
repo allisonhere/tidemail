@@ -126,3 +126,17 @@ func TestStatusLineDoesNotMoveTheForm(t *testing.T) {
 		})
 	}
 }
+
+func TestSignatureMarkerHintFitsForm(t *testing.T) {
+	for _, width := range []int{52, 74} {
+		am := NewAccountManager(nil)
+		am.mode = amAdd
+		am.resetForm()
+		am.focusField(amFieldSignature)
+		view := ansi.Strip(am.View(width, 80, BuildStyles(CatppuccinMocha, "compact", "square")))
+		words := strings.Join(strings.Fields(view), " ")
+		if !strings.Contains(words, "A single ⁂ symbol in the compose editor marks where your signature will be inserted when sending. Delete the symbol to send without a signature.") {
+			t.Fatalf("signature explanation missing or split inside words at width %d: %s", width, view)
+		}
+	}
+}

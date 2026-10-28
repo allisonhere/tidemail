@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"golang.org/x/oauth2"
 
@@ -2400,6 +2401,9 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 		addHint("Blank sends as the username")
 	}
 	addControl(amFieldSignature, sigRow("Signature", am.sigArea, amFieldSignature))
+	for _, line := range strings.Split(ansi.Wrap("A single ⁂ symbol in the compose editor marks where your signature will be inserted when sending. Delete the symbol to send without a signature.", max(8, fieldW-4), ""), "\n") {
+		addHint(line)
+	}
 	addSection("Sync")
 	addControl(amFieldSyncInterval, row("Refresh", am.syncInput, amFieldSyncInterval))
 	addHint("0 = push (IMAP IDLE) · -1 = manual only")
