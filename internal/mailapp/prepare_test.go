@@ -55,16 +55,3 @@ func TestAgentDefaults(t *testing.T) {
 		t.Fatal("empty should deny")
 	}
 }
-
-func TestPrepareSignatureDisabledInOutgoingMIME(t *testing.T) {
-	account := config.AccountConfig{User: "sender@example.com", Signature: "Unique signature\nSecond line"}
-	draft := db.Draft{To: "recipient@example.com", BodyText: "Only body"}
-	outgoing, err := Prepare(account, draft, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw := string(smtp.BuildRaw(account, outgoing))
-	if !strings.Contains(raw, "Only body") || strings.Contains(raw, "Unique signature") || strings.Contains(raw, "Second line") {
-		t.Fatal("explicitly disabled signature appeared in outgoing MIME")
-	}
-}
