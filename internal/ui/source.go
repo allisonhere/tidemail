@@ -56,9 +56,20 @@ func (m Model) openSource(msg db.Message) (tea.Model, tea.Cmd) {
 	m.overlay = overlaySource
 	m.layoutSource()
 
+	fetch := m.messageSourceFetcher(msg)
+	return m, func() tea.Msg {
+		raw, err := fetch()
+		return SourceFetchedMsg{MessageID: msg.ID, Raw: raw, Err: err}
+	}
+}
+
+// messageSourceFetcher captures an exact, non-marking RFC 822 fetch for background use.
+func (m Model) messageSourceFetcher(msg db.Message) func() ([]byte, error) {
+	mailbox := m.mailboxByID(msg.MailboxID)
+	acfg, _ := m.accountCfgForMailbox(msg.MailboxID)
 	sessions := m.sessions
-	mailboxName, uid, id := mailbox.Name, msg.UID, msg.ID
-	fetch := func() tea.Msg {
+	mailboxName, uid := mailbox.Name, msg.UID
+	return func() ([]byte, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), sourceTimeout)
 		defer cancel()
 		var raw []byte
@@ -68,11 +79,10 @@ func (m Model) openSource(msg db.Message) (tea.Model, tea.Cmd) {
 			return ferr
 		})
 		if err != nil {
-			return SourceFetchedMsg{MessageID: id, Err: fmt.Errorf("couldn't fetch the message: %w", err)}
+			return nil, fmt.Errorf("couldn't fetch the message: %w", err)
 		}
-		return SourceFetchedMsg{MessageID: id, Raw: raw}
+		return raw, nil
 	}
-	return m, fetch
 }
 
 func (m Model) handleSourceFetched(msg SourceFetchedMsg) (tea.Model, tea.Cmd) {

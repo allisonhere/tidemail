@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 )
 
 var startCommand = func(name string, args ...string) error {
@@ -42,4 +43,28 @@ func Open(configured, target string) error {
 		return err
 	}
 	return startCommand(name, args...)
+}
+
+// OpenLocalFile opens target like Open, using the configured command when set,
+// and also notices early launcher failures. It waits at most two seconds, even
+// if the browser process stays open.
+func OpenLocalFile(configured, target string) error {
+	name, args, err := Command(runtime.GOOS, configured, target)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(name, args...)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+	select {
+	case err := <-exited:
+		return err
+	case <-timer.C:
+		return nil
+	}
 }

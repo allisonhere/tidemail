@@ -1800,6 +1800,17 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.clearStatusCmd()
 
+	case emailBrowserOpenedMsg:
+		switch {
+		case msg.err != nil:
+			m.setStatus("Open in browser: "+msg.err.Error(), true)
+		case msg.blocked > 0:
+			m.setStatus(fmt.Sprintf("opened in browser (%d remote images blocked)", msg.blocked), false)
+		default:
+			m.setStatus("opened in browser", false)
+		}
+		return m, m.clearStatusCmd()
+
 	case SourceFetchedMsg:
 		return m.handleSourceFetched(msg)
 
@@ -2484,6 +2495,14 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.focused == paneContent && m.contentMessageID != 0 {
 			m.contentShowHeaders = !m.contentShowHeaders
 			m.setViewportForCurrentRow()
+		}
+		return m, nil
+
+	case keyMatches(msg, m.keys.OpenInBrowser):
+		if m.focused != paneAccounts && !m.selectedDraftsMailbox() {
+			if cur := m.commandMessage(); cur != nil {
+				return m.openEmailInBrowser(*cur)
+			}
 		}
 		return m, nil
 

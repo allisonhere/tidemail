@@ -154,6 +154,7 @@ func run() (code int, restartExec string) {
 
 		// --preview-manual-update / --preview-update-progress are dev UI entry points.
 		ui.SetChangelog(changelog)
+		ui.PruneEmailExports()
 		m := ui.NewModel(database, cfg, resolvedVersion(), opts.previewManualUpdate || opts.previewUpdateProgress)
 		// Experimental plugins; a missing or broken plugin directory is never fatal.
 		m.LoadPlugins()
