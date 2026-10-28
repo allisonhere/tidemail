@@ -1,6 +1,6 @@
 GoField,Keys,HelpDisplay,Description,Context
-Up,"k,up",k/↑,up (select LINKS entry in content),global
-Down,"j,down",j/↓,down (select LINKS entry in content),global
+Up,"k,up",k/↑,up (Focus line on: move highlight; off: scroll one row or previous LINKS entry; first exits),global
+Down,"j,down",j/↓,down (Focus line on: move highlight; off: scroll one row; another Down at bottom enters LINKS; no wrapping),global
 Left,"h,left",h/←,move left,global
 Right,"l,right",l/→,move right,global
 NextPane,"tab,]",tab/],next pane,global

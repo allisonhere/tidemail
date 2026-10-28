@@ -264,9 +264,8 @@ func (m Model) actionableLinksEnabled() bool {
 	return m.cfg.Display.ActionableLinks
 }
 
-// focusedLineLink returns the first URL on the currently highlighted focus line,
-// when the focus-line feature is active. This lets `o` open whatever link sits
-// under the highlight, independent of the actionable-links list.
+// focusedLineLink resolves the internal reading position independently of its
+// visual highlight. Activation separately requires deliberate selection or focus.
 // contentDisplayLines splits rendered content into the stripped display lines
 // used for focus and selection indexing, plus a parallel slice holding the OSC 8
 // hyperlink target on each line. The slices are index-aligned, so
@@ -290,7 +289,7 @@ func contentDisplayLines(content string) (lines, lineLinks []string) {
 }
 
 func (m Model) focusedLineLink() (string, bool) {
-	if !m.cfg.Display.FocusLine {
+	if m.contentFocusPending {
 		return "", false
 	}
 	if m.contentFocusLine < 0 || m.contentFocusLine >= len(m.contentLines) {
@@ -599,6 +598,7 @@ func (m *Model) clearViewportMessage() {
 	m.contentMessageID = 0
 	m.contentDraftID = 0
 	m.contentFocusLine = 0
+	m.contentFocusPending = false
 	m.contentLineCount = 0
 	m.contentFocusable = nil
 	m.contentLines = nil
@@ -783,6 +783,21 @@ func (m *Model) moveContentFocusLine(delta int) {
 	if m.contentLineCount <= 0 {
 		return
 	}
+	if m.contentFocusPending {
+		m.reconcileContentFocus(delta)
+		if m.contentFocusPending {
+			if delta < 0 {
+				m.viewport.ScrollUp(1)
+			} else if delta > 0 {
+				m.viewport.ScrollDown(1)
+			}
+			m.reconcileContentFocus(delta)
+		}
+		if !m.contentFocusPending && delta != 0 && !m.selectContentLinkAt(m.contentFocusLine) {
+			m.contentFocusedLink, _ = m.focusedLineLink()
+		}
+		return
+	}
 	m.contentFocusLine = nextContentFocusLine(m.contentFocusLine, delta, m.contentFocusable, m.contentLineCount)
 	// Header lines are not focusable, so on the first body line the cursor
 	// cannot go higher. Moving up from there scrolls the header back into view.
@@ -790,7 +805,7 @@ func (m *Model) moveContentFocusLine(delta int) {
 		m.viewport.GotoTop()
 	}
 	m.ensureContentFocusVisible()
-	if delta != 0 && !m.selectContentLinkAt(m.contentFocusLine) {
+	if delta != 0 && m.contentFocusLine < len(m.contentFocusable) && m.contentFocusable[m.contentFocusLine] && !m.selectContentLinkAt(m.contentFocusLine) {
 		m.contentFocusedLink, _ = m.focusedLineLink()
 	}
 }
@@ -882,7 +897,7 @@ func (m Model) contentLineSelected(line int) bool {
 
 func (m Model) renderContentFocusLine(body string, width, height int, focused bool) string {
 	hasSearch := len(m.contentSearchMatches) > 0
-	hasFocus := m.cfg.Display.FocusLine && focused && m.contentLineCount > 0
+	hasFocus := m.cfg.Display.FocusLine && focused && !m.contentFocusPending && m.contentLineCount > 0
 	hasSelection := m.contentSelectionActive && m.contentLineCount > 0
 	hasLink := m.contentLinkIdx >= 0 && m.contentLinkIdx < len(m.contentLinkRows)
 
@@ -964,6 +979,7 @@ func (m *Model) setContentLinkContext(context string) {
 	if m.contentLinkContext != context {
 		m.clearContentLinkSelection()
 		m.contentLinkContext = context
+		m.contentFocusPending = false
 	}
 	// Layout can move the focus onto different text. Preserve only explicit
 	// footer selection across a same-message rerender, not body-line intent.
@@ -1098,19 +1114,10 @@ func (m *Model) selectContentLinkAt(row int) bool {
 	}
 	m.clearContentLinkSelection()
 	m.contentLinkIdx = index
+	m.contentFocusPending = false
 	m.contentFocusLine = row
 	m.updateContentLinkLine()
 	return true
-}
-
-// Without focus highlighting, body arrows still scroll. Arrows at a visible
-// footer entry (or onto an adjacent entry) deliberately navigate LINKS.
-func (m Model) contentLinkArrowNavigation(delta int) bool {
-	if !m.contentLineVisible(m.contentFocusLine) {
-		return false
-	}
-	next := nextContentFocusLine(m.contentFocusLine, delta, m.contentFocusable, m.contentLineCount)
-	return m.contentLinkIndexAt(m.contentFocusLine) >= 0 || m.contentLinkIndexAt(next) >= 0
 }
 
 // Click selection is restricted to visible text in an unambiguous footer row.
@@ -1141,6 +1148,7 @@ func (m *Model) revealContentLink() {
 	if m.contentLinkIdx < 0 || m.contentLinkIdx >= len(m.contentLinkRows) {
 		return
 	}
+	m.contentFocusPending = false
 	m.contentFocusLine = m.contentLinkRows[m.contentLinkIdx]
 	m.ensureContentFocusVisible()
 }

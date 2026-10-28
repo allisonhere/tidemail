@@ -298,11 +298,16 @@ settings stay unchanged. Tags also appear below the date and sender in the
 content pane; use **Show tags in message header** under **Settings → Display →
 Message tags** to hide that row only. See the [user guide](docs/guide.md#thunderbird--imap-mail-tags).
 
-`o` opens an explicitly selected LINKS entry or a visible link deliberately focused
-with keyboard navigation. `Enter` activates the same target. New messages have no
-selected link. Clicking displayed text in a LINKS entry selects it without opening
-it; Up/Down on LINKS entries selects them too, even with Focus line off. Ordinary
-body clicks and wheel scrolling clear link activation intent and never open a URL. `Ctrl+B` views the whole message in your browser. Both use the
+With **Focus line** on, Up/Down moves the reading highlight. With it off,
+Up/Down scrolls one row. At the bottom, another Down selects the first LINKS
+entry. Arrows then move between entries without wrapping; Up from the first
+clears selection, and the next Up resumes scrolling. Selected LINKS entries
+keep their highlight and chevron in both modes.
+
+`o` or `Enter` opens a selected LINKS entry or a visible link deliberately focused
+with the keyboard. New messages start with no link selected. Clicking a LINKS
+entry selects it without opening it; ordinary body clicks and scrolling never
+open links. `Ctrl+B` views the whole message in your browser. These actions use
 **Browser command** from Settings → Display when one is set.
 
 View in Browser (`Ctrl+B`) works from the message list or reading pane. It fetches

@@ -32,10 +32,10 @@ func TestReaderLinkSelectionInputEquivalence(t *testing.T) {
 						m = apply(m, click)
 						m = apply(m, click) // clicking the selection again keeps it
 					case "down":
-						m.contentFocusLine = m.contentLinkRows[0]
+						m.selectContentLinkAt(m.contentLinkRows[0])
 						m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
 					case "up":
-						m.contentFocusLine = m.contentLinkRows[2]
+						m.selectContentLinkAt(m.contentLinkRows[2])
 						m = apply(m, tea.KeyMsg{Type: tea.KeyUp})
 					case "next":
 						for i := 0; i < 2; i++ {
@@ -103,6 +103,9 @@ func TestReaderLinkSelectionEnteringAndLeavingFooter(t *testing.T) {
 			row := m.contentLinkRows[0]
 			m.viewport.SetYOffset(max(0, row-2))
 			m.contentFocusLine = row - 1 // LINKS heading; positioning alone is inert
+			if !focus {
+				m.viewport.GotoBottom()
+			}
 			m = apply(m, tea.KeyMsg{Type: tea.KeyEnter})
 			m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
 			assertReaderLinkSelection(t, m, 0)

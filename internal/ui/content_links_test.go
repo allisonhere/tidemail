@@ -69,14 +69,14 @@ func TestFocusedLineLinkNoURLReturnsNothing(t *testing.T) {
 	}
 }
 
-func TestFocusedLineLinkRequiresFocusLineSetting(t *testing.T) {
+func TestFocusedLineLinkIndependentOfHighlight(t *testing.T) {
 	m := newFocusLineModel(t)
 	m.cfg.Display.FocusLine = false
 	m.contentLines = []string{"See https://example.com here."}
 	m.contentFocusLine = 0
 
-	if _, ok := m.focusedLineLink(); ok {
-		t.Fatalf("expected no focused-line link when FocusLine display setting is off")
+	if link, ok := m.focusedLineLink(); !ok || link != "https://example.com" {
+		t.Fatalf("hiding the highlight changed the focused destination: %q", link)
 	}
 }
 
@@ -166,14 +166,14 @@ func TestEnterFromMessageListStillFocusesContentPane(t *testing.T) {
 	}
 }
 
-func TestFocusedLineLinkIgnoresOSC8TargetWhenFocusLineDisabled(t *testing.T) {
+func TestFocusedLineLinkPreservesOSC8TargetWhenHighlightDisabled(t *testing.T) {
 	m := newFocusLineModel(t)
 	m.cfg.Display.FocusLine = false
 	m.contentLines = []string{"[Read post]"}
 	m.contentLineLinks = []string{osc8TestPost}
 	m.contentFocusLine = 0
 
-	if _, ok := m.focusedLineLink(); ok {
-		t.Fatal("expected no link when the focus line is disabled")
+	if link, ok := m.focusedLineLink(); !ok || link != osc8TestPost {
+		t.Fatal("hiding the highlight changed the OSC 8 destination")
 	}
 }

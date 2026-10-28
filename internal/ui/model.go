@@ -221,14 +221,15 @@ type Model struct {
 	contentLinkRows   []int
 	contentLinkIdx    int
 	// Activation intent is separate from automatic focus/layout changes.
-	contentLinkContext string
-	contentFocusedLink string
-	contentMessageID   int64
-	contentDraftID     int64
-	contentFocusLine   int
-	contentLineCount   int
-	contentFocusable   []bool
-	contentLines       []string
+	contentLinkContext  string
+	contentFocusedLink  string
+	contentMessageID    int64
+	contentDraftID      int64
+	contentFocusPending bool // viewport currently has no focusable line
+	contentFocusLine    int
+	contentLineCount    int
+	contentFocusable    []bool
+	contentLines        []string
 	// contentLineLinks holds the hyperlink target for each contentLines entry,
 	// including explicit LINKS destinations when OSC 8 is unavailable. Body
 	// targets come from OSC 8 escapes stripped from the displayed text.
@@ -297,6 +298,7 @@ type Model struct {
 	// successful autosaves do not alter them; every other event invalidates it.
 	// Pointer-owned so the render-time cache survives Model's value receivers.
 	composeBackdrop *composeBackdropCache
+	readerPanes     *readerPaneCache
 
 	// bodyCache memoises rendered message bodies and viewportCache the
 	// finished reading-pane content. Held by pointer so writes survive
@@ -472,6 +474,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		omarchyWatchGeneration: 1,
 		styles:                 BuildStyles(merged, cfg.Display.Density, cfg.Display.PaneCorners),
 		composeBackdrop:        &composeBackdropCache{},
+		readerPanes:            &readerPaneCache{},
 		bodyCache:              newBoundedCache[bodyCacheKey, messageRenderResult](defaultBodyCacheLimit),
 		viewportCache:          newBoundedCache[viewportCacheKey, viewportContent](defaultViewportCacheLimit),
 		images:                 newUIImageStore(cfg.Display.Images),
@@ -557,6 +560,12 @@ func (m Model) Init() tea.Cmd {
 // ── Update ───────────────────────────────────────────────────────────────────
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.readerPanes != nil {
+		m.readerPanes.navigationOnly = m.readerOnlyNavigation(msg)
+		if !m.readerPanes.navigationOnly {
+			m.readerPanes.valid = false
+		}
+	}
 	// Keys go exclusively to the open compose overlay. A successful autosave
 	// updates only compose state. Other events can change the panes underneath
 	// (sync, resize, theme, etc.), so let the next View rebuild the backdrop.
@@ -587,6 +596,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
+		offset := m.viewport.YOffset
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport = viewport.New(m.contentBodyWidth(), m.contentBodyHeight())
@@ -597,7 +607,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.activeMessageRowCount() > 0 {
 			m.setViewportForCurrentRow()
-			m.ensureContentFocusVisible()
+			if m.contentLinkIdx >= 0 {
+				m.revealContentLink()
+			} else {
+				m.viewport.SetYOffset(offset)
+				m.reconcileContentFocus(0)
+			}
 		}
 		if m.overlay == overlayHelp {
 			m.resetHelpVP()
@@ -2753,12 +2768,11 @@ func (m Model) handleUp() (tea.Model, tea.Cmd) {
 			return m.selectMessageRow(m.messageCursor - 1)
 		}
 	case paneContent:
-		if !m.cfg.Display.FocusLine && !m.contentLinkArrowNavigation(-1) {
-			m.clearContentLinkSelection()
-			m.viewport.ScrollUp(1)
-			return m, nil
+		if m.cfg.Display.FocusLine {
+			m.moveContentFocusLine(-1)
+		} else {
+			m.scrollContentWithoutFocus(-1)
 		}
-		m.moveContentFocusLine(-1)
 	}
 	return m, nil
 }
@@ -2787,12 +2801,11 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 			}
 		}
 	case paneContent:
-		if !m.cfg.Display.FocusLine && !m.contentLinkArrowNavigation(1) {
-			m.clearContentLinkSelection()
-			m.viewport.ScrollDown(1)
-			return m, nil
+		if m.cfg.Display.FocusLine {
+			m.moveContentFocusLine(1)
+		} else {
+			m.scrollContentWithoutFocus(1)
 		}
-		m.moveContentFocusLine(1)
 	}
 	return m, nil
 }
@@ -2909,6 +2922,7 @@ func (m Model) handleMouseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	} else {
 		m.viewport.ScrollDown(wheelStepRows)
 	}
+	m.reconcileContentFocus(dir)
 	return m, nil
 }
 
@@ -3066,6 +3080,7 @@ func (m Model) handleContentClick(x, y, paneTop int) (tea.Model, tea.Cmd) {
 	line := m.viewport.YOffset + (y - interiorTop)
 	if line >= 0 && line < m.contentLineCount && y < m.mainHeight()-1 {
 		m.contentFocusLine = line
+		m.contentFocusPending = false
 		if x > m.feedsPaneWidth() && x < m.width-1 && m.contentLinkTextHit(line, x) {
 			m.selectContentLinkAt(line)
 		}
@@ -3678,14 +3693,19 @@ func (m Model) View() string {
 	if m.overlay == overlayCompose && m.composeBackdrop != nil && m.composeBackdrop.valid {
 		main = m.composeBackdrop.panes
 	} else {
-		right := lipgloss.JoinVertical(lipgloss.Left,
-			m.renderMessagesPane(),
-			m.renderContentPane(),
-		)
-		main = lipgloss.JoinHorizontal(lipgloss.Top,
-			m.renderAccountsPane(),
-			right,
-		)
+		var accounts, messages string
+		cacheReader := m.overlay == overlayNone && m.readerPanes != nil && (m.focused == paneContent || m.readerPanes.navigationOnly)
+		if cacheReader && m.readerPanes.valid {
+			accounts, messages = m.readerPanes.accounts, m.readerPanes.messages
+		} else {
+			accounts, messages = m.renderAccountsPane(), m.renderMessagesPane()
+			if cacheReader {
+				m.readerPanes.accounts, m.readerPanes.messages = accounts, messages
+				m.readerPanes.valid = true
+			}
+		}
+		right := lipgloss.JoinVertical(lipgloss.Left, messages, m.renderContentPane())
+		main = lipgloss.JoinHorizontal(lipgloss.Top, accounts, right)
 		if m.overlay == overlayCompose && m.composeBackdrop != nil {
 			m.composeBackdrop.panes, m.composeBackdrop.valid = main, true
 		}
@@ -3874,7 +3894,7 @@ func (m *Model) currentContentMessage() *db.Message {
 }
 
 func (m *Model) ensureContentFocusVisible() {
-	if m.contentLineCount <= 0 {
+	if m.contentLineCount <= 0 || m.contentFocusPending {
 		return
 	}
 	bodyH := max(1, m.contentBodyHeight())
@@ -4193,6 +4213,9 @@ func (m *Model) refreshDraftCounts() {
 // the Omarchy live-follow rebuilds colours under a fixed name — so the name
 // alone cannot catch it, and density or corner changes reshape layout too.
 func (m *Model) setStyles(s Styles) {
+	if m.readerPanes != nil {
+		m.readerPanes.valid = false
+	}
 	m.styles = s
 	m.bodyCache.clear()
 	m.viewportCache.clear()
