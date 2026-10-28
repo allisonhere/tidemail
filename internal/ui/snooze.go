@@ -367,7 +367,7 @@ func (m Model) handleSnoozeMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) selectedSnoozed() bool {
+func (m *Model) selectedSnoozed() bool {
 	if m.sidebarCursor < 0 || m.sidebarCursor >= len(m.sidebarRows) {
 		return false
 	}
@@ -445,7 +445,7 @@ func (m Model) snoozeExplanationLines(messageID int64) []string {
 }
 
 // snoozedRowTime is the time column in Snoozed: when the item wakes.
-func (m Model) snoozedRowTime(msg db.Message) (string, bool) {
+func (m *Model) snoozedRowTime(msg db.Message) (string, bool) {
 	if !m.selectedSnoozed() {
 		return "", false
 	}
@@ -457,7 +457,7 @@ func (m Model) snoozedRowTime(msg db.Message) (string, bool) {
 }
 
 // snoozedSender marks snoozed conversations with who they wait on.
-func (m Model) snoozedSender(msg db.Message) (string, bool) {
+func (m *Model) snoozedSender(msg db.Message) (string, bool) {
 	if !m.selectedSnoozed() {
 		return "", false
 	}
@@ -479,7 +479,7 @@ func (m Model) snoozedSender(msg db.Message) (string, bool) {
 	return prefix + summarizeNames(names), true
 }
 
-func (m Model) renderSnoozedRow(selected bool, width int) string {
+func (m *Model) renderSnoozedRow(selected bool, width int) string {
 	badge := ""
 	if m.snooze.count > 0 {
 		badge = m.accountBadgeStyle(0, selected).Render(fmt.Sprintf("(%d)", m.snooze.count))

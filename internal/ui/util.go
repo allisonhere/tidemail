@@ -517,7 +517,7 @@ func truncate(s string, maxW int) string {
 	return ansi.Truncate(s, maxW, "…")
 }
 
-func (m Model) formatTime(t time.Time) string {
+func (m *Model) formatTime(t time.Time) string {
 	switch m.cfg.Display.DateFormat {
 	case "absolute":
 		return t.Format("Jan 2, 2006")

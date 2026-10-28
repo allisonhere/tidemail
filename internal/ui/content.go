@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func (m Model) renderContentPane() string {
+func (m *Model) renderContentPane() string {
 	w := m.contentPaneContentWidth()
 	paneH := m.contentBodyHeight() + m.paneHeaderHeight()
 	bodyH := m.contentBodyHeight()

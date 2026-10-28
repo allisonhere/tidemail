@@ -182,7 +182,7 @@ func (m *Model) requestWaitingRefresh() tea.Cmd {
 	return m.loadWaitingCmd()
 }
 
-func (m Model) selectedWaiting() bool {
+func (m *Model) selectedWaiting() bool {
 	if m.sidebarCursor < 0 || m.sidebarCursor >= len(m.sidebarRows) {
 		return false
 	}
@@ -356,7 +356,7 @@ func summarizeNames(names []string) string {
 
 // waitingSender is the sender column in Waiting on Them: who you are waiting
 // for, not yourself.
-func (m Model) waitingSender(msg db.Message) (string, bool) {
+func (m *Model) waitingSender(msg db.Message) (string, bool) {
 	if !m.selectedWaiting() {
 		return "", false
 	}
@@ -371,7 +371,7 @@ func (m Model) waitingSender(msg db.Message) (string, bool) {
 	return prefix + summarizeNames(t.waitingFor), true
 }
 
-func (m Model) renderWaitingRow(selected bool, width int) string {
+func (m *Model) renderWaitingRow(selected bool, width int) string {
 	badge := ""
 	if m.waiting.count > 0 {
 		badge = m.accountBadgeStyle(0, selected).Render(fmt.Sprintf("(%d)", m.waiting.count))

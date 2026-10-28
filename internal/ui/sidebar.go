@@ -13,7 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func (m Model) renderAccountsPane() string {
+func (m *Model) renderAccountsPane() string {
 	innerW := m.accountsPaneContentWidth()
 	focused := m.focused == paneAccounts
 	rows := []string{}
@@ -580,7 +580,7 @@ func (m Model) accountCfgForMailbox(mailboxID int64) (config.AccountConfig, erro
 	return m.accountConfigFor(*acc)
 }
 
-func (m Model) accountColor(accountID int64) lipgloss.Color {
+func (m *Model) accountColor(accountID int64) lipgloss.Color {
 	if accountID == 0 {
 		return ""
 	}
@@ -605,7 +605,7 @@ func (m Model) messageAccountColor(msg db.Message) lipgloss.Color {
 	return m.accountColor(mb.AccountID)
 }
 
-func (m Model) selectedMailboxAccountColor() lipgloss.Color {
+func (m *Model) selectedMailboxAccountColor() lipgloss.Color {
 	if m.selectedUnifiedInbox() || m.selectedNeedsYou() || m.selectedWaiting() || m.selectedSnoozed() {
 		return ""
 	}
@@ -635,7 +635,7 @@ func (m Model) unifiedUnreadCount() int64 {
 	return total
 }
 
-func (m Model) displayMailboxUnreadCount(mb db.Mailbox) int64 {
+func (m *Model) displayMailboxUnreadCount(mb db.Mailbox) int64 {
 	return max(0, mb.UnreadCount-m.pendingUnreadCount(mb.ID))
 }
 
@@ -743,7 +743,7 @@ func renderPaneHeaderRow(prefix, title, hint string, width int) string {
 	return base + strings.Repeat(" ", spaceW) + hint
 }
 
-func (m Model) renderAccountHeader(accountID int64, selected bool, width int) string {
+func (m *Model) renderAccountHeader(accountID int64, selected bool, width int) string {
 	icon := "v "
 	label := m.accountName(accountID)
 	duplicates := 0
@@ -773,7 +773,7 @@ func (m Model) renderAccountHeader(accountID int64, selected bool, width int) st
 	return style.Width(width).Render(row)
 }
 
-func (m Model) renderSectionHeader(label string, count int, kind sidebarRowKind, accountID int64, selected bool, width int) string {
+func (m *Model) renderSectionHeader(label string, count int, kind sidebarRowKind, accountID int64, selected bool, width int) string {
 	isSystem := kind == rowKindSysFolderHeader
 	secKey := sectionKey(accountID, isSystem)
 	collapsed := m.collapsedSections[secKey]
@@ -797,7 +797,7 @@ func (m Model) renderSectionHeader(label string, count int, kind sidebarRowKind,
 	return style.Width(width).Render(row)
 }
 
-func (m Model) renderUnifiedInboxRow(selected bool, width int) string {
+func (m *Model) renderUnifiedInboxRow(selected bool, width int) string {
 	badge := ""
 	if unread := m.unifiedUnreadCount(); unread > 0 {
 		badge = m.accountBadgeStyle(0, selected).Render(fmt.Sprintf("(%d)", unread))
@@ -817,7 +817,7 @@ func (m Model) renderUnifiedInboxRow(selected bool, width int) string {
 // renderOutboxRow draws the standing Outbox entry. Its badge counts only what
 // needs a person — a failed or unconfirmed send — in the error color, so the
 // row is quiet during the seconds every normal message spends queued.
-func (m Model) renderOutboxRow(selected bool, width int) string {
+func (m *Model) renderOutboxRow(selected bool, width int) string {
 	badge := ""
 	if t := m.summarizeOutbox(); t.needsAttention() > 0 {
 		style := m.accountBadgeStyle(0, selected)
@@ -838,7 +838,7 @@ func (m Model) renderOutboxRow(selected bool, width int) string {
 	return style.Width(width).Render(row)
 }
 
-func (m Model) renderSidebarMailboxRow(mb db.Mailbox, row sidebarRow, selected bool, width int) string {
+func (m *Model) renderSidebarMailboxRow(mb db.Mailbox, row sidebarRow, selected bool, width int) string {
 	badge := ""
 	if m.isDraftsMailbox(mb) {
 		if count := m.draftCounts[mb.ID]; count > 0 {
@@ -908,11 +908,11 @@ func (m Model) folderUnreadCount(mb db.Mailbox, collapsed bool) int64 {
 	return total
 }
 
-func (m Model) iconsEnabled() bool {
+func (m *Model) iconsEnabled() bool {
 	return m.cfg.Display.Icons
 }
 
-func (m Model) headerLabel(label string) string {
+func (m *Model) headerLabel(label string) string {
 	if !m.iconsEnabled() {
 		return label
 	}

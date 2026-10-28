@@ -14,7 +14,7 @@ func buildMessageThreads(messages []db.Message) []messageThread {
 	return conversation.BuildThreads(messages)
 }
 
-func (m Model) threadedMessagesEnabled() bool {
+func (m *Model) threadedMessagesEnabled() bool {
 	return m.cfg.Display.ThreadedConversations && !m.selectedDraftsMailbox()
 }
 
@@ -50,14 +50,14 @@ func threadStarred(t messageThread) bool {
 	return false
 }
 
-func (m Model) activeMessageRowCount() int {
+func (m *Model) activeMessageRowCount() int {
 	if m.threadedMessagesEnabled() {
 		return len(m.messageThreads)
 	}
 	return len(m.filteredMessages)
 }
 
-func (m Model) currentRowMessage() *db.Message {
+func (m *Model) currentRowMessage() *db.Message {
 	if m.threadedMessagesEnabled() {
 		if m.messageCursor < 0 || m.messageCursor >= len(m.messageThreads) {
 			return nil
@@ -117,7 +117,7 @@ func (m *Model) toggleCurrentRowSelection() {
 	}
 }
 
-func (m Model) messageRowSelected(msg db.Message, thread messageThread) bool {
+func (m *Model) messageRowSelected(msg db.Message, thread messageThread) bool {
 	if m.threadedMessagesEnabled() && thread.Count > 0 {
 		for _, item := range thread.Messages {
 			if m.selectedMessages[item.ID] {
