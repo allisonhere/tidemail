@@ -27,47 +27,57 @@ Percentiles use nearest rank; with 60 samples p99 is the largest sample.
 final-view drain for 30 Hz cases. These timing limits are opt-in to avoid noisy CI
 failures; input counts and navigation assertions always apply.
 
-The original investigation was reproduced on the development machine before
-pane reuse: at 120×40, a 21 KB newsletter averaged 39.26 ms per View and left
-561 ms of final-view backlog after 60 Down events at 30 Hz. The 333 KB fixture
-at 160×50 averaged 33.22 ms per View and left 142 ms of backlog.
+## Measured results
 
-A matched comparison used identical final navigation behavior and fixtures,
-with only pane reuse disabled for the baseline. The measured baseline used a
-temporary Go overlay that invalidated these panes on every event. The same
-baseline is reproducible with the test-only flag (no production setting):
+The final implementation was measured on 2026-10-28 after restoring one-row
+keyboard scrolling with Focus line off. Both runs used the same navigation
+behavior and fixtures; only pane reuse was disabled for the baseline using this
+test-only flag (no production setting):
 
 ```sh
 TIDEMAIL_READER_NO_PANE_REUSE=1 go test ./internal/ui -run '^TestReaderScrollEventQueueDrain$' -count=1 -v
 ```
 
-Historical measurements at `fa57421` below show combined Update+View latency
-in milliseconds, final-view post-release drain in milliseconds, and total run
-time in seconds. Fixture sizes
-are HTML source sizes. Each baseline and final case processed all 60 delivered
-events and matched every sequential navigation transition. Runs were sequential
-on the same development machine; these are observations, not timing guarantees.
+Baseline and reuse runs were sequential on the same Linux/amd64 development
+machine (Intel Core 5 320, Go 1.27.3), after other validation jobs finished.
+Fixture sizes are HTML source sizes. Each of the 11 cases processed all 60
+delivered events and matched every sequential navigation transition in both
+runs. These are local observations, not performance guarantees.
+
+The table reports combined Update+View latency, final-view post-release drain,
+and total run time. Focus line is on unless marked off.
 
 | Scenario | Baseline mean / p95 / p99 ms | Reuse mean / p95 / p99 ms | Drain ms, before → after | Total s, before → after |
 |---|---:|---:|---:|---:|
-| 21 KB, 120x40, Down, 30 Hz | 41.4 / 46.5 / 50.4 | 18.9 / 25.1 / 28.4 | 577.0 → 21.7 | 2.566 → 2.022 |
-| 21 KB, 120x40, wheel Down, 30 Hz | 43.6 / 48.9 / 55.2 | 20.6 / 24.9 / 28.8 | 714.0 → 26.4 | 2.706 → 2.026 |
-| 21 KB, 120x40, wheel Down, 120 Hz | 44.3 / 49.9 / 56.1 | 15.0 / 17.6 / 20.3 | 2227.8 → 450.9 | 2.739 → 0.963 |
-| 333 KB, 160x50, Down, 30 Hz | 36.9 / 42.5 / 46.7 | 19.5 / 23.8 / 26.0 | 293.6 → 17.9 | 2.283 → 2.020 |
-| 333 KB, 160x50, Up, 30 Hz | 39.1 / 45.6 / 50.5 | 19.1 / 22.9 / 23.9 | 428.6 → 22.3 | 2.417 → 2.028 |
-| 333 KB, 160x50, wheel Up, 30 Hz | 37.0 / 42.2 / 44.7 | 19.8 / 22.8 / 25.5 | 307.0 → 21.5 | 2.291 → 2.020 |
-| 333 KB, 160x50, wheel Down, 120 Hz | 38.0 / 44.0 / 47.9 | 13.2 / 16.5 / 17.9 | 1841.3 → 329.8 | 2.354 → 0.847 |
-| 333 KB, 80x24, Down, 30 Hz | 26.3 / 31.2 / 37.0 | 11.0 / 13.5 / 14.2 | 30.8 → 10.7 | 2.011 → 1.995 |
-| 333 KB, 80x24, wheel Down, 120 Hz | 24.2 / 28.5 / 30.3 | 8.9 / 10.9 / 12.6 | 1001.6 → 69.1 | 1.505 → 0.573 |
-| 333 KB, 160x50, Down, 30 Hz (highlight off) | 38.5 / 43.9 / 45.4 | 18.3 / 22.6 / 22.9 | 393.3 → 22.4 | 2.383 → 2.028 |
-| 333 KB, 160x50, wheel Down, 120 Hz (highlight off) | 39.2 / 45.9 / 46.9 | 13.3 / 17.8 / 18.4 | 1910.3 → 333.2 | 2.431 → 0.848 |
+| 21 KB, 120x40, Down, 30 Hz | 43.7 / 49.6 / 52.6 | 19.0 / 23.5 / 24.7 | 686.9 → 19.5 | 2.679 → 2.020 |
+| 21 KB, 120x40, wheel Down, 30 Hz | 44.8 / 50.8 / 53.1 | 21.7 / 25.7 / 27.3 | 766.0 → 25.8 | 2.755 → 2.030 |
+| 21 KB, 120x40, wheel Down, 120 Hz | 45.9 / 50.3 / 52.5 | 14.3 / 18.2 / 23.0 | 2305.4 → 412.7 | 2.822 → 0.925 |
+| 333 KB, 160x50, Down, 30 Hz | 35.6 / 42.2 / 44.0 | 18.9 / 22.5 / 24.7 | 210.0 → 20.8 | 2.199 → 2.024 |
+| 333 KB, 160x50, Up, 30 Hz | 36.6 / 42.2 / 46.6 | 18.9 / 22.6 / 25.0 | 264.2 → 21.0 | 2.255 → 2.025 |
+| 333 KB, 160x50, wheel Up, 30 Hz | 35.5 / 39.8 / 43.0 | 20.3 / 23.8 / 25.6 | 190.3 → 20.7 | 2.178 → 2.027 |
+| 333 KB, 160x50, wheel Down, 120 Hz | 35.5 / 40.4 / 42.4 | 14.5 / 18.0 / 18.9 | 1664.2 → 408.4 | 2.185 → 0.922 |
+| 333 KB, 80x24, Down, 30 Hz | 26.8 / 31.9 / 34.2 | 12.2 / 16.1 / 19.4 | 26.8 → 16.7 | 2.011 → 2.005 |
+| 333 KB, 80x24, wheel Down, 120 Hz | 25.0 / 28.5 / 30.7 | 8.9 / 11.7 / 14.1 | 1028.4 → 68.8 | 1.537 → 0.579 |
+| 333 KB, 160x50, Down, 30 Hz (Focus line off) | 35.4 / 40.9 / 42.6 | 18.9 / 21.9 / 25.2 | 184.9 → 21.1 | 2.178 → 2.025 |
+| 333 KB, 160x50, wheel Down, 120 Hz (Focus line off) | 35.7 / 40.8 / 41.9 | 13.4 / 17.8 / 20.7 | 1672.9 → 341.7 | 2.186 → 0.858 |
 
-At 30 Hz, all final-view drain measurements were below 50 ms (11–26 ms), without
-growing backlog. Wide-window p95 cycles were 23–25 ms, so the 20 ms cycle target
-is only met in the narrow case. At 120 Hz, wide windows still accumulated
-330–451 ms of backlog; the narrow case accumulated 69 ms. Remaining frame
-construction/terminal work warrants separate profiling if high-rate input is a
-priority; asynchronous rendering is not introduced here.
+At 30 Hz, final-view drain was 17–26 ms. Wide-window p95 cycles were 22–26 ms,
+above the optional 20 ms target; the narrow case met that target. At 120 Hz,
+wide windows still accumulated 342–413 ms of backlog; the narrow case accumulated
+69 ms. Remaining frame construction and terminal work warrant separate profiling
+if high-rate input is a priority; asynchronous rendering is not introduced here.
+
+Additional reader benchmarks can be reproduced with:
+
+```sh
+go test ./internal/ui -run '^$' -bench 'Benchmark(RenderMessageForDisplay|SetViewportThread|ReaderLinkNavigation)$' -benchmem -count=1
+```
+
+The same validation run measured link navigation at 28.1 ms/op for 21 KB and
+53.4 ms/op for 333 KB. Rendering benchmarks mix cold rendering and cached
+iterations: the 333 KB rendering case ran only one iteration, so it does not
+support a stable comparison with runs using more iterations. The matched event
+measurements above directly assess pane reuse during scrolling.
 
 ## Focus continuity and safety
 
@@ -93,26 +103,20 @@ reconciliation cannot establish external-link activation intent. Wheel scrolling
 clears deliberate link selection and its chevron; only a subsequent deliberate
 selection or keyboard focus can arm a target.
 
-The performance commits are integrated on upstream main at `de13370`, which
-includes the merged link-activation safeguards, destination display, header
-scrolling fix, and hidden link counter until deliberate selection. The original
-performance branch is unchanged.
-
 ## Terminal validation and limitations
 
-A scripted interactive PTY replay with real Bubble Tea terminal input/output
-processed all 11 arrow events and 14 wheel reports, with zero browser activations.
-The fixture used isolated synthetic mail, not the user's configuration/database.
-To run this opt-in terminal fixture, scroll/navigate and press `q` to exit:
+The opt-in terminal fixture uses isolated synthetic mail rather than the user's
+configuration or database. To run it, scroll/navigate and press `q` to exit:
 
 ```sh
 TIDEMAIL_READER_INTERACTIVE=1 go test ./internal/ui -run '^TestReaderScrollInteractive$' -count=1 -v
 ```
 
-This checks terminal rendering and event processing, not physical trackpad
-momentum or perceived smoothness. Actual mouse/trackpad feel still requires manual
-verification with the standalone application build. The three-row wheel increment
-is intentionally unchanged; evaluate sensitivity only after that check.
+The fixture checks terminal rendering and event processing, not physical
+trackpad momentum or perceived smoothness. Manual testing in Foot and Kitty,
+including messages with images, confirmed improved scrolling and correct
+behavior in both Focus line modes. Other terminals and input devices still
+require manual verification. The three-row wheel increment is unchanged.
 
 During an uninterrupted navigation-only sequence, relative ages in the cached
 message list can remain unchanged until the next invalidating event. Incoming

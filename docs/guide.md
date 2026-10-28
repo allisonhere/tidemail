@@ -242,15 +242,16 @@ AI/JEV behavior is unchanged and does not assign IMAP tags automatically.
 Automatic Thunderbird profile import, offline queued edits, and bulk tagging are
 not supported.
 
-`o` opens an explicitly selected LINKS entry or a visible link deliberately focused
-with keyboard navigation. `Enter` activates the same target. New messages have no
-selected link. Clicking displayed text in a LINKS entry selects it without opening
-it. With **Focus line** enabled, Up/Down moves the reading highlight and keeps
-it visible. With it disabled, Up/Down scrolls one row immediately. At the bottom,
-a further Down selects the first LINKS entry; subsequent Down presses select the
-next entry without wrapping. Up from the first entry clears selection; the next
-Up resumes scrolling. Selected links keep their local highlight and chevron in
-both modes. Wheel scrolling moves three rows and clears link selection. Ordinary body clicks and wheel scrolling clear link activation intent and never open a URL. `Ctrl+B` views the whole message in your browser. Both use the
+With **Focus line** on, Up/Down moves the reading highlight. With it off,
+Up/Down scrolls one row. At the bottom, another Down selects the first LINKS
+entry. Arrows then move between entries without wrapping; Up from the first
+clears selection, and the next Up resumes scrolling. Selected LINKS entries
+keep their highlight and chevron in both modes.
+
+`o` or `Enter` opens a selected LINKS entry or a visible link deliberately focused
+with the keyboard. New messages start with no link selected. Clicking a LINKS
+entry selects it without opening it; ordinary body clicks and scrolling never
+open links. `Ctrl+B` views the whole message in your browser. These actions use
 **Browser command** from Settings → Display when one is set.
 
 View in Browser (`Ctrl+B`) works from the message list or reading pane. It fetches
@@ -1183,19 +1184,14 @@ click-drag text selection and copy keep working untouched. Turn it on to use:
 - **Click** a sidebar row, a message row, or a pane to focus or select it.
   Reading-pane clicks never open links. Clicking displayed text in a LINKS entry
   selects that entry; other content clicks only position or focus the reader.
-  Press `o` or `Enter` to open a deliberately selected entry. **Focus line**
-  enables reading-line navigation; with it disabled, arrows scroll one row until
-  Down at the bottom enters LINKS navigation. Selected LINKS entries retain their
-  local highlighting in either mode.
+  Press `o` or `Enter` to open a deliberately selected entry.
   While message search is active, clicking its search row resumes editing the query.
 - **Double-click** a message row (or draft) to open it, the same as `Enter`; on a
   sidebar row it does what `Enter` does there (expand/collapse, or sync the folder).
 - **Scroll wheel** over the sidebar or message list moves the selection three
-  rows at a time; over the reading pane it scrolls the message. The wheel never
-  changes which pane is focused. When the reading position leaves the visible
-  area, it moves to a visible focusable line without moving the viewport, so
-  keyboard navigation resumes there. Blank/header-only views retain a visible
-  navigation anchor until a focusable line appears. This never selects a link.
+  rows at a time; over the reading pane it scrolls three rows and clears link
+  selection. With **Focus line** on, keyboard reading resumes in the visible text.
+  The wheel never changes which pane is focused.
 - **Right-click** a row to select it and open a small menu at the pointer with
   just the actions for what you clicked: a folder offers sync, new, rename,
   hide/unhide, and delete; an account offers new folder, sync all, and manage
