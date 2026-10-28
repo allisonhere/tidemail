@@ -3928,8 +3928,15 @@ func (m Model) renderStatusBar() string {
 	updateActionPart := m.statusUpdateActionPart()
 	linkPart := ""
 	if m.actionableLinksEnabled() && len(m.contentLinks) > 0 {
-		idx := m.contentLinkIdx + 1
-		linkPart = m.statusBarInlineText(m.styles.StatusBar, fmt.Sprintf("link %d/%d", idx, len(m.contentLinks)))
+		// Nothing is armed until a link is deliberately selected, so don't claim "link 0/N".
+		text := fmt.Sprintf("%d links", len(m.contentLinks))
+		if len(m.contentLinks) == 1 {
+			text = "1 link"
+		}
+		if m.contentLinkIdx >= 0 {
+			text = fmt.Sprintf("link %d/%d", m.contentLinkIdx+1, len(m.contentLinks))
+		}
+		linkPart = m.statusBarInlineText(m.styles.StatusBar, text)
 	}
 	if prompt := m.destructiveUndoPrompt(); prompt != "" {
 		style := m.styles.StatusBar
