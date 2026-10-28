@@ -692,6 +692,11 @@ func (m *Model) moveContentFocusLine(delta int) {
 		return
 	}
 	m.contentFocusLine = nextContentFocusLine(m.contentFocusLine, delta, m.contentFocusable, m.contentLineCount)
+	// Header lines are not focusable, so on the first body line the cursor
+	// cannot go higher. Moving up from there scrolls the header back into view.
+	if delta < 0 && !hasFocusableBefore(m.contentFocusable, m.contentFocusLine) {
+		m.viewport.GotoTop()
+	}
 	m.ensureContentFocusVisible()
 }
 
