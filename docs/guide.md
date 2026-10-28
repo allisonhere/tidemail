@@ -262,7 +262,8 @@ links for HTML messages, or plain-text URLs when the reader displays plain text.
 It does not combine links from both MIME alternatives. Entries show anchor text
 or `[image: ALT TEXT]`, falling back to the URL when no description is available.
 HTML entries come from anchor destinations and visible body URLs, not metadata,
-image resources, scripts, or comments. Available Outlook fallback anchor text
+image resources, scripts, or comments. A link that only wraps a hidden or 1x1
+tracking pixel is left out. Available Outlook fallback anchor text
 and button-input captions are also used when no ordinary anchor label is
 available. Email actions appear as `[mailto: Approve]` or, without a description,
 `[mailto: email action]`. Opening one passes the full URI to the configured

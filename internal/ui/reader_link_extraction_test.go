@@ -134,3 +134,37 @@ func TestReaderRecoveredButtonsPreserveNavigationAndTargets(t *testing.T) {
 		}
 	}
 }
+
+func TestReaderOmitsOpenTrackingAnchors(t *testing.T) {
+	const fedex = "https://www.fedex.com/track?n=123"
+	const pixel = "https://click.example/o?id=1"
+	for _, tc := range []struct {
+		name, source string
+		want         []string
+	}{
+		{
+			"wrapped 1x1 pixel before the real link",
+			`<a href="` + pixel + `"><img src="https://click.example/p.gif" width="1" height="1"></a><a href="` + fedex + `">Track your package</a>`,
+			[]string{fedex},
+		},
+		{"hidden image", `<a href="` + pixel + `"><img src="https://click.example/p.gif" style="display:none"></a><a href="` + fedex + `">Track</a>`, []string{fedex}},
+		{"styled 1px image", `<a href="` + pixel + `"><img src="https://click.example/p.gif" style="width:1px;height:1px"></a><a href="` + fedex + `">Track</a>`, []string{fedex}},
+		{
+			"logo link with alt is kept",
+			`<a href="https://example.com/home"><img src="https://example.com/logo.png" width="120" height="40" alt="Example"></a>`,
+			[]string{"https://example.com/home"},
+		},
+		{
+			"text link that also holds a pixel is kept",
+			`<a href="` + fedex + `">Track<img src="https://click.example/p.gif" width="1" height="1"></a>`,
+			[]string{fedex},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := readerLinksModel(t, tc.source, "")
+			if !reflect.DeepEqual(m.contentLinks, tc.want) {
+				t.Fatalf("links = %#v, want %#v", m.contentLinks, tc.want)
+			}
+		})
+	}
+}

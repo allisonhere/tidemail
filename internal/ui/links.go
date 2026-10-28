@@ -87,8 +87,12 @@ func extractHTMLLinks(content, articleURL string) ([]string, map[string]string) 
 	if err != nil {
 		return links, labels
 	}
+	trackers := trackingPixelTargets(content)
 	doc.Find("a[href]").Each(func(_ int, anchor *goquery.Selection) {
 		target := cleanAnchorDestination(attrFirst(anchor, "href"))
+		if trackers[target] {
+			return
+		}
 		appendLink(target)
 		setLabel(target, descriptiveLinkLabel(anchor))
 	})
@@ -504,4 +508,57 @@ func linkLabelMismatch(label, link string) bool {
 		return true
 	}
 	return false
+}
+
+// trackingPixelTargets returns the destinations whose only anchors are
+// open-tracking stubs: no visible text and only tiny or hidden images with no
+// alt text. Senders wrap a 1x1 pixel in a link to log that a message was
+// opened; listing it would make the first LINKS entry a tracker. It reads the
+// original HTML because normalization for display discards those images. A
+// destination that also has a normal anchor is kept.
+func trackingPixelTargets(content string) map[string]bool {
+	if !strings.Contains(strings.ToLower(content), "<img") {
+		return nil
+	}
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(content))
+	if err != nil {
+		return nil
+	}
+	pixel := make(map[string]bool)
+	visible := make(map[string]bool)
+	doc.Find("a[href]").Each(func(_ int, anchor *goquery.Selection) {
+		target := cleanAnchorDestination(attrFirst(anchor, "href"))
+		if target == "" {
+			return
+		}
+		if isTrackingPixelAnchor(anchor) {
+			pixel[target] = true
+		} else {
+			visible[target] = true
+		}
+	})
+	for target := range visible {
+		delete(pixel, target)
+	}
+	return pixel
+}
+
+func isTrackingPixelAnchor(anchor *goquery.Selection) bool {
+	if cleanLinkLabel(anchor.Text()) != "" || cleanLinkLabel(attrFirst(anchor, "aria-label", "title")) != "" {
+		return false
+	}
+	images := anchor.Find("img")
+	if images.Length() == 0 || anchor.Find("input,svg,picture,video,canvas").Length() > 0 {
+		return false
+	}
+	pixelOnly := true
+	images.EachWithBreak(func(_ int, img *goquery.Selection) bool {
+		hidden := hiddenByInlineStyle(parseInlineStyle(attrFirst(img, "style")))
+		if cleanLinkLabel(attrFirst(img, "alt", "title", "aria-label")) != "" || (!hidden && !isTrackingImage(img)) {
+			pixelOnly = false
+			return false
+		}
+		return true
+	})
+	return pixelOnly
 }
