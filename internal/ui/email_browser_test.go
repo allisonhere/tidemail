@@ -84,7 +84,7 @@ func TestOpenEmailBrowserFailures(t *testing.T) {
 		{"Content-Type: text/plain\r\n\r\nhello", "no HTML body"},
 		{"Content-Type: text/html\r\n\r\n<a href='https://example.com'>hi</a>", "launcher failed"},
 	} {
-		_, err := openEmailHTML([]byte(tc.raw), "")
+		_, err := openEmailHTML([]byte(tc.raw), "", false)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Fatalf("error = %v", err)
 		}
@@ -124,7 +124,7 @@ func TestOpenEmailBrowserFetchFailure(t *testing.T) {
 
 func TestOpenEmailBrowserTempFailure(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir()+"/missing")
-	_, err := openEmailHTML([]byte("Content-Type: text/html\r\n\r\n<p>hello</p>"), "")
+	_, err := openEmailHTML([]byte("Content-Type: text/html\r\n\r\n<p>hello</p>"), "", false)
 	if err == nil || !strings.Contains(err.Error(), "export directory") {
 		t.Fatalf("error = %v", err)
 	}
@@ -143,7 +143,7 @@ func TestOpenEmailBrowserEncoding(t *testing.T) {
 			var path string
 			openEmailBrowser = func(_, target string) error { path = target; return nil }
 			raw := "Content-Type: text/html; charset=" + tc.charset + "\r\n\r\n" + tc.body
-			if _, err := openEmailHTML([]byte(raw), ""); err != nil {
+			if _, err := openEmailHTML([]byte(raw), "", false); err != nil {
 				t.Fatal(err)
 			}
 			data, err := os.ReadFile(path)
@@ -167,5 +167,68 @@ func TestOpenEmailBrowserEncoding(t *testing.T) {
 				t.Fatalf("browser charset detection corrupted text: %q", rendered)
 			}
 		})
+	}
+}
+
+func TestOpenEmailBrowserReopenWithImages(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	originalFetch, originalOpen := fetchEmailSource, openEmailBrowser
+	t.Cleanup(func() { fetchEmailSource, openEmailBrowser = originalFetch, originalOpen })
+	raw := []byte("Content-Type: text/html\r\n\r\n<p>hi</p><img src=\"https://img.example/p.gif\">")
+	fetchEmailSource = func(Model, db.Message) func() ([]byte, error) {
+		return func() ([]byte, error) { return raw, nil }
+	}
+	var exports []string
+	openEmailBrowser = func(_, path string) error {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		exports = append(exports, string(data))
+		return nil
+	}
+	press := func(m Model, key tea.KeyMsg) Model {
+		next, cmd := m.Update(key)
+		m = next.(Model)
+		if cmd != nil {
+			if res, ok := cmd().(emailBrowserOpenedMsg); ok {
+				next, _ = m.Update(res)
+				m = next.(Model)
+			}
+		}
+		return m
+	}
+	m := sourceModel(t)
+	m = press(m, tea.KeyMsg{Type: tea.KeyCtrlB})
+	if m.browserReopen == 0 || !strings.Contains(m.statusMsg, "1 remote images blocked") {
+		t.Fatalf("offer not armed: reopen=%d status=%q", m.browserReopen, m.statusMsg)
+	}
+	if strings.Contains(exports[0], "img.example") {
+		t.Fatal("first export must block the image")
+	}
+	// Any other key withdraws the offer.
+	other := press(m, tea.KeyMsg{Type: tea.KeyDown})
+	if other.browserReopen != 0 {
+		t.Fatal("another key must disarm the offer")
+	}
+	// Ctrl+B again reopens with images and does not re-arm.
+	m = press(m, tea.KeyMsg{Type: tea.KeyCtrlB})
+	if len(exports) != 2 || !strings.Contains(exports[1], "https://img.example/p.gif") {
+		t.Fatalf("second export did not load images: %d exports", len(exports))
+	}
+	if m.browserReopen != 0 || !strings.Contains(m.statusMsg, "images loaded") {
+		t.Fatalf("reopen=%d status=%q", m.browserReopen, m.statusMsg)
+	}
+	// Without blocked images there is nothing to offer.
+	raw = []byte("Content-Type: text/html\r\n\r\n<p>hi</p>")
+	m = press(sourceModel(t), tea.KeyMsg{Type: tea.KeyCtrlB})
+	if m.browserReopen != 0 {
+		t.Fatal("no offer when nothing was blocked")
+	}
+	// The offer lapses when the status clears.
+	m.browserReopen = 5
+	next, _ := m.Update(StatusClearMsg{})
+	if next.(Model).browserReopen != 0 {
+		t.Fatal("status clear must disarm the offer")
 	}
 }

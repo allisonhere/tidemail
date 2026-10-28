@@ -20,15 +20,20 @@ import (
 const emailExportMaxAge = time.Hour
 
 type emailBrowserOpenedMsg struct {
-	err error
+	err   error
+	msgID int64
 	// blocked counts remote images left out of the export.
 	blocked int
+	// images reports that remote images were deliberately loaded.
+	images bool
 }
 
 var fetchEmailSource = Model.messageSourceFetcher
 var openEmailBrowser = browser.OpenLocalFile
 
-func (m Model) openEmailInBrowser(msg db.Message) (tea.Model, tea.Cmd) {
+// openEmailInBrowser exports msg and opens it. With allowImages the export
+// keeps remote images, which tells the sender the message was opened.
+func (m Model) openEmailInBrowser(msg db.Message, allowImages bool) (tea.Model, tea.Cmd) {
 	mailbox := m.mailboxByID(msg.MailboxID)
 	acfg, err := m.accountCfgForMailbox(msg.MailboxID)
 	if mailbox == nil || err != nil || acfg.IMAPHost == "" || msg.UID == 0 {
@@ -38,13 +43,14 @@ func (m Model) openEmailInBrowser(msg db.Message) (tea.Model, tea.Cmd) {
 	fetch := fetchEmailSource(m, msg)
 	configured := m.cfg.Display.Browser
 	m.setStatus("Opening message in browser…", false)
+	id := msg.ID
 	return m, func() tea.Msg {
 		raw, err := fetch()
 		if err != nil {
-			return emailBrowserOpenedMsg{err: err}
+			return emailBrowserOpenedMsg{err: err, msgID: id}
 		}
-		blocked, err := openEmailHTML(raw, configured)
-		return emailBrowserOpenedMsg{err: err, blocked: blocked}
+		blocked, err := openEmailHTML(raw, configured, allowImages)
+		return emailBrowserOpenedMsg{err: err, msgID: id, blocked: blocked, images: allowImages}
 	}
 }
 
@@ -94,8 +100,8 @@ func pruneEmailExports(dir string, now time.Time, maxAge time.Duration) {
 
 // openEmailHTML exports the message's HTML with remote content blocked and
 // opens it, in the configured browser when one is set. It reports how many
-// remote images were left out.
-func openEmailHTML(raw []byte, configured string) (blocked int, err error) {
+// remote images were left out; with allowImages remote images are kept.
+func openEmailHTML(raw []byte, configured string, allowImages bool) (blocked int, err error) {
 	src := imapClient.ExtractHTML(raw)
 	if src == "" {
 		return 0, fmt.Errorf("this message has no HTML body")
@@ -103,7 +109,7 @@ func openEmailHTML(raw []byte, configured string) (blocked int, err error) {
 	if !utf8.ValidString(src) {
 		return 0, fmt.Errorf("the message HTML could not be decoded as UTF-8")
 	}
-	html, blocked, err := sanitizeEmailHTML(strings.TrimPrefix(src, "\ufeff"))
+	html, blocked, err := sanitizeEmailHTML(strings.TrimPrefix(src, "\ufeff"), allowImages)
 	if err != nil {
 		return 0, fmt.Errorf("prepare HTML: %w", err)
 	}
