@@ -142,6 +142,18 @@ func firstFocusableLine(focusable []bool) int {
 	return 0
 }
 
+// hasFocusableBefore reports whether any focusable line precedes line. When
+// none does, line is the first place the cursor can rest, and everything above
+// it is the message header, which must stay reachable by scrolling.
+func hasFocusableBefore(focusable []bool, line int) bool {
+	for i := 0; i < line && i < len(focusable); i++ {
+		if focusable[i] {
+			return true
+		}
+	}
+	return false
+}
+
 func nextContentFocusLine(current, delta int, focusable []bool, lineCount int) int {
 	if delta == 0 || lineCount <= 0 {
 		return clamp(current, 0, max(0, lineCount-1))

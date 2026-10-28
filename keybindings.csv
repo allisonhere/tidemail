@@ -18,7 +18,7 @@ EditTags,e,e,correct classification and manage current message tags,message list
 PluginCatalog,b,b,browse available plugins (i install / u update / x remove),plugin list
 PluginCardUnsubscribe,u,u,unsubscribe when offered,plugin result card
 MarkAllRead,"R,ctrl+x",R/ctrl+x,mark all read,main
-OpenBrowser,o,o,open in browser,main
+OpenBrowser,o,o,open link,main
 Unsubscribe,ctrl+u,ctrl+u,unsubscribe,content
 NextLink,"ctrl+n,alt+n",ctrl+n,next LINKS entry (scroll into view; ctrl+c copies full URL),content
 PrevLink,alt+p,alt+p,previous LINKS entry (scroll into view),content
@@ -58,7 +58,7 @@ DiscardDraft,d,d,discard draft,compose
 ContentSearch,ctrl+f,ctrl+f,find in content,content
 ToggleQuote,z,z,toggle quoted text,content
 ToggleHeaders,ctrl+e,ctrl+e,toggle full headers,content
-OpenInBrowser,ctrl+b,ctrl+b,open message HTML in browser,message list+content
+OpenInBrowser,ctrl+b,ctrl+b,view message in browser,message list+content
 ViewSource,ctrl+o,ctrl+o,view message source (c copies),message list+content
 ToggleImages,i,i,load remote images (unsupported in foot/WezTerm),content
 SaveAttach,ctrl+d,ctrl+d,save attachments,content

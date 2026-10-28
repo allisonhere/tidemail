@@ -137,7 +137,7 @@ var DefaultKeys = KeyMap{
 	EditTags:      key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit tags")),
 	MarkAllRead:   key.NewBinding(key.WithKeys("R", "ctrl+x"), key.WithHelp("R/ctrl+x", "mark all read")),
 	ToggleStar:    key.NewBinding(key.WithKeys("*"), key.WithHelp("*", "star")),
-	OpenBrowser:   key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser")),
+	OpenBrowser:   key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open link")),
 	Unsubscribe:   key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "unsubscribe")),
 	NextLink:      key.NewBinding(key.WithKeys("ctrl+n", "alt+n"), key.WithHelp("ctrl+n", "next link")),
 	PrevLink:      key.NewBinding(key.WithKeys("alt+p"), key.WithHelp("alt+p", "prev link")),
@@ -178,7 +178,7 @@ var DefaultKeys = KeyMap{
 	ContentSearch: key.NewBinding(key.WithKeys("ctrl+f"), key.WithHelp("ctrl+f", "find")),
 	ToggleQuote:   key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "toggle quoted text")),
 	ToggleHeaders: key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "headers")),
-	OpenInBrowser: key.NewBinding(key.WithKeys("ctrl+b"), key.WithHelp("ctrl+b", "open in browser")),
+	OpenInBrowser: key.NewBinding(key.WithKeys("ctrl+b"), key.WithHelp("ctrl+b", "view message in browser")),
 	ViewSource:    key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "source")),
 	ToggleImages:  key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "load images")),
 

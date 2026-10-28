@@ -290,7 +290,10 @@ settings stay unchanged. Tags also appear below the date and sender in the
 content pane; use **Show tags in message header** under **Settings → Display →
 Message tags** to hide that row only. See the [user guide](docs/guide.md#thunderbird--imap-mail-tags).
 
-Open in Browser (`Ctrl+B`) works from the message list or reading pane. It fetches
+`o` opens a link; `Ctrl+B` views the whole message in your browser. Both use the
+**Browser command** from Settings → Display when one is set.
+
+View in Browser (`Ctrl+B`) works from the message list or reading pane. It fetches
 the original message without marking it read and opens its HTML as a private local
 `.html` file in your browser: the **Browser command** from Settings → Display when
 one is set, otherwise the system default (`xdg-open` on Linux). Messages without
@@ -383,7 +386,7 @@ shows the `message_raw` and `message_compose` permissions.
 | `Ctrl+D` | Save attachments from the open message |
 | `Ctrl+E` | Show or hide full headers |
 | `Ctrl+O` | View the message source (`c` copies it) |
-| `Ctrl+B` | Open the message HTML in your browser (remote content blocked) |
+| `Ctrl+B` | View the whole message in your browser (remote content blocked) |
 | `i` | Load remote images blocked for the open message |
 | `M` / `S` / `T` | Accounts, settings, or themes |
 | `Ctrl+L` in the account form | Look up a Custom account's mail servers |
