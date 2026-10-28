@@ -467,3 +467,41 @@ func isLikelyRedditCommentID(s string) bool {
 	}
 	return true
 }
+
+var labelHostPattern = regexp.MustCompile(`(?i)\b(?:https?://)?((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,})\b`)
+
+// linkHost returns the lower-case host of an http(s) destination without a
+// leading "www.", or "" when link has no host.
+func linkHost(link string) string {
+	u, err := url.Parse(strings.TrimSpace(link))
+	if err != nil || u.Hostname() == "" {
+		return ""
+	}
+	return strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
+}
+
+// linkDestinationSuffix is the " (host)" tail shown after a link's label.
+func linkDestinationSuffix(link string) string {
+	if host := linkHost(link); host != "" {
+		return " (" + host + ")"
+	}
+	return ""
+}
+
+// linkLabelMismatch reports whether label names a domain that is not the
+// destination's host or one of its subdomains/parents, the classic phishing
+// shape: a label reading "paypal.com" over a link to somewhere else.
+func linkLabelMismatch(label, link string) bool {
+	dest := linkHost(link)
+	if dest == "" {
+		return false
+	}
+	for _, m := range labelHostPattern.FindAllStringSubmatch(label, -1) {
+		named := strings.TrimPrefix(strings.ToLower(m[1]), "www.")
+		if named == dest || strings.HasSuffix(dest, "."+named) || strings.HasSuffix(named, "."+dest) {
+			continue
+		}
+		return true
+	}
+	return false
+}

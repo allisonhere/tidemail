@@ -271,7 +271,10 @@ select the next or previous entry and scroll it into view; the chevron, highligh
 and status counter follow together. Press `o` or `Enter` to open it. `Ctrl+C` on
 a LINKS row without a visual selection copies its full destination, even when
 the label is shortened or the URL is too long for a terminal hyperlink. Explicit
-text selections still copy the displayed text.
+text selections still copy the displayed text. Because the label is chosen by the
+sender, each entry also shows its real destination host in parentheses, and a label
+that names a different site than the link goes to (for example "paypal.com" over a
+link to another domain) is marked with `!`.
 
 ### Managing folders
 

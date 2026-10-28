@@ -112,7 +112,7 @@ func TestReaderMultipartNavigationUsesOnlyHTMLDestinations(t *testing.T) {
 		t.Fatalf("multipart targets = %#v, want HTML targets only", m.contentLinks)
 	}
 	footer := ansi.Strip(m.renderContentLinks(m.contentBodyWidth()))
-	if strings.Contains(footer, "track.example") || !strings.Contains(footer, "Newsletter action 40") {
+	if strings.Contains(footer, "https://") || strings.Contains(footer, "id=") || !strings.Contains(footer, "Newsletter action 40") {
 		t.Fatalf("unexpected footer labels: %q", footer)
 	}
 	originalOpen, originalCopy := browserOpen, clipboardWriteCmd

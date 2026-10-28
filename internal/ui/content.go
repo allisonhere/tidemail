@@ -215,10 +215,22 @@ func (m Model) contentLinkText(index, width int, selected bool) string {
 			label = "email action"
 		}
 		label = "[mailto: " + label + "]"
-	} else if label == "" {
-		label = link
+		return truncate(prefix+label, width)
 	}
-	return truncate(prefix+label, width)
+	if label == "" || label == link {
+		return truncate(prefix+link, width)
+	}
+	// The label is chosen by the sender, so always show where the link really
+	// goes, and warn when the label names a different site than the target.
+	suffix := linkDestinationSuffix(link)
+	if linkLabelMismatch(label, link) {
+		label = "! " + label
+	}
+	room := width - lipgloss.Width(suffix)
+	if room < 8 {
+		return truncate(prefix+label+suffix, width)
+	}
+	return truncate(prefix+label, room) + suffix
 }
 
 func (m Model) renderContentLinkRow(index, width int, selected bool) string {

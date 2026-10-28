@@ -93,7 +93,7 @@ func TestReaderRecoveredButtonsPreserveNavigationAndTargets(t *testing.T) {
 		t.Fatalf("targets = %#v", m.contentLinks)
 	}
 	footer := ansi.Strip(m.renderContentLinks(m.contentBodyWidth()))
-	if !strings.Contains(footer, "Approve") || !strings.Contains(footer, "Deny") || strings.Contains(footer, "track.example") {
+	if !strings.Contains(footer, "Approve") || !strings.Contains(footer, "Deny") || strings.Contains(footer, "https://") || strings.Contains(footer, "action=") {
 		t.Fatalf("footer = %q", footer)
 	}
 	// Caption recovery is metadata-only: the existing body renderer continues

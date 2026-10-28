@@ -309,7 +309,9 @@ or image descriptions. `Ctrl+N` / `Alt+N` and `Alt+P` move the visible selection
 and scroll it into view. `o` or `Enter` opens the destination; `Ctrl+C` on a LINKS
 row copies its full URL when no text selection is active. Email actions appear
 as `[mailto: description]` and open through the configured URI handler without
-sending a message. HTML resource and metadata URLs are excluded from LINKS.
+sending a message. Each entry shows its real destination host in parentheses, and a
+label that names a different site than the link goes to is marked with `!`, so a label
+cannot hide where a link leads. HTML resource and metadata URLs are excluded from LINKS.
 
 ## Optional AI tools
 

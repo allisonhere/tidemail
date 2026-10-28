@@ -201,8 +201,13 @@ func TestReaderLinkLabelsAndDestinations(t *testing.T) {
 					t.Fatalf("missing label %q in %q", label, view)
 				}
 			}
-			if strings.Contains(view, "tracking.example") {
+			// The destination host is shown so a label cannot hide where a link
+			// goes, but the full tracking URL must stay out of the list.
+			if strings.Contains(view, "https://tracking.example") || strings.Contains(view, "?") {
 				t.Fatal("descriptive anchor displayed its tracking URL")
+			}
+			if !strings.Contains(view, "(tracking.example)") {
+				t.Fatal("descriptive anchor did not show its destination host")
 			}
 			if strings.Count(view, "View the UNO Events Calendar") != 1 {
 				t.Fatal("repeated destination changed existing deduplication")
