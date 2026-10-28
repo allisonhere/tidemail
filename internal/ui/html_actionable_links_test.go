@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"github.com/allisonhere/tidemail/internal/config"
 	"html"
 	"reflect"
 	"strings"
@@ -126,6 +127,7 @@ func TestReaderMailtoActionsPreserveDestinations(t *testing.T) {
 		fmt.Fprintf(&source, `<p><a href="%s">%s</a></p>`, html.EscapeString(action.target), action.label)
 	}
 	m := readerLinksModel(t, source.String(), "Unused https://example.com/plain-alternative")
+	m.cfg.Accounts = []config.AccountConfig{{ID: "sender", User: "sender@example.com", SMTPHost: "smtp.example.com"}}
 	want := []string{approve, deny, "https://example.com/view", "mailto:help@example.com", literalEntity}
 	if !reflect.DeepEqual(m.contentLinks, want) {
 		t.Fatalf("destinations = %#v, want %#v", m.contentLinks, want)
@@ -156,15 +158,28 @@ func TestReaderMailtoActionsPreserveDestinations(t *testing.T) {
 		m = next.(Model)
 		assertReaderLinkSelection(t, m, i)
 		for _, key := range []tea.KeyMsg{{Type: tea.KeyEnter}, {Type: tea.KeyRunes, Runes: []rune{'o'}}} {
-			_, cmd := m.Update(key)
-			if cmd == nil {
-				t.Fatal("missing open command")
-			}
-			cmd()
-			if opened != want[i] {
-				t.Fatalf("opened %q, want %q", opened, want[i])
+			opened = ""
+			next, cmd := m.Update(key)
+			result := next.(Model)
+			if isMailtoDestination(want[i]) {
+				fields, err := parseComposeMailto(want[i])
+				if err != nil {
+					t.Fatal(err)
+				}
+				if cmd != nil || result.overlay != overlayCompose || result.compose.toInput.Value() != fields.to || result.compose.subjectInput.Value() != fields.subject || result.compose.bodyInput.Value() != fields.body || opened != "" {
+					t.Fatal("mailto payload changed or launched external handler")
+				}
+			} else {
+				if cmd == nil {
+					t.Fatal("missing browser command")
+				}
+				cmd()
+				if opened != want[i] {
+					t.Fatalf("opened %q, want %q", opened, want[i])
+				}
 			}
 		}
+
 		m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 		if copied != want[i] {
 			t.Fatalf("copied %q, want %q", copied, want[i])

@@ -324,8 +324,11 @@ or image descriptions. `Ctrl+N` / `Alt+N` and `Alt+P` move the visible selection
 and scroll it into view. The first Next selects the first entry; the first Previous
 selects the last. `o` or `Enter` opens the selected destination; `Ctrl+C` on a LINKS
 row copies its full URL when no text selection is active. Email actions appear
-as `[mailto: description]` and open through the configured URI handler without
-sending a message. Each entry shows its real destination host in parentheses, and a
+as `[mailto: description]` and open TideMail's composer using the source message's
+account, including in Unified Inbox. Your default sender is the fallback if that
+account is unavailable. Recipients, subject, and body can be prefilled; your
+normal signature is preserved. Nothing is sent until you choose to send.
+Each entry shows its real destination host in parentheses, and a
 label that names a different site than the link goes to is marked with `!`, so a label
 cannot hide where a link leads. HTML resource and metadata URLs are excluded from LINKS, as are links that
 only wrap a hidden or 1x1 tracking pixel.

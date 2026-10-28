@@ -126,7 +126,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{keys.Unsubscribe.Help().Key, "unsubscribe from this sender's list"},
 				{keys.NextLink.Help().Key, "next LINKS entry; scroll into view"},
 				{keys.PrevLink.Help().Key, "previous LINKS entry; scroll into view"},
-				{"[mailto: label]", "email action; open to prepare mail without sending"},
+				{"[mailto: label]", "compose in TideMail as the source account (default if unavailable); review before sending"},
 				{keys.ContentSearch.Help().Key + " or " + keys.Search.Help().Key, "find text in opened message"},
 				{"v/V", "visual select line range / whole message"},
 				{"y/ctrl+c", "copy selected message text; ctrl+c copies focus line (full URL on a LINKS row) without selection"},
