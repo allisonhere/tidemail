@@ -1,6 +1,6 @@
 GoField,Keys,HelpDisplay,Description,Context
-Up,"k,up",k/↑,up (select LINKS entry in content),global
-Down,"j,down",j/↓,down (select LINKS entry in content),global
+Up,"k,up",k/↑,up (move reading focus; select LINKS entry in content),global
+Down,"j,down",j/↓,down (move reading focus; select LINKS entry in content),global
 Left,"h,left",h/←,move left,global
 Right,"l,right",l/→,move right,global
 NextPane,"tab,]",tab/],next pane,global

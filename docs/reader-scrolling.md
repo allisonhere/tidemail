@@ -83,9 +83,10 @@ reconciliation cannot establish external-link activation intent. Wheel scrolling
 clears deliberate link selection and its chevron; only a subsequent deliberate
 selection or keyboard focus can arm a target.
 
-The branch carries the two unmerged link-activation safety commits as prerequisites
-on top of upstream main, including PR #68's destination display and PR #69's header
-scrolling fix. The activation branch and experiment branch are unchanged.
+The performance commits are integrated on upstream main at `de13370`, which
+includes the merged link-activation safeguards, destination display, header
+scrolling fix, and hidden link counter until deliberate selection. The original
+performance branch is unchanged.
 
 ## Terminal validation and limitations
 
