@@ -790,7 +790,7 @@ func (m *Model) moveContentFocusLine(delta int) {
 		m.viewport.GotoTop()
 	}
 	m.ensureContentFocusVisible()
-	if delta != 0 {
+	if delta != 0 && !m.selectContentLinkAt(m.contentFocusLine) {
 		m.contentFocusedLink, _ = m.focusedLineLink()
 	}
 }
@@ -947,7 +947,7 @@ func (m Model) renderContentFocusLine(body string, width, height int, focused bo
 	return strings.Join(lines, "\n")
 }
 
-// Only an explicit keyboard action may arm a link. Clear the copied footer
+// Only deliberate selection or keyboard focus may arm a link. Clear the copied footer
 // marker too; the cached viewport itself always contains neutral rows.
 func (m *Model) clearContentLinkSelection() {
 	if i := m.contentLinkIdx; i >= 0 && i < len(m.contentLinkRows) && i < len(m.contentLinks) {
@@ -1076,13 +1076,63 @@ func (m *Model) stepContentLink(delta int) {
 	m.contentLinkIdx = (m.contentLinkIdx + delta + len(m.contentLinks)) % len(m.contentLinks)
 }
 
+// Match the cached footer row, never a URL found elsewhere on that line.
+// Duplicate row metadata is ambiguous and must not establish selection.
+func (m Model) contentLinkIndexAt(row int) int {
+	index := -1
+	for i, linkRow := range m.contentLinkRows {
+		if row == linkRow && i < len(m.contentLinks) {
+			if index >= 0 {
+				return -1
+			}
+			index = i
+		}
+	}
+	return index
+}
+
+func (m *Model) selectContentLinkAt(row int) bool {
+	index := m.contentLinkIndexAt(row)
+	if index < 0 {
+		return false
+	}
+	m.clearContentLinkSelection()
+	m.contentLinkIdx = index
+	m.contentFocusLine = row
+	m.updateContentLinkLine()
+	return true
+}
+
+// Without focus highlighting, body arrows still scroll. Arrows at a visible
+// footer entry (or onto an adjacent entry) deliberately navigate LINKS.
+func (m Model) contentLinkArrowNavigation(delta int) bool {
+	if !m.contentLineVisible(m.contentFocusLine) {
+		return false
+	}
+	next := nextContentFocusLine(m.contentFocusLine, delta, m.contentFocusable, m.contentLineCount)
+	return m.contentLinkIndexAt(m.contentFocusLine) >= 0 || m.contentLinkIndexAt(next) >= 0
+}
+
+// Click selection is restricted to visible text in an unambiguous footer row.
+// Borders, indentation and trailing padding do not identify an entry.
+func (m Model) contentLinkTextHit(row, x int) bool {
+	index := m.contentLinkIndexAt(row)
+	if index < 0 || !m.contentLineVisible(row) {
+		return false
+	}
+	column := x - m.feedsPaneWidth() - 2 // pane border and footer indent
+	text := m.contentLinkText(index, max(1, m.contentBodyWidth()-1), false)
+	if column < 2 || column >= ansi.StringWidth(strings.TrimRight(text, " \t")) || column >= m.contentBodyWidth()-1 {
+		return false
+	}
+	return strings.TrimSpace(ansi.Cut(text, column, column+1)) != ""
+}
+
 // contentListLinkAt resolves only the existing LINKS footer, independent of
 // terminal hyperlink support and of the text chosen for display.
 func (m Model) contentListLinkAt(row int) (string, bool) {
-	for i, linkRow := range m.contentLinkRows {
-		if row == linkRow && i < len(m.contentLinks) {
-			return m.contentLinks[i], true
-		}
+	if index := m.contentLinkIndexAt(row); index >= 0 {
+		return m.contentLinks[index], true
 	}
 	return "", false
 }

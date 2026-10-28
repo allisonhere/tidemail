@@ -2748,7 +2748,7 @@ func (m Model) handleUp() (tea.Model, tea.Cmd) {
 			return m.selectMessageRow(m.messageCursor - 1)
 		}
 	case paneContent:
-		if !m.cfg.Display.FocusLine {
+		if !m.cfg.Display.FocusLine && !m.contentLinkArrowNavigation(-1) {
 			m.clearContentLinkSelection()
 			m.viewport.ScrollUp(1)
 			return m, nil
@@ -2782,7 +2782,7 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 			}
 		}
 	case paneContent:
-		if !m.cfg.Display.FocusLine {
+		if !m.cfg.Display.FocusLine && !m.contentLinkArrowNavigation(1) {
 			m.clearContentLinkSelection()
 			m.viewport.ScrollDown(1)
 			return m, nil
@@ -2820,7 +2820,7 @@ func (m Model) handleMouseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case paneMessages:
 		return m.handleMessagesClick(y)
 	}
-	return m.handleContentClick(y, paneTop)
+	return m.handleContentClick(msg.X, y, paneTop)
 }
 
 // paneAt resolves absolute terminal coordinates to the pane under them. It
@@ -3046,9 +3046,9 @@ func (m Model) handleMessagesClick(y int) (tea.Model, tea.Cmd) {
 	return opened, tea.Batch(cmd, openCmd)
 }
 
-// Content clicks position the reader only. Opening requires keyboard intent;
-// a line-level target cannot reliably hit-test the character that was clicked.
-func (m Model) handleContentClick(y, paneTop int) (tea.Model, tea.Cmd) {
+// Content clicks never open URLs. Only text in a known LINKS footer entry
+// can establish selection; body clicks merely position the reader.
+func (m Model) handleContentClick(x, y, paneTop int) (tea.Model, tea.Cmd) {
 	m.clearContentLinkSelection()
 	interiorTop := paneTop + 1 + m.paneHeaderHeight()
 	if y < interiorTop {
@@ -3061,6 +3061,9 @@ func (m Model) handleContentClick(y, paneTop int) (tea.Model, tea.Cmd) {
 	line := m.viewport.YOffset + (y - interiorTop)
 	if line >= 0 && line < m.contentLineCount && y < m.mainHeight()-1 {
 		m.contentFocusLine = line
+		if x > m.feedsPaneWidth() && x < m.width-1 && m.contentLinkTextHit(line, x) {
+			m.selectContentLinkAt(line)
+		}
 	}
 	return m, nil
 }
@@ -3885,8 +3888,8 @@ func (m *Model) ensureContentFocusVisible() {
 	}
 }
 
-// openContentLinkCmd accepts only deliberate keyboard selection or focus.
-// Automatic focus, clicks and wheel scrolling never arm an external handler.
+// openContentLinkCmd accepts only explicit LINKS selection or keyboard focus.
+// Automatic focus, ordinary body clicks and wheel scrolling never arm a handler.
 func (m Model) openContentLinkCmd() (tea.Cmd, bool) {
 	if len(m.filteredMessages) == 0 || m.focused != paneContent {
 		return nil, false

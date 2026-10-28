@@ -244,8 +244,9 @@ not supported.
 
 `o` opens an explicitly selected LINKS entry or a visible link deliberately focused
 with keyboard navigation. `Enter` activates the same target. New messages have no
-selected link; body clicks and wheel scrolling clear link activation intent and
-never open a URL. `Ctrl+B` views the whole message in your browser. Both use the
+selected link. Clicking displayed text in a LINKS entry selects it without opening
+it; Up/Down on LINKS entries selects them too, even with Focus line off. Ordinary
+body clicks and wheel scrolling clear link activation intent and never open a URL. `Ctrl+B` views the whole message in your browser. Both use the
 **Browser command** from Settings → Display when one is set.
 
 View in Browser (`Ctrl+B`) works from the message list or reading pane. It fetches
@@ -1176,8 +1177,10 @@ Unified Inbox.
 click-drag text selection and copy keep working untouched. Turn it on to use:
 
 - **Click** a sidebar row, a message row, or a pane to focus or select it.
-  Reading-pane clicks only position or focus the reader; they never open links,
-  including clicks on link text. Use keyboard link navigation and `o` to open one.
+  Reading-pane clicks never open links. Clicking displayed text in a LINKS entry
+  selects that entry; other content clicks only position or focus the reader.
+  Press `o` or `Enter` to open a deliberately selected entry. With Focus line off,
+  Up/Down still navigates visible LINKS entries; ordinary body arrows scroll.
   While message search is active, clicking its search row resumes editing the query.
 - **Double-click** a message row (or draft) to open it, the same as `Enter`; on a
   sidebar row it does what `Enter` does there (expand/collapse, or sync the folder).

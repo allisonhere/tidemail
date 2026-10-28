@@ -102,9 +102,9 @@ func TestReaderActivationExplicitSelection(t *testing.T) {
 	}
 }
 
-func TestReaderActivationClearsAfterMouseAndBodyNavigation(t *testing.T) {
+func TestReaderActivationClearsAfterMouseNavigation(t *testing.T) {
 	for _, focus := range []bool{false, true} {
-		for _, action := range []string{"click", "wheel", "up", "down"} {
+		for _, action := range []string{"click", "wheel"} {
 			t.Run(fmt.Sprintf("focus=%v/%s", focus, action), func(t *testing.T) {
 				requests, apply := recordReaderActivations(t)
 				m := readerActivationModel(t, focus)
@@ -115,23 +115,16 @@ func TestReaderActivationClearsAfterMouseAndBodyNavigation(t *testing.T) {
 					msg = leftClick(m.width-1, m.articlesPaneOuterHeight())
 				case "wheel":
 					msg = tea.MouseMsg{X: m.width - 2, Y: m.mainHeight() - 2, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown}
-				case "down":
-					// The final footer row has no following link to deliberately focus.
-					m = apply(m, readerPreviousKey)
-					msg = tea.KeyMsg{Type: tea.KeyDown}
+
 				}
 				m = apply(m, msg)
-				// Up may deliberately focus a body URL; test invalidation of the
-				// extracted-list selection independently of that valid workflow.
 				if m.contentLinkIdx != -1 {
 					t.Fatal("ordinary navigation retained extracted selection")
 				}
-				if action == "click" || action == "wheel" || !focus {
-					m = apply(m, tea.KeyMsg{Type: tea.KeyEnter})
-					m = apply(m, readerOpenKey)
-					if len(*requests) != 0 {
-						t.Fatalf("stale activation: %v", *requests)
-					}
+				m = apply(m, tea.KeyMsg{Type: tea.KeyEnter})
+				m = apply(m, readerOpenKey)
+				if len(*requests) != 0 {
+					t.Fatalf("stale activation: %v", *requests)
 				}
 			})
 		}
