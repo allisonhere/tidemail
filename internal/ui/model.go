@@ -221,14 +221,15 @@ type Model struct {
 	contentLinkRows   []int
 	contentLinkIdx    int
 	// Activation intent is separate from automatic focus/layout changes.
-	contentLinkContext string
-	contentFocusedLink string
-	contentMessageID   int64
-	contentDraftID     int64
-	contentFocusLine   int
-	contentLineCount   int
-	contentFocusable   []bool
-	contentLines       []string
+	contentLinkContext  string
+	contentFocusedLink  string
+	contentMessageID    int64
+	contentDraftID      int64
+	contentFocusPending bool // viewport currently has no focusable line
+	contentFocusLine    int
+	contentLineCount    int
+	contentFocusable    []bool
+	contentLines        []string
 	// contentLineLinks holds the hyperlink target for each contentLines entry,
 	// including explicit LINKS destinations when OSC 8 is unavailable. Body
 	// targets come from OSC 8 escapes stripped from the displayed text.
@@ -559,8 +560,11 @@ func (m Model) Init() tea.Cmd {
 // ── Update ───────────────────────────────────────────────────────────────────
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if m.readerPanes != nil && !m.readerOnlyNavigation(msg) {
-		m.readerPanes.valid = false
+	if m.readerPanes != nil {
+		m.readerPanes.navigationOnly = m.readerOnlyNavigation(msg)
+		if !m.readerPanes.navigationOnly {
+			m.readerPanes.valid = false
+		}
 	}
 	// Keys go exclusively to the open compose overlay. A successful autosave
 	// updates only compose state. Other events can change the panes underneath
@@ -592,6 +596,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
+		offset := m.viewport.YOffset
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport = viewport.New(m.contentBodyWidth(), m.contentBodyHeight())
@@ -602,7 +607,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.activeMessageRowCount() > 0 {
 			m.setViewportForCurrentRow()
-			m.ensureContentFocusVisible()
+			if m.contentLinkIdx >= 0 {
+				m.revealContentLink()
+			} else {
+				m.viewport.SetYOffset(offset)
+				m.reconcileContentFocus(0)
+			}
 		}
 		if m.overlay == overlayHelp {
 			m.resetHelpVP()
@@ -2758,11 +2768,6 @@ func (m Model) handleUp() (tea.Model, tea.Cmd) {
 			return m.selectMessageRow(m.messageCursor - 1)
 		}
 	case paneContent:
-		if !m.cfg.Display.FocusLine && !m.contentLinkArrowNavigation(-1) {
-			m.clearContentLinkSelection()
-			m.viewport.ScrollUp(1)
-			return m, nil
-		}
 		m.moveContentFocusLine(-1)
 	}
 	return m, nil
@@ -2792,11 +2797,6 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 			}
 		}
 	case paneContent:
-		if !m.cfg.Display.FocusLine && !m.contentLinkArrowNavigation(1) {
-			m.clearContentLinkSelection()
-			m.viewport.ScrollDown(1)
-			return m, nil
-		}
 		m.moveContentFocusLine(1)
 	}
 	return m, nil
@@ -2914,6 +2914,7 @@ func (m Model) handleMouseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	} else {
 		m.viewport.ScrollDown(wheelStepRows)
 	}
+	m.reconcileContentFocus(dir)
 	return m, nil
 }
 
@@ -3071,6 +3072,7 @@ func (m Model) handleContentClick(x, y, paneTop int) (tea.Model, tea.Cmd) {
 	line := m.viewport.YOffset + (y - interiorTop)
 	if line >= 0 && line < m.contentLineCount && y < m.mainHeight()-1 {
 		m.contentFocusLine = line
+		m.contentFocusPending = false
 		if x > m.feedsPaneWidth() && x < m.width-1 && m.contentLinkTextHit(line, x) {
 			m.selectContentLinkAt(line)
 		}
@@ -3684,7 +3686,7 @@ func (m Model) View() string {
 		main = m.composeBackdrop.panes
 	} else {
 		var accounts, messages string
-		cacheReader := m.overlay == overlayNone && m.focused == paneContent && m.readerPanes != nil
+		cacheReader := m.overlay == overlayNone && m.readerPanes != nil && (m.focused == paneContent || m.readerPanes.navigationOnly)
 		if cacheReader && m.readerPanes.valid {
 			accounts, messages = m.readerPanes.accounts, m.readerPanes.messages
 		} else {
@@ -3884,7 +3886,7 @@ func (m *Model) currentContentMessage() *db.Message {
 }
 
 func (m *Model) ensureContentFocusVisible() {
-	if m.contentLineCount <= 0 {
+	if m.contentLineCount <= 0 || m.contentFocusPending {
 		return
 	}
 	bodyH := max(1, m.contentBodyHeight())

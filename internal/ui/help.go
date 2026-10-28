@@ -119,7 +119,7 @@ func helpSections(keys KeyMap) []helpSection {
 		{
 			name: "Content Pane",
 			entries: []helpEntry{
-				{keys.Up.Help().Key + "/" + keys.Down.Help().Key, "move focus line; select LINKS entries (also with Focus line off)"},
+				{keys.Up.Help().Key + "/" + keys.Down.Help().Key, "move reading position; select LINKS entries; Focus line only changes highlighting"},
 				{keys.Back.Help().Key, "return to message list"},
 				{keys.Enter.Help().Key, "open explicitly selected or keyboard-focused visible link"},
 				{keys.OpenBrowser.Help().Key, "open explicitly selected or keyboard-focused visible link"},
@@ -321,7 +321,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{"enable", "Settings → Display → Mouse support (off by default; keeps native text selection while off)"},
 				{"click", "select a row or LINKS entry, or focus a pane; reader clicks never open links; click a search row to edit"},
 				{"double-click", "open a message or draft (same as enter); on a sidebar row, expand/collapse or sync like enter"},
-				{"scroll wheel", "moves the selection in the sidebar and message list; scrolls the reading pane; never changes focus"},
+				{"scroll wheel", "moves list selection or scrolls reader; keeps reading position visible without selecting links; never changes pane focus"},
 				{"right-click", "select the row and open a menu of its actions (folder, account, or message); enter or click runs one, esc closes"},
 				{"overlays", "mouse input is ignored while Settings, Accounts, Compose, or any other overlay is open"},
 			},

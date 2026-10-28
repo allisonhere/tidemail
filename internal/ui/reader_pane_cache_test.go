@@ -93,3 +93,20 @@ func TestReaderPaneCacheOverlayTransitions(t *testing.T) {
 	}
 	assertReaderPanesMatchFresh(t, m)
 }
+
+func TestReaderPaneCacheWheelWithoutStealingFocus(t *testing.T) {
+	m := readerScrollModel(1024, 120, 40, true)
+	m.focused = paneAccounts
+	m.readerPanes.valid = false
+	for i := 0; i < 3; i++ {
+		next, _ := m.Update(readerWheel(m, false))
+		m = next.(Model)
+		if m.focused != paneAccounts {
+			t.Fatal("wheel stole keyboard pane focus")
+		}
+		assertReaderPanesMatchFresh(t, m)
+		if !m.readerPanes.valid || !m.readerPanes.navigationOnly {
+			t.Fatal("reader wheel unnecessarily rebuilt surrounding panes")
+		}
+	}
+}

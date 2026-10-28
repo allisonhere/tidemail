@@ -57,10 +57,13 @@ func (r *readerEventInput) Read(buf []byte) (int, error) {
 	return n, nil
 }
 
-type readerScrollState struct{ offset, focus, link int }
+type readerScrollState struct {
+	offset, focus, link int
+	pending             bool
+}
 
 func scrollState(m Model) readerScrollState {
-	return readerScrollState{m.viewport.YOffset, m.contentFocusLine, m.contentLinkIdx}
+	return readerScrollState{m.viewport.YOffset, m.contentFocusLine, m.contentLinkIdx, m.contentFocusPending}
 }
 
 type readerEventStats struct {
@@ -72,8 +75,9 @@ type readerEventStats struct {
 }
 
 type readerEventProbe struct {
-	m Model
-	s *readerEventStats
+	m        Model
+	s        *readerEventStats
+	uncached bool // test-only matched baseline; production behavior is unchanged
 }
 
 func (p readerEventProbe) Init() tea.Cmd { return nil }
@@ -91,6 +95,9 @@ func (p readerEventProbe) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	start := time.Now()
 	next, cmd := p.m.Update(msg)
 	p.m = next.(Model)
+	if p.uncached && p.m.readerPanes != nil {
+		p.m.readerPanes.valid = false
+	}
 	if tracked {
 		p.s.updates = append(p.s.updates, time.Since(start))
 		p.s.states = append(p.s.states, scrollState(p.m))
@@ -195,7 +202,7 @@ func TestReaderScrollEventQueueDrain(t *testing.T) {
 				input.packets <- []byte("~")
 				close(input.packets)
 			}()
-			program := tea.NewProgram(readerEventProbe{m, stats}, tea.WithInput(input), tea.WithOutput(io.Discard), tea.WithoutSignalHandler())
+			program := tea.NewProgram(readerEventProbe{m: m, s: stats, uncached: os.Getenv("TIDEMAIL_READER_NO_PANE_REUSE") == "1"}, tea.WithInput(input), tea.WithOutput(io.Discard), tea.WithoutSignalHandler())
 			start := time.Now()
 			_, err := program.Run()
 			elapsed, release := time.Since(start), <-released

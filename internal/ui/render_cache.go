@@ -157,4 +157,5 @@ const (
 type readerPaneCache struct {
 	accounts, messages string
 	valid              bool
+	navigationOnly     bool // last update scrolled the reader, possibly without pane focus
 }
