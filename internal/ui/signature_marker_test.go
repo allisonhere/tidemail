@@ -8,6 +8,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidemail/internal/mailapp"
+	"github.com/allisonhere/tidemail/internal/mailtemplate"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -200,5 +201,31 @@ func TestQuotedMarkerGlyphIsNeutralised(t *testing.T) {
 		if strings.Contains(got, mailapp.SignatureMarker) {
 			t.Fatalf("%s kept the reserved marker: %q", name, got)
 		}
+	}
+}
+
+func TestTemplateDoesNotDuplicateMarker(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	a := config.AccountConfig{Name: "A", User: "me@example.com", Signature: "Sig"}
+	src := NewCompose(a, nil, nil)
+	src.setInitialBody("Hello team", "")
+	src.tmplName.SetValue("t1")
+	src.createTemplate()
+	src.reloadTemplates("t1")
+	var tpl mailtemplate.Template
+	for _, x := range src.tmplList {
+		if x.Name == "t1" {
+			tpl = x
+		}
+	}
+	if strings.Contains(tpl.Body, mailapp.SignatureMarker) {
+		t.Fatalf("saved template kept the marker: %q", tpl.Body)
+	}
+	dst := NewCompose(a, nil, nil)
+	dst.toInput.SetValue("r@example.com")
+	dst.insertTemplate(tpl)
+	dst.insertTemplate(mailtemplate.Template{Body: "old\n\n⁂\n"}) // pre-fix template
+	if _, err := mailapp.PrepareCompose(a, dst.toDraftRecord()); err != nil {
+		t.Fatalf("send after template insert: %v", err)
 	}
 }
