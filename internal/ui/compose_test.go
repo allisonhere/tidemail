@@ -1265,3 +1265,86 @@ func TestForwardNamesNamelessInlineImage(t *testing.T) {
 		t.Errorf("attachments = %+v", c.attachments)
 	}
 }
+
+func TestComposeSignatureFooterIsContextualAndAligned(t *testing.T) {
+	setEditorSpell(true, "", nil)
+	t.Cleanup(func() { setEditorSpell(false, "", nil) })
+	for _, width := range []int{24, 32, 52, 74, 110} {
+		c := NewCompose(config.AccountConfig{}, nil, nil)
+		c.focusedField = composeFieldBody
+		chrome := newManagerChrome(width, CatppuccinMocha, false)
+		lines := strings.Split(ansi.Strip(c.composeHints(width, chrome)), "\n")
+		senderRow, senderCol := -1, -1
+		for row, line := range lines {
+			if lipgloss.Width(line) > width {
+				t.Fatalf("footer exceeds width %d: %q", width, line)
+			}
+			if pos := strings.Index(line, "^u sender"); pos >= 0 {
+				senderRow, senderCol = row, lipgloss.Width(line[:pos])
+			}
+			if strings.Contains(line, "ext. editor") {
+				t.Fatal("future editor hint displayed")
+			}
+		}
+		if senderRow < 0 || senderRow+1 >= len(lines) {
+			t.Fatalf("sender column missing at width %d: %q", width, lines)
+		}
+		sig := lines[senderRow+1]
+		pos := strings.Index(sig, "⁂ sig")
+		if pos < 0 || lipgloss.Width(sig[:pos]) != senderCol {
+			t.Fatalf("signature hint not beneath sender at width %d: %q", width, lines)
+		}
+		for _, field := range []composeField{composeFieldFrom, composeFieldTo, composeFieldCC, composeFieldBCC, composeFieldSubject} {
+			c.focusedField = field
+			if strings.Contains(ansi.Strip(c.composeHints(width, chrome)), "⁂ sig") {
+				t.Fatalf("hint shown for field %v", field)
+			}
+		}
+		c.focusedField = composeFieldBody
+		c.senderPickerOpen = true
+		if strings.Contains(ansi.Strip(c.composeHints(width, chrome)), "⁂ sig") {
+			t.Fatal("hint shown during sender selection")
+		}
+		c.senderPickerOpen = false
+		c.busy = true
+		if strings.Contains(ansi.Strip(c.composeHints(width, chrome)), "⁂ sig") {
+			t.Fatal("hint shown while sending")
+		}
+	}
+}
+
+func TestComposeSignatureFooterSurvivesNarrowLayout(t *testing.T) {
+	styles := BuildStyles(CatppuccinMocha, "compact", "square")
+	for _, width := range []int{24, 32, 52, 74} {
+		c := NewCompose(config.AccountConfig{}, nil, nil)
+		c.focusedField = composeFieldBody
+		view := ansi.Strip(c.View(width, 26, styles))
+		if !strings.Contains(view, "⁂ sig") || !strings.Contains(view, "^u sender") {
+			t.Fatalf("footer clipped at width %d: %s", width, view)
+		}
+		for _, line := range strings.Split(view, "\n") {
+			if lipgloss.Width(line) > width {
+				t.Fatalf("view exceeds width %d: %q", width, line)
+			}
+		}
+		c.focusedField = composeFieldTo
+		if strings.Contains(ansi.Strip(c.View(width, 26, styles)), "⁂ sig") {
+			t.Fatal("hint did not disappear after focus changed")
+		}
+	}
+}
+
+func TestComposeSignatureFooterPaintsBlankCells(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+	c := NewCompose(config.AccountConfig{}, nil, nil)
+	c.focusedField = composeFieldBody
+	for _, width := range []int{32, 74} {
+		footer := c.composeHints(width, newManagerChrome(width, CatppuccinMocha, false))
+		for row, line := range strings.Split(footer, "\n") {
+			if cell := unpaintedCell(line); cell >= 0 {
+				t.Fatalf("unpainted footer row %d at width %d: %q", row, width, line)
+			}
+		}
+	}
+}

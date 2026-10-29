@@ -2401,7 +2401,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 		addHint("Blank sends as the username")
 	}
 	addControl(amFieldSignature, sigRow("Signature", am.sigArea, amFieldSignature))
-	for _, line := range strings.Split(ansi.Wrap("A single ⁂ symbol in the compose editor marks where your signature will be inserted when sending. Delete the symbol to send without a signature.", max(8, fieldW-4), ""), "\n") {
+	for _, line := range strings.Split(ansi.Wrap("A ⁂ symbol marks signature placement. The signature is inserted on send. Delete it to send without a signature.", max(8, fieldW-4), ""), "\n") {
 		addHint(line)
 	}
 	addSection("Sync")

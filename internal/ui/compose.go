@@ -1425,31 +1425,43 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 		pairs = append(pairs, "esc", "cancel")
 	}
 	for i := 0; i+1 < len(pairs); i += 2 {
-		parts = append(parts, keyStyle.Render(pairs[i])+lblStyle.Render(" "+pairs[i+1]))
+		part := keyStyle.Render(pairs[i]) + lblStyle.Render(" "+pairs[i+1])
+		if pairs[i] == "^u" && c.focusedField == composeFieldBody {
+			// Informational text, not a binding. Stack it under sender so adjacent
+			// columns retain room for other contextual hints.
+			part += "\n" + lblStyle.Render("⁂ sig")
+		}
+		parts = append(parts, part)
 	}
 
-	// Greedy-pack into lines no wider than width, indented 2, separated by 3 spaces.
+	// Greedy-pack columns no wider than width, indented 2, separated by 3 spaces.
+	// A column may have a second informational row; pad each rendered row.
+	var lines []string
+	appendRows := func(row string) {
+		for _, line := range strings.Split(row, "\n") {
+			lines = append(lines, fillLineBg(line, width, base))
+		}
+	}
 	indent := base.Render("  ")
 	indentW := 2
 	sep := base.Render("   ")
-	var lines []string
 	cur := indent
 	curW := indentW
 	for _, p := range parts {
 		pw := lipgloss.Width(p)
 		if curW > indentW && curW+3+pw > width {
-			lines = append(lines, padStyled(cur, width, chrome.baseBg))
+			appendRows(cur)
 			cur = indent
 			curW = indentW
 		}
 		if curW > indentW {
-			cur += sep
+			cur = lipgloss.JoinHorizontal(lipgloss.Top, cur, sep)
 			curW += 3
 		}
-		cur += p
+		cur = lipgloss.JoinHorizontal(lipgloss.Top, cur, p)
 		curW += pw
 	}
-	lines = append(lines, padStyled(cur, width, chrome.baseBg))
+	appendRows(cur)
 	return strings.Join(lines, "\n")
 }
 
