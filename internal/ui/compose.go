@@ -417,12 +417,18 @@ func quotableText(m db.Message) string {
 // image URL, as left by HTML-to-text conversion.
 var imageOnlyLineRe = regexp.MustCompile(`(?i)^(!\[[^\]]*\]\([^)]*\)|\[?(image|img|photo)[^\]]{0,40}\]?|https?://\S+\.(png|jpe?g|gif|webp)(\?\S*)?)$`)
 
+// quoteSafe swaps the reserved signature marker for the visually similar low
+// asterism, so a glyph in quoted mail cannot become a second marker.
+func quoteSafe(body string) string {
+	return strings.ReplaceAll(body, mailapp.SignatureMarker, "\u204e")
+}
+
 // quoteReply formats a quoted reply block from the original message.
 func quoteReply(body, from string) string {
 	var buf strings.Builder
 	buf.WriteString("\n\n")
 	buf.WriteString("On " + from + " wrote:\n")
-	for _, line := range strings.Split(strings.TrimRight(body, "\n"), "\n") {
+	for _, line := range strings.Split(strings.TrimRight(quoteSafe(body), "\n"), "\n") {
 		buf.WriteString("> ")
 		buf.WriteString(line)
 		buf.WriteString("\n")
@@ -478,7 +484,7 @@ func quoteForward(body string, original db.Message) string {
 		buf.WriteString("CC: " + original.CC + "\n")
 	}
 	buf.WriteString("\n")
-	for _, line := range strings.Split(strings.TrimRight(body, "\n"), "\n") {
+	for _, line := range strings.Split(strings.TrimRight(quoteSafe(body), "\n"), "\n") {
 		buf.WriteString("> ")
 		buf.WriteString(line)
 		buf.WriteString("\n")

@@ -765,7 +765,8 @@ Keep at most one marker, in its own paragraph with blank lines around it. Spaces
 or tabs around it are allowed unless indentation makes it a Markdown code block.
 The symbol is reserved in the interactive body: embedded, duplicated, quoted, or
 code-block markers stop sending with an error rather than being removed silently.
-Drafts preserve the body as edited; reopening never adds a marker. A draft without
+A `⁂` inside the original message is shown as `⁎` in the quoted text of replies and
+forwards, so it is never mistaken for a marker. Drafts preserve the body as edited; reopening never adds a marker. A draft without
 a marker, including an older draft or a draft created through the CLI, sends
 without an automatically added signature from the inbox composer.
 

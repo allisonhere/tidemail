@@ -190,3 +190,15 @@ func TestUnsubscribeComposeHasSignatureMarker(t *testing.T) {
 		t.Fatal("unsubscribe lost marker/source")
 	}
 }
+
+func TestQuotedMarkerGlyphIsNeutralised(t *testing.T) {
+	body := "one\n⁂\ntwo"
+	for name, got := range map[string]string{
+		"reply":   quoteReply(body, "Bob"),
+		"forward": quoteForward(body, db.Message{From: "Bob"}),
+	} {
+		if strings.Contains(got, mailapp.SignatureMarker) {
+			t.Fatalf("%s kept the reserved marker: %q", name, got)
+		}
+	}
+}
