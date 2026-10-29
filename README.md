@@ -237,6 +237,12 @@ The standard compose editor supports Shift-selection, clipboard shortcuts,
 undo and redo, word movement, and Home/End. Turn Vim mode on in Settings if you
 prefer commands such as `dw`, `dd`, `:w`, and `:q`.
 
+With the body focused, `Ctrl+E` opens the complete body in your terminal editor
+(`VISUAL`, then `EDITOR`; for example `VISUAL=micro tidemail`). Save and exit to
+return without sending. The external edit is one undo step; recipients, sender,
+attachments, and threading stay unchanged. See the [external-editor guide](docs/guide.md#external-terminal-editor)
+for command arguments, limits, and failure behavior.
+
 ## Mail state belongs to the server
 
 Read state, stars, archive, move, and delete sync through IMAP. TideMail keeps a
@@ -411,7 +417,8 @@ shows the `message_raw` and `message_compose` permissions.
 | `Ctrl+U` | Unsubscribe while reading; cycle sender while composing |
 | `Alt+F` / `Ctrl+R` | Attach a file while composing; remove the last attachment |
 | `Ctrl+D` | Save attachments from the open message |
-| `Ctrl+E` | Show or hide full headers |
+| `Ctrl+E` | Show or hide full headers in the reader |
+| `Ctrl+E` in compose body | Edit in VISUAL or EDITOR; save and exit returns without sending |
 | `Ctrl+O` | View the message source (`c` copies it) |
 | `Ctrl+B` | View the whole message in your browser (remote content blocked) |
 | `i` | Load remote images blocked for the open message |

@@ -577,6 +577,46 @@ message, while `:q` cancels it.
 Replies and forwards quote the readable text of an HTML message, not its markup,
 and a forward keeps the original's attachments.
 
+### External terminal editor
+
+With the compose body focused, press `Ctrl+E` to edit the complete body in the
+same terminal. Quoted correspondence, Markdown, Unicode, and any `⁂` marker are
+ordinary text in the file; TideMail does not interpret them during handoff.
+Headers, the sending account, attachments, and threading stay in the composer.
+Save and exit the editor to return. **Saving or exiting never sends mail.**
+
+TideMail uses `VISUAL`, then `EDITOR`. If neither is set, it asks you to configure
+one. For example, launch with `VISUAL=micro tidemail` or `EDITOR='vim -f' tidemail`.
+Use a foreground terminal editor, not a graphical launcher or a command that
+returns before editing finishes. Arguments may contain single/double quotes and
+backslash escapes; shell pipelines, redirection, variable expansion, and command
+substitution are not supported. An invalid preferred command reports an error
+instead of silently choosing another editor.
+
+TideMail requests the first line in micro, Vim/vi, Neovim, and Nano. Custom wrapper
+commands choose their own cursor position. On return the native body caret starts
+at the top, keeping plain/Vim mode. A changed body is one undoable edit and uses
+normal draft autosaving. If the file is unchanged or the editor exits without
+saving, the body, cursor, and history stay unchanged. On a launch/read failure or
+nonzero exit, TideMail keeps the original body and removes the temporary files;
+changes saved by an editor that then exits unsuccessfully are not imported.
+
+The file lives in a private temporary directory and contains only the body.
+Bodies are limited to 16 MiB and must be UTF-8. Native editor rules normalize
+CRLF line endings and expand tabs to spaces; Unicode combining text is retained.
+The `⁂` signature marker stays wherever you place it in the edited body and is
+resolved when sending; deleting it sends unsigned. The body footer shows both
+`⁂ sig` and `^e ext. editor`, wrapping at narrow widths.
+Deleting all file contents is a valid edit. Force-killing TideMail may leave a
+private temporary directory behind. Your editor may keep its own backup/history
+files according to its configuration.
+
+While the external editor runs, TideMail's event loop is paused. Sync results,
+resize events, and pending send/undo timers resume afterward; a queued send whose
+timer expires can be delayed until you return. Already-running operations can
+finish in the background. `Ctrl+E` still toggles headers in the reader and does
+not launch an editor from compose header fields or other compose panels.
+
 ### Templates
 
 Press `F6` in compose (the footer shows `f6 templates` in every field) to open
@@ -1046,6 +1086,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `O` | Open the Outbox |
 | `o` or `Enter` | Open an explicitly selected LINKS entry or a visible link deliberately focused with the keyboard |
 | `Ctrl+U` | Unsubscribe from the mailing list for the open message |
+| `Ctrl+E` in compose body | Edit the complete body in VISUAL or EDITOR; save and exit returns without sending |
 | `Ctrl+U` in compose | Cycle the sending account; focus From and press `Enter` to open the account picker |
 | `Ctrl+N` / `Alt+N` | Select the next LINKS entry and scroll it into view |
 | `Alt+P` | Select the previous LINKS entry and scroll it into view |

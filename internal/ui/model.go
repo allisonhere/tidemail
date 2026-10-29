@@ -599,6 +599,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// update handles async results before key routing so completed commands cannot be swallowed by modal focus. -allie
 	switch msg := msg.(type) {
 
+	case externalEditorFinishedMsg:
+		return m.handleExternalEditorFinished(msg)
+
 	case tea.WindowSizeMsg:
 		offset := m.viewport.YOffset
 		m.width = msg.Width
@@ -3093,6 +3096,10 @@ func (m Model) handleContentClick(x, y, paneTop int) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.overlay == overlayCompose && m.compose.externalEdit != nil {
+		return m, nil
+	}
+
 	// Ctrl+P opens the palette while composing. A literal ':' always reaches
 	// the editor so normal email text remains writable; Vim compose mode also
 	// uses it for commands such as :w and :q. Outside compose, ':' remains a
