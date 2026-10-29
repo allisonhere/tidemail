@@ -163,8 +163,8 @@ func (m *Model) openReaderLink(target string) tea.Cmd {
 	c.ccInput.SetValue(fields.cc)
 	c.bccInput.SetValue(fields.bcc)
 	c.subjectInput.SetValue(fields.subject)
-	// The normal prepare/send path appends this account's signature once.
-	c.bodyInput.SetValue(fields.body)
+	// The marker resolves to the selected account's signature during preparation.
+	c.setInitialBody(fields.body, "")
 	m.compose = c
 	m.overlay = overlayCompose
 	return nil

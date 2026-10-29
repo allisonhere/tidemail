@@ -117,7 +117,7 @@ func TestReaderMailtoSourceAccount(t *testing.T) {
 						t.Fatal("wrong sender or missing composer")
 					}
 					c := selected.compose
-					if c.toInput.Value() != "advisor@example.edu" || c.ccInput.Value() != "copy@example.edu" || c.bccInput.Value() != "hidden@example.edu" || c.subjectInput.Value() != "Meeting Request" || c.bodyInput.Value() != "Hello,\n\nWorld" {
+					if c.toInput.Value() != "advisor@example.edu" || c.ccInput.Value() != "copy@example.edu" || c.bccInput.Value() != "hidden@example.edu" || c.subjectInput.Value() != "Meeting Request" || c.bodyInput.Value() != "Hello,\n\nWorld\n\n⁂\n" {
 						t.Fatalf("wrong prefill: %#v", c.toDraftRecord())
 					}
 					if c.busy || c.draftID != 0 || len(*requests) != 0 {
@@ -136,8 +136,8 @@ func TestReaderMailtoSourceAccount(t *testing.T) {
 					if restored.selectedAccount().ID != m.cfg.Accounts[source].ID || restored.bodyInput.Value() != draft.BodyText {
 						t.Fatal("draft lost sender or body")
 					}
-					// Prepare only: no network dispatch. The ordinary path adds one signature.
-					outgoing, err := mailapp.Prepare(c.selectedAccount(), draft, true)
+					// Prepare only: no network dispatch. The marker adds one source-account signature.
+					outgoing, err := mailapp.PrepareCompose(c.selectedAccount(), draft)
 					if err != nil {
 						t.Fatal(err)
 					}

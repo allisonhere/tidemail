@@ -98,7 +98,7 @@ func TestComposeColonIsInsertedInsteadOfOpeningCommandPalette(t *testing.T) {
 	if m.overlay != overlayCompose {
 		t.Fatalf("colon opened overlay %v instead of staying in compose", m.overlay)
 	}
-	if got := m.compose.bodyInput.Value(); got != ":" {
+	if got := m.compose.bodyInput.Value(); got != ":\n\n⁂\n" {
 		t.Fatalf("body = %q, want colon", got)
 	}
 }

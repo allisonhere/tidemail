@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/allisonhere/tidemail/internal/config"
+	"github.com/allisonhere/tidemail/internal/mailapp"
 	"github.com/allisonhere/tidemail/internal/mailtemplate"
 )
 
@@ -173,8 +174,9 @@ func (c *ComposeModel) createTemplate() {
 		}
 	}
 	body, _ := splitReplyAndQuote(c.bodyInput.Value())
-	body = strings.TrimSpace(body)
-	if body == "" {
+	// New messages get their own marker, so a template must not carry one.
+	body = strings.TrimSpace(stripSignatureMarker(body))
+	if !hasComposeBodyContent(body) {
 		fail("nothing to save: write your message first")
 		return
 	}
@@ -189,11 +191,27 @@ func (c *ComposeModel) createTemplate() {
 	c.statusMsg, c.isErr = "saved new template: "+name, false
 }
 
+// stripSignatureMarker removes standalone marker lines, leaving other text.
+func stripSignatureMarker(s string) string {
+	lines := strings.Split(s, "\n")
+	out := lines[:0]
+	for _, ln := range lines {
+		if strings.TrimSpace(ln) != mailapp.SignatureMarker {
+			out = append(out, ln)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
 // insertTemplate puts t's body at the caret (one undo step) and sets the
 // subject only when it is still empty.
 func (c *ComposeModel) insertTemplate(t mailtemplate.Template) {
 	vars := mailtemplate.Vars(c.toInput.Value(), c.accountCfg.Name, time.Now())
-	c.bodyInput.InsertText(mailtemplate.Fill(t.Body, vars))
+	text := mailtemplate.Fill(t.Body, vars)
+	if strings.Contains(c.bodyInput.Value(), mailapp.SignatureMarker) {
+		text = stripSignatureMarker(text) // covers templates saved with a marker
+	}
+	c.bodyInput.InsertText(text)
 	if strings.TrimSpace(c.subjectInput.Value()) == "" && t.Subject != "" {
 		c.subjectInput.SetValue(mailtemplate.Fill(t.Subject, vars))
 	}

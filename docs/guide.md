@@ -283,8 +283,8 @@ using the account that received the source message, including in Unified Inbox.
 If that account is unavailable, TideMail uses your default sender; if no usable
 sender is available, it reports an error. The link can prefill To, CC, BCC,
 subject, and body. All fields remain editable, and the account's normal signature
-is added when you send, just as for a new message. Nothing is sent until you
-explicitly send it. `Ctrl+N` / `Alt+N` and `Alt+P`
+is inserted at the `⁂` marker when you send, just as for a new message. Nothing is
+sent until you explicitly send it. `Ctrl+N` / `Alt+N` and `Alt+P`
 select the next or previous entry and scroll it into view; the chevron, highlight,
 and status counter follow together. New messages start unselected: the first Next
 selects the first entry, and the first Previous selects the last. Press `o` or
@@ -754,10 +754,25 @@ its own is not enough: the account form refuses to save one, because SMTP has
 no address to send from and would only fail once the message was already
 queued.
 
-Signatures are appended when sending, so they do not appear in the editable body
-or saved draft. They use the sending account selected in the composer, including
-after switching senders or reopening a draft. Leave the account's signature empty
-to omit it.
+A standalone `⁂` in the compose body marks where your signature will be inserted
+when sending. New messages, replies, forwards, and email-link compositions include
+it automatically; in replies and forwards it appears before quoted correspondence.
+Move the symbol to change placement, or delete it to send without a signature.
+The actual signature stays out of the editor and uses the sending account selected
+when you send. An empty account signature simply removes the marker.
+
+Keep at most one marker, in its own paragraph with blank lines around it. Spaces
+or tabs around it are allowed unless indentation makes it a Markdown code block.
+The symbol is reserved in the interactive body: embedded, duplicated, quoted, or
+code-block markers stop sending with an error rather than being removed silently.
+A `⁂` inside the original message is shown as `⁎` in the quoted text of replies and
+forwards, so it is never mistaken for a marker. Saved templates never include the marker; one inserted into a message that already has it is dropped. Drafts preserve the body as edited; reopening never adds a marker. A draft without
+a marker, including an older draft or a draft created through the CLI, sends
+without an automatically added signature from the inbox composer.
+
+Headless `send` and the separate CLI wizard retain their existing signature flags
+and choices; they do not interpret `⁂` as a marker. Queued messages already contain
+the prepared signature, so retries do not add it again.
 
 The signature is a multi-line box in the account form — press `Enter` for a new
 line, `Tab` to move on, and `Ctrl+S` to save without leaving it. Arrow keys walk

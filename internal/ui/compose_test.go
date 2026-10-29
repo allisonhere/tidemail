@@ -273,7 +273,7 @@ func TestComposeSenderDropdownUsesSelectedAccountWhenSending(t *testing.T) {
 	c.senderCursor = 1
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyEnter}, DefaultKeys)
 	c.toInput.SetValue("reader@example.com")
-	c.bodyInput.SetValue("Forwarding this")
+	c.bodyInput.SetValue("Forwarding this\n\n⁂\n")
 
 	_, cmd, _ := c.send()
 	queued := cmd().(SendQueuedMsg)
@@ -376,11 +376,11 @@ func TestReplyRecipientAutocomplete(t *testing.T) {
 	}
 }
 
-func TestSendAppendsAccountSignature(t *testing.T) {
+func TestSendResolvesAccountSignatureMarker(t *testing.T) {
 	acfg := config.AccountConfig{User: "allie@example.com", Signature: "Allie\nTideMail"}
 	c := NewCompose(acfg, nil, nil)
 	c.toInput.SetValue("bob@example.com")
-	c.bodyInput.SetValue("hi bob")
+	c.bodyInput.SetValue("hi bob\n\n⁂\n")
 
 	_, cmd, _ := c.send()
 	if cmd == nil {
@@ -421,7 +421,7 @@ func TestReplyTypingStartsAboveQuotedMessage(t *testing.T) {
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("H")}, DefaultKeys)
 
 	got := c.bodyInput.Value()
-	if !strings.HasPrefix(got, "H\n\nOn alice@example.com wrote:\n> quoted line") {
+	if !strings.HasPrefix(got, "H\n\n⁂\n\nOn alice@example.com wrote:\n> quoted line") {
 		t.Fatalf("expected typed reply text above quoted original, got %q", got)
 	}
 }
@@ -543,7 +543,7 @@ func TestComposeAttachMovedOffCtrlA(t *testing.T) {
 	if c.picker.active {
 		t.Fatal("ctrl+a must not open the attach picker anymore")
 	}
-	if got := c.bodyInput.SelectedText(); got != "hi there" {
+	if got := c.bodyInput.SelectedText(); got != "hi there\n\n⁂\n" {
 		t.Fatalf("ctrl+a should select all, got %q", got)
 	}
 
@@ -567,7 +567,7 @@ func TestComposeBodyCopyCutToClipboard(t *testing.T) {
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hello")}, DefaultKeys)
 	// ctrl+a selects all in the body (it no longer triggers attach).
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyCtrlA}, DefaultKeys)
-	if got := c.bodyInput.SelectedText(); got != "hello" {
+	if got := c.bodyInput.SelectedText(); got != "hello\n\n⁂\n" {
 		t.Fatalf("ctrl+a should select all body text, got %q", got)
 	}
 
@@ -578,10 +578,10 @@ func TestComposeBodyCopyCutToClipboard(t *testing.T) {
 		t.Fatal("ctrl+c should return a clipboard write command")
 	}
 	cmd()
-	if copied != "hello" {
+	if copied != "hello\n\n⁂\n" {
 		t.Fatalf("copy should put the selection on the clipboard, got %q", copied)
 	}
-	if got := c.bodyInput.Value(); got != "hello" {
+	if got := c.bodyInput.Value(); got != "hello\n\n⁂\n" {
 		t.Fatalf("copy must not modify the body, got %q", got)
 	}
 
@@ -592,7 +592,7 @@ func TestComposeBodyCopyCutToClipboard(t *testing.T) {
 		t.Fatal("ctrl+x should return a clipboard write command")
 	}
 	cmd()
-	if copied != "hello" {
+	if copied != "hello\n\n⁂\n" {
 		t.Fatalf("cut should put the selection on the clipboard, got %q", copied)
 	}
 	if got := c.bodyInput.Value(); got != "" {
@@ -654,7 +654,7 @@ func TestForwardTypingStartsAboveQuotedMessage(t *testing.T) {
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("H")}, DefaultKeys)
 
 	got := c.bodyInput.Value()
-	if !strings.HasPrefix(got, "H\n\n---------- Forwarded message ----------\nFrom: alice@example.com") {
+	if !strings.HasPrefix(got, "H\n\n⁂\n\n---------- Forwarded message ----------\nFrom: alice@example.com") {
 		t.Fatalf("expected typed forward text above quoted original, got %q", got)
 	}
 	if !strings.Contains(got, "> forwarded line") {
@@ -680,7 +680,7 @@ func TestCtrlVPastesClipboardIntoComposeBody(t *testing.T) {
 	next, _ = m.Update(cmd())
 	m = next.(Model)
 
-	if got := m.compose.bodyInput.Value(); got != "pasted text" {
+	if got := m.compose.bodyInput.Value(); got != "pasted text\n\n⁂\n" {
 		t.Fatalf("expected clipboard text pasted into compose body, got %q", got)
 	}
 }
@@ -1046,7 +1046,7 @@ func TestSendKeepsSignatureLinesInTheHTMLPart(t *testing.T) {
 	acfg := config.AccountConfig{User: "allie@example.com", Signature: "-allie\nSent with Tidemail\nhttps://example.com/tidemail"}
 	c := NewCompose(acfg, nil, nil)
 	c.toInput.SetValue("bob@example.com")
-	c.bodyInput.SetValue("hi bob")
+	c.bodyInput.SetValue("hi bob\n\n⁂\n")
 
 	_, cmd, _ := c.send()
 	if cmd == nil {
@@ -1112,7 +1112,7 @@ func TestMultiAccountReplyStillTypesAboveTheQuote(t *testing.T) {
 	}
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("H")}, DefaultKeys)
 
-	if got := c.bodyInput.Value(); !strings.HasPrefix(got, "H\n\nOn alice@example.com wrote:\n> quoted line") {
+	if got := c.bodyInput.Value(); !strings.HasPrefix(got, "H\n\n⁂\n\nOn alice@example.com wrote:\n> quoted line") {
 		t.Fatalf("expected typed reply text above the quoted original, got %q", got)
 	}
 }
@@ -1263,5 +1263,96 @@ func TestForwardNamesNamelessInlineImage(t *testing.T) {
 	}}, config.AccountConfig{}, nil, nil)
 	if len(c.attachments) != 1 || !strings.HasSuffix(c.attachments[0].Name, ".png") || len(c.attachments[0].Data) != 3 {
 		t.Errorf("attachments = %+v", c.attachments)
+	}
+}
+
+func TestComposeSignatureFooterIsContextualAndInFlow(t *testing.T) {
+	setEditorSpell(true, "", nil)
+	t.Cleanup(func() { setEditorSpell(false, "", nil) })
+	for _, width := range []int{24, 32, 52, 74, 110, 128} {
+		c := NewCompose(config.AccountConfig{}, nil, nil)
+		c.focusedField = composeFieldBody
+		chrome := newManagerChrome(width, CatppuccinMocha, false)
+		lines := strings.Split(ansi.Strip(c.composeHints(width, chrome)), "\n")
+		for _, line := range lines {
+			if lipgloss.Width(line) > width {
+				t.Fatalf("footer exceeds width %d: %q", width, line)
+			}
+			if strings.Contains(line, "ext. editor") {
+				t.Fatal("future editor hint displayed")
+			}
+		}
+		flow := strings.Join(strings.Fields(strings.Join(lines, " ")), " ")
+		if !strings.HasSuffix(flow, "esc cancel ⁂ sig") {
+			t.Fatalf("signature hint is not the next item after cancel at width %d: %q", width, lines)
+		}
+		if width == 128 && !strings.Contains(strings.Join(lines, "\n"), "esc cancel   ⁂ sig") {
+			t.Fatal("signature hint should sit beside cancel when space allows")
+		}
+		for _, field := range []composeField{composeFieldFrom, composeFieldTo, composeFieldCC, composeFieldBCC, composeFieldSubject} {
+			c.focusedField = field
+			if strings.Contains(ansi.Strip(c.composeHints(width, chrome)), "⁂ sig") {
+				t.Fatalf("hint shown for field %v", field)
+			}
+		}
+		c.focusedField = composeFieldBody
+		c.senderPickerOpen = true
+		if strings.Contains(ansi.Strip(c.composeHints(width, chrome)), "⁂ sig") {
+			t.Fatal("hint shown during sender selection")
+		}
+		c.senderPickerOpen = false
+		c.busy = true
+		if strings.Contains(ansi.Strip(c.composeHints(width, chrome)), "⁂ sig") {
+			t.Fatal("hint shown while sending")
+		}
+	}
+}
+
+func TestComposeSignatureFooterSurvivesNarrowLayout(t *testing.T) {
+	styles := BuildStyles(CatppuccinMocha, "compact", "square")
+	for _, width := range []int{24, 32, 52, 74} {
+		c := NewCompose(config.AccountConfig{}, nil, nil)
+		c.focusedField = composeFieldBody
+		view := ansi.Strip(c.View(width, 26, styles))
+		if !strings.Contains(view, "⁂ sig") || !strings.Contains(view, "^u sender") {
+			t.Fatalf("footer clipped at width %d: %s", width, view)
+		}
+		for _, line := range strings.Split(view, "\n") {
+			if lipgloss.Width(line) > width {
+				t.Fatalf("view exceeds width %d: %q", width, line)
+			}
+		}
+		c.focusedField = composeFieldTo
+		if strings.Contains(ansi.Strip(c.View(width, 26, styles)), "⁂ sig") {
+			t.Fatal("hint did not disappear after focus changed")
+		}
+	}
+}
+
+func TestComposeSignatureFooterPaintsBlankCells(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+	c := NewCompose(config.AccountConfig{}, nil, nil)
+	c.focusedField = composeFieldBody
+	for _, width := range []int{32, 74} {
+		footer := c.composeHints(width, newManagerChrome(width, CatppuccinMocha, false))
+		for row, line := range strings.Split(footer, "\n") {
+			if cell := unpaintedCell(line); cell >= 0 {
+				t.Fatalf("unpainted footer row %d at width %d: %q", row, width, line)
+			}
+		}
+	}
+}
+
+func TestComposeSignatureFooterUsesStandardHintStyles(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+	c := NewCompose(config.AccountConfig{}, nil, nil)
+	c.focusedField = composeFieldBody
+	chrome := newManagerChrome(110, CatppuccinMocha, false)
+	base := lipgloss.NewStyle().Background(chrome.baseBg)
+	want := base.Foreground(chrome.text).Render("⁂") + base.Foreground(chrome.muted).Render(" sig")
+	if !strings.Contains(c.composeHints(110, chrome), want) {
+		t.Fatal("signature hint must use the same trigger and label styles as other hints")
 	}
 }

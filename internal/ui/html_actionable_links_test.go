@@ -166,7 +166,7 @@ func TestReaderMailtoActionsPreserveDestinations(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if cmd != nil || result.overlay != overlayCompose || result.compose.toInput.Value() != fields.to || result.compose.subjectInput.Value() != fields.subject || result.compose.bodyInput.Value() != fields.body || opened != "" {
+				if cmd != nil || result.overlay != overlayCompose || result.compose.toInput.Value() != fields.to || result.compose.subjectInput.Value() != fields.subject || result.compose.bodyInput.Value() != strings.TrimRight(fields.body, "\n")+"\n\n⁂\n" || opened != "" {
 					t.Fatal("mailto payload changed or launched external handler")
 				}
 			} else {

@@ -125,6 +125,11 @@ tidemail draft create --account ACCOUNT_ID --to user@example.com \
 The result contains `state: drafted` and the draft ID. Open the client to edit or
 send the draft. A dedicated CLI draft-edit command is not available.
 
+The inbox composer uses a standalone `⁂` signature-position marker. A CLI-created
+or older draft without that marker sends unsigned when sent from the inbox
+composer. Direct CLI sends and the CLI wizard keep their signature options and
+do not interpret body text as a marker.
+
 ## Cached inbox reads
 
 `messages list` reads the cached unified inbox. `messages search` searches the

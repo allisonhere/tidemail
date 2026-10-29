@@ -162,6 +162,7 @@ func NewCompose(acfg config.AccountConfig, accounts []config.AccountConfig, addr
 	c.subjectInput = newComposeInput("Subject")
 	c.bodyInput = newEditorArea()
 	c.bodyInput.SetPlaceholder("Write your message here...")
+	c.setInitialBody("", "")
 	c.focusedField = composeFieldFrom
 	c.SetAddressBook(addressBook)
 	return c
@@ -294,7 +295,7 @@ func newReplyBase(original db.Message, acfg config.AccountConfig, accounts []con
 
 	// Quote the original body text
 	if plain := quotableText(original); plain != "" {
-		c.bodyInput.SetValue(quoteReply(plain, original.From))
+		c.setInitialBody("", quoteReply(plain, original.From))
 	}
 
 	// Park the body caret above the quote so typing lands there once focus
@@ -319,7 +320,7 @@ func NewForward(original db.Message, acfg config.AccountConfig, accounts []confi
 
 	// Quote the original body text with a forward header
 	if plain := quotableText(original); plain != "" {
-		c.bodyInput.SetValue(quoteForward(plain, original))
+		c.setInitialBody("", quoteForward(plain, original))
 		c.moveBodyCursorToStart()
 	}
 
@@ -340,6 +341,24 @@ func NewForward(original db.Message, acfg config.AccountConfig, accounts []confi
 	}
 
 	return c
+}
+
+// setInitialBody is only for new compositions, never draft reopening. The
+// quote builders already supply their leading blank-line separator.
+func (c *ComposeModel) setInitialBody(prefill, quote string) {
+	body := prefill
+	if !strings.HasSuffix(body, "\n") {
+		body += "\n"
+	}
+	if !strings.HasSuffix(body, "\n\n") {
+		body += "\n"
+	}
+	body += mailapp.SignatureMarker + "\n"
+	if quote != "" {
+		body = strings.TrimRight(body, "\n") + quote
+	}
+	c.bodyInput.SetValue(body)
+	c.moveBodyCursorToStart()
 }
 
 func (c *ComposeModel) moveBodyCursorToStart() {
@@ -398,12 +417,18 @@ func quotableText(m db.Message) string {
 // image URL, as left by HTML-to-text conversion.
 var imageOnlyLineRe = regexp.MustCompile(`(?i)^(!\[[^\]]*\]\([^)]*\)|\[?(image|img|photo)[^\]]{0,40}\]?|https?://\S+\.(png|jpe?g|gif|webp)(\?\S*)?)$`)
 
+// quoteSafe swaps the reserved signature marker for the visually similar low
+// asterism, so a glyph in quoted mail cannot become a second marker.
+func quoteSafe(body string) string {
+	return strings.ReplaceAll(body, mailapp.SignatureMarker, "\u204e")
+}
+
 // quoteReply formats a quoted reply block from the original message.
 func quoteReply(body, from string) string {
 	var buf strings.Builder
 	buf.WriteString("\n\n")
 	buf.WriteString("On " + from + " wrote:\n")
-	for _, line := range strings.Split(strings.TrimRight(body, "\n"), "\n") {
+	for _, line := range strings.Split(strings.TrimRight(quoteSafe(body), "\n"), "\n") {
 		buf.WriteString("> ")
 		buf.WriteString(line)
 		buf.WriteString("\n")
@@ -459,7 +484,7 @@ func quoteForward(body string, original db.Message) string {
 		buf.WriteString("CC: " + original.CC + "\n")
 	}
 	buf.WriteString("\n")
-	for _, line := range strings.Split(strings.TrimRight(body, "\n"), "\n") {
+	for _, line := range strings.Split(strings.TrimRight(quoteSafe(body), "\n"), "\n") {
 		buf.WriteString("> ")
 		buf.WriteString(line)
 		buf.WriteString("\n")
@@ -1051,11 +1076,17 @@ func (c ComposeModel) selectedAccount() config.AccountConfig {
 	return c.accountCfg
 }
 
+// A generated marker alone is not an authored message or template.
+func hasComposeBodyContent(body string) bool {
+	text := strings.TrimSpace(body)
+	return text != "" && text != mailapp.SignatureMarker
+}
+
 func (c ComposeModel) hasContent() bool {
 	return strings.TrimSpace(c.toInput.Value()) != "" ||
 		strings.TrimSpace(c.ccInput.Value()) != "" ||
 		strings.TrimSpace(c.subjectInput.Value()) != "" ||
-		strings.TrimSpace(c.bodyInput.Value()) != "" ||
+		hasComposeBodyContent(c.bodyInput.Value()) ||
 		len(c.attachments) > 0
 }
 
@@ -1119,7 +1150,7 @@ func (c ComposeModel) send() (ComposeModel, tea.Cmd, bool) {
 	}
 	acfg := c.selectedAccount()
 
-	msg, err := mailapp.Prepare(acfg, c.toDraftRecord(), true)
+	msg, err := mailapp.PrepareCompose(acfg, c.toDraftRecord())
 	if err != nil {
 		c.statusMsg = err.Error()
 		c.isErr = true
@@ -1398,6 +1429,10 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 		// F6 opens the template picker from any field, so the hint is always shown.
 		pairs = append(pairs, "f6", "templates")
 		pairs = append(pairs, "esc", "cancel")
+		if c.focusedField == composeFieldBody {
+			// Informational marker hint only; it does not define a keybinding.
+			pairs = append(pairs, "⁂", "sig")
+		}
 	}
 	for i := 0; i+1 < len(pairs); i += 2 {
 		parts = append(parts, keyStyle.Render(pairs[i])+lblStyle.Render(" "+pairs[i+1]))
