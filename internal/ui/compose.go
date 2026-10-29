@@ -1423,45 +1423,37 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 		// F6 opens the template picker from any field, so the hint is always shown.
 		pairs = append(pairs, "f6", "templates")
 		pairs = append(pairs, "esc", "cancel")
+		if c.focusedField == composeFieldBody {
+			// Informational marker hint only; it does not define a keybinding.
+			pairs = append(pairs, "⁂", "sig")
+		}
 	}
 	for i := 0; i+1 < len(pairs); i += 2 {
-		part := keyStyle.Render(pairs[i]) + lblStyle.Render(" "+pairs[i+1])
-		if pairs[i] == "^u" && c.focusedField == composeFieldBody {
-			// Informational text, not a binding. Stack it under sender so adjacent
-			// columns retain room for other contextual hints.
-			part += "\n" + lblStyle.Render("⁂ sig")
-		}
-		parts = append(parts, part)
+		parts = append(parts, keyStyle.Render(pairs[i])+lblStyle.Render(" "+pairs[i+1]))
 	}
 
-	// Greedy-pack columns no wider than width, indented 2, separated by 3 spaces.
-	// A column may have a second informational row; pad each rendered row.
-	var lines []string
-	appendRows := func(row string) {
-		for _, line := range strings.Split(row, "\n") {
-			lines = append(lines, fillLineBg(line, width, base))
-		}
-	}
+	// Greedy-pack into lines no wider than width, indented 2, separated by 3 spaces.
 	indent := base.Render("  ")
 	indentW := 2
 	sep := base.Render("   ")
+	var lines []string
 	cur := indent
 	curW := indentW
 	for _, p := range parts {
 		pw := lipgloss.Width(p)
 		if curW > indentW && curW+3+pw > width {
-			appendRows(cur)
+			lines = append(lines, padStyled(cur, width, chrome.baseBg))
 			cur = indent
 			curW = indentW
 		}
 		if curW > indentW {
-			cur = lipgloss.JoinHorizontal(lipgloss.Top, cur, sep)
+			cur += sep
 			curW += 3
 		}
-		cur = lipgloss.JoinHorizontal(lipgloss.Top, cur, p)
+		cur += p
 		curW += pw
 	}
-	appendRows(cur)
+	lines = append(lines, padStyled(cur, width, chrome.baseBg))
 	return strings.Join(lines, "\n")
 }
 

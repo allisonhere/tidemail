@@ -1266,33 +1266,28 @@ func TestForwardNamesNamelessInlineImage(t *testing.T) {
 	}
 }
 
-func TestComposeSignatureFooterIsContextualAndAligned(t *testing.T) {
+func TestComposeSignatureFooterIsContextualAndInFlow(t *testing.T) {
 	setEditorSpell(true, "", nil)
 	t.Cleanup(func() { setEditorSpell(false, "", nil) })
-	for _, width := range []int{24, 32, 52, 74, 110} {
+	for _, width := range []int{24, 32, 52, 74, 110, 128} {
 		c := NewCompose(config.AccountConfig{}, nil, nil)
 		c.focusedField = composeFieldBody
 		chrome := newManagerChrome(width, CatppuccinMocha, false)
 		lines := strings.Split(ansi.Strip(c.composeHints(width, chrome)), "\n")
-		senderRow, senderCol := -1, -1
-		for row, line := range lines {
+		for _, line := range lines {
 			if lipgloss.Width(line) > width {
 				t.Fatalf("footer exceeds width %d: %q", width, line)
-			}
-			if pos := strings.Index(line, "^u sender"); pos >= 0 {
-				senderRow, senderCol = row, lipgloss.Width(line[:pos])
 			}
 			if strings.Contains(line, "ext. editor") {
 				t.Fatal("future editor hint displayed")
 			}
 		}
-		if senderRow < 0 || senderRow+1 >= len(lines) {
-			t.Fatalf("sender column missing at width %d: %q", width, lines)
+		flow := strings.Join(strings.Fields(strings.Join(lines, " ")), " ")
+		if !strings.HasSuffix(flow, "esc cancel ⁂ sig") {
+			t.Fatalf("signature hint is not the next item after cancel at width %d: %q", width, lines)
 		}
-		sig := lines[senderRow+1]
-		pos := strings.Index(sig, "⁂ sig")
-		if pos < 0 || lipgloss.Width(sig[:pos]) != senderCol {
-			t.Fatalf("signature hint not beneath sender at width %d: %q", width, lines)
+		if width == 128 && !strings.Contains(strings.Join(lines, "\n"), "esc cancel   ⁂ sig") {
+			t.Fatal("signature hint should sit beside cancel when space allows")
 		}
 		for _, field := range []composeField{composeFieldFrom, composeFieldTo, composeFieldCC, composeFieldBCC, composeFieldSubject} {
 			c.focusedField = field
@@ -1346,5 +1341,18 @@ func TestComposeSignatureFooterPaintsBlankCells(t *testing.T) {
 				t.Fatalf("unpainted footer row %d at width %d: %q", row, width, line)
 			}
 		}
+	}
+}
+
+func TestComposeSignatureFooterUsesStandardHintStyles(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+	c := NewCompose(config.AccountConfig{}, nil, nil)
+	c.focusedField = composeFieldBody
+	chrome := newManagerChrome(110, CatppuccinMocha, false)
+	base := lipgloss.NewStyle().Background(chrome.baseBg)
+	want := base.Foreground(chrome.text).Render("⁂") + base.Foreground(chrome.muted).Render(" sig")
+	if !strings.Contains(c.composeHints(110, chrome), want) {
+		t.Fatal("signature hint must use the same trigger and label styles as other hints")
 	}
 }
