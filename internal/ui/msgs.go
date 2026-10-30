@@ -156,25 +156,11 @@ type AccountDefaultChangedMsg struct {
 	Name     string // for the status line only
 }
 
-type MessageReadUpdatedMsg struct {
-	MessageID int64
-	MailboxID int64
-	WasRead   bool
-	Read      bool
-	Advance   bool
-	Err       error
-}
-
 type MessageReadBatchEntry struct {
 	MessageID int64
 	MailboxID int64
 	WasRead   bool
 	Read      bool
-}
-
-type MessageReadBatchUpdatedMsg struct {
-	Entries []MessageReadBatchEntry
-	Err     error
 }
 
 type MessageStarredUpdatedMsg struct {
