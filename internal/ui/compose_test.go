@@ -1278,12 +1278,9 @@ func TestComposeSignatureFooterIsContextualAndInFlow(t *testing.T) {
 			if lipgloss.Width(line) > width {
 				t.Fatalf("footer exceeds width %d: %q", width, line)
 			}
-			if strings.Contains(line, "ext. editor") {
-				t.Fatal("future editor hint displayed")
-			}
 		}
 		flow := strings.Join(strings.Fields(strings.Join(lines, " ")), " ")
-		if !strings.HasSuffix(flow, "esc cancel ⁂ sig") {
+		if !strings.HasSuffix(flow, "esc cancel ⁂ sig ^e ext. editor") {
 			t.Fatalf("signature hint is not the next item after cancel at width %d: %q", width, lines)
 		}
 		if width == 128 && !strings.Contains(strings.Join(lines, "\n"), "esc cancel   ⁂ sig") {

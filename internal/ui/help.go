@@ -152,6 +152,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{keys.Enter.Help().Key, "open sender picker or advance header fields"},
 				{"ctrl+s/ctrl+d", "send message"},
 				{"⁂", "signature position: move the symbol, or delete it to send unsigned"},
+				{keys.ExternalEditor.Help().Key, "body only: edit in VISUAL or EDITOR; save and exit to return without sending"},
 				{"ctrl+p → Schedule send", "choose a future local date and time"},
 				{keys.AttachFile.Help().Key, "attach file"},
 				{keys.RemoveAttach.Help().Key, "remove last attachment"},

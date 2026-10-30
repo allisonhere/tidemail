@@ -287,3 +287,25 @@ func (e *editorArea) ReplaceSpan(sp tidespell.Span, text string) {
 func (e *editorArea) InsertText(s string) {
 	e.ed.InsertString(s)
 }
+
+// replaceExternalBody imports a complete document as one undoable edit. Preserve
+// the configured input mode, Vim sub-mode/register, and earlier native history.
+func (e *editorArea) replaceExternalBody(body string) {
+	mode := e.Mode()
+	e.ed.ReplaceRange(0, len([]rune(e.Value())), body)
+	if e.vimMode() {
+		// Clear pending Vim operators/visual selection; discard any host CancelMsg.
+		e.ed, _ = e.ed.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	}
+	e.ed, _ = e.ed.Update(tea.KeyMsg{Type: tea.KeyCtrlHome})
+	e.ed.ClearSelection()
+	switch mode {
+	case "INSERT":
+		e.ed.StartInsert()
+	case "VISUAL":
+		e.ed, _ = e.ed.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
+	case "V-LINE":
+		e.ed, _ = e.ed.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'V'}})
+	}
+	e.ed.Focus()
+}

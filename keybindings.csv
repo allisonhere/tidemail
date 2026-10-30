@@ -57,6 +57,7 @@ SaveMD,M,M,save as .md,summary
 DiscardDraft,d,d,discard draft,compose
 ContentSearch,ctrl+f,ctrl+f,find in content,content
 ToggleQuote,z,z,toggle quoted text,content
+ExternalEditor,ctrl+e,ctrl+e,edit complete body in VISUAL or EDITOR (save and exit returns without sending),compose body
 ToggleHeaders,ctrl+e,ctrl+e,toggle full headers,content
 OpenInBrowser,ctrl+b,ctrl+b,view message in browser,message list+content
 ViewSource,ctrl+o,ctrl+o,view message source (c copies),message list+content

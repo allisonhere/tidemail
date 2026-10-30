@@ -97,6 +97,8 @@ Current release: **v1.7.0**.
 - **AI**: summaries and grammar across OpenAI, Claude, Gemini, and Ollama. Mail rules
   are AI-generated once into reviewed JSON, then matched locally and deterministically —
   no per-message AI cost.
+- **External terminal editor**: body-only `Ctrl+E` uses `VISUAL`/`EDITOR` in the same
+  terminal; save and exit returns to compose without sending, as one undoable edit.
 - **Compose**: optional vim mode (`compose_vim`), backed by the extracted
   [`ripple`](https://github.com/allisonhere/ripple) editor library.
 - **Gmail & Outlook OAuth** (optional): the account form's **Auth** row is a

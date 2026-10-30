@@ -95,6 +95,8 @@ type KeyMap struct {
 	SpellCheck   key.Binding
 	Templates    key.Binding
 
+	ExternalEditor key.Binding
+
 	// Overlay / input
 	Confirm   key.Binding
 	Cancel    key.Binding
@@ -209,6 +211,8 @@ var DefaultKeys = KeyMap{
 	RemoveAttach: key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "remove attachment")),
 
 	CycleSender: key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "change sender")),
+
+	ExternalEditor: key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "external editor")),
 
 	SaveAttach: key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "save attachments")),
 

@@ -65,6 +65,7 @@ type composeBackdropCache struct {
 }
 
 type ComposeModel struct {
+	externalEdit *externalEditorSession
 	toInput      textinput.Model
 	ccInput      textinput.Model
 	bccInput     textinput.Model
@@ -693,6 +694,13 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 	}
 	if c.tmplOpen {
 		return c.updateTemplates(km, keys)
+	}
+
+	if keyMatches(km, keys.ExternalEditor) && c.focusedField == composeFieldBody && c.bodyInput.CommandLine() == "" {
+		session := &externalEditorSession{original: c.bodyInput.Value()}
+		c.externalEdit, c.busy = session, true
+		c.statusMsg, c.isErr = "editing externally...", false
+		return c, externalEditorCmd(session), false
 	}
 
 	// Normal compose mode
@@ -1432,6 +1440,9 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 		if c.focusedField == composeFieldBody {
 			// Informational marker hint only; it does not define a keybinding.
 			pairs = append(pairs, "⁂", "sig")
+		}
+		if c.focusedField == composeFieldBody && c.bodyInput.CommandLine() == "" {
+			pairs = append(pairs, "^e", "ext. editor")
 		}
 	}
 	for i := 0; i+1 < len(pairs); i += 2 {
