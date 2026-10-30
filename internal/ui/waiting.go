@@ -48,6 +48,7 @@ type waitingState struct {
 
 type (
 	waitingLoadedMsg struct {
+		ReadVersion uint64
 		// SnoozesChanged means ended waiting cycles' snoozes were removed.
 		SnoozesChanged bool
 		Threads        []waitingThread
@@ -125,26 +126,27 @@ func displayParticipant(p participant) string {
 // loadWaitingCmd computes Waiting on Them off the Update loop.
 func (m *Model) loadWaitingCmd() tea.Cmd {
 	database := m.db
+	readVersion := m.readVersion
 	me := myAddresses(m.accountIdentities())
 	return func() tea.Msg {
 		if database == nil {
-			return waitingLoadedMsg{}
+			return waitingLoadedMsg{ReadVersion: readVersion}
 		}
 		candidates, err := database.ListWaitingCandidates()
 		if err != nil {
-			return waitingLoadedMsg{Err: err}
+			return waitingLoadedMsg{ReadVersion: readVersion, Err: err}
 		}
 		stoppedKeys, err := database.WaitingStopped()
 		if err != nil {
-			return waitingLoadedMsg{Err: err}
+			return waitingLoadedMsg{ReadVersion: readVersion, Err: err}
 		}
 		since, err := database.WaitingSince()
 		if err != nil {
-			return waitingLoadedMsg{Err: err}
+			return waitingLoadedMsg{ReadVersion: readVersion, Err: err}
 		}
 		snoozes, err := database.ListSnoozes()
 		if err != nil {
-			return waitingLoadedMsg{Err: err}
+			return waitingLoadedMsg{ReadVersion: readVersion, Err: err}
 		}
 		snoozedKeys := map[string]bool{}
 		for _, sn := range snoozes {
@@ -161,10 +163,10 @@ func (m *Model) loadWaitingCmd() tea.Cmd {
 		}
 		msgs, err := database.ListMessagesByIDs(ids)
 		if err != nil {
-			return waitingLoadedMsg{Err: err}
+			return waitingLoadedMsg{ReadVersion: readVersion, Err: err}
 		}
 		anns, overrides := loadMessageClassification(database, msgs)
-		return waitingLoadedMsg{Threads: threads, Stopped: stopped, Messages: msgs, Annotations: anns, Overrides: overrides, SnoozesChanged: snoozesChanged}
+		return waitingLoadedMsg{ReadVersion: readVersion, Threads: threads, Stopped: stopped, Messages: msgs, Annotations: anns, Overrides: overrides, SnoozesChanged: snoozesChanged}
 	}
 }
 
@@ -202,7 +204,7 @@ func (m Model) handleWaitingMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 		if msg.SnoozesChanged {
-			cmds = append(cmds, loadSnoozeStateCmd(m.db))
+			cmds = append(cmds, loadSnoozeStateCmd(m.db, m.readVersion))
 		}
 		m.waiting.threads = msg.Threads
 		m.waiting.stopped = msg.Stopped
@@ -214,7 +216,7 @@ func (m Model) handleWaitingMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.selectedWaiting() && !m.searchActive() {
 			// Reuse the normal list path: cursor, selection, and threads.
-			next, cmd := m.update(MessagesLoadedMsg{Waiting: true, Messages: msg.Messages, Annotations: msg.Annotations, Overrides: msg.Overrides})
+			next, cmd := m.update(MessagesLoadedMsg{ReadVersion: msg.ReadVersion, Waiting: true, Messages: msg.Messages, Annotations: msg.Annotations, Overrides: msg.Overrides})
 			m = next.(Model)
 			cmds = append(cmds, cmd)
 		}

@@ -57,6 +57,7 @@ type snoozePreset struct {
 
 type (
 	snoozeLoadedMsg struct {
+		ReadVersion uint64
 		Items       []db.SnoozedMessage
 		Annotations map[int64][]db.PluginAnnotation
 		Overrides   map[int64]map[string]db.ClassificationOverride
@@ -298,12 +299,16 @@ func expireSnoozesCmd(database *db.DB) tea.Cmd {
 	}
 }
 
-func loadSnoozeStateCmd(database *db.DB) tea.Cmd {
+func loadSnoozeStateCmd(database *db.DB, readVersion uint64) tea.Cmd {
 	if database == nil {
 		return nil
 	}
 	clock := clockForSnooze
-	return func() tea.Msg { return loadSnoozeState(database, clock) }
+	return func() tea.Msg {
+		msg := loadSnoozeState(database, clock)
+		msg.ReadVersion = readVersion
+		return msg
+	}
 }
 
 func loadSnoozeState(database *db.DB, clock snoozeClock) snoozeLoadedMsg {
@@ -346,7 +351,7 @@ func (m Model) handleSnoozeMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 			for i, it := range msg.Items {
 				msgs[i] = it.Message
 			}
-			next, cmd := m.update(MessagesLoadedMsg{Snoozed: true, Messages: msgs, Annotations: msg.Annotations, Overrides: msg.Overrides})
+			next, cmd := m.update(MessagesLoadedMsg{ReadVersion: msg.ReadVersion, Snoozed: true, Messages: msgs, Annotations: msg.Annotations, Overrides: msg.Overrides})
 			m = next.(Model)
 			cmds = append(cmds, cmd)
 		}
@@ -362,7 +367,7 @@ func (m Model) handleSnoozeMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 		default:
 			m.setStatus(fmt.Sprintf("snoozed %d until %s", ok, wakeLabel(msg.At, clockForSnooze.Now())), false)
 		}
-		return m, tea.Batch(loadSnoozeStateCmd(m.db), m.needsYouRefreshCmd(), m.requestWaitingRefresh(), m.clearStatusCmd())
+		return m, tea.Batch(loadSnoozeStateCmd(m.db, m.readVersion), m.needsYouRefreshCmd(), m.requestWaitingRefresh(), m.clearStatusCmd())
 	}
 	return m, nil
 }

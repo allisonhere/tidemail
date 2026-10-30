@@ -305,6 +305,7 @@ type Model struct {
 	readerPanes             *readerPaneCache
 	pendingReads            map[int64]pendingRead
 	nextReadOperation       uint64
+	readVersion             uint64 // invalidates read-state snapshots captured before confirmation
 	readAnimationFrame      int
 	readAnimationRunning    bool
 	readAnimationGeneration uint64
@@ -799,6 +800,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case AccountsLoadedMsg:
+		if msg.ReadVersion < m.readVersion {
+			return m, m.loadAccountsCmd()
+		}
 		if msg.Err != nil && len(msg.Accounts) == 0 && len(msg.Mailboxes) == 0 {
 			m.initialLoading = false
 			m.accounts = nil
@@ -910,6 +914,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case MessagesLoadedMsg:
+		if msg.ReadVersion < m.readVersion {
+			cmd := m.reloadReadMessagesCmd()
+			return m, cmd
+		}
 		m.initialLoading = false
 		if msg.Err == nil && m.db != nil && m.mailTags.operation > 0 {
 			if err := m.db.RefreshMailFlags(msg.Messages); err != nil {
@@ -1501,25 +1509,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.readAnimationFrame = (m.readAnimationFrame + 1) % len(readAnimationFrames)
 		return m, readAnimationTick(m.readAnimationGeneration)
 	case readRemoteCompletedMsg:
-		matched := false
-		for _, id := range msg.IDs {
-			if pending, ok := m.pendingReads[id]; ok && pending.Token == msg.Token {
-				delete(m.pendingReads, id)
-				matched = true
-			}
-		}
-		if len(m.pendingReads) == 0 && m.readAnimationRunning {
-			m.readAnimationRunning = false
-			m.readAnimationGeneration++ // invalidate a tick already in flight
-		}
-		if !matched {
-			return m, nil
-		}
-		if msg.Err != nil {
-			m.setStatus(fmt.Sprintf("mark read failed: %v", msg.Err), true)
-			return m, m.clearStatusCmd()
-		}
-		return m, nil
+		cmd := m.finishReadChanges(msg)
+		return m, cmd
 
 	case MessageStarredUpdatedMsg:
 		if msg.Err != nil {

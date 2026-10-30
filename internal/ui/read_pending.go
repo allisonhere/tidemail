@@ -19,9 +19,10 @@ type pendingRead struct {
 	Read  bool
 }
 type readRemoteCompletedMsg struct {
-	Token uint64
-	IDs   []int64
-	Err   error
+	Token   uint64
+	IDs     []int64
+	Success []MessageReadBatchEntry
+	Err     error
 }
 
 // acceptReadChanges runs on the UI goroutine. Reserving IDs here closes the
@@ -38,7 +39,6 @@ func (m *Model) acceptReadChanges(messages []db.Message, target *bool, advance b
 	batches := make(map[int64]*batch)
 	var order []int64
 	var entries []MessageReadBatchEntry
-	var readIDs, unreadIDs []int64
 	seen := make(map[int64]bool)
 	for _, msg := range messages {
 		if _, pending := m.pendingReads[msg.ID]; pending || seen[msg.ID] {
@@ -51,11 +51,6 @@ func (m *Model) acceptReadChanges(messages []db.Message, target *bool, advance b
 		}
 		entry := MessageReadBatchEntry{MessageID: msg.ID, MailboxID: msg.MailboxID, WasRead: msg.Read, Read: read}
 		entries = append(entries, entry)
-		if read {
-			readIDs = append(readIDs, msg.ID)
-		} else {
-			unreadIDs = append(unreadIDs, msg.ID)
-		}
 		if batches[msg.MailboxID] == nil {
 			batches[msg.MailboxID] = &batch{}
 			order = append(order, msg.MailboxID)
@@ -69,12 +64,6 @@ func (m *Model) acceptReadChanges(messages []db.Message, target *bool, advance b
 	}
 	if m.db == nil {
 		m.setStatus("mark read failed: database unavailable", true)
-		return m.clearStatusCmd()
-	}
-	// Persist before publishing success or dispatching IMAP. These small writes
-	// intentionally preserve the existing database error semantics.
-	if err := m.db.MarkReadBatch(readIDs, unreadIDs); err != nil {
-		m.setStatus("mark read failed: "+err.Error(), true)
 		return m.clearStatusCmd()
 	}
 	var cmds []tea.Cmd
@@ -113,7 +102,26 @@ func (m *Model) acceptReadChanges(messages []db.Message, target *bool, advance b
 					unreads = append(unreads, msg)
 				}
 			}
+			persist := func(messages []db.Message, read bool) error {
+				var r, u []int64
+				if read {
+					r = messageIDs(messages)
+				} else {
+					u = messageIDs(messages)
+				}
+				if err := database.MarkReadBatch(r, u); err != nil {
+					return err
+				}
+				for _, msg := range messages {
+					result.Success = append(result.Success, MessageReadBatchEntry{MessageID: msg.ID, MailboxID: msg.MailboxID, WasRead: msg.Read, Read: read})
+				}
+				return nil
+			}
 			if mailboxName == "" || account.IMAPHost == "" || len(messageUIDs(b.messages)) == 0 {
+				result.Err = persist(reads, true)
+				if err := persist(unreads, false); result.Err == nil {
+					result.Err = err
+				}
 				return result
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -129,15 +137,9 @@ func (m *Model) acceptReadChanges(messages []db.Message, target *bool, advance b
 					}
 					err := store(ctx, mailboxName, messageUIDs(group.messages), group.read)
 					if err == nil {
-						// Repair a stale sync write while still holding the account session.
-						// This is cache repair only: completion never repeats UI deltas.
-						var r, u []int64
-						if group.read {
-							r = messageIDs(group.messages)
-						} else {
-							u = messageIDs(group.messages)
-						}
-						err = database.MarkReadBatch(r, u)
+						// Publish confirmed server state before releasing the session,
+						// so an earlier sync snapshot cannot overwrite this write.
+						err = persist(group.messages, group.read)
 					}
 					if firstErr == nil {
 						firstErr = err
@@ -148,11 +150,8 @@ func (m *Model) acceptReadChanges(messages []db.Message, target *bool, advance b
 			return result
 		})
 	}
-	if target != nil && len(entries) == 1 {
-		e := entries[0]
-		m.applyMessageReadUpdatedMsg(MessageReadUpdatedMsg{MessageID: e.MessageID, MailboxID: e.MailboxID, WasRead: e.WasRead, Read: e.Read, Advance: advance})
-	} else {
-		m.applyMessageReadBatchUpdatedMsg(MessageReadBatchUpdatedMsg{Entries: entries})
+	if target != nil && len(entries) == 1 && advance {
+		m.advanceReadCursor(entries[0].MessageID)
 	}
 	cmds = append(cmds, m.ensureReadAnimation())
 	return tea.Batch(cmds...)
@@ -244,8 +243,19 @@ func (m *Model) applyMessageReadUpdatedMsg(msg MessageReadUpdatedMsg) tea.Cmd {
 		m.clearViewportMessage()
 		return nil
 	}
+	if msg.Advance {
+		m.advanceReadCursor(msg.MessageID)
+		return nil
+	}
+	m.messageCursor = clamp(m.messageCursor, 0, max(0, m.activeMessageRowCount()-1))
+	m.listOffset = clamp(m.listOffset, 0, max(0, m.activeMessageRowCount()-1))
+	m.setViewportForCurrentRow()
+	return nil
+}
+
+func (m *Model) advanceReadCursor(messageID int64) {
 	rowCount := m.activeMessageRowCount()
-	if idx := m.indexOfFilteredMessage(msg.MessageID); msg.Advance && idx >= 0 && idx == m.messageCursor && idx < rowCount-1 {
+	if idx := m.indexOfFilteredMessage(messageID); idx >= 0 && idx == m.messageCursor && idx < rowCount-1 {
 		m.messageCursor = idx + 1
 		visible := max(1, m.articleRowsVisible())
 		if m.messageCursor >= m.listOffset+visible {
@@ -256,8 +266,6 @@ func (m *Model) applyMessageReadUpdatedMsg(msg MessageReadUpdatedMsg) tea.Cmd {
 		m.listOffset = clamp(m.listOffset, 0, max(0, rowCount-1))
 	}
 	m.setViewportForCurrentRow()
-	return nil
-
 }
 
 // Read feedback has its own low-frequency clock. Reuse the existing Braille
@@ -269,4 +277,89 @@ func (m *Model) ensureReadAnimation() tea.Cmd {
 	m.readAnimationRunning = true
 	m.readAnimationGeneration++
 	return readAnimationTick(m.readAnimationGeneration)
+}
+
+// Reload through the normal view-specific SQL ordering and ID-based selection.
+func (m *Model) reloadReadMessagesCmd() tea.Cmd {
+	if m.searchActive() {
+		return m.searchAllMessagesCmd(m.searchQuery)
+	}
+	return m.visibleMessagesCmd()
+}
+
+func (m *Model) finishReadChanges(msg readRemoteCompletedMsg) tea.Cmd {
+	matched := make(map[int64]bool, len(msg.IDs))
+	for _, id := range msg.IDs {
+		if pending, ok := m.pendingReads[id]; ok && pending.Token == msg.Token {
+			delete(m.pendingReads, id)
+			matched[id] = true
+		}
+	}
+	if len(m.pendingReads) == 0 && m.readAnimationRunning {
+		m.readAnimationRunning = false
+		m.readAnimationGeneration++
+	}
+	if len(matched) == 0 {
+		return nil
+	}
+	mailboxes := make(map[int64]bool)
+	currentID := int64(0)
+	if current := m.currentRowMessage(); current != nil {
+		currentID = current.ID
+	}
+	for _, entry := range msg.Success {
+		if matched[entry.MessageID] {
+			mailboxes[entry.MailboxID] = true
+			// Unlock against the confirmed state, even if the SQL reload has
+			// not arrived when the user immediately toggles this message again.
+			for i := range m.messages {
+				if m.messages[i].ID == entry.MessageID {
+					m.messages[i].Read = entry.Read
+					break
+				}
+			}
+		}
+	}
+	var cmds []tea.Cmd
+	if len(mailboxes) > 0 {
+		m.readVersion++
+		m.applyFilter()
+		if idx := m.indexOfFilteredMessage(currentID); idx >= 0 {
+			m.messageCursor = idx
+		} else {
+			m.messageCursor = clamp(m.messageCursor, 0, max(0, m.activeMessageRowCount()-1))
+		}
+		m.listOffset = clamp(m.listOffset, 0, max(0, m.activeMessageRowCount()-1))
+		if m.activeMessageRowCount() == 0 {
+			m.clearViewportMessage()
+		} else {
+			m.setViewportForCurrentRow()
+		}
+		// Recount instead of applying captured deltas: another completed operation
+		// or a sync may already have changed the cached state before this event.
+		for id := range mailboxes {
+			count, err := m.db.CountUnread(id)
+			if err == nil {
+				err = m.db.SetMailboxUnreadCount(id, count)
+			}
+			if err != nil {
+				if msg.Err == nil {
+					msg.Err = err
+				}
+				continue
+			}
+			for i := range m.mailboxes {
+				if m.mailboxes[i].ID == id {
+					m.mailboxes[i].UnreadCount = count
+					break
+				}
+			}
+		}
+		cmds = append(cmds, m.reloadReadMessagesCmd())
+	}
+	if msg.Err != nil {
+		m.setStatus("mark read failed: "+msg.Err.Error(), true)
+		cmds = append(cmds, m.clearStatusCmd())
+	}
+	return tea.Batch(cmds...)
 }

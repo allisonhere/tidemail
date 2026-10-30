@@ -27,6 +27,7 @@ func readPendingModel(t *testing.T) (Model, chan struct{}, chan error) {
 	cfg.Display.MarkReadOnFocus = false
 	cfg.Display.MarkReadOnOpen = false
 	cfg.Display.ThreadedConversations = false
+	cfg.Display.UnreadFirst = false
 	cfg.Accounts = []config.AccountConfig{{ID: "read-test", Name: "Read test", User: "testuser", Password: "testpass", IMAPHost: "127.0.0.1", IMAPPort: 143}}
 	accountID, err := database.AddAccount("read-test", "Read test", "")
 	if err != nil {
@@ -121,98 +122,94 @@ func finishRead(t *testing.T, m Model, done <-chan tea.Msg) Model {
 		if _, ok := msg.(readRemoteCompletedMsg); !ok {
 			t.Fatalf("unexpected completion %T", msg)
 		}
-		next, _ := m.Update(msg)
-		return next.(Model)
+		next, follow := m.Update(msg)
+		return settle(t, next.(Model), follow)
 	case <-time.After(3 * time.Second):
 		t.Fatal("completion did not arrive")
 		return m
 	}
 }
 
-func TestOptimisticReadImmediateAndRepair(t *testing.T) {
+func TestServerConfirmedReadAcceptanceAndCompletion(t *testing.T) {
 	m, entered, release := readPendingModel(t)
-	msg := m.messages[0]
+	msg, nextID := m.messages[0], m.messages[1].ID
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	m = next.(Model)
-	if !m.messages[0].Read || m.mailboxes[0].UnreadCount != 2 || m.messageCursor != 1 {
-		t.Fatalf("not immediate: read=%v count=%d cursor=%d", m.messages[0].Read, m.mailboxes[0].UnreadCount, m.messageCursor)
-	}
 	stored, _ := m.db.GetMessage(msg.ID)
-	if !stored.Read {
-		t.Fatal("SQLite not immediate")
+	if stored.Read || m.messages[0].Read || m.mailboxes[0].UnreadCount != 3 || m.currentRowMessage().ID != nextID {
+		t.Fatal("acceptance changed state/counts or failed to advance")
 	}
 	if !strings.Contains(m.renderMessagesPane(), m.pendingReadIndicator()) {
 		t.Fatal("missing pending indicator")
 	}
 	if m.setMessageReadCmd(msg, false, false) != nil {
-		t.Fatal("duplicate accepted")
+		t.Fatal("accepted contradictory request")
 	}
 	done := readRemoteResults(cmd)
 	awaitReadStore(t, entered)
-	// Simulate the known stale-sync write while STORE is outstanding.
-	if err := m.db.MarkRead(msg.ID, false); err != nil {
-		t.Fatal(err)
+	stored, _ = m.db.GetMessage(msg.ID)
+	if stored.Read {
+		t.Fatal("changed while STORE blocked")
 	}
 	release <- nil
 	m = finishRead(t, m, done)
 	stored, _ = m.db.GetMessage(msg.ID)
-	if !stored.Read {
-		t.Fatal("successful STORE did not repair cache")
-	}
-	if len(m.pendingReads) != 0 || m.messageCursor != 1 || m.mailboxes[0].UnreadCount != 2 {
-		t.Fatal("completion reapplied UI changes or leaked pending")
+	if !stored.Read || !m.messages[0].Read || m.mailboxes[0].UnreadCount != 2 || m.currentRowMessage().ID != nextID || len(m.pendingReads) != 0 {
+		t.Fatal("confirmation did not persist/reload/preserve selection")
 	}
 	if strings.Contains(m.renderMessagesPane(), m.pendingReadIndicator()) {
-		t.Fatal("pending remained visible")
+		t.Fatal("pending indicator leaked")
 	}
 }
 
-func TestOptimisticReadConcurrentAndFailure(t *testing.T) {
+func TestServerConfirmedReadConcurrentAndFailure(t *testing.T) {
 	m, entered, release := readPendingModel(t)
 	first := m.setMessageReadCmd(m.messages[0], true, false)
 	done1 := readRemoteResults(first)
 	awaitReadStore(t, entered)
 	second := m.setMessageReadCmd(m.messages[1], true, false)
 	done2 := readRemoteResults(second)
-	if len(m.pendingReads) != 2 || m.mailboxes[0].UnreadCount != 1 {
-		t.Fatal("other message blocked")
+	if len(m.pendingReads) != 2 || m.mailboxes[0].UnreadCount != 3 {
+		t.Fatal("other message blocked or counts changed early")
 	}
 	release <- errors.New("rejected")
 	m = finishRead(t, m, done1)
-	if len(m.pendingReads) != 1 || !strings.Contains(m.statusMsg, "rejected") || !m.messages[0].Read {
-		t.Fatal("failure cleanup/optimistic state")
+	stored, _ := m.db.GetMessage(m.messages[0].ID)
+	if len(m.pendingReads) != 1 || !strings.Contains(m.statusMsg, "rejected") || stored.Read || m.messages[0].Read {
+		t.Fatal("failure did not retain original state")
 	}
 	awaitReadStore(t, entered)
 	release <- nil
 	m = finishRead(t, m, done2)
-	if len(m.pendingReads) != 0 || m.mailboxes[0].UnreadCount != 1 {
-		t.Fatal("second completion")
+	if len(m.pendingReads) != 0 || !m.messages[1].Read || m.mailboxes[0].UnreadCount != 2 {
+		t.Fatal("second confirmation failed")
 	}
-	// A stale completion cannot clear a newly accepted operation.
-	cmd := m.setMessageReadCmd(m.messages[0], false, false)
-	pending := m.pendingReads[m.messages[0].ID]
-	next, _ := m.Update(readRemoteCompletedMsg{IDs: []int64{m.messages[0].ID}, Token: pending.Token - 1})
+	msg := m.messages[1]
+	m.messageCursor = 1
+	cmd := m.setMessageReadCmd(msg, false, false)
+	pending := m.pendingReads[msg.ID]
+	version := m.readVersion
+	next, _ := m.Update(readRemoteCompletedMsg{IDs: []int64{msg.ID}, Token: pending.Token - 1, Success: []MessageReadBatchEntry{{MessageID: msg.ID, MailboxID: msg.MailboxID, Read: false}}})
 	m = next.(Model)
-	if len(m.pendingReads) != 1 {
-		t.Fatal("stale completion unlocked newer request")
+	if len(m.pendingReads) != 1 || m.readVersion != version || !m.messages[1].Read {
+		t.Fatal("stale completion affected newer operation")
 	}
 	if !strings.Contains(m.renderMessagesPane(), "→"+m.pendingReadIndicator()) {
-		t.Fatal("cursor hid pending unread")
+		t.Fatal("cursor hid pending feedback")
 	}
 	done := readRemoteResults(cmd)
 	awaitReadStore(t, entered)
 	release <- nil
 	m = finishRead(t, m, done)
-	if m.messages[0].Read || m.messageCursor != 0 || m.mailboxes[0].UnreadCount != 2 {
-		t.Fatal("unread semantics changed")
+	if m.messages[1].Read || m.messageCursor != 1 || m.mailboxes[0].UnreadCount != 3 {
+		t.Fatal("unread changed directional behavior")
 	}
 }
 
-func TestOptimisticReadBulkAndThread(t *testing.T) {
+func TestServerConfirmedReadBulkAndThread(t *testing.T) {
 	for _, threaded := range []bool{false, true} {
 		t.Run(map[bool]string{false: "bulk", true: "thread"}[threaded], func(t *testing.T) {
 			m, entered, release := readPendingModel(t)
-			// Start with a mixed read state. Bulk toggles each; a conversation marks all read.
 			if err := m.db.MarkRead(m.messages[1].ID, true); err != nil {
 				t.Fatal(err)
 			}
@@ -222,6 +219,9 @@ func TestOptimisticReadBulkAndThread(t *testing.T) {
 				m.cfg.Display.ThreadedConversations = true
 				for i := range m.messages {
 					m.messages[i].MessageID = "<root>"
+					if err := m.db.UpsertMessage(m.messages[i]); err != nil {
+						t.Fatal(err)
+					}
 				}
 			} else {
 				for _, msg := range m.messages {
@@ -229,25 +229,19 @@ func TestOptimisticReadBulkAndThread(t *testing.T) {
 				}
 			}
 			m.applyFilter()
+			selectedID := m.currentRowMessage().ID
 			next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 			m = next.(Model)
-			want := int64(1)
-			if threaded {
-				want = 0
-			}
-			if len(m.pendingReads) != 3 || m.mailboxes[0].UnreadCount != want || m.messageCursor != 0 {
-				t.Fatalf("pending=%d count=%d", len(m.pendingReads), m.mailboxes[0].UnreadCount)
+			if len(m.pendingReads) != 3 || m.mailboxes[0].UnreadCount != 2 || m.currentRowMessage().ID != selectedID || !m.messages[1].Read || m.messages[0].Read {
+				t.Fatal("bulk acceptance changed state or cursor")
 			}
 			if threaded && !m.rowReadPending(m.messageThreads[0].Representative, m.messageThreads[0]) {
-				t.Fatal("thread lost pending member")
+				t.Fatal("missing conversation pending")
 			}
 			done := readRemoteResults(cmd)
-			// Thread operations use independent commands; bulk uses one STORE per desired state.
-			stores := 2
-			completions := 1
+			stores, completions := 2, 1
 			if threaded {
-				stores = 3
-				completions = 3
+				stores, completions = 3, 3
 			}
 			for i := 0; i < stores; i++ {
 				awaitReadStore(t, entered)
@@ -256,15 +250,19 @@ func TestOptimisticReadBulkAndThread(t *testing.T) {
 			for i := 0; i < completions; i++ {
 				m = finishRead(t, m, done)
 			}
-			if len(m.pendingReads) != 0 || m.mailboxes[0].UnreadCount != want || m.messageCursor != 0 {
-				t.Fatal("bulk completion changed local result")
+			want := int64(1)
+			if threaded {
+				want = 0
+			}
+			if len(m.pendingReads) != 0 || m.mailboxes[0].UnreadCount != want || m.currentRowMessage().ID != selectedID {
+				t.Fatal("bulk confirmation or selection failed")
 			}
 		})
 	}
 }
 
-func TestOptimisticReadAutomaticAndFiltering(t *testing.T) {
-	for _, path := range []string{"open", "focus", "command", "summarize", "filter"} {
+func TestServerConfirmedReadAutomatic(t *testing.T) {
+	for _, path := range []string{"open", "focus", "command", "summarize"} {
 		t.Run(path, func(t *testing.T) {
 			m, entered, release := readPendingModel(t)
 			msg := m.messages[0]
@@ -296,98 +294,261 @@ func TestOptimisticReadAutomaticAndFiltering(t *testing.T) {
 				m.cfg.AI.MarkReadOnSummarize = true
 				next, cmd = m.Update(AISummaryFetchedMsg{MessageID: msg.ID, Summary: "summary"})
 				m = next.(Model)
-			case "filter":
-				m.showUnreadOnly = true
-				cmd = m.setMessageReadCmd(msg, true, true)
 			}
-			if !m.messages[0].Read || len(m.pendingReads) != 1 {
-				t.Fatal("automatic path not immediate")
+			if m.messages[0].Read || len(m.pendingReads) != 1 || m.mailboxes[0].UnreadCount != 3 {
+				t.Fatal("automatic path changed state early")
 			}
-			if path == "filter" && (len(m.filteredMessages) != 2 || m.messageCursor != 0) {
-				t.Fatal("filter skipped successor")
+			wantCursor := 0
+			if path == "command" {
+				wantCursor = 1
+			}
+			if m.messageCursor != wantCursor {
+				t.Fatal("automatic navigation changed")
 			}
 			done := readRemoteResults(cmd)
 			awaitReadStore(t, entered)
 			release <- nil
 			m = finishRead(t, m, done)
-			if len(m.pendingReads) != 0 {
-				t.Fatal("pending leaked")
+			if len(m.pendingReads) != 0 || !m.messages[0].Read || m.mailboxes[0].UnreadCount != 2 || m.messageCursor != wantCursor {
+				t.Fatal("automatic confirmation failed")
 			}
 		})
 	}
 }
 
-func TestOptimisticReadLocalFailureAndDeadline(t *testing.T) {
-	t.Run("database", func(t *testing.T) {
-		m, _, _ := readPendingModel(t)
-		msg := m.messages[0]
-		_ = m.db.Close()
-		_ = m.setMessageReadCmd(msg, true, true)
-		if len(m.pendingReads) != 0 || m.messages[0].Read || m.messageCursor != 0 || m.mailboxes[0].UnreadCount != 3 {
-			t.Fatal("failed persistence published success")
-		}
-	})
-	t.Run("deadline", func(t *testing.T) {
-		m, _, _ := readPendingModel(t)
-		m.readSession = func(context.Context, config.AccountConfig, func(readStoreFunc) error) error {
-			return context.DeadlineExceeded
-		}
-		cmd := m.setMessageReadCmd(m.messages[0], true, true)
-		m = finishRead(t, m, readRemoteResults(cmd))
-		if len(m.pendingReads) != 0 || !strings.Contains(m.statusMsg, "deadline exceeded") || m.messageCursor != 1 {
-			t.Fatal("deadline cleanup")
-		}
-	})
+func TestServerConfirmedReadViewsAndMultiplePending(t *testing.T) {
+	for _, view := range []string{"chronological", "unread-first", "unread-only", "unified", "search"} {
+		t.Run(view, func(t *testing.T) {
+			m, entered, release := readPendingModel(t)
+			m.cfg.Display.UnreadFirst = view == "unread-first" || view == "unified"
+			m.showUnreadOnly = view == "unread-only"
+			if view == "search" {
+				m.searchMode = true
+				m.searchQuery = "Test"
+			}
+			if view == "unified" {
+				for i, row := range m.sidebarRows {
+					if row.kind == rowKindUnified {
+						m.sidebarCursor = i
+						break
+					}
+				}
+			}
+			firstID, secondID, thirdID := m.messages[0].ID, m.messages[1].ID, m.messages[2].ID
+			next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+			m = next.(Model)
+			done1 := readRemoteResults(cmd)
+			awaitReadStore(t, entered)
+			// Returning to the pending message must not toggle it or advance again.
+			m.messageCursor = 0
+			next, duplicate := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+			m = next.(Model)
+			if duplicate != nil || m.messageCursor != 0 {
+				t.Fatal("duplicate key accepted")
+			}
+			m.messageCursor = 1
+			next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+			m = next.(Model)
+			done2 := readRemoteResults(cmd)
+			if m.filteredMessages[0].ID != firstID || m.messages[0].Read || m.currentRowMessage().ID != thirdID {
+				t.Fatal("pending changed ordering/state")
+			}
+			release <- nil
+			m = finishRead(t, m, done1)
+			awaitReadStore(t, entered)
+			if m.currentRowMessage().ID != thirdID || len(m.pendingReads) != 1 {
+				t.Fatal("completion disturbed selection/pending")
+			}
+			idx := m.indexOfFilteredMessage(secondID)
+			if idx < 0 || m.filteredMessages[idx].Read || len(m.pendingReads) != 1 {
+				t.Fatal("other pending changed read classification")
+			}
+			if view == "unread-only" && len(m.filteredMessages) != 2 {
+				t.Fatal("confirmed read not filtered")
+			}
+			if (view == "unread-first" || view == "unified") && m.filteredMessages[len(m.filteredMessages)-1].ID != firstID {
+				t.Fatal("SQL unread-first order not applied")
+			}
+			release <- errors.New("second rejected")
+			m = finishRead(t, m, done2)
+			stored, _ := m.db.GetMessage(secondID)
+			if stored.Read || len(m.pendingReads) != 0 || m.mailboxes[0].UnreadCount != 2 || m.currentRowMessage().ID != thirdID {
+				t.Fatal("failed pending message changed state/selection")
+			}
+		})
+	}
 }
 
-func TestOptimisticReadRepeatedKeyAndStableOrder(t *testing.T) {
+func TestServerConfirmedReadPartialBatch(t *testing.T) {
+	for _, failedRead := range []bool{true, false} {
+		t.Run(map[bool]string{true: "read-fails", false: "unread-fails"}[failedRead], func(t *testing.T) {
+			m, entered, release := readPendingModel(t)
+			m.messages[1].Read = true
+			m.mailboxes[0].UnreadCount = 2
+			if err := m.db.MarkRead(m.messages[1].ID, true); err != nil {
+				t.Fatal(err)
+			}
+			cmd := m.setSelectedMessagesReadCmd(m.messages)
+			done := readRemoteResults(cmd)
+			awaitReadStore(t, entered)
+			if failedRead {
+				release <- errors.New("group failed")
+			} else {
+				release <- nil
+			}
+			awaitReadStore(t, entered)
+			if failedRead {
+				release <- nil
+			} else {
+				release <- errors.New("group failed")
+			}
+			m = finishRead(t, m, done)
+			want := int64(0)
+			if failedRead {
+				want = 3
+			}
+			if len(m.pendingReads) != 0 || m.mailboxes[0].UnreadCount != want || !strings.Contains(m.statusMsg, "group failed") {
+				t.Fatal("partial failure changed wrong counts or leaked locks")
+			}
+			for _, msg := range m.messages {
+				stored, _ := m.db.GetMessage(msg.ID)
+				if stored.Read == failedRead || msg.Read == failedRead {
+					t.Fatal("failed group changed or successful group not applied")
+				}
+			}
+		})
+	}
+}
+
+func TestServerConfirmedUnreadOrdering(t *testing.T) {
 	m, entered, release := readPendingModel(t)
+	msg := m.messages[0]
+	if err := m.db.MarkRead(msg.ID, true); err != nil {
+		t.Fatal(err)
+	}
 	m.cfg.Display.UnreadFirst = true
-	firstID := m.messages[0].ID
+	m.mailboxes[0].UnreadCount = 2
+	m = settle(t, m, m.loadMailboxMessagesCmd(msg.MailboxID))
+	m.messageCursor = m.indexOfFilteredMessage(msg.ID)
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	m = next.(Model)
+	if m.messageCursor != 2 || !m.currentRowMessage().Read || m.mailboxes[0].UnreadCount != 2 {
+		t.Fatal("unread request advanced or changed classification early")
+	}
 	done := readRemoteResults(cmd)
-	awaitReadStore(t, entered)
-	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
-	m = next.(Model)
-	next, duplicate := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
-	m = next.(Model)
-	if duplicate != nil || !m.messages[0].Read || m.filteredMessages[0].ID != firstID || m.mailboxes[0].UnreadCount != 2 {
-		t.Fatal("pending x changed state or ordering")
-	}
-	release <- nil
-	_ = finishRead(t, m, done)
-}
-
-func TestOptimisticReadIndicatorModes(t *testing.T) {
-	m, _, _ := readPendingModel(t)
-	m.cfg.Display.Icons = true
-	if m.pendingReadIndicator() != readAnimationFrames[0] {
-		t.Fatal("missing Unicode pending indicator")
-	}
-	m.cfg.Display.Icons = false
-	if m.pendingReadIndicator() != "~" {
-		t.Fatal("missing icon-disabled fallback")
-	}
-	m.cfg.Display.Icons = true
-	m.styles.PlainUI = true
-	if m.pendingReadIndicator() != "~" {
-		t.Fatal("missing plain fallback")
-	}
-}
-
-func TestOptimisticReadBulkPartialFailure(t *testing.T) {
-	m, entered, release := readPendingModel(t)
-	m.messages[1].Read = true
-	m.mailboxes[0].UnreadCount = 2
-	cmd := m.setSelectedMessagesReadCmd(m.messages)
-	done := readRemoteResults(cmd)
-	awaitReadStore(t, entered)
-	release <- errors.New("read group failed")
 	awaitReadStore(t, entered)
 	release <- nil
 	m = finishRead(t, m, done)
-	if len(m.pendingReads) != 0 || m.mailboxes[0].UnreadCount != 1 || !strings.Contains(m.statusMsg, "read group failed") {
-		t.Fatal("partial failure leaked locks or reapplied counts")
+	if m.messageCursor != 0 || m.currentRowMessage().ID != msg.ID || m.currentRowMessage().Read || m.mailboxes[0].UnreadCount != 3 {
+		t.Fatal("confirmed unread failed to reorder while preserving ID")
+	}
+}
+
+func TestServerConfirmedReadLocalAndErrors(t *testing.T) {
+	for _, mode := range []string{"local", "database", "deadline"} {
+		t.Run(mode, func(t *testing.T) {
+			m, _, _ := readPendingModel(t)
+			if mode == "local" {
+				m.cfg.Accounts[0].IMAPHost = ""
+			} else {
+				m.readSession = func(_ context.Context, _ config.AccountConfig, fn func(readStoreFunc) error) error {
+					if mode == "deadline" {
+						return context.DeadlineExceeded
+					}
+					return fn(func(context.Context, string, []uint32, bool) error { return nil })
+				}
+			}
+			cmd := m.setMessageReadCmd(m.messages[0], true, true)
+			if len(m.pendingReads) != 1 || m.messages[0].Read || m.messageCursor != 1 {
+				t.Fatal("missing acceptance")
+			}
+			if mode == "database" {
+				_ = m.db.Close()
+			}
+			m = finishRead(t, m, readRemoteResults(cmd))
+			if len(m.pendingReads) != 0 || m.messageCursor != 1 {
+				t.Fatal("cleanup/navigation")
+			}
+			if mode == "local" {
+				if !m.messages[0].Read || m.mailboxes[0].UnreadCount != 2 {
+					t.Fatal("local-only update not committed")
+				}
+			} else if m.messages[0].Read || m.mailboxes[0].UnreadCount != 3 || !m.statusErr {
+				t.Fatal("error changed local state")
+			}
+		})
+	}
+}
+
+func TestServerConfirmedReadStaleReloadsAndCompletionOrder(t *testing.T) {
+	m, entered, release := readPendingModel(t)
+	staleMessages := m.loadMailboxMessagesCmd(m.messages[0].MailboxID)()
+	staleAccounts := m.loadAccountsCmd()()
+	first := m.setMessageReadCmd(m.messages[0], true, true)
+	done1 := readRemoteResults(first)
+	awaitReadStore(t, entered)
+	second := m.setMessageReadCmd(m.messages[1], true, true)
+	done2 := readRemoteResults(second)
+	selectedID := m.currentRowMessage().ID
+	release <- nil
+	event1 := <-done1
+	awaitReadStore(t, entered)
+	release <- nil
+	event2 := <-done2
+	// Deliver completions in the opposite order from their successful writes.
+	next, cmd := m.Update(event2)
+	m = settle(t, next.(Model), cmd)
+	next, cmd = m.Update(event1)
+	m = settle(t, next.(Model), cmd)
+	if m.mailboxes[0].UnreadCount != 1 || m.currentRowMessage().ID != selectedID {
+		t.Fatal("out-of-order completion repeated counts/advancement")
+	}
+	next, cmd = m.Update(staleMessages)
+	m = next.(Model)
+	if cmd == nil || !m.messages[0].Read {
+		t.Fatal("stale message snapshot applied")
+	}
+	m = settle(t, m, cmd)
+	next, cmd = m.Update(staleAccounts)
+	m = next.(Model)
+	if cmd == nil || m.mailboxes[0].UnreadCount != 1 {
+		t.Fatal("stale count snapshot applied")
+	}
+	fresh := cmd().(AccountsLoadedMsg)
+	if fresh.ReadVersion != m.readVersion || fresh.Mailboxes[0].UnreadCount != 1 {
+		t.Fatal("replacement account snapshot not current")
+	}
+	if len(m.pendingReads) != 0 || m.currentRowMessage().ID != selectedID {
+		t.Fatal("stale reload moved selection")
+	}
+}
+
+func TestServerConfirmedReadToggleBeforeReload(t *testing.T) {
+	m, entered, release := readPendingModel(t)
+	msg := m.messages[0]
+	cmd := m.setMessageReadCmd(msg, true, false)
+	done := readRemoteResults(cmd)
+	awaitReadStore(t, entered)
+	release <- nil
+	event := <-done
+	// Deliberately do not execute the asynchronous reload yet.
+	next, reload := m.Update(event)
+	m = next.(Model)
+	if reload == nil || !m.currentRowMessage().Read || len(m.pendingReads) != 0 {
+		t.Fatal("unlocked row did not expose confirmed state")
+	}
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	m = next.(Model)
+	if pending := m.pendingReads[msg.ID]; pending.Read || len(m.pendingReads) != 1 || m.messageCursor != 0 {
+		t.Fatal("immediate toggle used old state or advanced unread action")
+	}
+	done = readRemoteResults(cmd)
+	awaitReadStore(t, entered)
+	release <- nil
+	m = finishRead(t, m, done)
+	// A reload requested by the earlier completion must not restore the read state.
+	m = settle(t, m, reload)
+	if m.currentRowMessage().Read || m.mailboxes[0].UnreadCount != 3 || len(m.pendingReads) != 0 {
+		t.Fatal("late earlier reload changed latest confirmed state")
 	}
 }

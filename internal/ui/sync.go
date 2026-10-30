@@ -91,27 +91,28 @@ func (m Model) accountConfigFor(acc db.Account) (config.AccountConfig, error) {
 
 func (m *Model) loadAccountsCmd() tea.Cmd {
 	database := m.db
+	readVersion := m.readVersion
 	configuredAccounts := append([]config.AccountConfig(nil), m.cfg.Accounts...)
 	return func() tea.Msg {
 		accounts, err := database.ListAccounts()
 		if err != nil {
-			return AccountsLoadedMsg{Err: err}
+			return AccountsLoadedMsg{ReadVersion: readVersion, Err: err}
 		}
 		if len(configuredAccounts) > 0 {
 			accounts, err = ensureConfiguredAccounts(database, accounts, configuredAccounts)
 			if err != nil {
-				return AccountsLoadedMsg{Err: err}
+				return AccountsLoadedMsg{ReadVersion: readVersion, Err: err}
 			}
 		}
 		var mailboxes []db.Mailbox
 		for _, a := range accounts {
 			mbs, err2 := database.ListMailboxes(a.ID)
 			if err2 != nil {
-				return AccountsLoadedMsg{Err: err2}
+				return AccountsLoadedMsg{ReadVersion: readVersion, Err: err2}
 			}
 			mailboxes = append(mailboxes, mbs...)
 		}
-		return AccountsLoadedMsg{Accounts: accounts, Mailboxes: mailboxes}
+		return AccountsLoadedMsg{ReadVersion: readVersion, Accounts: accounts, Mailboxes: mailboxes}
 	}
 }
 
@@ -222,6 +223,7 @@ func ensureConfiguredAccounts(database *db.DB, accounts []db.Account, configs []
 
 func (m *Model) loadMailboxMessagesCmd(mailboxID int64) tea.Cmd {
 	database := m.db
+	readVersion := m.readVersion
 	unreadFirst := m.cfg.Display.UnreadFirst
 	return func() tea.Msg {
 		var (
@@ -234,15 +236,16 @@ func (m *Model) loadMailboxMessagesCmd(mailboxID int64) tea.Cmd {
 			msgs, err = database.ListMessages(mailboxID)
 		}
 		if err != nil {
-			return MessagesLoadedMsg{MailboxID: mailboxID, Err: err}
+			return MessagesLoadedMsg{ReadVersion: readVersion, MailboxID: mailboxID, Err: err}
 		}
 		anns, overrides := loadMessageClassification(database, msgs)
-		return MessagesLoadedMsg{MailboxID: mailboxID, Messages: msgs, Annotations: anns, Overrides: overrides}
+		return MessagesLoadedMsg{ReadVersion: readVersion, MailboxID: mailboxID, Messages: msgs, Annotations: anns, Overrides: overrides}
 	}
 }
 
 func (m *Model) loadUnifiedInboxCmd() tea.Cmd {
 	database := m.db
+	readVersion := m.readVersion
 	unreadOnly := m.showUnreadOnly
 	unreadFirst := m.cfg.Display.UnreadFirst
 	return func() tea.Msg {
@@ -256,25 +259,26 @@ func (m *Model) loadUnifiedInboxCmd() tea.Cmd {
 			msgs, err = database.ListUnifiedInbox(unreadOnly)
 		}
 		if err != nil {
-			return MessagesLoadedMsg{Err: err}
+			return MessagesLoadedMsg{ReadVersion: readVersion, Err: err}
 		}
 		anns, overrides := loadMessageClassification(database, msgs)
-		return MessagesLoadedMsg{MailboxID: 0, Messages: msgs, Annotations: anns, Overrides: overrides}
+		return MessagesLoadedMsg{ReadVersion: readVersion, MailboxID: 0, Messages: msgs, Annotations: anns, Overrides: overrides}
 	}
 }
 
 func (m *Model) searchAllMessagesCmd(query string) tea.Cmd {
 	database := m.db
+	readVersion := m.readVersion
 	unreadFirst := m.cfg.Display.UnreadFirst
 	query = strings.TrimSpace(query)
 	tagVersion := m.mailTags.searchVersion
 	return func() tea.Msg {
 		msgs, err := database.SearchAllMessages(query, unreadFirst)
 		if err != nil {
-			return MessagesLoadedMsg{Search: true, Query: query, MailTagVersion: tagVersion, Err: err}
+			return MessagesLoadedMsg{ReadVersion: readVersion, Search: true, Query: query, MailTagVersion: tagVersion, Err: err}
 		}
 		anns, overrides := loadMessageClassification(database, msgs)
-		return MessagesLoadedMsg{Search: true, Query: query, MailTagVersion: tagVersion, Messages: msgs, Annotations: anns, Overrides: overrides}
+		return MessagesLoadedMsg{ReadVersion: readVersion, Search: true, Query: query, MailTagVersion: tagVersion, Messages: msgs, Annotations: anns, Overrides: overrides}
 	}
 }
 

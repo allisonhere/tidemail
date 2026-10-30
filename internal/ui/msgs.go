@@ -32,12 +32,14 @@ type OAuth2DoneMsg struct {
 }
 
 type AccountsLoadedMsg struct {
-	Accounts  []db.Account
-	Mailboxes []db.Mailbox
-	Err       error
+	ReadVersion uint64
+	Accounts    []db.Account
+	Mailboxes   []db.Mailbox
+	Err         error
 }
 
 type MessagesLoadedMsg struct {
+	ReadVersion    uint64 // read confirmations invalidate older snapshots
 	MailTagVersion uint64 // rejects searches captured before a tag edit or mapping change
 	MailboxID      int64
 	Messages       []db.Message

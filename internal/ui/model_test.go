@@ -422,6 +422,13 @@ func TestRightFromMessageListMarksUnreadMessageRead(t *testing.T) {
 	m.filteredMessages = msgs
 	m.mailboxes = []db.Mailbox{{ID: mailboxID, AccountID: accountID, Name: "INBOX", UnreadCount: 1}}
 	m.selectedMessages = make(map[int64]bool)
+	m.rebuildSidebar()
+	for i, row := range m.sidebarRows {
+		if row.kind == rowKindMailbox && row.mailboxID == mailboxID {
+			m.sidebarCursor = i
+			break
+		}
+	}
 
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRight})
 	m = next.(Model)
@@ -432,9 +439,9 @@ func TestRightFromMessageListMarksUnreadMessageRead(t *testing.T) {
 		t.Fatal("expected right arrow into content to mark unread message read")
 	}
 
-	// Local state is already applied before the returned remote command runs.
-	if !m.messages[0].Read {
-		t.Fatal("read state waited for completion")
+	// Request acceptance leaves local state unchanged until completion.
+	if m.messages[0].Read {
+		t.Fatal("read state changed before completion")
 	}
 	m = settle(t, m, cmd)
 

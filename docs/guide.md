@@ -1254,13 +1254,23 @@ white dotted border only while Support is open.
 
 ### Pending read/unread changes
 
-Read/unread actions update the local message state, unread count, and existing
-cursor advancement immediately. An animated Braille indicator (four frames per second) beside a message means its server update
-is pending (`~` in plain or icon-disabled display). The cursor arrow remains
-visible beside pending feedback. A conversation shows pending while any member
-is pending. Further read/unread requests for a pending message are ignored;
-other messages remain available. Failures appear in the status/log mechanism,
-without an automatic retry or rollback. Normal synchronization later reconciles
-server state. A concurrent refresh can temporarily restore an older state;
-successful server updates repair the message's cached read state. This does not
-introduce immediate Unread First reordering.
+Read/unread requests show an animated Braille indicator (four frames per
+second; `~` in plain or icon-disabled display) and lock the affected messages
+against further read/unread changes. Single-message unread-to-read actions
+advance the cursor immediately using the existing navigation rules. Other
+messages remain available while the server operation is pending.
+
+Messages retain their local read state, unread count, and sorting classification
+until the server confirms. Successful updates are saved locally and the current
+view reloads using its existing ordering, preserving the highlighted message by
+ID where it remains visible. This includes Unread First ordering and Unread Only
+filtering; conversation grouping and ordering remain unchanged. A pending
+message's row number can shift as other completed messages move.
+
+The cursor arrow remains visible beside pending feedback. A conversation shows
+pending while a visible member is pending. Failures clear pending and appear in
+the existing status/log mechanism without changing that operation's local read
+state. Mixed bulk actions apply successful groups and leave failed groups
+unchanged. There is no automatic retry or rollback. Other clients and normal
+synchronization can still change server state; a timeout may occur after the
+server applied a change, which later synchronization reconciles.
