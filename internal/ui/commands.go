@@ -260,7 +260,8 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		}
 	case "toggle-read":
 		if msg := m.commandMessage(); msg != nil {
-			return m, m.setMessageReadCmd(*msg, !msg.Read, !msg.Read)
+			cmd := m.setMessageReadCmd(*msg, !msg.Read, !msg.Read)
+			return m, cmd
 		}
 	case "sync":
 		if selected := m.selectedMailbox(); selected != nil {

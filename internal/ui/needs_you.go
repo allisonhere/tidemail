@@ -51,17 +51,18 @@ func (m *Model) selectedNeedsYou() bool {
 // command like every other message list.
 func (m *Model) loadNeedsYouCmd() tea.Cmd {
 	database := m.db
+	readVersion := m.readVersion
 	unreadOnly := m.showUnreadOnly
 	return func() tea.Msg {
 		if database == nil {
-			return MessagesLoadedMsg{NeedsYou: true}
+			return MessagesLoadedMsg{ReadVersion: readVersion, NeedsYou: true}
 		}
 		msgs, err := database.ListNeedsYou(unreadOnly)
 		if err != nil {
-			return MessagesLoadedMsg{NeedsYou: true, Err: err}
+			return MessagesLoadedMsg{ReadVersion: readVersion, NeedsYou: true, Err: err}
 		}
 		anns, overrides := loadMessageClassification(database, msgs)
-		return MessagesLoadedMsg{NeedsYou: true, Messages: msgs, Annotations: anns, Overrides: overrides}
+		return MessagesLoadedMsg{ReadVersion: readVersion, NeedsYou: true, Messages: msgs, Annotations: anns, Overrides: overrides}
 	}
 }
 
@@ -91,7 +92,7 @@ func (m *Model) virtualViewCmd() tea.Cmd {
 	case m.selectedWaiting():
 		return m.requestWaitingRefresh()
 	case m.selectedSnoozed():
-		return loadSnoozeStateCmd(m.db)
+		return loadSnoozeStateCmd(m.db, m.readVersion)
 	}
 	return nil
 }

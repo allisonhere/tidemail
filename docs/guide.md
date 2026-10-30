@@ -1028,7 +1028,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `e` | Correct classification and manage tags for the current message |
 | `Space` in Category | Toggle the selected server tag, preserving other assignments |
 | `e` / `c` / `r` in Tag names and colors | Rename a discovered tag locally, choose its color, or use the theme color |
-| `x` | Mark selected message(s) read |
+| `x` | Toggle selected message(s) read/unread |
 | `*` | Toggle star (IMAP `\Flagged`) on selected message(s); syncs to the server |
 | `a` | Archive selected message |
 | `d` | Delete selected message |
@@ -1251,3 +1251,26 @@ to go directly to the same Support page. Browser-launch failures leave the URL
 in the status line so it can still be copied. Tidemail does not show donation
 prompts during normal email use. A Pac-Man and coffee cup circle the page's
 white dotted border only while Support is open.
+
+### Pending read/unread changes
+
+Read/unread requests show an animated Braille indicator (four frames per
+second; `~` in plain or icon-disabled display) and lock the affected messages
+against further read/unread changes. Single-message unread-to-read actions
+advance the cursor immediately using the existing navigation rules. Other
+messages remain available while the server operation is pending.
+
+Messages retain their local read state, unread count, and sorting classification
+until the server confirms. Successful updates are saved locally and the current
+view reloads using its existing ordering, preserving the highlighted message by
+ID where it remains visible. This includes Unread First ordering and Unread Only
+filtering; conversation grouping and ordering remain unchanged. A pending
+message's row number can shift as other completed messages move.
+
+The cursor arrow remains visible beside pending feedback. A conversation shows
+pending while a visible member is pending. Failures clear pending and appear in
+the existing status/log mechanism without changing that operation's local read
+state. Mixed bulk actions apply successful groups and leave failed groups
+unchanged. There is no automatic retry or rollback. Other clients and normal
+synchronization can still change server state; a timeout may occur after the
+server applied a change, which later synchronization reconciles.

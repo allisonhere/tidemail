@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	imapClient "github.com/allisonhere/tidemail/internal/imap"
 	tea "github.com/charmbracelet/bubbletea"
@@ -105,6 +104,12 @@ func (m *Model) renderMessagesPane() string {
 			}
 			if cursor {
 				dot = "→ "
+			}
+			if m.rowReadPending(msg2, thread) {
+				dot = m.pendingReadIndicator() + " "
+				if cursor {
+					dot = "→" + dot
+				}
 			}
 			subject := m.messageRowTitle(msg2)
 			if threadCount > 1 {
@@ -352,156 +357,11 @@ func (m *Model) messageRowTitle(msg db.Message) string {
 }
 
 func (m *Model) setMessageReadCmd(msg db.Message, read, advance bool) tea.Cmd {
-	database := m.db
-	sessions := m.sessions
-	mailbox := m.mailboxByID(msg.MailboxID)
-	acfg, cfgErr := m.accountCfgForMailbox(msg.MailboxID)
-	if cfgErr != nil {
-		return func() tea.Msg {
-			return MessageReadUpdatedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, WasRead: msg.Read, Read: read, Advance: advance, Err: cfgErr}
-		}
-	}
-	return func() tea.Msg {
-		if mailbox != nil && acfg.IMAPHost != "" && msg.UID != 0 {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			if err := sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
-				return client.MarkSeen(ctx, mailbox.Name, msg.UID, read)
-			}); err != nil {
-				return MessageReadUpdatedMsg{MessageID: msg.ID, MailboxID: msg.MailboxID, WasRead: msg.Read, Read: read, Advance: advance, Err: err}
-			}
-		}
-		if err := database.MarkRead(msg.ID, read); err != nil {
-			return MessageReadUpdatedMsg{
-				MessageID: msg.ID,
-				MailboxID: msg.MailboxID,
-				WasRead:   msg.Read,
-				Read:      read,
-				Advance:   advance,
-				Err:       err,
-			}
-		}
-		return MessageReadUpdatedMsg{
-			MessageID: msg.ID,
-			MailboxID: msg.MailboxID,
-			WasRead:   msg.Read,
-			Read:      read,
-			Advance:   advance,
-		}
-	}
-}
-
-type messageReadMailboxBatch struct {
-	mailbox   *db.Mailbox
-	account   config.AccountConfig
-	configErr error
-	read      []db.Message
-	unread    []db.Message
+	return m.acceptReadChanges([]db.Message{msg}, &read, advance)
 }
 
 func (m *Model) setSelectedMessagesReadCmd(messages []db.Message) tea.Cmd {
-	byMailbox := make(map[int64]*messageReadMailboxBatch)
-	for _, msg := range messages {
-		batch := byMailbox[msg.MailboxID]
-		if batch == nil {
-			batch = &messageReadMailboxBatch{
-				mailbox: m.mailboxByID(msg.MailboxID),
-			}
-			batch.account, batch.configErr = m.accountCfgForMailbox(msg.MailboxID)
-			byMailbox[msg.MailboxID] = batch
-		}
-		if msg.Read {
-			batch.unread = append(batch.unread, msg)
-		} else {
-			batch.read = append(batch.read, msg)
-		}
-	}
-	mailboxIDs := make([]int64, 0, len(byMailbox))
-	for mailboxID := range byMailbox {
-		mailboxIDs = append(mailboxIDs, mailboxID)
-	}
-	sort.Slice(mailboxIDs, func(i, j int) bool { return mailboxIDs[i] < mailboxIDs[j] })
-	database, sessions := m.db, m.sessions
-
-	return func() tea.Msg {
-		type outcome struct {
-			entries []MessageReadBatchEntry
-			err     error
-		}
-		results := make(chan outcome, len(mailboxIDs))
-		for _, mailboxID := range mailboxIDs {
-			batch := byMailbox[mailboxID]
-			go func(batch *messageReadMailboxBatch) {
-				var result outcome
-				if batch.configErr != nil {
-					result.err = batch.configErr
-					results <- result
-					return
-				}
-
-				readOK, unreadOK := true, true
-				if batch.mailbox != nil && batch.account.IMAPHost != "" {
-					readUIDs := messageUIDs(batch.read)
-					unreadUIDs := messageUIDs(batch.unread)
-					if len(readUIDs)+len(unreadUIDs) > 0 {
-						ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-						defer cancel()
-						var readErr, unreadErr error
-						sessionErr := sessions.Do(ctx, batch.account, func(client *imapClient.Client) error {
-							readErr = client.MarkSeenUIDs(ctx, batch.mailbox.Name, readUIDs, true)
-							unreadErr = client.MarkSeenUIDs(ctx, batch.mailbox.Name, unreadUIDs, false)
-							return nil
-						})
-						if sessionErr != nil {
-							readErr, unreadErr = sessionErr, sessionErr
-						}
-						readOK, unreadOK = readErr == nil, unreadErr == nil
-						if readErr != nil {
-							result.err = readErr
-						}
-						if result.err == nil && unreadErr != nil {
-							result.err = unreadErr
-						}
-					}
-				}
-
-				readMessages, unreadMessages := batch.read, batch.unread
-				if !readOK {
-					readMessages = nil
-				}
-				if !unreadOK {
-					unreadMessages = nil
-				}
-				readIDs := messageIDs(readMessages)
-				unreadIDs := messageIDs(unreadMessages)
-				if err := database.MarkReadBatch(readIDs, unreadIDs); err != nil {
-					if result.err == nil {
-						result.err = err
-					}
-					results <- result
-					return
-				}
-				result.entries = make([]MessageReadBatchEntry, 0, len(readMessages)+len(unreadMessages))
-				for _, msg := range readMessages {
-					result.entries = append(result.entries, MessageReadBatchEntry{MessageID: msg.ID, MailboxID: msg.MailboxID, WasRead: false, Read: true})
-				}
-				for _, msg := range unreadMessages {
-					result.entries = append(result.entries, MessageReadBatchEntry{MessageID: msg.ID, MailboxID: msg.MailboxID, WasRead: true, Read: false})
-				}
-				results <- result
-			}(batch)
-		}
-
-		updated := MessageReadBatchUpdatedMsg{}
-		for range mailboxIDs {
-			result := <-results
-			updated.Entries = append(updated.Entries, result.entries...)
-			if updated.Err == nil && result.err != nil {
-				updated.Err = result.err
-			}
-		}
-		return updated
-	}
+	return m.acceptReadChanges(messages, nil, false)
 }
 
 func messageUIDs(messages []db.Message) []uint32 {

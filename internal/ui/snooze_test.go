@@ -501,7 +501,7 @@ func TestSnoozeTickExpiresAllDueAndSchedulesNext(t *testing.T) {
 		msg, _ := f.database.GetMessage(id)
 		_ = f.database.SetSnooze(db.SnoozeMessage, db.MessageKey(msg), clk.Now().Add(time.Duration(h)*time.Hour))
 	}
-	m = settle(t, m, loadSnoozeStateCmd(m.db))
+	m = settle(t, m, loadSnoozeStateCmd(m.db, m.readVersion))
 	if m.snooze.count != 3 || !m.snooze.deadline.Equal(clk.Now().Add(time.Hour)) {
 		t.Fatalf("count %d, deadline %v", m.snooze.count, m.snooze.deadline)
 	}
