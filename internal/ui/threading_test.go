@@ -143,10 +143,12 @@ func TestThreadedMarkReadMarksWholeCurrentThreadRead(t *testing.T) {
 	if !ok || len(batch) != 2 {
 		t.Fatalf("expected batch mark-read commands for both thread messages, got %#v", msg)
 	}
-	for _, c := range batch {
-		got := c().(MessageReadUpdatedMsg)
-		if !got.Read {
-			t.Fatalf("expected thread message %d marked read, got %+v", got.MessageID, got)
+	for _, pending := range m.pendingReads {
+		if !pending.Read {
+			t.Fatal("conversation did not accept read for all members")
 		}
+	}
+	for _, c := range batch {
+		m = settle(t, m, c)
 	}
 }

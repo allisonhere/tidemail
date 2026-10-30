@@ -1028,7 +1028,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `e` | Correct classification and manage tags for the current message |
 | `Space` in Category | Toggle the selected server tag, preserving other assignments |
 | `e` / `c` / `r` in Tag names and colors | Rename a discovered tag locally, choose its color, or use the theme color |
-| `x` | Mark selected message(s) read |
+| `x` | Toggle selected message(s) read/unread |
 | `*` | Toggle star (IMAP `\Flagged`) on selected message(s); syncs to the server |
 | `a` | Archive selected message |
 | `d` | Delete selected message |
@@ -1251,3 +1251,16 @@ to go directly to the same Support page. Browser-launch failures leave the URL
 in the status line so it can still be copied. Tidemail does not show donation
 prompts during normal email use. A Pac-Man and coffee cup circle the page's
 white dotted border only while Support is open.
+
+### Pending read/unread changes
+
+Read/unread actions update the local message state, unread count, and existing
+cursor advancement immediately. A `◌` beside a message means its server update
+is pending (`~` in plain or icon-disabled display). The cursor arrow remains
+visible beside pending feedback. A conversation shows pending while any member
+is pending. Further read/unread requests for a pending message are ignored;
+other messages remain available. Failures appear in the status/log mechanism,
+without an automatic retry or rollback. Normal synchronization later reconciles
+server state. A concurrent refresh can temporarily restore an older state;
+successful server updates repair the message's cached read state. This does not
+introduce immediate Unread First reordering.

@@ -301,8 +301,11 @@ type Model struct {
 	// composeBackdrop caches only the main panes behind compose. Typing and
 	// successful autosaves do not alter them; every other event invalidates it.
 	// Pointer-owned so the render-time cache survives Model's value receivers.
-	composeBackdrop *composeBackdropCache
-	readerPanes     *readerPaneCache
+	composeBackdrop   *composeBackdropCache
+	readerPanes       *readerPaneCache
+	pendingReads      map[int64]pendingRead
+	nextReadOperation uint64
+	readSession       readSessionFunc // optional session seam for deterministic read-operation tests
 
 	// bodyCache memoises rendered message bodies and viewportCache the
 	// finished reading-pane content. Held by pointer so writes survive
@@ -1479,82 +1482,26 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.loadAccountsCmd()
 
 	case MessageReadBatchUpdatedMsg:
-		readByID := make(map[int64]MessageReadBatchEntry, len(msg.Entries))
-		unreadDeltas := make(map[int64]int64)
-		for _, entry := range msg.Entries {
-			readByID[entry.MessageID] = entry
-			if entry.MailboxID != 0 && entry.WasRead != entry.Read {
-				if entry.Read {
-					unreadDeltas[entry.MailboxID]--
-				} else {
-					unreadDeltas[entry.MailboxID]++
-				}
-			}
-		}
-		for i := range m.messages {
-			if entry, ok := readByID[m.messages[i].ID]; ok {
-				m.messages[i].Read = entry.Read
-			}
-		}
-		for mailboxID, delta := range unreadDeltas {
-			m.adjustMailboxUnreadCount(mailboxID, delta)
-		}
-		if len(msg.Entries) > 0 {
-			m.applyFilter()
-			if len(m.filteredMessages) == 0 {
-				m.messageCursor = 0
-				m.listOffset = 0
-				m.clearViewportMessage()
-			} else {
-				rowCount := m.activeMessageRowCount()
-				m.messageCursor = clamp(m.messageCursor, 0, max(0, rowCount-1))
-				m.listOffset = clamp(m.listOffset, 0, max(0, rowCount-1))
-				m.setViewportForCurrentRow()
-			}
-		}
-		if msg.Err != nil {
-			m.setStatus(fmt.Sprintf("mark read failed: %v", msg.Err), true)
-			return m, m.clearStatusCmd()
-		}
-		return m, nil
-
+		cmd := m.applyMessageReadBatchUpdatedMsg(msg)
+		return m, cmd
 	case MessageReadUpdatedMsg:
-		if msg.Err != nil {
-			m.setStatus(fmt.Sprintf("mark read failed: %v", msg.Err), true)
-			return m, m.clearStatusCmd()
-		}
-		for i := range m.messages {
-			if m.messages[i].ID == msg.MessageID {
-				m.messages[i].Read = msg.Read
-				break
+		cmd := m.applyMessageReadUpdatedMsg(msg)
+		return m, cmd
+	case readRemoteCompletedMsg:
+		matched := false
+		for _, id := range msg.IDs {
+			if pending, ok := m.pendingReads[id]; ok && pending.Token == msg.Token {
+				delete(m.pendingReads, id)
+				matched = true
 			}
 		}
-		if msg.MailboxID != 0 && msg.WasRead != msg.Read {
-			delta := int64(1)
-			if msg.Read {
-				delta = -1
-			}
-			m.adjustMailboxUnreadCount(msg.MailboxID, delta)
-		}
-		m.applyFilter()
-		if len(m.filteredMessages) == 0 {
-			m.messageCursor = 0
-			m.listOffset = 0
-			m.clearViewportMessage()
+		if !matched {
 			return m, nil
 		}
-		rowCount := m.activeMessageRowCount()
-		if idx := m.indexOfFilteredMessage(msg.MessageID); msg.Advance && idx >= 0 && idx == m.messageCursor && idx < rowCount-1 {
-			m.messageCursor = idx + 1
-			visible := max(1, m.articleRowsVisible())
-			if m.messageCursor >= m.listOffset+visible {
-				m.listOffset = m.messageCursor - visible + 1
-			}
-		} else {
-			m.messageCursor = clamp(m.messageCursor, 0, max(0, rowCount-1))
-			m.listOffset = clamp(m.listOffset, 0, max(0, rowCount-1))
+		if msg.Err != nil {
+			m.setStatus(fmt.Sprintf("mark read failed: %v", msg.Err), true)
+			return m, m.clearStatusCmd()
 		}
-		m.setViewportForCurrentRow()
 		return m, nil
 
 	case MessageStarredUpdatedMsg:
@@ -1822,7 +1769,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.summaryMessage.Summary = msg.Summary
 		}
 		if markReadMsg != nil {
-			return m, m.setMessageReadCmd(*markReadMsg, true, false)
+			cmd := m.setMessageReadCmd(*markReadMsg, true, false)
+			return m, cmd
 		}
 		return m, nil
 
@@ -2639,7 +2587,8 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if !m.selectedDraftsMailbox() {
 				if msg2 := m.currentRowMessage(); msg2 != nil {
 					m.setViewportForCurrentRow()
-					return m, m.focusedMessageChangedCmd(*msg2)
+					cmd := m.focusedMessageChangedCmd(*msg2)
+					return m, cmd
 				}
 			}
 			return m, nil
@@ -2675,12 +2624,14 @@ func (m Model) focusPane(next pane) (tea.Model, tea.Cmd) {
 	// HTML render of every message in the thread.
 	if wasMessages && next == paneContent {
 		if msg := m.currentRowMessage(); msg != nil {
-			return m, m.openedMessageCmd(*msg)
+			cmd := m.openedMessageCmd(*msg)
+			return m, cmd
 		}
 	}
 	if !wasMessages && next == paneMessages {
 		if msg := m.currentRowMessage(); msg != nil {
-			return m, m.focusedMessageChangedCmd(*msg)
+			cmd := m.focusedMessageChangedCmd(*msg)
+			return m, cmd
 		}
 	}
 	return m, nil
@@ -2756,7 +2707,8 @@ func (m Model) selectMessageRow(idx int) (tea.Model, tea.Cmd) {
 	}
 	if msg2 := m.currentRowMessage(); msg2 != nil {
 		m.setViewportForCurrentRow()
-		return m, m.focusedMessageChangedCmd(*msg2)
+		cmd := m.focusedMessageChangedCmd(*msg2)
+		return m, cmd
 	}
 	return m, nil
 }

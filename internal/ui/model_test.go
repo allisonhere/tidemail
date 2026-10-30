@@ -432,12 +432,11 @@ func TestRightFromMessageListMarksUnreadMessageRead(t *testing.T) {
 		t.Fatal("expected right arrow into content to mark unread message read")
 	}
 
-	readMsg, ok := cmd().(MessageReadUpdatedMsg)
-	if !ok {
-		t.Fatalf("expected MessageReadUpdatedMsg, got %T", readMsg)
+	// Local state is already applied before the returned remote command runs.
+	if !m.messages[0].Read {
+		t.Fatal("read state waited for completion")
 	}
-	next, _ = m.Update(readMsg)
-	m = next.(Model)
+	m = settle(t, m, cmd)
 
 	if !m.messages[0].Read || !m.filteredMessages[0].Read {
 		t.Fatalf("expected in-memory message marked read, got messages=%+v filtered=%+v", m.messages[0], m.filteredMessages[0])
