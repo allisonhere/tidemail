@@ -24,7 +24,7 @@ func prepareReadFeedbackPerformance(m *Model) {
 		m.pendingReads[msg.ID] = pendingRead{Token: 1, Read: msg.Read}
 	}
 }
-func startReadFeedbackPerformance(*Model) tea.Cmd { return nil }
+func startReadFeedbackPerformance(m *Model) tea.Cmd { return m.ensureReadAnimation() }
 
 type readFeedbackPerfStats struct {
 	sent                      []time.Time

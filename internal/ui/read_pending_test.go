@@ -99,7 +99,9 @@ func readRemoteResults(cmd tea.Cmd) <-chan tea.Msg {
 			}
 			return
 		}
-		done <- msg
+		if _, ok := msg.(readRemoteCompletedMsg); ok {
+			done <- msg
+		}
 	}
 	go run(cmd)
 	return done
@@ -360,7 +362,7 @@ func TestOptimisticReadRepeatedKeyAndStableOrder(t *testing.T) {
 func TestOptimisticReadIndicatorModes(t *testing.T) {
 	m, _, _ := readPendingModel(t)
 	m.cfg.Display.Icons = true
-	if m.pendingReadIndicator() != "◌" {
+	if m.pendingReadIndicator() != readAnimationFrames[0] {
 		t.Fatal("missing Unicode pending indicator")
 	}
 	m.cfg.Display.Icons = false

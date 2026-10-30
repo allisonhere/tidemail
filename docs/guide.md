@@ -1255,7 +1255,7 @@ white dotted border only while Support is open.
 ### Pending read/unread changes
 
 Read/unread actions update the local message state, unread count, and existing
-cursor advancement immediately. A `◌` beside a message means its server update
+cursor advancement immediately. An animated Braille indicator (four frames per second) beside a message means its server update
 is pending (`~` in plain or icon-disabled display). The cursor arrow remains
 visible beside pending feedback. A conversation shows pending while any member
 is pending. Further read/unread requests for a pending message are ignored;

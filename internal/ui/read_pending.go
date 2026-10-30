@@ -154,6 +154,7 @@ func (m *Model) acceptReadChanges(messages []db.Message, target *bool, advance b
 	} else {
 		m.applyMessageReadBatchUpdatedMsg(MessageReadBatchUpdatedMsg{Entries: entries})
 	}
+	cmds = append(cmds, m.ensureReadAnimation())
 	return tea.Batch(cmds...)
 }
 
@@ -173,7 +174,7 @@ func (m *Model) pendingReadIndicator() string {
 	if m.styles.PlainUI || !m.iconsEnabled() {
 		return "~"
 	}
-	return "◌"
+	return readAnimationFrames[m.readAnimationFrame]
 }
 
 func (m *Model) applyMessageReadBatchUpdatedMsg(msg MessageReadBatchUpdatedMsg) tea.Cmd {
@@ -257,4 +258,15 @@ func (m *Model) applyMessageReadUpdatedMsg(msg MessageReadUpdatedMsg) tea.Cmd {
 	m.setViewportForCurrentRow()
 	return nil
 
+}
+
+// Read feedback has its own low-frequency clock. Reuse the existing Braille
+// assets without slowing any unrelated spinner or waking at its 10 FPS rate.
+func (m *Model) ensureReadAnimation() tea.Cmd {
+	if len(m.pendingReads) == 0 || m.readAnimationRunning {
+		return nil
+	}
+	m.readAnimationRunning = true
+	m.readAnimationGeneration++
+	return readAnimationTick(m.readAnimationGeneration)
 }

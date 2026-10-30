@@ -301,11 +301,14 @@ type Model struct {
 	// composeBackdrop caches only the main panes behind compose. Typing and
 	// successful autosaves do not alter them; every other event invalidates it.
 	// Pointer-owned so the render-time cache survives Model's value receivers.
-	composeBackdrop   *composeBackdropCache
-	readerPanes       *readerPaneCache
-	pendingReads      map[int64]pendingRead
-	nextReadOperation uint64
-	readSession       readSessionFunc // optional session seam for deterministic read-operation tests
+	composeBackdrop         *composeBackdropCache
+	readerPanes             *readerPaneCache
+	pendingReads            map[int64]pendingRead
+	nextReadOperation       uint64
+	readAnimationFrame      int
+	readAnimationRunning    bool
+	readAnimationGeneration uint64
+	readSession             readSessionFunc // optional session seam for deterministic read-operation tests
 
 	// bodyCache memoises rendered message bodies and viewportCache the
 	// finished reading-pane content. Held by pointer so writes survive
@@ -1487,6 +1490,16 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case MessageReadUpdatedMsg:
 		cmd := m.applyMessageReadUpdatedMsg(msg)
 		return m, cmd
+	case readAnimationTickMsg:
+		if !m.readAnimationRunning || msg.Generation != m.readAnimationGeneration {
+			return m, nil
+		}
+		if len(m.pendingReads) == 0 {
+			m.readAnimationRunning = false
+			return m, nil
+		}
+		m.readAnimationFrame = (m.readAnimationFrame + 1) % len(readAnimationFrames)
+		return m, readAnimationTick(m.readAnimationGeneration)
 	case readRemoteCompletedMsg:
 		matched := false
 		for _, id := range msg.IDs {
@@ -1494,6 +1507,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				delete(m.pendingReads, id)
 				matched = true
 			}
+		}
+		if len(m.pendingReads) == 0 && m.readAnimationRunning {
+			m.readAnimationRunning = false
+			m.readAnimationGeneration++ // invalidate a tick already in flight
 		}
 		if !matched {
 			return m, nil
