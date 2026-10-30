@@ -121,7 +121,7 @@ func TestAboutOceanShowsContentAfterIntro(t *testing.T) {
 	body := s.renderAboutOceanSection(90, newManagerChrome(90, CatppuccinMocha, false))
 	text := oceanText(body)
 
-	for _, want := range []string{"your mail, your rules", "terminal information delivery engine", "Thanks for taking a look -allie", "❤", "Support Tidemail", "Repository", "Issues"} {
+	for _, want := range []string{"your mail, your rules", "terminal information delivery engine", "Thanks for taking a look -allie", "♥", "Support Tidemail", "Repository", "Issues"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("expected %q in the About scene, got:\n%s", want, text)
 		}
@@ -136,12 +136,12 @@ func TestAboutOceanHeartFocusShowsHalo(t *testing.T) {
 	s.detailHeight = 30
 	chrome := newManagerChrome(90, CatppuccinMocha, false)
 
-	if text := oceanText(s.renderAboutOceanSection(90, chrome)); strings.Contains(text, "✦ ❤ ✦") {
+	if text := oceanText(s.renderAboutOceanSection(90, chrome)); strings.Contains(text, "✦ ♥ ✦") {
 		t.Fatalf("expected no halo while the heart isn't focused")
 	}
 	s.setFocusedField(sfAboutHeart)
 	body := s.renderAboutOceanSection(90, chrome)
-	if !strings.Contains(ansi.Strip(body.lines[body.anchors[sfAboutHeart]]), "✦ ❤ ✦") {
+	if !strings.Contains(ansi.Strip(body.lines[body.anchors[sfAboutHeart]]), "✦ ♥ ✦") {
 		t.Fatalf("expected the halo on the heart's anchor line when focused")
 	}
 }

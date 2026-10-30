@@ -237,13 +237,13 @@ func (s Settings) renderAboutOceanSection(width int, chrome managerChrome) setti
 		heart = oceanPride(s.aboutRevealFrame / 3)
 	}
 	if heartFocused || pride {
-		x := c.centerText(l.heartY, "✦ ❤ ✦", oceanHalo)
-		c.put(x+2, l.heartY, '❤', heart)
+		x := c.centerText(l.heartY, "✦ ♥ ✦", oceanHalo)
+		c.put(x+2, l.heartY, '♥', heart)
 		if p := c.at(x+2, l.heartY); p != nil {
 			p.bold = true
 		}
 	} else {
-		c.centerText(l.heartY, "❤", heart)
+		c.centerText(l.heartY, "♥", heart)
 	}
 
 	oceanButtons(c, l.linksY, s.focusedField, sceneEase(f, 20, 36))

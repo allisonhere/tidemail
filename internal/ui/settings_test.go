@@ -878,7 +878,7 @@ func TestModelRoutesAboutHeartActivationThroughSettingsOverlay(t *testing.T) {
 		next = nextModel.(Model)
 	}
 	view := ansi.Strip(next.settings.View(80, 24, newManagerChrome(80, CatppuccinMocha, false)))
-	if !strings.Contains(view, "LOVE IS LOVE") || !strings.Contains(view, "✦ ❤ ✦") {
+	if !strings.Contains(view, "LOVE IS LOVE") || !strings.Contains(view, "✦ ♥ ✦") {
 		t.Fatalf("expected routed reveal and active heart halo, got %q", view)
 	}
 }
