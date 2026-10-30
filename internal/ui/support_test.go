@@ -14,18 +14,18 @@ import (
 
 func TestSupportMetadataUsesConfirmedProviders(t *testing.T) {
 	if len(supportLinks) != 1 {
-		t.Fatalf("supportLinks has %d providers; want only the confirmed Ko-fi provider", len(supportLinks))
+		t.Fatalf("supportLinks has %d providers; want only the GitHub Sponsors provider", len(supportLinks))
 	}
 	link := supportLinks[0]
-	if link.Name != "Ko-fi" || link.URL != koFiSupportURL {
-		t.Fatalf("unexpected Ko-fi metadata: %+v", link)
+	if link.Name != "GitHub Sponsors" || link.URL != githubSponsorsURL {
+		t.Fatalf("unexpected GitHub Sponsors metadata: %+v", link)
 	}
-	if koFiSupportURL != "https://ko-fi.com/E1E31QQRI9" {
-		t.Fatalf("Ko-fi URL = %q", koFiSupportURL)
+	if githubSponsorsURL != "https://github.com/sponsors/allisonhere" {
+		t.Fatalf("GitHub Sponsors URL = %q", githubSponsorsURL)
 	}
 	for _, link := range supportLinks {
-		if strings.Contains(strings.ToLower(link.Name), "github") {
-			t.Fatalf("unconfirmed GitHub Sponsors provider should not be registered: %+v", link)
+		if strings.Contains(strings.ToLower(link.URL), "ko-fi") {
+			t.Fatalf("retired Ko-fi provider should not be registered: %+v", link)
 		}
 	}
 }
@@ -48,7 +48,7 @@ func TestSupportSettingsSectionRegistrationAndRendering(t *testing.T) {
 
 	s.setActiveSection(ssSupport)
 	view := ansi.Strip(s.View(120, 24, newManagerChrome(120, CatppuccinMocha, false)))
-	for _, want := range []string{"free and open source", "Buy me a coffee", "Copy link", koFiSupportURL, "Thank you"} {
+	for _, want := range []string{"free and open source", "Sponsor", "Copy link", githubSponsorsURL, "Thank you"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("Support view missing %q: %q", want, view)
 		}
@@ -231,17 +231,17 @@ func TestSupportContentFollowsCenteredSpacingMockup(t *testing.T) {
 		"Tidemail is free and open source.",
 		"If it makes email a little better for you,",
 		"you can support continued development.",
-		"☕ Ko-fi",
-		"Buy me a coffee",
-		koFiSupportURL,
+		"☕ GitHub Sponsors",
+		"Sponsor",
+		githubSponsorsURL,
 		"Thank you for supporting Tidemail -allie",
 		"♥",
 	}
 	last := -1
 	for _, label := range labels {
 		found := -1
-		for row, styled := range body.lines {
-			if strings.Contains(ansi.Strip(styled), label) {
+		for row := last + 1; row < len(body.lines); row++ {
+			if strings.Contains(ansi.Strip(body.lines[row]), label) {
 				found = row
 				break
 			}
@@ -252,7 +252,7 @@ func TestSupportContentFollowsCenteredSpacingMockup(t *testing.T) {
 		line := ansi.Strip(body.lines[found])
 		start := strings.Index(line, label)
 		delta := start - (ansi.StringWidth(line)-lipgloss.Width(label))/2
-		if label != "Buy me a coffee" && (start < 0 || delta < -4 || delta > 4) {
+		if label != "Sponsor" && (start < 0 || delta < -4 || delta > 4) {
 			t.Fatalf("support content %q is not centered in %q", label, line)
 		}
 		last = found
@@ -276,7 +276,7 @@ func TestSupportButtonsMatchAboutAndStackWhenNarrow(t *testing.T) {
 	if wideCopyRow != 0 || lipgloss.Height(wide) != 3 {
 		t.Fatalf("wide support buttons should share one About-style row: offset=%d height=%d", wideCopyRow, lipgloss.Height(wide))
 	}
-	if !strings.Contains(ansi.Strip(wide), "╭") || !strings.Contains(ansi.Strip(wide), "Buy me a coffee") || !strings.Contains(ansi.Strip(wide), "Copy link") {
+	if !strings.Contains(ansi.Strip(wide), "╭") || !strings.Contains(ansi.Strip(wide), "Sponsor") || !strings.Contains(ansi.Strip(wide), "Copy link") {
 		t.Fatalf("wide support buttons lost About-style rounded controls: %q", ansi.Strip(wide))
 	}
 	narrow, narrowCopyRow := s.renderSupportButtons(supportLinks[0], 0, 24, chrome)
@@ -311,8 +311,8 @@ func TestSupportBrowserFailureShowsURL(t *testing.T) {
 	original := browserOpen
 	t.Cleanup(func() { browserOpen = original })
 	browserOpen = func(configured, target string) error {
-		if target != koFiSupportURL {
-			t.Fatalf("browser target = %q; want %q", target, koFiSupportURL)
+		if target != githubSponsorsURL {
+			t.Fatalf("browser target = %q; want %q", target, githubSponsorsURL)
 		}
 		return errors.New("no launcher")
 	}
@@ -329,7 +329,7 @@ func TestSupportBrowserFailureShowsURL(t *testing.T) {
 	msg := cmd()
 	nextModel, _ = nextModel.(Model).Update(msg)
 	next := nextModel.(Model)
-	if !next.statusErr || !strings.Contains(next.statusMsg, "Could not open your browser") || !strings.Contains(next.statusMsg, koFiSupportURL) {
+	if !next.statusErr || !strings.Contains(next.statusMsg, "Could not open your browser") || !strings.Contains(next.statusMsg, githubSponsorsURL) {
 		t.Fatalf("browser failure status = %q, error=%t", next.statusMsg, next.statusErr)
 	}
 }

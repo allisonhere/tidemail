@@ -366,7 +366,7 @@ var nightSupport = supportPalette{
 const supportBlockH = 15
 
 // supportBlock draws the Support page's content centered on cx: heading,
-// pitch, the Ko-fi line with a steaming cup, Open/Copy buttons (the first
+// pitch, the GitHub Sponsors line with a steaming cup, Open/Copy buttons (the first
 // shown focused), the thank-you and a pulsing heart.
 func supportBlock(c *canvas, cx, y0 int, ff float64, pal supportPalette, fade float64, bgAt func(x, y int) rgb) {
 	tint := func(x, y int, col rgb) rgb { return lerp(bgAt(x, y), col, fade) }
@@ -382,13 +382,13 @@ func supportBlock(c *canvas, cx, y0 int, ff float64, pal supportPalette, fade fl
 	line(y0+3, "If it makes email a little better for you,", pal.muted)
 	line(y0+4, "you can support continued development.", pal.muted)
 
-	// "☕ Ko-fi · one-time or recurring", with steam curling off the cup.
-	kofi := "   Ko-fi · one-time or recurring"
-	kx := line(y0+6, kofi, pal.heading)
+	// "☕ GitHub Sponsors · one-time or monthly", with steam curling off the cup.
+	sponsor := "   GitHub Sponsors · one-time or monthly"
+	kx := line(y0+6, sponsor, pal.heading)
 	c.putWide(kx, y0+6, '☕', tint(kx, y0+6, hex("#f2e6d0")))
 	steam(c, kx, y0+5, ff, pal.steam, fade, 1) // the blank row above the cup
 
-	buttons(c, cx, y0+8, []string{"Support on Ko-fi", "Copy link"}, 0, pal, fade)
+	buttons(c, cx, y0+8, []string{"Sponsor", "Copy link"}, 0, pal, fade)
 	line(y0+12, "Thank you for supporting Tidemail -allie", pal.muted)
 	pulse := 0.5 + 0.5*math.Sin(ff*0.22)
 	line(y0+13, "❤", lerp(pal.heartLo, pal.heartHi, pulse))

@@ -85,7 +85,7 @@ jobs:
             echo
             echo "---"
             echo
-            echo "Enjoying TideMail? [Support it on Ko-fi](https://ko-fi.com/E1E31QQRI9), star the repo, or tell a friend who lives in a terminal."
+            echo "Enjoying TideMail? [Sponsor it on GitHub](https://github.com/sponsors/allisonhere), star the repo, or tell a friend who lives in a terminal."
           } > release-notes.md
           echo "----- release-notes.md -----"
           cat release-notes.md

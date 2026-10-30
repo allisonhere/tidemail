@@ -8,12 +8,12 @@ import (
 // Settings → Support, "Café": a cozy café at night. String lights sway along
 // the top, a big mug steams (and every so often the steam drifts into a
 // heart), and along the counter a Pac-Man chases a runaway coffee cup. The
-// Support copy and the Ko-fi buttons sit in the middle. Plain (VT52) themes
+// Support copy and the sponsor buttons sit in the middle. Plain (VT52) themes
 // keep the original dotted-frame Support page.
 
 const (
 	settingsSupportCafePeriod = 100 * time.Millisecond // smoother than the plain page's 240ms
-	cafeBuyLabel              = "Buy me a coffee"
+	cafeBuyLabel              = "Sponsor"
 	cafeCopyLabel             = "Copy link"
 	cafeChaseGap              = 8 // Pac-Man stays this far behind the cup
 	cafeSteamHeartEvery       = 120
@@ -57,7 +57,7 @@ type cafeLayout struct {
 	stack                                     bool
 	lights, counter, mug                      bool
 	cx, y0                                    int
-	kofiY, openY, copyY, urlY, thanksY, heart int
+	linkY, openY, copyY, urlY, thanksY, heart int
 }
 
 func cafeLayoutFor(w, h int) (cafeLayout, int) {
@@ -83,7 +83,7 @@ func cafeLayoutFor(w, h int) (cafeLayout, int) {
 		l.cx = w/2 + 10
 	}
 	l.y0 = top + max(0, (bottom-top-contentH)/2)
-	l.kofiY = l.y0 + 6
+	l.linkY = l.y0 + 6
 	l.openY, l.copyY = l.y0+8, l.y0+8
 	l.urlY = l.y0 + 12
 	if l.stack {
@@ -133,20 +133,20 @@ func (s Settings) renderSupportCafeSection(width int) settingsSectionBody {
 	text(l.y0+3, "If it makes email a little better for you,", cafeMuted, false)
 	text(l.y0+4, "you can support continued development.", cafeMuted, false)
 
-	// "☕ Ko-fi": the cup is double width, so it's placed by hand and the
+	// "☕ GitHub Sponsors": the cup is double width, so it's placed by hand and the
 	// name follows it; steam curls off the cup into the blank row above.
 	link := supportLinks[0]
 	name := " " + link.Name
 	kx := l.cx - (2+len([]rune(name)))/2
-	if p := c.at(kx, l.kofiY); p != nil {
-		c.putWide(kx, l.kofiY, '☕', sceneLerp(p.bg, cafeCup, fade))
+	if p := c.at(kx, l.linkY); p != nil {
+		c.putWide(kx, l.linkY, '☕', sceneLerp(p.bg, cafeCup, fade))
 	}
 	for i, r := range []rune(name) {
-		if p := c.at(kx+2+i, l.kofiY); p != nil {
+		if p := c.at(kx+2+i, l.linkY); p != nil {
 			p.ch, p.fg, p.bold = r, sceneLerp(p.bg, cafeHeading, fade), true
 		}
 	}
-	cafeSteamWisps(c, f, kx, l.kofiY-1, 1, fade)
+	cafeSteamWisps(c, f, kx, l.linkY-1, 1, fade)
 
 	open, copyF := supportOpenField(0), supportCopyField(0)
 	if l.stack {

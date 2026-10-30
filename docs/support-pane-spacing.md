@@ -15,13 +15,13 @@ red, and animates Pac-Man and the coffee cup around the white dotted border.
           If it makes email a little better for you,
           you can support continued development.
 
-                        ☕ Ko-fi
+                   ☕ GitHub Sponsors
 
              ╭────────────────────╮  ╭─────────────╮
-             │ Support on Ko-fi    │  │ Copy link   │
+             │ Sponsor            │  │ Copy link   │
              ╰────────────────────╯  ╰─────────────╯
 
-              https://ko-fi.com/E1E31QQRI9
+              https://github.com/sponsors/allisonhere
 
            Thank you for supporting Tidemail -allie
 

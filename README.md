@@ -8,7 +8,7 @@
 [![Latest release](https://img.shields.io/github/v/release/allisonhere/tidemail?style=flat-square)](https://github.com/allisonhere/tidemail/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/allisonhere/tidemail?style=flat-square)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/allisonhere/tidemail?style=flat-square)](https://github.com/allisonhere/tidemail/stargazers)
-[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-support%20TideMail-FF5E5B?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/E1E31QQRI9)
+[![Sponsor on GitHub](https://img.shields.io/badge/GitHub%20Sponsors-support%20TideMail-EA4AAA?style=flat-square&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/allisonhere)
 
 TideMail keeps your accounts, message list, and reading pane on one screen. It
 speaks IMAP and SMTP, stores its cache on your machine, and gives the keyboard
@@ -120,7 +120,7 @@ One inbox, 51 built-in themes in 23 families — Catppuccin, Tokyo Night, Rosé 
   double-click a message to open it, use the scroll wheel over any pane, and
   right-click a folder, account, or message for a menu of just its actions.
 - **Optional support, kept out of your way.** Open **Settings → Support** to
-  visit or copy Tidemail's Ko-fi link; **About** and **Support** are small
+  visit or copy Tidemail's GitHub Sponsors link; **About** and **Support** are small
   animated scenes. No donation prompts appear during normal email use.
 
 ## Install
@@ -539,7 +539,7 @@ go test ./...
 TideMail is free and MIT licensed, built and maintained by one person. If it
 saves you time, you can help keep it going:
 
-- **[Support on Ko-fi](https://ko-fi.com/E1E31QQRI9)**, one-time or recurring. It pays
+- **[Sponsor on GitHub](https://github.com/sponsors/allisonhere)**, one-time or monthly. It pays
   for the test accounts, OAuth app reviews, and the hours that go into fixes and
   new features.
 - **Star the repo** and tell a friend who still lives in a terminal. Reach matters

@@ -134,7 +134,7 @@ Current release: **v1.7.0**.
   drop shadow, AI provider config, editor, update checks, a dedicated Plugins
   section with inline administration and configuration, a read-only Changelog
   view (the embedded CHANGELOG.md, scrollable, works offline), and an optional
-  Support page with open/copy actions for the confirmed Ko-fi link. About is an
+  Support page with open/copy actions for the GitHub Sponsors link. About is an
   animated "Ocean night" scene and Support an animated "Café" scene; plain
   (VT52) themes keep the original static pages.
 - **Mouse support** (opt-in, Settings → Display): click to select rows/focus panes or select LINKS entries (clicks never open reader links),

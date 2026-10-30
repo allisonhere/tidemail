@@ -6,6 +6,11 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- Support links (Settings → Support, README, release notes and the repository
+  Sponsor button) now point to GitHub Sponsors instead of Ko-fi.
+
 ## v1.7.1
 
 ### Added
