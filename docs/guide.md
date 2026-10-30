@@ -1267,7 +1267,9 @@ ID where it remains visible. This includes Unread First ordering and Unread Only
 filtering; conversation grouping and ordering remain unchanged. A pending
 message's row number can shift as other completed messages move.
 
-The cursor arrow remains visible beside pending feedback. A conversation shows
+The indicator takes the place of the row's unread or cursor marker until the
+server confirms, so the row does not shift; the highlight still marks the
+cursor row. A conversation shows
 pending while a visible member is pending. Failures clear pending and appear in
 the existing status/log mechanism without changing that operation's local read
 state. Mixed bulk actions apply successful groups and leave failed groups

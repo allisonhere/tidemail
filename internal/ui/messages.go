@@ -105,11 +105,10 @@ func (m *Model) renderMessagesPane() string {
 			if cursor {
 				dot = "→ "
 			}
+			// Pending feedback replaces the unread/cursor marker in place so the
+			// prefix keeps its two-cell width; the row highlight marks the cursor.
 			if m.rowReadPending(msg2, thread) {
 				dot = m.pendingReadIndicator() + " "
-				if cursor {
-					dot = "→" + dot
-				}
 			}
 			subject := m.messageRowTitle(msg2)
 			if threadCount > 1 {

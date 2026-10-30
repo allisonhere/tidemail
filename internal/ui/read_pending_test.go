@@ -194,8 +194,17 @@ func TestServerConfirmedReadConcurrentAndFailure(t *testing.T) {
 	if len(m.pendingReads) != 1 || m.readVersion != version || !m.messages[1].Read {
 		t.Fatal("stale completion affected newer operation")
 	}
-	if !strings.Contains(m.renderMessagesPane(), "→"+m.pendingReadIndicator()) {
+	pendingRow := ""
+	for _, line := range strings.Split(m.renderMessagesPane(), "\n") {
+		if strings.Contains(line, m.pendingReadIndicator()+" ") {
+			pendingRow = line
+		}
+	}
+	if pendingRow == "" {
 		t.Fatal("cursor hid pending feedback")
+	}
+	if strings.Contains(pendingRow, "→") {
+		t.Fatalf("pending cursor row widened its prefix: %q", pendingRow)
 	}
 	done := readRemoteResults(cmd)
 	awaitReadStore(t, entered)

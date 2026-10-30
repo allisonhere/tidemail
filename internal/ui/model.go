@@ -1492,12 +1492,6 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.accountManager.statusMsg = "DELETED ACCOUNT"
 		return m, m.loadAccountsCmd()
 
-	case MessageReadBatchUpdatedMsg:
-		cmd := m.applyMessageReadBatchUpdatedMsg(msg)
-		return m, cmd
-	case MessageReadUpdatedMsg:
-		cmd := m.applyMessageReadUpdatedMsg(msg)
-		return m, cmd
 	case readAnimationTickMsg:
 		if !m.readAnimationRunning || msg.Generation != m.readAnimationGeneration {
 			return m, nil

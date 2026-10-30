@@ -122,7 +122,7 @@ var DefaultKeys = KeyMap{
 
 	Sync:     key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sync mailbox")),
 	SyncAll:  key.NewBinding(key.WithKeys("F", "ctrl+s"), key.WithHelp("F/ctrl+s", "sync all")),
-	MarkRead: key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "mark read")),
+	MarkRead: key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "toggle read/unread")),
 	// NeedsYouDismiss only acts in Needs You (dismiss) and Waiting on Them
 	// (stop waiting).
 	NeedsYouDismiss: key.NewBinding(key.WithKeys("X"), key.WithHelp("X", "dismiss / stop waiting")),

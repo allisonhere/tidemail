@@ -1234,7 +1234,7 @@ func TestBackgroundViewResetKeepsOpenOverlay(t *testing.T) {
 		if m.overlay != overlay {
 			t.Fatalf("overlay %d closed by a background accounts reload", overlay)
 		}
-		next, _ = m.Update(MessageReadUpdatedMsg{MessageID: 1, Read: true})
+		next, _ = m.Update(readRemoteCompletedMsg{IDs: []int64{1}, Success: []MessageReadBatchEntry{{MessageID: 1, Read: true}}})
 		m = next.(Model)
 		if m.overlay != overlay {
 			t.Fatalf("overlay %d closed by a background read-state update", overlay)

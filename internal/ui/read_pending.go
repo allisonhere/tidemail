@@ -2,7 +2,6 @@ package ui
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/allisonhere/tidemail/internal/config"
@@ -174,83 +173,6 @@ func (m *Model) pendingReadIndicator() string {
 		return "~"
 	}
 	return readAnimationFrames[m.readAnimationFrame]
-}
-
-func (m *Model) applyMessageReadBatchUpdatedMsg(msg MessageReadBatchUpdatedMsg) tea.Cmd {
-	readByID := make(map[int64]MessageReadBatchEntry, len(msg.Entries))
-	unreadDeltas := make(map[int64]int64)
-	for _, entry := range msg.Entries {
-		readByID[entry.MessageID] = entry
-		if entry.MailboxID != 0 && entry.WasRead != entry.Read {
-			if entry.Read {
-				unreadDeltas[entry.MailboxID]--
-			} else {
-				unreadDeltas[entry.MailboxID]++
-			}
-		}
-	}
-	for i := range m.messages {
-		if entry, ok := readByID[m.messages[i].ID]; ok {
-			m.messages[i].Read = entry.Read
-		}
-	}
-	for mailboxID, delta := range unreadDeltas {
-		m.adjustMailboxUnreadCount(mailboxID, delta)
-	}
-	if len(msg.Entries) > 0 {
-		m.applyFilter()
-		if len(m.filteredMessages) == 0 {
-			m.messageCursor = 0
-			m.listOffset = 0
-			m.clearViewportMessage()
-		} else {
-			rowCount := m.activeMessageRowCount()
-			m.messageCursor = clamp(m.messageCursor, 0, max(0, rowCount-1))
-			m.listOffset = clamp(m.listOffset, 0, max(0, rowCount-1))
-			m.setViewportForCurrentRow()
-		}
-	}
-	if msg.Err != nil {
-		m.setStatus(fmt.Sprintf("mark read failed: %v", msg.Err), true)
-		return m.clearStatusCmd()
-	}
-	return nil
-
-}
-
-func (m *Model) applyMessageReadUpdatedMsg(msg MessageReadUpdatedMsg) tea.Cmd {
-	if msg.Err != nil {
-		m.setStatus(fmt.Sprintf("mark read failed: %v", msg.Err), true)
-		return m.clearStatusCmd()
-	}
-	for i := range m.messages {
-		if m.messages[i].ID == msg.MessageID {
-			m.messages[i].Read = msg.Read
-			break
-		}
-	}
-	if msg.MailboxID != 0 && msg.WasRead != msg.Read {
-		delta := int64(1)
-		if msg.Read {
-			delta = -1
-		}
-		m.adjustMailboxUnreadCount(msg.MailboxID, delta)
-	}
-	m.applyFilter()
-	if len(m.filteredMessages) == 0 {
-		m.messageCursor = 0
-		m.listOffset = 0
-		m.clearViewportMessage()
-		return nil
-	}
-	if msg.Advance {
-		m.advanceReadCursor(msg.MessageID)
-		return nil
-	}
-	m.messageCursor = clamp(m.messageCursor, 0, max(0, m.activeMessageRowCount()-1))
-	m.listOffset = clamp(m.listOffset, 0, max(0, m.activeMessageRowCount()-1))
-	m.setViewportForCurrentRow()
-	return nil
 }
 
 func (m *Model) advanceReadCursor(messageID int64) {
