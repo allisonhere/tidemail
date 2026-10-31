@@ -111,12 +111,11 @@ type ComposeModel struct {
 	suggestCursor    int
 	suggestDismissed bool
 
-	attachments    []attachmentFile
-	picker         filePicker
-	quoteCollapsed bool
-	draftID        int64
-	dirty          bool
-	lastAutosaved  time.Time
+	attachments   []attachmentFile
+	picker        filePicker
+	draftID       int64
+	dirty         bool
+	lastAutosaved time.Time
 
 	// PGP toggles (see pgp_compose.go). pgpAvailable is set by the model from
 	// the installed plugins before each update and render.
@@ -284,7 +283,6 @@ func formatParticipant(p conversation.Participant) string {
 // headers, and the quoted original.
 func newReplyBase(original db.Message, acfg config.AccountConfig, accounts []config.AccountConfig, addressBook []string) ComposeModel {
 	c := NewCompose(acfg, accounts, addressBook)
-	c.quoteCollapsed = true
 	subject := original.Subject
 	if !strings.HasPrefix(strings.ToLower(subject), "re:") {
 		subject = "Re: " + subject
@@ -309,7 +307,6 @@ func newReplyBase(original db.Message, acfg config.AccountConfig, accounts []con
 // The original body is quoted with a "Forwarded message" header and original attachments are included.
 func NewForward(original db.Message, acfg config.AccountConfig, accounts []config.AccountConfig, addressBook []string) ComposeModel {
 	c := NewCompose(acfg, accounts, addressBook)
-	c.quoteCollapsed = true
 	c.isForward = true
 
 	subject := original.Subject
@@ -666,6 +663,10 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 	km, ok := msg.(tea.KeyMsg)
 	if !ok {
 		var cmd tea.Cmd
+		if c.tmplOpen && c.tmplEditing {
+			c.tmplEd, cmd = c.tmplEd.Update(msg)
+			return c, cmd, false
+		}
 		switch c.focusedField {
 		case composeFieldTo:
 			c.toInput, cmd = c.toInput.Update(msg)
@@ -693,6 +694,14 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 	}
 	if c.tmplOpen {
 		return c.updateTemplates(km, keys)
+	}
+
+	// While the editor's search bar owns input, Esc and Tab belong to it rather
+	// than the compose form. Explicit send shortcuts remain available.
+	if c.focusedField == composeFieldBody && c.bodyInput.ed.SearchActive() && km.String() != "ctrl+s" && km.String() != "ctrl+d" {
+		var cmd tea.Cmd
+		c.bodyInput, cmd = c.bodyInput.Update(msg)
+		return c, cmd, false
 	}
 
 	// Normal compose mode
@@ -1349,9 +1358,6 @@ func (c ComposeModel) composeLayout(width, height int, styles Styles) (hints str
 		start, end := c.visibleSenderRange()
 		fixedLines += end - start
 	}
-	if c.inReplyTo != "" {
-		fixedLines++ // quote toggle line
-	}
 	if len(c.attachments) > 0 {
 		fixedLines += 3 + len(c.attachments) // gap + group title + blank + one row per file
 	}
@@ -1424,7 +1430,7 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 		}
 		if c.focusedField == composeFieldBody {
 			// Copy/cut act on the editor selection, so only show them in the body.
-			pairs = append(pairs, "^c", "copy", "^x", "cut")
+			pairs = append(pairs, "^c", "copy", "^x", "cut", "^f", "find")
 		}
 		// F6 opens the template picker from any field, so the hint is always shown.
 		pairs = append(pairs, "f6", "templates")
@@ -1434,8 +1440,19 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 			pairs = append(pairs, "⁂", "sig")
 		}
 	}
+
+	if c.focusedField == composeFieldBody && c.bodyInput.ed.SearchActive() {
+		parts = nil
+		pairs = []string{"enter", "next / activate", "f3 / shift+f3", "next / previous", "tab", "controls", "^r", "replace", "esc", "close find", "^s", "send"}
+	}
 	for i := 0; i+1 < len(pairs); i += 2 {
-		parts = append(parts, keyStyle.Render(pairs[i])+lblStyle.Render(" "+pairs[i+1]))
+		part := keyStyle.Render(pairs[i]) + lblStyle.Render(" "+pairs[i+1])
+		// Keep cancel and the signature marker together whenever they fit as a pair.
+		if pairs[i] == "esc" && i+3 < len(pairs) && pairs[i+2] == "⁂" {
+			part += base.Render("   ") + keyStyle.Render(pairs[i+2]) + lblStyle.Render(" "+pairs[i+3])
+			i += 2
+		}
+		parts = append(parts, part)
 	}
 
 	// Greedy-pack into lines no wider than width, indented 2, separated by 3 spaces.
@@ -1507,6 +1524,10 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	// selection highlight, and a dim placeholder. The per-line background
 	// wrapping below covers the remainder of each line.
 	c.bodyInput.CursorStyle = lipgloss.NewStyle().Background(chrome.cursor).Foreground(bodyBg)
+	c.bodyInput.SearchMatchStyle = lipgloss.NewStyle().Background(bodyBg).Foreground(chrome.accent).Underline(true)
+	c.bodyInput.SearchCurrentStyle = lipgloss.NewStyle().Background(chrome.accent).Foreground(bodyBg)
+	c.bodyInput.SearchControlStyle = lipgloss.NewStyle().Background(chrome.cursor).Foreground(bodyBg)
+	c.bodyInput.SearchErrorStyle = lipgloss.NewStyle().Background(bodyBg).Foreground(chrome.accent).Bold(true)
 	c.bodyInput.SelectedStyle = lipgloss.NewStyle().Background(chrome.muted).Foreground(chrome.text)
 	c.bodyInput.PlaceholderStyle = lipgloss.NewStyle().Background(bodyBg).Foreground(chrome.muted)
 
@@ -1606,23 +1627,6 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	rows = append(rows, softInput("Subject", c.subjectInput, composeFieldSubject))
 	rows = append(rows, blankRow(chrome.baseBg)) // spacer before body
 	rows = append(rows, bodyRow)
-
-	// reply quote toggle
-	if c.inReplyTo != "" {
-		qIcon := "▸"
-		if !c.quoteCollapsed {
-			qIcon = "▾"
-		}
-		if chrome.plainUI {
-			qIcon = ">"
-			if !c.quoteCollapsed {
-				qIcon = "v"
-			}
-		}
-		qText := fmt.Sprintf("  %s  quoted original (enter to toggle)", qIcon)
-		qLine := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render(qText)
-		rows = append(rows, padStyled(qLine, width, chrome.baseBg))
-	}
 
 	// attachments
 	if len(c.attachments) > 0 {

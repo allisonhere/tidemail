@@ -1356,3 +1356,20 @@ func TestComposeSignatureFooterUsesStandardHintStyles(t *testing.T) {
 		t.Fatal("signature hint must use the same trigger and label styles as other hints")
 	}
 }
+
+func TestReplyHasNoUnusedQuoteToggleRow(t *testing.T) {
+	c := NewReply(db.Message{From: "alice@example.com", MessageID: "<reply@example.com>", BodyText: "original text"}, config.AccountConfig{}, nil, nil)
+	styles := BuildStyles(CatppuccinMocha, "compact", "square")
+	_, _, replyHeight, _ := c.composeLayout(80, 28, styles)
+	fresh := NewCompose(config.AccountConfig{}, nil, nil)
+	_, _, freshHeight, _ := fresh.composeLayout(80, 28, styles)
+	if replyHeight != freshHeight {
+		t.Fatal("reply must not reserve a row for a nonexistent quote toggle")
+	}
+	if strings.Contains(ansi.Strip(c.View(80, 28, styles)), "enter to toggle") {
+		t.Fatal("misleading quote toggle is still shown")
+	}
+	if !strings.Contains(c.bodyInput.Value(), "> original text") {
+		t.Fatal("original quotation must remain in the editable body")
+	}
+}

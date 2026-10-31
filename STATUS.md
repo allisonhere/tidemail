@@ -97,6 +97,11 @@ Current release: **v1.7.0**.
 - **AI**: summaries and grammar across OpenAI, Claude, Gemini, and Ollama. Mail rules
   are AI-generated once into reviewed JSON, then matched locally and deterministically —
   no per-message AI cost.
+- **Compose Find/Replace**: `Ctrl+F` opens live Find; `Ctrl+R` in the bar shows
+  replacement controls. Replace All is one undo step; optional regex is exposed
+  by Settings → Editor → Advanced regex search. Vim supports `/`, `?`, `n`, `N`.
+  Local integration currently requires the Ripple search workspace (see
+  `docs/ripple-search-development.md`); the released dependency pin is unchanged.
 - **Compose**: optional vim mode (`compose_vim`), backed by the extracted
   [`ripple`](https://github.com/allisonhere/ripple) editor library.
 - **Gmail & Outlook OAuth** (optional): the account form's **Auth** row is a

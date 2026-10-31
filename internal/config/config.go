@@ -211,8 +211,9 @@ type DisplayConfig struct {
 	PaneCorners             string `toml:"pane_corners"` // "square" or "round"
 	Shadow                  bool   `toml:"shadow"`       // drop shadow behind modal overlays
 	ComposeVim              bool   `toml:"compose_vim"`
-	ComposeSpell            bool   `toml:"compose_spell"`      // offline spell check in compose (off by default)
-	ComposeSpellLang        string `toml:"compose_spell_lang"` // spell check language code; empty means English
+	ComposeSearchRegex      bool   `toml:"compose_search_regex"` // expose the advanced Regex search toggle
+	ComposeSpell            bool   `toml:"compose_spell"`        // offline spell check in compose (off by default)
+	ComposeSpellLang        string `toml:"compose_spell_lang"`   // spell check language code; empty means English
 	// Interactive CLI only; scripted commands ignore these.
 	CLIQuitAfterSend bool               `toml:"cli_quit_after_send"` // leave `tidemail cli` after a successful send or draft
 	CLISkipReview    bool               `toml:"cli_skip_review"`     // skip the wizard's review step when undo or a draft makes it safe

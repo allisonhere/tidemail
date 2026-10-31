@@ -77,7 +77,9 @@ One inbox, 51 built-in themes in 23 families — Catppuccin, Tokyo Night, Rosé 
 - **Unsubscribe without hunting for a footer.** Press `Ctrl+U` while reading to
   use the message's unsubscribe header or labeled unsubscribe link.
 - **Compose your way.** The standard editor supports text selection, the system
-  clipboard, undo and redo, and word movement. You can switch on Vim motions
+  clipboard, undo and redo, word movement, and Find/Replace (`Ctrl+F`, then
+  `Ctrl+R` for replacement controls). An advanced regex toggle is available via
+  **Settings → Editor → Advanced regex search**, off by default. You can switch on Vim motions
   and commands instead. Optional AI tools can summarize mail, proofread a
   draft, and build local filters from plain English. An optional offline spell
   check (**Settings → Editor**, off by default, in English or Español) underlines

@@ -442,6 +442,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 	// Compose body editors pick up vim mode from config via this package var
 	// (read in newEditorArea), the same way the clipboard is injected.
 	setEditorVimMode(cfg.Display.ComposeVim)
+	setEditorSearchRegex(cfg.Display.ComposeSearchRegex)
 	setEditorSpell(cfg.Display.ComposeSpell, cfg.Display.ComposeSpellLang, loadSpellWords(database))
 	addSpellNames(accountSpellEntries(cfg))
 
@@ -3047,6 +3048,9 @@ func (m Model) handleContentClick(x, y, paneTop int) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.overlay == overlayCompose && ((m.compose.focusedField == composeFieldBody && m.compose.bodyInput.ed.SearchActive()) || (m.compose.tmplOpen && m.compose.tmplEditing && m.compose.tmplEd.ed.SearchActive())) {
+		return m.handleCompose(msg)
+	}
 	// Ctrl+P opens the palette while composing. A literal ':' always reaches
 	// the editor so normal email text remains writable; Vim compose mode also
 	// uses it for commands such as :w and :q. Outside compose, ':' remains a
@@ -3432,6 +3436,7 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.contentShowHeaders = m.cfg.Display.ShowHeaders
 			// Apply the vim toggle to future compose editors (read in newEditorArea).
 			setEditorVimMode(m.cfg.Display.ComposeVim)
+			setEditorSearchRegex(m.cfg.Display.ComposeSearchRegex)
 			setEditorSpell(m.cfg.Display.ComposeSpell, m.cfg.Display.ComposeSpellLang, loadSpellWords(m.db))
 			merged, _ := MergedThemeFromConfig(m.cfg)
 			m.setStyles(BuildStyles(merged, m.cfg.Display.Density, m.cfg.Display.PaneCorners))
@@ -3549,8 +3554,10 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 		_, bw, bh, _ := m.compose.composeLayout(composeOverlayWidth(m.width), min(m.height-4, 36), m.styles)
 		m.compose.bodyInput.SetSize(bw, bh)
 	}
+	searching := (m.compose.focusedField == composeFieldBody && m.compose.bodyInput.ed.SearchActive()) ||
+		(m.compose.tmplOpen && m.compose.tmplEditing && m.compose.tmplEd.ed.SearchActive())
 	// Intercept grammar check key before compose gets it
-	if km, ok := msg.(tea.KeyMsg); ok && keyMatches(km, m.keys.GrammarCheck) {
+	if km, ok := msg.(tea.KeyMsg); ok && !searching && keyMatches(km, m.keys.GrammarCheck) {
 		// Only check the reply the user wrote, not the quoted/forwarded original.
 		reply, quote := splitReplyAndQuote(m.compose.bodyInput.Value())
 		if strings.TrimSpace(reply) == "" {
@@ -3564,11 +3571,11 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.grammarCheckCmd(reply)
 		}
 	}
-	if km, ok := msg.(tea.KeyMsg); ok && keyMatches(km, m.keys.PasteText) && !m.compose.picker.active {
+	if km, ok := msg.(tea.KeyMsg); ok && !searching && keyMatches(km, m.keys.PasteText) && !m.compose.picker.active {
 		return m, clipboardReadCmd()
 	}
 	// Sanitize system paste to prevent textarea corruption from combining marks.
-	if km, ok := msg.(tea.KeyMsg); ok && km.Paste {
+	if km, ok := msg.(tea.KeyMsg); ok && km.Paste && !searching {
 		sanitized := sanitizePaste(string(km.Runes))
 		msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(sanitized), Paste: true}
 	}
@@ -3577,7 +3584,7 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 	newC, cmd, exit := m.compose.Update(msg, m.keys)
 	m.compose = newC
 	m.persistSpellWords()
-	if km, ok := msg.(tea.KeyMsg); ok && km.Paste {
+	if km, ok := msg.(tea.KeyMsg); ok && km.Paste && !searching {
 		m.setStatus(fmt.Sprintf("pasted %d chars", len(km.Runes)), false)
 		m.compose.dirty = true
 	}

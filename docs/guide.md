@@ -566,9 +566,42 @@ the first try; it defaults to `3`, and `1` disables automatic retries. An
 interrupted delivery is marked uncertain because the server may have accepted
 it. Check Sent mail before manually retrying an uncertain message.
 
+When replying, the quoted original is editable text inside the message body;
+there is no separate expand/collapse control in compose.
+
 The standard editor is on by default. Use Shift with the arrow keys to select
 text, `Ctrl+C`/`Ctrl+X`/`Ctrl+V` for the system clipboard, `Ctrl+Z`/`Ctrl+Y` for
 undo and redo, and Ctrl with the arrow keys to move by word.
+
+Press `Ctrl+F` in the compose body to open Find. Matches highlight as you type;
+`Enter` or `F3` goes forward, `Shift+F3` goes backward, and navigation wraps.
+Press `Ctrl+R` inside Find to show Replace and focus the replacement field
+immediately. Press it again to hide Replace and return focus to Find. `Tab`/`Shift+Tab` cycle fields and
+actions; `Enter` in Replacement or on Replace changes the current match and
+advances, while All replaces every match as a single undo step. `Esc` closes
+Find without closing compose or undoing replacements. Copy/cut operate on the
+whole focused search field; paste inserts at its caret. The bar stays inside
+the body editor and scrolls long queries to keep the input caret visible.
+
+Search is literal and case-sensitive by default; use the `Aa` control to ignore
+case. **Settings → Editor → Advanced regex search** (off by default;
+`display.compose_search_regex`) reveals the optional `.*` toggle. Enabling the
+setting does not activate regex. Regex uses Go syntax and supports replacement
+captures (`$0` for the whole match, `$1`, `${name}`). Anchors `^` and `$` match
+each logical line, independently of visual wrapping; `\A` and `\z` match the
+whole document's boundaries. Use `(?-m)` to disable multiline mode explicitly.
+For example, replacing `^> ` with nothing strips the quote prefix on every line.
+
+In regex replacements, write `$$` for a literal dollar: replace `cat` with `$$5`
+in `price cat` to get `price $5`. References to nonexistent capture groups show
+an inline replacement error and block Replace and All without editing the draft.
+Valid optional groups that did not participate in a match expand to empty.
+Use `${1}suffix` for group 1 followed by text; `$1suffix` is a group name.
+Invalid patterns also show an error and cannot replace text. In literal mode, replacement dollar signs and backslashes stay literal.
+Empty queries cannot replace text. Searches cover the whole body, including
+quoted text. In Vim Normal mode, `/` and `?` preview searches; Enter accepts,
+Esc restores the prior position, and `n`/`N` repeat/reverse the search direction.
+Vim `:s` and `:%s` substitution commands are not supported.
 
 Enable Vim keys under Settings → Editor if you prefer modes, motions, counts,
 operators such as `dw`, `cw`, and `dd`, and a command line. `:w` sends the
@@ -1055,7 +1088,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Ctrl+E` | Toggle email headers on/off |
 | `Ctrl+O` | View the message source; `c` copies it, `Esc` closes |
 | `Ctrl+B` | View the whole message in your browser (remote content blocked) |
-| `Ctrl+F` | Find in message |
+| `Ctrl+F` | Find in message; Find/Replace when composing in the body |
 | `v` / `V` | Visual select line range / whole message |
 | `` ` `` | AI summary |
 | In the summary overlay | `C` copies, `M` saves a `.md` file to the AI save path, `z` toggles quoted text, `Esc` closes |
@@ -1232,7 +1265,7 @@ any other overlay is open. Turning mouse support on trades away your terminal's
 native click-drag text selection while it's enabled.
 
 - Display: theme, icons, support reminder, tag style and colors, message tags (header row, tag names and colors), Needs You and Waiting on Them sidebar rows, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, mouse support, and quit confirmation
-- Editor: compose keys, vim keys, spell check and its language, send delay, and maximum delivery attempts
+- Editor: compose keys, vim keys, advanced regex search, spell check and its language, send delay, and maximum delivery attempts
 - CLI: quit after send or draft, skip the review step, and the default signature for the interactive `tidemail cli` wizard
 - Accounts: connection details, From address, signature, color, and sync interval.
   An account's color accents its own mailbox pane (unread text, the focused
