@@ -97,6 +97,9 @@ Current release: **v1.7.0**.
 - **AI**: summaries and grammar across OpenAI, Claude, Gemini, and Ollama. Mail rules
   are AI-generated once into reviewed JSON, then matched locally and deterministically —
   no per-message AI cost.
+- **Compose layout**: grows up to 110×48 cells, with matching stored/rendered
+  editor geometry. Key-only rounded pills highlight Send in the success color;
+  plain themes use bracketed keys. Footer hints wrap within narrower windows.
 - **Compose Find/Replace**: `Ctrl+F` opens live Find; `Ctrl+R` in the bar shows
   replacement controls. Replace All is one undo step; optional regex is exposed
   by Settings → Editor → Advanced regex search. Vim supports `/`, `?`, `n`, `N`.

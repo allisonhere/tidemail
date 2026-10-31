@@ -74,7 +74,7 @@ func TestComposeSearchRegexAvailabilityAndSize(t *testing.T) {
 				t.Fatalf("search overflows %v", size)
 			}
 		}
-		if !strings.Contains(ansi.Strip(view), "Find:") {
+		if !strings.Contains(ansi.Strip(view), "Find") {
 			t.Fatalf("find missing at %v", size)
 		}
 	}

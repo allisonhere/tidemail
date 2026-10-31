@@ -39,7 +39,7 @@ func BenchmarkComposeInput(b *testing.B) {
 				for _, key := range []tea.KeyMsg{{Type: tea.KeyRunes, Runes: []rune{'x'}}, {Type: tea.KeyBackspace}, {Type: tea.KeyLeft}, {Type: tea.KeyRight}} {
 					next, _ := m.handleCompose(key)
 					m = next.(Model)
-					_ = m.compose.View(composeOverlayWidth(m.width), min(m.height-4, 36), m.styles)
+					_ = m.compose.View(composeOverlayWidth(m.width), composeOverlayHeight(m.height), m.styles)
 				}
 			}
 		})

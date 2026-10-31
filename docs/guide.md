@@ -569,6 +569,30 @@ it. Check Sent mail before manually retrying an uncertain message.
 When replying, the quoted original is editable text inside the message body;
 there is no separate expand/collapse control in compose.
 
+The compose window expands with the terminal up to 110 columns and 48 rows,
+with the extra space available to the message editor. The header fields carry
+their own labels, so there are no group titles above them.
+
+The footer is always three rows, so the message body never changes height as
+focus moves, Find opens, or a status message appears. The first row shows state:
+the Vim mode or command line and status messages on the left, and the PGP
+**Sign**/**Encrypt** toggles (`●` on, `○` off) and the `⁂ sig` marker on the
+right. The second row holds the message actions and never changes with focus:
+Send, Commands (`Ctrl+P` opens the command palette), Sender, and Templates. The
+third row starts with Cancel, then Grammar and Spell, which work from any field
+and stay in place, followed by the focused field's keys as a group — Find,
+Copy, and Cut in the body, or Pick sender on From. With Vim keys on, the body's
+keys follow the Vim mode instead: `/` find, `y` yank, `p` put, and `u` undo in
+Normal; `y`, `d`, and `c` in Visual; Run, `:w`, and `:q` on the command line;
+none in Insert. Outside Normal, `Esc` is labeled Normal because it returns
+there rather than cancelling. `Esc` always opens the last
+row, here and in the sender picker and Find footers. Shortcuts show the
+key in a rounded pill with the action beside it, lined up in columns; the Esc
+pill uses the theme's error color and Send its success color. Rounded pills use
+the same Nerd Font glyphs as rounded message tags; plain (VT52) themes use
+bracketed keys instead. Narrow windows drop the least important hints rather
+than wrapping; every shortcut stays listed in help (`?`) and the palette.
+
 The standard editor is on by default. Use Shift with the arrow keys to select
 text, `Ctrl+C`/`Ctrl+X`/`Ctrl+V` for the system clipboard, `Ctrl+Z`/`Ctrl+Y` for
 undo and redo, and Ctrl with the arrow keys to move by word.
@@ -576,12 +600,25 @@ undo and redo, and Ctrl with the arrow keys to move by word.
 Press `Ctrl+F` in the compose body to open Find. Matches highlight as you type;
 `Enter` or `F3` goes forward, `Shift+F3` goes backward, and navigation wraps.
 Press `Ctrl+R` inside Find to show Replace and focus the replacement field
-immediately. Press it again to hide Replace and return focus to Find. `Tab`/`Shift+Tab` cycle fields and
-actions; `Enter` in Replacement or on Replace changes the current match and
-advances, while All replaces every match as a single undo step. `Esc` closes
+immediately. Press it again to hide Replace and return focus to Find. `Enter`
+in Replacement changes the current match and advances, and `Alt+Enter` replaces
+every match as a single undo step from either field. `Alt+C` toggles match case
+and `Alt+R` toggles regex. Each pill shows its key (`Replace ⏎`, `All ⌥⏎`,
+`Aa ⌥C`, `.* ⌥R`), so nothing needs Tabbing onto; `Tab`/`Shift+Tab` still cycle
+the fields and pills if you prefer. Narrow windows drop the key labels from the
+pills first. `Esc` closes
 Find without closing compose or undoing replacements. Copy/cut operate on the
-whole focused search field; paste inserts at its caret. The bar stays inside
-the body editor and scrolls long queries to keep the input caret visible.
+whole focused search field; paste inserts at its caret. Find takes over the
+footer rather than the body: the Find row (and With row while replacing) sit
+above the keys for the focused control, and the body keeps its full height. The
+bar is compact: the inputs share one width (up to 40 columns), and the match
+count sits above Replace with the `Aa`/`.*` toggles above All. Replace and All
+are pills, dimmed when there is nothing to replace; a toggle that is on shows as
+a tinted pill and one that is off as plain text. `No results` shows in the
+theme's error color. Focus moves only the `▌` rail and the accent pill. In the
+message, the current match is solid accent and the others are softly tinted,
+leaving underlines to spell check. A regex or replacement error shows
+in full on its own footer row. Long queries scroll to keep the input caret visible.
 
 Search is literal and case-sensitive by default; use the `Aa` control to ignore
 case. **Settings → Editor → Advanced regex search** (off by default;

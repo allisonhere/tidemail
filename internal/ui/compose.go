@@ -160,6 +160,9 @@ func NewCompose(acfg config.AccountConfig, accounts []config.AccountConfig, addr
 	c.bccInput.Placeholder = "bcc (optional)"
 	c.subjectInput = newComposeInput("Subject")
 	c.bodyInput = newEditorArea()
+	// The compose footer draws the body's Find/Replace bar, so opening search
+	// never takes rows away from the message text.
+	c.bodyInput.ed.SetSearchBarExternal(true)
 	c.bodyInput.SetPlaceholder("Write your message here...")
 	c.setInitialBody("", "")
 	c.focusedField = composeFieldFrom
@@ -1294,7 +1297,12 @@ func (c ComposeModel) renderSenderRows(width, labelW int, chrome managerChrome) 
 // terminal width. renderOverlay (overlays.go) and the body-editor sizing must
 // agree on this value.
 func composeOverlayWidth(termWidth int) int {
-	return min(termWidth-4, 74)
+	return max(1, min(termWidth-4, 110))
+}
+
+// composeOverlayHeight shares the compose height budget between render and input.
+func composeOverlayHeight(termHeight int) int {
+	return max(1, min(termHeight-4, 48))
 }
 
 // composeFieldWidths returns the width of a To/CC/BCC/Subject row's control and
@@ -1345,10 +1353,8 @@ func (c ComposeModel) composeLayout(width, height int, styles Styles) (hints str
 	hints = c.composeHints(width, chrome)
 
 	fixedLines := 0
-	fixedLines += 2 // recipients group title + blank
 	fixedLines += 4 // From / To / CC / BCC
-	fixedLines++    // gap before message group
-	fixedLines += 2 // message group title + blank
+	fixedLines++    // gap between recipients and Subject
 	fixedLines++    // Subject
 	fixedLines++    // spacer before body
 	if c.suggestionsVisible() {
@@ -1361,9 +1367,8 @@ func (c ComposeModel) composeLayout(width, height int, styles Styles) (hints str
 	if len(c.attachments) > 0 {
 		fixedLines += 3 + len(c.attachments) // gap + group title + blank + one row per file
 	}
-	if c.statusMsg != "" {
-		fixedLines++
-	}
+	// The footer is a fixed three rows (status messages ride in its first row),
+	// so focus changes, Find, and transient messages never resize the body.
 	fixedLines += lipgloss.Height(hints)
 
 	// The blank row below the From block is cosmetic, so it is the first thing
@@ -1380,104 +1385,6 @@ func (c ComposeModel) composeLayout(width, height int, styles Styles) (hints str
 	// Body editor content width = overlay width minus internal padding.
 	bodyW = max(1, width-4)
 	return hints, bodyW, bodyH, senderSpacer
-}
-
-// composeHints renders the quiet lowercase soft-panel footer. When the body is
-// focused in vim mode it leads with the mode / ":" command-line indicator (kept
-// verbatim, not lowercased, so typed commands read correctly). Parts are greedily
-// packed into as many lines as needed for the width; composeLayout accounts for
-// the resulting height via lipgloss.Height.
-func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
-	base := lipgloss.NewStyle().Background(chrome.baseBg)
-	keyStyle := base.Foreground(chrome.text)
-	lblStyle := base.Foreground(chrome.muted)
-
-	if c.spellOpen {
-		return c.spellPanel(width, chrome)
-	}
-	if c.tmplOpen {
-		return c.templatesPanel(width, chrome)
-	}
-	if c.busy {
-		// While sending, the status line carries the message; keep a blank footer.
-		return padStyled(base.Render("  "), width, chrome.baseBg)
-	}
-
-	var parts []string
-	if c.focusedField == composeFieldBody && c.bodyInput.vimMode() {
-		if cl := c.bodyInput.CommandLine(); cl != "" {
-			parts = append(parts, base.Foreground(chrome.accent).Render(cl))
-		} else if mode := c.bodyInput.Mode(); mode != "" {
-			parts = append(parts, base.Foreground(chrome.accent).Render("-- "+mode+" --"))
-		}
-	}
-
-	pairs := []string{"^s", "send", "^p", "schedule", "^g", "grammar", "^u", "sender"}
-	if editorSpell != nil {
-		pairs = append(pairs, "f7", "spell")
-	}
-	if c.pgpAvailable {
-		pairs = append(pairs, "alt+s", pgpToggleLabel("sign", c.pgpSign), "alt+e", pgpToggleLabel("encrypt", c.pgpEncrypt))
-	}
-	if c.senderPickerOpen {
-		pairs = []string{"↑↓", "choose sender", "enter", "select", "esc", "cancel"}
-	} else {
-		if c.focusedField == composeFieldFrom {
-			pairs = append(pairs, "enter", "pick sender")
-		}
-		if len(c.attachments) > 0 {
-			pairs = append(pairs, "^r", "remove")
-		}
-		if c.focusedField == composeFieldBody {
-			// Copy/cut act on the editor selection, so only show them in the body.
-			pairs = append(pairs, "^c", "copy", "^x", "cut", "^f", "find")
-		}
-		// F6 opens the template picker from any field, so the hint is always shown.
-		pairs = append(pairs, "f6", "templates")
-		pairs = append(pairs, "esc", "cancel")
-		if c.focusedField == composeFieldBody {
-			// Informational marker hint only; it does not define a keybinding.
-			pairs = append(pairs, "⁂", "sig")
-		}
-	}
-
-	if c.focusedField == composeFieldBody && c.bodyInput.ed.SearchActive() {
-		parts = nil
-		pairs = []string{"enter", "next / activate", "f3 / shift+f3", "next / previous", "tab", "controls", "^r", "replace", "esc", "close find", "^s", "send"}
-	}
-	for i := 0; i+1 < len(pairs); i += 2 {
-		part := keyStyle.Render(pairs[i]) + lblStyle.Render(" "+pairs[i+1])
-		// Keep cancel and the signature marker together whenever they fit as a pair.
-		if pairs[i] == "esc" && i+3 < len(pairs) && pairs[i+2] == "⁂" {
-			part += base.Render("   ") + keyStyle.Render(pairs[i+2]) + lblStyle.Render(" "+pairs[i+3])
-			i += 2
-		}
-		parts = append(parts, part)
-	}
-
-	// Greedy-pack into lines no wider than width, indented 2, separated by 3 spaces.
-	indent := base.Render("  ")
-	indentW := 2
-	sep := base.Render("   ")
-	var lines []string
-	cur := indent
-	curW := indentW
-	for _, p := range parts {
-		pw := lipgloss.Width(p)
-		if curW > indentW && curW+3+pw > width {
-			lines = append(lines, padStyled(cur, width, chrome.baseBg))
-			cur = indent
-			curW = indentW
-		}
-		if curW > indentW {
-			cur += sep
-			curW += 3
-		}
-		cur += p
-		curW += pw
-	}
-	lines = append(lines, padStyled(cur, width, chrome.baseBg))
-	return strings.Join(lines, "\n")
 }
 
 func (c ComposeModel) View(width, height int, styles Styles) string {
@@ -1524,7 +1431,9 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	// selection highlight, and a dim placeholder. The per-line background
 	// wrapping below covers the remainder of each line.
 	c.bodyInput.CursorStyle = lipgloss.NewStyle().Background(chrome.cursor).Foreground(bodyBg)
-	c.bodyInput.SearchMatchStyle = lipgloss.NewStyle().Background(bodyBg).Foreground(chrome.accent).Underline(true)
+	// Other matches get a soft tint rather than an underline, which spell
+	// check already uses for typos; the current match is solid accent.
+	c.bodyInput.SearchMatchStyle = lipgloss.NewStyle().Background(mixColors(bodyBg, chrome.accent, 0.3)).Foreground(chrome.text)
 	c.bodyInput.SearchCurrentStyle = lipgloss.NewStyle().Background(chrome.accent).Foreground(bodyBg)
 	c.bodyInput.SearchControlStyle = lipgloss.NewStyle().Background(chrome.cursor).Foreground(bodyBg)
 	c.bodyInput.SearchErrorStyle = lipgloss.NewStyle().Background(bodyBg).Foreground(chrome.accent).Bold(true)
@@ -1562,29 +1471,11 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	}
 	bodyRow := strings.Join(lines, "\n")
 
-	// Status line
-	statusLine := ""
-	if c.statusMsg != "" {
-		fg := chrome.pendingFg
-		if c.isErr {
-			fg = chrome.errorFg
-		}
-		statusLine = lipgloss.NewStyle().
-			Background(chrome.baseBg).
-			Foreground(fg).
-			Padding(0, 2).
-			Render(c.statusMsg)
-		if gap := width - lipgloss.Width(statusLine); gap > 0 {
-			statusLine += lipgloss.NewStyle().Background(chrome.baseBg).Render(strings.Repeat(" ", gap))
-		}
-	}
-
 	// ── Build rows ── (line count must match composeLayout's fixedLines)
+	// The field labels name every row, so recipients and the message need no
+	// group titles; one blank row between BCC and Subject separates them.
 	var rows []string
 
-	// recipients
-	rows = append(rows, renderSoftGroupTitle("recipients", width, chrome))
-	rows = append(rows, blankRow(chrome.baseBg))
 	fromFocused := c.focusedField == composeFieldFrom
 	fromW := max(1, width-2-labelW)
 	fromLabel := senderOptionLabel(c.selectedAccount())
@@ -1620,10 +1511,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	rows = append(rows, softInput("BCC", c.bccInput, composeFieldBCC))
 	suggestionRows(composeFieldBCC)
 
-	// message
-	rows = append(rows, blankRow(chrome.baseBg)) // gap between groups
-	rows = append(rows, renderSoftGroupTitle("message", width, chrome))
-	rows = append(rows, blankRow(chrome.baseBg))
+	rows = append(rows, blankRow(chrome.baseBg)) // gap between recipients and Subject
 	rows = append(rows, softInput("Subject", c.subjectInput, composeFieldSubject))
 	rows = append(rows, blankRow(chrome.baseBg)) // spacer before body
 	rows = append(rows, bodyRow)
@@ -1640,9 +1528,6 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 		}
 	}
 
-	if statusLine != "" {
-		rows = append(rows, statusLine)
-	}
 	rows = append(rows, hints)
 
 	content := lipgloss.JoinVertical(lipgloss.Left, rows...)

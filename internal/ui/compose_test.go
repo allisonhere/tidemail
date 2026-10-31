@@ -15,6 +15,11 @@ import (
 	"github.com/allisonhere/tidemail/internal/db"
 )
 
+// Compare hint meaning independently of rounded keycaps and display casing.
+func plainComposeHintText(view string) string {
+	return strings.ToLower(strings.NewReplacer(pillCapLeft, "", pillCapRight, "").Replace(ansi.Strip(view)))
+}
+
 func composeFieldLine(view, label string) string {
 	stripped := ansi.Strip(view)
 	for _, line := range strings.Split(stripped, "\n") {
@@ -43,7 +48,7 @@ func TestComposeActionsStayVisibleInShortView(t *testing.T) {
 	c.bodyInput.SetValue(strings.Repeat("this is a long compose line that wraps inside the body editor ", 20))
 
 	view := c.View(60, 13, BuildStyles(CatppuccinMocha, "compact", "square"))
-	stripped := ansi.Strip(view)
+	stripped := plainComposeHintText(view)
 
 	if !strings.Contains(stripped, "send") {
 		t.Fatalf("expected compose actions to stay visible in short view, got %q", stripped)
@@ -69,19 +74,21 @@ func TestComposeActionsStayVisibleInOverlay(t *testing.T) {
 	m.compose.bodyInput.SetValue(strings.Repeat("this is a long compose line that wraps inside the body editor ", 40))
 
 	view := m.View()
-	stripped := ansi.Strip(view)
+	stripped := plainComposeHintText(view)
 
 	if !strings.Contains(stripped, "send") {
 		t.Fatalf("expected compose actions to stay visible in overlay, got %q", stripped)
 	}
 }
 
-func TestComposeActionsWrapInNarrowView(t *testing.T) {
+// A narrow footer drops low-priority hints instead of wrapping, keeping send
+// and cancel.
+func TestComposeActionsSurviveNarrowView(t *testing.T) {
 	c := NewCompose(config.AccountConfig{}, nil, nil)
 	view := c.View(32, 16, BuildStyles(CatppuccinMocha, "compact", "square"))
-	stripped := ansi.Strip(view)
+	stripped := plainComposeHintText(view)
 
-	for _, want := range []string{"send", "grammar"} {
+	for _, want := range []string{"send", "cancel"} {
 		if !strings.Contains(stripped, want) {
 			t.Fatalf("expected compose action %q to stay visible in narrow view, got %q", want, stripped)
 		}
@@ -349,13 +356,11 @@ func TestSenderPickerIsAvailableAcrossComposeModes(t *testing.T) {
 func TestComposeLayoutBudgetsSenderDropdownRows(t *testing.T) {
 	accounts := composeSenderAccounts()
 	c := NewCompose(accounts[0], accounts, nil)
-	// Measure wide enough that the From row's hints stay on one line: at 74 the
-	// extra "enter pick sender" wraps the footer, and the wrap — not the
-	// dropdown — would account for a row of the difference.
-	_, _, closedH, _ := c.composeLayout(100, 32, BuildStyles(CatppuccinMocha, "compact", "square"))
+	// Dropdown rows and changes to the wrapped footer share the height budget.
+	closedHints, _, closedH, _ := c.composeLayout(100, 32, BuildStyles(CatppuccinMocha, "compact", "square"))
 	c.openSenderPicker()
-	_, _, openH, _ := c.composeLayout(100, 32, BuildStyles(CatppuccinMocha, "compact", "square"))
-	if closedH-openH != len(accounts) {
+	openHints, _, openH, _ := c.composeLayout(100, 32, BuildStyles(CatppuccinMocha, "compact", "square"))
+	if closedH-openH+lipgloss.Height(closedHints)-lipgloss.Height(openHints) != len(accounts) {
 		t.Fatalf("expected dropdown to reserve %d rows, closed=%d open=%d", len(accounts), closedH, openH)
 	}
 }
@@ -917,7 +922,7 @@ func TestComposeSenderSpacerYieldsToHintsWhenShort(t *testing.T) {
 	if _, _, _, spacer := c.composeLayout(74, 32, styles); !spacer {
 		t.Fatal("expected the From spacer row in a tall compose overlay")
 	}
-	if _, _, _, spacer := c.composeLayout(60, 13, styles); spacer {
+	if _, _, _, spacer := c.composeLayout(60, 11, styles); spacer {
 		t.Fatal("expected the From spacer to be dropped in a short compose overlay")
 	}
 }
@@ -1273,7 +1278,7 @@ func TestComposeSignatureFooterIsContextualAndInFlow(t *testing.T) {
 		c := NewCompose(config.AccountConfig{}, nil, nil)
 		c.focusedField = composeFieldBody
 		chrome := newManagerChrome(width, CatppuccinMocha, false)
-		lines := strings.Split(ansi.Strip(c.composeHints(width, chrome)), "\n")
+		lines := strings.Split(plainComposeHintText(c.composeHints(width, chrome)), "\n")
 		for _, line := range lines {
 			if lipgloss.Width(line) > width {
 				t.Fatalf("footer exceeds width %d: %q", width, line)
@@ -1282,27 +1287,27 @@ func TestComposeSignatureFooterIsContextualAndInFlow(t *testing.T) {
 				t.Fatal("future editor hint displayed")
 			}
 		}
-		flow := strings.Join(strings.Fields(strings.Join(lines, " ")), " ")
-		if !strings.HasSuffix(flow, "esc cancel ⁂ sig") {
-			t.Fatalf("signature hint is not the next item after cancel at width %d: %q", width, lines)
+		// The marker is state, not a key: it ends the state row, right-aligned.
+		if len(lines) != 3 || !strings.HasSuffix(strings.TrimRight(lines[0], " "), "⁂ sig") {
+			t.Fatalf("signature marker is not at the end of the state row at width %d: %q", width, lines)
 		}
-		if width == 128 && !strings.Contains(strings.Join(lines, "\n"), "esc cancel   ⁂ sig") {
-			t.Fatal("signature hint should sit beside cancel when space allows")
+		if width >= 32 && !strings.Contains(lines[2], "esc cancel") {
+			t.Fatalf("cancel missing from the action row at width %d: %q", width, lines)
 		}
 		for _, field := range []composeField{composeFieldFrom, composeFieldTo, composeFieldCC, composeFieldBCC, composeFieldSubject} {
 			c.focusedField = field
-			if strings.Contains(ansi.Strip(c.composeHints(width, chrome)), "⁂ sig") {
+			if strings.Contains(plainComposeHintText(c.composeHints(width, chrome)), "⁂ sig") {
 				t.Fatalf("hint shown for field %v", field)
 			}
 		}
 		c.focusedField = composeFieldBody
 		c.senderPickerOpen = true
-		if strings.Contains(ansi.Strip(c.composeHints(width, chrome)), "⁂ sig") {
+		if strings.Contains(plainComposeHintText(c.composeHints(width, chrome)), "⁂ sig") {
 			t.Fatal("hint shown during sender selection")
 		}
 		c.senderPickerOpen = false
 		c.busy = true
-		if strings.Contains(ansi.Strip(c.composeHints(width, chrome)), "⁂ sig") {
+		if strings.Contains(plainComposeHintText(c.composeHints(width, chrome)), "⁂ sig") {
 			t.Fatal("hint shown while sending")
 		}
 	}
@@ -1313,9 +1318,12 @@ func TestComposeSignatureFooterSurvivesNarrowLayout(t *testing.T) {
 	for _, width := range []int{24, 32, 52, 74} {
 		c := NewCompose(config.AccountConfig{}, nil, nil)
 		c.focusedField = composeFieldBody
-		view := ansi.Strip(c.View(width, 26, styles))
-		if !strings.Contains(view, "⁂ sig") || !strings.Contains(view, "^u sender") {
+		view := plainComposeHintText(c.View(width, 26, styles))
+		if !strings.Contains(view, "⁂ sig") || !strings.Contains(view, "^s send") {
 			t.Fatalf("footer clipped at width %d: %s", width, view)
+		}
+		if width >= 74 && !strings.Contains(view, "^u sender") {
+			t.Fatalf("sender hint dropped at width %d: %s", width, view)
 		}
 		for _, line := range strings.Split(view, "\n") {
 			if lipgloss.Width(line) > width {
@@ -1323,7 +1331,7 @@ func TestComposeSignatureFooterSurvivesNarrowLayout(t *testing.T) {
 			}
 		}
 		c.focusedField = composeFieldTo
-		if strings.Contains(ansi.Strip(c.View(width, 26, styles)), "⁂ sig") {
+		if strings.Contains(plainComposeHintText(c.View(width, 26, styles)), "⁂ sig") {
 			t.Fatal("hint did not disappear after focus changed")
 		}
 	}

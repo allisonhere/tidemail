@@ -58,7 +58,7 @@ func BenchmarkComposeEventPath(b *testing.B) {
 				case "editor-view":
 					_ = m.compose.bodyInput.View()
 				case "compose-view":
-					_ = m.compose.View(composeOverlayWidth(m.width), min(m.height-4, 36), m.styles)
+					_ = m.compose.View(composeOverlayWidth(m.width), composeOverlayHeight(m.height), m.styles)
 				case "full-view":
 					_ = m.View()
 				case "full-event":
