@@ -114,7 +114,7 @@ func TestComposeSearchRootRoutingOwnsGrammarAndPaste(t *testing.T) {
 	m.compose.bodyInput.SetValue("cat cat")
 	m.compose.bodyInput.ed.OpenSearch()
 	m.compose.bodyInput.ed.SetSearchQuery("cat")
-	next, cmd := m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlG})
+	next, _ := m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlG})
 	m = next.(Model)
 	if m.compose.statusMsg != "" || m.compose.busy {
 		t.Fatal("search triggered grammar check")
@@ -122,7 +122,7 @@ func TestComposeSearchRootRoutingOwnsGrammarAndPaste(t *testing.T) {
 	// No clipboard configured: search paste must stay with Ripple, not the root
 	// application's unrelated clipboard command.
 	m.compose.bodyInput.ed.SetClipboard(nil)
-	next, cmd = m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlV})
+	next, cmd := m.handleCompose(tea.KeyMsg{Type: tea.KeyCtrlV})
 	m = next.(Model)
 	if cmd != nil {
 		t.Fatal("root intercepted paste while search was active")
