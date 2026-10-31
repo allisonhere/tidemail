@@ -409,7 +409,7 @@ shows the `message_raw` and `message_compose` permissions.
 | `x` | Toggle read state for selected messages |
 | `*` | Toggle the IMAP star |
 | `/` | Search messages |
-| `Ctrl+Z` | Cancel a queued send or undo a queued message action |
+| `Ctrl+Z` | Cancel a send still in its delay, or undo a queued message action |
 | `O` | Open the Outbox |
 | `Ctrl+U` | Unsubscribe while reading; cycle sender while composing |
 | `Alt+F` / `Ctrl+R` | Attach a file while composing; remove the last attachment |

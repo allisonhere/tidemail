@@ -3,6 +3,7 @@ package imap
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -56,6 +57,13 @@ func startTestServer(t *testing.T) (int, func()) {
 
 func startTestServerWithSession(t *testing.T, wrap func(imapserver.Session, *imapserver.Conn) imapserver.Session) (int, func()) {
 	t.Helper()
+	return startTestServerWithCaps(t, wrap, nil)
+}
+
+// startTestServerWithCaps is startTestServerWithSession advertising only caps
+// (nil keeps the server's defaults), e.g. to imitate a server without UIDPLUS.
+func startTestServerWithCaps(t *testing.T, wrap func(imapserver.Session, *imapserver.Conn) imapserver.Session, caps imap.CapSet) (int, func()) {
+	t.Helper()
 
 	memServer := imapmemserver.New()
 	user := imapmemserver.NewUser("testuser", "testpass")
@@ -81,6 +89,7 @@ func startTestServerWithSession(t *testing.T, wrap func(imapserver.Session, *ima
 			return session, nil, nil
 		},
 		InsecureAuth: true,
+		Caps:         caps,
 	}
 
 	s := imapserver.New(be)
@@ -619,4 +628,124 @@ func TestListDelimiterTreatsNILAsNoDelimiter(t *testing.T) {
 	if got := listDelimiter('/'); got != "/" {
 		t.Fatalf("got %q", got)
 	}
+}
+
+// A UID write must not run once the server has renumbered the mailbox: the
+// cached UID would now name a different message.
+func TestUIDWritesRefuseAChangedUIDValidity(t *testing.T) {
+	port, cleanup := startTestServer(t)
+	defer cleanup()
+	uid := appendTestMessage(t, port, "INBOX", false)
+
+	client := New(config.AccountConfig{IMAPHost: "127.0.0.1", IMAPPort: port, User: "testuser", Password: "testpass"})
+	if err := client.Connect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	_, validity, err := client.ServerState(context.Background(), "INBOX")
+	if err != nil || validity == 0 {
+		t.Fatalf("server state: %v (validity %d)", err, validity)
+	}
+
+	stale := WithUIDValidity(context.Background(), "INBOX", validity+1)
+	for name, write := range map[string]func() error{
+		"seen":   func() error { return client.MarkSeen(stale, "INBOX", uid, true) },
+		"flag":   func() error { return client.MarkFlagged(stale, "INBOX", uid, true) },
+		"move":   func() error { return client.MoveMessage(stale, "INBOX", uid, "Archive") },
+		"delete": func() error { return client.DeleteMessage(stale, "INBOX", uid) },
+	} {
+		if err := write(); !errors.Is(err, ErrUIDValidityChanged) {
+			t.Fatalf("%s with a stale UIDVALIDITY: %v", name, err)
+		}
+	}
+	msgs, _, err := client.ServerState(context.Background(), "INBOX")
+	if err != nil || len(msgs) != 1 || msgs[0].Seen || msgs[0].Flagged {
+		t.Fatalf("a refused write still changed the mailbox: %+v %v", msgs, err)
+	}
+
+	// The matching UIDVALIDITY, or none at all, lets the write through.
+	current := WithUIDValidity(context.Background(), "INBOX", validity)
+	if err := client.MarkSeen(current, "INBOX", uid, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.MarkFlagged(context.Background(), "INBOX", uid, true); err != nil {
+		t.Fatal(err)
+	}
+	// An expectation for another mailbox does not apply here.
+	if err := client.DeleteMessage(WithUIDValidity(context.Background(), "Sent", validity+1), "INBOX", uid); err != nil {
+		t.Fatal(err)
+	}
+	if msgs, _, _ := client.ServerState(context.Background(), "INBOX"); len(msgs) != 0 {
+		t.Fatalf("delete did not run: %+v", msgs)
+	}
+}
+
+// Without UIDPLUS a plain EXPUNGE removes every \Deleted message, including one
+// another client flagged and has not expunged. Our delete and move must only
+// ever remove our own messages, and leave the other client's flag in place.
+func TestExpungeWithoutUIDPlusSparesOtherDeletedMessages(t *testing.T) {
+	port, cleanup := startTestServerWithCaps(t, nil, imap.CapSet{imap.CapIMAP4rev1: {}})
+	defer cleanup()
+	ours := appendTestMessage(t, port, "INBOX", false)
+	theirs := appendTestMessage(t, port, "INBOX", false)
+	moving := appendTestMessage(t, port, "INBOX", false)
+
+	// Another client marks a message \Deleted but does not expunge it.
+	other := imapclient.New(mustDial(t, port), nil)
+	defer other.Close()
+	if err := other.Login("testuser", "testpass").Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := other.Select("INBOX", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Store(imap.UIDSetNum(imap.UID(theirs)), &imap.StoreFlags{Op: imap.StoreFlagsAdd, Silent: true, Flags: []imap.Flag{imap.FlagDeleted}}, nil).Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	client := New(config.AccountConfig{IMAPHost: "127.0.0.1", IMAPPort: port, User: "testuser", Password: "testpass"})
+	if err := client.Connect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if client.conn.Caps().Has(imap.CapUIDPlus) || client.conn.Caps().Has(imap.CapMove) {
+		t.Fatal("test server must not advertise UIDPLUS or MOVE")
+	}
+	if err := client.DeleteMessage(context.Background(), "INBOX", ours); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.MoveMessage(context.Background(), "INBOX", moving, "Archive"); err != nil {
+		t.Fatal(err)
+	}
+
+	// IMAP holds back expunge notices during FETCH; NOOP lets this session see them.
+	if err := other.Noop().Wait(); err != nil {
+		t.Fatal(err)
+	}
+	inbox, err := other.Fetch(imap.UIDSetNum(imap.UID(ours), imap.UID(theirs), imap.UID(moving)), &imap.FetchOptions{UID: true, Flags: true}).Collect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inbox) != 1 || uint32(inbox[0].UID) != theirs {
+		t.Fatalf("INBOX should hold only the other client's message, got %d messages", len(inbox))
+	}
+	deleted := false
+	for _, f := range inbox[0].Flags {
+		deleted = deleted || f == imap.FlagDeleted
+	}
+	if !deleted {
+		t.Fatal("the other client's \\Deleted flag must be put back")
+	}
+	if msgs, _, err := client.ServerState(context.Background(), "Archive"); err != nil || len(msgs) != 1 {
+		t.Fatalf("moved message missing from Archive: %d %v", len(msgs), err)
+	}
+}
+
+func mustDial(t *testing.T, port int) net.Conn {
+	t.Helper()
+	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return conn
 }

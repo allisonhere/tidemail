@@ -62,6 +62,7 @@ func (m *Model) deleteDraftCmd(id int64) tea.Cmd {
 		if remote != nil && remoteCfg.IMAPHost != "" {
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
+			ctx = uidWriteContext(ctx, database, remote.ID, remote.Name)
 			if err := sessions.Do(ctx, remoteCfg, func(client *imapClient.Client) error {
 				return client.DeleteMessages(ctx, remote.Name, []uint32{remoteUID})
 			}); err != nil {

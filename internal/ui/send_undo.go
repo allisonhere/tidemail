@@ -111,7 +111,10 @@ func (m *Model) undoLatestPendingSend() bool {
 		return false
 	}
 	for i := len(m.pendingSends) - 1; i >= 0; i-- {
-		if m.pendingSends[i].Committing {
+		// Only a send still inside its undo delay is Ctrl+Z's to take back. A
+		// scheduled send or a pending retry can be hours old — cancelling it here
+		// would steal the undo meant for a later action. The Outbox edits those.
+		if p := m.pendingSends[i]; p.Committing || p.Scheduled || p.Attempts > 0 {
 			continue
 		}
 		p := m.pendingSends[i]

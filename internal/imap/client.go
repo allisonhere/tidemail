@@ -3,6 +3,7 @@ package imap
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -347,6 +348,40 @@ func (c *Client) AppendWithFlags(ctx context.Context, mailboxName string, raw []
 	return nil
 }
 
+// ErrUIDValidityChanged means the server renumbered a mailbox since its UIDs
+// were cached, so a write by cached UID would hit a different message. The next
+// sync notices the new UIDVALIDITY and rebuilds the cache.
+var ErrUIDValidityChanged = errors.New("mailbox changed on the server; sync before trying again")
+
+type uidValidityKey struct{}
+
+type uidValidityExpectation struct {
+	mailbox string
+	value   uint32
+}
+
+// WithUIDValidity records which UIDVALIDITY the caller's cached UIDs for
+// mailbox belong to. A UID write to that mailbox under the returned context
+// refuses to run (ErrUIDValidityChanged) when the server reports a different
+// one. Zero, or another mailbox, leaves the check off.
+func WithUIDValidity(ctx context.Context, mailbox string, uidValidity uint32) context.Context {
+	return context.WithValue(ctx, uidValidityKey{}, uidValidityExpectation{mailbox, uidValidity})
+}
+
+// selectForUIDWrite selects mailbox read-write and enforces the context's
+// expected UIDVALIDITY, if any, before UIDs are used for a write.
+func (c *Client) selectForUIDWrite(ctx context.Context, mailboxName string) error {
+	selected, err := c.conn.Select(mailboxName, nil).Wait()
+	if err != nil {
+		return fmt.Errorf("select %s: %w", mailboxName, err)
+	}
+	if want, ok := ctx.Value(uidValidityKey{}).(uidValidityExpectation); ok &&
+		want.mailbox == mailboxName && want.value != 0 && selected.UIDValidity != want.value {
+		return ErrUIDValidityChanged
+	}
+	return nil
+}
+
 func (c *Client) MarkSeen(ctx context.Context, mailboxName string, uid uint32, seen bool) error {
 	return c.MarkSeenUIDs(ctx, mailboxName, []uint32{uid}, seen)
 }
@@ -360,8 +395,8 @@ func (c *Client) MarkSeenUIDs(ctx context.Context, mailboxName string, uids []ui
 		return fmt.Errorf("not connected")
 	}
 	defer c.applyDeadline(ctx)()
-	if _, err := c.conn.Select(mailboxName, nil).Wait(); err != nil {
-		return fmt.Errorf("select %s: %w", mailboxName, err)
+	if err := c.selectForUIDWrite(ctx, mailboxName); err != nil {
+		return err
 	}
 
 	op := imap.StoreFlagsDel
@@ -386,8 +421,8 @@ func (c *Client) MarkFlagged(ctx context.Context, mailboxName string, uid uint32
 		return fmt.Errorf("not connected")
 	}
 	defer c.applyDeadline(ctx)()
-	if _, err := c.conn.Select(mailboxName, nil).Wait(); err != nil {
-		return fmt.Errorf("select %s: %w", mailboxName, err)
+	if err := c.selectForUIDWrite(ctx, mailboxName); err != nil {
+		return err
 	}
 
 	op := imap.StoreFlagsDel
@@ -417,8 +452,35 @@ func (c *Client) markDeletedAndExpunge(uidSet imap.UIDSet) error {
 		}
 		return nil
 	}
-	if _, err := c.conn.Expunge().Collect(); err != nil {
-		return fmt.Errorf("expunge: %w", err)
+	// A plain EXPUNGE removes every \Deleted message in the mailbox, including
+	// ones another client flagged but has not expunged. Lift \Deleted from
+	// those for the duration, then put it back.
+	found, err := c.conn.UIDSearch(&imap.SearchCriteria{Flag: []imap.Flag{imap.FlagDeleted}}, nil).Wait()
+	if err != nil {
+		return fmt.Errorf("find other deleted messages: %w", err)
+	}
+	var others imap.UIDSet
+	for _, uid := range found.AllUIDs() {
+		if !uidSet.Contains(uid) {
+			others.AddNum(uid)
+		}
+	}
+	keep := func(op imap.StoreFlagsOp) error {
+		return c.conn.Store(others, &imap.StoreFlags{Op: op, Silent: true, Flags: []imap.Flag{imap.FlagDeleted}}, nil).Close()
+	}
+	if len(others) > 0 {
+		if err := keep(imap.StoreFlagsDel); err != nil {
+			return fmt.Errorf("protect other deleted messages: %w", err)
+		}
+	}
+	_, expungeErr := c.conn.Expunge().Collect()
+	if len(others) > 0 {
+		if err := keep(imap.StoreFlagsAdd); err != nil && expungeErr == nil {
+			return fmt.Errorf("restore other deleted messages: %w", err)
+		}
+	}
+	if expungeErr != nil {
+		return fmt.Errorf("expunge: %w", expungeErr)
 	}
 	return nil
 }
@@ -440,10 +502,19 @@ func (c *Client) MoveMessages(ctx context.Context, mailboxName string, uids []ui
 		return nil
 	}
 	defer c.applyDeadline(ctx)()
-	if _, err := c.conn.Select(mailboxName, nil).Wait(); err != nil {
-		return fmt.Errorf("select %s: %w", mailboxName, err)
+	if err := c.selectForUIDWrite(ctx, mailboxName); err != nil {
+		return err
 	}
 	uidSet := uidSetOf(uids)
+	caps := c.conn.Caps()
+	if !caps.Has(imap.CapMove) && !caps.Has(imap.CapIMAP4rev2) && !caps.Has(imap.CapUIDPlus) {
+		// go-imap's MOVE fallback would finish with a plain EXPUNGE, removing
+		// other clients' \Deleted messages too. Copy, then expunge only ours.
+		if _, err := c.conn.Copy(uidSet, targetMailbox).Wait(); err != nil && !isCopyUIDParseError(err) {
+			return fmt.Errorf("copy to %s: %w", targetMailbox, err)
+		}
+		return c.markDeletedAndExpunge(uidSet)
+	}
 	if _, err := c.conn.Move(uidSet, targetMailbox).Wait(); err != nil {
 		if isCopyUIDParseError(err) {
 			// The MOVE succeeded; go-imap only choked parsing the COPYUID
@@ -539,8 +610,8 @@ func (c *Client) DeleteMessages(ctx context.Context, mailboxName string, uids []
 		return nil
 	}
 	defer c.applyDeadline(ctx)()
-	if _, err := c.conn.Select(mailboxName, nil).Wait(); err != nil {
-		return fmt.Errorf("select %s: %w", mailboxName, err)
+	if err := c.selectForUIDWrite(ctx, mailboxName); err != nil {
+		return err
 	}
 	return c.markDeletedAndExpunge(uidSetOf(uids))
 }

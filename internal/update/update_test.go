@@ -6,8 +6,11 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -424,5 +427,131 @@ func responseWithBody(status int, body string) *http.Response {
 		StatusCode: status,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+}
+
+// slowArchiveClient serves the release through a real local HTTP server so the
+// client's deadlines apply, sending the archive in chunks with gap between them.
+func slowArchiveClient(t *testing.T, timeout time.Duration, archive []byte, sums string, chunks int, gap time.Duration) *http.Client {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "SHA256SUMS") {
+			_, _ = io.WriteString(w, sums)
+			return
+		}
+		size := (len(archive) + chunks - 1) / chunks
+		for i := 0; i < len(archive); i += size {
+			_, _ = w.Write(archive[i:min(i+size, len(archive))])
+			w.(http.Flusher).Flush()
+			select {
+			case <-time.After(gap):
+			case <-r.Context().Done():
+				return
+			}
+		}
+	}))
+	t.Cleanup(srv.Close)
+	target, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &http.Client{Timeout: timeout, Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		req = req.Clone(req.Context())
+		req.URL.Scheme, req.URL.Host = "http", target.Host
+		return http.DefaultTransport.RoundTrip(req)
+	})}
+}
+
+// A download slower than the client's request timeout must still finish
+// while data keeps arriving.
+func TestDownloadOutlastsTheRequestTimeout(t *testing.T) {
+	archive := testArchive(t, "tidemail-linux-x86_64", strings.Repeat("payload ", 4096))
+	sums := sha256Hex(archive) + "  tidemail-linux-x86_64.tar.gz\n"
+	updater := &Updater{HTTPClient: slowArchiveClient(t, 100*time.Millisecond, archive, sums, 5, 60*time.Millisecond)}
+	if _, err := updater.Download(ReleaseInfo{Version: "v1.2.3", AssetName: "tidemail-linux-x86_64", DownloadURL: testDownloadURL, ChecksumsURL: testChecksumsURL}); err != nil {
+		t.Fatalf("a slow but steady download failed: %v", err)
+	}
+}
+
+func TestDownloadGivesUpWhenDataStops(t *testing.T) {
+	previous := downloadStallTimeout
+	downloadStallTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { downloadStallTimeout = previous })
+	archive := testArchive(t, "tidemail-linux-x86_64", strings.Repeat("payload ", 4096))
+	sums := sha256Hex(archive) + "  tidemail-linux-x86_64.tar.gz\n"
+	updater := &Updater{HTTPClient: slowArchiveClient(t, 0, archive, sums, 2, time.Second)}
+	_, err := updater.Download(ReleaseInfo{Version: "v1.2.3", AssetName: "tidemail-linux-x86_64", DownloadURL: testDownloadURL, ChecksumsURL: testChecksumsURL})
+	if !errors.Is(err, errDownloadStalled) {
+		t.Fatalf("a stalled download must fail as stalled, got %v", err)
+	}
+}
+
+func stagedDirs(t *testing.T, tmp string) []string {
+	t.Helper()
+	dirs, err := filepath.Glob(filepath.Join(tmp, "tide-update-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dirs
+}
+
+// A failed download leaves no staging directory behind.
+func TestDownloadCleansUpWhenItFails(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	missing := testArchive(t, "something-else", "x")
+	sums := sha256Hex(missing) + "  tidemail-linux-x86_64.tar.gz\n"
+	for name, client := range map[string]*http.Client{
+		"checksum mismatch": archiveServer(missing, "deadbeef  tidemail-linux-x86_64.tar.gz\n"),
+		"binary missing":    archiveServer(missing, sums),
+	} {
+		_, err := (&Updater{HTTPClient: client}).Download(ReleaseInfo{Version: "v1.2.3", AssetName: "tidemail-linux-x86_64", DownloadURL: testDownloadURL, ChecksumsURL: testChecksumsURL})
+		if err == nil {
+			t.Fatalf("%s: expected an error", name)
+		}
+		if dirs := stagedDirs(t, tmp); len(dirs) != 0 {
+			t.Fatalf("%s left %v behind", name, dirs)
+		}
+	}
+}
+
+// Install removes the staged download once the binary is in place, but keeps
+// it when the user must run a manual command that copies from it.
+func TestInstallRemovesTheStagedDownload(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	archive := testArchive(t, "tidemail-linux-x86_64", "new")
+	sums := sha256Hex(archive) + "  tidemail-linux-x86_64.tar.gz\n"
+	download := func() DownloadedAsset {
+		asset, err := (&Updater{HTTPClient: archiveServer(archive, sums)}).Download(ReleaseInfo{Version: "v1.2.3", AssetName: "tidemail-linux-x86_64", DownloadURL: testDownloadURL, ChecksumsURL: testChecksumsURL})
+		if err != nil || asset.TempDir == "" {
+			t.Fatalf("download: %v (dir %q)", err, asset.TempDir)
+		}
+		return asset
+	}
+
+	current := filepath.Join(t.TempDir(), "tide")
+	if err := os.WriteFile(current, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	asset := download()
+	if _, err := New().Install(asset, current); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(asset.TempDir); !os.IsNotExist(err) {
+		t.Fatalf("staged download survived a successful install: %v", err)
+	}
+
+	oldHome, oldWritable := userHomeDir, dirWritable
+	t.Cleanup(func() { userHomeDir, dirWritable = oldHome, oldWritable })
+	userHomeDir = func() (string, error) { return "", os.ErrNotExist }
+	dirWritable = func(string) error { return os.ErrPermission }
+	asset = download()
+	result, err := New().Install(asset, current)
+	if err != nil || !result.RequiresManual {
+		t.Fatalf("expected a manual install: %+v %v", result, err)
+	}
+	if _, err := os.Stat(asset.BinaryPath); err != nil {
+		t.Fatalf("the manual command needs the staged binary: %v", err)
 	}
 }

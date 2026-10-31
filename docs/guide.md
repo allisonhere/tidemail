@@ -526,7 +526,9 @@ common names such as `Sent`, `Sent Items`, and `INBOX.Sent` as fallbacks.
 
 TideMail waits five seconds before sending by default. Press `Ctrl+Z` during
 that window to cancel delivery and reopen the draft. Change the delay under
-Settings → Editor, or set it to `0` to send at once.
+Settings → Editor, or set it to `0` to send at once. `Ctrl+Z` never cancels a
+scheduled send or one waiting to retry, so it stays free for undoing your latest
+action; edit or delete those from the Outbox.
 
 The **Outbox** has a row of its own in the accounts pane, under the Unified
 Inbox — outgoing mail spans accounts the same way. Its badge counts the sends
@@ -1114,7 +1116,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `t` | Toggle starred-first sort (starred messages float to the top) |
 | `X` | In Needs You: dismiss the message; in Waiting on Them: stop waiting (mail and tags untouched) |
 | `Z` | Snooze from Needs You / Waiting on Them (local only); in Snoozed: unsnooze |
-| `Ctrl+Z` | Cancel a queued send; in Needs You or Waiting on Them, undo the latest dismiss or stop; otherwise undo the latest pending delete, archive, or move |
+| `Ctrl+Z` | Cancel a send still in its delay; in Needs You or Waiting on Them, undo the latest dismiss or stop; otherwise undo the latest pending delete, archive, or move |
 | `O` | Open the Outbox |
 | `o` or `Enter` | Open an explicitly selected LINKS entry or a visible link deliberately focused with the keyboard |
 | `Ctrl+U` | Unsubscribe from the mailing list for the open message |
