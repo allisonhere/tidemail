@@ -500,3 +500,24 @@ func TestLoadKeepsCLISignatureDefaultWhenKeyIsAbsent(t *testing.T) {
 		t.Fatalf("unexpected CLI settings: %+v", cfg.Display)
 	}
 }
+
+func TestComposeSearchRegexDefaultAndPersistence(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := DefaultConfig()
+	if cfg.Display.ComposeSearchRegex {
+		t.Fatal("regex must default off")
+	}
+	for _, enabled := range []bool{true, false} {
+		cfg.Display.ComposeSearchRegex = enabled
+		if err := Save(cfg); err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loaded.Display.ComposeSearchRegex != enabled {
+			t.Fatal("regex setting did not survive save/load")
+		}
+	}
+}

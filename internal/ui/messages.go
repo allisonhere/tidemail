@@ -395,6 +395,7 @@ func (m *Model) setMessageStarredCmd(msg db.Message, starred bool) tea.Cmd {
 		if mailbox != nil && acfg.IMAPHost != "" && msg.UID != 0 {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
+			ctx = uidWriteContext(ctx, database, mailbox.ID, mailbox.Name)
 			if err := sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
 				return client.MarkFlagged(ctx, mailbox.Name, msg.UID, starred)
 			}); err != nil {

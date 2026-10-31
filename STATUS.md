@@ -97,6 +97,15 @@ Current release: **v1.7.0**.
 - **AI**: summaries and grammar across OpenAI, Claude, Gemini, and Ollama. Mail rules
   are AI-generated once into reviewed JSON, then matched locally and deterministically —
   no per-message AI cost.
+- **Compose layout**: grows up to 110×48 cells, with matching stored/rendered
+  editor geometry. Key-only rounded pills highlight Send in the success color;
+  plain themes use bracketed keys. A fixed three-row footer keeps Esc first on
+  its last row and shows the sign/encrypt toggles and status on the state line.
+- **Compose Find/Replace**: `Ctrl+F` opens live Find; `Ctrl+R` in the bar shows
+  replacement controls. Replace All is one undo step; optional regex is exposed
+  by Settings → Editor → Advanced regex search. Vim supports `/`, `?`, `n`, `N`.
+  The bar sits in the footer; `Alt+Enter` replaces all, `Alt+C` toggles case and
+  `Alt+R` regex. Requires Ripple v0.5.0.
 - **Compose**: optional vim mode (`compose_vim`), backed by the extracted
   [`ripple`](https://github.com/allisonhere/ripple) editor library.
 - **Gmail & Outlook OAuth** (optional): the account form's **Auth** row is a

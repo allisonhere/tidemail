@@ -10,7 +10,6 @@ import (
 
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/mailtemplate"
-	"github.com/charmbracelet/x/ansi"
 )
 
 func TestInsertTemplate(t *testing.T) {
@@ -245,12 +244,12 @@ func TestTemplateHintInEveryFieldAndPaletteEntry(t *testing.T) {
 	chrome := newManagerChrome(100, CatppuccinMocha, false)
 	c.tmplOpen = false
 	c.focusedField = composeFieldBody
-	if h := ansi.Strip(c.composeHints(120, chrome)); !strings.Contains(h, "f6 templates") {
+	if h := plainComposeHintText(c.composeHints(120, chrome)); !strings.Contains(h, "f6 templates") {
 		t.Errorf("body footer should hint f6 templates:\n%s", h)
 	}
 	for _, f := range []composeField{composeFieldFrom, composeFieldSubject} {
 		c.focusedField = f
-		if h := ansi.Strip(c.composeHints(120, chrome)); !strings.Contains(h, "f6 templates") {
+		if h := plainComposeHintText(c.composeHints(120, chrome)); !strings.Contains(h, "f6 templates") {
 			t.Errorf("field %v footer should hint f6 templates:\n%s", f, h)
 		}
 	}

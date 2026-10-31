@@ -4,9 +4,11 @@ import (
 	"archive/tar"
 	"bufio"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -62,6 +64,9 @@ type DownloadedAsset struct {
 	Release     ReleaseInfo
 	ArchivePath string
 	BinaryPath  string
+	// TempDir holds the archive and binary; Install removes it once it is no
+	// longer needed.
+	TempDir string
 }
 
 // InstallResult tells the UI whether Tide was replaced directly or needs a manual command. -allie
@@ -165,8 +170,18 @@ func (u *Updater) Download(release ReleaseInfo) (DownloadedAsset, error) {
 		return DownloadedAsset{}, fmt.Errorf("release %s has no %s asset; refusing to install unverified update", release.Version, checksumsAssetName)
 	}
 
-	client := u.httpClient()
-	req, err := http.NewRequest(http.MethodGet, release.DownloadURL, nil)
+	// The archive is the one large transfer. The client's Timeout caps the
+	// whole request, body included, so a slow link would cut the download off
+	// partway. Allow any total time instead, as long as data keeps arriving:
+	// the stall timer cancels the request after a quiet spell, which also
+	// bounds the wait for the response to start.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stall := time.AfterFunc(downloadStallTimeout, cancel)
+	defer stall.Stop()
+	client := *u.httpClient()
+	client.Timeout = 0
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, release.DownloadURL, nil)
 	if err != nil {
 		return DownloadedAsset{}, fmt.Errorf("build download request: %w", err)
 	}
@@ -174,6 +189,9 @@ func (u *Updater) Download(release ReleaseInfo) (DownloadedAsset, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
+		if ctx.Err() != nil {
+			err = errDownloadStalled
+		}
 		return DownloadedAsset{}, fmt.Errorf("download update %s: %w", release.Version, err)
 	}
 	defer resp.Body.Close()
@@ -187,22 +205,32 @@ func (u *Updater) Download(release ReleaseInfo) (DownloadedAsset, error) {
 	if err != nil {
 		return DownloadedAsset{}, fmt.Errorf("create update temp dir: %w", err)
 	}
+	// A failed download leaves nothing behind; a successful one is handed to
+	// Install, which removes the directory when it is done with it.
+	staged := false
+	defer func() {
+		if !staged {
+			_ = os.RemoveAll(tmpDir)
+		}
+	}()
 
 	archivePath := filepath.Join(tmpDir, release.AssetName+".tar.gz")
 	archiveFile, err := os.Create(archivePath)
 	if err != nil {
 		return DownloadedAsset{}, fmt.Errorf("create archive file: %w", err)
 	}
-	if _, err := io.Copy(archiveFile, resp.Body); err != nil {
+	if _, err := io.Copy(archiveFile, stallReader{resp.Body, stall}); err != nil {
 		archiveFile.Close()
-		return DownloadedAsset{}, fmt.Errorf("write archive file: %w", err)
+		if ctx.Err() != nil {
+			err = errDownloadStalled
+		}
+		return DownloadedAsset{}, fmt.Errorf("download update %s: %w", release.Version, err)
 	}
 	if err := archiveFile.Close(); err != nil {
 		return DownloadedAsset{}, fmt.Errorf("close archive file: %w", err)
 	}
 
 	if err := u.verifyArchiveChecksum(release, archivePath); err != nil {
-		_ = os.RemoveAll(tmpDir)
 		return DownloadedAsset{}, err
 	}
 
@@ -214,11 +242,33 @@ func (u *Updater) Download(release ReleaseInfo) (DownloadedAsset, error) {
 		return DownloadedAsset{}, fmt.Errorf("mark update binary executable: %w", err)
 	}
 
+	staged = true
 	return DownloadedAsset{
 		Release:     release,
 		ArchivePath: archivePath,
 		BinaryPath:  binaryPath,
+		TempDir:     tmpDir,
 	}, nil
+}
+
+// downloadStallTimeout is how long an update download may go without receiving
+// any data before it is abandoned. A variable so tests can shorten it.
+var downloadStallTimeout = 30 * time.Second
+
+var errDownloadStalled = errors.New("download stalled: no data received for a while")
+
+// stallReader restarts the stall timer every time data arrives.
+type stallReader struct {
+	r     io.Reader
+	timer *time.Timer
+}
+
+func (s stallReader) Read(p []byte) (int, error) {
+	n, err := s.r.Read(p)
+	if n > 0 {
+		s.timer.Reset(downloadStallTimeout)
+	}
+	return n, err
 }
 
 // verifyArchiveChecksum downloads the release's SHA256SUMS asset and confirms
@@ -307,6 +357,13 @@ func (u *Updater) Install(asset DownloadedAsset, currentExec string) (InstallRes
 		Version:        asset.Release.Version,
 		ExecutablePath: currentExec,
 	}
+	// The staged download is needed only until the binary is in place, or by
+	// the manual install command, which copies from it.
+	defer func() {
+		if asset.TempDir != "" && !result.RequiresManual {
+			_ = os.RemoveAll(asset.TempDir)
+		}
+	}()
 	if asset.BinaryPath == "" {
 		return result, fmt.Errorf("downloaded update has no binary path")
 	}

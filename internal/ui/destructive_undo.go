@@ -184,7 +184,7 @@ func executeDestructiveAction(action pendingDestructiveAction, database *db.DB, 
 	}
 	for _, key := range order {
 		entries := batches[key]
-		if err := executeDestructiveRemote(action.Kind, sessions, entries); err != nil {
+		if err := executeDestructiveRemote(action.Kind, database, sessions, entries); err != nil {
 			if result.Err == nil {
 				result.Err = err
 			}
@@ -217,7 +217,7 @@ func executeDestructiveAction(action pendingDestructiveAction, database *db.DB, 
 	return result
 }
 
-func executeDestructiveRemote(kind destructiveActionKind, sessions *imapClient.SessionPool, entries []pendingDestructiveEntry) error {
+func executeDestructiveRemote(kind destructiveActionKind, database *db.DB, sessions *imapClient.SessionPool, entries []pendingDestructiveEntry) error {
 	if len(entries) == 0 || entries[0].Account.IMAPHost == "" {
 		return nil
 	}
@@ -233,6 +233,7 @@ func executeDestructiveRemote(kind destructiveActionKind, sessions *imapClient.S
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	entry := entries[0]
+	ctx = uidWriteContext(ctx, database, entry.Source.ID, entry.Source.Name)
 	return sessions.Do(ctx, entry.Account, func(client *imapClient.Client) error {
 		if kind == destructiveDelete && entry.Target.ID == 0 {
 			return client.DeleteMessages(ctx, entry.Source.Name, uids)

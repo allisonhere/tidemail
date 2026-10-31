@@ -88,6 +88,7 @@ const (
 	sfNotifications
 	sfMouseSupport
 	sfComposeVim
+	sfComposeSearchRegex
 	sfComposeSpell
 	sfSpellLang
 	sfSpellDictionary
@@ -353,6 +354,7 @@ type Settings struct {
 	notifications           bool
 	mouseSupport            bool
 	composeVim              bool
+	composeSearchRegex      bool
 	composeSpell            bool
 	spellLangIdx            int
 	cliQuitAfterSend        bool
@@ -478,6 +480,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		notifications:           cfg.Display.Notifications,
 		mouseSupport:            cfg.Display.MouseSupport,
 		composeVim:              cfg.Display.ComposeVim,
+		composeSearchRegex:      cfg.Display.ComposeSearchRegex,
 		composeSpell:            cfg.Display.ComposeSpell,
 		spellLangIdx:            spellLangIndex(cfg.Display.ComposeSpellLang),
 		cliQuitAfterSend:        cfg.Display.CLIQuitAfterSend,
@@ -573,6 +576,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.Notifications = s.notifications
 	cfg.Display.MouseSupport = s.mouseSupport
 	cfg.Display.ComposeVim = s.composeVim
+	cfg.Display.ComposeSearchRegex = s.composeSearchRegex
 	cfg.Display.ComposeSpell = s.composeSpell
 	cfg.Display.ComposeSpellLang = spellLangs[s.spellLangIdx].id
 	cfg.Display.CLIQuitAfterSend = s.cliQuitAfterSend
@@ -828,7 +832,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		fields = append(fields, sfReadingWidth, sfShowHeaders, sfMarkReadOnOpen, sfMarkReadOnFocus, sfActionableLinks, sfFilterLinks, sfImages)
 		return append(fields, sfBrowser, sfConfirmQuit, sfNotifications, sfMouseSupport)
 	case ssEditor:
-		return []settingsField{sfBackToSections, sfComposeVim, sfComposeSpell, sfSpellLang, sfSpellDictionary, sfSendDelay, sfSendMaxAttempts}
+		return []settingsField{sfBackToSections, sfComposeVim, sfComposeSearchRegex, sfComposeSpell, sfSpellLang, sfSpellDictionary, sfSendDelay, sfSendMaxAttempts}
 	case ssCLI:
 		return []settingsField{sfBackToSections, sfCLIQuitAfterSend, sfCLISkipReview, sfCLISignature}
 	case ssUpdates:
@@ -1595,6 +1599,14 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfComposeSearchRegex:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.composeSearchRegex = !s.composeSearchRegex
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
 	case sfComposeSpell:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.composeSpell = !s.composeSpell
@@ -2125,6 +2137,8 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 	case ssEditor:
 		b.addGroup("Compose")
 		b.addToggle("Vim keys in compose", s.composeVim, sfComposeVim)
+		b.addToggle("Advanced regex search", s.composeSearchRegex, sfComposeSearchRegex)
+		b.addHint("Shows an optional Regex toggle in compose Find. Searches stay literal until you enable it in the search bar.")
 		b.addToggle("Spell check in compose (F7)", s.composeSpell, sfComposeSpell)
 		b.addControl("Spell check language", sfSpellLang, renderSettingsPicker(min(max(12, b.contentW-b.labelW-2), 18), spellLangs[s.spellLangIdx].label, s.focusedField == sfSpellLang, b.chrome))
 		b.addAction("Personal dictionary", "view, add, or remove words you taught spell check", sfSpellDictionary)

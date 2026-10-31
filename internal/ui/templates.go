@@ -63,6 +63,11 @@ func (c ComposeModel) updateTemplates(km tea.KeyMsg, keys KeyMap) (ComposeModel,
 		return c, nil, false
 	}
 	if c.tmplEditing {
+		if c.tmplEd.ed.SearchActive() && !keyMatches(km, keys.Save) {
+			var cmd tea.Cmd
+			c.tmplEd, cmd = c.tmplEd.Update(km)
+			return c, cmd, false
+		}
 		switch {
 		case keyMatches(km, keys.Save):
 			c.saveTemplate()

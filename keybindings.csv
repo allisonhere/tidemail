@@ -88,3 +88,12 @@ MailTagRename,e,e,rename the selected tag locally,tag names and colors settings
 MailTagColor,c,c,open the selected tag color picker,tag names and colors settings
 MailTagThemeColor,r,r,reset the selected tag to the theme color,tag names and colors settings
 MailTagAccount,left/right,left/right,choose the account for tag mappings,tag names and colors settings
+ComposeFind,ctrl+f,ctrl+f,find in body,compose-body
+ComposeReplace,ctrl+r,ctrl+r,toggle replacement controls,compose-find
+ComposeFindNext,f3,f3,next match,compose-body
+ComposeFindPrevious,shift+f3,shift+f3,previous match,compose-body
+ComposeReplaceAll,alt+enter,alt+enter,replace every match while Replace is shown,compose-find
+ComposeFindCase,alt+c,alt+c,toggle match case,compose-find
+ComposeFindRegex,alt+r,alt+r,toggle regex when advanced regex search is enabled,compose-find
+ComposeFindControls,tab,tab,next search control,compose-find
+ComposeFindClose,esc,esc,close search without closing compose,compose-find

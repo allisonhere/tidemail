@@ -56,7 +56,7 @@ func TestPluginScaffoldBuildValidateTest(t *testing.T) {
 	cache := filepath.Join(root, "go-cache")
 	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", "invoice-tagger", ".")
 	cmd.Dir = pluginDir
-	cmd.Env = append(os.Environ(), "GOCACHE="+cache)
+	cmd.Env = append(os.Environ(), "GOCACHE="+cache, "GOWORK=off")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generated plugin did not build: %v\n%s", err, output)
 	}

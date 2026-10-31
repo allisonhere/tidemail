@@ -168,6 +168,38 @@ func TestScheduledSendPersistsFutureTimeAndDoesNotFlushEarly(t *testing.T) {
 	}
 }
 
+// Ctrl+Z takes back only a send still in its undo delay. A scheduled send or a
+// pending retry can be hours old; an undo meant for a later action must not
+// cancel it, and must still reach the action it was meant for.
+func TestUndoLeavesScheduledAndRetryingSendsAlone(t *testing.T) {
+	m := newSendTestModel(t, 5)
+	c := NewCompose(config.AccountConfig{}, nil, nil)
+	c.toInput.SetValue("bob@example.com")
+	m.compose, m.overlay = c, overlayCompose
+	next, _ := m.Update(SendQueuedMsg{
+		Msg:         smtp.OutgoingMessage{To: []string{"bob@example.com"}, Subject: "later"},
+		ScheduledAt: time.Now().Add(2 * time.Hour),
+	})
+	m = next.(Model)
+	if m.undoLatestPendingSend() || len(m.pendingSends) != 1 {
+		t.Fatal("Ctrl+Z cancelled a scheduled send")
+	}
+	m.pendingSends[0].Scheduled = false
+	m.pendingSends[0].Attempts = 1
+	if m.undoLatestPendingSend() || len(m.pendingSends) != 1 {
+		t.Fatal("Ctrl+Z cancelled a send waiting to retry")
+	}
+
+	// An immediate send queued afterwards is still undoable, even though an
+	// older scheduled one is pending.
+	m.pendingSends[0].Attempts = 0
+	m.pendingSends[0].Scheduled = true
+	m, _ = queueTestSend(t, m)
+	if !m.undoLatestPendingSend() || len(m.pendingSends) != 1 || !m.pendingSends[0].Scheduled {
+		t.Fatal("undo must take back the immediate send and keep the scheduled one")
+	}
+}
+
 func TestScheduleSendRejectsPastTime(t *testing.T) {
 	m := newSendTestModel(t, 5)
 	m.compose = NewCompose(config.AccountConfig{}, nil, nil)

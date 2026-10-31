@@ -17,6 +17,40 @@ import (
 	"github.com/allisonhere/tidemail/internal/config"
 )
 
+// Header bytes must be ASCII: a non-ASCII subject or sender name is sent as an
+// encoded-word that decodes back to the original, and ASCII stays untouched.
+func TestBuildRawEncodesNonASCIIHeaders(t *testing.T) {
+	for _, tc := range []struct{ from, subject string }{
+		{"José Núñez <jose@example.com>", "Café plans 🎉"},
+		{"Plain Name <plain@example.com>", "plain subject"},
+		{"bare@example.com", "Ünïcödé"},
+	} {
+		raw := buildRaw(tc.from, OutgoingMessage{To: []string{"b@example.com"}, Subject: tc.subject, Body: "hi"})
+		header, _, _ := bytes.Cut(raw, []byte("\r\n\r\n"))
+		for _, b := range header {
+			if b >= 0x80 {
+				t.Fatalf("raw 8-bit byte in headers for %q / %q:\n%s", tc.from, tc.subject, header)
+			}
+		}
+		msg, err := mail.ReadMessage(bytes.NewReader(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		dec := new(mime.WordDecoder)
+		if got, err := dec.DecodeHeader(msg.Header.Get("Subject")); err != nil || got != tc.subject {
+			t.Fatalf("subject decodes to %q (%v), want %q", got, err, tc.subject)
+		}
+		from, err := msg.Header.AddressList("From")
+		want, _ := mail.ParseAddress(tc.from)
+		if err != nil || len(from) != 1 || from[0].Name != want.Name || from[0].Address != want.Address {
+			t.Fatalf("From decodes to %+v (%v), want %+v", from, err, want)
+		}
+		if tc.subject == "plain subject" && msg.Header.Get("Subject") != "plain subject" {
+			t.Fatal("ASCII subjects must pass through unchanged")
+		}
+	}
+}
+
 func TestBuildRawAttachmentFilenameRoundTrip(t *testing.T) {
 	for _, name := range []string{"report.txt", `report"final.txt`, `report\final.txt`, "résumé.txt", "report\nfinal.txt"} {
 		t.Run(name, func(t *testing.T) {

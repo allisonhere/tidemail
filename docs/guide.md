@@ -526,7 +526,9 @@ common names such as `Sent`, `Sent Items`, and `INBOX.Sent` as fallbacks.
 
 TideMail waits five seconds before sending by default. Press `Ctrl+Z` during
 that window to cancel delivery and reopen the draft. Change the delay under
-Settings → Editor, or set it to `0` to send at once.
+Settings → Editor, or set it to `0` to send at once. `Ctrl+Z` never cancels a
+scheduled send or one waiting to retry, so it stays free for undoing your latest
+action; edit or delete those from the Outbox.
 
 The **Outbox** has a row of its own in the accounts pane, under the Unified
 Inbox — outgoing mail spans accounts the same way. Its badge counts the sends
@@ -566,9 +568,79 @@ the first try; it defaults to `3`, and `1` disables automatic retries. An
 interrupted delivery is marked uncertain because the server may have accepted
 it. Check Sent mail before manually retrying an uncertain message.
 
+When replying, the quoted original is editable text inside the message body;
+there is no separate expand/collapse control in compose.
+
+The compose window expands with the terminal up to 110 columns and 48 rows,
+with the extra space available to the message editor. The header fields carry
+their own labels, so there are no group titles above them.
+
+The footer is always three rows, so the message body never changes height as
+focus moves, Find opens, or a status message appears. The first row shows state:
+the Vim mode or command line and status messages on the left, and the PGP
+**Sign**/**Encrypt** toggles (`●` on, `○` off) and the `⁂ sig` marker on the
+right. The second row holds the message actions and never changes with focus:
+Send, Commands (`Ctrl+P` opens the command palette), Sender, and Templates. The
+third row starts with Cancel, then Grammar and Spell, which work from any field
+and stay in place, followed by the focused field's keys as a group — Find,
+Copy, and Cut in the body, or Pick sender on From. With Vim keys on, the body's
+keys follow the Vim mode instead: `/` find, `y` yank, `p` put, and `u` undo in
+Normal; `y`, `d`, and `c` in Visual; Run, `:w`, and `:q` on the command line;
+none in Insert. Outside Normal, `Esc` is labeled Normal because it returns
+there rather than cancelling. `Esc` always opens the last
+row, here and in the sender picker and Find footers. Shortcuts show the
+key in a rounded pill with the action beside it, lined up in columns; the Esc
+pill uses the theme's error color and Send its success color. Rounded pills use
+the same Nerd Font glyphs as rounded message tags; plain (VT52) themes use
+bracketed keys instead. Narrow windows drop the least important hints rather
+than wrapping; every shortcut stays listed in help (`?`) and the palette.
+
 The standard editor is on by default. Use Shift with the arrow keys to select
 text, `Ctrl+C`/`Ctrl+X`/`Ctrl+V` for the system clipboard, `Ctrl+Z`/`Ctrl+Y` for
 undo and redo, and Ctrl with the arrow keys to move by word.
+
+Press `Ctrl+F` in the compose body to open Find. Matches highlight as you type;
+`Enter` or `F3` goes forward, `Shift+F3` goes backward, and navigation wraps.
+Press `Ctrl+R` inside Find to show Replace and focus the replacement field
+immediately. Press it again to hide Replace and return focus to Find. `Enter`
+in Replacement changes the current match and advances, and `Alt+Enter` replaces
+every match as a single undo step from either field. `Alt+C` toggles match case
+and `Alt+R` toggles regex. Each pill shows its key (`Replace ⏎`, `All ⌥⏎`,
+`Aa ⌥C`, `.* ⌥R`), so nothing needs Tabbing onto; `Tab`/`Shift+Tab` still cycle
+the fields and pills if you prefer. Narrow windows drop the key labels from the
+pills first. `Esc` closes
+Find without closing compose or undoing replacements. Copy/cut operate on the
+whole focused search field; paste inserts at its caret. Find takes over the
+footer rather than the body: the Find row (and With row while replacing) sit
+above the keys for the focused control, and the body keeps its full height. The
+bar is compact: the inputs share one width (up to 40 columns), and the match
+count sits above Replace with the `Aa`/`.*` toggles above All. Replace and All
+are pills, dimmed when there is nothing to replace; a toggle that is on shows as
+a tinted pill and one that is off as plain text. `No results` shows in the
+theme's error color. Focus moves only the `▌` rail and the accent pill. In the
+message, the current match is solid accent and the others are softly tinted,
+leaving underlines to spell check. A regex or replacement error shows
+in full on its own footer row. Long queries scroll to keep the input caret visible.
+
+Search is literal and case-sensitive by default; use the `Aa` control to ignore
+case. **Settings → Editor → Advanced regex search** (off by default;
+`display.compose_search_regex`) reveals the optional `.*` toggle. Enabling the
+setting does not activate regex. Regex uses Go syntax and supports replacement
+captures (`$0` for the whole match, `$1`, `${name}`). Anchors `^` and `$` match
+each logical line, independently of visual wrapping; `\A` and `\z` match the
+whole document's boundaries. Use `(?-m)` to disable multiline mode explicitly.
+For example, replacing `^> ` with nothing strips the quote prefix on every line.
+
+In regex replacements, write `$$` for a literal dollar: replace `cat` with `$$5`
+in `price cat` to get `price $5`. References to nonexistent capture groups show
+an inline replacement error and block Replace and All without editing the draft.
+Valid optional groups that did not participate in a match expand to empty.
+Use `${1}suffix` for group 1 followed by text; `$1suffix` is a group name.
+Invalid patterns also show an error and cannot replace text. In literal mode, replacement dollar signs and backslashes stay literal.
+Empty queries cannot replace text. Searches cover the whole body, including
+quoted text. In Vim Normal mode, `/` and `?` preview searches; Enter accepts,
+Esc restores the prior position, and `n`/`N` repeat/reverse the search direction.
+Vim `:s` and `:%s` substitution commands are not supported.
 
 Enable Vim keys under Settings → Editor if you prefer modes, motions, counts,
 operators such as `dw`, `cw`, and `dd`, and a command line. `:w` sends the
@@ -1044,7 +1116,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `t` | Toggle starred-first sort (starred messages float to the top) |
 | `X` | In Needs You: dismiss the message; in Waiting on Them: stop waiting (mail and tags untouched) |
 | `Z` | Snooze from Needs You / Waiting on Them (local only); in Snoozed: unsnooze |
-| `Ctrl+Z` | Cancel a queued send; in Needs You or Waiting on Them, undo the latest dismiss or stop; otherwise undo the latest pending delete, archive, or move |
+| `Ctrl+Z` | Cancel a send still in its delay; in Needs You or Waiting on Them, undo the latest dismiss or stop; otherwise undo the latest pending delete, archive, or move |
 | `O` | Open the Outbox |
 | `o` or `Enter` | Open an explicitly selected LINKS entry or a visible link deliberately focused with the keyboard |
 | `Ctrl+U` | Unsubscribe from the mailing list for the open message |
@@ -1055,7 +1127,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Ctrl+E` | Toggle email headers on/off |
 | `Ctrl+O` | View the message source; `c` copies it, `Esc` closes |
 | `Ctrl+B` | View the whole message in your browser (remote content blocked) |
-| `Ctrl+F` | Find in message |
+| `Ctrl+F` | Find in message; Find/Replace when composing in the body |
 | `v` / `V` | Visual select line range / whole message |
 | `` ` `` | AI summary |
 | In the summary overlay | `C` copies, `M` saves a `.md` file to the AI save path, `z` toggles quoted text, `Esc` closes |
@@ -1111,7 +1183,9 @@ available yet.
 **Sending.** In compose, press `Alt+S` to sign and `Alt+E` to encrypt (also in
 the command palette; `F8` and `F9` work too if your terminal or desktop doesn't
 claim them). Each press shows `PGP encrypt: on` (or `sign`, or `off`) on the
-status line, and the footer shows ✓ when one is on. If you see no message, the
+footer's state line; turning encryption on adds a reminder that the subject is
+not encrypted. The `⌥S Sign` and `⌥E Encrypt` toggles at the right of that line
+show `●` when on and `○` when off, and stay visible beside long messages. If you see no message, the
 key never reached TideMail; use the palette instead. They are per message and
 start off. When you press send, the plugin signs or encrypts first (your
 passphrase prompt may appear then), and only then is the message queued, so
@@ -1232,7 +1306,7 @@ any other overlay is open. Turning mouse support on trades away your terminal's
 native click-drag text selection while it's enabled.
 
 - Display: theme, icons, support reminder, tag style and colors, message tags (header row, tag names and colors), Needs You and Waiting on Them sidebar rows, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, mouse support, and quit confirmation
-- Editor: compose keys, vim keys, spell check and its language, send delay, and maximum delivery attempts
+- Editor: compose keys, vim keys, advanced regex search, spell check and its language, send delay, and maximum delivery attempts
 - CLI: quit after send or draft, skip the review step, and the default signature for the interactive `tidemail cli` wizard
 - Accounts: connection details, From address, signature, color, and sync interval.
   An account's color accents its own mailbox pane (unread text, the focused

@@ -51,6 +51,8 @@ func installPGPPlugin(t *testing.T) *plugin.Manager {
 	}
 	build := exec.Command("go", "build", "-buildvcs=false", "-o", filepath.Join(dir, "tidemail-plugin-pgp"), ".")
 	build.Dir = src
+	// This plugin is a standalone module, not part of the host development workspace.
+	build.Env = append(os.Environ(), "GOWORK=off")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build the plugin: %v\n%s", err, out)
 	}

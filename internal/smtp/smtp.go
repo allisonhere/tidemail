@@ -14,10 +14,12 @@ import (
 	"mime/multipart"
 	"mime/quotedprintable"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"net/textproto"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/allisonhere/tidemail/internal/auth"
 	"github.com/allisonhere/tidemail/internal/config"
@@ -305,14 +307,32 @@ func crlf(s string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\n", "\r\n")
 }
 
+// encodeAddressHeader RFC 2047-encodes the display name of a "Name <addr>"
+// value when it is not ASCII. Anything else, or a value net/mail can't parse,
+// passes through unchanged.
+func encodeAddressHeader(value string) string {
+	for _, r := range value {
+		if r >= utf8.RuneSelf {
+			if a, err := mail.ParseAddress(value); err == nil {
+				return a.String()
+			}
+			break
+		}
+	}
+	return value
+}
+
 func buildRaw(from string, msg OutgoingMessage) []byte {
 	var hdr strings.Builder
-	hdr.WriteString("From: " + from + "\r\n")
+	// Header values must be ASCII: a non-ASCII subject or display name goes out
+	// as an RFC 2047 encoded-word, or strict servers reject it and clients show
+	// it garbled. ASCII text passes through unchanged.
+	hdr.WriteString("From: " + encodeAddressHeader(from) + "\r\n")
 	hdr.WriteString("To: " + strings.Join(msg.To, ", ") + "\r\n")
 	if len(msg.CC) > 0 {
 		hdr.WriteString("Cc: " + strings.Join(msg.CC, ", ") + "\r\n")
 	}
-	hdr.WriteString("Subject: " + msg.Subject + "\r\n")
+	hdr.WriteString("Subject: " + mime.QEncoding.Encode("utf-8", msg.Subject) + "\r\n")
 	// RFC 5322 requires Date and an originator. A submission server stamps
 	// these when they are missing, but a copy we APPEND to Sent is our own
 	// bytes — without them it would have no date, and nothing for threading or

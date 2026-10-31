@@ -6,10 +6,37 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Find and replace in compose. `Ctrl+F` opens Find with live match highlights and
+  a match count; `Ctrl+R` in the bar shows Replace. `Enter` in Find goes to the next
+  match, `Alt+Enter` replaces all in one undo step, `Alt+C` toggles match case and
+  `Alt+R` toggles regex (turn it on in **Settings → Editor → Advanced regex
+  search**). In vim mode, `/`, `?`, `n` and `N` search.
+
 ### Changed
 
 - Support links (Settings → Support, README, release notes and the repository
   Sponsor button) now point to GitHub Sponsors instead of Ko-fi.
+- The compose footer is a fixed three rows. The recipients/message headings are
+  gone, Esc is always first on the last row, the main shortcuts stay in place
+  when focus moves, and vim mode shows vim keys instead of Ctrl shortcuts. The Find/Replace bar
+  sits in the footer with its keys printed on each button.
+- The sign/encrypt toggles stay visible when a long status message shows, and
+  send errors stay visible while Find is open.
+
+### Fixed
+
+- `Ctrl+Z` no longer cancels a scheduled send or one waiting to retry; it only
+  takes back a send still in its undo delay.
+- Reading, starring, moving and deleting refuse to act when the server has
+  renumbered the mailbox since the last sync, instead of touching whichever
+  message now holds that number.
+- On servers without UIDPLUS, delete and move no longer expunge messages other
+  clients marked deleted.
+- Update downloads are no longer cut off by the 15-second request timeout; they
+  fail only after 30 seconds without data. Leftover update files are cleaned up.
+- Non-ASCII subjects and sender names are encoded properly when sending.
 
 ## v1.7.1
 

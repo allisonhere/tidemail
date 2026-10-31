@@ -125,6 +125,7 @@ func (m *Model) acceptReadChanges(messages []db.Message, target *bool, advance b
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
+			ctx = uidWriteContext(ctx, database, mailboxID, mailboxName)
 			result.Err = withSession(ctx, account, func(store readStoreFunc) error {
 				var firstErr error
 				for _, group := range []struct {

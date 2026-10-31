@@ -26,6 +26,10 @@ var editorClipboard ripple.Clipboard = systemClipboard{}
 // through each. Mirrors the editorClipboard pattern.
 var editorVimMode bool
 
+var editorSearchRegex bool
+
+func setEditorSearchRegex(on bool) { editorSearchRegex = on }
+
 // setEditorVimMode sets whether new compose editors use vim modal editing.
 func setEditorVimMode(on bool) { editorVimMode = on }
 
@@ -99,29 +103,38 @@ type editorArea struct {
 	w, h int
 
 	// Styling, configurable by the consumer (e.g. from the active theme).
-	CursorStyle      lipgloss.Style
-	SelectedStyle    lipgloss.Style
-	PlaceholderStyle lipgloss.Style
-	TypoStyle        lipgloss.Style // underline for misspelled words
-	typo             *typoCache
+	CursorStyle        lipgloss.Style
+	SelectedStyle      lipgloss.Style
+	PlaceholderStyle   lipgloss.Style
+	SearchMatchStyle   lipgloss.Style
+	SearchCurrentStyle lipgloss.Style
+	SearchControlStyle lipgloss.Style
+	SearchErrorStyle   lipgloss.Style
+	TypoStyle          lipgloss.Style // underline for misspelled words
+	typo               *typoCache
 }
 
 func newEditorArea() editorArea {
 	ed := ripple.New()
 	ed.SetClipboard(editorClipboard)
+	ed.SetRegexSearchEnabled(editorSearchRegex)
 	if editorVimMode {
 		ed.SetInputMode(ripple.ModeVim)
 	}
 	w, h := ed.Size()
 	return editorArea{
-		ed:               ed,
-		w:                w,
-		h:                h,
-		CursorStyle:      lipgloss.NewStyle().Reverse(true),
-		SelectedStyle:    lipgloss.NewStyle().Reverse(true),
-		PlaceholderStyle: lipgloss.NewStyle().Faint(true),
-		TypoStyle:        lipgloss.NewStyle().Underline(true).Foreground(lipgloss.Color("#e5707c")),
-		typo:             &typoCache{},
+		ed:                 ed,
+		w:                  w,
+		h:                  h,
+		CursorStyle:        lipgloss.NewStyle().Reverse(true),
+		SelectedStyle:      lipgloss.NewStyle().Reverse(true),
+		PlaceholderStyle:   lipgloss.NewStyle().Faint(true),
+		SearchMatchStyle:   lipgloss.NewStyle().Underline(true),
+		SearchCurrentStyle: lipgloss.NewStyle().Reverse(true),
+		SearchControlStyle: lipgloss.NewStyle().Reverse(true),
+		SearchErrorStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("#e5707c")),
+		TypoStyle:          lipgloss.NewStyle().Underline(true).Foreground(lipgloss.Color("#e5707c")),
+		typo:               &typoCache{},
 	}
 }
 
@@ -175,14 +188,19 @@ func (e editorArea) CommandLine() string { return e.ed.CommandLine() }
 // ripple.PasteMsg), so clipboard side effects ride back with the model.
 func (e editorArea) Update(msg tea.Msg) (editorArea, tea.Cmd) {
 	var cmd tea.Cmd
+	e.ed.SetRegexSearchEnabled(editorSearchRegex)
 	e.ed, cmd = e.ed.Update(msg)
 	return e, cmd
 }
 
 func (e editorArea) View() string {
 	opts := ripple.Options{
-		Selected:    func(s string) string { return e.SelectedStyle.Render(s) },
-		Placeholder: func(s string) string { return e.PlaceholderStyle.Render(s) },
+		SearchMatch:   func(s string) string { return e.SearchMatchStyle.Render(s) },
+		SearchCurrent: func(s string) string { return e.SearchCurrentStyle.Render(s) },
+		SearchControl: func(s string) string { return e.SearchControlStyle.Render(s) },
+		SearchError:   func(s string) string { return e.SearchErrorStyle.Render(s) },
+		Selected:      func(s string) string { return e.SelectedStyle.Render(s) },
+		Placeholder:   func(s string) string { return e.PlaceholderStyle.Render(s) },
 	}
 	if flags := e.typoFlags(); flags != nil {
 		opts.StyleKey = func(off int) string {

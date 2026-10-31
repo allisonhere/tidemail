@@ -147,6 +147,7 @@ func helpSections(keys KeyMap) []helpSection {
 		{
 			name: "Compose Modal",
 			entries: []helpEntry{
+				{"layout", "expands up to 110 columns × 48 rows; a fixed 3-row footer: state, message actions, field keys; plain themes use bracketed keys"},
 				{keys.Tab.Help().Key + "/shift+tab", "next/previous field; From opens the sender picker"},
 				{"up/down", "previous/next header row (suggestions first); body moves the cursor"},
 				{keys.Enter.Help().Key, "open sender picker or advance header fields"},
@@ -193,6 +194,12 @@ func helpSections(keys KeyMap) []helpSection {
 		{
 			name: "Message Body Editor",
 			entries: []helpEntry{
+				{"ctrl+f", "find in body; ctrl+r inside Find shows Replace and focuses replacement"},
+				{"f3 / shift+f3", "next / previous match; wraps at document ends"},
+				{"Find controls", "Enter in With replaces one; alt+enter replaces all; alt+c match case; alt+r regex — keys shown on each pill, no Tab needed; Esc closes Find, not compose"},
+				{"Regex", "enable Advanced regex search in Settings → Editor to reveal the optional .* toggle; literal by default"},
+				{"Regex anchors", "^ and $ match each logical line; \\A and \\z match document boundaries; (?-m) disables multiline mode"},
+				{"Regex replacement", "$$ inserts a literal dollar; $0 is the whole match; $1 or ${name} inserts a capture; unknown groups block replacement"},
 				{"ctrl+a", "select all body text"},
 				{"shift+arrows", "extend selection by character/line"},
 				{"ctrl+shift+arrows", "extend selection by word"},
@@ -213,7 +220,8 @@ func helpSections(keys KeyMap) []helpSection {
 				{"x dd yy p P D C s", "delete / yank / paste / change"},
 				{"d c y + motion", "operators, e.g. dw, cw, d$"},
 				{"v / V", "visual / visual-line selection"},
-				{"u / ctrl+r", "undo / redo"},
+				{"u / ctrl+r", "undo / redo (ctrl+r toggles Replace while Find is open)"},
+				{"/ ? n N", "find forward/backward; repeat/reverse; Enter accepts, Esc cancels the search preview"},
 				{":w :wq :x", "send the message"},
 				{":q", "cancel compose (save/discard prompt)"},
 			},

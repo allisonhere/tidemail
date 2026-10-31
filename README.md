@@ -76,8 +76,11 @@ One inbox, 51 built-in themes in 23 families — Catppuccin, Tokyo Night, Rosé 
   sent mail. Failed deliveries survive restarts and can be retried or edited.
 - **Unsubscribe without hunting for a footer.** Press `Ctrl+U` while reading to
   use the message's unsubscribe header or labeled unsubscribe link.
-- **Compose your way.** The standard editor supports text selection, the system
-  clipboard, undo and redo, and word movement. You can switch on Vim motions
+- **Compose your way.** A larger, responsive composer (up to 110×48 cells) uses
+  key-only pill hints, with Send highlighted in the theme's success color. The standard editor supports text selection, the system
+  clipboard, undo and redo, word movement, and Find/Replace (`Ctrl+F`, then
+  `Ctrl+R` for replacement controls). An advanced regex toggle is available via
+  **Settings → Editor → Advanced regex search**, off by default. You can switch on Vim motions
   and commands instead. Optional AI tools can summarize mail, proofread a
   draft, and build local filters from plain English. An optional offline spell
   check (**Settings → Editor**, off by default, in English or Español) underlines
@@ -406,7 +409,7 @@ shows the `message_raw` and `message_compose` permissions.
 | `x` | Toggle read state for selected messages |
 | `*` | Toggle the IMAP star |
 | `/` | Search messages |
-| `Ctrl+Z` | Cancel a queued send or undo a queued message action |
+| `Ctrl+Z` | Cancel a send still in its delay, or undo a queued message action |
 | `O` | Open the Outbox |
 | `Ctrl+U` | Unsubscribe while reading; cycle sender while composing |
 | `Alt+F` / `Ctrl+R` | Attach a file while composing; remove the last attachment |

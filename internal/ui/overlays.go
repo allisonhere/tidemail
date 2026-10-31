@@ -134,7 +134,7 @@ func (m Model) renderOverlay(base string) string {
 
 	case overlayCompose:
 		winW := composeOverlayWidth(m.width)
-		winH := min(m.height-4, 36)
+		winH := composeOverlayHeight(m.height)
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		view := m.compose
 		_, view.pgpAvailable = m.pgpComposePlugin()

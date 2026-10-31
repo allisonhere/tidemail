@@ -18,6 +18,8 @@ import (
 // It returns acted=true when the message was actually changed (moved, deleted,
 // marked, ...). acted=false with a nil error means the action was a no-op.
 func applyFilterAction(ctx context.Context, database *db.DB, client *imapClient.Client, source db.Mailbox, msg db.Message, action filter.Action) (bool, error) {
+	// Every remote write below acts on msg.UID in source.
+	ctx = uidWriteContext(ctx, database, source.ID, source.Name)
 	switch action.Type {
 	case filter.ActionMarkRead:
 		if client != nil && msg.UID != 0 {
