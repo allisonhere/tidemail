@@ -14,8 +14,8 @@ github.com/alecthomas/chroma/v2 v2.20.0 h1:sfIHpxPyR07/Oylvmcai3X/exDlE8+FA820NT
 github.com/alecthomas/chroma/v2 v2.20.0/go.mod h1:e7tViK0xh/Nf4BYHl00ycY6rV7b8iXBksI9E359yNmA=
 github.com/alecthomas/repr v0.5.1 h1:E3G4t2QbHTSNpPKBgMTln5KLkZHLOcU7r37J4pXBuIg=
 github.com/alecthomas/repr v0.5.1/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
-github.com/allisonhere/ripple v0.4.0 h1:mrAH3fXhizLjz121nkQ2UOI2EmhNzAq5FS0hYp7ATFQ=
-github.com/allisonhere/ripple v0.4.0/go.mod h1:tUOwwHoip07xZ2C+xDtwLFF5dkPCUliQ8OqL6FEbO+I=
+github.com/allisonhere/ripple v0.5.0 h1:BtxdJfJGMHq5O+IIrf7dGW/C7U+V5fxBuTZqa4axgV8=
+github.com/allisonhere/ripple v0.5.0/go.mod h1:Bg2iCmc0p/S+2xC1eFlQ1Z36PAjEK/47X3jwfJ5AndM=
 github.com/allisonhere/tidespell v0.3.0 h1:PvK1S1kfk/qBRinsgo/ZRC0WWuzefg8CVg/xtU3xDjs=
 github.com/allisonhere/tidespell v0.3.0/go.mod h1:7XLWUf19/N/Kxt9dVAW0esN31qjTRTAlfHazvNJljnU=
 github.com/allisonhere/tideui v0.3.2-0.20261028152459-84bd8dfa3832 h1:dpaL8LnKtXqn97DbHqY2xaLNRRh/gQ8FhZifaT/HEEI=

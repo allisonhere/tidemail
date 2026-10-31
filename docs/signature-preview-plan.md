@@ -36,7 +36,6 @@ deleted markers, undo/redo, navigation, selection across previews, long
 signatures, Unicode, small panes, resizing, and search. Verify ghost text never
 appears in saved/copied/searched text and sending includes one signature.
 
-Use the local Go workspace documented in `ripple-search-development.md`; leave
-TideMail's released Ripple dependency pin unchanged. Run relevant race tests,
+TideMail pins Ripple v0.5.0, so no local Go workspace is needed. Run relevant race tests,
 builds, vet, and terminal verification. Leave the signature-preview changes
 uncommitted for review; publish nothing.
