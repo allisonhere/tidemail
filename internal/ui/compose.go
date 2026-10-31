@@ -1653,7 +1653,8 @@ func (c ComposeModel) togglePGP(name string) ComposeModel {
 	}
 	c.statusMsg = fmt.Sprintf("PGP %s: %s", name, state)
 	if name == "encrypt" && *on {
-		c.statusMsg += " (the subject and the header fields are not encrypted)"
+		// Short enough to sit beside the toggles on the footer's state line.
+		c.statusMsg += " — subject not encrypted"
 	}
 	return c
 }

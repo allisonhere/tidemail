@@ -44,7 +44,11 @@ func TestComposeFindFooterKeepsBarAndKeys(t *testing.T) {
 			t.Fatalf("footer is %dx%d at width %d", lipgloss.Width(hints), lipgloss.Height(hints), width)
 		}
 		lines := strings.Split(plainComposeHintText(hints), "\n")
-		if !strings.Contains(lines[2], "enter next") {
+		// Esc is the way out of Find, so it outlasts every other hint.
+		if !strings.HasPrefix(strings.TrimSpace(lines[2]), "esc close") {
+			t.Fatalf("lost Esc at width %d: %q", width, lines)
+		}
+		if width >= 32 && !strings.Contains(lines[2], "enter next") {
 			t.Fatalf("lost the primary key at width %d: %q", width, lines)
 		}
 		if width >= 52 {
@@ -118,7 +122,7 @@ func TestComposeFooterRowsAreStateActionsContext(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("want 3 footer rows, got %q", lines)
 	}
-	if !strings.HasPrefix(strings.TrimSpace(lines[0]), "draft saved") || !strings.Contains(lines[0], "alt+e encrypt ●") || !strings.Contains(lines[0], "alt+s sign ○") {
+	if !strings.HasPrefix(strings.TrimSpace(lines[0]), "draft saved") || !strings.Contains(lines[0], "⌥e encrypt ●") || !strings.Contains(lines[0], "⌥s sign ○") {
 		t.Fatalf("state row: %q", lines[0])
 	}
 	if !strings.Contains(lines[1], "^p commands") || strings.Contains(lines[1], "schedule") {
@@ -323,6 +327,84 @@ func TestComposeFindPillsAndMatchTint(t *testing.T) {
 	plain := c.composeHints(110, newManagerChrome(110, VT52, true))
 	if strings.Contains(plain, pillCapLeft) || !strings.Contains(ansi.Strip(plain), "[x] Aa") {
 		t.Fatalf("plain themes keep bracketed controls: %q", ansi.Strip(plain))
+	}
+}
+
+// Errors stay visible while Find is open, and never cost the way out.
+func TestComposeFindFooterShowsErrorsAndKeepsEsc(t *testing.T) {
+	setEditorSearchRegex(true)
+	t.Cleanup(func() { setEditorSearchRegex(false) })
+	c := NewCompose(config.AccountConfig{}, nil, nil)
+	c.focusedField = composeFieldBody
+	c.bodyInput.SetValue("cat cat")
+	press := func(msg tea.KeyMsg) {
+		t.Helper()
+		next, _, done := c.Update(msg, DefaultKeys)
+		c = next
+		if done {
+			t.Fatalf("%s closed compose", msg)
+		}
+	}
+	footer := func(width int) []string {
+		return strings.Split(plainComposeHintText(c.composeHints(width, newManagerChrome(width, CatppuccinMocha, false))), "\n")
+	}
+	// Ctrl+S still sends from Find; its validation error must be shown.
+	press(tea.KeyMsg{Type: tea.KeyCtrlF})
+	press(tea.KeyMsg{Type: tea.KeyCtrlS})
+	if lines := footer(110); !strings.Contains(strings.Join(lines, "\n"), "to is required") || !strings.HasPrefix(strings.TrimSpace(lines[2]), "esc close") {
+		t.Fatalf("send error hidden by Find: %q", lines)
+	}
+	press(tea.KeyMsg{Type: tea.KeyCtrlR})
+	if lines := footer(110); !strings.Contains(lines[2], "to is required") || !strings.HasPrefix(strings.TrimSpace(lines[2]), "esc close") {
+		t.Fatalf("with Replace open the error shares Esc's row: %q", lines)
+	}
+	// A regex error with both inputs open used to fill all three rows.
+	c.statusMsg, c.isErr = "", false
+	c.bodyInput.ed.SetSearchRegex(true)
+	c.bodyInput.ed.SetSearchQuery("(cat")
+	for _, width := range []int{24, 76, 110} {
+		lines := footer(width)
+		want := "invalid regex"
+		if width < 32 {
+			want = "inval" // cut with an ellipsis beside Esc
+		}
+		if len(lines) != 3 || !strings.HasPrefix(strings.TrimSpace(lines[2]), "esc close") || !strings.Contains(lines[2], want) {
+			t.Fatalf("regex error removed Esc at width %d: %q", width, lines)
+		}
+	}
+}
+
+// A toggle must never vanish behind the message its own key press set.
+func TestComposeStateLineKeepsTogglesBesideLongMessages(t *testing.T) {
+	chrome := newManagerChrome(76, CatppuccinMocha, false)
+	c := NewCompose(config.AccountConfig{}, nil, nil)
+	c.focusedField = composeFieldBody
+	c.pgpAvailable = true
+
+	c = c.togglePGP("encrypt")
+	line := plainComposeHintText(c.composeStateLine(76, chrome))
+	for _, want := range []string{"pgp encrypt: on — subject not encrypted", "⌥s sign ○", "⌥e encrypt ●"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("missing %q: %q", want, line)
+		}
+	}
+	if strings.Contains(line, "⁂ sig") {
+		t.Fatalf("the marker should step aside for the message: %q", line)
+	}
+	c.statusMsg = ""
+	if line := plainComposeHintText(c.composeStateLine(76, chrome)); !strings.Contains(line, "⁂ sig") {
+		t.Fatalf("the marker returns once the message clears: %q", line)
+	}
+
+	c.statusMsg = strings.Repeat("a very long status message ", 4)
+	line = plainComposeHintText(c.composeStateLine(76, chrome))
+	if lipgloss.Width(line) > 76 || !strings.Contains(line, "…") || !strings.Contains(line, "⌥s sign ○") || !strings.Contains(line, "⌥e encrypt ●") {
+		t.Fatalf("a long message must be cut, not the toggles: %q", line)
+	}
+
+	plain := ansi.Strip(c.composeStateLine(76, newManagerChrome(76, VT52, true)))
+	if !strings.Contains(plain, "[ALT+S] Sign") || strings.Contains(plain, "⌥") {
+		t.Fatalf("plain themes spell the keys out: %q", plain)
 	}
 }
 

@@ -1181,7 +1181,9 @@ available yet.
 **Sending.** In compose, press `Alt+S` to sign and `Alt+E` to encrypt (also in
 the command palette; `F8` and `F9` work too if your terminal or desktop doesn't
 claim them). Each press shows `PGP encrypt: on` (or `sign`, or `off`) on the
-status line, and the footer shows ✓ when one is on. If you see no message, the
+footer's state line; turning encryption on adds a reminder that the subject is
+not encrypted. The `⌥S Sign` and `⌥E Encrypt` toggles at the right of that line
+show `●` when on and `○` when off, and stay visible beside long messages. If you see no message, the
 key never reached TideMail; use the palette instead. They are per message and
 start off. When you press send, the plugin signs or encrypts first (your
 passphrase prompt may appear then), and only then is the message queued, so

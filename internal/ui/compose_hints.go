@@ -8,6 +8,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // composeHint is one footer action. A narrow window drops the highest prio
@@ -102,7 +103,8 @@ func composeBodyHints(vimMode string) []composeHint {
 // on at the right (PGP toggles and the signature marker).
 func (c ComposeModel) composeStateLine(width int, chrome managerChrome) string {
 	base := lipgloss.NewStyle().Background(chrome.baseBg)
-	var left, right []string
+	var left, state []string
+	var marker string
 	if c.focusedField == composeFieldBody && c.bodyInput.vimMode() && !c.busy {
 		if cl := c.bodyInput.CommandLine(); cl != "" {
 			left = append(left, base.Foreground(chrome.accent).Render(cl))
@@ -119,31 +121,58 @@ func (c ComposeModel) composeStateLine(width int, chrome managerChrome) string {
 	}
 	if !c.senderPickerOpen && !c.busy {
 		if c.pgpAvailable {
-			right = append(right, composeToggleHint("alt+s", "sign", c.pgpSign, chrome), composeToggleHint("alt+e", "encrypt", c.pgpEncrypt, chrome))
+			// The ⌥ form matches the Find pills; plain themes spell it out.
+			sign, encrypt := "⌥s", "⌥e"
+			if chrome.plainUI {
+				sign, encrypt = "alt+s", "alt+e"
+			}
+			state = append(state, composeToggleHint(sign, "sign", c.pgpSign, chrome), composeToggleHint(encrypt, "encrypt", c.pgpEncrypt, chrome))
 		}
 		if c.focusedField == composeFieldBody {
 			// Informational marker only; it does not define a keybinding.
-			right = append(right, base.Foreground(chrome.text).Render("⁂")+base.Foreground(chrome.muted).Render(" sig"))
+			marker = base.Foreground(chrome.text).Render("⁂") + base.Foreground(chrome.muted).Render(" sig")
 		}
 	}
-	gap := base.Render("   ")
-	return composeSplitLine(strings.Join(left, gap), strings.Join(right, gap), width, chrome)
+	return composeSplitLine(strings.Join(left, base.Render("   ")), state, marker, width, chrome)
 }
 
-// composeSplitLine places left at the footer indent and right against the
-// footer's right margin. When both cannot fit, the left side wins: it carries
-// the command line being typed and errors.
-func composeSplitLine(left, right string, width int, chrome managerChrome) string {
+// composeSplitLine places left at the footer indent and the state items, then
+// the marker, against the footer's right margin. The state must stay visible —
+// a toggle that just changed should never vanish behind its own message — so
+// when both sides cannot fit, the marker steps aside first and the message is
+// cut short with an ellipsis. State items give way, from the end, only when the
+// message would otherwise get too little room to read.
+func composeSplitLine(left string, state []string, marker string, width int, chrome managerChrome) string {
 	base := lipgloss.NewStyle().Background(chrome.baseBg)
+	gap := base.Render("   ")
 	avail := max(1, width-4)
-	lw, rw := lipgloss.Width(left), lipgloss.Width(right)
-	switch {
-	case rw == 0 || (lw > 0 && lw+3+rw > avail):
-		return padStyled(base.Render("  ")+left, width, chrome.baseBg)
-	case lw == 0 && rw > avail:
-		return padStyled(base.Render("  ")+right, width, chrome.baseBg)
+	const minLeft = 12
+	lw := lipgloss.Width(left)
+	right := func() []string {
+		if marker == "" {
+			return state
+		}
+		return append(append([]string(nil), state...), marker)
 	}
-	line := base.Render("  ") + left + base.Render(strings.Repeat(" ", avail-lw-rw)) + right
+	rightW := func() int { return lipgloss.Width(strings.Join(right(), gap)) }
+	if lw > 0 && marker != "" && lw+3+rightW() > avail {
+		marker = ""
+	}
+	for lw > 0 && len(state) > 0 && avail-3-rightW() < min(lw, minLeft) {
+		state = state[:len(state)-1]
+	}
+	room := avail
+	if rw := rightW(); rw > 0 {
+		room = max(0, avail-3-rw)
+	}
+	if lw > room {
+		left = ansi.Truncate(left, max(0, room-1), "") + base.Foreground(chrome.muted).Render("…")
+		lw = lipgloss.Width(left)
+	}
+	line := base.Render("  ") + left
+	if rw := rightW(); rw > 0 {
+		line += base.Render(strings.Repeat(" ", max(1, avail-lw-rw))) + strings.Join(right(), gap)
+	}
 	return padStyled(line, width, chrome.baseBg)
 }
 
@@ -298,21 +327,46 @@ func (c ComposeModel) composeSearchFooter(width int, chrome managerChrome) strin
 		replace.label = "hide replace"
 	}
 	// Esc opens the last row here too, matching its corner in the normal footer.
-	esc := composeHint{"esc", "close", 1, true}
+	// It is the way out of Find, so no width or error ever drops it.
+	esc := composeHint{"esc", "close", -1, true}
 	keys := [][]composeHint{
 		append(lead, composeHint{"⇧f3", "prev", 2, true}, replace),
 		{esc, {"tab", "fields", 4, true}, {"^s", "send", 5, true}},
 	}
-	if detail := composeSearchError(status); detail != "" {
-		rows = append(rows, padStyled(base.Render("  ")+base.Foreground(chrome.errorFg).Render(detail), width, chrome.baseBg))
+	// A search error, or an error from compose itself (Ctrl+S still sends while
+	// Find is open), gets its own row when one is free. Otherwise it takes the
+	// last row's place after Esc, since it matters more than the other hints.
+	detail := composeSearchError(status)
+	if detail == "" && c.isErr {
+		detail = c.statusMsg
 	}
-	if free := 3 - len(rows); free == 1 {
-		keys = [][]composeHint{append([]composeHint{esc}, append(keys[0], keys[1][1:]...)...)}
-	}
-	if free := 3 - len(rows); free > 0 {
-		rows = append(rows, composeKeyGrid(keys[:free], width, chrome)...)
+	switch {
+	case detail != "" && len(rows) == 1:
+		rows = append(rows, composeDetailRow("", detail, width, chrome))
+		rows = append(rows, composeKeyGrid([][]composeHint{append([]composeHint{esc}, append(keys[0], keys[1][1:]...)...)}, width, chrome)...)
+	case detail != "":
+		rows = append(rows, composeDetailRow(composeKeyHint(esc.key, esc.label, chrome), detail, width, chrome))
+	case len(rows) == 1:
+		rows = append(rows, composeKeyGrid(keys, width, chrome)...)
+	default:
+		rows = append(rows, composeKeyGrid([][]composeHint{append([]composeHint{esc}, append(keys[0], keys[1][1:]...)...)}, width, chrome)...)
 	}
 	return strings.Join(rows[:3], "\n")
+}
+
+// composeDetailRow shows an error in full when it fits, after lead (a key
+// hint, or nothing) at the footer indent, and cuts it with an ellipsis when not.
+func composeDetailRow(lead, detail string, width int, chrome managerChrome) string {
+	base := lipgloss.NewStyle().Background(chrome.baseBg)
+	line := base.Render("  ") + lead
+	if lead != "" {
+		line += base.Render("   ")
+	}
+	room := max(0, width-2-lipgloss.Width(line))
+	if lipgloss.Width(detail) > room {
+		detail = ansi.Truncate(detail, max(0, room-1), "") + "…"
+	}
+	return padStyled(line+base.Foreground(chrome.errorFg).Render(detail), width, chrome.baseBg)
 }
 
 // composeSearchCell draws a Find/Replace control in the footer's pill
