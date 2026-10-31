@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"math"
 	"strings"
 	"testing"
 
@@ -48,7 +49,7 @@ func TestSupportSettingsSectionRegistrationAndRendering(t *testing.T) {
 
 	s.setActiveSection(ssSupport)
 	view := ansi.Strip(s.View(120, 24, newManagerChrome(120, CatppuccinMocha, false)))
-	for _, want := range []string{"free and open source", "Sponsor", "Copy link", githubSponsorsURL, "Thank you"} {
+	for _, want := range []string{"free and open source", "Buy me a coffee", "Copy link", githubSponsorsURL, "Thank you"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("Support view missing %q: %q", want, view)
 		}
@@ -232,7 +233,7 @@ func TestSupportContentFollowsCenteredSpacingMockup(t *testing.T) {
 		"If it makes email a little better for you,",
 		"you can support continued development.",
 		"☕ GitHub Sponsors",
-		"Sponsor",
+		"Buy me a coffee",
 		githubSponsorsURL,
 		"Thank you for supporting Tidemail -allie",
 		"♥",
@@ -252,7 +253,7 @@ func TestSupportContentFollowsCenteredSpacingMockup(t *testing.T) {
 		line := ansi.Strip(body.lines[found])
 		start := strings.Index(line, label)
 		delta := start - (ansi.StringWidth(line)-lipgloss.Width(label))/2
-		if label != "Sponsor" && (start < 0 || delta < -4 || delta > 4) {
+		if label != "Buy me a coffee" && (start < 0 || delta < -4 || delta > 4) {
 			t.Fatalf("support content %q is not centered in %q", label, line)
 		}
 		last = found
@@ -276,7 +277,7 @@ func TestSupportButtonsMatchAboutAndStackWhenNarrow(t *testing.T) {
 	if wideCopyRow != 0 || lipgloss.Height(wide) != 3 {
 		t.Fatalf("wide support buttons should share one About-style row: offset=%d height=%d", wideCopyRow, lipgloss.Height(wide))
 	}
-	if !strings.Contains(ansi.Strip(wide), "╭") || !strings.Contains(ansi.Strip(wide), "Sponsor") || !strings.Contains(ansi.Strip(wide), "Copy link") {
+	if !strings.Contains(ansi.Strip(wide), "╭") || !strings.Contains(ansi.Strip(wide), "Buy me a coffee") || !strings.Contains(ansi.Strip(wide), "Copy link") {
 		t.Fatalf("wide support buttons lost About-style rounded controls: %q", ansi.Strip(wide))
 	}
 	narrow, narrowCopyRow := s.renderSupportButtons(supportLinks[0], 0, 24, chrome)
@@ -341,6 +342,149 @@ func TestSupportPageFitsNarrowTerminal(t *testing.T) {
 	for i, line := range strings.Split(view, "\n") {
 		if width := ansi.StringWidth(line); width > 40 {
 			t.Fatalf("narrow Support line %d is %d columns: %q", i, width, line)
+		}
+	}
+}
+
+func TestSupportCafeGravityBouncesAndFits(t *testing.T) {
+	trueColor(t)
+	for _, size := range [][2]int{{24, 24}, {60, 28}, {100, 36}, {1, 1}} {
+		w, h := size[0], size[1]
+		bounces := 0
+		last := cafeHopAt(0, w, h)
+		var previousImpact float64
+		for f := 1; f < cafeHopFrames; f++ {
+			state := cafeHopAt(f, w, h)
+			if state.x < 0 || state.x > float64(w-1) || state.y < 0 || state.y > float64(h-1) {
+				t.Fatalf("frame %d outside %dx%d: %+v", f, w, h, state)
+			}
+			if last.vy > 0 && state.vy < 0 {
+				impact := -state.vy
+				if previousImpact > 0 && impact >= previousImpact {
+					t.Fatal("bounces must lose energy")
+				}
+				previousImpact = impact
+				bounces++
+			}
+			last = state
+		}
+		if h > 1 && bounces < 2 {
+			t.Fatalf("%dx%d: only %d bounces", w, h, bounces)
+		}
+		if !last.grounded || last.vx != 0 || last.vy != 0 {
+			t.Fatalf("did not settle: %+v", last)
+		}
+		if h > 1 {
+			initial := cafeHopAt(0, w, h)
+			next := cafeHopAt(1, w, h)
+			if next.y >= initial.y || next.vy <= initial.vy {
+				t.Fatal("launch must rise while gravity slows it")
+			}
+		}
+	}
+	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	s.setActiveSection(ssSupport)
+	for _, w := range []int{24, 60, 100} {
+		s.detailHeight = 28
+		chase := cafeChaseFrames(w)
+		end := chase + cafeCatchFrames + cafeBurstFrames + cafeHopFrames + cafePauseFrames + cafeSweepFrames
+		for f := chase - 1; f <= end; f++ {
+			s.supportPulseFrame = f
+			body := s.renderSupportCafeSection(w)
+			for _, line := range body.lines {
+				if got := ansi.StringWidth(line); got != w {
+					t.Fatalf("width %d frame %d: rendered width %d", w, f, got)
+				}
+			}
+		}
+	}
+}
+
+func TestSupportCafeCatchBurstAndRestart(t *testing.T) {
+	const w, h = 60, 28
+	chase := cafeChaseFrames(w)
+	render := func(frame int) string {
+		c := newSceneCanvas(w, h)
+		for y := range h {
+			for x := range w {
+				c.set(x, y, ' ', cafeText, cafeBgTop)
+			}
+		}
+		cafeChase(c, frame, h-2)
+		return ansi.Strip(strings.Join(c.lines(), "\n"))
+	}
+	if !strings.Contains(render(chase), "☕") {
+		t.Fatal("coffee missing during catch")
+	}
+	burst := chase + cafeCatchFrames
+	if got := render(burst); strings.Contains(got, "☕") || !strings.Contains(render(burst+1), "✦") {
+		t.Fatal("catch must replace coffee with sparks")
+	}
+	pause := burst + cafeBurstFrames + cafeHopFrames
+	if got := render(pause); strings.ContainsAny(got, "☕✦*") || !strings.Contains(got, "𜱭") {
+		t.Fatal("Pac-Man must rest on the floor during the pause")
+	}
+	if render(pause+cafePauseFrames+cafeSweepFrames) != render(0) {
+		t.Fatal("sequence did not restart")
+	}
+}
+
+func TestSupportCafeCatchCenteredAndContinuous(t *testing.T) {
+	for _, w := range []int{24, 60, 100} {
+		frame := cafeChaseFrames(w)
+		pac, cup := cafeChaseAt(frame, w)
+		if cup != cafeCatchX(w) || pac != cup-cafeChaseGap {
+			t.Fatalf("width %d: catch approach jumps: %d,%d", w, pac, cup)
+		}
+		if cup < w/2-1 || cup > w/2+1 {
+			t.Fatalf("width %d: catch off center: %d", w, cup)
+		}
+		launch := cafeHopAt(0, w, 28)
+		if launch.x != float64(cup) {
+			t.Fatal("hop must start at the explosion")
+		}
+	}
+}
+
+func TestSupportCafeBroomSweepsPacManAway(t *testing.T) {
+	trueColor(t)
+	for _, w := range []int{1, 24, 60, 100} {
+		const h = 28
+		resting := int(math.Round(cafeHopAt(cafeHopFrames-1, w, h).x))
+		last := resting
+		contact := false
+		for frame := 0; frame < cafeSweepFrames; frame++ {
+			broom, pac := cafeSweepAt(frame, w, h)
+			if pac < last || pac < resting {
+				t.Fatal("sweep moved Pac-Man backwards")
+			}
+			if broom+2 < resting && pac != resting {
+				t.Fatal("Pac-Man moved before broom contact")
+			}
+			if broom+2 >= resting {
+				contact = true
+				if pac != broom+2 {
+					t.Fatal("Pac-Man must stay ahead of the broom")
+				}
+			}
+			c := newSceneCanvas(w, h)
+			for y := range h {
+				for x := range w {
+					c.set(x, y, ' ', cafeText, cafeBgTop)
+				}
+			}
+			cafeSweep(c, frame)
+			row := c.lines()[h-1]
+			if ansi.StringWidth(row) != w {
+				t.Fatalf("width %d frame %d: broken broom row", w, frame)
+			}
+			if frame == cafeSweepFrames-1 && strings.ContainsAny(ansi.Strip(row), "🧹𜱭●") {
+				t.Fatal("broom and Pac-Man must exit before restart")
+			}
+			last = pac
+		}
+		if !contact {
+			t.Fatal("broom never reached Pac-Man")
 		}
 	}
 }

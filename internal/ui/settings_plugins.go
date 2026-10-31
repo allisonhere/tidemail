@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // Settings owns navigation; plugin state and persistence remain on Model.
@@ -114,7 +115,7 @@ func (m Model) settingsPluginContent(width int, chrome managerChrome) ([]string,
 }
 
 func settingsPluginBodyHeight(width, height int, chrome managerChrome, pairs []string) int {
-	return max(1, height-2-lipgloss.Height(renderSoftHints(width, chrome, pairs...)))
+	return max(1, height-2-lipgloss.Height(renderSettingsPluginHints(width, chrome, pairs...)))
 }
 
 func (m *Model) revealSettingsPluginCursor() {
@@ -141,6 +142,46 @@ func (m Model) renderSettingsPluginPane(width, height int, chrome managerChrome)
 	title := softRail(chrome, m.settings.focusedPane == settingsPaneDetail, chrome.baseBg) +
 		base.Foreground(chrome.accent).Bold(true).Render("Plugins")
 	body := clampView(strings.Join(lines[scroll:min(len(lines), scroll+bodyH)], "\n"), width, bodyH, chrome.baseBg)
-	hints := renderSoftHints(width, chrome, pairs...)
+	hints := renderSettingsPluginHints(width, chrome, pairs...)
 	return clampView(lipgloss.JoinVertical(lipgloss.Left, padStyled(title, width, chrome.baseBg), padStyled("", width, chrome.baseBg), body, hints), width, height, chrome.baseBg)
+}
+
+// Wrap before padding: renderSoftHints truncates its output to the given width.
+// Measure each row first so commands remain complete inside the detail pane.
+func renderSettingsPluginHints(width int, chrome managerChrome, pairs ...string) string {
+	var rows []string
+	var row []string
+	flush := func() {
+		if len(row) == 0 {
+			return
+		}
+		fullWidth := 2
+		for i := 0; i+1 < len(row); i += 2 {
+			if i > 0 {
+				fullWidth += 3
+			}
+			fullWidth += lipgloss.Width(strings.ToLower(row[i] + " " + row[i+1]))
+		}
+		rendered := renderSoftHints(fullWidth, chrome, row...)
+		for _, line := range strings.Split(ansi.Wrap(rendered, max(1, width), ""), "\n") {
+			rows = append(rows, padStyled(line, width, chrome.baseBg))
+		}
+		row = nil
+	}
+	used := 2
+	for i := 0; i+1 < len(pairs); i += 2 {
+		size := lipgloss.Width(strings.ToLower(pairs[i] + " " + pairs[i+1]))
+		gap := 0
+		if len(row) > 0 {
+			gap = 3
+		}
+		if len(row) > 0 && used+gap+size > width {
+			flush()
+			used, gap = 2, 0
+		}
+		row = append(row, pairs[i], pairs[i+1])
+		used += gap + size
+	}
+	flush()
+	return strings.Join(rows, "\n")
 }

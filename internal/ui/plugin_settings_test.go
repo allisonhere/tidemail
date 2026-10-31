@@ -380,3 +380,27 @@ func TestAutoRowInSettingsUsesConfirmation(t *testing.T) {
 		t.Fatal("confirming should enable and return to the form")
 	}
 }
+
+func TestSettingsPluginCommandsRemainVisible(t *testing.T) {
+	trueColor(t)
+	root := t.TempDir()
+	installSettingsPlugin(t, root, "smart")
+	m, _, _ := newEventModel(t, root, 1)
+	next, _ := m.executeCommand("settings")
+	m = next.(Model)
+	m.settings.setActiveSection(ssPlugins)
+	m.settings.setFocusedPane(settingsPaneDetail)
+	for _, width := range []int{24, 40, 60, 80} {
+		chrome := newManagerChrome(width, CatppuccinMocha, false)
+		_, pairs, _ := m.settingsPluginContent(width, chrome)
+		view := m.renderSettingsPluginPane(width, 24, chrome)
+		for i := 0; i+1 < len(pairs); i += 2 {
+			if !strings.Contains(view, strings.ToLower(pairs[i+1])) {
+				t.Errorf("width %d: missing command %q", width, pairs[i+1])
+			}
+		}
+		if lipgloss.Width(view) > width || lipgloss.Height(view) > 24 {
+			t.Errorf("pane exceeds %dx24", width)
+		}
+	}
+}

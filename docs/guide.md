@@ -824,6 +824,8 @@ its body, and they never change your mail. The one exception is a PGP plugin,
 which you install for that purpose (see
 [PGP encryption and signing](#pgp-encryption-and-signing)).
 
+The command hints at the bottom of **Settings → Plugins** wrap to fit the pane.
+
 **Installing plugins.** Open **Settings → Plugins** (or the command palette's
 **Browse available plugins…**) and press `b` to list the official plugins from
 the [tidemail-plugins](https://github.com/allisonhere/tidemail-plugins)
@@ -1242,7 +1244,7 @@ native click-drag text selection while it's enabled.
 - Changelog: read the release notes bundled with your installed version, newest first, offline. Scroll with `j`/`k` or the arrow keys, page with `PgUp`/`PgDn`, and jump with `g`/`G` (or `Home`/`End`); `Esc` or `←` returns to the sections list
 - AI: OpenAI, Claude, Gemini, or Ollama summary settings
 - Advanced: logs and feed max body size
-- Support: an animated café scene (swaying string lights, a steaming mug, Pac-Man chasing a coffee cup). Choose the Sponsor or Copy link button with Up/Down and press Enter; Ctrl+C also copies the link, and Esc returns to Settings sections
+- Support: an animated neon café scene with a midnight blue and violet backdrop, cyan buttons, and pink and lilac lights (swaying string lights, a steaming mug, Pac-Man chasing a coffee cup). After one lap, he catches the coffee near the center of the counter in a slow, expanding neon explosion whose dots fade to white, hops upward, and falls into smaller gravity-driven bounces until he settles. A broom sweeps him off the right edge, then the chase restarts. Choose the Buy me a coffee or Copy link button with Up/Down and press Enter; Ctrl+C also copies the link, and Esc returns to Settings sections
 - About: Support Tidemail, repository, and issue links, shown over an animated night-sea scene (stars, moon, a self-drawing TIDEMAIL wordmark, and rolling waves). The animation settles after about 40 seconds
 - Plain (VT52) themes keep the original static About and Support pages instead of the animated scenes
 

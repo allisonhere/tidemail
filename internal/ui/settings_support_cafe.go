@@ -5,43 +5,50 @@ import (
 	"time"
 )
 
-// Settings → Support, "Café": a cozy café at night. String lights sway along
+// Settings → Support, "Café": a neon café at night. String lights sway along
 // the top, a big mug steams (and every so often the steam drifts into a
-// heart), and along the counter a Pac-Man chases a runaway coffee cup. The
+// heart), and along the counter Pac-Man chases a runaway coffee cup, then
+// catches it and bounces to rest in a caffeine rush. The
 // Support copy and the sponsor buttons sit in the middle. Plain (VT52) themes
 // keep the original dotted-frame Support page.
 
 const (
 	settingsSupportCafePeriod = 100 * time.Millisecond // smoother than the plain page's 240ms
-	cafeBuyLabel              = "Sponsor"
+	cafeBuyLabel              = "Buy me a coffee"
 	cafeCopyLabel             = "Copy link"
-	cafeChaseGap              = 8 // Pac-Man stays this far behind the cup
+	cafeChaseGap              = 8 // distance before the caffeine catch
+	cafeCatchFrames           = 8
+	cafeBurstFrames           = 24
+	cafeHopFrames             = 100
+	cafePauseFrames           = 10
+	cafeSweepFrames           = 40
 	cafeSteamHeartEvery       = 120
 )
 
+// Midnight indigo with cyan, lilac, and pink neon; cool porcelain highlights.
 var (
-	cafeBgTop     = sceneHex("#140c07")
-	cafeBgBot     = sceneHex("#26170d")
-	cafeWire      = sceneHex("#4a3424")
-	cafeHeading   = sceneHex("#ffb86b")
-	cafeText      = sceneHex("#f1e4d3")
-	cafeMuted     = sceneHex("#b39a84")
-	cafeEdge      = sceneHex("#7a5a3e")
-	cafeAccent    = sceneHex("#ffb86b")
-	cafeAccentFg  = sceneHex("#1a0f08")
-	cafeHeartLo   = sceneHex("#b0174f")
-	cafeHeartHi   = sceneHex("#ff6b8b")
-	cafeSteam     = sceneHex("#e8dccb")
-	cafeCup       = sceneHex("#f2e6d0")
-	cafeCream     = sceneHex("#eadfcd")
-	cafeMugShade  = sceneHex("#bfae95")
-	cafeCoffee    = sceneHex("#6b3e26")
-	cafeSaucer    = sceneHex("#d8ccb8")
-	cafeCounter   = sceneHex("#5a3e28")
-	cafeFloor     = sceneHex("#1a0f08")
-	cafeDot       = sceneHex("#ffd9a0")
+	cafeBgTop     = sceneHex("#090e24")
+	cafeBgBot     = sceneHex("#21143d")
+	cafeWire      = sceneHex("#555780")
+	cafeHeading   = sceneHex("#79e8f2")
+	cafeText      = sceneHex("#eef0ff")
+	cafeMuted     = sceneHex("#b4b9da")
+	cafeEdge      = sceneHex("#9484d6")
+	cafeAccent    = sceneHex("#79e8f2")
+	cafeAccentFg  = sceneHex("#0d122c")
+	cafeHeartLo   = sceneHex("#a855c7")
+	cafeHeartHi   = sceneHex("#ff83c8")
+	cafeSteam     = sceneHex("#c5d8ff")
+	cafeCup       = sceneHex("#e0faff")
+	cafeCream     = sceneHex("#e5e6ff")
+	cafeMugShade  = sceneHex("#939bd5")
+	cafeCoffee    = sceneHex("#514181")
+	cafeSaucer    = sceneHex("#b7b0f4")
+	cafeCounter   = sceneHex("#7264b5")
+	cafeFloor     = sceneHex("#0d122c")
+	cafeDot       = sceneHex("#a9a1ff")
 	cafePacYellow = sceneFromColor(supportPacmanYellow)
-	cafeBulbs     = []sceneRGB{sceneHex("#ffcf6b"), sceneHex("#ff8f6b"), sceneHex("#ffe6a8"), sceneHex("#ffb36b")}
+	cafeBulbs     = []sceneRGB{sceneHex("#79e8f2"), sceneHex("#c4a2ff"), sceneHex("#ff83c8"), sceneHex("#8faaff")}
 )
 
 // supportPulsePeriod is the Support page's animation tick: the café wants a
@@ -330,12 +337,19 @@ func cafeButton(c *sceneCanvas, cx, y int, label string, focused bool, fade floa
 }
 
 // cafeChaseAt returns where Pac-Man and the cup are on a counter of the
-// given width at a frame. The cup always runs cafeChaseGap columns ahead,
-// so Pac-Man never quite catches it.
+// given width at a frame during the ordinary chase.
 func cafeChaseAt(frame, width int) (pac, cup int) {
 	period := width + cafeChaseGap + 6
 	pac = (frame/2)%period - cafeChaseGap - 3
 	return pac, pac + cafeChaseGap
+}
+
+// Catch at the middle of the counter after the first full lap. The extra
+// approach frames let both sprites reach the center without teleporting.
+func cafeCatchX(width int) int { return min(width/2, max(0, width-2)) }
+
+func cafeChaseFrames(width int) int {
+	return 2*(width+cafeChaseGap+6) + 2*(cafeCatchX(width)+3)
 }
 
 // cafeChase draws the counter edge at row y and, on the row below, Pac-Man
@@ -349,16 +363,197 @@ func cafeChase(c *sceneCanvas, frame, y int) {
 			p.bg = cafeFloor
 		}
 	}
+	// One complete pass, then catch, burst, damped hops, a pause, and broom cleanup.
+	chaseFrames := cafeChaseFrames(c.w)
+	cycle := chaseFrames + cafeCatchFrames + cafeBurstFrames + cafeHopFrames + cafePauseFrames + cafeSweepFrames
+	frame %= cycle
+	if frame >= chaseFrames+cafeCatchFrames {
+		effect := frame - chaseFrames - cafeCatchFrames
+		if effect < cafeBurstFrames {
+			cafeBurst(c, cafeCatchX(c.w), y+1, effect)
+		} else if flight := effect - cafeBurstFrames; flight < cafeHopFrames {
+			cafeHop(c, flight)
+		} else if effect < cafeBurstFrames+cafeHopFrames+cafePauseFrames {
+			cafeHop(c, cafeHopFrames-1)
+		} else {
+			cafeSweep(c, effect-cafeBurstFrames-cafeHopFrames-cafePauseFrames)
+		}
+		return
+	}
 	pac, cup := cafeChaseAt(frame, c.w)
+	if frame >= chaseFrames {
+		cup = cafeCatchX(c.w)
+		pac = cup - cafeChaseGap + cafeChaseGap*(frame-chaseFrames)/cafeCatchFrames
+	}
 	for x := 1; x < c.w; x += 3 {
 		if x > pac && (x < cup || x > cup+1) {
 			c.put(x, y+1, '·', cafeDot)
 		}
 	}
 	c.putWide(cup, y+1, '☕', cafeCup)
-	glyph := '𜱭' // facing right, mouth open
+	cafePac(c, pac, y+1, frame)
+}
+
+func cafePac(c *sceneCanvas, x, y, frame int) {
+	glyph := '𜱭'
 	if (frame/2)%2 == 1 {
 		glyph = '●'
 	}
-	c.put(pac, y+1, glyph, cafePacYellow)
+	cafeEffectPut(c, x, y, glyph, cafePacYellow)
+}
+
+// Staggered particle shells: a bright core, expanding shock ring, then
+// ballistic sparks that arc downward under gravity instead of blinking out.
+func cafeBurst(c *sceneCanvas, x, y, frame int) {
+	t := float64(frame) * 0.05 // half-speed particles, still snapped to terminal cells
+	for i := range 48 {
+		delay := float64(i%3) * 0.1
+		age := t - delay
+		if age < 0 {
+			continue
+		}
+		angle := -math.Pi * float64(i) / 47
+		speed := 7 + sceneRand(i+71)*15
+		dx := math.Cos(angle) * speed * age
+		dy := math.Sin(angle)*speed*age + 12*age*age
+		px, py := x+int(math.Round(dx*2)), y+int(math.Round(dy))
+		if c.at(px, py) != nil {
+			glyph := '·'
+			if age < 0.3 {
+				glyph = '✦'
+			} else if age < 0.7 {
+				glyph = '*'
+			}
+			col := cafeBulbs[i%len(cafeBulbs)]
+			if age < 0.15 {
+				col = cafeText
+			}
+			cafeEffectPut(c, px, py, glyph, sceneLerp(col, sceneHex("#ffffff"), sceneEase(age, 0.3, 1)))
+		}
+	}
+	// A second, faster shock ring breaks away from the particle cloud.
+	for i := range 20 {
+		angle := -math.Pi * float64(i) / 19
+		radius := t * 20
+		px := x + int(math.Round(math.Cos(angle)*radius*2))
+		py := y + int(math.Round(math.Sin(angle)*radius))
+		if c.at(px, py) != nil {
+			cafeEffectPut(c, px, py, '·', sceneLerp(cafeAccent, sceneHex("#ffffff"), sceneEase(t, 0.2, 0.9)))
+		}
+	}
+}
+
+type cafeHopState struct {
+	x, y, vx, vy float64
+	grounded     bool
+}
+
+// Replay fixed 10 ms physics steps from launch: gravity, inelastic collisions,
+// air drag, and floor friction. Replay keeps rendering deterministic on resize
+// and prevents dropped UI frames from changing the trajectory.
+func cafeHopAt(frame, width, height int) cafeHopState {
+	floor := float64(max(0, height-1))
+	right := float64(max(0, width-1))
+	gravity := math.Max(1, floor*0.6)
+	state := cafeHopState{
+		x: float64(cafeCatchX(width)), y: floor,
+		vx: right * 0.22, vy: -math.Sqrt(2 * gravity * floor * 0.72),
+		grounded: height <= 1,
+	}
+	const dt = 0.01
+	for step := 0; step < max(0, frame)*10; step++ {
+		state.vx *= math.Exp(-0.3 * dt)
+		state.x += state.vx * dt
+		if state.x > right {
+			state.x = right
+			state.vx = -state.vx * 0.65
+		}
+		if state.x < 0 {
+			state.x = 0
+			state.vx = -state.vx * 0.65
+		}
+		if state.grounded {
+			state.vx *= math.Exp(-4 * dt)
+			if math.Abs(state.vx) < 0.08 {
+				state.vx = 0
+			}
+			continue
+		}
+		state.y += state.vy*dt + 0.5*gravity*dt*dt
+		state.vy += gravity * dt
+		if state.y < 0 {
+			state.y = 0
+			state.vy = math.Abs(state.vy) * 0.56
+		}
+		if state.y >= floor && state.vy > 0 {
+			state.y = floor
+			state.vy = -state.vy * 0.56
+			state.vx *= 0.68
+			if state.vy*state.vy/(2*gravity) < 0.15 {
+				state.vy = 0
+				state.grounded = true
+			}
+		}
+	}
+	return state
+}
+
+func cafeHop(c *sceneCanvas, frame int) {
+	state := cafeHopAt(frame, c.w, c.h)
+	// A short trail follows the initial hop; the last bounces settle quietly.
+	if !state.grounded && frame < 30 {
+		for age := 3; age > 0; age-- {
+			if frame < age {
+				continue
+			}
+			old := cafeHopAt(frame-age, c.w, c.h)
+			x, y := int(math.Round(old.x)), int(math.Round(old.y))
+			if p := c.at(x, y); p != nil {
+				cafeEffectPut(c, x, y, '·', sceneLerp(p.bg, cafeBulbs[age%len(cafeBulbs)], float64(4-age)/5))
+			}
+		}
+	}
+	if state.grounded {
+		frame = 0
+	}
+	cafePac(c, int(math.Round(state.x)), int(math.Round(state.y)), frame)
+}
+
+// Effects may cross the heading's double-width coffee symbol. Clear both
+// halves before replacing either cell so the rendered row stays aligned.
+func cafeEffectPut(c *sceneCanvas, x, y int, glyph rune, col sceneRGB) {
+	p := c.at(x, y)
+	if p == nil {
+		return
+	}
+	if p.ch == sceneWideCont {
+		if left := c.at(x-1, y); left != nil {
+			left.ch = ' '
+		}
+	} else if right := c.at(x+1, y); right != nil && right.ch == sceneWideCont {
+		right.ch = ' '
+	}
+	c.put(x, y, glyph, col)
+}
+
+// A two-cell broom enters from the left. Its leading edge pushes the resting
+// Pac-Man, and both exit completely before the next chase begins.
+func cafeSweepAt(frame, width, height int) (broom, pac int) {
+	broom = -2 + int(math.Round(float64(width+4)*float64(frame)/float64(cafeSweepFrames-1)))
+	resting := cafeHopAt(cafeHopFrames-1, width, height)
+	pac = max(int(math.Round(resting.x)), broom+2)
+	return broom, pac
+}
+
+func cafeSweep(c *sceneCanvas, frame int) {
+	broom, pac := cafeSweepAt(frame, c.w, c.h)
+	floor := c.h - 1
+	cafePac(c, pac, floor, 0)
+	c.putWide(broom, floor, '🧹', cafeText)
+	// Tiny puffs sell the sweeping motion without leaving permanent debris.
+	if frame%4 < 2 {
+		if p := c.at(broom-1, floor); p != nil {
+			cafeEffectPut(c, broom-1, floor, '·', sceneLerp(p.bg, cafeText, 0.55))
+		}
+	}
 }

@@ -18,7 +18,7 @@ red, and animates Pac-Man and the coffee cup around the white dotted border.
                    ☕ GitHub Sponsors
 
              ╭────────────────────╮  ╭─────────────╮
-             │ Sponsor            │  │ Copy link   │
+             │ Buy me a coffee    │  │ Copy link   │
              ╰────────────────────╯  ╰─────────────╯
 
               https://github.com/sponsors/allisonhere
