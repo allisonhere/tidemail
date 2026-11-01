@@ -274,6 +274,9 @@ func (m Model) displayNeedsYouCount() int {
 	count := m.needsYou.count
 	hidden := make(map[int64]bool)
 	for _, action := range m.pendingDestructiveActions {
+		if action.Kind == destructiveDelete {
+			continue
+		}
 		for _, entry := range action.Entries {
 			id := entry.Message.ID
 			if m.needsYou.messageIDs[id] && !hidden[id] {

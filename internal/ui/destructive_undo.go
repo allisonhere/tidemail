@@ -29,6 +29,7 @@ type pendingDestructiveEntry struct {
 }
 
 type pendingDestructiveAction struct {
+	Deadline   time.Time
 	ID         uint64
 	Kind       destructiveActionKind
 	Entries    []pendingDestructiveEntry
@@ -54,6 +55,9 @@ type DestructiveActionResultMsg struct {
 func (m *Model) scheduleArchive(msgs []db.Message) tea.Cmd {
 	entries := make([]pendingDestructiveEntry, 0, len(msgs))
 	for _, msg := range msgs {
+		if m.messageActionPending(msg.ID) {
+			continue
+		}
 		source := m.mailboxByID(msg.MailboxID)
 		if source == nil {
 			m.setStatus("archive failed: mailbox not found", true)
@@ -77,6 +81,9 @@ func (m *Model) scheduleArchive(msgs []db.Message) tea.Cmd {
 func (m *Model) scheduleMove(msgs []db.Message, target db.Mailbox) tea.Cmd {
 	entries := make([]pendingDestructiveEntry, 0, len(msgs))
 	for _, msg := range msgs {
+		if m.messageActionPending(msg.ID) {
+			continue
+		}
 		source := m.mailboxByID(msg.MailboxID)
 		if source == nil || source.AccountID != target.AccountID {
 			m.setStatus("move failed: source and target must be in one account", true)
@@ -95,6 +102,9 @@ func (m *Model) scheduleMove(msgs []db.Message, target db.Mailbox) tea.Cmd {
 func (m *Model) scheduleDelete(msgs []db.Message) tea.Cmd {
 	entries := make([]pendingDestructiveEntry, 0, len(msgs))
 	for _, msg := range msgs {
+		if m.messageActionPending(msg.ID) {
+			continue
+		}
 		source := m.mailboxByID(msg.MailboxID)
 		if source == nil {
 			m.setStatus("delete failed: mailbox not found", true)
@@ -120,11 +130,18 @@ func (m *Model) scheduleDestructive(kind destructiveActionKind, entries []pendin
 	}
 	m.nextDestructiveActionID++
 	id := m.nextDestructiveActionID
-	m.pendingDestructiveActions = append(m.pendingDestructiveActions, pendingDestructiveAction{ID: id, Kind: kind, Entries: entries})
+	m.pendingDestructiveActions = append(m.pendingDestructiveActions, pendingDestructiveAction{ID: id, Kind: kind, Entries: entries, Deadline: time.Now().Add(destructiveUndoWindow)})
 	m.clearSelection()
 	m.applyFilter()
 	m.clampMessageViewAfterDestructiveChange()
-	return tea.Tick(destructiveUndoWindow, func(time.Time) tea.Msg { return CommitDestructiveActionMsg{ID: id} })
+	timer := tea.Tick(destructiveUndoWindow, func(time.Time) tea.Msg { return CommitDestructiveActionMsg{ID: id} })
+	if kind == destructiveDelete {
+		if current := m.currentRowMessage(); current != nil {
+			m.advanceReadCursor(current.ID)
+		}
+		return tea.Batch(timer, m.ensureReadAnimation())
+	}
+	return timer
 }
 
 func (m *Model) undoLatestDestructive() tea.Cmd {
@@ -135,7 +152,9 @@ func (m *Model) undoLatestDestructive() tea.Cmd {
 		}
 		m.pendingDestructiveActions = append(m.pendingDestructiveActions[:i], m.pendingDestructiveActions[i+1:]...)
 		m.applyFilter()
-		m.focusRestoredMessage(action.Entries)
+		if action.Kind != destructiveDelete {
+			m.focusRestoredMessage(action.Entries)
+		}
 		m.setStatus(fmt.Sprintf("restored %d", len(action.Entries)), false)
 		return m.clearStatusCmd()
 	}
@@ -247,6 +266,14 @@ func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.C
 	if !ok {
 		return nil
 	}
+	currentID := int64(0)
+	if current := m.currentRowMessage(); current != nil {
+		currentID = current.ID
+	}
+	if len(result.Succeeded) > 0 {
+		// Reject list snapshots captured before this confirmed removal.
+		m.readVersion++
+	}
 	for _, ref := range result.Succeeded {
 		if m.needsYou.messageIDs[ref.ID] {
 			delete(m.needsYou.messageIDs, ref.ID)
@@ -257,6 +284,9 @@ func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.C
 		}
 	}
 	m.applyFilter()
+	if idx := m.indexOfFilteredMessage(currentID); idx >= 0 {
+		m.messageCursor = idx
+	}
 	m.clampMessageViewAfterDestructiveChange()
 	verb := destructivePastTense(action.Kind)
 	switch {
@@ -296,6 +326,9 @@ func (m Model) messagePendingDestructive(id int64) bool {
 func (m Model) pendingUnreadCount(mailboxID int64) int64 {
 	var count int64
 	for _, action := range m.pendingDestructiveActions {
+		if action.Kind == destructiveDelete {
+			continue
+		}
 		for _, entry := range action.Entries {
 			if entry.Message.MailboxID == mailboxID && !entry.Message.Read {
 				count++
@@ -320,6 +353,9 @@ func (m Model) destructiveUndoPrompt() string {
 		return ""
 	}
 	verb := destructivePastTense(action.Kind)
+	if action.Kind == destructiveDelete {
+		verb = "delete pending"
+	}
 	if action.Kind == destructiveMove && len(action.Entries) > 0 {
 		target := action.Entries[0].Target.DisplayName
 		if target == "" {
@@ -412,4 +448,60 @@ func (m Model) FlushPendingDestructiveActions() error {
 
 func (m Model) HasPendingDestructiveActions() bool {
 	return len(m.pendingDestructiveActions) > 0
+}
+
+// Delete feedback shares the read clock; each deadline remains independent.
+func (m Model) deleteFeedbackActive() bool {
+	for _, action := range m.pendingDestructiveActions {
+		if action.Kind == destructiveDelete {
+			return true
+		}
+	}
+	return false
+}
+
+func (m Model) messageActionPending(id int64) bool {
+	_, read := m.pendingReads[id]
+	return read || m.messagePendingDestructive(id)
+}
+
+func (m Model) messageHiddenDestructive(id int64) bool {
+	for _, action := range m.pendingDestructiveActions {
+		if action.Kind == destructiveDelete {
+			continue
+		}
+		for _, entry := range action.Entries {
+			if entry.Message.ID == id {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (m *Model) rowDeleteIndicator(msg db.Message, thread messageThread, now time.Time) string {
+	indicator := ""
+	for _, action := range m.pendingDestructiveActions {
+		if action.Kind != destructiveDelete {
+			continue
+		}
+		for _, entry := range action.Entries {
+			affected := entry.Message.ID == msg.ID
+			for _, member := range thread.Messages {
+				affected = affected || member.ID == entry.Message.ID
+			}
+			if !affected {
+				continue
+			}
+			if action.Committing {
+				return m.pendingReadIndicator()
+			}
+			seconds := max(1, min(6, int((action.Deadline.Sub(now)+time.Second-1)/time.Second)))
+			value := fmt.Sprint(seconds)
+			if indicator == "" || value < indicator {
+				indicator = value
+			}
+		}
+	}
+	return indicator
 }

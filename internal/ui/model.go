@@ -1497,7 +1497,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.readAnimationRunning || msg.Generation != m.readAnimationGeneration {
 			return m, nil
 		}
-		if len(m.pendingReads) == 0 {
+		if len(m.pendingReads) == 0 && !m.deleteFeedbackActive() {
 			m.readAnimationRunning = false
 			return m, nil
 		}

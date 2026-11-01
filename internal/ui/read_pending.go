@@ -40,7 +40,7 @@ func (m *Model) acceptReadChanges(messages []db.Message, target *bool, advance b
 	var entries []MessageReadBatchEntry
 	seen := make(map[int64]bool)
 	for _, msg := range messages {
-		if _, pending := m.pendingReads[msg.ID]; pending || seen[msg.ID] {
+		if _, pending := m.pendingReads[msg.ID]; pending || m.messagePendingDestructive(msg.ID) || seen[msg.ID] {
 			continue
 		}
 		seen[msg.ID] = true
@@ -194,7 +194,7 @@ func (m *Model) advanceReadCursor(messageID int64) {
 // Read feedback has its own low-frequency clock. Reuse the existing Braille
 // assets without slowing any unrelated spinner or waking at its 10 FPS rate.
 func (m *Model) ensureReadAnimation() tea.Cmd {
-	if len(m.pendingReads) == 0 || m.readAnimationRunning {
+	if (len(m.pendingReads) == 0 && !m.deleteFeedbackActive()) || m.readAnimationRunning {
 		return nil
 	}
 	m.readAnimationRunning = true
@@ -218,7 +218,7 @@ func (m *Model) finishReadChanges(msg readRemoteCompletedMsg) tea.Cmd {
 			matched[id] = true
 		}
 	}
-	if len(m.pendingReads) == 0 && m.readAnimationRunning {
+	if (len(m.pendingReads) == 0 && !m.deleteFeedbackActive()) && m.readAnimationRunning {
 		m.readAnimationRunning = false
 		m.readAnimationGeneration++
 	}

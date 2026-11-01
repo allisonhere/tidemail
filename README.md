@@ -211,7 +211,10 @@ a key. TideMail keeps the help screen inside the app and lets you search it.
   unsubscribe header.
 
 Delete, archive, and move wait six seconds before TideMail sends them to the
-server. `Ctrl+Z` restores the last queued action.
+server. `Ctrl+Z` restores the last queued action. Deletes stay visible with a
+6–1 marker countdown, then a pending spinner until the server confirms removal.
+The cursor advances immediately; undo leaves it in place. Pending read/unread
+and destructive operations lock conflicting actions on the affected messages.
 
 ## Compose with the right account
 

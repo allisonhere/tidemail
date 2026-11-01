@@ -64,21 +64,21 @@ func (m *Model) sourceMailboxForUndoTest(sourceID, targetID, accountID, unread i
 	}
 }
 
-func TestPendingDeleteHidesWithoutTouchingDatabaseAndUndoRestores(t *testing.T) {
+func TestPendingDeleteVisibleWithoutTouchingDatabaseAndUndoRestores(t *testing.T) {
 	f := newUndoTestFixture(t, 1)
 	m := f.model
 	cmd := m.scheduleDelete(f.messages)
 	if cmd == nil {
 		t.Fatal("expected delayed commit timer")
 	}
-	if len(m.filteredMessages) != 0 {
-		t.Fatalf("expected pending message hidden, got %d visible", len(m.filteredMessages))
+	if len(m.filteredMessages) != 1 {
+		t.Fatalf("expected pending message visible, got %d visible", len(m.filteredMessages))
 	}
 	stored, err := f.database.GetMessage(f.messages[0].ID)
 	if err != nil || stored.MailboxID != f.source.ID {
 		t.Fatalf("pending action changed database before commit: message=%+v err=%v", stored, err)
 	}
-	if got := m.destructiveUndoPrompt(); !strings.Contains(got, "deleted") || !strings.Contains(got, "ctrl+z undo") {
+	if got := m.destructiveUndoPrompt(); !strings.Contains(got, "delete pending") || !strings.Contains(got, "ctrl+z undo") {
 		t.Fatalf("unexpected undo prompt %q", got)
 	}
 
@@ -91,7 +91,7 @@ func TestPendingDeleteHidesWithoutTouchingDatabaseAndUndoRestores(t *testing.T) 
 	}
 }
 
-func TestPendingMessagesStayHiddenAfterReload(t *testing.T) {
+func TestPendingDeleteStaysVisibleAfterReload(t *testing.T) {
 	f := newUndoTestFixture(t, 1)
 	m := f.model
 	m.scheduleDelete(f.messages)
@@ -101,8 +101,8 @@ func TestPendingMessagesStayHiddenAfterReload(t *testing.T) {
 	}
 	m.messages = reloaded
 	m.applyFilter()
-	if len(m.filteredMessages) != 0 {
-		t.Fatal("database reload exposed a pending destructive message")
+	if len(m.filteredMessages) != 1 {
+		t.Fatal("database reload hid a pending delete")
 	}
 }
 
@@ -120,7 +120,7 @@ func TestUndoStackRestoresNewestBatchFirst(t *testing.T) {
 	if len(m.pendingDestructiveActions) != 1 || m.pendingDestructiveActions[0].Kind != destructiveDelete {
 		t.Fatalf("expected newest move undone first, got %+v", m.pendingDestructiveActions)
 	}
-	if len(m.filteredMessages) != 1 || m.filteredMessages[0].ID != f.messages[1].ID {
+	if len(m.filteredMessages) != 2 {
 		t.Fatalf("expected only newest batch restored, got %+v", m.filteredMessages)
 	}
 }
@@ -170,8 +170,8 @@ func TestPendingUnreadCountsAreDerivedAndUndoable(t *testing.T) {
 	f := newUndoTestFixture(t, 1)
 	m := f.model
 	m.scheduleDelete(f.messages)
-	if got := m.displayMailboxUnreadCount(f.source); got != 0 {
-		t.Fatalf("expected pending unread removed from display count, got %d", got)
+	if got := m.displayMailboxUnreadCount(f.source); got != f.source.UnreadCount {
+		t.Fatalf("expected pending delete to retain display count, got %d", got)
 	}
 	m.undoLatestDestructive()
 	if got := m.displayMailboxUnreadCount(f.source); got != 1 {
