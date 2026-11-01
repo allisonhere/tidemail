@@ -501,7 +501,8 @@ message list or content pane). Reply all puts the sender (or Reply-To) in To and
 other recipients in Cc, leaving out your own addresses. Recipient lines too long for
 the field scroll sideways as you type or move the cursor. TideMail
 saves your work to the sending account's Drafts folder as you type. Open Drafts
-and press `Enter` to continue writing, or `d` to delete a draft.
+and press `Enter` to continue writing, or `d` to delete a draft. The preview pane
+shows the first 64 KB of a very large draft and notes how much is hidden.
 
 In the header rows (From, To, Cc, Bcc, Subject), `Down` and `Up` move to the next or
 previous row, like `Tab` and `Shift+Tab`, except that `Up` stops at the top row. While

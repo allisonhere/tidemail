@@ -37,6 +37,9 @@ All notable changes to TideMail are documented in this file.
 - Update downloads are no longer cut off by the 15-second request timeout; they
   fail only after 30 seconds without data. Leftover update files are cleaned up.
 - Non-ASCII subjects and sender names are encoded properly when sending.
+- Moving onto a very large draft no longer freezes TideMail for seconds. The
+  Drafts preview shows the first 64 KB and says how much is hidden, and a
+  draft's preview is reused until the draft changes.
 
 ## v1.7.1
 

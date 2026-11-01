@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
@@ -150,5 +151,50 @@ func TestLeavingDraftsClearsTheDraftPreview(t *testing.T) {
 	}
 	if strings.Contains(body, "First draft") {
 		t.Fatalf("the draft came back after a resize:\n%s", body)
+	}
+}
+
+// A runaway draft body (one this size took seconds to wrap on the UI thread)
+// must render only its first part in the preview, and say so.
+func TestHugeDraftPreviewIsCapped(t *testing.T) {
+	m := draftsPreviewModel(t)
+	m.drafts[0].BodyText = strings.Repeat("yoooooooooooooooo", 256<<10) // 4.25 MB, one line
+	m.setViewportForCurrentRow()
+
+	body := contentText(m)
+	if !strings.Contains(body, "preview shows the first 64.0 KB of 4.2 MB") {
+		t.Fatalf("expected a truncation note, got tail:\n%s", body[max(0, len(body)-400):])
+	}
+	if got, limit := len(strings.Join(m.contentLines, "")), 2*draftPreviewLimit; got > limit {
+		t.Fatalf("preview rendered %d bytes of text, want at most about %d", got, limit)
+	}
+}
+
+func TestDraftPreviewTextCutsOnARuneBoundary(t *testing.T) {
+	body := strings.Repeat("a", draftPreviewLimit-1) + "é" + strings.Repeat("b", 10)
+	got, truncated := draftPreviewText(body)
+	if !truncated || !utf8.ValidString(got) || len(got) != draftPreviewLimit-1 {
+		t.Fatalf("truncated=%v valid=%v len=%d", truncated, utf8.ValidString(got), len(got))
+	}
+	if got, truncated := draftPreviewText("short"); truncated || got != "short" {
+		t.Fatalf("short body changed: %q %v", got, truncated)
+	}
+}
+
+// Reloading the Drafts list re-shows the same draft; that must reuse the
+// rendered preview, while a saved edit must not show the stale one.
+func TestDraftPreviewIsCachedUntilTheDraftChanges(t *testing.T) {
+	m := draftsPreviewModel(t)
+	m.setViewportForCurrentRow()
+	m.setViewportForCurrentRow()
+	if n := m.viewportCache.len(); n != 1 {
+		t.Fatalf("expected one cached preview after re-showing the same draft, got %d", n)
+	}
+
+	m.drafts[0].BodyText = "edited body"
+	m.drafts[0].UpdatedAt = m.drafts[0].UpdatedAt.Add(time.Minute)
+	m.setViewportForCurrentRow()
+	if body := contentText(m); !strings.Contains(body, "edited body") {
+		t.Fatalf("expected the edited draft, got:\n%s", body)
 	}
 }
