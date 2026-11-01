@@ -20,7 +20,7 @@ type undoTestFixture struct {
 
 func newUndoTestFixture(t *testing.T, count int) undoTestFixture {
 	t.Helper()
-	database, err := db.Open()
+	database, err := db.OpenPath(t.TempDir() + "/mail.db")
 	if err != nil {
 		t.Fatal(err)
 	}

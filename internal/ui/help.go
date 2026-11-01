@@ -83,7 +83,7 @@ func helpSections(keys KeyMap) []helpSection {
 				bind(keys.SyncAll),
 				{"pause", "rest on a stale folder to refresh it silently; scrolling past does not queue work"},
 				{"auto", "folder list refreshes on background sync (≈hourly): webmail-added labels appear, deleted ones are pruned"},
-				{keys.MarkAllRead.Help().Key, "mark selected mailbox or account as read"},
+				{keys.MarkAllRead.Help().Key, "mark selected mailbox or account as read; retry if message operations are pending"},
 				bind(keys.AccountManager),
 			},
 		},

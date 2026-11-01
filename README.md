@@ -215,6 +215,9 @@ server. `Ctrl+Z` restores the last queued action. Deletes stay visible with a
 6–1 marker countdown, then a pending spinner until the server confirms removal.
 The cursor advances immediately; undo leaves it in place. Pending read/unread
 and destructive operations lock conflicting actions on the affected messages.
+Mailbox/account mark-all-read is blocked during conflicting operations: retry
+it when TideMail reports a pending operation. A confirmed delete with a local
+cache error stays hidden while later list reloads retry the cache cleanup.
 
 ## Compose with the right account
 

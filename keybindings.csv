@@ -17,7 +17,7 @@ PGPDecode,D,D,decrypt and verify PGP message (needs a PGP plugin),main
 EditTags,e,e,correct classification and manage current message tags,message list+content
 PluginCatalog,b,b,browse available plugins (i install / u update / x remove),plugin list
 PluginCardUnsubscribe,u,u,unsubscribe when offered,plugin result card
-MarkAllRead,"R,ctrl+x",R/ctrl+x,mark all read,main
+MarkAllRead,"R,ctrl+x",R/ctrl+x,mark all read (retry if message operations are pending),main
 OpenBrowser,o,o,open explicitly selected or keyboard-focused visible link; mailto opens TideMail compose,main
 Unsubscribe,ctrl+u,ctrl+u,unsubscribe,content
 NextLink,"ctrl+n,alt+n",ctrl+n,next LINKS entry (scroll into view; ctrl+c copies full URL),content

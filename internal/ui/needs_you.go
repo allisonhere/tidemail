@@ -273,6 +273,12 @@ func (m Model) needsYouExplanationLines(messageID int64, chrome managerChrome) [
 func (m Model) displayNeedsYouCount() int {
 	count := m.needsYou.count
 	hidden := make(map[int64]bool)
+	for id := range m.confirmedDeleteCache {
+		if m.needsYou.messageIDs[id] {
+			hidden[id] = true
+			count--
+		}
+	}
 	for _, action := range m.pendingDestructiveActions {
 		if action.Kind == destructiveDelete {
 			continue

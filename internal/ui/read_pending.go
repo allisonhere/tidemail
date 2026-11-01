@@ -14,8 +14,9 @@ type readStoreFunc func(context.Context, string, []uint32, bool) error
 type readSessionFunc func(context.Context, config.AccountConfig, func(readStoreFunc) error) error
 
 type pendingRead struct {
-	Token uint64
-	Read  bool
+	Token     uint64
+	Read      bool
+	MailboxID int64
 }
 type readRemoteCompletedMsg struct {
 	Token   uint64
@@ -40,7 +41,7 @@ func (m *Model) acceptReadChanges(messages []db.Message, target *bool, advance b
 	var entries []MessageReadBatchEntry
 	seen := make(map[int64]bool)
 	for _, msg := range messages {
-		if _, pending := m.pendingReads[msg.ID]; pending || m.messagePendingDestructive(msg.ID) || seen[msg.ID] {
+		if m.messageActionPending(msg.ID) || m.pendingBulkReads[msg.MailboxID] != 0 || seen[msg.ID] {
 			continue
 		}
 		seen[msg.ID] = true
@@ -79,7 +80,7 @@ func (m *Model) acceptReadChanges(messages []db.Message, target *bool, advance b
 		token := m.nextReadOperation
 		ids := messageIDs(b.messages)
 		for _, entry := range b.entries {
-			m.pendingReads[entry.MessageID] = pendingRead{Token: token, Read: entry.Read}
+			m.pendingReads[entry.MessageID] = pendingRead{Token: token, Read: entry.Read, MailboxID: entry.MailboxID}
 		}
 		database, sessions := m.db, m.sessions
 		withSession := m.readSession
@@ -261,21 +262,8 @@ func (m *Model) finishReadChanges(msg readRemoteCompletedMsg) tea.Cmd {
 		// Recount instead of applying captured deltas: another completed operation
 		// or a sync may already have changed the cached state before this event.
 		for id := range mailboxes {
-			count, err := m.db.CountUnread(id)
-			if err == nil {
-				err = m.db.SetMailboxUnreadCount(id, count)
-			}
-			if err != nil {
-				if msg.Err == nil {
-					msg.Err = err
-				}
-				continue
-			}
-			for i := range m.mailboxes {
-				if m.mailboxes[i].ID == id {
-					m.mailboxes[i].UnreadCount = count
-					break
-				}
+			if err := m.recountMailboxUnread(id); err != nil && msg.Err == nil {
+				msg.Err = err
 			}
 		}
 		cmds = append(cmds, m.reloadReadMessagesCmd())
@@ -285,4 +273,33 @@ func (m *Model) finishReadChanges(msg readRemoteCompletedMsg) tea.Cmd {
 		cmds = append(cmds, m.clearStatusCmd())
 	}
 	return tea.Batch(cmds...)
+}
+
+// recountMailboxUnread uses confirmed cache state instead of completion-order
+// deltas. Suppressed remote deletions may still have a failed local cache row.
+func (m *Model) recountMailboxUnread(id int64) error {
+	count, err := m.db.CountUnread(id)
+	if err != nil {
+		return err
+	}
+	for messageID, ref := range m.confirmedDeleteCache {
+		if ref.MailboxID != id {
+			continue
+		}
+		msg, err := m.db.GetMessage(messageID)
+		if err == nil && msg.MailboxID == id && !msg.Read {
+			count--
+		}
+	}
+	count = max(0, count)
+	if err := m.db.SetMailboxUnreadCount(id, count); err != nil {
+		return err
+	}
+	for i := range m.mailboxes {
+		if m.mailboxes[i].ID == id {
+			m.mailboxes[i].UnreadCount = count
+			break
+		}
+	}
+	return nil
 }

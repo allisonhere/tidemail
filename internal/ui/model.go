@@ -202,6 +202,7 @@ type Model struct {
 
 	pendingDestructiveActions []pendingDestructiveAction
 	nextDestructiveActionID   uint64
+	confirmedDeleteCache      map[int64]MessageRef // remote success awaiting local cache cleanup
 
 	pendingSends []pendingSend
 
@@ -304,6 +305,7 @@ type Model struct {
 	composeBackdrop         *composeBackdropCache
 	readerPanes             *readerPaneCache
 	pendingReads            map[int64]pendingRead
+	pendingBulkReads        map[int64]uint64 // mailbox reservations for local mark-all-read
 	nextReadOperation       uint64
 	readVersion             uint64 // invalidates read-state snapshots captured before confirmation
 	readAnimationFrame      int
@@ -919,6 +921,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.reloadReadMessagesCmd()
 			return m, cmd
 		}
+		msg.Messages = m.reconcileConfirmedDeletes(msg.Messages)
 		m.initialLoading = false
 		if msg.Err == nil && m.db != nil && m.mailTags.operation > 0 {
 			if err := m.db.RefreshMailFlags(msg.Messages); err != nil {
@@ -1026,13 +1029,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.listOffset = clamp(prevOffset, 0, max(0, rowCount-1))
 			}
 
-			if visible := m.articleRowsVisible(); visible > 0 {
-				if m.messageCursor < m.listOffset {
-					m.listOffset = m.messageCursor
-				} else if m.messageCursor >= m.listOffset+visible {
-					m.listOffset = m.messageCursor - visible + 1
-				}
-			}
+			m.keepMessageCursorVisible()
 
 			if msg := m.currentRowMessage(); msg != nil {
 				m.setViewportForCurrentRow()
@@ -1683,8 +1680,24 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case MailboxReadUpdatedMsg:
+		matched := false
+		for _, id := range msg.ReservedMailboxIDs {
+			if token, ok := m.pendingBulkReads[id]; ok && token == msg.Token {
+				delete(m.pendingBulkReads, id)
+				matched = true
+			}
+		}
+		if !matched {
+			return m, nil
+		}
 		if len(msg.MailboxIDs) > 0 {
+			m.readVersion++
 			m.markMailboxesReadInMemory(msg.MailboxIDs)
+			for _, id := range msg.MailboxIDs {
+				if err := m.recountMailboxUnread(id); err != nil && msg.Err == nil {
+					msg.Err = err
+				}
+			}
 		}
 		if msg.Err != nil {
 			m.setStatus(fmt.Sprintf("mark read failed: %v", msg.Err), true)
