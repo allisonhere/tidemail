@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/allisonhere/ripple"
+	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -71,6 +72,7 @@ type ComposeModel struct {
 	subjectInput textinput.Model
 	bodyInput    editorArea
 
+	maximized    bool // Session-only; every new composer starts compact.
 	focusedField composeField
 	inReplyTo    string
 	references   string
@@ -123,9 +125,10 @@ type ComposeModel struct {
 	pgpSign      bool
 	pgpEncrypt   bool
 
-	busy      bool
-	statusMsg string
-	isErr     bool
+	busy         bool
+	statusMsg    string
+	routedStatus string // Ownership of a transient application-footer message.
+	isErr        bool
 }
 
 func NewCompose(acfg config.AccountConfig, accounts []config.AccountConfig, addressBook []string) ComposeModel {
@@ -494,6 +497,7 @@ func quoteForward(body string, original db.Message) string {
 
 func newComposeInput(placeholder string) textinput.Model {
 	ti := textinput.New()
+	ti.Cursor.SetMode(cursor.CursorStatic)
 	ti.Placeholder = placeholder
 	ti.CharLimit = 512
 	// Drop the default "> " prompt: the soft rows carry their own label column,
@@ -1305,6 +1309,15 @@ func composeOverlayHeight(termHeight int) int {
 	return max(1, min(termHeight-4, 48))
 }
 
+// overlayDimensions shares content geometry between rendering and stored inputs.
+// The maximized panel fills the terminal, including its two border rows.
+func (c ComposeModel) overlayDimensions(termWidth, termHeight int) (int, int) {
+	if c.maximized {
+		return max(1, termWidth-2), max(1, termHeight-2)
+	}
+	return composeOverlayWidth(termWidth), composeOverlayHeight(termHeight)
+}
+
 // composeFieldWidths returns the width of a To/CC/BCC/Subject row's control and
 // of the text inside it, for an overlay width.
 func composeFieldWidths(width int) (rowFieldW, textW int) {
@@ -1544,6 +1557,9 @@ func (c ComposeModel) pickerView(width, height int, chrome managerChrome) string
 
 	// Quiet soft footer — render first so the file list can reserve its true height.
 	hints := renderSoftHints(width, chrome, "↑↓", "navigate", "enter", "open/attach", "esc/h", "up dir", ".", "hidden")
+	if c.routedStatus != "" && c.statusMsg == c.routedStatus {
+		hints = lipgloss.JoinVertical(lipgloss.Left, c.composeStateLine(width, chrome), hints)
+	}
 
 	// File listing — fit within available height (path line + footer).
 	availH := height - lipgloss.Height(pathLine) - lipgloss.Height(hints)

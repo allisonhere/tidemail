@@ -155,6 +155,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{"⁂", "signature position: move the symbol, or delete it to send unsigned"},
 				{"ctrl+p → Schedule send", "choose a future local date and time"},
 				{keys.AttachFile.Help().Key, "attach file"},
+				{keys.MaximizeCompose.Help().Key, "maximize/restore compose (session only)"},
 				{keys.RemoveAttach.Help().Key, "remove last attachment"},
 				{keys.CycleSender.Help().Key, "cycle sender account; From opens the full picker"},
 				{keys.PasteText.Help().Key, "paste clipboard into focused field"},

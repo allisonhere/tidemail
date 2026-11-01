@@ -97,6 +97,7 @@ Current release: **v1.7.0**.
 - **AI**: summaries and grammar across OpenAI, Claude, Gemini, and Ollama. Mail rules
   are AI-generated once into reviewed JSON, then matched locally and deterministically —
   no per-message AI cost.
+- **Maximized compose**: `Alt+M` maximizes/restores the panel across the full terminal; new sessions and reopened drafts start compact.
 - **Compose layout**: grows up to 110×48 cells, with matching stored/rendered
   editor geometry. Key-only rounded pills highlight Send in the success color;
   plain themes use bracketed keys. A fixed three-row footer keeps Esc first on

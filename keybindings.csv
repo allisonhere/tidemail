@@ -97,3 +97,4 @@ ComposeFindCase,alt+c,alt+c,toggle match case,compose-find
 ComposeFindRegex,alt+r,alt+r,toggle regex when advanced regex search is enabled,compose-find
 ComposeFindControls,tab,tab,next search control,compose-find
 ComposeFindClose,esc,esc,close search without closing compose,compose-find
+MaximizeCompose,alt+m,alt+m,maximize/restore compose (session only),compose

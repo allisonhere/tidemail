@@ -236,6 +236,8 @@ default, which gives `Ctrl+Z` time to reopen it. Set the delay to `0` if you wan
 mail to leave at once. Failed sends retry up to three total attempts by default;
 change the limit under Settings → Editor. Set it to `1` to disable retries.
 
+Press `Alt+M` in the compose panel to maximize it across the full terminal or restore its compact size. New composers and reopened drafts start compact.
+
 The standard compose editor supports Shift-selection, clipboard shortcuts,
 undo and redo, word movement, and Home/End. Turn Vim mode on in Settings if you
 prefer commands such as `dw`, `dd`, `:w`, and `:q`.

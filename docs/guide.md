@@ -1138,6 +1138,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Ctrl+D` | Save attachments to folder |
 | `Ctrl+G` | AI grammar & spell check (compose). The preview fits the screen and scrolls with `↑`/`↓`, `PgUp`/`PgDn`, and `Home`/`End`; `y` accepts, `n` or `Esc` cancels |
 | `F7` | Offline spell check (compose); needs Settings → Editor → Spell check |
+| `Alt+M` in compose | Maximize the compose panel across the full terminal; press again to restore. The application status bar is hidden; compose notifications (including autosave failures) appear in the composer footer. Each new compose, reply, forward, or reopened draft starts compact. |
 | `F6` in compose | Template picker; `Enter` inserts, `e` edits, `n` saves the message as a new template |
 | `D` | Decrypt and verify the open PGP message (needs a PGP plugin) |
 | `Alt+S` / `Alt+E` in compose | Sign / encrypt the message with PGP (needs a PGP plugin); `F8` / `F9` also work if your terminal or desktop doesn't claim them |
