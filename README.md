@@ -76,7 +76,8 @@ One inbox, 51 built-in themes in 23 families — Catppuccin, Tokyo Night, Rosé 
   sent mail. Failed deliveries survive restarts and can be retried or edited.
 - **Unsubscribe without hunting for a footer.** Press `Ctrl+U` while reading to
   use the message's unsubscribe header or labeled unsubscribe link.
-- **Compose your way.** A larger, responsive composer (up to 110×48 cells) uses
+- **Compose your way.** A ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
+ larger, responsive composer (up to 110×48 cells) uses
   key-only pill hints, with Send highlighted in the theme's success color. The standard editor supports text selection, the system
   clipboard, undo and redo, word movement, and Find/Replace (`Ctrl+F`, then
   `Ctrl+R` for replacement controls). An advanced regex toggle is available via
@@ -88,8 +89,7 @@ One inbox, 51 built-in themes in 23 families — Catppuccin, Tokyo Night, Rosé 
   `F6` opens canned replies (six built-ins, plus any `.md` or `.txt` files in
   `~/.config/tidemail/templates`) with the recipient's name filled in; see
   [Templates](docs/guide.md#templates).
-- **See the pictures, not just the alt text.** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
-  On Ghostty, Kitty, and Rio, images in HTML mail render inline in the reading
+- **See the pictures, not just the alt text.**   On Ghostty, Kitty, and Rio, images in HTML mail render inline in the reading
   pane, sized to fit and loaded in the background so browsing stays quick.
   Remote images wait until
   you press `i`. Receipts keep their columns and newsletter cards stay
@@ -101,11 +101,9 @@ One inbox, 51 built-in themes in 23 families — Catppuccin, Tokyo Night, Rosé 
 - **Match your desktop.** On [Omarchy](https://omarchy.org), the `match-omarchy`
   theme follows your current desktop theme — contrast-corrected to the same
   bar as the built-ins — and repaints live when you switch it.
-- **[Experimental plugins](docs/plugins.md).** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
-  Install trusted plugins such as TideMail Smart (JEV) to classify mail with
+- **[Experimental plugins](docs/plugins.md).**  Install trusted plugins such as TideMail Smart (JEV) to classify mail with
   local annotations, Needs You signals, and optional TypeSafe/Jev analysis.
-- **PGP, through a plugin.** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
-  Install the `pgp` plugin from **Settings → Plugins → `b`** (it uses your own GnuPG) to read encrypted
+- **PGP, through a plugin.**  Install the `pgp` plugin from **Settings → Plugins → `b`** (it uses your own GnuPG) to read encrypted
   and signed mail (`D`) and to sign (`Alt+S`) and encrypt (`Alt+E`) what you send.
   Nothing is sent if encryption fails, and every recipient needs a public key in
   your keyring (`gpg --locate-keys ADDRESS`). See
@@ -117,8 +115,7 @@ One inbox, 51 built-in themes in 23 families — Catppuccin, Tokyo Night, Rosé 
   and undo. Portable skills for Codex, Claude, Pi, and Hermes let an agent send
   mail within capabilities and approval you configure. See the
   [CLI reference](docs/cli.md).
-- **Prefer the mouse?** ![NEW](https://img.shields.io/badge/NEW-DC143C?style=flat-square)
-  Turn on **Settings → Display → Mouse support** (off by default, so your
+- **Prefer the mouse?**   Turn on **Settings → Display → Mouse support** (off by default, so your
   terminal's native text selection keeps working). Then click rows and panes,
   double-click a message to open it, use the scroll wheel over any pane, and
   right-click a folder, account, or message for a menu of just its actions.

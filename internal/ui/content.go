@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/charmbracelet/lipgloss"
@@ -421,6 +422,24 @@ func (m *Model) setViewportMessage(msg db.Message) {
 // header showing the recipients and when it was last saved. The body is run
 // through the normal plain-text renderer so wrapping and links match the rest
 // of the pane.
+// draftPreviewLimit caps how much of a draft body the reading pane renders.
+// Wrapping runs on the UI thread, and a runaway body (a 30 MB single line
+// left by repeated Replace All) froze it for seconds on every cursor visit.
+const draftPreviewLimit = 64 << 10
+
+// draftPreviewText returns at most draftPreviewLimit bytes of body, cut on a
+// rune boundary, and whether anything was left out.
+func draftPreviewText(body string) (string, bool) {
+	if len(body) <= draftPreviewLimit {
+		return body, false
+	}
+	cut := draftPreviewLimit
+	for cut > 0 && !utf8.RuneStart(body[cut]) {
+		cut--
+	}
+	return body[:cut], true
+}
+
 func (m Model) renderDraftContent(d db.Draft) string {
 	paneWidth := m.contentPaneContentWidth()
 	contentWidth := m.contentBodyWidth()
@@ -459,9 +478,15 @@ func (m Model) renderDraftContent(d db.Draft) string {
 	}
 	header := strings.Join(headerLines, "\n") + "\n"
 
-	body := m.renderMessageBody(db.Message{BodyText: d.BodyText}, m.contentBodyWidth())
+	previewText, truncated := draftPreviewText(d.BodyText)
+	body := m.renderMessageBody(db.Message{BodyText: previewText}, m.contentBodyWidth())
 	if strings.TrimSpace(ansi.Strip(body)) == "" {
 		body = m.styles.ContentBody.Width(m.contentBodyWidth()).Render("  (empty draft)")
+	}
+	if truncated {
+		body += "\n\n" + lipgloss.NewStyle().
+			Background(m.styles.Theme.Bg).Foreground(dim).Width(contentWidth).
+			Render(fmt.Sprintf("  … preview shows the first %s of %s", humanSize(len(previewText)), humanSize(len(d.BodyText))))
 	}
 
 	if len(d.Attachments) > 0 {
@@ -484,21 +509,31 @@ func (m Model) renderDraftContent(d db.Draft) string {
 func (m *Model) setViewportDraft(d db.Draft) {
 	sameDraft := m.contentDraftID == d.ID && m.contentLineCount > 0
 	m.setContentLinkContext(fmt.Sprintf("draft:%d", d.ID))
-	m.syncContentLinks(db.Message{BodyText: d.BodyText})
+	previewText, _ := draftPreviewText(d.BodyText)
+	m.syncContentLinks(db.Message{BodyText: previewText})
 	m.contentAttachments = nil
 	m.clearContentSelection()
 	if !sameDraft {
 		m.contentQuotesCollapsed = false
 	}
-	content := m.renderDraftContent(d)
-	m.contentSearchMatches = collectSearchMatches(content, m.contentSearchQuery)
-	m.viewport.SetContent(content)
+	// The Drafts list reloads on entry and after every sync of the folder, and
+	// each reload lands here; without the cache every one re-wrapped the body.
+	key := m.viewportContentKey(
+		fmt.Sprintf("draft:%d", d.ID),
+		int(d.UpdatedAt.UnixNano())+len(d.BodyText)+len(d.Attachments),
+		"",
+	)
+	vc := m.viewportContentFor(key, func() renderedContent {
+		return renderedContent{content: m.renderDraftContent(d), linkStart: -1}
+	})
+	m.contentSearchMatches = collectSearchMatches(vc.content, m.contentSearchQuery)
+	m.viewport.SetContent(vc.content)
 	m.contentMessageID = 0
 	m.contentDraftID = d.ID
-	m.contentLines, m.contentLineLinks = contentDisplayLines(content)
+	m.contentLines, m.contentLineLinks = vc.lines, vc.lineLinks
 	m.contentLinkRows = nil
 	m.contentLineCount = len(m.contentLines)
-	m.contentFocusable = focusableFromLines(m.contentLines)
+	m.contentFocusable = vc.focusable
 	m.contentFocusLine = clamp(m.contentFocusLine, 0, max(0, m.contentLineCount-1))
 	if !sameDraft {
 		m.contentFocusLine = firstFocusableLine(m.contentFocusable)
