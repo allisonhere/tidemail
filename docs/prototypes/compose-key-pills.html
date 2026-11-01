@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TideMail · Compose key pills</title>
+<style>
+:root{color-scheme:dark;--bg:#12131b;--panel:#1c1d2a;--input:#202230;--text:#d6dbea;--muted:#8990a6;--line:#2b2e3e;--pill:#333541;--green:#46d58a;--purple:#b4a0ee}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.65 ui-monospace,"DejaVu Sans Mono",monospace;min-height:100vh;display:grid;place-items:center;padding:52px 32px}button,input,select,textarea{font:inherit}button{cursor:pointer}main{width:min(940px,100%)}.eyebrow{display:flex;justify-content:space-between;align-items:center;margin:0 4px 17px;color:var(--muted);font-size:11px;letter-spacing:.12em}.brand{color:#c0c5d5;font-weight:600}.prototype{letter-spacing:.04em;border:1px solid var(--line);padding:2px 9px;border-radius:5px;font-size:10px}.compose{background:var(--panel);border:1px solid #3e4056;border-radius:9px;box-shadow:0 18px 75px #0005;overflow:hidden}.heading{display:flex;align-items:center;justify-content:space-between;padding:18px 25px;border-bottom:1px solid var(--line)}h1{font-size:15px;font-weight:500;margin:0}.saved{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:8px}.saved:before{content:"";width:5px;height:5px;background:var(--green);border-radius:50%}.form{padding:12px 25px 0}.field{display:grid;grid-template-columns:75px 1fr;align-items:center;min-height:39px}.field label{color:var(--muted);font-size:12px}.field input,.field select{width:100%;border:0;outline:0;background:transparent;color:var(--text);padding:7px 0}.field select{appearance:none}.field:focus-within label{color:var(--purple)}.optional{color:#697084!important}.divider{height:1px;background:var(--line);margin:13px 0 8px}.subject input{font-weight:500}.body{margin-top:12px;position:relative;background:var(--input);border-radius:3px}.body:before{position:absolute;content:"";width:2px;left:0;top:14px;bottom:14px;background:var(--purple);border-radius:2px}textarea{resize:vertical;background:none;border:0;outline:0;color:var(--text);width:100%;min-height:245px;display:block;padding:16px 20px;line-height:1.85;font-size:14px}.body-meta{display:flex;justify-content:space-between;color:#777e96;font-size:10px;padding:9px 2px 14px}.body-meta span:last-child{color:#9a90ba}.footer{border-top:1px solid var(--line);padding:17px 25px 19px;display:flex;align-items:flex-start;justify-content:space-between;gap:24px}.actions{display:flex;flex-wrap:wrap;gap:12px 21px;max-width:620px}.action{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;background:none;border:0;padding:0;color:var(--text);font:14px/1.4 system-ui,sans-serif}.action kbd{display:inline-flex;justify-content:center;align-items:center;min-width:29px;height:22px;padding:0 7px;border-radius:999px;background:var(--pill);color:#d0d2df;font:11px/1 ui-monospace,"DejaVu Sans Mono",monospace;transition:background .12s}.action.send kbd{background:#163e32;color:var(--green)}.action:hover kbd{background:#4a4d61}.action.send:hover kbd{background:#205340}.action:focus-visible{outline:1px solid var(--purple);outline-offset:5px;border-radius:3px}.break{flex-basis:100%;height:0;margin-top:-12px}.secondary{color:#7f869e;line-height:1.8;font-size:10px;text-align:right;white-space:nowrap;padding-top:1px}.secondary b{font-weight:400;color:#b4b8cb}.caption{color:#747b91;font:11px/1.6 system-ui,sans-serif;margin:16px 4px 0}.toast{min-height:18px;margin:10px 4px 0;color:var(--green);font-size:11px}
+@media(max-width:650px){body{padding:24px 12px}.form{padding:10px 16px 0}.heading{padding:15px 16px}.field{grid-template-columns:64px 1fr}.footer{padding:16px;flex-direction:column;gap:12px}.secondary{text-align:left}.actions{gap:12px 16px}.saved{font-size:10px}.eyebrow{font-size:10px}textarea{min-height:220px;font-size:12px;padding:14px}}
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow"><span class="brand">TIDEMAIL</span><span class="prototype">COMPOSE PROTOTYPE</span></div>
+<section class="compose" aria-label="Compose editor prototype">
+<header class="heading"><h1>New message</h1><span class="saved">Draft saved</span></header>
+<div class="form">
+<div class="field"><label for="from">From</label><select id="from"><option>Allie &lt;allie@example.com&gt;</option><option>Allie · Work &lt;allie@work.example&gt;</option></select></div>
+<div class="field"><label for="to">To</label><input id="to" value="Priya &lt;priya@example.com&gt;" spellcheck="false"></div>
+<div class="field"><label for="cc" class="optional">Cc</label><input id="cc" aria-label="Cc recipients" placeholder=""></div>
+<div class="field"><label for="bcc" class="optional">Bcc</label><input id="bcc" aria-label="Bcc recipients" placeholder=""></div>
+<div class="divider"></div>
+<div class="field subject"><label for="subject">Subject</label><input id="subject" value="A little polish for the next version"></div>
+<div class="body"><textarea aria-label="Message body" spellcheck="false">Hey Priya,
+
+The updated draft is ready for a look. I’ve kept the layout quiet
+and made the keyboard shortcuts a little easier to scan.
+
+Let me know what you think.
+
+⁂</textarea></div>
+<div class="body-meta"><span>Plain text · UTF-8</span><span>⁂ signature marker</span></div>
+</div>
+<footer class="footer">
+<div class="actions" aria-label="Prototype keyboard actions">
+<button class="action send" data-action="Send"><kbd>^S</kbd><span>Send</span></button>
+<button class="action" data-action="Schedule"><kbd>^P</kbd><span>Schedule</span></button>
+<button class="action" data-action="Grammar"><kbd>^G</kbd><span>Grammar</span></button>
+<button class="action" data-action="Templates"><kbd>F6</kbd><span>Templates</span></button>
+<span class="break" aria-hidden="true"></span>
+<button class="action" data-action="Cancel"><kbd>Esc</kbd><span>Cancel</span></button>
+<button class="action" data-action="Commands"><kbd>F1</kbd><span>Commands</span></button>
+</div>
+<div class="secondary"><b>^F</b> Find / replace<br><b>^Z</b> Undo</div>
+</footer>
+</section>
+<p class="caption">Key-only pills, action labels outside. Green for Send; neutral for everything else.</p>
+<div class="toast" aria-live="polite"></div>
+</main>
+<script>
+const toast=document.querySelector('.toast');
+document.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>{toast.textContent=button.dataset.action+' · visual prototype';}));
+document.querySelector('textarea').addEventListener('input',()=>{document.querySelector('.saved').textContent='Draft edited';});
+</script>
+</body>
+</html>
