@@ -29,10 +29,10 @@ type composeHint struct {
 // and template panels replace the footer with their own height.
 func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 	if c.spellOpen {
-		return c.spellPanel(width, chrome)
+		return c.withRoutedStatus(c.spellPanel(width, chrome), width, chrome)
 	}
 	if c.tmplOpen {
-		return c.templatesPanel(width, chrome)
+		return c.withRoutedStatus(c.templatesPanel(width, chrome), width, chrome)
 	}
 	blank := padStyled("", width, chrome.baseBg)
 	if c.busy {
@@ -62,7 +62,7 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 		if vimMode != "" && vimMode != "NORMAL" {
 			esc.label = "normal"
 		}
-		context = append(context, esc, composeHint{"^g", "grammar", 6, true})
+		context = append(context, esc, c.maximizeHint(), composeHint{"^g", "grammar", 6, true})
 		if editorSpell != nil {
 			context = append(context, composeHint{"f7", "spell", 9, true})
 		}
@@ -78,6 +78,25 @@ func (c ComposeModel) composeHints(width int, chrome managerChrome) string {
 	}
 	rows := append([]string{c.composeStateLine(width, chrome)}, composeKeyGrid([][]composeHint{actions, context}, width, chrome)...)
 	return strings.Join(rows, "\n")
+}
+
+// Subpanels normally use the status row for context. A routed notification
+// temporarily takes that row without changing the panel's height or controls.
+func (c ComposeModel) withRoutedStatus(panel string, width int, chrome managerChrome) string {
+	if c.routedStatus != "" && c.statusMsg == c.routedStatus {
+		rows := strings.Split(panel, "\n")
+		rows[0] = c.composeStateLine(width, chrome)
+		return strings.Join(rows, "\n")
+	}
+	return panel
+}
+
+func (c ComposeModel) maximizeHint() composeHint {
+	label := "maximize"
+	if c.maximized {
+		label = "restore"
+	}
+	return composeHint{"alt+m", label, 2, true}
 }
 
 // composeBodyHints is the body's key group. The standard editor copies and
@@ -337,15 +356,20 @@ func (c ComposeModel) composeSearchFooter(width int, chrome managerChrome) strin
 	// Find is open), gets its own row when one is free. Otherwise it takes the
 	// last row's place after Esc, since it matters more than the other hints.
 	detail := composeSearchError(status)
-	if detail == "" && c.isErr {
+	routed := c.routedStatus != "" && c.statusMsg == c.routedStatus
+	if (routed && c.isErr) || (detail == "" && (c.isErr || routed)) {
 		detail = c.statusMsg
+	}
+	detailChrome := chrome
+	if detail == c.statusMsg && !c.isErr {
+		detailChrome.errorFg = chrome.pendingFg
 	}
 	switch {
 	case detail != "" && len(rows) == 1:
-		rows = append(rows, composeDetailRow("", detail, width, chrome))
+		rows = append(rows, composeDetailRow("", detail, width, detailChrome))
 		rows = append(rows, composeKeyGrid([][]composeHint{append([]composeHint{esc}, append(keys[0], keys[1][1:]...)...)}, width, chrome)...)
 	case detail != "":
-		rows = append(rows, composeDetailRow(composeKeyHint(esc.key, esc.label, chrome), detail, width, chrome))
+		rows = append(rows, composeDetailRow(composeKeyHint(esc.key, esc.label, chrome), detail, width, detailChrome))
 	case len(rows) == 1:
 		rows = append(rows, composeKeyGrid(keys, width, chrome)...)
 	default:

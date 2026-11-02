@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -583,16 +585,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// (sync, resize, theme, etc.), so let the next View rebuild the backdrop.
 	keepBackdrop := m.overlay == overlayCompose
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyMsg, cursor.BlinkMsg:
 	case DraftSavedMsg:
 		keepBackdrop = keepBackdrop && msg.Err == nil
 	default:
-		keepBackdrop = false
+		// Bubbles also sends unexported initial/cancel messages. They only
+		// affect cursors and cannot change the underlying application panes.
+		t := reflect.TypeOf(msg)
+		keepBackdrop = keepBackdrop && t != nil && t.PkgPath() == "github.com/charmbracelet/bubbles/cursor"
 	}
 	if !keepBackdrop && m.composeBackdrop != nil {
 		m.composeBackdrop.valid = false
 	}
 	next, cmd := m.update(msg)
+	if updated, ok := next.(Model); ok && updated.overlay == overlayCompose {
+		updated.sizeCompose()
+		next = updated
+	}
 	// Any update may change the images on screen. Their upload is collected
 	// here so no individual handler has to thread the command through.
 	if m.images != nil {
@@ -680,6 +689,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleSupportNudge()
 
 	case StatusClearMsg:
+		m.compose.clearRoutedStatus()
 		m.statusMsg = ""
 		m.statusErr = false
 		m.browserReopen = 0
@@ -1719,7 +1729,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case DraftSavedMsg:
 		if msg.Err != nil {
-			m.setStatus(fmt.Sprintf("draft save failed: %v", msg.Err), true)
+			m.setComposeStatus(fmt.Sprintf("draft save failed: %v", msg.Err), true)
 			return m, m.clearStatusCmd()
 		}
 		if m.overlay == overlayCompose && msg.DraftID != 0 {
@@ -1804,9 +1814,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ClipboardCopiedMsg:
 		if msg.Err != nil {
-			m.setStatus("copy failed: "+msg.Err.Error(), true)
+			m.setComposeStatus("copy failed: "+msg.Err.Error(), true)
 		} else {
-			m.setStatus("copied to clipboard", false)
+			m.setComposeStatus("copied to clipboard", false)
 		}
 		return m, m.clearStatusCmd()
 
@@ -1820,12 +1830,14 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ClipboardReadMsg:
 		if msg.Err != nil {
-			m.setStatus("paste failed: "+msg.Err.Error(), true)
+			m.setComposeStatus("paste failed: "+msg.Err.Error(), true)
 			return m, m.clearStatusCmd()
 		}
 		if m.overlay == overlayCompose && msg.Text != "" {
 			sanitized := sanitizePaste(msg.Text)
-			m.setStatus(fmt.Sprintf("pasted %d chars", len(sanitized)), false)
+			if !m.compose.maximized {
+				m.setStatus(fmt.Sprintf("pasted %d chars", len(sanitized)), false)
+			}
 			return m.handleCompose(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(sanitized), Paste: true})
 		}
 		return m, nil
@@ -3544,16 +3556,25 @@ func (m Model) handleContactManager(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// sizeCompose keeps stored input geometry identical to the rendered layout.
+func (m *Model) sizeCompose() {
+	if m.width <= 0 || m.height <= 0 {
+		return
+	}
+	w, h := m.compose.overlayDimensions(m.width, m.height)
+	m.compose.SetWidth(w)
+	_, bw, bh, _ := m.compose.composeLayout(w, h, m.styles)
+	m.compose.bodyInput.SetSize(bw, bh)
+}
+
 func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, m.compose.pgpAvailable = m.pgpComposePlugin()
-	// Keep the stored body editor sized to the SAME width and height View renders
-	// with, so vertical navigation and the viewport track what the user sees. View
-	// sizes only a copy (it's a value receiver), so the stored editor must be
-	// synced here. The overlay dimensions mirror renderOverlay (overlays.go).
-	if m.width > 0 && m.height > 0 {
-		_, bw, bh, _ := m.compose.composeLayout(composeOverlayWidth(m.width), composeOverlayHeight(m.height), m.styles)
-		m.compose.bodyInput.SetSize(bw, bh)
+	if km, ok := msg.(tea.KeyMsg); ok && keyMatches(km, m.keys.MaximizeCompose) {
+		m.compose.clearRoutedStatus()
+		m.compose.maximized = !m.compose.maximized
+		return m, nil
 	}
+	m.sizeCompose()
 	searching := (m.compose.focusedField == composeFieldBody && m.compose.bodyInput.ed.SearchActive()) ||
 		(m.compose.tmplOpen && m.compose.tmplEditing && m.compose.tmplEd.ed.SearchActive())
 	// Intercept grammar check key before compose gets it
@@ -3580,12 +3601,11 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 		msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(sanitized), Paste: true}
 	}
 	before := m.compose
-	m.compose.SetWidth(composeOverlayWidth(m.width))
 	newC, cmd, exit := m.compose.Update(msg, m.keys)
 	m.compose = newC
 	m.persistSpellWords()
 	if km, ok := msg.(tea.KeyMsg); ok && km.Paste && !searching {
-		m.setStatus(fmt.Sprintf("pasted %d chars", len(km.Runes)), false)
+		m.setComposeStatus(fmt.Sprintf("pasted %d chars", len(km.Runes)), false)
 		m.compose.dirty = true
 	}
 	if composeChanged(before, m.compose) {
@@ -3652,6 +3672,10 @@ func (m Model) commandMessage() *db.Message {
 func (m Model) View() string {
 	if m.width == 0 {
 		return ""
+	}
+
+	if m.overlay == overlayCompose && m.compose.maximized {
+		return m.renderOverlay("")
 	}
 
 	var main string
@@ -4472,6 +4496,26 @@ func (m Model) indexOfFilteredMessage(messageID int64) int {
 		}
 	}
 	return -1
+}
+
+// setComposeStatus routes only explicitly compose-related notifications. Native
+// composer messages keep their existing path; unrelated application activity
+// continues to use setStatus, even while the application footer is hidden.
+func (m *Model) setComposeStatus(msg string, isErr bool) {
+	m.setStatus(msg, isErr)
+	if m.overlay == overlayCompose && m.compose.maximized {
+		m.compose.statusMsg, m.compose.isErr = msg, isErr
+		m.compose.routedStatus = msg
+		m.statusMsg, m.statusErr = "", false
+	}
+}
+
+// Clear only the routed notification, never a newer native composer message.
+func (c *ComposeModel) clearRoutedStatus() {
+	if c.routedStatus != "" && c.statusMsg == c.routedStatus {
+		c.statusMsg, c.isErr = "", false
+	}
+	c.routedStatus = ""
 }
 
 func (m *Model) setStatus(msg string, isErr bool) {
