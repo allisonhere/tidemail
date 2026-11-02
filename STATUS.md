@@ -222,3 +222,7 @@ Message deletion updates its cached message, attachments, search index, and
 deletion marker in one transaction. Needs You dismiss/restore applies to every
 message in a thread together; failures leave the database unchanged. A failed
 Ctrl+Z restore keeps undo available for retry after the write finishes.
+
+- Account deletion cleans its FTS index and cached account data atomically.
+  SQLite replacement connections keep foreign keys, the five-second busy timeout,
+  and WAL settings; punctuation in filesystem database paths is URI-escaped.

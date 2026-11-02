@@ -27,6 +27,12 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Account deletion removes its cached search-index rows in the same transaction
+  as the account, preventing orphan FTS entries and unnecessary startup rebuilds.
+- SQLite replacement connections retain foreign-key enforcement, the five-second
+  busy timeout, and WAL settings through connection DSN initialization. Database
+  filenames containing query/fragment punctuation are escaped correctly.
+
 - Reject Unicode line/paragraph separators in link destinations so LINKS rows
   cannot activate a different URL from the one displayed. Labels stay single-line.
 - Strip bare carriage returns from parsed and rendered mail while preserving

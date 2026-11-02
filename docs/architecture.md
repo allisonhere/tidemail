@@ -316,3 +316,9 @@ persistence state. Only the active compose request can apply a grammar response.
 and FTS removal, and message deletion. `SetNeedsYouDismissedBatch` atomically
 applies thread dismissals/restorations. The UI permits one dismissal write in
 flight and retains undo history until restoration is acknowledged successfully.
+
+Account deletion removes the account's FTS rows before cascading cached-message
+deletion, within one transaction. SQLite DSNs apply foreign-key enforcement,
+`busy_timeout(5000)`, and WAL to each physical connection, including replacements
+after `driver.ErrBadConn`. Filesystem paths are escaped as SQLite file URIs;
+existing SQLite file URIs and in-memory databases remain supported.
