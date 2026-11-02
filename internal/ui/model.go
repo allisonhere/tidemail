@@ -203,6 +203,7 @@ type Model struct {
 	pendingDestructiveActions []pendingDestructiveAction
 	nextDestructiveActionID   uint64
 	confirmedDeleteCache      map[int64]MessageRef // remote success awaiting local cache cleanup
+	pendingUnreadExcluded     map[int64]bool       // archive/move IDs absent from the last SQL unread snapshot
 
 	pendingSends []pendingSend
 

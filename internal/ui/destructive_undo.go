@@ -52,6 +52,7 @@ type DestructiveActionResultMsg struct {
 	Succeeded   []MessageRef
 	CacheFailed []MessageRef
 	CacheErr    error
+	RemoteErr   error
 	Failed      []db.Message
 	Err         error
 }
@@ -154,7 +155,7 @@ func (m *Model) undoLatestDestructive() tea.Cmd {
 		if action.Committing {
 			continue
 		}
-		m.pendingDestructiveActions = append(m.pendingDestructiveActions[:i], m.pendingDestructiveActions[i+1:]...)
+		m.removeDestructiveAction(action.ID)
 		m.applyFilter()
 		if action.Kind != destructiveDelete {
 			m.focusRestoredMessage(action.Entries)
@@ -215,6 +216,9 @@ func executeDestructiveBatches(action pendingDestructiveAction, database *db.DB,
 	for _, key := range order {
 		entries := batches[key]
 		if err := remote(entries); err != nil {
+			if result.RemoteErr == nil {
+				result.RemoteErr = err
+			}
 			if result.Err == nil {
 				result.Err = err
 			}
@@ -287,6 +291,21 @@ func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.C
 	if current := m.currentRowMessage(); current != nil {
 		currentID = current.ID
 	}
+	if m.threadedMessagesEnabled() {
+		removed := make(map[int64]bool, len(result.Succeeded))
+		for _, ref := range result.Succeeded {
+			removed[ref.ID] = true
+		}
+		if removed[currentID] {
+			// Keep the conversation selected when its representative is deleted.
+			for _, member := range m.currentRowMessages() {
+				if !removed[member.ID] {
+					currentID = member.ID
+					break
+				}
+			}
+		}
+	}
 	if len(result.Succeeded) > 0 {
 		// Reject list snapshots captured before this confirmed removal.
 		m.readVersion++
@@ -318,6 +337,12 @@ func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.C
 	m.clampMessageViewAfterDestructiveChange()
 	verb := destructivePastTense(action.Kind)
 	switch {
+	case len(result.CacheFailed) > 0 && len(result.Failed) > 0:
+		failedErr := result.RemoteErr
+		if failedErr == nil {
+			failedErr = result.Err
+		}
+		m.setStatus(fmt.Sprintf("%s %d; %d failed: %v; local cache update failed for %d: %v", verb, len(result.Succeeded), len(result.Failed), failedErr, len(result.CacheFailed), result.CacheErr), true)
 	case len(result.CacheFailed) > 0:
 		m.setStatus(fmt.Sprintf("%s %d; %d failed; local cache update failed for %d: %v", verb, len(result.Succeeded), len(result.Failed), len(result.CacheFailed), result.CacheErr), true)
 	case result.Err != nil && len(result.Failed) == 0:
@@ -337,6 +362,9 @@ func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.C
 func (m *Model) removeDestructiveAction(id uint64) (pendingDestructiveAction, bool) {
 	for i, action := range m.pendingDestructiveActions {
 		if action.ID == id {
+			for _, entry := range action.Entries {
+				delete(m.pendingUnreadExcluded, entry.Message.ID)
+			}
 			m.pendingDestructiveActions = append(m.pendingDestructiveActions[:i], m.pendingDestructiveActions[i+1:]...)
 			return action, true
 		}
@@ -362,7 +390,7 @@ func (m Model) pendingUnreadCount(mailboxID int64) int64 {
 			continue
 		}
 		for _, entry := range action.Entries {
-			if entry.Message.MailboxID == mailboxID && !entry.Message.Read {
+			if entry.Message.MailboxID == mailboxID && !entry.Message.Read && !m.pendingUnreadExcluded[entry.Message.ID] {
 				count++
 			}
 		}

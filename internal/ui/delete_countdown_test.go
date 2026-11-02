@@ -483,36 +483,182 @@ func TestDeleteStaleTimerCannotCommitNewerAction(t *testing.T) {
 }
 
 func TestDeletePartialRemoteAndCacheFailuresStayDistinct(t *testing.T) {
-	f := newUndoTestFixture(t, 2)
+	for _, cacheFirst := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cacheFirst=%v", cacheFirst), func(t *testing.T) {
+			f := newUndoTestFixture(t, 2)
+			m := f.model
+			other := f.messages[1]
+			other.MailboxID = f.target.ID
+			if err := f.database.MoveMessage(other.ID, other.MailboxID); err != nil {
+				t.Fatal(err)
+			}
+			m.messages[1] = other
+			if _, err := f.database.Exec("CREATE TRIGGER fail_cache BEFORE DELETE ON messages BEGIN SELECT RAISE(FAIL, 'cache write failed'); END"); err != nil {
+				t.Fatal(err)
+			}
+			m.scheduleDelete([]db.Message{f.messages[0], other})
+			action := m.pendingDestructiveActions[0]
+			for i := range action.Entries {
+				action.Entries[i].Account.IMAPHost = "confirmed-test"
+			}
+			if cacheFirst {
+				action.Entries[0], action.Entries[1] = action.Entries[1], action.Entries[0]
+			}
+			result := executeDestructiveBatches(action, f.database, func(entries []pendingDestructiveEntry) error {
+				if entries[0].Source.ID == f.source.ID {
+					return errors.New("remote rejected")
+				}
+				return nil
+			})
+			if len(result.Failed) != 1 || len(result.CacheFailed) != 1 || len(result.Succeeded) != 1 ||
+				result.CacheErr == nil || !strings.Contains(result.CacheErr.Error(), "cache write failed") {
+				t.Fatalf("partial result: %+v", result)
+			}
+			m.handleDestructiveResult(result)
+			if !strings.Contains(m.statusMsg, "1 failed") || !strings.Contains(m.statusMsg, "local cache update failed") ||
+				!strings.Contains(m.statusMsg, "cache write failed") || !strings.Contains(m.statusMsg, "remote rejected") || m.messageHiddenDestructive(f.messages[0].ID) ||
+				!m.messageHiddenDestructive(other.ID) {
+				t.Fatal("partial failures conflated", m.statusMsg)
+			}
+		})
+	}
+}
+
+func TestDeleteSyntheticMixedDestructiveCounts(t *testing.T) {
+	// Two result orders are sufficient; archive and move share this accounting.
+	for _, deleteFirst := range []bool{true, false} {
+		t.Run(fmt.Sprintf("deleteFirst=%v", deleteFirst), func(t *testing.T) {
+			f := newUndoTestFixture(t, 3)
+			m := f.model
+			for i := range m.messages {
+				if err := f.database.MarkRead(m.messages[i].ID, false); err != nil {
+					t.Fatal(err)
+				}
+				m.messages[i].Read = false
+			}
+			m.applyFilter()
+			check := func(want int64) {
+				t.Helper()
+				if got := m.displayMailboxUnreadCount(m.mailboxes[0]); got != want {
+					t.Fatalf("displayed unread = %d, want %d", got, want)
+				}
+			}
+			m.scheduleDelete(m.messages[:1])
+			deleteID := m.pendingDestructiveActions[0].ID
+			m.scheduleMove(m.messages[1:2], f.target)
+			moveID := m.pendingDestructiveActions[1].ID
+			check(2) // Move hides immediately; delete remains visible.
+			if err := m.recountMailboxUnread(f.source.ID); err != nil {
+				t.Fatal(err)
+			}
+			check(2) // Still subtract a pending entry present in the SQL count.
+			deletion := m.beginDestructiveCommit(deleteID)().(DestructiveActionResultMsg)
+			moved := m.beginDestructiveCommit(moveID)().(DestructiveActionResultMsg)
+			results := []DestructiveActionResultMsg{deletion, moved}
+			if !deleteFirst {
+				results[0], results[1] = results[1], results[0]
+			}
+			for _, result := range results {
+				m.handleDestructiveResult(result)
+				check(1) // Both SQL writes finished before either UI result.
+			}
+			if len(m.pendingUnreadExcluded) != 0 {
+				t.Fatal("pending accounting survived completed actions")
+			}
+			// Undo after a recount must also release the cached adjustment.
+			m.scheduleMove(m.messages, f.target)
+			if err := m.recountMailboxUnread(f.source.ID); err != nil {
+				t.Fatal(err)
+			}
+			check(0)
+			m.undoLatestDestructive()
+			check(1)
+			if len(m.pendingUnreadExcluded) != 0 {
+				t.Fatal("undo retained pending accounting")
+			}
+		})
+	}
+}
+
+func TestDeleteSyntheticViewportMixedResults(t *testing.T) {
+	f := newUndoTestFixture(t, 0)
 	m := f.model
-	other := f.messages[1]
-	other.MailboxID = f.target.ID
-	if err := f.database.MoveMessage(other.ID, other.MailboxID); err != nil {
-		t.Fatal(err)
+	m.width, m.height = 120, 20
+	// Keep the list synthetic and in memory; the SQL cache stays empty.
+	for i := 0; i < 60; i++ {
+		m.messages = append(m.messages, db.Message{ID: int64(1000 + i), MailboxID: f.source.ID,
+			Subject: fmt.Sprintf("message %d", i), Read: true, Date: time.Unix(int64(100-i), 0)})
 	}
-	m.messages[1] = other
-	if _, err := f.database.Exec("CREATE TRIGGER fail_cache BEFORE DELETE ON messages BEGIN SELECT RAISE(FAIL, 'cache write failed'); END"); err != nil {
-		t.Fatal(err)
+	m.applyFilter()
+	targets := []db.Message{m.messages[2], m.messages[10], m.messages[45], m.messages[55]}
+	var ids []uint64
+	for _, msg := range targets {
+		m.scheduleDelete([]db.Message{msg})
+		ids = append(ids, m.pendingDestructiveActions[len(m.pendingDestructiveActions)-1].ID)
 	}
-	m.scheduleDelete([]db.Message{f.messages[0], other})
-	action := m.pendingDestructiveActions[0]
-	for i := range action.Entries {
-		action.Entries[i].Account.IMAPHost = "confirmed-test"
-	}
-	result := executeDestructiveBatches(action, f.database, func(entries []pendingDestructiveEntry) error {
-		if entries[0].Source.ID == f.source.ID {
-			return errors.New("remote rejected")
+	m.messageCursor, m.listOffset = 25, 25
+	currentID := m.currentRowMessage().ID
+	// Resolve below, above, below, above; alternate success and failure.
+	for _, completion := range []struct {
+		index   int
+		success bool
+	}{{2, true}, {0, false}, {3, false}, {1, true}} {
+		msg := targets[completion.index]
+		result := DestructiveActionResultMsg{ID: ids[completion.index], Kind: destructiveDelete}
+		if completion.success {
+			result.Succeeded = []MessageRef{{ID: msg.ID, MailboxID: msg.MailboxID}}
+		} else {
+			result.Failed, result.Err = []db.Message{msg}, errors.New("synthetic rejection")
 		}
-		return nil
-	})
-	if len(result.Failed) != 1 || len(result.CacheFailed) != 1 || len(result.Succeeded) != 1 ||
-		result.CacheErr == nil || !strings.Contains(result.CacheErr.Error(), "cache write failed") {
-		t.Fatalf("partial result: %+v", result)
+		m.handleDestructiveResult(result)
+		if m.currentRowMessage().ID != currentID || m.messageCursor < m.listOffset ||
+			m.messageCursor >= m.listOffset+m.articleRowsVisible() {
+			t.Fatalf("highlight moved or left viewport after target %d", completion.index)
+		}
 	}
-	m.handleDestructiveResult(result)
-	if !strings.Contains(m.statusMsg, "1 failed") || !strings.Contains(m.statusMsg, "local cache update failed") ||
-		!strings.Contains(m.statusMsg, "cache write failed") || m.messageHiddenDestructive(f.messages[0].ID) ||
-		!m.messageHiddenDestructive(other.ID) {
-		t.Fatal("partial failures conflated", m.statusMsg)
+	if len(m.filteredMessages) != 58 {
+		t.Fatal("mixed outcomes removed failed messages")
+	}
+}
+
+func TestDeleteSyntheticThreadedPartialDeletion(t *testing.T) {
+	f := newUndoTestFixture(t, 0)
+	m := f.model
+	m.cfg.Display.ThreadedConversations = true
+	m.width, m.height = 120, 20
+	root := db.Message{ID: 1001, MailboxID: f.source.ID, MessageID: "<root@test>", Subject: "conversation", Date: time.Unix(100, 0)}
+	reply := db.Message{ID: 1002, MailboxID: f.source.ID, MessageID: "<reply@test>", InReplyTo: root.MessageID, Subject: "Re: conversation", Date: time.Unix(300, 0)}
+	other := db.Message{ID: 1003, MailboxID: f.source.ID, MessageID: "<other@test>", Subject: "other conversation", Date: time.Unix(200, 0)}
+	m.messages = []db.Message{reply, other, root}
+	m.applyFilter()
+	if len(m.messageThreads) != 2 || m.currentRowMessage().ID != reply.ID {
+		t.Fatal("fixture did not form representative thread")
+	}
+	m.scheduleDelete([]db.Message{reply})
+	replyAction := m.pendingDestructiveActions[0].ID
+	m.scheduleDelete([]db.Message{root})
+	rootAction := m.pendingDestructiveActions[1].ID
+	m.messageCursor = m.indexOfFilteredMessage(reply.ID)
+	if m.rowDeleteIndicator(reply, m.messageThreads[m.messageCursor], time.Now()) == "" {
+		t.Fatal("missing thread countdown")
+	}
+	// Mark commits without dispatching worker commands: no SQL rows or network.
+	m.beginDestructiveCommit(replyAction)
+	if got := m.rowDeleteIndicator(reply, m.messageThreads[m.messageCursor], time.Now()); got != m.pendingReadIndicator() {
+		t.Fatal("missing thread spinner")
+	}
+	m.handleDestructiveResult(DestructiveActionResultMsg{ID: replyAction, Kind: destructiveDelete, Succeeded: []MessageRef{{ID: reply.ID, MailboxID: reply.MailboxID}}})
+	if m.currentRowMessage().ID != root.ID || m.messageCursor != 1 ||
+		m.messageThreads[m.messageCursor].Count != 1 ||
+		m.messageCursor < m.listOffset || m.messageCursor >= m.listOffset+m.articleRowsVisible() {
+		t.Fatal("representative deletion lost surviving conversation")
+	}
+	if got := m.rowDeleteIndicator(root, m.messageThreads[m.messageCursor], time.Now()); got == "" {
+		t.Fatal("surviving pending member lost feedback")
+	}
+	m.handleDestructiveResult(DestructiveActionResultMsg{ID: rootAction, Kind: destructiveDelete, Failed: []db.Message{root}, Err: errors.New("synthetic rejection")})
+	if m.currentRowMessage().ID != root.ID || m.messageCursor != 1 ||
+		m.rowDeleteIndicator(root, m.messageThreads[m.messageCursor], time.Now()) != "" {
+		t.Fatal("thread failure moved selection or retained feedback")
 	}
 }

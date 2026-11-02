@@ -278,22 +278,60 @@ func (m *Model) finishReadChanges(msg readRemoteCompletedMsg) tea.Cmd {
 // recountMailboxUnread uses confirmed cache state instead of completion-order
 // deltas. Suppressed remote deletions may still have a failed local cache row.
 func (m *Model) recountMailboxUnread(id int64) error {
-	count, err := m.db.CountUnread(id)
+	// Count and pending-entry membership must describe one SQL snapshot, even
+	// when another worker is finishing a move before its UI result arrives.
+	tx, err := m.db.Begin()
 	if err != nil {
 		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var count int64
+	if err := tx.QueryRow("SELECT COUNT(*) FROM messages WHERE mailbox_id = ? AND read = 0", id).Scan(&count); err != nil {
+		return err
+	}
+	represented := func(messageID int64) (int64, error) {
+		var n int64
+		err := tx.QueryRow("SELECT COUNT(*) FROM messages WHERE id = ? AND mailbox_id = ? AND read = 0", messageID, id).Scan(&n)
+		return n, err
+	}
+	excluded := make(map[int64]bool)
+	for _, action := range m.pendingDestructiveActions {
+		if action.Kind == destructiveDelete {
+			continue
+		}
+		for _, entry := range action.Entries {
+			if entry.Message.MailboxID != id || entry.Message.Read {
+				continue
+			}
+			n, err := represented(entry.Message.ID)
+			if err != nil {
+				return err
+			}
+			excluded[entry.Message.ID] = n == 0
+		}
 	}
 	for messageID, ref := range m.confirmedDeleteCache {
 		if ref.MailboxID != id {
 			continue
 		}
-		msg, err := m.db.GetMessage(messageID)
-		if err == nil && msg.MailboxID == id && !msg.Read {
-			count--
+		n, err := represented(messageID)
+		if err != nil {
+			return err
 		}
+		count -= n
 	}
 	count = max(0, count)
-	if err := m.db.SetMailboxUnreadCount(id, count); err != nil {
+	if _, err := tx.Exec("UPDATE mailboxes SET unread_count = ? WHERE id = ?", count, id); err != nil {
 		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if len(excluded) > 0 && m.pendingUnreadExcluded == nil {
+		m.pendingUnreadExcluded = make(map[int64]bool)
+	}
+	for messageID, absent := range excluded {
+		m.pendingUnreadExcluded[messageID] = absent
 	}
 	for i := range m.mailboxes {
 		if m.mailboxes[i].ID == id {
