@@ -324,6 +324,8 @@ func TestSanitizeControl(t *testing.T) {
 		want string
 	}{
 		{"plain", "hello world", "hello world"},
+		{"bare CR", "second\rOVERWRITE", "secondOVERWRITE"},
+		{"CRLF retains lines", "first\r\nsecond\r\n", "first\nsecond\n"},
 		{"keeps tab/newline", "a\tb\nc", "a\tb\nc"},
 		{"strips ESC", "a\x1b[31mb", "a[31mb"},
 		{"strips BEL and OSC payload delimiters", "x\x07y", "xy"},

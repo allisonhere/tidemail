@@ -501,7 +501,9 @@ the backlog automatically, keeping its previous sync watermark until complete.
 
 Filter deletes remove the cached message only after the server succeeds; failures
 are reported in TideMail. Remote moves refresh the destination using its server
-message identifiers. Actionable links with terminal control characters are rejected.
+message identifiers. Actionable links with terminal controls or Unicode line/paragraph separators are
+rejected. Labels stay on one row so the displayed entry matches its activation
+target. Mail text drops bare carriage returns while retaining CRLF line breaks.
 
 ## Writing mail
 

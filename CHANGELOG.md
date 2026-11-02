@@ -27,6 +27,11 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Reject Unicode line/paragraph separators in link destinations so LINKS rows
+  cannot activate a different URL from the one displayed. Labels stay single-line.
+- Strip bare carriage returns from parsed and rendered mail while preserving
+  CRLF line boundaries, preventing preformatted content from overwriting pane borders.
+
 - Message deletion commits the tombstone, attachment removal, search-index cleanup,
   and message removal together; any failure rolls back all changes.
 - Threaded Needs You dismiss/restore actions are atomic. Failed undo keeps its

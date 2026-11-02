@@ -46,10 +46,8 @@ func extractActionableLinksFromHTML(content, articleURL string) []string {
 func cleanAnchorDestination(raw string) string {
 	target := strings.TrimSpace(raw)
 	if isMailtoDestination(target) {
-		for _, r := range target {
-			if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
-				return ""
-			}
+		if hasURLControls(target) {
+			return ""
 		}
 		return target
 	}
@@ -280,9 +278,11 @@ func safeOSC8URI(raw string) bool {
 	return !hasURLControls(raw)
 }
 
+// hasURLControls also rejects Unicode line/paragraph separators, which would
+// add terminal display rows after the LINKS row mapping has been computed.
 func hasURLControls(raw string) bool {
 	for _, r := range raw {
-		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) || r == '\u2028' || r == '\u2029' {
 			return true
 		}
 	}

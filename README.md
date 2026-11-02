@@ -338,6 +338,10 @@ written to a private per-user folder in the system temporary directory and
 deleted automatically after an hour (older ones are also pruned when TideMail
 starts).
 
+Link destinations containing terminal controls or Unicode line/paragraph separators
+are rejected, and link labels stay on one row. Bare carriage returns are removed
+from displayed mail while CRLF line breaks are retained.
+
 With **Actionable links** enabled, the reader's **LINKS** section uses anchor text
 or image descriptions. `Ctrl+N` / `Alt+N` and `Alt+P` move the visible selection
 and scroll it into view. The first Next selects the first entry; the first Previous

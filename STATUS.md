@@ -203,8 +203,9 @@ Custom provider).
 
 - Mail safety fixes: Drafts reject ordinary message actions; remote moves evict
   source cache rows and filter deletes perform the server operation first.
-  Actionable links reject terminal controls; multipart boundaries are stable
+  Actionable links reject terminal controls and Unicode hard breaks; multipart boundaries are stable
   for a message identity, and nested alternatives have no redundant preamble.
+  Parsed and rendered mail strips bare CR while preserving CRLF line boundaries.
   Mark-all-read updates server flags and durable badges. Incremental sync pages
   backlogs without advancing the watermark early. Draft persistence is serialized
   with session/revision acknowledgments; close/send/discard await outstanding saves.

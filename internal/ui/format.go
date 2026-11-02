@@ -431,7 +431,7 @@ func stripEmailInvisibles(s string) string {
 		// lipgloss styling is applied, so it neutralizes both raw and
 		// entity-encoded (e.g. &#27;) escapes in message content without touching
 		// the app's own styling codes. Tab/newline are preserved for layout.
-		if (r < 0x20 && r != '\t' && r != '\n' && r != '\r') || r == 0x7f {
+		if (r < 0x20 && r != '\t' && r != '\n') || r == 0x7f {
 			return -1
 		}
 		switch r {

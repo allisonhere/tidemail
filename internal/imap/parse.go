@@ -346,7 +346,7 @@ func DecodeBody(raw []byte) db.Message {
 
 // sanitizeControl strips C0 control bytes (and DEL) that a terminal would
 // interpret as escape sequences from untrusted message text, preserving only
-// tab, newline, and carriage return. Message content is rendered straight to
+// tab and newline. CRLF retains its newline; bare CR is removed. Message content is rendered straight to
 // the user's terminal, so without this an attacker could embed ANSI/OSC
 // sequences in a subject, address, filename, or body and — when the message is
 // viewed — hijack the clipboard (OSC 52), spoof the UI, or move the cursor.
@@ -355,7 +355,7 @@ func DecodeBody(raw []byte) db.Message {
 func sanitizeControl(s string) string {
 	return strings.Map(func(r rune) rune {
 		switch r {
-		case '\t', '\n', '\r':
+		case '\t', '\n':
 			return r
 		}
 		if r < 0x20 || r == 0x7f {
