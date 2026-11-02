@@ -200,3 +200,37 @@ Custom provider).
   sub-model with an `Init`/`Update`/`View` — rather than branching inside the master
   Update switch — is the recommended next step. This is the main open item from the
   June 2026 design review; the rest of that roadmap has shipped.
+
+- Mail safety fixes: Drafts reject ordinary message actions; remote moves evict
+  source cache rows and filter deletes perform the server operation first.
+  Actionable links reject terminal controls and Unicode hard breaks; multipart boundaries are stable
+  for a message identity, and nested alternatives have no redundant preamble.
+  Parsed and rendered mail strips bare CR while preserving CRLF line boundaries.
+  Mark-all-read updates server flags and durable badges. Incremental sync pages
+  backlogs without advancing the watermark early. Draft persistence is serialized
+  with session/revision acknowledgments; close/send/discard await outstanding saves.
+  SMTP allows ten minutes for submission and 30 seconds for setup.
+
+Grammar checks can be canceled with Esc while retaining editable compose text.
+Ctrl+C or Ctrl+Q during a grammar check cancels it and follows the normal quit flow.
+Late grammar results are ignored; pending draft persistence remains protected.
+OAuth refreshes run independently per account. A malformed COPY acknowledgment
+triggers one fresh-connection source cleanup attempt without repeating COPY;
+if cleanup fails, TideMail reports the completed copy and unconfirmed removal.
+
+Message deletion updates its cached message, attachments, search index, and
+deletion marker in one transaction. Needs You dismiss/restore applies to every
+message in a thread together; failures leave the database unchanged. A failed
+Ctrl+Z restore keeps undo available for retry after the write finishes.
+
+- Account deletion cleans its FTS index and cached account data atomically.
+  SQLite replacement connections keep foreign keys, the five-second busy timeout,
+  and WAL settings; punctuation in filesystem database paths is URI-escaped.
+
+- OAuth transport protection: plaintext IMAP and SMTP OAuth configurations are
+  rejected before connecting or refreshing credentials; SMTP XOAUTH2 also verifies
+  actual TLS state before returning bearer bytes. Port 465 uses implicit TLS.
+
+- Short-terminal navigation and resize keep message/draft focus in the viewport.
+  Single-account compose starts in To. IMAP envelopes decode legacy MIME charsets.
+  Indented plain-text/Reddit bodies wrap within their full available width.

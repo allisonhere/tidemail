@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"mime"
 	"net"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/emersion/go-imap/v2"
 	imapclient "github.com/emersion/go-imap/v2/imapclient"
+	"github.com/emersion/go-message/charset"
 )
 
 type MailboxInfo struct {
@@ -28,8 +30,9 @@ type Client struct {
 	// rides on, retained so per-operation deadlines can be applied (go-imap v2
 	// commands don't take a context, so a deadline on the socket is the only way
 	// to keep a hung read from blocking forever — see applyDeadline).
-	conn    *imapclient.Client
-	netConn net.Conn
+	conn                *imapclient.Client
+	selectedUIDValidity uint32
+	netConn             net.Conn
 	// onUpdate, when set, is invoked from the client's read goroutine whenever
 	// the server sends unilateral mailbox data for the selected mailbox. Used
 	// by Watcher for IMAP IDLE push notifications.
@@ -56,6 +59,9 @@ func NewWithUpdates(cfg config.AccountConfig, onUpdate func(MailboxUpdate)) *Cli
 }
 
 func (c *Client) Connect(ctx context.Context) error {
+	if (c.cfg.UsesGoogleOAuth2() || c.cfg.UsesMicrosoftOAuth2()) && !c.cfg.IMAPTLS {
+		return fmt.Errorf("OAuth requires an encrypted IMAP connection; enable IMAP TLS")
+	}
 	addr := fmt.Sprintf("%s:%d", c.cfg.IMAPHost, c.cfg.IMAPPort)
 	dialer := &net.Dialer{}
 	conn, err := dialer.DialContext(ctx, "tcp", addr)
@@ -78,16 +84,12 @@ func (c *Client) Connect(ctx context.Context) error {
 		conn = tlsConn
 	}
 	c.netConn = conn
-	var opts *imapclient.Options
+	opts := &imapclient.Options{WordDecoder: &mime.WordDecoder{CharsetReader: charset.Reader}}
 	if c.onUpdate != nil {
 		notify := c.onUpdate
-		opts = &imapclient.Options{
-			UnilateralDataHandler: &imapclient.UnilateralDataHandler{
-				Mailbox: func(d *imapclient.UnilateralDataMailbox) {
-					notify(MailboxUpdate{NumMessages: d.NumMessages})
-				},
-				Expunge: func(uint32) { notify(MailboxUpdate{Expunged: true}) },
-			},
+		opts.UnilateralDataHandler = &imapclient.UnilateralDataHandler{
+			Mailbox: func(d *imapclient.UnilateralDataMailbox) { notify(MailboxUpdate{NumMessages: d.NumMessages}) },
+			Expunge: func(uint32) { notify(MailboxUpdate{Expunged: true}) },
 		}
 	}
 	client := imapclient.New(conn, opts)
@@ -298,8 +300,8 @@ func (c *Client) FetchSince(ctx context.Context, mailboxName string, since time.
 	return c.fetchMessages(ctx, mailboxName, MessagesPerInitialSync, since)
 }
 
-// FetchSinceLimit is FetchSince with an explicit cap on the first page, for
-// callers that know the mailbox is cold and potentially heavy.
+// FetchSinceLimit returns at most limit messages. Callers processing a whole
+// incremental backlog should use FetchSincePage and follow its more result.
 func (c *Client) FetchSinceLimit(ctx context.Context, mailboxName string, since time.Time, limit int) ([]db.Message, error) {
 	if limit <= 0 {
 		limit = MessagesPerInitialSync
@@ -379,6 +381,7 @@ func (c *Client) selectForUIDWrite(ctx context.Context, mailboxName string) erro
 		want.mailbox == mailboxName && want.value != 0 && selected.UIDValidity != want.value {
 		return ErrUIDValidityChanged
 	}
+	c.selectedUIDValidity = selected.UIDValidity
 	return nil
 }
 
@@ -510,8 +513,28 @@ func (c *Client) MoveMessages(ctx context.Context, mailboxName string, uids []ui
 	if !caps.Has(imap.CapMove) && !caps.Has(imap.CapIMAP4rev2) && !caps.Has(imap.CapUIDPlus) {
 		// go-imap's MOVE fallback would finish with a plain EXPUNGE, removing
 		// other clients' \Deleted messages too. Copy, then expunge only ours.
-		if _, err := c.conn.Copy(uidSet, targetMailbox).Wait(); err != nil && !isCopyUIDParseError(err) {
-			return fmt.Errorf("copy to %s: %w", targetMailbox, err)
+		validity := c.selectedUIDValidity
+		if _, err := c.conn.Copy(uidSet, targetMailbox).Wait(); err != nil {
+			if !isCopyUIDParseError(err) {
+				return fmt.Errorf("copy to %s: %w", targetMailbox, err)
+			}
+			if validity == 0 {
+				return &PartialMoveError{Target: targetMailbox, Err: ErrUIDValidityChanged}
+			}
+			recovery := New(c.cfg)
+			if err := recovery.Connect(ctx); err != nil {
+				return &PartialMoveError{Target: targetMailbox, Err: err}
+			}
+			defer recovery.Close() //nolint:errcheck
+			recoveryCtx := WithUIDValidity(ctx, mailboxName, validity)
+			defer recovery.applyDeadline(recoveryCtx)()
+			if err := recovery.selectForUIDWrite(recoveryCtx, mailboxName); err != nil {
+				return &PartialMoveError{Target: targetMailbox, Err: err}
+			}
+			if err := recovery.markDeletedAndExpunge(uidSet); err != nil {
+				return &PartialMoveError{Target: targetMailbox, Err: err}
+			}
+			return nil
 		}
 		return c.markDeletedAndExpunge(uidSet)
 	}
@@ -633,3 +656,39 @@ func listDelimiter(r rune) string {
 	}
 	return string(r)
 }
+
+// MarkAllSeen searches the server, including unread mail not cached locally.
+func (c *Client) MarkAllSeen(ctx context.Context, mailbox string) error {
+	if c.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	defer c.applyDeadline(ctx)()
+	if err := c.selectForUIDWrite(ctx, mailbox); err != nil {
+		return err
+	}
+	found, err := c.conn.UIDSearch(&imap.SearchCriteria{NotFlag: []imap.Flag{imap.FlagSeen}}, nil).Wait()
+	if err != nil {
+		return fmt.Errorf("search unread: %w", err)
+	}
+	uids := found.AllUIDs()
+	for len(uids) > 0 {
+		n := min(1000, len(uids))
+		if err := c.conn.Store(imap.UIDSetNum(uids[:n]...), &imap.StoreFlags{Op: imap.StoreFlagsAdd, Silent: true, Flags: []imap.Flag{imap.FlagSeen}}, nil).Close(); err != nil {
+			return fmt.Errorf("mark unread messages seen: %w", err)
+		}
+		uids = uids[n:]
+	}
+	return nil
+}
+
+// PartialMoveError means COPY completed but source removal could not be confirmed.
+// Callers must not automatically retry the original COPY operation.
+type PartialMoveError struct {
+	Target string
+	Err    error
+}
+
+func (e *PartialMoveError) Error() string {
+	return fmt.Sprintf("copied to %s; source cleanup unconfirmed: %v", e.Target, e.Err)
+}
+func (e *PartialMoveError) Unwrap() error { return e.Err }

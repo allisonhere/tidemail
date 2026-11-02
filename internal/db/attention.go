@@ -173,19 +173,37 @@ func (db *DB) NeedsYouMessageIDs() (map[int64]bool, error) {
 // SetNeedsYouDismissed dismisses a message from Needs You, or restores it.
 // It never touches the message, its flags, or any plugin annotation.
 func (db *DB) SetNeedsYouDismissed(messageID int64, dismissed bool) error {
-	if messageID <= 0 {
-		return errors.New("needs you: message id is required")
+	return db.SetNeedsYouDismissedBatch([]int64{messageID}, dismissed)
+}
+
+// SetNeedsYouDismissedBatch applies an entire row's dismissal or restoration
+// atomically, including every message in a threaded row.
+func (db *DB) SetNeedsYouDismissedBatch(ids []int64, dismissed bool) error {
+	for _, id := range ids {
+		if id <= 0 {
+			return errors.New("needs you: message id is required")
+		}
 	}
-	if !dismissed {
-		_, err := db.Exec(`DELETE FROM message_attention_overrides WHERE message_id = ?`, messageID)
+	if len(ids) == 0 {
+		return nil
+	}
+	tx, err := db.Begin()
+	if err != nil {
 		return err
 	}
-	_, err := db.Exec(`
-		INSERT INTO message_attention_overrides (message_id, dismissed, updated_at)
-		VALUES (?, 1, ?)
-		ON CONFLICT(message_id) DO UPDATE SET dismissed = 1, updated_at = excluded.updated_at`,
-		messageID, time.Now().Unix())
-	return err
+	defer tx.Rollback() //nolint:errcheck
+	now := time.Now().Unix()
+	for _, id := range ids {
+		if dismissed {
+			_, err = tx.Exec(`INSERT INTO message_attention_overrides (message_id, dismissed, updated_at) VALUES (?, 1, ?) ON CONFLICT(message_id) DO UPDATE SET dismissed = 1, updated_at = excluded.updated_at`, id, now)
+		} else {
+			_, err = tx.Exec(`DELETE FROM message_attention_overrides WHERE message_id = ?`, id)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // DismissedFromNeedsYou returns the IDs of dismissed messages.

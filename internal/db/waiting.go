@@ -252,11 +252,9 @@ func (db *DB) WaitingStopped() (map[string]bool, error) {
 // PruneWaitingDismissals drops dismissals whose message is no longer cached.
 // It runs at startup; a stale row is harmless in the meantime.
 func (db *DB) PruneWaitingDismissals() error {
-	_, err := db.Exec(`
-		DELETE FROM waiting_dismissals
-		WHERE (message_key LIKE 'row:%'
-		       AND CAST(substr(message_key, 5) AS INTEGER) NOT IN (SELECT id FROM messages))
-		   OR (message_key LIKE '<%'
-		       AND message_key NOT IN (SELECT '<' || lower(trim(trim(message_id), '<>')) || '>' FROM messages WHERE message_id != ''))`)
+	// WaitingKey is MessageKey, so the SQL form of the same key decides what
+	// is still cached.
+	_, err := db.Exec(`DELETE FROM waiting_dismissals
+		WHERE message_key NOT IN (SELECT ` + messageKeySQL + ` FROM messages)`)
 	return err
 }

@@ -304,3 +304,49 @@ func contactTestColumns(t *testing.T, database *DB) map[string]bool {
 	}
 	return cols
 }
+
+// Adding an address that is already saved, without a name, must not erase the
+// saved name; a new nonempty name still replaces it.
+func TestAddContactKeepsSavedNameWhenNoneGiven(t *testing.T) {
+	d := newTestDB(t)
+	id, _ := d.AddContact("ann@example.com", "Ann Lee", "manual")
+	if _, err := d.AddContact("ann@example.com", "", "manual"); err != nil {
+		t.Fatal(err)
+	}
+	if got := contactName(t, d, id); got != "Ann Lee" {
+		t.Fatalf("unnamed re-add erased the name: got %q", got)
+	}
+	if _, err := d.AddContactWithMetadata("ann@example.com", "  ", "manual", ContactMetadata{Phone: "555"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := contactName(t, d, id); got != "Ann Lee" {
+		t.Fatalf("blank name with metadata erased the name: got %q", got)
+	}
+	if _, err := d.AddContact("ann@example.com", "Ann Smith", "manual"); err != nil {
+		t.Fatal(err)
+	}
+	if got := contactName(t, d, id); got != "Ann Smith" {
+		t.Fatalf("explicit new name not applied: got %q", got)
+	}
+}
+
+// Clearing a name is an explicit edit, separate from the additive upsert.
+func TestUpdateContactCanStillClearName(t *testing.T) {
+	d := newTestDB(t)
+	id, _ := d.AddContact("ann@example.com", "Ann Lee", "manual")
+	if err := d.UpdateContact(id, "ann@example.com", ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := contactName(t, d, id); got != "" {
+		t.Fatalf("explicit edit should clear the name, got %q", got)
+	}
+}
+
+func contactName(t *testing.T, d *DB, id int64) string {
+	t.Helper()
+	var name string
+	if err := d.QueryRow(`SELECT display_name FROM contacts WHERE id = ?`, id).Scan(&name); err != nil {
+		t.Fatal(err)
+	}
+	return name
+}

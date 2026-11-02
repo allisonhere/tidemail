@@ -67,7 +67,8 @@ func (m Model) renderMessageForDisplay(msg db.Message, width int) messageRenderR
 	}
 	result := renderMessageWithContext(ctx)
 	if m.pgpEncryptedUnread(msg) {
-		result.body = indentBlock(ctx.bodyStyle.Render(m.pgpCallout()), 1)
+		inner, inset := indentedBody(ctx)
+		result.body = indentBlock(inner.bodyStyle.Render(m.pgpCallout()), inset)
 	}
 	if cacheable {
 		stored := result
@@ -93,6 +94,15 @@ func (m Model) imageRenderKey(messageID int64) string {
 	return fmt.Sprintf("%t:%d", m.images.isAllowed(messageID), m.images.gen())
 }
 
+// indentedBody reserves the explicit left inset within the available width.
+// At one cell wide omit the inset so the content still has one drawable cell.
+func indentedBody(ctx messageRenderContext) (messageRenderContext, int) {
+	inset := min(1, max(0, ctx.width-1))
+	ctx.width = max(1, ctx.width-inset)
+	ctx.bodyStyle = ctx.bodyStyle.Width(ctx.width)
+	return ctx, inset
+}
+
 func renderMessageWithContext(ctx messageRenderContext) messageRenderResult {
 	for _, renderer := range []messageRenderer{
 		renderRedditMessage,
@@ -103,8 +113,9 @@ func renderMessageWithContext(ctx messageRenderContext) messageRenderResult {
 			return result
 		}
 	}
+	inner, inset := indentedBody(ctx)
 	return messageRenderResult{
-		body: indentBlock(ctx.bodyStyle.Render("No message body."), 1),
+		body: indentBlock(inner.bodyStyle.Render("No message body."), inset),
 		ok:   true,
 	}
 }
@@ -113,13 +124,14 @@ func renderRedditMessage(ctx messageRenderContext) messageRenderResult {
 	if ctx.msg.BodyHTML == "" || !isRedditMessage(ctx.msg) {
 		return messageRenderResult{}
 	}
+	ctx, inset := indentedBody(ctx)
 	rendered, ok := renderRedditDigestHTML(ctx.msg.BodyHTML, ctx.width, ctx.theme, ctx.plainUI)
 	if !ok {
 		return messageRenderResult{}
 	}
 	links := extractRedditPostLinks(ctx.msg.BodyHTML)
 	return messageRenderResult{
-		body:       indentBlock(ctx.bodyStyle.Render(rendered), 1),
+		body:       indentBlock(ctx.bodyStyle.Render(rendered), inset),
 		links:      links,
 		linkLabels: extractLinkLabels(ctx.msg.BodyHTML, links),
 		ok:         true,
@@ -145,6 +157,7 @@ func renderHTMLMessage(ctx messageRenderContext) messageRenderResult {
 }
 
 func renderPlainTextMessage(ctx messageRenderContext) messageRenderResult {
+	ctx, inset := indentedBody(ctx)
 	content := ctx.msg.BodyText
 	if content == "" {
 		return messageRenderResult{}
@@ -153,7 +166,7 @@ func renderPlainTextMessage(ctx messageRenderContext) messageRenderResult {
 		content = filterLinksFromContent(content)
 	}
 	return messageRenderResult{
-		body:  indentBlock(ctx.bodyStyle.Render(formatArticleBody(content, ctx.width, ctx.theme, ctx.plainUI)), 1),
+		body:  indentBlock(ctx.bodyStyle.Render(formatArticleBody(content, ctx.width, ctx.theme, ctx.plainUI)), inset),
 		links: extractActionableLinks(ctx.msg.BodyText, ""),
 		ok:    true,
 	}

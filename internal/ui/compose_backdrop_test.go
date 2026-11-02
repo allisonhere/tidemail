@@ -25,6 +25,12 @@ func assertComposeBackdropMatchesFresh(t *testing.T, m Model) {
 func TestComposeBackdropReusedDuringEditing(t *testing.T) {
 	preserveComposeEditorState(t)
 	m := composeEventModel(100, 40, false)
+	database, err := db.OpenPath(t.TempDir() + "/mail.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	m.db = database
 	_ = m.View()
 	original := m.composeBackdrop.panes
 	for _, key := range []tea.KeyMsg{{Type: tea.KeyBackspace}, {Type: tea.KeyLeft}, {Type: tea.KeyRunes, Runes: []rune{'x'}}} {
@@ -70,7 +76,8 @@ func TestComposeBackdropRefreshesForBackgroundChanges(t *testing.T) {
 		t.Fatal("resize kept a stale backdrop")
 	}
 	assertComposeBackdropMatchesFresh(t, m)
-	next, _ = m.Update(DraftSavedMsg{Err: errors.New("synthetic failure")})
+	failureResult := armDraftSaveResult(&m, DraftSavedMsg{Err: errors.New("synthetic failure")})
+	next, _ = m.Update(failureResult)
 	m = next.(Model)
 	if m.composeBackdrop.valid {
 		t.Fatal("draft error did not invalidate backdrop")
@@ -187,7 +194,11 @@ func TestDraftAutosaveRefreshesDraftsListBehindCompose(t *testing.T) {
 	m.mailboxes[0].Name = "Drafts"
 	_ = m.View()
 
-	next, cmd := m.Update(DraftSavedMsg{DraftID: 1})
+	m.compose.saveSession = 1
+	m.compose.saving = true
+	m.compose.saveRevision = 1
+	m.compose.savingRevision = 1
+	next, cmd := m.Update(DraftSavedMsg{Session: 1, Revision: 1, DraftID: 1})
 	m = next.(Model)
 	if cmd == nil {
 		t.Fatal("autosave in the Drafts folder did not reload the list")

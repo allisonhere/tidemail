@@ -113,11 +113,18 @@ type ComposeModel struct {
 	suggestCursor    int
 	suggestDismissed bool
 
-	attachments   []attachmentFile
-	picker        filePicker
-	draftID       int64
-	dirty         bool
-	lastAutosaved time.Time
+	attachments      []attachmentFile
+	picker           filePicker
+	draftID          int64
+	dirty            bool
+	lastAutosaved    time.Time
+	saveSession      uint64
+	saveRevision     uint64
+	savingRevision   uint64
+	saving           bool
+	closeAfterSave   bool
+	discardAfterSave bool
+	sendAfterSave    *SendQueuedMsg
 
 	// PGP toggles (see pgp_compose.go). pgpAvailable is set by the model from
 	// the installed plugins before each update and render.
@@ -125,10 +132,11 @@ type ComposeModel struct {
 	pgpSign      bool
 	pgpEncrypt   bool
 
-	busy         bool
-	statusMsg    string
-	routedStatus string // Ownership of a transient application-footer message.
-	isErr        bool
+	grammarRequest *grammarRequest
+	busy           bool
+	statusMsg      string
+	routedStatus   string // Ownership of a transient application-footer message.
+	isErr          bool
 }
 
 func NewCompose(acfg config.AccountConfig, accounts []config.AccountConfig, addressBook []string) ComposeModel {
@@ -168,7 +176,10 @@ func NewCompose(acfg config.AccountConfig, accounts []config.AccountConfig, addr
 	c.bodyInput.ed.SetSearchBarExternal(true)
 	c.bodyInput.SetPlaceholder("Write your message here...")
 	c.setInitialBody("", "")
-	c.focusedField = composeFieldFrom
+	c.focusedField = c.firstHeaderField()
+	if c.focusedField == composeFieldTo {
+		c.toInput.Focus()
+	}
 	c.SetAddressBook(addressBook)
 	return c
 }

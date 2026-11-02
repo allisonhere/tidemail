@@ -215,7 +215,8 @@ server. `Ctrl+Z` restores the last queued action.
 
 ## Compose with the right account
 
-The From row becomes an account picker when you have more than one sender.
+Compose starts in To with one account, ready for typing. With multiple senders,
+it starts in From, which serves as an account picker.
 TideMail uses the chosen account for SMTP, drafts, the From address, and its
 signature. Replies, forwards, and reopened drafts use the same picker.
 
@@ -250,7 +251,14 @@ that need it, and `-1` keeps an account manual-only.
 Drafts live under the selected sender account. Sent messages use that account's
 SMTP settings and are filed in its server-side Sent folder; Gmail's own SMTP
 filing is detected so it does not receive a duplicate. TideMail detects common
-Sent, Archive, and Trash folder names, including Gmail labels.
+Sent, Archive, and Trash folder names, including Gmail labels. Mark-all-read updates
+the server, including uncached mail. Incremental sync processes backlogs in bounded
+pages, and failed filter deletes keep the local message available.
+
+Draft saves are serialized; closing or sending waits for pending persistence, and
+save failures keep the composer open. Drafts reject ordinary message selection,
+archive, move, and read/star actions. SMTP submission allows up to ten minutes
+for uploads, with 30-second connection/authentication setup.
 
 ## Search, links, and attachments
 
@@ -330,6 +338,10 @@ happens when you ask. Embedded CID images are not exported. Exports are
 written to a private per-user folder in the system temporary directory and
 deleted automatically after an hour (older ones are also pruned when TideMail
 starts).
+
+Link destinations containing terminal controls or Unicode line/paragraph separators
+are rejected, and link labels stay on one row. Bare carriage returns are removed
+from displayed mail while CRLF line breaks are retained.
 
 With **Actionable links** enabled, the reader's **LINKS** section uses anchor text
 or image descriptions. `Ctrl+N` / `Alt+N` and `Alt+P` move the visible selection
@@ -565,3 +577,16 @@ You can reuse two parts as standalone Go libraries:
 - [tideui](https://github.com/allisonhere/tideui), the multi-pane TUI toolkit
 
 ![TIDE logo](images/TIDE-small.png)
+
+Grammar checks can be canceled with Esc while retaining editable compose text.
+Ctrl+C or Ctrl+Q during a grammar check cancels it and follows the normal quit flow.
+Late grammar results are ignored; pending draft persistence remains protected.
+OAuth refreshes run independently per account. A malformed COPY acknowledgment
+triggers one fresh-connection source cleanup attempt without repeating COPY;
+if cleanup fails, TideMail reports the completed copy and unconfirmed removal.
+
+Cache deletion and threaded Needs You dismissal are atomic. A failed Needs You
+undo retains its history so you can retry.
+
+OAuth requires encrypted IMAP and SMTP connections, including localhost. Enable
+IMAP TLS and SMTP TLS (STARTTLS), or use SMTP port 465 for implicit TLS.

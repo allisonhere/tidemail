@@ -198,8 +198,18 @@ func (db *DB) MigrateAccountConfigIDs(links []AccountLink) error {
 }
 
 func (db *DB) DeleteAccount(id int64) error {
-	_, err := db.Exec(`DELETE FROM accounts WHERE id = ?`, id)
-	return err
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.Exec(`DELETE FROM messages_fts WHERE rowid IN (SELECT messages.id FROM messages JOIN mailboxes ON messages.mailbox_id = mailboxes.id WHERE mailboxes.account_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM accounts WHERE id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (db *DB) ListMailboxes(accountID int64) ([]Mailbox, error) {

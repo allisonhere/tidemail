@@ -46,10 +46,8 @@ func extractActionableLinksFromHTML(content, articleURL string) []string {
 func cleanAnchorDestination(raw string) string {
 	target := strings.TrimSpace(raw)
 	if isMailtoDestination(target) {
-		for _, r := range target {
-			if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
-				return ""
-			}
+		if hasURLControls(target) {
+			return ""
 		}
 		return target
 	}
@@ -277,14 +275,18 @@ func safeOSC8URI(raw string) bool {
 	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
 		return false
 	}
+	return !hasURLControls(raw)
+}
+
+// hasURLControls also rejects Unicode line/paragraph separators, which would
+// add terminal display rows after the LINKS row mapping has been computed.
+func hasURLControls(raw string) bool {
 	for _, r := range raw {
-		// Reject C0 controls, DEL, and C1 (0x80-0x9f: ESC-equivalents in some
-		// 8-bit terminal modes). Anything non-printable has no business here.
-		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
-			return false
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) || r == '\u2028' || r == '\u2029' {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 // osc8Link wraps label in an OSC 8 hyperlink pointing at uri. Terminals that
@@ -340,7 +342,15 @@ func firstOSC8Target(line string) string {
 	}
 }
 
-func cleanDetectedURL(raw string) string {
+func cleanDetectedURL(raw string) (result string) {
+	defer func() {
+		if hasURLControls(result) {
+			result = ""
+		}
+	}()
+	if hasURLControls(raw) {
+		return ""
+	}
 	clean := strings.TrimSpace(raw)
 	clean = strings.TrimRight(clean, ".,;:!?)]}\"'")
 	if target, ok := unwrapRedditClickURL(clean); ok {

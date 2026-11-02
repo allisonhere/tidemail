@@ -9,7 +9,8 @@ Enter,enter,enter,"open or immediately sync a folder; in content opens an explic
 Back,esc,esc,back,global
 Sync,s,s,sync mailbox,main
 SyncAll,"F,ctrl+s",F/ctrl+s,sync all,main
-MarkRead,x,x,toggle read/unread,main
+MarkRead,x,x,toggle read/unread (unavailable in Drafts),main
+ToggleStar,*,*,toggle star (unavailable in Drafts),main
 NeedsYouDismiss,X,X,dismiss from Needs You / stop waiting,main
 Snooze,Z,Z,snooze (in Snoozed: unsnooze),main
 RunPlugin,p,p,run plugin,main
@@ -17,14 +18,14 @@ PGPDecode,D,D,decrypt and verify PGP message (needs a PGP plugin),main
 EditTags,e,e,correct classification and manage current message tags,message list+content
 PluginCatalog,b,b,browse available plugins (i install / u update / x remove),plugin list
 PluginCardUnsubscribe,u,u,unsubscribe when offered,plugin result card
-MarkAllRead,"R,ctrl+x",R/ctrl+x,mark all read,main
+MarkAllRead,"R,ctrl+x",R/ctrl+x,mark all read on server including uncached mail,main
 OpenBrowser,o,o,open explicitly selected or keyboard-focused visible link; mailto opens TideMail compose,main
 Unsubscribe,ctrl+u,ctrl+u,unsubscribe,content
 NextLink,"ctrl+n,alt+n",ctrl+n,next LINKS entry (scroll into view; ctrl+c copies full URL),content
 PrevLink,alt+p,alt+p,previous LINKS entry (scroll into view),content
 Search,/,/,search,main
 UnreadOnly,u,u,toggle unread only,main
-Compose,c,c,compose,main
+Compose,c,c,compose (one account starts in To; multiple accounts start in From),main
 Reply,r,r,reply,main
 ReplyAll,ctrl+r,ctrl+r,reply all,main
 Forward,f,f,forward,main
@@ -36,8 +37,8 @@ MoveAccountUp,K,shift+k,"move account up (account manager); folder up the tree: 
 MoveAccountDown,J,shift+j,"move account down (account manager); folder down the tree: reorder, into an open parent, or out of its parent (sidebar)",sidebar
 IndentFolder,>,>,nest folder under the one above (hierarchical accounts),sidebar
 OutdentFolder,<,<,move folder out of its parent (hierarchical accounts),sidebar
-Archive,a,a,archive,main
-Move,m,m,move to folder/label,main
+Archive,a,a,archive (unavailable in Drafts),main
+Move,m,m,move to folder/label (unavailable in Drafts),main
 Command,":,ctrl+p",":/ctrl+p",command palette,global
 AccountManager,M,M,accounts,global
 ThemePicker,T,T,theme picker,global
@@ -76,9 +77,9 @@ PGPEncrypt,"alt+e,f9",alt+e,encrypt with PGP (needs a PGP plugin),compose
 RemoveAttach,ctrl+r,ctrl+r,remove attachment,compose
 CycleSender,ctrl+u,ctrl+u,change sender,compose
 Confirm,enter,enter,confirm,overlay
-Cancel,esc,esc,cancel,overlay
-Space," ",space,toggle select,main
-SelectAll,A,A,select all,main
+Cancel,esc,esc,cancel (during grammar check: stop check and keep editing),overlay
+Space," ",space,toggle select (unavailable in Drafts),main
+SelectAll,A,A,select all (unavailable in Drafts),main
 Yes,y,y,yes,overlay
 No,n,n,no,overlay
 Tab,tab,tab,next field,overlay
@@ -98,3 +99,4 @@ ComposeFindRegex,alt+r,alt+r,toggle regex when advanced regex search is enabled,
 ComposeFindControls,tab,tab,next search control,compose-find
 ComposeFindClose,esc,esc,close search without closing compose,compose-find
 MaximizeCompose,alt+m,alt+m,maximize/restore compose (session only),compose
+GrammarQuit,"ctrl+c,ctrl+q",ctrl+c/ctrl+q,cancel grammar check and follow normal quit flow,compose grammar check

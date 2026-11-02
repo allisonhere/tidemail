@@ -89,7 +89,7 @@ func (p composeEventProbe) Init() tea.Cmd { return nil }
 func (p composeEventProbe) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "~" {
 		p.stopping = true
-		if p.stats.results == p.count {
+		if !p.model.compose.saving && (!p.model.compose.dirty || p.model.db == nil) {
 			return p, tea.Quit
 		}
 		return p, nil
@@ -110,7 +110,7 @@ func (p composeEventProbe) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p.stats.saveErr = saved.Err
 		}
 	}
-	if p.stopping && p.stats.results == p.count {
+	if p.stopping && !p.model.compose.saving && (!p.model.compose.dirty || p.model.db == nil) {
 		return p, tea.Batch(cmd, tea.Quit)
 	}
 	return p, cmd
@@ -190,7 +190,7 @@ func TestComposeBackspaceQueueDrain(t *testing.T) {
 			if stats.keys != count || len([]rune(probe.model.compose.bodyInput.Value())) != original-count {
 				t.Fatalf("lost input: %+v", stats)
 			}
-			if stats.saveErr != nil {
+			if scenario.database && stats.saveErr != nil {
 				t.Fatalf("draft save failed: %v", stats.saveErr)
 			}
 			drain := max(time.Duration(0), stats.lastKey.Sub(release))

@@ -930,7 +930,11 @@ func (m *Model) syncMailboxCmdWithMode(mailboxID int64, manual, passive bool) te
 				limit = imapClient.MessagesPerFolderFirstSync
 			}
 			fetchStart := time.Now()
-			msgs, err := client.FetchSinceLimit(ctx, mailbox.Name, since, limit)
+			known, err := database.KnownMessageUIDs(mailboxID)
+			if err != nil {
+				return err
+			}
+			msgs, more, err := client.FetchSincePage(ctx, mailbox.Name, since, limit, known)
 			fetchDur := time.Since(fetchStart)
 			if err != nil {
 				logFetch(acc.Name, mailbox.Name, 0, connectDur, fetchDur, time.Since(t0), err)
@@ -977,22 +981,26 @@ func (m *Model) syncMailboxCmdWithMode(mailboxID int64, manual, passive bool) te
 			// is live. Filter failures must not abort the sync, so they are not fatal.
 			// Rules that move/delete/archive/mark-read mail drop it from newMsgs so it
 			// is neither counted as new nor notified about.
+			var ruleErr error
 			if len(newMsgs) > 0 {
-				newMsgs, _ = applyRulesOnArrival(ctx, database, client, mailbox, newMsgs)
+				newMsgs, ruleErr = applyRulesOnArrival(ctx, database, client, mailbox, newMsgs)
 			}
 			unread, _ := database.CountUnread(mailboxID)
 			// A failed bookkeeping write (e.g. last-synced) can cause endless re-syncs, so
 			// don't drop it silently — fold it into the fetch log.
 			var writeErr error
-			syncedAt := time.Now()
-			if e := database.SetMailboxLastSynced(mailboxID, syncedAt); e != nil {
-				writeErr = e
+			syncedAt := time.Time{}
+			if !more {
+				syncedAt = t0
+				if e := database.SetMailboxLastSynced(mailboxID, syncedAt); e != nil {
+					writeErr = e
+				}
 			}
 			if e := database.SetMailboxUnreadCount(mailboxID, unread); e != nil {
 				writeErr = e
 			}
 			logFetch(acc.Name, mailbox.Name, len(msgs), connectDur, fetchDur, time.Since(t0), writeErr)
-			result = MailboxSyncedMsg{MailboxID: mailboxID, NewCount: len(newMsgs), NewMessages: newMsgs, Manual: manual, Passive: passive, Cold: cold, SyncedAt: syncedAt, Total: time.Since(t0)}
+			result = MailboxSyncedMsg{More: more, Warning: ruleErr, Err: writeErr, MailboxID: mailboxID, NewCount: len(newMsgs), NewMessages: newMsgs, Manual: manual, Passive: passive, Cold: cold, SyncedAt: syncedAt, Total: time.Since(t0)}
 			return nil
 		})
 		if err != nil {
