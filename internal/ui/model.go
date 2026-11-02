@@ -620,6 +620,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		offset := m.viewport.YOffset
 		m.width = msg.Width
 		m.height = msg.Height
+		m.clampMessageListViewport()
 		m.viewport = viewport.New(m.contentBodyWidth(), m.contentBodyHeight())
 		m.viewport.Style = lipgloss.NewStyle()
 		if m.images.refreshGeometry() {
@@ -2622,7 +2623,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Auto-advance cursor for rapid multi-select
 			if m.messageCursor < m.activeMessageRowCount()-1 {
 				m.messageCursor++
-				visible := m.articleRowsVisible()
+				visible := max(1, m.articleRowsVisible())
 				if m.messageCursor >= m.listOffset+visible {
 					m.listOffset = m.messageCursor - visible + 1
 				}
@@ -2740,7 +2741,7 @@ func (m Model) selectMessageRow(idx int) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.messageCursor = idx
-	visible := m.articleRowsVisible()
+	visible := max(1, m.articleRowsVisible())
 	if m.messageCursor < m.listOffset {
 		m.listOffset = m.messageCursor
 	} else if m.messageCursor >= m.listOffset+visible {
@@ -4832,6 +4833,24 @@ func (m *Model) messagesPaneContentWidth() int { return max(1, m.articlesPaneWid
 func (m *Model) articlesPaneContentHeight() int {
 	return max(2, m.articlesPaneOuterHeight()-2)
 }
+
+// clampMessageListViewport keeps focus visible after terminal geometry changes.
+func (m *Model) clampMessageListViewport() {
+	count := m.activeMessageRowCount()
+	if m.selectedDraftsMailbox() {
+		count = len(m.drafts)
+	}
+	visible := max(1, m.articleRowsVisible())
+	m.messageCursor = clamp(m.messageCursor, 0, max(0, count-1))
+	m.listOffset = clamp(m.listOffset, 0, max(0, count-visible))
+	if m.messageCursor < m.listOffset {
+		m.listOffset = m.messageCursor
+	}
+	if m.messageCursor >= m.listOffset+visible {
+		m.listOffset = m.messageCursor - visible + 1
+	}
+}
+
 func (m *Model) articleRowsVisible() int {
 	stride := m.styles.ListItemLineStride()
 	bodyLines := max(0, m.articlesPaneContentHeight()-m.paneHeaderHeight()-m.messageSearchRowHeight())

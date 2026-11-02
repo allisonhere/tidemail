@@ -25,7 +25,7 @@ NextLink,"ctrl+n,alt+n",ctrl+n,next LINKS entry (scroll into view; ctrl+c copies
 PrevLink,alt+p,alt+p,previous LINKS entry (scroll into view),content
 Search,/,/,search,main
 UnreadOnly,u,u,toggle unread only,main
-Compose,c,c,compose,main
+Compose,c,c,compose (one account starts in To; multiple accounts start in From),main
 Reply,r,r,reply,main
 ReplyAll,ctrl+r,ctrl+r,reply all,main
 Forward,f,f,forward,main

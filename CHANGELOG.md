@@ -27,6 +27,15 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Message-list navigation keeps the cursor within the viewport on very short
+  terminals, and resize clamps the list offset for messages and drafts.
+- Single-account compose starts in To and accepts typing immediately; multiple
+  accounts still start at the sender picker.
+- IMAP envelope subjects and address names decode legacy MIME charsets, including
+  ISO-8859-1, Windows-1252, and Shift_JIS, with or without live update callbacks.
+- Plain-text and Reddit body layout reserves its left inset before wrapping so
+  full-width lines retain their final character.
+
 - OAuth authentication requires TLS for IMAP and SMTP, including loopback hosts.
   Plaintext configurations fail before connecting or refreshing credentials;
   SMTP XOAUTH2 independently checks the actual TLS state before returning token

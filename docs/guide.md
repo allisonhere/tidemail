@@ -524,7 +524,8 @@ previous row, like `Tab` and `Shift+Tab`, except that `Up` stops at the top row.
 the recipient suggestions are open, `Up` and `Down` choose a suggestion instead. In the
 body they move the text cursor.
 
-If you have more than one account, the From row works as an account picker.
+With one account, compose starts in **To** so you can type immediately.
+With multiple accounts, it starts in **From**, which works as an account picker.
 Focus it with `Shift+Tab` or `Up` from the To row, then press `Enter` or `Space` and
 choose the account. `Ctrl+U` cycles through the same list. TideMail uses that
 account's SMTP settings, From address, and signature.
@@ -1393,3 +1394,8 @@ For SMTP port 587, enable **SMTP TLS** (STARTTLS); port 465 uses implicit TLS.
 TideMail rejects plaintext OAuth configurations before connecting or refreshing
 credentials, and never sends the OAuth bearer response over an unencrypted SMTP
 connection.
+
+Message-list focus stays visible after resizing, including after navigating on a
+very short terminal. Full-width plain-text mail reserves its left inset before
+wrapping, preserving the final character on each line. Legacy MIME-encoded
+subjects and address display names are decoded in the message list and reader.

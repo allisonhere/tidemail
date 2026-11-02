@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"mime"
 	"net"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/emersion/go-imap/v2"
 	imapclient "github.com/emersion/go-imap/v2/imapclient"
+	"github.com/emersion/go-message/charset"
 )
 
 type MailboxInfo struct {
@@ -82,16 +84,12 @@ func (c *Client) Connect(ctx context.Context) error {
 		conn = tlsConn
 	}
 	c.netConn = conn
-	var opts *imapclient.Options
+	opts := &imapclient.Options{WordDecoder: &mime.WordDecoder{CharsetReader: charset.Reader}}
 	if c.onUpdate != nil {
 		notify := c.onUpdate
-		opts = &imapclient.Options{
-			UnilateralDataHandler: &imapclient.UnilateralDataHandler{
-				Mailbox: func(d *imapclient.UnilateralDataMailbox) {
-					notify(MailboxUpdate{NumMessages: d.NumMessages})
-				},
-				Expunge: func(uint32) { notify(MailboxUpdate{Expunged: true}) },
-			},
+		opts.UnilateralDataHandler = &imapclient.UnilateralDataHandler{
+			Mailbox: func(d *imapclient.UnilateralDataMailbox) { notify(MailboxUpdate{NumMessages: d.NumMessages}) },
+			Expunge: func(uint32) { notify(MailboxUpdate{Expunged: true}) },
 		}
 	}
 	client := imapclient.New(conn, opts)

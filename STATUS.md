@@ -230,3 +230,7 @@ Ctrl+Z restore keeps undo available for retry after the write finishes.
 - OAuth transport protection: plaintext IMAP and SMTP OAuth configurations are
   rejected before connecting or refreshing credentials; SMTP XOAUTH2 also verifies
   actual TLS state before returning bearer bytes. Port 465 uses implicit TLS.
+
+- Short-terminal navigation and resize keep message/draft focus in the viewport.
+  Single-account compose starts in To. IMAP envelopes decode legacy MIME charsets.
+  Indented plain-text/Reddit bodies wrap within their full available width.

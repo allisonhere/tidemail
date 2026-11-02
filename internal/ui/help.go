@@ -171,6 +171,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{"link safety", "destinations with terminal controls or Unicode line breaks are omitted; labels stay on one row"},
 				{"Needs You undo", "thread dismiss/restore is atomic; failed ctrl+z restoration keeps undo available for retry"},
 				{"grammar cancel", "Esc cancels a grammar check and keeps editing; ctrl+c/ctrl+q cancels and quits through the usual confirmation"},
+				{"Compose focus", "one account starts in To; multiple accounts start in From to choose the sender"},
 				{"autosave", "save under the chosen sender while typing; close/send waits for saving, and failures keep compose open"},
 				{keys.Undo.Help().Key, "cancel a queued send during the delay set in Settings"},
 				{keys.Cancel.Help().Key, "close compose; prompts to save/discard draft"},

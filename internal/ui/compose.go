@@ -176,7 +176,10 @@ func NewCompose(acfg config.AccountConfig, accounts []config.AccountConfig, addr
 	c.bodyInput.ed.SetSearchBarExternal(true)
 	c.bodyInput.SetPlaceholder("Write your message here...")
 	c.setInitialBody("", "")
-	c.focusedField = composeFieldFrom
+	c.focusedField = c.firstHeaderField()
+	if c.focusedField == composeFieldTo {
+		c.toInput.Focus()
+	}
 	c.SetAddressBook(addressBook)
 	return c
 }

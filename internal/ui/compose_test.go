@@ -215,7 +215,9 @@ func TestComposeNoSuggestionsForEmptySegmentOrExactMatch(t *testing.T) {
 
 // focusToField steps from the From row compose now opens on to the To field.
 func focusToField(c ComposeModel) ComposeModel {
-	c.advanceField(1)
+	for c.focusedField != composeFieldTo {
+		c.advanceField(1)
+	}
 	return c
 }
 
@@ -369,11 +371,10 @@ func TestReplyRecipientAutocomplete(t *testing.T) {
 	c := NewReply(db.Message{From: "alice@example.com", MessageID: "<x>", Subject: "S"},
 		config.AccountConfig{}, nil, []string{"Bob <bob@example.com>"})
 
-	// Reply lands in the body; wrap around to the prefilled To field and add a
-	// second recipient.
-	c.advanceField(1)
+	// A single-account reply starts in the prefilled To field, ready to add
+	// another recipient.
 	if c.focusedField != composeFieldTo {
-		t.Fatalf("expected focus on To after advancing from body, got %v", c.focusedField)
+		t.Fatalf("expected single-account reply to start in To, got %v", c.focusedField)
 	}
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(", bo"), Paste: true}, DefaultKeys)
 	if len(c.suggestions) != 1 || c.suggestions[0] != "Bob <bob@example.com>" {

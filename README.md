@@ -215,7 +215,8 @@ server. `Ctrl+Z` restores the last queued action.
 
 ## Compose with the right account
 
-The From row becomes an account picker when you have more than one sender.
+Compose starts in To with one account, ready for typing. With multiple senders,
+it starts in From, which serves as an account picker.
 TideMail uses the chosen account for SMTP, drafts, the From address, and its
 signature. Replies, forwards, and reopened drafts use the same picker.
 
