@@ -1370,3 +1370,15 @@ state. Mixed bulk actions apply successful groups and leave failed groups
 unchanged. There is no automatic retry or rollback. Other clients and normal
 synchronization can still change server state; a timeout may occur after the
 server applied a change, which later synchronization reconciles.
+
+Grammar checks can be canceled with Esc while retaining editable compose text.
+Ctrl+C or Ctrl+Q during a grammar check cancels it and follows the normal quit flow.
+Late grammar results are ignored; pending draft persistence remains protected.
+OAuth refreshes run independently per account. A malformed COPY acknowledgment
+triggers one fresh-connection source cleanup attempt without repeating COPY;
+if cleanup fails, TideMail reports the completed copy and unconfirmed removal.
+
+Message deletion updates its cached message, attachments, search index, and
+deletion marker in one transaction. Needs You dismiss/restore applies to every
+message in a thread together; failures leave the database unchanged. A failed
+Ctrl+Z restore keeps undo available for retry after the write finishes.

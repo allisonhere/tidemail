@@ -132,10 +132,11 @@ type ComposeModel struct {
 	pgpSign      bool
 	pgpEncrypt   bool
 
-	busy         bool
-	statusMsg    string
-	routedStatus string // Ownership of a transient application-footer message.
-	isErr        bool
+	grammarRequest *grammarRequest
+	busy           bool
+	statusMsg      string
+	routedStatus   string // Ownership of a transient application-footer message.
+	isErr          bool
 }
 
 func NewCompose(acfg config.AccountConfig, accounts []config.AccountConfig, addressBook []string) ComposeModel {

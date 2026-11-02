@@ -306,3 +306,13 @@ retain the sync watermark until continuation finishes. UID search also includes
 unknown identifiers above the cached history floor to recover old-dated moves.
 Remote moves evict source cache rows without deletion tombstones; destination
 sync obtains the new mailbox-scoped UID.
+
+OAuth caches use per-account context-aware refresh gates; the provider mutex never
+spans refresh HTTP requests. Forgotten state invalidates outstanding results.
+Grammar requests carry a cancel function and request identity distinct from draft
+persistence state. Only the active compose request can apply a grammar response.
+
+`DeleteMessage` uses one transaction for lookup, tombstone insertion, attachment
+and FTS removal, and message deletion. `SetNeedsYouDismissedBatch` atomically
+applies thread dismissals/restorations. The UI permits one dismissal write in
+flight and retains undo history until restoration is acknowledged successfully.

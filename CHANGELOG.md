@@ -27,6 +27,16 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Message deletion commits the tombstone, attachment removal, search-index cleanup,
+  and message removal together; any failure rolls back all changes.
+- Threaded Needs You dismiss/restore actions are atomic. Failed undo keeps its
+  history for retry, and overlapping dismissal writes are serialized.
+
+- Recover source cleanup on a fresh connection after malformed COPYUID, without
+  repeating COPY; report partial moves if cleanup cannot be confirmed.
+- Isolate OAuth refreshes by account and discard refreshes for forgotten credentials.
+- Allow grammar-check cancellation with Esc, preserve editable text, and ignore late results.
+
 - Drafts no longer route message actions to hidden IMAP rows. Autosaves are
   serialized, stale replies are ignored, and failed saves retain compose text.
 - Remote moves evict source cache rows instead of retaining source UIDs in the

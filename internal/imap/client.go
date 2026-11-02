@@ -28,8 +28,9 @@ type Client struct {
 	// rides on, retained so per-operation deadlines can be applied (go-imap v2
 	// commands don't take a context, so a deadline on the socket is the only way
 	// to keep a hung read from blocking forever — see applyDeadline).
-	conn    *imapclient.Client
-	netConn net.Conn
+	conn                *imapclient.Client
+	selectedUIDValidity uint32
+	netConn             net.Conn
 	// onUpdate, when set, is invoked from the client's read goroutine whenever
 	// the server sends unilateral mailbox data for the selected mailbox. Used
 	// by Watcher for IMAP IDLE push notifications.
@@ -379,6 +380,7 @@ func (c *Client) selectForUIDWrite(ctx context.Context, mailboxName string) erro
 		want.mailbox == mailboxName && want.value != 0 && selected.UIDValidity != want.value {
 		return ErrUIDValidityChanged
 	}
+	c.selectedUIDValidity = selected.UIDValidity
 	return nil
 }
 
@@ -510,8 +512,28 @@ func (c *Client) MoveMessages(ctx context.Context, mailboxName string, uids []ui
 	if !caps.Has(imap.CapMove) && !caps.Has(imap.CapIMAP4rev2) && !caps.Has(imap.CapUIDPlus) {
 		// go-imap's MOVE fallback would finish with a plain EXPUNGE, removing
 		// other clients' \Deleted messages too. Copy, then expunge only ours.
-		if _, err := c.conn.Copy(uidSet, targetMailbox).Wait(); err != nil && !isCopyUIDParseError(err) {
-			return fmt.Errorf("copy to %s: %w", targetMailbox, err)
+		validity := c.selectedUIDValidity
+		if _, err := c.conn.Copy(uidSet, targetMailbox).Wait(); err != nil {
+			if !isCopyUIDParseError(err) {
+				return fmt.Errorf("copy to %s: %w", targetMailbox, err)
+			}
+			if validity == 0 {
+				return &PartialMoveError{Target: targetMailbox, Err: ErrUIDValidityChanged}
+			}
+			recovery := New(c.cfg)
+			if err := recovery.Connect(ctx); err != nil {
+				return &PartialMoveError{Target: targetMailbox, Err: err}
+			}
+			defer recovery.Close() //nolint:errcheck
+			recoveryCtx := WithUIDValidity(ctx, mailboxName, validity)
+			defer recovery.applyDeadline(recoveryCtx)()
+			if err := recovery.selectForUIDWrite(recoveryCtx, mailboxName); err != nil {
+				return &PartialMoveError{Target: targetMailbox, Err: err}
+			}
+			if err := recovery.markDeletedAndExpunge(uidSet); err != nil {
+				return &PartialMoveError{Target: targetMailbox, Err: err}
+			}
+			return nil
 		}
 		return c.markDeletedAndExpunge(uidSet)
 	}
@@ -657,3 +679,15 @@ func (c *Client) MarkAllSeen(ctx context.Context, mailbox string) error {
 	}
 	return nil
 }
+
+// PartialMoveError means COPY completed but source removal could not be confirmed.
+// Callers must not automatically retry the original COPY operation.
+type PartialMoveError struct {
+	Target string
+	Err    error
+}
+
+func (e *PartialMoveError) Error() string {
+	return fmt.Sprintf("copied to %s; source cleanup unconfirmed: %v", e.Target, e.Err)
+}
+func (e *PartialMoveError) Unwrap() error { return e.Err }

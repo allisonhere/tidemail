@@ -77,7 +77,7 @@ PGPEncrypt,"alt+e,f9",alt+e,encrypt with PGP (needs a PGP plugin),compose
 RemoveAttach,ctrl+r,ctrl+r,remove attachment,compose
 CycleSender,ctrl+u,ctrl+u,change sender,compose
 Confirm,enter,enter,confirm,overlay
-Cancel,esc,esc,cancel,overlay
+Cancel,esc,esc,cancel (during grammar check: stop check and keep editing),overlay
 Space," ",space,toggle select (unavailable in Drafts),main
 SelectAll,A,A,select all (unavailable in Drafts),main
 Yes,y,y,yes,overlay
@@ -99,3 +99,4 @@ ComposeFindRegex,alt+r,alt+r,toggle regex when advanced regex search is enabled,
 ComposeFindControls,tab,tab,next search control,compose-find
 ComposeFindClose,esc,esc,close search without closing compose,compose-find
 MaximizeCompose,alt+m,alt+m,maximize/restore compose (session only),compose
+GrammarQuit,"ctrl+c,ctrl+q",ctrl+c/ctrl+q,cancel grammar check and follow normal quit flow,compose grammar check

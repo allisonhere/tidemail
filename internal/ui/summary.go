@@ -95,12 +95,16 @@ func saveSummaryMDCmd(msg db.Message, summary, savePath string) tea.Cmd {
 	}
 }
 
+type grammarRequest struct{ cancel context.CancelFunc }
+
 func (m *Model) grammarCheckCmd(body string) tea.Cmd {
 	summarizer := m.summarizer
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	request := &grammarRequest{cancel: cancel}
+	m.compose.grammarRequest = request
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		corrected, err := summarizer.CheckGrammar(ctx, body)
-		return GrammarCheckedMsg{Corrected: corrected, Err: err}
+		return GrammarCheckedMsg{Request: request, Corrected: corrected, Err: err}
 	}
 }

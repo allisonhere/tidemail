@@ -572,3 +572,13 @@ You can reuse two parts as standalone Go libraries:
 - [tideui](https://github.com/allisonhere/tideui), the multi-pane TUI toolkit
 
 ![TIDE logo](images/TIDE-small.png)
+
+Grammar checks can be canceled with Esc while retaining editable compose text.
+Ctrl+C or Ctrl+Q during a grammar check cancels it and follows the normal quit flow.
+Late grammar results are ignored; pending draft persistence remains protected.
+OAuth refreshes run independently per account. A malformed COPY acknowledgment
+triggers one fresh-connection source cleanup attempt without repeating COPY;
+if cleanup fails, TideMail reports the completed copy and unconfirmed removal.
+
+Cache deletion and threaded Needs You dismissal are atomic. A failed Needs You
+undo retains its history so you can retry.

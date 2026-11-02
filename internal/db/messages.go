@@ -444,17 +444,22 @@ func (db *DB) SaveSummary(id int64, summary string) error {
 }
 
 func (db *DB) DeleteMessage(id int64) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
 	var mailboxID int64
 	var uid uint32
 	var messageID string
-	if err := db.QueryRow(`SELECT mailbox_id, uid, message_id FROM messages WHERE id = ?`, id).Scan(&mailboxID, &uid, &messageID); err != nil {
+	if err := tx.QueryRow(`SELECT mailbox_id, uid, message_id FROM messages WHERE id = ?`, id).Scan(&mailboxID, &uid, &messageID); err != nil {
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("delete message: message %d not found", id)
 		}
 		return fmt.Errorf("delete message lookup: %w", err)
 	}
 	if mailboxID != 0 && (uid != 0 || messageID != "") {
-		_, err := db.Exec(`
+		_, err := tx.Exec(`
 			INSERT OR IGNORE INTO deleted_messages (mailbox_id, uid, message_id, deleted_at)
 			VALUES (?, ?, ?, ?)`,
 			mailboxID, uid, messageID, time.Now().Unix())
@@ -462,12 +467,12 @@ func (db *DB) DeleteMessage(id int64) error {
 			return err
 		}
 	}
-	_ = db.DeleteAttachmentsForMessage(id)
-	if err := db.deleteMessageFTS(id); err != nil {
-		return err
+	for _, query := range []string{`DELETE FROM attachments WHERE message_id = ?`, `DELETE FROM messages_fts WHERE rowid = ?`, `DELETE FROM messages WHERE id = ?`} {
+		if _, err := tx.Exec(query, id); err != nil {
+			return err
+		}
 	}
-	_, err := db.Exec(`DELETE FROM messages WHERE id = ?`, id)
-	return err
+	return tx.Commit()
 }
 
 // MessageIDByUID returns the cached row ID of the message with uid in
@@ -559,11 +564,6 @@ func (db *DB) upsertMessageFTS(id int64) error {
 		FROM messages
 		WHERE id = ?
 	`, id)
-	return err
-}
-
-func (db *DB) deleteMessageFTS(id int64) error {
-	_, err := db.Exec(`DELETE FROM messages_fts WHERE rowid = ?`, id)
 	return err
 }
 

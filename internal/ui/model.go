@@ -1687,6 +1687,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.clearStatusCmd()
 
 	case GrammarCheckedMsg:
+		if msg.Request == nil || msg.Request != m.compose.grammarRequest || m.overlay != overlayCompose {
+			return m, nil
+		}
+		msg.Request.cancel()
+		m.compose.grammarRequest = nil
 		m.compose.busy = false
 		if msg.Err != nil {
 			m.compose.statusMsg = "grammar check failed"
@@ -3593,6 +3598,19 @@ func (m *Model) sizeCompose() {
 }
 
 func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if km, ok := msg.(tea.KeyMsg); ok && m.compose.grammarRequest != nil {
+		if keyMatches(km, m.keys.Cancel) || km.String() == "ctrl+c" || km.String() == "ctrl+q" {
+			m.compose.grammarRequest.cancel()
+			m.compose.grammarRequest = nil
+			m.compose.busy = false
+			m.compose.statusMsg = "grammar check canceled"
+			if km.String() == "ctrl+c" || km.String() == "ctrl+q" {
+				return m.handleMainKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+			}
+			return m, nil
+		}
+	}
+
 	_, m.compose.pgpAvailable = m.pgpComposePlugin()
 	if km, ok := msg.(tea.KeyMsg); ok && keyMatches(km, m.keys.MaximizeCompose) {
 		m.compose.clearRoutedStatus()
@@ -3603,7 +3621,7 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 	searching := (m.compose.focusedField == composeFieldBody && m.compose.bodyInput.ed.SearchActive()) ||
 		(m.compose.tmplOpen && m.compose.tmplEditing && m.compose.tmplEd.ed.SearchActive())
 	// Intercept grammar check key before compose gets it
-	if km, ok := msg.(tea.KeyMsg); ok && !searching && keyMatches(km, m.keys.GrammarCheck) {
+	if km, ok := msg.(tea.KeyMsg); ok && !m.compose.busy && !searching && keyMatches(km, m.keys.GrammarCheck) {
 		// Only check the reply the user wrote, not the quoted/forwarded original.
 		reply, quote := splitReplyAndQuote(m.compose.bodyInput.Value())
 		if strings.TrimSpace(reply) == "" {
@@ -3614,7 +3632,8 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.compose.busy = true
 			m.compose.statusMsg = "checking grammar..."
 			m.grammarQuoteSuffix = quote
-			return m, m.grammarCheckCmd(reply)
+			cmd := m.grammarCheckCmd(reply)
+			return m, cmd
 		}
 	}
 	if km, ok := msg.(tea.KeyMsg); ok && !searching && keyMatches(km, m.keys.PasteText) && !m.compose.picker.active {
