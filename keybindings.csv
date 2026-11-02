@@ -17,7 +17,7 @@ PGPDecode,D,D,decrypt and verify PGP message (needs a PGP plugin),main
 EditTags,e,e,correct classification and manage current message tags,message list+content
 PluginCatalog,b,b,browse available plugins (i install / u update / x remove),plugin list
 PluginCardUnsubscribe,u,u,unsubscribe when offered,plugin result card
-MarkAllRead,"R,ctrl+x",R/ctrl+x,mark all read,main
+MarkAllRead,"R,ctrl+x",R/ctrl+x,mark all read (retry if message operations are pending),main
 OpenBrowser,o,o,open explicitly selected or keyboard-focused visible link; mailto opens TideMail compose,main
 Unsubscribe,ctrl+u,ctrl+u,unsubscribe,content
 NextLink,"ctrl+n,alt+n",ctrl+n,next LINKS entry (scroll into view; ctrl+c copies full URL),content
@@ -64,7 +64,7 @@ ToggleImages,i,i,load remote images (unsupported in foot/WezTerm),content
 SaveAttach,ctrl+d,ctrl+d,save attachments,content
 Add,a,a,add account,account_manager
 Edit,e,e,edit account,account_manager
-Delete,d,d,delete,account_manager+main
+Delete,d,d,delete (messages: 6s countdown then server confirmation),account_manager+main
 SaveAccount,"ctrl+s,f2",ctrl+s,save account,account_manager
 TestAccount,"ctrl+t,f5",ctrl+t,test account,account_manager
 DiscoverServers,ctrl+l,ctrl+l,look up Custom account servers (DNS SRV, MX, HTTPS autoconfig),account_manager

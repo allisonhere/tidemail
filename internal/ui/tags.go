@@ -541,11 +541,21 @@ func tagBudget(titleSpace int) int {
 // column, subject, tags, and the age column, styled with style. Rows without
 // tags are exactly the classic layout.
 func (m *Model) renderMessageRow(style lipgloss.Style, prefix, star, sender string, showSender bool, senderW int, title string, tags []annotationTag, age string, width int) string {
+	inline := style.UnsetPadding().UnsetWidth().UnsetMaxWidth()
+	// An embedded subject reset must also restore the row colors for padding
+	// and columns that follow it. Render each segment with the row style.
+	render := func(text string) string {
+		segments := strings.SplitAfter(text, "\x1b[0m")
+		for i, segment := range segments {
+			segments[i] = inline.Render(segment)
+		}
+		return strings.Join(segments, "")
+	}
 	classic := func(age string) string {
 		if showSender {
-			return style.Width(width).Render(renderArticleRowWithSender(prefix, star, sender, title, age, width, senderW))
+			return style.Width(width).Render(render(renderArticleRowWithSender(prefix, star, sender, title, age, width, senderW)))
 		}
-		return style.Width(width).Render(renderArticleRow(prefix, star, title, age, width))
+		return style.Width(width).Render(render(renderArticleRow(prefix, star, title, age, width)))
 	}
 	if len(tags) == 0 {
 		return classic(age)
@@ -579,7 +589,6 @@ func (m *Model) renderMessageRow(style lipgloss.Style, prefix, star, sender stri
 
 	// Colored tags: draw the row in self-styled segments so each keeps the
 	// row background, then let the row style add its padding.
-	inline := style.UnsetPadding().UnsetWidth().UnsetMaxWidth()
 	chipsW := chipsWidth(chips)
 	titleW := max(0, titleSpace-chipsW-2)
 	left := prefix + star
@@ -591,7 +600,7 @@ func (m *Model) renderMessageRow(style lipgloss.Style, prefix, star, sender stri
 	if age != "" {
 		right = "  " + age + "  "
 	}
-	line := inline.Render(left) + m.renderChips(chips, inline)
+	line := render(left) + m.renderChips(chips, inline)
 	if rest := width - lipgloss.Width(left) - chipsW; rest > 0 {
 		line += inline.Render(padRight(right, rest))
 	}

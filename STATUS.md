@@ -126,7 +126,7 @@ Current release: **v1.7.0**.
 - **Search**, unread-only filtering, command palette, desktop notifications.
 - **Experimental plugins**: manual and automatic metadata classification,
   stored tags with local corrections (`e` on a message), Needs You with immediate
-  sidebar count updates for delete/archive/move and undo, result cards
+  sidebar count updates for archive/move and undo (delete on confirmation), result cards
   with technical Details, and a host-owned `u` unsubscribe action that uses TideMail's existing confirmed flow without
   exposing unsubscribe links to plugins.
 - **Plugin catalog**: Settings → Plugins → `b` (and the palette) lists the
@@ -200,3 +200,11 @@ Custom provider).
   sub-model with an `Init`/`Update`/`View` — rather than branching inside the master
   Update switch — is the recommended next step. This is the main open item from the
   June 2026 design review; the rest of that roadmap has shipped.
+
+Delete countdown prototype: messages remain visible for the six-second undo
+window and show pending feedback until server confirmation. Delete counts
+change on confirmation; archive and move retain their existing presentation.
+Mailbox/account mark-all-read reserves its targets and rejects conflicting
+pending operations. Delete completions reconcile unread counts from the cache,
+keep the highlighted message visible, and suppress remote successes whose local
+cleanup failed until a later list reload can reconcile them.

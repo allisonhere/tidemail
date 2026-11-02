@@ -374,8 +374,19 @@ Needs You** in the palette does the same for a dismissed message opened from
 its normal folder. **Why is this in Needs You?** lists the reasons and the
 annotations behind them. All the usual actions (reply, archive, delete, move,
 star, mark read) work on messages here. The sidebar count updates immediately
-when you delete, archive, or move messages, including during the six-second
-undo window. Undoing the action or a failed action restores the count.
+when you archive or move messages, including during the six-second undo
+window. Delete keeps the message and count visible until server confirmation.
+Its subject is struck through while deletion is pending. Its marker counts
+down 6–1, then shows a pending spinner (plain UI: `~`).
+The cursor advances immediately; `Ctrl+Z` during the countdown cancels deletion
+without moving the cursor. Failure clears the spinner and retains the message.
+Pending read/unread and destructive actions block conflicting operations on the
+affected messages; other messages remain interactive. Mailbox/account mark-all-read
+is blocked if a target mailbox has a pending read or destructive operation; retry
+after it finishes. While mark-all-read runs, its target mailboxes are reserved.
+If a server-confirmed delete cannot be removed from the local cache, TideMail
+reports the cache error and keeps it hidden for this session. Later list reloads
+retry local cleanup without repeating the IMAP deletion.
 
 ### Waiting on Them
 

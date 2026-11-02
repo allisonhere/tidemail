@@ -2,6 +2,8 @@ package ui
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -29,6 +31,7 @@ type pendingDestructiveEntry struct {
 }
 
 type pendingDestructiveAction struct {
+	Deadline   time.Time
 	ID         uint64
 	Kind       destructiveActionKind
 	Entries    []pendingDestructiveEntry
@@ -44,16 +47,22 @@ type destructiveActionRuntime struct {
 type CommitDestructiveActionMsg struct{ ID uint64 }
 
 type DestructiveActionResultMsg struct {
-	ID        uint64
-	Kind      destructiveActionKind
-	Succeeded []MessageRef
-	Failed    []db.Message
-	Err       error
+	ID          uint64
+	Kind        destructiveActionKind
+	Succeeded   []MessageRef
+	CacheFailed []MessageRef
+	CacheErr    error
+	RemoteErr   error
+	Failed      []db.Message
+	Err         error
 }
 
 func (m *Model) scheduleArchive(msgs []db.Message) tea.Cmd {
 	entries := make([]pendingDestructiveEntry, 0, len(msgs))
 	for _, msg := range msgs {
+		if m.messageActionPending(msg.ID) || m.pendingBulkReads[msg.MailboxID] != 0 {
+			continue
+		}
 		source := m.mailboxByID(msg.MailboxID)
 		if source == nil {
 			m.setStatus("archive failed: mailbox not found", true)
@@ -77,6 +86,9 @@ func (m *Model) scheduleArchive(msgs []db.Message) tea.Cmd {
 func (m *Model) scheduleMove(msgs []db.Message, target db.Mailbox) tea.Cmd {
 	entries := make([]pendingDestructiveEntry, 0, len(msgs))
 	for _, msg := range msgs {
+		if m.messageActionPending(msg.ID) || m.pendingBulkReads[msg.MailboxID] != 0 {
+			continue
+		}
 		source := m.mailboxByID(msg.MailboxID)
 		if source == nil || source.AccountID != target.AccountID {
 			m.setStatus("move failed: source and target must be in one account", true)
@@ -95,6 +107,9 @@ func (m *Model) scheduleMove(msgs []db.Message, target db.Mailbox) tea.Cmd {
 func (m *Model) scheduleDelete(msgs []db.Message) tea.Cmd {
 	entries := make([]pendingDestructiveEntry, 0, len(msgs))
 	for _, msg := range msgs {
+		if m.messageActionPending(msg.ID) || m.pendingBulkReads[msg.MailboxID] != 0 {
+			continue
+		}
 		source := m.mailboxByID(msg.MailboxID)
 		if source == nil {
 			m.setStatus("delete failed: mailbox not found", true)
@@ -120,11 +135,18 @@ func (m *Model) scheduleDestructive(kind destructiveActionKind, entries []pendin
 	}
 	m.nextDestructiveActionID++
 	id := m.nextDestructiveActionID
-	m.pendingDestructiveActions = append(m.pendingDestructiveActions, pendingDestructiveAction{ID: id, Kind: kind, Entries: entries})
+	m.pendingDestructiveActions = append(m.pendingDestructiveActions, pendingDestructiveAction{ID: id, Kind: kind, Entries: entries, Deadline: time.Now().Add(destructiveUndoWindow)})
 	m.clearSelection()
 	m.applyFilter()
 	m.clampMessageViewAfterDestructiveChange()
-	return tea.Tick(destructiveUndoWindow, func(time.Time) tea.Msg { return CommitDestructiveActionMsg{ID: id} })
+	timer := tea.Tick(destructiveUndoWindow, func(time.Time) tea.Msg { return CommitDestructiveActionMsg{ID: id} })
+	if kind == destructiveDelete {
+		if current := m.currentRowMessage(); current != nil {
+			m.advanceReadCursor(current.ID)
+		}
+		return tea.Batch(timer, m.ensureReadAnimation())
+	}
+	return timer
 }
 
 func (m *Model) undoLatestDestructive() tea.Cmd {
@@ -133,9 +155,11 @@ func (m *Model) undoLatestDestructive() tea.Cmd {
 		if action.Committing {
 			continue
 		}
-		m.pendingDestructiveActions = append(m.pendingDestructiveActions[:i], m.pendingDestructiveActions[i+1:]...)
+		m.removeDestructiveAction(action.ID)
 		m.applyFilter()
-		m.focusRestoredMessage(action.Entries)
+		if action.Kind != destructiveDelete {
+			m.focusRestoredMessage(action.Entries)
+		}
 		m.setStatus(fmt.Sprintf("restored %d", len(action.Entries)), false)
 		return m.clearStatusCmd()
 	}
@@ -172,6 +196,13 @@ type destructiveBatchKey struct {
 }
 
 func executeDestructiveAction(action pendingDestructiveAction, database *db.DB, sessions *imapClient.SessionPool) DestructiveActionResultMsg {
+	return executeDestructiveBatches(action, database, func(entries []pendingDestructiveEntry) error {
+		return executeDestructiveRemote(action.Kind, database, sessions, entries)
+	})
+}
+
+// Keep remote confirmation and local result classification independently testable.
+func executeDestructiveBatches(action pendingDestructiveAction, database *db.DB, remote func([]pendingDestructiveEntry) error) DestructiveActionResultMsg {
 	result := DestructiveActionResultMsg{ID: action.ID, Kind: action.Kind}
 	batches := make(map[destructiveBatchKey][]pendingDestructiveEntry)
 	var order []destructiveBatchKey
@@ -184,7 +215,10 @@ func executeDestructiveAction(action pendingDestructiveAction, database *db.DB, 
 	}
 	for _, key := range order {
 		entries := batches[key]
-		if err := executeDestructiveRemote(action.Kind, database, sessions, entries); err != nil {
+		if err := remote(entries); err != nil {
+			if result.RemoteErr == nil {
+				result.RemoteErr = err
+			}
 			if result.Err == nil {
 				result.Err = err
 			}
@@ -209,6 +243,12 @@ func executeDestructiveAction(action pendingDestructiveAction, database *db.DB, 
 				if entry.Account.IMAPHost == "" || entry.Message.UID == 0 {
 					result.Failed = append(result.Failed, entry.Message)
 					continue
+				}
+				if action.Kind == destructiveDelete {
+					if result.CacheErr == nil {
+						result.CacheErr = err
+					}
+					result.CacheFailed = append(result.CacheFailed, MessageRef{ID: entry.Message.ID, MailboxID: entry.Message.MailboxID})
 				}
 			}
 			result.Succeeded = append(result.Succeeded, MessageRef{ID: entry.Message.ID, MailboxID: entry.Message.MailboxID})
@@ -247,19 +287,66 @@ func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.C
 	if !ok {
 		return nil
 	}
+	currentID := int64(0)
+	if current := m.currentRowMessage(); current != nil {
+		currentID = current.ID
+	}
+	if m.threadedMessagesEnabled() {
+		removed := make(map[int64]bool, len(result.Succeeded))
+		for _, ref := range result.Succeeded {
+			removed[ref.ID] = true
+		}
+		if removed[currentID] {
+			// Keep the conversation selected when its representative is deleted.
+			for _, member := range m.currentRowMessages() {
+				if !removed[member.ID] {
+					currentID = member.ID
+					break
+				}
+			}
+		}
+	}
+	if len(result.Succeeded) > 0 {
+		// Reject list snapshots captured before this confirmed removal.
+		m.readVersion++
+	}
+	for _, ref := range result.CacheFailed {
+		if m.confirmedDeleteCache == nil {
+			m.confirmedDeleteCache = make(map[int64]MessageRef)
+		}
+		m.confirmedDeleteCache[ref.ID] = ref
+	}
+	mailboxes := make(map[int64]bool)
 	for _, ref := range result.Succeeded {
+		mailboxes[ref.MailboxID] = true
 		if m.needsYou.messageIDs[ref.ID] {
 			delete(m.needsYou.messageIDs, ref.ID)
 			m.needsYou.count--
 		}
-		if m.removeMessageFromMemory(ref.ID) {
-			m.adjustMailboxUnreadCount(ref.MailboxID, -1)
+		m.removeMessageFromMemory(ref.ID)
+	}
+	for id := range mailboxes {
+		if err := m.recountMailboxUnread(id); err != nil && result.Err == nil {
+			result.Err = err
 		}
 	}
 	m.applyFilter()
+	if idx := m.indexOfFilteredMessage(currentID); idx >= 0 {
+		m.messageCursor = idx
+	}
 	m.clampMessageViewAfterDestructiveChange()
 	verb := destructivePastTense(action.Kind)
 	switch {
+	case len(result.CacheFailed) > 0 && len(result.Failed) > 0:
+		failedErr := result.RemoteErr
+		if failedErr == nil {
+			failedErr = result.Err
+		}
+		m.setStatus(fmt.Sprintf("%s %d; %d failed: %v; local cache update failed for %d: %v", verb, len(result.Succeeded), len(result.Failed), failedErr, len(result.CacheFailed), result.CacheErr), true)
+	case len(result.CacheFailed) > 0:
+		m.setStatus(fmt.Sprintf("%s %d; %d failed; local cache update failed for %d: %v", verb, len(result.Succeeded), len(result.Failed), len(result.CacheFailed), result.CacheErr), true)
+	case result.Err != nil && len(result.Failed) == 0:
+		m.setStatus(fmt.Sprintf("%s; local cache update failed: %v", verb, result.Err), true)
 	case len(result.Failed) > 0 && len(result.Succeeded) == 0:
 		m.setStatus(fmt.Sprintf("%s failed: %v", action.Kind, result.Err), true)
 	case len(result.Failed) > 0:
@@ -275,6 +362,9 @@ func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.C
 func (m *Model) removeDestructiveAction(id uint64) (pendingDestructiveAction, bool) {
 	for i, action := range m.pendingDestructiveActions {
 		if action.ID == id {
+			for _, entry := range action.Entries {
+				delete(m.pendingUnreadExcluded, entry.Message.ID)
+			}
 			m.pendingDestructiveActions = append(m.pendingDestructiveActions[:i], m.pendingDestructiveActions[i+1:]...)
 			return action, true
 		}
@@ -296,8 +386,11 @@ func (m Model) messagePendingDestructive(id int64) bool {
 func (m Model) pendingUnreadCount(mailboxID int64) int64 {
 	var count int64
 	for _, action := range m.pendingDestructiveActions {
+		if action.Kind == destructiveDelete {
+			continue
+		}
 		for _, entry := range action.Entries {
-			if entry.Message.MailboxID == mailboxID && !entry.Message.Read {
+			if entry.Message.MailboxID == mailboxID && !entry.Message.Read && !m.pendingUnreadExcluded[entry.Message.ID] {
 				count++
 			}
 		}
@@ -320,6 +413,9 @@ func (m Model) destructiveUndoPrompt() string {
 		return ""
 	}
 	verb := destructivePastTense(action.Kind)
+	if action.Kind == destructiveDelete {
+		verb = "delete pending"
+	}
 	if action.Kind == destructiveMove && len(action.Entries) > 0 {
 		target := action.Entries[0].Target.DisplayName
 		if target == "" {
@@ -357,7 +453,18 @@ func (m *Model) clampMessageViewAfterDestructiveChange() {
 	}
 	m.messageCursor = clamp(m.messageCursor, 0, count-1)
 	m.listOffset = clamp(m.listOffset, 0, max(0, count-1))
+	m.keepMessageCursorVisible()
 	m.setViewportForCurrentRow()
+}
+
+func (m *Model) keepMessageCursorVisible() {
+	if visible := m.articleRowsVisible(); visible > 0 {
+		if m.messageCursor < m.listOffset {
+			m.listOffset = m.messageCursor
+		} else if m.messageCursor >= m.listOffset+visible {
+			m.listOffset = m.messageCursor - visible + 1
+		}
+	}
 }
 
 func (m *Model) focusRestoredMessage(entries []pendingDestructiveEntry) {
@@ -412,4 +519,97 @@ func (m Model) FlushPendingDestructiveActions() error {
 
 func (m Model) HasPendingDestructiveActions() bool {
 	return len(m.pendingDestructiveActions) > 0
+}
+
+// Delete feedback shares the read clock; each deadline remains independent.
+func (m Model) deleteFeedbackActive() bool {
+	for _, action := range m.pendingDestructiveActions {
+		if action.Kind == destructiveDelete {
+			return true
+		}
+	}
+	return false
+}
+
+func (m Model) messageActionPending(id int64) bool {
+	_, read := m.pendingReads[id]
+	_, suppressed := m.confirmedDeleteCache[id]
+	return read || suppressed || m.messagePendingDestructive(id)
+}
+
+func (m Model) messageHiddenDestructive(id int64) bool {
+	if _, suppressed := m.confirmedDeleteCache[id]; suppressed {
+		return true
+	}
+	for _, action := range m.pendingDestructiveActions {
+		if action.Kind == destructiveDelete {
+			continue
+		}
+		for _, entry := range action.Entries {
+			if entry.Message.ID == id {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (m *Model) rowDeleteIndicator(msg db.Message, thread messageThread, now time.Time) string {
+	indicator := ""
+	for _, action := range m.pendingDestructiveActions {
+		if action.Kind != destructiveDelete {
+			continue
+		}
+		for _, entry := range action.Entries {
+			affected := entry.Message.ID == msg.ID
+			for _, member := range thread.Messages {
+				affected = affected || member.ID == entry.Message.ID
+			}
+			if !affected {
+				continue
+			}
+			if action.Committing {
+				return m.pendingReadIndicator()
+			}
+			seconds := max(1, min(6, int((action.Deadline.Sub(now)+time.Second-1)/time.Second)))
+			value := fmt.Sprint(seconds)
+			if indicator == "" || value < indicator {
+				indicator = value
+			}
+		}
+	}
+	return indicator
+}
+
+// A failed local write must not undo confirmed remote deletion. Retry only the
+// local cleanup on list reloads; no new timer, IMAP request, or persistent queue.
+func (m *Model) reconcileConfirmedDeletes(messages []db.Message) []db.Message {
+	if len(m.confirmedDeleteCache) == 0 {
+		return messages
+	}
+	filtered := make([]db.Message, 0, len(messages))
+	for _, msg := range messages {
+		if _, suppressed := m.confirmedDeleteCache[msg.ID]; !suppressed {
+			filtered = append(filtered, msg)
+		}
+	}
+	for id, ref := range m.confirmedDeleteCache {
+		err := m.db.DeleteMessage(id)
+		if err != nil {
+			_, lookupErr := m.db.GetMessage(id)
+			if !errors.Is(lookupErr, sql.ErrNoRows) {
+				continue
+			}
+		}
+		delete(m.confirmedDeleteCache, id)
+		if m.needsYou.messageIDs[id] {
+			delete(m.needsYou.messageIDs, id)
+			m.needsYou.count--
+		}
+		m.readVersion++
+		if err := m.recountMailboxUnread(ref.MailboxID); err != nil {
+			m.setStatus("delete cache reconciliation failed: "+err.Error(), true)
+		}
+	}
+	return filtered
 }

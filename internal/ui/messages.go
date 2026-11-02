@@ -110,11 +110,18 @@ func (m *Model) renderMessagesPane() string {
 			if m.rowReadPending(msg2, thread) {
 				dot = m.pendingReadIndicator() + " "
 			}
+			deleteIndicator := m.rowDeleteIndicator(msg2, thread, time.Now())
+			if indicator := deleteIndicator; indicator != "" {
+				dot = indicator + " "
+			}
 			subject := m.messageRowTitle(msg2)
 			if threadCount > 1 {
 				subject = fmt.Sprintf("%s (%d)", subject, threadCount)
 			}
 			style = applyMessageRowState(style, msgSelected, msg2.Starred, cursor, m.styles.Theme)
+			if deleteIndicator != "" {
+				subject = style.UnsetPadding().UnsetWidth().UnsetMaxWidth().Strikethrough(true).Render(subject)
+			}
 			star := m.messageRowStar(msg2.Starred)
 			var sender string
 			senderW := 0
@@ -298,7 +305,7 @@ func (m Model) hasSelection() bool {
 func (m *Model) applyFilter() {
 	visible := make([]db.Message, 0, len(m.messages))
 	for _, msg := range m.messages {
-		if !m.messagePendingDestructive(msg.ID) {
+		if !m.messageHiddenDestructive(msg.ID) {
 			visible = append(visible, msg)
 		}
 	}
@@ -431,32 +438,59 @@ func (m *Model) focusedMessageChangedCmd(msg db.Message) tea.Cmd {
 }
 
 func (m *Model) markMailboxReadCmd(mailboxID int64) tea.Cmd {
-	database := m.db
-	return func() tea.Msg {
-		if err := database.MarkAllRead(mailboxID); err != nil {
-			return MailboxReadUpdatedMsg{Err: err}
-		}
-		return MailboxReadUpdatedMsg{MailboxIDs: []int64{mailboxID}}
-	}
+	return m.markMailboxesReadCmd([]int64{mailboxID})
 }
 
 func (m *Model) markAccountReadCmd(accountID int64) tea.Cmd {
-	mailboxIDs := make([]int64, 0)
+	var mailboxIDs []int64
 	for _, mb := range m.mailboxes {
 		if mb.AccountID == accountID {
 			mailboxIDs = append(mailboxIDs, mb.ID)
 		}
 	}
+	return m.markMailboxesReadCmd(mailboxIDs)
+}
+
+// Keep the existing local, whole-mailbox behavior. Reserve all targets before
+// dispatch, and reject conflicts rather than partially marking a busy mailbox.
+func (m *Model) markMailboxesReadCmd(mailboxIDs []int64) tea.Cmd {
+	if len(mailboxIDs) == 0 {
+		return nil
+	}
+	for _, id := range mailboxIDs {
+		busy := m.pendingBulkReads[id] != 0
+		for _, pending := range m.pendingReads {
+			busy = busy || pending.MailboxID == id
+		}
+		for _, action := range m.pendingDestructiveActions {
+			for _, entry := range action.Entries {
+				busy = busy || entry.Message.MailboxID == id
+			}
+		}
+		if busy {
+			m.setStatus("mark all read blocked: message operation pending; try again when it finishes", true)
+			return m.clearStatusCmd()
+		}
+	}
+	if m.pendingBulkReads == nil {
+		m.pendingBulkReads = make(map[int64]uint64)
+	}
+	m.nextReadOperation++
+	token := m.nextReadOperation
+	for _, id := range mailboxIDs {
+		m.pendingBulkReads[id] = token
+	}
 	database := m.db
 	return func() tea.Msg {
-		applied := make([]int64, 0, len(mailboxIDs))
-		for _, mbID := range mailboxIDs {
-			if err := database.MarkAllRead(mbID); err != nil {
-				return MailboxReadUpdatedMsg{MailboxIDs: applied, Err: err}
+		result := MailboxReadUpdatedMsg{Token: token, ReservedMailboxIDs: mailboxIDs}
+		for _, id := range mailboxIDs {
+			if err := database.MarkAllRead(id); err != nil {
+				result.Err = err
+				break
 			}
-			applied = append(applied, mbID)
+			result.MailboxIDs = append(result.MailboxIDs, id)
 		}
-		return MailboxReadUpdatedMsg{MailboxIDs: applied}
+		return result
 	}
 }
 
