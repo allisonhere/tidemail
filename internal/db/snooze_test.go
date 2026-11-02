@@ -117,19 +117,69 @@ func TestSnoozedMessagesAndPrune(t *testing.T) {
 	_ = mailbox
 }
 
+// MessageKey and messageKeySQL must agree on every Message-ID, or snoozes and
+// stop-waiting dismissals stored with the Go key miss in SQL and are pruned.
 func TestMessageKeySQLMatchesGo(t *testing.T) {
-	d, _, ids := newAnnotationTestDB(t, 4)
-	for i, mid := range []string{"<ABC@Host>", " <x@y> ", "", "<>"} {
-		if _, err := d.Exec(`UPDATE messages SET message_id = ? WHERE id = ?`, mid, ids[i]); err != nil {
+	ids := []string{
+		"<ABC@Host>", " <x@y> ", "", "<>", "   ", "<<a@b>>", "plain@host",
+		"\t<tab@x>\r\n", "\v<vt@x>\f", "<a b@x>", "<a\tb@x>", "<a\rb@x>", "<a\nb@x>",
+		"<a\vb@x>", "< a@x>", "<ÄBC@Höst>", "\u00a0<nbsp@x>\u00a0", "<a\u2003b@x>",
+	}
+	d, _, rows := newAnnotationTestDB(t, len(ids))
+	for i, mid := range ids {
+		if _, err := d.Exec(`UPDATE messages SET message_id = ? WHERE id = ?`, mid, rows[i]); err != nil {
 			t.Fatal(err)
 		}
 		var sqlKey string
-		if err := d.QueryRow(`SELECT `+messageKeySQL+` FROM messages WHERE id = ?`, ids[i]).Scan(&sqlKey); err != nil {
+		if err := d.QueryRow(`SELECT `+messageKeySQL+` FROM messages WHERE id = ?`, rows[i]).Scan(&sqlKey); err != nil {
 			t.Fatal(err)
 		}
-		if goKey := MessageKey(Message{ID: ids[i], MessageID: mid}); goKey != sqlKey {
+		if goKey := MessageKey(Message{ID: rows[i], MessageID: mid}); goKey != sqlKey {
 			t.Errorf("message_id %q: Go %q, SQL %q", mid, goKey, sqlKey)
 		}
+	}
+}
+
+// Normal Message-IDs keep the keys existing snoozes were stored under.
+func TestMessageKeyKeepsNormalKeys(t *testing.T) {
+	for mid, want := range map[string]string{
+		"<ABC@Host.example>":  "<abc@host.example>",
+		" <x@y> ":             "<x@y>",
+		"\t<tab@x>\r\n":       "<tab@x>",
+		"no-brackets@Example": "<no-brackets@example>",
+		"<a\tb@x>":            "row:7",
+		"<ÄBC@x>":             "<Äbc@x>",
+	} {
+		if got := MessageKey(Message{ID: 7, MessageID: mid}); got != want {
+			t.Errorf("MessageKey(%q) = %q, want %q", mid, got, want)
+		}
+	}
+}
+
+// A message whose Message-ID has an internal tab is keyed by its row in Go;
+// SQL must agree so its snooze hides it, survives pruning, and lists it.
+func TestSnoozeWithTabbedMessageID(t *testing.T) {
+	a := newAttentionDB(t)
+	id := a.add(a.inbox, "snoozed", 1, "p needs_reply true")
+	a.add(a.inbox, "visible", 2, "p urgency high")
+	if _, err := a.Exec(`UPDATE messages SET message_id = ? WHERE id = ?`, "<a\tb@x>", id); err != nil {
+		t.Fatal(err)
+	}
+	key := MessageKey(Message{ID: id, MessageID: "<a\tb@x>"})
+	if err := a.SetSnooze(SnoozeMessage, key, snoozeNow.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.subjects(false); len(got) != 1 || got[0] != "visible" {
+		t.Fatalf("snoozed message still in Needs You: %v", got)
+	}
+	if err := a.PruneStaleSnoozes(); err != nil {
+		t.Fatal(err)
+	}
+	if all, _ := a.ListSnoozes(); len(all) != 1 {
+		t.Fatalf("startup prune dropped a live snooze: %v", all)
+	}
+	if got, _ := a.ListSnoozedMessages(); len(got) != 1 || got[0].Message.ID != id {
+		t.Fatalf("snoozed list = %+v", got)
 	}
 }
 

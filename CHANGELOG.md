@@ -38,6 +38,9 @@ All notable changes to TideMail are documented in this file.
 - Adding an address that is already a contact, or importing a vCard without a
   name, keeps the contact's saved name instead of erasing it. A new name still
   replaces it, and editing a contact can still clear it.
+- Snoozes and stop-waiting dismissals no longer miss, or get pruned at startup
+  for, messages whose Message-ID has stray whitespace (tabs, line breaks) or
+  non-ASCII capitals. TideMail now computes the message key one way everywhere.
 
 - OAuth authentication requires TLS for IMAP and SMTP, including loopback hosts.
   Plaintext configurations fail before connecting or refreshing credentials;

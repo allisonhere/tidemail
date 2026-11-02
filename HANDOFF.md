@@ -10,8 +10,8 @@
 - The branch is pushed to origin. No PR has been opened.
 - Findings **12–15 are implemented and verified**, and are included in the commit
   containing this handoff. The user explicitly requested committing both.
-- Finding **21 is fixed** (contact upsert keeps saved names). Finding **23
-  remains** from the user's numbered audit. All other audit
+- Findings **21 and 23 are fixed** (contact upsert keeps saved names; one
+  message-key rule for Go and SQL). No audit findings remain open. All other audit
   findings 1–27 have been addressed, subject to the qualifications below.
 - This handoff is intentionally committed alongside fixes 12–15.
 
@@ -116,7 +116,20 @@ nonempty new name to replace it. Add tests for unnamed address additions, vCard
 imports without a name, and explicit nonempty updates. Keep any intentional
 explicit-edit clearing behavior separate from the additive/import upsert.
 
-### 23: Message-key computation differs between Go and SQL
+### 23: Message-key computation differs between Go and SQL (fixed)
+
+Fixed: `MessageKey` trims and rejects the same ASCII whitespace set
+(space, tab, LF, VT, FF, CR) and lowercases ASCII only; `messageKeySQL` applies
+exactly that rule, and `PruneWaitingDismissals` now uses `messageKeySQL`
+instead of its own inline key. Normal Message-IDs keep their keys. Keys that
+did change for surrounding Unicode whitespace or non-ASCII capitals already
+disagreed with SQL, so their snoozes were pruned at startup anyway. The only
+agreeing keys that change are Message-IDs with an internal VT or FF, which now
+key by row like other whitespace.
+Tests cover Go/SQL parity, snooze exclusion, startup pruning and stop-waiting
+pruning.
+
+Original finding:
 
 `internal/db/snooze.go`: `MessageKey` normalizes with Go trimming/lowercasing and
 rejects internal space/tab/CR/LF; `messageKeySQL` uses SQLite trimming/lowercasing
@@ -152,6 +165,6 @@ Do not reverse the Go/SQL mismatch when describing the defect.
 - The original Gmail `NO System Error (Failure)` report was not independently
   reproduced or established as fixed. Do not claim the COPYUID recovery fixes
   that different server rejection; no generic retry for that error was added.
-- Next expected steps: implement 21/23, verify, then push/open a PR when the user
-  authorizes those actions. Do not merge or release
+- Next expected steps: push/open a PR when the user authorizes those actions,
+  and decide whether this handoff file should be removed before merge. Do not merge or release
   merely because a handoff exists.
