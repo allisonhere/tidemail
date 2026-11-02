@@ -226,3 +226,7 @@ Ctrl+Z restore keeps undo available for retry after the write finishes.
 - Account deletion cleans its FTS index and cached account data atomically.
   SQLite replacement connections keep foreign keys, the five-second busy timeout,
   and WAL settings; punctuation in filesystem database paths is URI-escaped.
+
+- OAuth transport protection: plaintext IMAP and SMTP OAuth configurations are
+  rejected before connecting or refreshing credentials; SMTP XOAUTH2 also verifies
+  actual TLS state before returning bearer bytes. Port 465 uses implicit TLS.

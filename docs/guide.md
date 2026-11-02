@@ -1387,3 +1387,9 @@ Ctrl+Z restore keeps undo available for retry after the write finishes.
 
 Removing an account also removes its cached search entries atomically with the
 account's local mail cache.
+
+OAuth accounts require **IMAP TLS** and encrypted SMTP, including localhost.
+For SMTP port 587, enable **SMTP TLS** (STARTTLS); port 465 uses implicit TLS.
+TideMail rejects plaintext OAuth configurations before connecting or refreshing
+credentials, and never sends the OAuth bearer response over an unencrypted SMTP
+connection.

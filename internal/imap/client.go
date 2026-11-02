@@ -57,6 +57,9 @@ func NewWithUpdates(cfg config.AccountConfig, onUpdate func(MailboxUpdate)) *Cli
 }
 
 func (c *Client) Connect(ctx context.Context) error {
+	if (c.cfg.UsesGoogleOAuth2() || c.cfg.UsesMicrosoftOAuth2()) && !c.cfg.IMAPTLS {
+		return fmt.Errorf("OAuth requires an encrypted IMAP connection; enable IMAP TLS")
+	}
 	addr := fmt.Sprintf("%s:%d", c.cfg.IMAPHost, c.cfg.IMAPPort)
 	dialer := &net.Dialer{}
 	conn, err := dialer.DialContext(ctx, "tcp", addr)

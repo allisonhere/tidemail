@@ -27,6 +27,11 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- OAuth authentication requires TLS for IMAP and SMTP, including loopback hosts.
+  Plaintext configurations fail before connecting or refreshing credentials;
+  SMTP XOAUTH2 independently checks the actual TLS state before returning token
+  bytes. SMTP port 465 continues to use implicit TLS.
+
 - Account deletion removes its cached search-index rows in the same transaction
   as the account, preventing orphan FTS entries and unnecessary startup rebuilds.
 - SQLite replacement connections retain foreign-key enforcement, the five-second

@@ -586,3 +586,6 @@ if cleanup fails, TideMail reports the completed copy and unconfirmed removal.
 
 Cache deletion and threaded Needs You dismissal are atomic. A failed Needs You
 undo retains its history so you can retry.
+
+OAuth requires encrypted IMAP and SMTP connections, including localhost. Enable
+IMAP TLS and SMTP TLS (STARTTLS), or use SMTP port 465 for implicit TLS.

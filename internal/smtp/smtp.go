@@ -167,6 +167,9 @@ type xoauth2Auth struct {
 }
 
 func (a *xoauth2Auth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	if !server.TLS {
+		return "", nil, fmt.Errorf("OAuth requires an encrypted SMTP connection")
+	}
 	// Return the RAW initial-response bytes. net/smtp's Client.Auth base64-encodes
 	// whatever Start returns before sending "AUTH XOAUTH2 <base64>"; encoding here
 	// too would double-encode and the server rejects it with "501 5.5.2 Cannot Decode".
@@ -204,6 +207,9 @@ func smtpAuth(ctx context.Context, cfg config.AccountConfig, host string) (smtp.
 }
 
 func sendSTARTTLS(ctx context.Context, addr string, cfg config.AccountConfig, from string, to []string, raw []byte) error {
+	if (cfg.UsesGoogleOAuth2() || cfg.UsesMicrosoftOAuth2()) && !cfg.SMTPTLS {
+		return fmt.Errorf("OAuth requires an encrypted SMTP connection; enable SMTP TLS (STARTTLS) or use port 465")
+	}
 	conn, err := smtpDial(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("dial smtp: %w", err)

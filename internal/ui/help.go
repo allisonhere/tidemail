@@ -260,6 +260,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{"Signature", "enter starts a new line in the account form; tab moves on"},
 				{"Auth row", "when available, Gmail/Outlook: ‹ / › picks App password or OAuth sign-in"},
 				{"Gmail OAuth", "paused pending Google approval; use a Google App Password"},
+				{"OAuth TLS", "IMAP TLS required; SMTP uses STARTTLS or implicit TLS on port 465, including localhost"},
 				{"Outlook OAuth", "works out of the box; TIDEMAIL_MS_CLIENT_ID for a device code"},
 				{"App password", "Gmail: 2-Step Verification → App Passwords; Outlook: M365 only"},
 				{"Exchange (on-prem)", "use Custom provider with your server + password (no OAuth)"},

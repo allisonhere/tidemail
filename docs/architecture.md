@@ -322,3 +322,7 @@ deletion, within one transaction. SQLite DSNs apply foreign-key enforcement,
 `busy_timeout(5000)`, and WAL to each physical connection, including replacements
 after `driver.ErrBadConn`. Filesystem paths are escaped as SQLite file URIs;
 existing SQLite file URIs and in-memory databases remain supported.
+
+OAuth transport gates run before IMAP/SMTP plaintext dialing and token refresh.
+SMTP XOAUTH2 also rejects `ServerInfo.TLS == false` before constructing the bearer
+response. Implicit TLS on port 465 remains independent of the STARTTLS setting.
