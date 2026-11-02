@@ -7,10 +7,11 @@
 - Parent of the commit containing this handoff: `bbf35bd`
   (`fix: require TLS for OAuth mail authentication`). Use `git log -1` for the
   current commit identifier.
-- Nothing has been pushed or published. No PR has been opened.
+- The branch is pushed to origin. No PR has been opened.
 - Findings **12–15 are implemented and verified**, and are included in the commit
   containing this handoff. The user explicitly requested committing both.
-- Findings **21 and 23 remain** from the user's numbered audit. All other audit
+- Finding **21 is fixed** (contact upsert keeps saved names). Finding **23
+  remains** from the user's numbered audit. All other audit
   findings 1–27 have been addressed, subject to the qualifications below.
 - This handoff is intentionally committed alongside fixes 12–15.
 
@@ -98,7 +99,13 @@ git diff --check
 
 ## Remaining findings
 
-### 21: Contact upsert can erase a saved name
+### 21: Contact upsert can erase a saved name (fixed)
+
+Fixed: the conflict update keeps `contacts.display_name` when the incoming name
+is empty. `UpdateContact` still clears names on explicit edits. Tests cover
+unnamed re-adds, blank names with metadata, nameless vCard imports and renames.
+
+Original finding:
 
 `internal/db/contacts.go`, `AddContactWithMetadata`: the conflict update assigns
 `display_name = excluded.display_name` even if the incoming name is empty.

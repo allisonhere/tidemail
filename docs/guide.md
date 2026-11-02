@@ -705,7 +705,9 @@ Select contacts with `Space`, then press `c` to write to them.
 
 Compose suggestions show saved contacts before addresses gathered from your
 mail. vCard imports and exports include names, email addresses, phone numbers,
-organizations, titles, and notes.
+organizations, titles, and notes. Adding or importing an address you already
+saved fills in missing details but never blanks a saved name; edit the contact
+to clear it.
 
 ## Passwords and API keys
 

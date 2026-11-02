@@ -35,6 +35,9 @@ All notable changes to TideMail are documented in this file.
   ISO-8859-1, Windows-1252, and Shift_JIS, with or without live update callbacks.
 - Plain-text and Reddit body layout reserves its left inset before wrapping so
   full-width lines retain their final character.
+- Adding an address that is already a contact, or importing a vCard without a
+  name, keeps the contact's saved name instead of erasing it. A new name still
+  replaces it, and editing a contact can still clear it.
 
 - OAuth authentication requires TLS for IMAP and SMTP, including loopback hosts.
   Plaintext configurations fail before connecting or refreshing credentials;
