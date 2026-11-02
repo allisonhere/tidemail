@@ -145,6 +145,9 @@ func TestComposeConditionalStatusRouting(t *testing.T) {
 				m := composeEventModel(120, 50, false)
 				m.compose.maximized = maximized
 				m.compose.statusMsg = "native composer status"
+				if ds, ok := tc.msg.(DraftSavedMsg); ok {
+					tc.msg = armDraftSaveResult(&m, ds)
+				}
 				next, _ := m.Update(tc.msg)
 				m = next.(Model)
 				if maximized {
@@ -174,7 +177,8 @@ func TestComposeRoutedStatusModeSwitchAndNativeMessages(t *testing.T) {
 	preserveComposeEditorState(t)
 	m := composeEventModel(120, 50, false)
 	m.compose.maximized = true
-	next, _ := m.Update(DraftSavedMsg{Err: errors.New("disk full")})
+	failureResult := armDraftSaveResult(&m, DraftSavedMsg{Err: errors.New("disk full")})
+	next, _ := m.Update(failureResult)
 	m = next.(Model)
 	// Unrelated activity must neither enter compose nor replace its error.
 	m.setStatus("background sync complete", false)
@@ -351,7 +355,7 @@ func TestComposeRoutedStatusInSubpanels(t *testing.T) {
 				msg := tea.Msg(ClipboardCopiedMsg{})
 				want := "copied to clipboard"
 				if failure {
-					msg = DraftSavedMsg{Err: errors.New("disk full")}
+					msg = armDraftSaveResult(&m, DraftSavedMsg{Err: errors.New("disk full")})
 					want = "draft save failed: disk full"
 				}
 				next, _ := m.Update(msg)
@@ -383,7 +387,8 @@ func TestComposeAutosaveErrorWhileSearchHasError(t *testing.T) {
 	if m.compose.bodyInput.ed.Search().Error == "" {
 		t.Fatal("missing regex error fixture")
 	}
-	next, _ := m.Update(DraftSavedMsg{Err: errors.New("disk full")})
+	failureResult := armDraftSaveResult(&m, DraftSavedMsg{Err: errors.New("disk full")})
+	next, _ := m.Update(failureResult)
 	m = next.(Model)
 	if !strings.Contains(ansi.Strip(m.View()), "draft save failed: disk full") {
 		t.Fatal("search error hid autosave failure")

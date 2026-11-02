@@ -1156,6 +1156,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if deferredFolderCmd != nil {
 			cmds = append(cmds, deferredFolderCmd)
 		}
+		if msg.Warning != nil {
+			m.setStatus("filter failed: "+msg.Warning.Error(), true)
+		}
+		if msg.More {
+			cmds = append(cmds, m.syncMailboxCmd(msg.MailboxID, false))
+		}
 		cmds = append(cmds, m.loadAddressBookCmd())
 		return m, tea.Batch(cmds...)
 
@@ -1694,6 +1700,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case MailboxReadUpdatedMsg:
 		if len(msg.MailboxIDs) > 0 {
+			m.readVersion++
 			m.markMailboxesReadInMemory(msg.MailboxIDs)
 		}
 		if msg.Err != nil {
@@ -1713,6 +1720,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.clearStatusCmd()
 
 	case SendQueuedMsg:
+		if m.compose.saving {
+			m.compose.sendAfterSave = &msg
+			m.compose.busy = true
+			return m, nil
+		}
 		if msg.Sign || msg.Encrypt {
 			return m.protectOutgoing(msg)
 		}
@@ -1728,21 +1740,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleOutboxSent(msg)
 
 	case DraftSavedMsg:
-		if msg.Err != nil {
-			m.setComposeStatus(fmt.Sprintf("draft save failed: %v", msg.Err), true)
-			return m, m.clearStatusCmd()
-		}
-		if m.overlay == overlayCompose && msg.DraftID != 0 {
-			m.compose.draftID = msg.DraftID
-			m.compose.dirty = false
-			m.compose.lastAutosaved = time.Now()
-		}
-		// Refresh the Drafts list behind the compose overlay so the edited
-		// row updates live. DraftsLoadedMsg invalidates the compose backdrop.
-		if mb := m.selectedMailbox(); mb != nil && m.isDraftsMailbox(*mb) {
-			return m, m.loadDraftsCmd(mb.ID)
-		}
-		return m, nil
+		return m.handleDraftSaved(msg)
 
 	case DraftDeletedMsg:
 		if msg.Err != nil {
@@ -2264,6 +2262,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.requestSyncAll()
 
 	case keyMatches(msg, m.keys.MarkRead):
+		if m.focused != paneAccounts && m.selectedDraftsMailbox() {
+			m.setStatus("this action is unavailable for drafts", false)
+			return m, m.clearStatusCmd()
+		}
 		if m.focused == paneMessages && m.activeMessageRowCount() > 0 {
 			msgs := m.selectedActionMessages()
 			if len(msgs) == 0 {
@@ -2291,6 +2293,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.ToggleStar):
+		if m.focused != paneAccounts && m.selectedDraftsMailbox() {
+			m.setStatus("this action is unavailable for drafts", false)
+			return m, m.clearStatusCmd()
+		}
 		if m.focused == paneMessages && m.activeMessageRowCount() > 0 {
 			msgs := m.selectedActionMessages()
 			if len(msgs) == 0 {
@@ -2320,6 +2326,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.SelectAll):
+		if m.focused != paneAccounts && m.selectedDraftsMailbox() {
+			m.setStatus("this action is unavailable for drafts", false)
+			return m, m.clearStatusCmd()
+		}
 		if m.focused == paneMessages && m.activeMessageRowCount() > 0 {
 			for _, msg2 := range m.filteredMessages {
 				m.selectedMessages[msg2.ID] = true
@@ -2328,6 +2338,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.Archive):
+		if m.focused != paneAccounts && m.selectedDraftsMailbox() {
+			m.setStatus("this action is unavailable for drafts", false)
+			return m, m.clearStatusCmd()
+		}
 		if m.focused != paneAccounts && m.activeMessageRowCount() > 0 {
 			msgs := m.selectedActionMessages()
 			if m.hasSelection() {
@@ -2338,12 +2352,19 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.Move):
+		if m.focused != paneAccounts && m.selectedDraftsMailbox() {
+			m.setStatus("this action is unavailable for drafts", false)
+			return m, m.clearStatusCmd()
+		}
 		if m.focused != paneAccounts && m.activeMessageRowCount() > 0 {
 			m.openMovePicker(m.movePickerMessages())
 		}
 		return m, nil
 
 	case keyMatches(msg, m.keys.Delete):
+		if m.focused != paneAccounts && m.selectedDraftsMailbox() && (m.focused != paneMessages || len(m.drafts) == 0) {
+			return m, nil
+		}
 		if m.focused == paneMessages && m.selectedDraftsMailbox() && len(m.drafts) > 0 {
 			idx := clamp(m.messageCursor, 0, len(m.drafts)-1)
 			id := m.drafts[idx].ID
@@ -2572,6 +2593,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.Space):
+		if m.focused != paneAccounts && m.selectedDraftsMailbox() {
+			m.setStatus("this action is unavailable for drafts", false)
+			return m, m.clearStatusCmd()
+		}
 		if m.focused == paneAccounts {
 			if m.selectedOutboxRow() {
 				m.openOutbox()
@@ -3610,8 +3635,8 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if composeChanged(before, m.compose) {
 		m.compose.dirty = true
-		if m.compose.hasContent() {
-			save := m.saveDraftCmd(m.compose)
+		if m.compose.hasContent() || m.compose.draftID != 0 || m.compose.saving {
+			save := m.saveDraftCmd()
 			// Preserve any command the edit produced (e.g. cut's clipboard
 			// write) — autosaving must not swallow it.
 			if cmd != nil {
@@ -3625,14 +3650,7 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.overlay = overlayDraftCloseConfirm
 			return m, nil
 		}
-		if m.compose.draftID != 0 {
-			id := m.compose.draftID
-			m.overlay = overlayNone
-			m.compose = ComposeModel{}
-			return m, m.deleteDraftCmd(id)
-		}
-		m.overlay = overlayNone
-		m.compose = ComposeModel{}
+		return m.discardComposeDraft()
 	}
 	return m, cmd
 }

@@ -27,6 +27,17 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Drafts no longer route message actions to hidden IMAP rows. Autosaves are
+  serialized, stale replies are ignored, and failed saves retain compose text.
+- Remote moves evict source cache rows instead of retaining source UIDs in the
+  destination. Filter deletes wait for server success and report failures.
+- Mark-all-read updates server flags, including uncached mail, and persists badges.
+- Incremental sync fetches bounded pages and continues without skipping backlog.
+- Actionable links reject terminal controls in text and HTML destinations.
+- Update the HTML parser dependency to address two reachable security issues.
+- SMTP uploads have a ten-minute submission budget with bounded setup. Multipart
+  messages use stable boundaries and omit a redundant nested MIME preamble.
+
 - `Ctrl+Z` no longer cancels a scheduled send or one waiting to retry; it only
   takes back a send still in its undo delay.
 - Reading, starring, moving and deleting refuse to act when the server has

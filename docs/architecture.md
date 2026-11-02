@@ -293,3 +293,16 @@ account-specific definitions, including a normalized name for case-insensitive
 Unicode prefixes. Search versions reject results captured before a tag edit;
 message-list refreshes reload flags after local edits to avoid restoring stale
 assignments. AI annotations and classification overrides remain independent.
+
+### Draft persistence and incremental bodies
+
+Compose saves carry a session identity and revision. The UI permits one save in
+flight, then persists the latest edited snapshot using the acknowledged row ID.
+Close, discard, and send wait for that acknowledgment; stale responses cannot
+modify another compose session. A failed save retains editable content.
+
+Incremental body fetches use bounded pages, exclude cached/tombstoned UIDs, and
+retain the sync watermark until continuation finishes. UID search also includes
+unknown identifiers above the cached history floor to recover old-dated moves.
+Remote moves evict source cache rows without deletion tombstones; destination
+sync obtains the new mailbox-scoped UID.

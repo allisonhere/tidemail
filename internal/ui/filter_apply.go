@@ -61,9 +61,6 @@ func applyFilterAction(ctx context.Context, database *db.DB, client *imapClient.
 		if t, err := database.FindTrashMailbox(source.AccountID); err == nil {
 			trash = &t
 		}
-		if err := database.DeleteMessage(msg.ID); err != nil {
-			return false, err
-		}
 		if client != nil && msg.UID != 0 {
 			plan, target := remoteDeletePlan(source, trash)
 			if plan == remoteDeleteMoveToTrash {
@@ -73,6 +70,9 @@ func applyFilterAction(ctx context.Context, database *db.DB, client *imapClient.
 			} else if err := client.DeleteMessage(ctx, source.Name, msg.UID); err != nil {
 				return false, err
 			}
+		}
+		if err := database.DeleteMessage(msg.ID); err != nil {
+			return false, err
 		}
 		return true, nil
 
@@ -91,6 +91,9 @@ func moveMessage(ctx context.Context, database *db.DB, client *imapClient.Client
 		if err := client.MoveMessage(ctx, source.Name, msg.UID, target.Name); err != nil {
 			return false, err
 		}
+	}
+	if client != nil && msg.UID != 0 {
+		return true, database.EvictMessage(msg.ID)
 	}
 	if err := database.MoveMessage(msg.ID, target.ID); err != nil {
 		return false, err

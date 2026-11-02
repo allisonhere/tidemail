@@ -786,8 +786,8 @@ func TestDraftCloseConfirmSavesDraft(t *testing.T) {
 
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
 	m = next.(Model)
-	if m.overlay != overlayNone {
-		t.Fatalf("expected compose closed after saving draft, got overlay %v", m.overlay)
+	if m.overlay != overlayCompose {
+		t.Fatalf("compose must stay open until save succeeds, got %v", m.overlay)
 	}
 	if cmd == nil {
 		t.Fatal("expected save draft command")
@@ -795,6 +795,11 @@ func TestDraftCloseConfirmSavesDraft(t *testing.T) {
 	msg, ok := cmd().(DraftSavedMsg)
 	if !ok || msg.Err != nil {
 		t.Fatalf("expected successful DraftSavedMsg, got %#v", msg)
+	}
+	next, _ = m.Update(msg)
+	m = next.(Model)
+	if m.overlay != overlayNone {
+		t.Fatal("successful save did not close compose")
 	}
 	drafts, err := database.ListDrafts("", "Personal", "allie@example.com")
 	if err != nil {

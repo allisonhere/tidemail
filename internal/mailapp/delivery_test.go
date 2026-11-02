@@ -207,3 +207,15 @@ func TestRetryPersistsIdentityAndResolvesCorrectedSender(t *testing.T) {
 		t.Fatalf("identity changed: %v", identities)
 	}
 }
+
+func TestSubmissionAllowsAttachmentUploadBeyondThirtySeconds(t *testing.T) {
+	database, a, id := fixture(t)
+	d := Delivery{Send: func(ctx context.Context, _ config.AccountConfig, _ smtp.OutgoingMessage) error {
+		deadline, ok := ctx.Deadline()
+		if !ok || time.Until(deadline) < 9*time.Minute || time.Until(deadline) > 10*time.Minute {
+			t.Fatalf("submission deadline %v, present %v", deadline, ok)
+		}
+		return errors.New("test transport offline")
+	}}
+	_ = d.Deliver(context.Background(), database, nil, id, a, false, nil)
+}

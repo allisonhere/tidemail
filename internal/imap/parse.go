@@ -36,19 +36,28 @@ type bodyAttachment struct {
 }
 
 func (c *Client) fetchMessages(ctx context.Context, mailboxName string, limit int, since time.Time) ([]db.Message, error) {
+	msgs, _, err := c.FetchSincePage(ctx, mailboxName, since, limit, nil)
+	return msgs, err
+}
+
+// FetchSincePage fetches at most limit bodies. Known UIDs are skipped during
+// incremental sync; more reports whether another page is needed before advancing
+// the sync watermark. A cold mailbox still loads only its newest history page.
+func (c *Client) FetchSincePage(ctx context.Context, mailboxName string, since time.Time, limit int, known map[uint32]bool) ([]db.Message, bool, error) {
+	more := false
 	if c.conn == nil {
-		return nil, fmt.Errorf("not connected")
+		return nil, false, fmt.Errorf("not connected")
 	}
 	defer c.applyDeadline(ctx)()
 
 	selectData, err := c.conn.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait()
 	if err != nil {
-		return nil, fmt.Errorf("select %s: %w", mailboxName, err)
+		return nil, false, fmt.Errorf("select %s: %w", mailboxName, err)
 	}
 
 	total := selectData.NumMessages
 	if total == 0 {
-		return nil, nil
+		return nil, false, nil
 	}
 
 	var numSet imap.NumSet
@@ -57,15 +66,43 @@ func (c *Client) fetchMessages(ctx context.Context, mailboxName string, limit in
 		// Incremental sync: use UID SEARCH SINCE to ask the server for
 		// only messages received since the last sync. This avoids fetching
 		// and discarding the full body of every previously-seen message.
-		searchData, err := c.conn.UIDSearch(&imap.SearchCriteria{
-			Since: since,
-		}, nil).Wait()
+		criteria := &imap.SearchCriteria{Since: since}
+		// A move/APPEND can preserve an old INTERNALDATE while assigning a new
+		// destination UID. Fill unknown UIDs above the cached history floor as
+		// well, so subsequent pages also recover old-dated moves.
+		var oldest uint32
+		for uid := range known {
+			if uid != 0 && (oldest == 0 || uid < oldest) {
+				oldest = uid
+			}
+		}
+		if oldest != 0 {
+			criteria = &imap.SearchCriteria{Or: [][2]imap.SearchCriteria{{
+				{Since: since}, {UID: []imap.UIDSet{{{Start: imap.UID(oldest), Stop: 0}}}},
+			}}}
+		}
+		searchData, err := c.conn.UIDSearch(criteria, nil).Wait()
 		if err != nil {
-			return nil, fmt.Errorf("uid search: %w", err)
+			return nil, false, fmt.Errorf("uid search: %w", err)
 		}
 		uids := searchData.AllUIDs()
+		remaining := uids[:0]
+		for _, uid := range uids {
+			if !known[uint32(uid)] {
+				remaining = append(remaining, uid)
+			}
+		}
+		uids = remaining
+		sort.Slice(uids, func(i, j int) bool { return uids[i] > uids[j] })
+		if limit <= 0 {
+			limit = MessagesPerInitialSync
+		}
+		if len(uids) > limit {
+			more = true
+			uids = uids[:limit]
+		}
 		if len(uids) == 0 {
-			return nil, nil
+			return nil, false, nil
 		}
 		numSet = imap.UIDSetNum(uids...)
 	} else {
@@ -81,7 +118,11 @@ func (c *Client) fetchMessages(ctx context.Context, mailboxName string, limit in
 		numSet = seqSet
 	}
 
-	return c.fetchNumSet(numSet)
+	msgs, err := c.fetchNumSet(numSet)
+	if err == nil && more && len(msgs) == 0 {
+		err = fmt.Errorf("incremental page made no progress")
+	}
+	return msgs, more, err
 }
 
 // FetchOlderThan fetches up to limit messages immediately below beforeUID, used

@@ -113,11 +113,18 @@ type ComposeModel struct {
 	suggestCursor    int
 	suggestDismissed bool
 
-	attachments   []attachmentFile
-	picker        filePicker
-	draftID       int64
-	dirty         bool
-	lastAutosaved time.Time
+	attachments      []attachmentFile
+	picker           filePicker
+	draftID          int64
+	dirty            bool
+	lastAutosaved    time.Time
+	saveSession      uint64
+	saveRevision     uint64
+	savingRevision   uint64
+	saving           bool
+	closeAfterSave   bool
+	discardAfterSave bool
+	sendAfterSave    *SendQueuedMsg
 
 	// PGP toggles (see pgp_compose.go). pgpAvailable is set by the model from
 	// the installed plugins before each update and render.

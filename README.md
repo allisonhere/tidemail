@@ -250,7 +250,14 @@ that need it, and `-1` keeps an account manual-only.
 Drafts live under the selected sender account. Sent messages use that account's
 SMTP settings and are filed in its server-side Sent folder; Gmail's own SMTP
 filing is detected so it does not receive a duplicate. TideMail detects common
-Sent, Archive, and Trash folder names, including Gmail labels.
+Sent, Archive, and Trash folder names, including Gmail labels. Mark-all-read updates
+the server, including uncached mail. Incremental sync processes backlogs in bounded
+pages, and failed filter deletes keep the local message available.
+
+Draft saves are serialized; closing or sending waits for pending persistence, and
+save failures keep the composer open. Drafts reject ordinary message selection,
+archive, move, and read/star actions. SMTP submission allows up to ten minutes
+for uploads, with 30-second connection/authentication setup.
 
 ## Search, links, and attachments
 

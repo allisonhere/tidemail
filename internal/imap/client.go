@@ -298,8 +298,8 @@ func (c *Client) FetchSince(ctx context.Context, mailboxName string, since time.
 	return c.fetchMessages(ctx, mailboxName, MessagesPerInitialSync, since)
 }
 
-// FetchSinceLimit is FetchSince with an explicit cap on the first page, for
-// callers that know the mailbox is cold and potentially heavy.
+// FetchSinceLimit returns at most limit messages. Callers processing a whole
+// incremental backlog should use FetchSincePage and follow its more result.
 func (c *Client) FetchSinceLimit(ctx context.Context, mailboxName string, since time.Time, limit int) ([]db.Message, error) {
 	if limit <= 0 {
 		limit = MessagesPerInitialSync
@@ -632,4 +632,28 @@ func listDelimiter(r rune) string {
 		return ""
 	}
 	return string(r)
+}
+
+// MarkAllSeen searches the server, including unread mail not cached locally.
+func (c *Client) MarkAllSeen(ctx context.Context, mailbox string) error {
+	if c.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	defer c.applyDeadline(ctx)()
+	if err := c.selectForUIDWrite(ctx, mailbox); err != nil {
+		return err
+	}
+	found, err := c.conn.UIDSearch(&imap.SearchCriteria{NotFlag: []imap.Flag{imap.FlagSeen}}, nil).Wait()
+	if err != nil {
+		return fmt.Errorf("search unread: %w", err)
+	}
+	uids := found.AllUIDs()
+	for len(uids) > 0 {
+		n := min(1000, len(uids))
+		if err := c.conn.Store(imap.UIDSetNum(uids[:n]...), &imap.StoreFlags{Op: imap.StoreFlagsAdd, Silent: true, Flags: []imap.Flag{imap.FlagSeen}}, nil).Close(); err != nil {
+			return fmt.Errorf("mark unread messages seen: %w", err)
+		}
+		uids = uids[n:]
+	}
+	return nil
 }

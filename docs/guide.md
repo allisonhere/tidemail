@@ -178,6 +178,9 @@ its contents. Press `Tab` or `Shift+Tab` to move between panes.
 In the message list, press `Space` to select several messages. You can then
 archive them with `a`, delete them with `d`, move them with `m`, or mark them as
 read. Press `A` to select every message in the current view.
+In the sidebar, `R` or `Ctrl+X` marks all messages in the selected mailbox or
+account read on the server, including messages not yet cached. Local state and
+unread badges update after confirmation. Failed mailboxes retain their local state.
 
 Press `/` to search, `u` to show unread mail, and `t` to place starred messages
 first. Search covers subject, sender, recipients, and message body across every
@@ -493,6 +496,12 @@ Search only reaches mail TideMail has cached. The first sync fetches the 100
 most recent inbox messages and 25 messages from other folders, whose attachments
 can make each batch much larger. Moving down past the last message in a folder
 pulls the next 100 from the server, so you can page back as far as it goes.
+Incremental sync also fetches at most 100 messages per page and continues through
+the backlog automatically, keeping its previous sync watermark until complete.
+
+Filter deletes remove the cached message only after the server succeeds; failures
+are reported in TideMail. Remote moves refresh the destination using its server
+message identifiers. Actionable links with terminal control characters are rejected.
 
 ## Writing mail
 
@@ -503,6 +512,10 @@ the field scroll sideways as you type or move the cursor. TideMail
 saves your work to the sending account's Drafts folder as you type. Open Drafts
 and press `Enter` to continue writing, or `d` to delete a draft. The preview pane
 shows the first 64 KB of a very large draft and notes how much is hidden.
+Drafts do not support archive, move, read/star toggles, or message selection.
+Autosaves run one at a time and include edits made during an earlier save.
+Closing, discarding, or sending waits for a pending save; if saving fails, the
+composer keeps your text and shows the error so you can retry.
 
 In the header rows (From, To, Cc, Bcc, Subject), `Down` and `Up` move to the next or
 previous row, like `Tab` and `Shift+Tab`, except that `Up` stops at the top row. While
@@ -521,7 +534,10 @@ arrived on. Without a default, a new message starts from the first account in
 your config.
 
 After delivery, TideMail saves a copy to the sending account's server-side Sent
-folder. Gmail already files SMTP submissions itself, so TideMail does not append
+folder. Submission allows up to ten minutes for attachment uploads; connection
+and authentication setup remain bounded to 30 seconds. Multipart Sent copies use
+the same boundaries as the submitted message.
+Gmail already files SMTP submissions itself, so TideMail does not append
 a duplicate there. Other providers use the server's `\Sent` folder flag, with
 common names such as `Sent`, `Sent Items`, and `INBOX.Sent` as fallbacks.
 

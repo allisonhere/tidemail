@@ -200,3 +200,12 @@ Custom provider).
   sub-model with an `Init`/`Update`/`View` — rather than branching inside the master
   Update switch — is the recommended next step. This is the main open item from the
   June 2026 design review; the rest of that roadmap has shipped.
+
+- Mail safety fixes: Drafts reject ordinary message actions; remote moves evict
+  source cache rows and filter deletes perform the server operation first.
+  Actionable links reject terminal controls; multipart boundaries are stable
+  for a message identity, and nested alternatives have no redundant preamble.
+  Mark-all-read updates server flags and durable badges. Incremental sync pages
+  backlogs without advancing the watermark early. Draft persistence is serialized
+  with session/revision acknowledgments; close/send/discard await outstanding saves.
+  SMTP allows ten minutes for submission and 30 seconds for setup.

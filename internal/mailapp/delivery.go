@@ -118,7 +118,7 @@ func (d Delivery) Deliver(ctx context.Context, database *db.DB, sessions *imapCl
 	if send == nil {
 		send = smtp.Send
 	}
-	sendCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	sendCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	err = send(sendCtx, account, msg)
 	cancel()
 	state, next, message := db.OutboxSent, int64(0), ""

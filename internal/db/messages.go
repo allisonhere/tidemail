@@ -424,8 +424,18 @@ func (db *DB) MarkStarred(id int64, starred bool) error {
 }
 
 func (db *DB) MarkAllRead(mailboxID int64) error {
-	_, err := db.Exec(`UPDATE messages SET read = 1 WHERE mailbox_id = ? AND read = 0`, mailboxID)
-	return err
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.Exec(`UPDATE messages SET read = 1 WHERE mailbox_id = ? AND read = 0`, mailboxID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE mailboxes SET unread_count = 0 WHERE id = ?`, mailboxID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (db *DB) SaveSummary(id int64, summary string) error {
@@ -638,4 +648,39 @@ func (db *DB) ListUnifiedInboxPage(unreadOnly bool, limit, offset int) ([]Messag
 	defer rows.Close()
 	messages, err := scanMessages(rows)
 	return messages, total, err
+}
+
+// EvictMessage removes a cached source after a remote move without recording a
+// deletion tombstone. Destination UIDs must be learned from the server.
+func (db *DB) EvictMessage(id int64) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	for _, query := range []string{`DELETE FROM attachments WHERE message_id = ?`, `DELETE FROM messages_fts WHERE rowid = ?`, `DELETE FROM messages WHERE id = ?`} {
+		if _, err := tx.Exec(query, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// KnownMessageUIDs includes tombstones so incremental pages can advance past
+// intentionally deleted messages without downloading them on every page.
+func (db *DB) KnownMessageUIDs(mailboxID int64) (map[uint32]bool, error) {
+	rows, err := db.Query(`SELECT uid FROM messages WHERE mailbox_id = ? UNION SELECT uid FROM deleted_messages WHERE mailbox_id = ?`, mailboxID, mailboxID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	known := make(map[uint32]bool)
+	for rows.Next() {
+		var uid uint32
+		if err := rows.Scan(&uid); err != nil {
+			return nil, err
+		}
+		known[uid] = true
+	}
+	return known, rows.Err()
 }

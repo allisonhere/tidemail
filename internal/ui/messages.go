@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"github.com/allisonhere/tidemail/internal/config"
 	"sort"
 	"strings"
 	"time"
@@ -431,32 +432,63 @@ func (m *Model) focusedMessageChangedCmd(msg db.Message) tea.Cmd {
 }
 
 func (m *Model) markMailboxReadCmd(mailboxID int64) tea.Cmd {
-	database := m.db
-	return func() tea.Msg {
-		if err := database.MarkAllRead(mailboxID); err != nil {
-			return MailboxReadUpdatedMsg{Err: err}
-		}
-		return MailboxReadUpdatedMsg{MailboxIDs: []int64{mailboxID}}
-	}
+	return m.markMailboxesReadCmd([]int64{mailboxID})
 }
 
 func (m *Model) markAccountReadCmd(accountID int64) tea.Cmd {
-	mailboxIDs := make([]int64, 0)
+	var ids []int64
 	for _, mb := range m.mailboxes {
 		if mb.AccountID == accountID {
-			mailboxIDs = append(mailboxIDs, mb.ID)
+			ids = append(ids, mb.ID)
 		}
 	}
-	database := m.db
-	return func() tea.Msg {
-		applied := make([]int64, 0, len(mailboxIDs))
-		for _, mbID := range mailboxIDs {
-			if err := database.MarkAllRead(mbID); err != nil {
-				return MailboxReadUpdatedMsg{MailboxIDs: applied, Err: err}
-			}
-			applied = append(applied, mbID)
+	return m.markMailboxesReadCmd(ids)
+}
+
+func (m *Model) markMailboxesReadCmd(ids []int64) tea.Cmd {
+	type task struct {
+		mailbox db.Mailbox
+		account config.AccountConfig
+		err     error
+	}
+	tasks := make([]task, 0, len(ids))
+	for _, id := range ids {
+		mb := m.mailboxByID(id)
+		if mb == nil {
+			tasks = append(tasks, task{err: fmt.Errorf("mailbox not found")})
+			continue
 		}
-		return MailboxReadUpdatedMsg{MailboxIDs: applied}
+		cfg, err := m.accountCfgForMailbox(id)
+		tasks = append(tasks, task{*mb, cfg, err})
+	}
+	database, sessions := m.db, m.sessions
+	return func() tea.Msg {
+		result := MailboxReadUpdatedMsg{}
+		for _, task := range tasks {
+			if task.err != nil {
+				result.Err = task.err
+				return result
+			}
+			if task.account.IMAPHost != "" {
+				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+				err := sessions.Do(ctx, task.account, func(client *imapClient.Client) error {
+					if err := client.MarkAllSeen(ctx, task.mailbox.Name); err != nil {
+						return err
+					}
+					return database.MarkAllRead(task.mailbox.ID)
+				})
+				cancel()
+				if err != nil {
+					result.Err = err
+					return result
+				}
+			} else if err := database.MarkAllRead(task.mailbox.ID); err != nil {
+				result.Err = err
+				return result
+			}
+			result.MailboxIDs = append(result.MailboxIDs, task.mailbox.ID)
+		}
+		return result
 	}
 }
 
