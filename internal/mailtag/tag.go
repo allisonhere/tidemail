@@ -2,6 +2,7 @@ package mailtag
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -26,12 +27,27 @@ func ValidateKeyword(keyword string) error {
 			return fmt.Errorf("keyword must be an ASCII IMAP atom without spaces or special characters")
 		}
 	}
-	switch strings.ToLower(keyword) {
-	case "junk", "nonjunk", "notjunk", "$junk", "$notjunk", "$forwarded", "$mdnsent", "$phishing", "$seen", "$deleted", "$answered", "$draft", "$flagged":
+	if IsStatus(keyword) {
 		return fmt.Errorf("%s is a mail status keyword, not a tag", keyword)
 	}
 	return nil
 }
+
+// statusKeywords are set by servers and clients to describe a message rather
+// than to tag it, so they are never shown or offered as tags.
+var statusKeywords = []string{
+	"junk", "nonjunk", "notjunk", "$junk", "$notjunk", "$forwarded", "$mdnsent", "$phishing",
+	"$seen", "$deleted", "$answered", "$draft", "$flagged",
+	"$hasattachment", "$hasnoattachment", "$submitpending", "$submitted",
+}
+
+// IsStatus reports whether keyword is a mail status keyword, not a tag.
+func IsStatus(keyword string) bool {
+	return slices.Contains(statusKeywords, strings.ToLower(keyword))
+}
+
+// StatusKeywords returns the lowercase status keywords.
+func StatusKeywords() []string { return slices.Clone(statusKeywords) }
 
 func Keywords(flags []string) []string {
 	var out []string

@@ -6,7 +6,7 @@ import (
 )
 
 func TestKeywordsExcludeStatusAndDeduplicate(t *testing.T) {
-	got := Keywords([]string{`\Seen`, `\Flagged`, "$label1", "Project-X", "project-x", "$Junk", "NonJunk", "$Forwarded", "bad tag", "\x1b[31m"})
+	got := Keywords([]string{`\Seen`, `\Flagged`, "$label1", "Project-X", "project-x", "$Junk", "NonJunk", "$Forwarded", "$HasNoAttachment", "$HasAttachment", "$Submitted", "bad tag", "\x1b[31m"})
 	want := []string{"$label1", "Project-X"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("tags = %q, want %q", got, want)

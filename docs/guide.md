@@ -206,7 +206,9 @@ TideMail recognizes message tags stored as IMAP keywords, including Thunderbird'
 five default tags: Important, Work, Personal, To Do, and Later. Custom keywords
 initially appear under their identifiers. Thunderbird keeps tag names and colors
 in its own settings, so TideMail cannot obtain custom names or colors from IMAP.
-Tags appear below the date and sender in the message pane as well as on message
+Keywords that servers and clients set to describe a message (`$Junk`, `$Forwarded`,
+`$HasAttachment`, `$HasNoAttachment`, and similar) are status flags, not tags, and are
+never shown. Tags appear below the date and sender in the message pane as well as on message
 rows. Under **Settings → Display → Message tags**, turn off **Show tags in
 message header** to hide only that content-pane row.
 
