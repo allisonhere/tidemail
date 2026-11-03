@@ -4,11 +4,15 @@
 //	go run ./cmd/demoseed /tmp/tidemail-demo
 //	XDG_CONFIG_HOME=/tmp/tidemail-demo/config XDG_DATA_HOME=/tmp/tidemail-demo/data tidemail
 //
+// Pass -single to seed only the first account, for checking how the app behaves
+// for someone with exactly one.
+//
 // Nothing here talks to a mail server: the accounts have no IMAP host, so the app
 // shows the seeded messages and never syncs.
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,18 +30,22 @@ type seedMessage struct {
 }
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: demoseed <sandbox-dir>")
+	single := flag.Bool("single", false, "seed only one account")
+	flag.Usage = func() { fmt.Fprintln(os.Stderr, "usage: demoseed [-single] <sandbox-dir>") }
+	flag.Parse()
+	if flag.NArg() != 1 {
+		flag.Usage()
 		os.Exit(2)
 	}
-	if err := seed(os.Args[1]); err != nil {
+	dir := flag.Arg(0)
+	if err := seed(dir, *single); err != nil {
 		fmt.Fprintln(os.Stderr, "demoseed:", err)
 		os.Exit(1)
 	}
-	fmt.Println("sandbox ready:", os.Args[1])
+	fmt.Println("sandbox ready:", dir)
 }
 
-func seed(dir string) error {
+func seed(dir string, single bool) error {
 	cfgDir := filepath.Join(dir, "config")
 	dataDir := filepath.Join(dir, "data")
 	for _, d := range []string{cfgDir, dataDir} {
@@ -63,6 +71,9 @@ func seed(dir string) error {
 		{ID: "demo-personal", Name: "Personal", Provider: "custom", User: "alex@example.com", From: "Alex Rivera <alex@example.com>", SyncMinutes: -1},
 		{ID: "demo-work", Name: "Work", Provider: "custom", User: "alex@acme.example", From: "Alex Rivera <alex@acme.example>", SyncMinutes: -1},
 	}
+	if single {
+		cfg.Accounts = cfg.Accounts[:1]
+	}
 	if err := config.Save(cfg); err != nil {
 		return fmt.Errorf("save config: %w", err)
 	}
@@ -74,13 +85,17 @@ func seed(dir string) error {
 	defer database.Close()
 
 	now := time.Now()
-	for _, acc := range []struct {
+	seeds := []struct {
 		id, name, color string
 		msgs            []seedMessage
 	}{
 		{"demo-personal", "Personal", "", personalMessages()},
 		{"demo-work", "Work", "", workMessages()},
-	} {
+	}
+	if single {
+		seeds = seeds[:1]
+	}
+	for _, acc := range seeds {
 		aid, err := database.AddAccount(acc.id, acc.name, acc.color)
 		if err != nil {
 			return err
