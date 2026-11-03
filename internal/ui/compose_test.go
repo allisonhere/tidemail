@@ -1108,6 +1108,18 @@ func TestComposeOpensOnTheFromRow(t *testing.T) {
 	}
 }
 
+func TestComposeOpensOnToWithSingleAccount(t *testing.T) {
+	account := config.AccountConfig{Name: "Only", User: "only@example.com"}
+
+	c := NewCompose(account, []config.AccountConfig{account}, nil)
+	if c.focusedField != composeFieldTo {
+		t.Fatalf("single-account focus = %v, want the To row", c.focusedField)
+	}
+	if !c.toInput.Focused() {
+		t.Fatal("To input is not focused on open")
+	}
+}
+
 func TestMultiAccountReplyStillTypesAboveTheQuote(t *testing.T) {
 	accounts := composeSenderAccounts()
 	c := NewReply(db.Message{
