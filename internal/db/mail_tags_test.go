@@ -154,3 +154,30 @@ func TestMailTagSearchUnicodeAndWildcards(t *testing.T) {
 		t.Fatalf("escaped quotes: %v", got)
 	}
 }
+
+func TestStatusKeywordDefinitionsPrunedOnOpen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mail.db")
+	database, err := OpenPath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountID, _ := database.AddAccount("", "Test", "")
+	// Older versions discovered server-set status keywords as tags.
+	for _, keyword := range []string{"$HasNoAttachment", "custom"} {
+		if _, err := database.Exec(`INSERT INTO mail_tags(account_id, keyword, name, name_search) VALUES (?, ?, ?, ?)`, accountID, keyword, keyword, keyword); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err = OpenPath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	tags, err := database.ListMailTags()
+	if err != nil || len(tags) != 1 || tags[0].Keyword != "custom" {
+		t.Fatalf("tags = %+v, %v", tags, err)
+	}
+}

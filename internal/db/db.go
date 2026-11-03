@@ -93,6 +93,9 @@ func (db *DB) init() error {
 	if err := db.migrate(); err != nil {
 		return err
 	}
+	if err := db.pruneStatusMailTags(); err != nil {
+		return err
+	}
 	backfilled, err := db.GetSetting("mail_tags_backfill_v1")
 	if err != nil {
 		return err
