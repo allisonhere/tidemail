@@ -27,6 +27,8 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Server-set status keywords such as `$HasNoAttachment` are no longer shown as
+  message tags, and tag definitions saved for them by earlier versions are removed.
 - Message-list navigation keeps the cursor within the viewport on very short
   terminals, and resize clamps the list offset for messages and drafts.
 - Single-account compose starts in To and accepts typing immediately; multiple
