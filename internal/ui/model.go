@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -4002,7 +4003,7 @@ func (m *Model) renderStatusBar() string {
 	}
 	if prompt := m.destructiveUndoPrompt(); prompt != "" {
 		style := m.styles.StatusBar
-		parts := []string{m.pillText(prompt)}
+		parts := []string{m.gaugePillText(prompt, m.latestUndoableDestructive().Deadline.Sub(time.Now()))}
 		if updateInfoPart != "" {
 			parts = append(parts, updateInfoPart)
 		}
@@ -4610,6 +4611,63 @@ func (m Model) pillText(text string) string {
 	fg := readableText(barFg, bg, 4.5)
 	chip := tagChip{text: text, filled: true, ends: config.TagEndsRound}
 	return renderChipsWith([]tagChip{chip}, func(string) tagColor { return tagColor{bg: bg, fg: fg} }, barBg, style)
+}
+
+// gaugePillText draws the undo prompt as a pill whose background drains like a
+// fuel gauge: the share of the undo window still left keeps a stronger tint, the
+// rest the usual pill tint. Plain themes have no background to fill, so they
+// show whole seconds left instead.
+func (m Model) gaugePillText(text string, remaining time.Duration) string {
+	if text == "" {
+		return ""
+	}
+	remaining = max(0, min(remaining, destructiveUndoWindow))
+	style := m.styles.StatusBar.UnsetPadding()
+	if m.styles.PlainUI {
+		secs := int((remaining + time.Second - 1) / time.Second)
+		return style.Render(fmt.Sprintf("[%s %ds]", text, secs))
+	}
+	barBg, _ := m.styles.StatusBar.GetBackground().(lipgloss.Color)
+	barFg, _ := m.styles.StatusBar.GetForeground().(lipgloss.Color)
+	emptyBg := mixColors(barBg, barFg, 0.18)
+	fullBg := mixColors(barBg, barFg, 0.40)
+	fg := gaugeTextColor(barFg, fullBg, emptyBg)
+	runes := []rune(text)
+	filled := int(math.Round(float64(remaining) / float64(destructiveUndoWindow) * float64(len(runes))))
+	leftBg, rightBg := emptyBg, emptyBg
+	if filled > 0 {
+		leftBg = fullBg
+	}
+	if filled == len(runes) {
+		rightBg = fullBg
+	}
+	body := func(s string, bg lipgloss.Color) string {
+		if s == "" {
+			return ""
+		}
+		return lipgloss.NewStyle().Background(bg).Foreground(fg).Bold(true).Render(s)
+	}
+	caps := style
+	return caps.Foreground(leftBg).Render(pillCapLeft) +
+		body(string(runes[:filled]), fullBg) + body(string(runes[filled:]), emptyBg) +
+		caps.Foreground(rightBg).Render(pillCapRight)
+}
+
+// gaugeTextColor picks the text color for a gauge pill: the status bar's own
+// foreground when it reads on both halves, else the plain black or white that
+// reads best on the worse of the two backgrounds.
+func gaugeTextColor(preferred, bgA, bgB lipgloss.Color) lipgloss.Color {
+	worst := func(c lipgloss.Color) float64 {
+		return math.Min(contrastRatio(c, bgA), contrastRatio(c, bgB))
+	}
+	if preferred != "" && worst(preferred) >= 4.5 {
+		return preferred
+	}
+	best := lipgloss.Color("#ffffff")
+	if worst("#000000") > worst(best) {
+		best = "#000000"
+	}
+	return best
 }
 
 // configSave is a seam over config.Save so tests can simulate a failed write.

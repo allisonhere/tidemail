@@ -21,9 +21,10 @@ All notable changes to TideMail are documented in this file.
   It disappears only after confirmation; a failed delete restores the row. The
   cursor advances immediately and stays anchored through list reflows. Mark-all-read
   is blocked while a read or delete is pending in the same mailbox.
-  The pending state (`delete pending · ctrl+z undo`) and the confirmation after a
-  delete, archive or move appear in the status bar as one pill tinted close to the
-  bar's own color.
+  The pending state (`delete pending · ctrl+z undo`) of a delete, archive or move
+  is one status bar pill whose background drains like a fuel gauge over the undo
+  window (plain themes show the seconds left); the confirmation afterwards is a
+  pill tinted close to the bar's own color.
 - Support links (Settings → Support, README, release notes and the repository
   Sponsor button) now point to GitHub Sponsors instead of Ko-fi.
 - The compose footer is a fixed three rows. The recipients/message headings are

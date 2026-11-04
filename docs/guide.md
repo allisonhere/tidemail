@@ -393,8 +393,10 @@ If a server-confirmed delete cannot be removed from the local cache, TideMail
 reports the cache error and keeps it hidden for this session. Later list reloads
 retry local cleanup without repeating the IMAP deletion.
 While a delete, archive, or move waits out its undo window, the status bar shows one pill,
-for example `delete pending · ctrl+z undo`; when it completes, the confirmation is a pill
-too (brackets in plain themes), tinted only slightly away from the bar.
+for example `delete pending · ctrl+z undo`. Its background drains like a fuel gauge, so the
+stronger-tinted part shrinks as the six seconds run out; plain themes use brackets and show
+the whole seconds left instead. When the action completes, the confirmation is a pill too,
+tinted only slightly away from the bar.
 
 ### Waiting on Them
 

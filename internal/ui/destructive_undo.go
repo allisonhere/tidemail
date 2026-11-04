@@ -144,9 +144,9 @@ func (m *Model) scheduleDestructive(kind destructiveActionKind, entries []pendin
 		if current := m.currentRowMessage(); current != nil {
 			m.advanceReadCursor(current.ID)
 		}
-		return tea.Batch(timer, m.ensureReadAnimation())
 	}
-	return timer
+	// The read clock also redraws the undo gauge in the status bar.
+	return tea.Batch(timer, m.ensureReadAnimation())
 }
 
 func (m *Model) undoLatestDestructive() tea.Cmd {
@@ -523,14 +523,15 @@ func (m Model) HasPendingDestructiveActions() bool {
 	return len(m.pendingDestructiveActions) > 0
 }
 
-// Delete feedback shares the read clock; each deadline remains independent.
+// Delete row feedback and the status bar's undo gauge share the read clock;
+// each deadline remains independent.
 func (m Model) deleteFeedbackActive() bool {
 	for _, action := range m.pendingDestructiveActions {
 		if action.Kind == destructiveDelete {
 			return true
 		}
 	}
-	return false
+	return m.latestUndoableDestructive() != nil
 }
 
 func (m Model) messageActionPending(id int64) bool {

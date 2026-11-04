@@ -706,7 +706,53 @@ func TestPendingDeleteAndUndoShareOnePill(t *testing.T) {
 		t.Fatalf("status bar = %q, want one pill %q", row, want)
 	}
 	m.styles.PlainUI = true
-	if row := ansi.Strip(m.renderStatusBar()); !strings.Contains(row, "[delete pending · ctrl+z undo]") {
+	if row := ansi.Strip(m.renderStatusBar()); !strings.Contains(row, "[delete pending · ctrl+z undo 6s]") {
 		t.Fatalf("plain status bar = %q", row)
+	}
+}
+
+func TestUndoGaugePillDrains(t *testing.T) {
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
+
+	f := newUndoTestFixture(t, 1)
+	m := f.model
+	const text = "delete pending · ctrl+z undo"
+	bgRuns := func(s string) int {
+		return len(regexp.MustCompile(`48;2;\d+;\d+;\d+m`).FindAllString(s, -1))
+	}
+	full := m.gaugePillText(text, destructiveUndoWindow)
+	half := m.gaugePillText(text, destructiveUndoWindow/2)
+	empty := m.gaugePillText(text, 0)
+	for name, pill := range map[string]string{"full": full, "half": half, "empty": empty} {
+		if got := ansi.Strip(pill); got != pillCapLeft+text+pillCapRight {
+			t.Fatalf("%s gauge text = %q", name, got)
+		}
+	}
+	if bgRuns(half) <= bgRuns(full) || bgRuns(half) <= bgRuns(empty) {
+		t.Fatalf("half gauge should use two backgrounds: full=%d half=%d empty=%d", bgRuns(full), bgRuns(half), bgRuns(empty))
+	}
+	if full == empty {
+		t.Fatal("full and empty gauges look identical")
+	}
+
+	m.styles.PlainUI = true
+	if got := ansi.Strip(m.gaugePillText(text, 3500*time.Millisecond)); got != "["+text+" 4s]" {
+		t.Fatalf("plain gauge = %q", got)
+	}
+}
+
+func TestUndoGaugeClockRunsForArchiveAndMove(t *testing.T) {
+	f := newUndoTestFixture(t, 2)
+	m := f.model
+	m.rebuildSidebar()
+	m.cursorToMailbox(f.source.ID)
+	if cmd := m.scheduleArchive(f.messages[:1]); cmd == nil || !m.readAnimationRunning {
+		t.Fatalf("archive did not start the redraw clock: running=%v", m.readAnimationRunning)
+	}
+	m.undoLatestDestructive()
+	if m.deleteFeedbackActive() {
+		t.Fatal("clock still wanted after undo")
 	}
 }

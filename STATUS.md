@@ -238,6 +238,8 @@ Ctrl+Z restore keeps undo available for retry after the write finishes.
 Delete feedback: messages remain visible for the six-second undo
 window and show pending feedback until server confirmation. Delete counts
 change on confirmation; archive and move retain their existing presentation.
+The status bar shows one undo pill for all three, drained like a fuel gauge by the
+read clock (250 ms redraws); plain themes show the seconds left.
 Mailbox/account mark-all-read (server-side) reserves its targets and rejects conflicting
 pending operations. Delete completions reconcile unread counts from the cache,
 keep the highlighted message visible, and suppress remote successes whose local
