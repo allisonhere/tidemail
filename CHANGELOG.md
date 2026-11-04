@@ -6,6 +6,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.8.0
+
 ### Added
 
 - Find and replace in compose. `Ctrl+F` opens Find with live match highlights and
