@@ -47,6 +47,18 @@ func (db *DB) ListMailTags() ([]mailtag.Definition, error) {
 	return out, rows.Err()
 }
 
+// pruneStatusMailTags removes discovered definitions for keywords that are now
+// recognized as mail status flags (for example $HasNoAttachment).
+func (db *DB) pruneStatusMailTags() error {
+	status := mailtag.StatusKeywords()
+	args := make([]any, len(status))
+	for i, k := range status {
+		args[i] = k
+	}
+	_, err := db.Exec(`DELETE FROM mail_tags WHERE lower(keyword) IN (`+strings.TrimSuffix(strings.Repeat("?,", len(status)), ",")+`)`, args...)
+	return err
+}
+
 func discoverMailTags(tx *sql.Tx, mailboxID int64, flags []string) error {
 	for _, keyword := range mailtag.Keywords(flags) {
 		d := mailtag.Default(0, keyword)

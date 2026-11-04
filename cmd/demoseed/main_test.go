@@ -13,7 +13,7 @@ func TestSeedBuildsReadableSandbox(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("XDG_DATA_HOME", "")
 	t.Setenv("HOME", "")
-	if err := seed(dir); err != nil {
+	if err := seed(dir, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -55,5 +55,33 @@ func TestSeedBuildsReadableSandbox(t *testing.T) {
 	}
 	if want := len(personalMessages()) + len(workMessages()); total != want {
 		t.Fatalf("messages = %d, want %d", total, want)
+	}
+}
+
+func TestSeedSingleBuildsOneAccount(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("HOME", "")
+	if err := seed(dir, true); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if len(cfg.Accounts) != 1 {
+		t.Fatalf("accounts = %d, want 1", len(cfg.Accounts))
+	}
+
+	database, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	accounts, err := database.ListAccounts()
+	if err != nil || len(accounts) != 1 {
+		t.Fatalf("db accounts = %d, err %v", len(accounts), err)
 	}
 }

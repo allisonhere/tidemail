@@ -31,21 +31,43 @@ type Snooze struct {
 	CreatedAt  time.Time
 }
 
+// messageKeySpace is the whitespace MessageKey trims from a Message-ID and
+// rejects inside one. It is ASCII only so SQLite's trim/instr can apply
+// exactly the same rule; messageKeySQL lists the same bytes.
+const messageKeySpace = " \t\n\v\f\r"
+
 // MessageKey identifies a message across folder copies: its normalized
 // Message-ID, or its row ID when it has none. messageKeySQL computes the same
-// key in SQL.
+// key in SQL, so every step here must have an exact SQLite equivalent:
+// trimming and lowercasing are ASCII only, like SQLite's trim() and lower().
 func MessageKey(m Message) string {
-	id := strings.ToLower(strings.Trim(strings.TrimSpace(m.MessageID), "<>"))
-	if id != "" && !strings.ContainsAny(id, " \t\r\n") {
+	id := asciiLower(strings.Trim(strings.Trim(m.MessageID, messageKeySpace), "<>"))
+	if id != "" && !strings.ContainsAny(id, messageKeySpace) {
 		return "<" + id + ">"
 	}
 	return "row:" + strconv.FormatInt(m.ID, 10)
 }
 
+func asciiLower(s string) string {
+	return strings.Map(func(r rune) rune {
+		if 'A' <= r && r <= 'Z' {
+			return r + ('a' - 'A')
+		}
+		return r
+	}, s)
+}
+
+// messageKeyIDSQL is the Message-ID with surrounding whitespace and angle
+// brackets removed, as in MessageKey.
+const messageKeyIDSQL = `trim(trim(messages.message_id, char(32, 9, 10, 11, 12, 13)), '<>')`
+
 // messageKeySQL is MessageKey for the messages table.
 const messageKeySQL = `(CASE
-	WHEN trim(trim(messages.message_id), '<>') != '' AND instr(trim(messages.message_id), ' ') = 0
-	THEN '<' || lower(trim(trim(messages.message_id), '<>')) || '>'
+	WHEN ` + messageKeyIDSQL + ` != ''
+		AND instr(` + messageKeyIDSQL + `, char(32)) = 0 AND instr(` + messageKeyIDSQL + `, char(9)) = 0
+		AND instr(` + messageKeyIDSQL + `, char(10)) = 0 AND instr(` + messageKeyIDSQL + `, char(11)) = 0
+		AND instr(` + messageKeyIDSQL + `, char(12)) = 0 AND instr(` + messageKeyIDSQL + `, char(13)) = 0
+	THEN '<' || lower(` + messageKeyIDSQL + `) || '>'
 	ELSE 'row:' || messages.id END)`
 
 func validSnoozeTarget(targetType, targetKey string) error {

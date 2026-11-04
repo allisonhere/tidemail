@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
@@ -166,6 +167,9 @@ type xoauth2Auth struct {
 }
 
 func (a *xoauth2Auth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	if !server.TLS {
+		return "", nil, fmt.Errorf("OAuth requires an encrypted SMTP connection")
+	}
 	// Return the RAW initial-response bytes. net/smtp's Client.Auth base64-encodes
 	// whatever Start returns before sending "AUTH XOAUTH2 <base64>"; encoding here
 	// too would double-encode and the server rejects it with "501 5.5.2 Cannot Decode".
@@ -203,6 +207,9 @@ func smtpAuth(ctx context.Context, cfg config.AccountConfig, host string) (smtp.
 }
 
 func sendSTARTTLS(ctx context.Context, addr string, cfg config.AccountConfig, from string, to []string, raw []byte) error {
+	if (cfg.UsesGoogleOAuth2() || cfg.UsesMicrosoftOAuth2()) && !cfg.SMTPTLS {
+		return fmt.Errorf("OAuth requires an encrypted SMTP connection; enable SMTP TLS (STARTTLS) or use port 465")
+	}
 	conn, err := smtpDial(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("dial smtp: %w", err)
@@ -211,9 +218,11 @@ func sendSTARTTLS(ctx context.Context, addr string, cfg config.AccountConfig, fr
 	// the session that follows); set the deadline on the raw socket too so a
 	// connection left stale by e.g. a laptop suspend/resume can't block Auth/
 	// Mail/Rcpt/Data forever instead of erroring out.
-	if dl, ok := ctx.Deadline(); ok {
-		conn.SetDeadline(dl) //nolint:errcheck
+	setupDeadline := time.Now().Add(30 * time.Second)
+	if dl, ok := ctx.Deadline(); ok && dl.Before(setupDeadline) {
+		setupDeadline = dl
 	}
+	_ = conn.SetDeadline(setupDeadline)
 
 	host, _, _ := net.SplitHostPort(addr)
 	client, err := smtpNewClient(conn, host)
@@ -238,6 +247,13 @@ func sendSTARTTLS(ctx context.Context, addr string, cfg config.AccountConfig, fr
 		return fmt.Errorf("auth: %w", err)
 	}
 
+	deadline := time.Now().Add(10 * time.Minute)
+	if dl, ok := ctx.Deadline(); ok && dl.Before(deadline) {
+		deadline = dl
+	}
+	if err := conn.SetDeadline(deadline); err != nil {
+		return fmt.Errorf("submission deadline: %w", err)
+	}
 	return sendMail(client, from, to, raw)
 }
 
@@ -252,9 +268,11 @@ func sendTLS(ctx context.Context, addr string, cfg config.AccountConfig, from st
 	// See the matching comment in sendSTARTTLS: bound the whole session, not
 	// just the dial, so a stale post-suspend socket errors out instead of
 	// hanging Auth/Mail/Rcpt/Data indefinitely.
-	if dl, ok := ctx.Deadline(); ok {
-		conn.SetDeadline(dl) //nolint:errcheck
+	setupDeadline := time.Now().Add(30 * time.Second)
+	if dl, ok := ctx.Deadline(); ok && dl.Before(setupDeadline) {
+		setupDeadline = dl
 	}
+	_ = conn.SetDeadline(setupDeadline)
 
 	client, err := smtpNewClient(conn, host)
 	if err != nil {
@@ -271,6 +289,13 @@ func sendTLS(ctx context.Context, addr string, cfg config.AccountConfig, from st
 		return fmt.Errorf("auth: %w", err)
 	}
 
+	deadline := time.Now().Add(10 * time.Minute)
+	if dl, ok := ctx.Deadline(); ok && dl.Before(deadline) {
+		deadline = dl
+	}
+	if err := conn.SetDeadline(deadline); err != nil {
+		return fmt.Errorf("submission deadline: %w", err)
+	}
 	return sendMail(client, from, to, raw)
 }
 
@@ -384,6 +409,7 @@ func buildEntity(msg OutgoingMessage, mailSafe bool) []byte {
 		// multipart/alternative: plain text + HTML
 		var buf bytes.Buffer
 		mw := multipart.NewWriter(&buf)
+		_ = mw.SetBoundary(fmt.Sprintf("tm-%x", sha256.Sum256([]byte(msg.MessageID+"outer"))))
 		hdr.WriteString("Content-Type: multipart/alternative; boundary=\"" + mw.Boundary() + "\"\r\n")
 		hdr.WriteString("\r\n")
 		buf.WriteString(hdr.String())
@@ -396,6 +422,7 @@ func buildEntity(msg OutgoingMessage, mailSafe bool) []byte {
 	// Attachments present
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
+	_ = mw.SetBoundary(fmt.Sprintf("tm-%x", sha256.Sum256([]byte(msg.MessageID+"outer"))))
 	hdr.WriteString("Content-Type: multipart/mixed; boundary=\"" + mw.Boundary() + "\"\r\n")
 	hdr.WriteString("\r\n")
 	buf.WriteString(hdr.String())
@@ -403,10 +430,12 @@ func buildEntity(msg OutgoingMessage, mailSafe bool) []byte {
 	if msg.HTMLBody != "" {
 		// Wrap text+html in multipart/alternative inside multipart/mixed
 		altWriter := multipart.NewWriter(&buf)
+		_ = altWriter.SetBoundary(fmt.Sprintf("tm-%x", sha256.Sum256([]byte(msg.MessageID+"inner"))))
 		altHdr := textproto.MIMEHeader{"Content-Type": {"multipart/alternative; boundary=\"" + altWriter.Boundary() + "\""}}
 		altPart, _ := mw.CreatePart(altHdr)
-		altHeader := fmt.Sprintf("Content-Type: multipart/alternative; boundary=\"%s\"\r\n\r\n", altWriter.Boundary())
-		_, _ = altPart.Write([]byte(altHeader))
+		boundary := altWriter.Boundary()
+		altWriter = multipart.NewWriter(altPart)
+		_ = altWriter.SetBoundary(boundary)
 		addTextPart(altWriter, msg.Body, mailSafe)
 		addHTMLPart(altWriter, msg.HTMLBody, mailSafe)
 		altWriter.Close()

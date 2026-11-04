@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"github.com/allisonhere/tidemail/internal/config"
 	"sort"
 	"strings"
 	"time"
@@ -442,22 +443,24 @@ func (m *Model) markMailboxReadCmd(mailboxID int64) tea.Cmd {
 }
 
 func (m *Model) markAccountReadCmd(accountID int64) tea.Cmd {
-	var mailboxIDs []int64
+	var ids []int64
 	for _, mb := range m.mailboxes {
 		if mb.AccountID == accountID {
-			mailboxIDs = append(mailboxIDs, mb.ID)
+			ids = append(ids, mb.ID)
 		}
 	}
-	return m.markMailboxesReadCmd(mailboxIDs)
+	return m.markMailboxesReadCmd(ids)
 }
 
-// Keep the existing local, whole-mailbox behavior. Reserve all targets before
-// dispatch, and reject conflicts rather than partially marking a busy mailbox.
-func (m *Model) markMailboxesReadCmd(mailboxIDs []int64) tea.Cmd {
-	if len(mailboxIDs) == 0 {
+// markMailboxesReadCmd marks whole mailboxes read on the server (and the cache).
+// It reserves every target before dispatch and rejects conflicts rather than
+// partially marking a busy mailbox; the reservation is released by the
+// MailboxReadUpdatedMsg carrying the same token.
+func (m *Model) markMailboxesReadCmd(ids []int64) tea.Cmd {
+	if len(ids) == 0 {
 		return nil
 	}
-	for _, id := range mailboxIDs {
+	for _, id := range ids {
 		busy := m.pendingBulkReads[id] != 0
 		for _, pending := range m.pendingReads {
 			busy = busy || pending.MailboxID == id
@@ -472,23 +475,55 @@ func (m *Model) markMailboxesReadCmd(mailboxIDs []int64) tea.Cmd {
 			return m.clearStatusCmd()
 		}
 	}
+	type task struct {
+		mailbox db.Mailbox
+		account config.AccountConfig
+		err     error
+	}
+	tasks := make([]task, 0, len(ids))
+	for _, id := range ids {
+		mb := m.mailboxByID(id)
+		if mb == nil {
+			tasks = append(tasks, task{err: fmt.Errorf("mailbox not found")})
+			continue
+		}
+		cfg, err := m.accountCfgForMailbox(id)
+		tasks = append(tasks, task{*mb, cfg, err})
+	}
 	if m.pendingBulkReads == nil {
 		m.pendingBulkReads = make(map[int64]uint64)
 	}
 	m.nextReadOperation++
 	token := m.nextReadOperation
-	for _, id := range mailboxIDs {
+	for _, id := range ids {
 		m.pendingBulkReads[id] = token
 	}
-	database := m.db
+	database, sessions := m.db, m.sessions
 	return func() tea.Msg {
-		result := MailboxReadUpdatedMsg{Token: token, ReservedMailboxIDs: mailboxIDs}
-		for _, id := range mailboxIDs {
-			if err := database.MarkAllRead(id); err != nil {
-				result.Err = err
-				break
+		result := MailboxReadUpdatedMsg{Token: token, ReservedMailboxIDs: ids}
+		for _, task := range tasks {
+			if task.err != nil {
+				result.Err = task.err
+				return result
 			}
-			result.MailboxIDs = append(result.MailboxIDs, id)
+			if task.account.IMAPHost != "" {
+				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+				err := sessions.Do(ctx, task.account, func(client *imapClient.Client) error {
+					if err := client.MarkAllSeen(ctx, task.mailbox.Name); err != nil {
+						return err
+					}
+					return database.MarkAllRead(task.mailbox.ID)
+				})
+				cancel()
+				if err != nil {
+					result.Err = err
+					return result
+				}
+			} else if err := database.MarkAllRead(task.mailbox.ID); err != nil {
+				result.Err = err
+				return result
+			}
+			result.MailboxIDs = append(result.MailboxIDs, task.mailbox.ID)
 		}
 		return result
 	}

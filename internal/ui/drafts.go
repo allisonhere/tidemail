@@ -3,7 +3,9 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
@@ -13,19 +15,83 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func (m *Model) saveDraftCmd(c ComposeModel) tea.Cmd {
-	database := m.db
-	draft := c.toDraftRecord()
-	return func() tea.Msg {
-		if database == nil {
-			return DraftSavedMsg{DraftID: draft.ID}
-		}
-		// CreatedAt stays zero here: SaveDraft stamps inserts and preserves the
-		// stored creation time (and remote linkage) on updates.
-		draft.UpdatedAt = time.Now()
-		id, err := database.SaveDraft(draft)
-		return DraftSavedMsg{DraftID: id, Err: err}
+var draftSaveSessions atomic.Uint64
+
+// Scheduling happens on the UI loop. Only an acknowledged save can schedule
+// the next snapshot, so a new draft gets its ID before another write starts.
+func (m *Model) saveDraftCmd() tea.Cmd {
+	if m.compose.saveSession == 0 {
+		m.compose.saveSession = draftSaveSessions.Add(1)
 	}
+	m.compose.saveRevision++
+	m.compose.dirty = true
+	if m.compose.saving {
+		return nil
+	}
+	return m.startDraftSave()
+}
+
+func (m *Model) startDraftSave() tea.Cmd {
+	database := m.db
+	draft := m.compose.toDraftRecord()
+	session, revision := m.compose.saveSession, m.compose.saveRevision
+	m.compose.saving = true
+	m.compose.savingRevision = revision
+	return func() tea.Msg {
+		result := DraftSavedMsg{Session: session, Revision: revision, DraftID: draft.ID}
+		if database == nil {
+			result.Err = fmt.Errorf("database unavailable")
+			return result
+		}
+		draft.UpdatedAt = time.Now()
+		result.DraftID, result.Err = database.SaveDraft(draft)
+		return result
+	}
+}
+
+func (m Model) handleDraftSaved(msg DraftSavedMsg) (tea.Model, tea.Cmd) {
+	if msg.Session == 0 || msg.Session != m.compose.saveSession || !m.compose.saving || msg.Revision != m.compose.savingRevision {
+		return m, nil
+	}
+	m.compose.saving = false
+	if msg.Err == nil {
+		m.compose.draftID = msg.DraftID
+	}
+	if m.compose.discardAfterSave {
+		return m.discardComposeDraft()
+	}
+	if msg.Err != nil {
+		if m.compose.closeAfterSave {
+			m.compose.statusMsg = ""
+		}
+		m.compose.closeAfterSave = false
+		m.compose.sendAfterSave = nil
+		m.compose.busy = false
+		m.compose.dirty = true
+		m.overlay = overlayCompose
+		m.setComposeStatus(fmt.Sprintf("draft save failed: %v", msg.Err), true)
+		return m, nil
+	}
+	if msg.Revision != m.compose.saveRevision {
+		cmd := m.startDraftSave()
+		return m, cmd
+	}
+	m.compose.dirty = false
+	m.compose.lastAutosaved = time.Now()
+	if queued := m.compose.sendAfterSave; queued != nil {
+		m.compose.sendAfterSave = nil
+		m.compose.busy = false
+		return m.update(*queued)
+	}
+	if m.compose.closeAfterSave {
+		m.compose = ComposeModel{}
+		m.overlay = overlayNone
+		m.setStatus("draft saved", false)
+	}
+	if mb := m.selectedMailbox(); mb != nil && m.isDraftsMailbox(*mb) {
+		return m, m.loadDraftsCmd(mb.ID)
+	}
+	return m, nil
 }
 
 func (m *Model) deleteDraftCmd(id int64) tea.Cmd {
@@ -78,22 +144,24 @@ func (m *Model) deleteDraftCmd(id int64) tea.Cmd {
 
 func (m Model) closeComposeSavingDraft() (tea.Model, tea.Cmd) {
 	if !m.compose.hasContent() {
-		id := m.compose.draftID
-		m.overlay = overlayNone
-		m.compose = ComposeModel{}
-		if id != 0 {
-			return m, m.deleteDraftCmd(id)
-		}
-		return m, nil
+		return m.discardComposeDraft()
 	}
-	cmd := m.saveDraftCmd(m.compose)
-	m.overlay = overlayNone
-	m.compose = ComposeModel{}
-	m.setStatus("draft saved", false)
+	m.compose.closeAfterSave = true
+	m.overlay = overlayCompose
+	m.compose.statusMsg = "saving draft…"
+	m.compose.busy = true
+	cmd := m.saveDraftCmd()
 	return m, cmd
 }
 
 func (m Model) discardComposeDraft() (tea.Model, tea.Cmd) {
+	if m.compose.saving {
+		m.compose.discardAfterSave = true
+		m.compose.busy = true
+		m.overlay = overlayCompose
+		m.compose.statusMsg = "finishing draft save…"
+		return m, nil
+	}
 	id := m.compose.draftID
 	m.overlay = overlayNone
 	m.compose = ComposeModel{}

@@ -88,12 +88,13 @@ type KeyMap struct {
 	IndentFolder    key.Binding
 	OutdentFolder   key.Binding
 
-	AttachFile   key.Binding
-	RemoveAttach key.Binding
-	CycleSender  key.Binding
-	GrammarCheck key.Binding
-	SpellCheck   key.Binding
-	Templates    key.Binding
+	MaximizeCompose key.Binding
+	AttachFile      key.Binding
+	RemoveAttach    key.Binding
+	CycleSender     key.Binding
+	GrammarCheck    key.Binding
+	SpellCheck      key.Binding
+	Templates       key.Binding
 
 	// Overlay / input
 	Confirm   key.Binding
@@ -198,7 +199,8 @@ var DefaultKeys = KeyMap{
 	IndentFolder:    key.NewBinding(key.WithKeys(">"), key.WithHelp(">", "nest folder under the one above")),
 	OutdentFolder:   key.NewBinding(key.WithKeys("<"), key.WithHelp("<", "move folder out of its parent")),
 
-	AttachFile: key.NewBinding(key.WithKeys("alt+f"), key.WithHelp("alt+f", "attach file")),
+	MaximizeCompose: key.NewBinding(key.WithKeys("alt+m"), key.WithHelp("alt+m", "maximize/restore compose")),
+	AttachFile:      key.NewBinding(key.WithKeys("alt+f"), key.WithHelp("alt+f", "attach file")),
 
 	GrammarCheck: key.NewBinding(key.WithKeys("ctrl+g"), key.WithHelp("ctrl+g", "fix grammar")),
 	SpellCheck:   key.NewBinding(key.WithKeys("f7"), key.WithHelp("f7", "spell check")),

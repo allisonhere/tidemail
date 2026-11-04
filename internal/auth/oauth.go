@@ -53,6 +53,8 @@ type tokenState struct {
 	expiry         time.Time
 	refresh        string
 	pendingPersist bool
+	gate           chan struct{}
+	cancel         context.CancelFunc
 }
 
 // tokenCache is a per-account access-token cache for one OAuth provider, shared
@@ -78,13 +80,28 @@ func newTokenCache(refresh func(ctx context.Context, clientID, clientSecret, ref
 // refresh the cache's rotated token wins.
 func (c *tokenCache) accessToken(ctx context.Context, clientID, clientSecret, account, seedRefresh string) (string, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	st := c.states[account]
 	if st == nil {
 		st = &tokenState{refresh: seedRefresh}
 		c.states[account] = st
 	}
+	if st.gate == nil {
+		st.gate = make(chan struct{}, 1)
+	}
+	gate := st.gate
+	c.mu.Unlock()
+	select {
+	case gate <- struct{}{}:
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	defer func() { <-gate }()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.states[account] != st {
+		return "", fmt.Errorf("auth: account credentials changed")
+	}
+
 	// Retry a failed write before using or refreshing this token again.
 	if st.pendingPersist {
 		if err := c.persist(account, st); err != nil {
@@ -97,7 +114,17 @@ func (c *tokenCache) accessToken(ctx context.Context, clientID, clientSecret, ac
 	if st.refresh == "" {
 		return "", fmt.Errorf("auth: no refresh token for %s", account)
 	}
-	tok, err := c.refresh(ctx, clientID, clientSecret, st.refresh)
+	refreshToken := st.refresh
+	refreshCtx, cancel := context.WithCancel(ctx)
+	st.cancel = cancel
+	c.mu.Unlock()
+	tok, err := c.refresh(refreshCtx, clientID, clientSecret, refreshToken)
+	cancel()
+	c.mu.Lock()
+	st.cancel = nil
+	if c.states[account] != st {
+		return "", fmt.Errorf("auth: account credentials changed")
+	}
 	if err != nil {
 		return "", err
 	}
@@ -135,6 +162,9 @@ func (c *tokenCache) latest(account string) (string, bool) {
 func (c *tokenCache) forget(account string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if st := c.states[account]; st != nil && st.cancel != nil {
+		st.cancel()
+	}
 	delete(c.states, account)
 }
 

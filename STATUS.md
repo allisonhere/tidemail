@@ -97,6 +97,7 @@ Current release: **v1.7.0**.
 - **AI**: summaries and grammar across OpenAI, Claude, Gemini, and Ollama. Mail rules
   are AI-generated once into reviewed JSON, then matched locally and deterministically —
   no per-message AI cost.
+- **Maximized compose**: `Alt+M` maximizes/restores the panel across the full terminal; new sessions and reopened drafts start compact.
 - **Compose layout**: grows up to 110×48 cells, with matching stored/rendered
   editor geometry. Key-only rounded pills highlight Send in the success color;
   plain themes use bracketed keys. A fixed three-row footer keeps Esc first on
@@ -200,10 +201,44 @@ Custom provider).
   Update switch — is the recommended next step. This is the main open item from the
   June 2026 design review; the rest of that roadmap has shipped.
 
-Delete countdown prototype: messages remain visible for the six-second undo
+- Mail safety fixes: Drafts reject ordinary message actions; remote moves evict
+  source cache rows and filter deletes perform the server operation first.
+  Actionable links reject terminal controls and Unicode hard breaks; multipart boundaries are stable
+  for a message identity, and nested alternatives have no redundant preamble.
+  Parsed and rendered mail strips bare CR while preserving CRLF line boundaries.
+  Mark-all-read updates server flags and durable badges. Incremental sync pages
+  backlogs without advancing the watermark early. Draft persistence is serialized
+  with session/revision acknowledgments; close/send/discard await outstanding saves.
+  SMTP allows ten minutes for submission and 30 seconds for setup.
+
+Grammar checks can be canceled with Esc while retaining editable compose text.
+Ctrl+C or Ctrl+Q during a grammar check cancels it and follows the normal quit flow.
+Late grammar results are ignored; pending draft persistence remains protected.
+OAuth refreshes run independently per account. A malformed COPY acknowledgment
+triggers one fresh-connection source cleanup attempt without repeating COPY;
+if cleanup fails, TideMail reports the completed copy and unconfirmed removal.
+
+Message deletion updates its cached message, attachments, search index, and
+deletion marker in one transaction. Needs You dismiss/restore applies to every
+message in a thread together; failures leave the database unchanged. A failed
+Ctrl+Z restore keeps undo available for retry after the write finishes.
+
+- Account deletion cleans its FTS index and cached account data atomically.
+  SQLite replacement connections keep foreign keys, the five-second busy timeout,
+  and WAL settings; punctuation in filesystem database paths is URI-escaped.
+
+- OAuth transport protection: plaintext IMAP and SMTP OAuth configurations are
+  rejected before connecting or refreshing credentials; SMTP XOAUTH2 also verifies
+  actual TLS state before returning bearer bytes. Port 465 uses implicit TLS.
+
+- Short-terminal navigation and resize keep message/draft focus in the viewport.
+  Single-account compose starts in To. IMAP envelopes decode legacy MIME charsets.
+  Indented plain-text/Reddit bodies wrap within their full available width.
+
+Delete feedback: messages remain visible for the six-second undo
 window and show pending feedback until server confirmation. Delete counts
 change on confirmation; archive and move retain their existing presentation.
-Mailbox/account mark-all-read reserves its targets and rejects conflicting
+Mailbox/account mark-all-read (server-side) reserves its targets and rejects conflicting
 pending operations. Delete completions reconcile unread counts from the cache,
 keep the highlighted message visible, and suppress remote successes whose local
 cleanup failed until a later list reload can reconcile them.

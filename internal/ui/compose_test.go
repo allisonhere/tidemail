@@ -215,7 +215,9 @@ func TestComposeNoSuggestionsForEmptySegmentOrExactMatch(t *testing.T) {
 
 // focusToField steps from the From row compose now opens on to the To field.
 func focusToField(c ComposeModel) ComposeModel {
-	c.advanceField(1)
+	for c.focusedField != composeFieldTo {
+		c.advanceField(1)
+	}
 	return c
 }
 
@@ -369,11 +371,10 @@ func TestReplyRecipientAutocomplete(t *testing.T) {
 	c := NewReply(db.Message{From: "alice@example.com", MessageID: "<x>", Subject: "S"},
 		config.AccountConfig{}, nil, []string{"Bob <bob@example.com>"})
 
-	// Reply lands in the body; wrap around to the prefilled To field and add a
-	// second recipient.
-	c.advanceField(1)
+	// A single-account reply starts in the prefilled To field, ready to add
+	// another recipient.
 	if c.focusedField != composeFieldTo {
-		t.Fatalf("expected focus on To after advancing from body, got %v", c.focusedField)
+		t.Fatalf("expected single-account reply to start in To, got %v", c.focusedField)
 	}
 	c, _, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(", bo"), Paste: true}, DefaultKeys)
 	if len(c.suggestions) != 1 || c.suggestions[0] != "Bob <bob@example.com>" {
@@ -786,8 +787,8 @@ func TestDraftCloseConfirmSavesDraft(t *testing.T) {
 
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
 	m = next.(Model)
-	if m.overlay != overlayNone {
-		t.Fatalf("expected compose closed after saving draft, got overlay %v", m.overlay)
+	if m.overlay != overlayCompose {
+		t.Fatalf("compose must stay open until save succeeds, got %v", m.overlay)
 	}
 	if cmd == nil {
 		t.Fatal("expected save draft command")
@@ -795,6 +796,11 @@ func TestDraftCloseConfirmSavesDraft(t *testing.T) {
 	msg, ok := cmd().(DraftSavedMsg)
 	if !ok || msg.Err != nil {
 		t.Fatalf("expected successful DraftSavedMsg, got %#v", msg)
+	}
+	next, _ = m.Update(msg)
+	m = next.(Model)
+	if m.overlay != overlayNone {
+		t.Fatal("successful save did not close compose")
 	}
 	drafts, err := database.ListDrafts("", "Personal", "allie@example.com")
 	if err != nil {
@@ -1099,6 +1105,18 @@ func TestComposeOpensOnTheFromRow(t *testing.T) {
 
 	if got := NewCompose(accounts[1], accounts, nil).focusedField; got != composeFieldFrom {
 		t.Fatalf("new message focus = %v, want the From row", got)
+	}
+}
+
+func TestComposeOpensOnToWithSingleAccount(t *testing.T) {
+	account := config.AccountConfig{Name: "Only", User: "only@example.com"}
+
+	c := NewCompose(account, []config.AccountConfig{account}, nil)
+	if c.focusedField != composeFieldTo {
+		t.Fatalf("single-account focus = %v, want the To row", c.focusedField)
+	}
+	if !c.toInput.Focused() {
+		t.Fatal("To input is not focused on open")
 	}
 }
 

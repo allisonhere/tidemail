@@ -231,6 +231,8 @@ func executeDestructiveBatches(action pendingDestructiveAction, database *db.DB,
 			var err error
 			if action.Kind == destructiveDelete {
 				err = database.DeleteMessage(entry.Message.ID)
+			} else if entry.Account.IMAPHost != "" && entry.Message.UID != 0 {
+				err = database.EvictMessage(entry.Message.ID)
 			} else {
 				err = database.MoveMessage(entry.Message.ID, entry.Target.ID)
 			}

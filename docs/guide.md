@@ -178,6 +178,9 @@ its contents. Press `Tab` or `Shift+Tab` to move between panes.
 In the message list, press `Space` to select several messages. You can then
 archive them with `a`, delete them with `d`, move them with `m`, or mark them as
 read. Press `A` to select every message in the current view.
+In the sidebar, `R` or `Ctrl+X` marks all messages in the selected mailbox or
+account read on the server, including messages not yet cached. Local state and
+unread badges update after confirmation. Failed mailboxes retain their local state.
 
 Press `/` to search, `u` to show unread mail, and `t` to place starred messages
 first. Search covers subject, sender, recipients, and message body across every
@@ -203,7 +206,9 @@ TideMail recognizes message tags stored as IMAP keywords, including Thunderbird'
 five default tags: Important, Work, Personal, To Do, and Later. Custom keywords
 initially appear under their identifiers. Thunderbird keeps tag names and colors
 in its own settings, so TideMail cannot obtain custom names or colors from IMAP.
-Tags appear below the date and sender in the message pane as well as on message
+Keywords that servers and clients set to describe a message (`$Junk`, `$Forwarded`,
+`$HasAttachment`, `$HasNoAttachment`, and similar) are status flags, not tags, and are
+never shown. Tags appear below the date and sender in the message pane as well as on message
 rows. Under **Settings → Display → Message tags**, turn off **Show tags in
 message header** to hide only that content-pane row.
 
@@ -504,6 +509,14 @@ Search only reaches mail TideMail has cached. The first sync fetches the 100
 most recent inbox messages and 25 messages from other folders, whose attachments
 can make each batch much larger. Moving down past the last message in a folder
 pulls the next 100 from the server, so you can page back as far as it goes.
+Incremental sync also fetches at most 100 messages per page and continues through
+the backlog automatically, keeping its previous sync watermark until complete.
+
+Filter deletes remove the cached message only after the server succeeds; failures
+are reported in TideMail. Remote moves refresh the destination using its server
+message identifiers. Actionable links with terminal controls or Unicode line/paragraph separators are
+rejected. Labels stay on one row so the displayed entry matches its activation
+target. Mail text drops bare carriage returns while retaining CRLF line breaks.
 
 ## Writing mail
 
@@ -514,13 +527,18 @@ the field scroll sideways as you type or move the cursor. TideMail
 saves your work to the sending account's Drafts folder as you type. Open Drafts
 and press `Enter` to continue writing, or `d` to delete a draft. The preview pane
 shows the first 64 KB of a very large draft and notes how much is hidden.
+Drafts do not support archive, move, read/star toggles, or message selection.
+Autosaves run one at a time and include edits made during an earlier save.
+Closing, discarding, or sending waits for a pending save; if saving fails, the
+composer keeps your text and shows the error so you can retry.
 
 In the header rows (From, To, Cc, Bcc, Subject), `Down` and `Up` move to the next or
 previous row, like `Tab` and `Shift+Tab`, except that `Up` stops at the top row. While
 the recipient suggestions are open, `Up` and `Down` choose a suggestion instead. In the
 body they move the text cursor.
 
-If you have more than one account, the From row works as an account picker.
+With one account, compose starts in **To** so you can type immediately.
+With multiple accounts, it starts in **From**, which works as an account picker.
 Focus it with `Shift+Tab` or `Up` from the To row, then press `Enter` or `Space` and
 choose the account. `Ctrl+U` cycles through the same list. TideMail uses that
 account's SMTP settings, From address, and signature.
@@ -532,7 +550,10 @@ arrived on. Without a default, a new message starts from the first account in
 your config.
 
 After delivery, TideMail saves a copy to the sending account's server-side Sent
-folder. Gmail already files SMTP submissions itself, so TideMail does not append
+folder. Submission allows up to ten minutes for attachment uploads; connection
+and authentication setup remain bounded to 30 seconds. Multipart Sent copies use
+the same boundaries as the submitted message.
+Gmail already files SMTP submissions itself, so TideMail does not append
 a duplicate there. Other providers use the server's `\Sent` folder flag, with
 common names such as `Sent`, `Sent Items`, and `INBOX.Sent` as fallbacks.
 
@@ -697,7 +718,9 @@ Select contacts with `Space`, then press `c` to write to them.
 
 Compose suggestions show saved contacts before addresses gathered from your
 mail. vCard imports and exports include names, email addresses, phone numbers,
-organizations, titles, and notes.
+organizations, titles, and notes. Adding or importing an address you already
+saved fills in missing details but never blanks a saved name; edit the contact
+to clear it.
 
 ## Passwords and API keys
 
@@ -1150,6 +1173,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Ctrl+D` | Save attachments to folder |
 | `Ctrl+G` | AI grammar & spell check (compose). The preview fits the screen and scrolls with `↑`/`↓`, `PgUp`/`PgDn`, and `Home`/`End`; `y` accepts, `n` or `Esc` cancels |
 | `F7` | Offline spell check (compose); needs Settings → Editor → Spell check |
+| `Alt+M` in compose | Maximize the compose panel across the full terminal; press again to restore. The application status bar is hidden; compose notifications (including autosave failures) appear in the composer footer. Each new compose, reply, forward, or reopened draft starts compact. |
 | `F6` in compose | Template picker; `Enter` inserts, `e` edits, `n` saves the message as a new template |
 | `D` | Decrypt and verify the open PGP message (needs a PGP plugin) |
 | `Alt+S` / `Alt+E` in compose | Sign / encrypt the message with PGP (needs a PGP plugin); `F8` / `F9` also work if your terminal or desktop doesn't claim them |
@@ -1364,3 +1388,29 @@ state. Mixed bulk actions apply successful groups and leave failed groups
 unchanged. There is no automatic retry or rollback. Other clients and normal
 synchronization can still change server state; a timeout may occur after the
 server applied a change, which later synchronization reconciles.
+
+Grammar checks can be canceled with Esc while retaining editable compose text.
+Ctrl+C or Ctrl+Q during a grammar check cancels it and follows the normal quit flow.
+Late grammar results are ignored; pending draft persistence remains protected.
+OAuth refreshes run independently per account. A malformed COPY acknowledgment
+triggers one fresh-connection source cleanup attempt without repeating COPY;
+if cleanup fails, TideMail reports the completed copy and unconfirmed removal.
+
+Message deletion updates its cached message, attachments, search index, and
+deletion marker in one transaction. Needs You dismiss/restore applies to every
+message in a thread together; failures leave the database unchanged. A failed
+Ctrl+Z restore keeps undo available for retry after the write finishes.
+
+Removing an account also removes its cached search entries atomically with the
+account's local mail cache.
+
+OAuth accounts require **IMAP TLS** and encrypted SMTP, including localhost.
+For SMTP port 587, enable **SMTP TLS** (STARTTLS); port 465 uses implicit TLS.
+TideMail rejects plaintext OAuth configurations before connecting or refreshing
+credentials, and never sends the OAuth bearer response over an unencrypted SMTP
+connection.
+
+Message-list focus stays visible after resizing, including after navigating on a
+very short terminal. Full-width plain-text mail reserves its left inset before
+wrapping, preserving the final character on each line. Legacy MIME-encoded
+subjects and address display names are decoded in the message list and reader.

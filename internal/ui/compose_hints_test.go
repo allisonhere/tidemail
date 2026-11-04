@@ -133,7 +133,7 @@ func TestComposeFooterRowsAreStateActionsContext(t *testing.T) {
 	}
 	// Pills share columns: the body's keys snap to the action row's columns.
 	col := func(line, word string) int { return lipgloss.Width(line[:strings.Index(line, word)]) }
-	if col(lines[1], "^s") != col(lines[2], "esc") || col(lines[1], "^p") != col(lines[2], "^g") || col(lines[1], "^u") != col(lines[2], "^f") {
+	if col(lines[1], "^s") != col(lines[2], "esc") || col(lines[1], "^p") != col(lines[2], "alt+m") || col(lines[1], "^u") != col(lines[2], "^g") {
 		t.Fatalf("columns do not line up:\n%s\n%s", lines[1], lines[2])
 	}
 	c.focusedField = composeFieldFrom
@@ -163,17 +163,17 @@ func TestComposeFooterKeepsStaticHintsInPlace(t *testing.T) {
 			if !strings.HasPrefix(strings.TrimSpace(plain[1]), "^s send") {
 				t.Fatalf("width %d: Send must lead row 2: %q", width, plain[1])
 			}
-			if fields := strings.Fields(plain[2]); len(fields) < 6 || strings.Join(fields[:6], " ") != "esc cancel ^g grammar f7 spell" {
-				t.Fatalf("width %d: Esc, then the proofing keys, must lead row 3: %q", width, plain[2])
+			if fields := strings.Fields(plain[2]); len(fields) < 8 || strings.Join(fields[:8], " ") != "esc cancel alt+m maximize ^g grammar f7 spell" {
+				t.Fatalf("width %d: Esc, maximize, then the proofing keys, must lead row 3: %q", width, plain[2])
 			}
 			if grammarCol < 0 {
 				grammarCol = col(plain[2], "^g")
-			} else if col(plain[2], "^g") != grammarCol || col(plain[2], "esc") != col(plain[1], "^s") || col(plain[2], "f7") != col(plain[1], "^u") {
+			} else if col(plain[2], "^g") != grammarCol || col(plain[2], "esc") != col(plain[1], "^s") || col(plain[2], "f7") != col(plain[1], "f6") {
 				t.Fatalf("width %d: Esc or proofing keys moved for focus %v: %q", width, field, plain[2])
 			}
 		}
-		if grammarCol != col(strings.Split(plainComposeHintText(actions), "\n")[0], "^p") {
-			t.Fatalf("width %d: Grammar is not under Commands", width)
+		if grammarCol != col(strings.Split(plainComposeHintText(actions), "\n")[0], "^u") {
+			t.Fatalf("width %d: Grammar is not under Sender", width)
 		}
 	}
 }
@@ -244,10 +244,10 @@ func TestComposeVimBodyHintsFollowTheMode(t *testing.T) {
 		enter func()
 		row   string
 	}{
-		{"NORMAL", normal, "esc cancel ^g grammar / find y yank p put u undo"},
-		{"INSERT", func() { c.bodyInput.ed.StartInsert() }, "esc normal ^g grammar"},
-		{"VISUAL", func() { normal(); key(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")}) }, "esc normal ^g grammar y yank d delete c change"},
-		{"COMMAND", func() { normal(); key(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(":")}) }, "esc normal ^g grammar enter run :w send :q cancel"},
+		{"NORMAL", normal, "esc cancel alt+m maximize ^g grammar / find y yank p put u undo"},
+		{"INSERT", func() { c.bodyInput.ed.StartInsert() }, "esc normal alt+m maximize ^g grammar"},
+		{"VISUAL", func() { normal(); key(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")}) }, "esc normal alt+m maximize ^g grammar y yank d delete c change"},
+		{"COMMAND", func() { normal(); key(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(":")}) }, "esc normal alt+m maximize ^g grammar enter run :w send :q cancel"},
 	}
 	var actions string
 	escCol := -1

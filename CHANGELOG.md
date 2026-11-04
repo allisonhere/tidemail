@@ -16,6 +16,11 @@ All notable changes to TideMail are documented in this file.
 
 ### Changed
 
+- Deleting a message keeps it visible during the six-second undo window with a
+  6–1 countdown (struck-through subject), then a spinner until the server confirms.
+  It disappears only after confirmation; a failed delete restores the row. The
+  cursor advances immediately and stays anchored through list reflows. Mark-all-read
+  is blocked while a read or delete is pending in the same mailbox.
 - Support links (Settings → Support, README, release notes and the repository
   Sponsor button) now point to GitHub Sponsors instead of Ko-fi.
 - The compose footer is a fixed three rows. The recipients/message headings are
@@ -26,6 +31,60 @@ All notable changes to TideMail are documented in this file.
   send errors stay visible while Find is open.
 
 ### Fixed
+
+- Server-set status keywords such as `$HasNoAttachment` are no longer shown as
+  message tags, and tag definitions saved for them by earlier versions are removed.
+- Message-list navigation keeps the cursor within the viewport on very short
+  terminals, and resize clamps the list offset for messages and drafts.
+- Single-account compose starts in To and accepts typing immediately; multiple
+  accounts still start at the sender picker.
+- IMAP envelope subjects and address names decode legacy MIME charsets, including
+  ISO-8859-1, Windows-1252, and Shift_JIS, with or without live update callbacks.
+- Plain-text and Reddit body layout reserves its left inset before wrapping so
+  full-width lines retain their final character.
+- Adding an address that is already a contact, or importing a vCard without a
+  name, keeps the contact's saved name instead of erasing it. A new name still
+  replaces it, and editing a contact can still clear it.
+- Snoozes and stop-waiting dismissals no longer miss, or get pruned at startup
+  for, messages whose Message-ID has stray whitespace (tabs, line breaks) or
+  non-ASCII capitals. TideMail now computes the message key one way everywhere.
+
+- OAuth authentication requires TLS for IMAP and SMTP, including loopback hosts.
+  Plaintext configurations fail before connecting or refreshing credentials;
+  SMTP XOAUTH2 independently checks the actual TLS state before returning token
+  bytes. SMTP port 465 continues to use implicit TLS.
+
+- Account deletion removes its cached search-index rows in the same transaction
+  as the account, preventing orphan FTS entries and unnecessary startup rebuilds.
+- SQLite replacement connections retain foreign-key enforcement, the five-second
+  busy timeout, and WAL settings through connection DSN initialization. Database
+  filenames containing query/fragment punctuation are escaped correctly.
+
+- Reject Unicode line/paragraph separators in link destinations so LINKS rows
+  cannot activate a different URL from the one displayed. Labels stay single-line.
+- Strip bare carriage returns from parsed and rendered mail while preserving
+  CRLF line boundaries, preventing preformatted content from overwriting pane borders.
+
+- Message deletion commits the tombstone, attachment removal, search-index cleanup,
+  and message removal together; any failure rolls back all changes.
+- Threaded Needs You dismiss/restore actions are atomic. Failed undo keeps its
+  history for retry, and overlapping dismissal writes are serialized.
+
+- Recover source cleanup on a fresh connection after malformed COPYUID, without
+  repeating COPY; report partial moves if cleanup cannot be confirmed.
+- Isolate OAuth refreshes by account and discard refreshes for forgotten credentials.
+- Allow grammar-check cancellation with Esc, preserve editable text, and ignore late results.
+
+- Drafts no longer route message actions to hidden IMAP rows. Autosaves are
+  serialized, stale replies are ignored, and failed saves retain compose text.
+- Remote moves evict source cache rows instead of retaining source UIDs in the
+  destination. Filter deletes wait for server success and report failures.
+- Mark-all-read updates server flags, including uncached mail, and persists badges.
+- Incremental sync fetches bounded pages and continues without skipping backlog.
+- Actionable links reject terminal controls in text and HTML destinations.
+- Update the HTML parser dependency to address two reachable security issues.
+- SMTP uploads have a ten-minute submission budget with bounded setup. Multipart
+  messages use stable boundaries and omit a redundant nested MIME preamble.
 
 - `Ctrl+Z` no longer cancels a scheduled send or one waiting to retry; it only
   takes back a send still in its undo delay.

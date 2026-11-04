@@ -33,3 +33,16 @@ func TestXOAUTH2AuthNextSurfacesServerError(t *testing.T) {
 		t.Fatalf("Next(nil, false) = %q, %v; want nil, nil", got, err)
 	}
 }
+
+func TestXOAUTH2NeverReturnsCredentialsWithoutTLS(t *testing.T) {
+	for _, host := range []string{"smtp.gmail.com", "localhost", "127.0.0.1", "::1"} {
+		a := &xoauth2Auth{user: "test@example.com", token: "secret-token"}
+		mechanism, response, err := a.Start(&smtp.ServerInfo{Name: host, TLS: false, Auth: []string{"XOAUTH2"}})
+		if err == nil || mechanism != "" || len(response) != 0 {
+			t.Fatalf("plaintext credentials exposed for %s", host)
+		}
+		if strings.Contains(err.Error(), a.token) {
+			t.Fatal("token leaked in error")
+		}
+	}
+}

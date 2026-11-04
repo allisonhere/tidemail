@@ -133,8 +133,7 @@ func (m Model) renderOverlay(base string) string {
 		box = renderSoftPanelBox(inner, winW, "tidemail", m.contactManager.softTitle(), chrome)
 
 	case overlayCompose:
-		winW := composeOverlayWidth(m.width)
-		winH := composeOverlayHeight(m.height)
+		winW, winH := m.compose.overlayDimensions(m.width, m.height)
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		view := m.compose
 		_, view.pgpAvailable = m.pgpComposePlugin()
@@ -319,6 +318,9 @@ func (m Model) renderOverlay(base string) string {
 		box = renderSoftPanelBox(inner, winW, "tidemail", "schedule send", chrome)
 	}
 
+	if m.overlay == overlayCompose && m.compose.maximized {
+		return clampView(box, m.width, m.height, m.styles.Theme.Bg)
+	}
 	return overlayOnBase(base, box, m.width, m.height, m.styles.Theme.Bg, m.cfg.Display.Shadow)
 }
 

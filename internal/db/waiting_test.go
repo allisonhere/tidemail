@@ -139,6 +139,32 @@ func TestWaitingStoppedPersistsAndPrunes(t *testing.T) {
 	}
 }
 
+// Stop-waiting dismissals use the same key; pruning must keep one whose
+// Message-ID has surrounding or internal whitespace.
+func TestWaitingPruneKeepsWhitespaceMessageIDs(t *testing.T) {
+	d, _, ids := newAnnotationTestDB(t, 2)
+	mids := []string{"\t<Tab@X>\r\n", "<a\tb@x>"}
+	keys := make([]string, len(ids))
+	for i, mid := range mids {
+		if _, err := d.Exec(`UPDATE messages SET message_id = ? WHERE id = ?`, mid, ids[i]); err != nil {
+			t.Fatal(err)
+		}
+		keys[i] = WaitingKey(Message{ID: ids[i], MessageID: mid})
+	}
+	if err := d.SetWaitingStopped(keys, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.PruneWaitingDismissals(); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := d.WaitingStopped()
+	for _, k := range keys {
+		if !got[k] {
+			t.Fatalf("prune dropped live dismissal %q: %v", k, got)
+		}
+	}
+}
+
 func itoa(n int64) string {
 	return WaitingKey(Message{ID: n})[len("row:"):]
 }

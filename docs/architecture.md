@@ -293,3 +293,36 @@ account-specific definitions, including a normalized name for case-insensitive
 Unicode prefixes. Search versions reject results captured before a tag edit;
 message-list refreshes reload flags after local edits to avoid restoring stale
 assignments. AI annotations and classification overrides remain independent.
+
+### Draft persistence and incremental bodies
+
+Compose saves carry a session identity and revision. The UI permits one save in
+flight, then persists the latest edited snapshot using the acknowledged row ID.
+Close, discard, and send wait for that acknowledgment; stale responses cannot
+modify another compose session. A failed save retains editable content.
+
+Incremental body fetches use bounded pages, exclude cached/tombstoned UIDs, and
+retain the sync watermark until continuation finishes. UID search also includes
+unknown identifiers above the cached history floor to recover old-dated moves.
+Remote moves evict source cache rows without deletion tombstones; destination
+sync obtains the new mailbox-scoped UID.
+
+OAuth caches use per-account context-aware refresh gates; the provider mutex never
+spans refresh HTTP requests. Forgotten state invalidates outstanding results.
+Grammar requests carry a cancel function and request identity distinct from draft
+persistence state. Only the active compose request can apply a grammar response.
+
+`DeleteMessage` uses one transaction for lookup, tombstone insertion, attachment
+and FTS removal, and message deletion. `SetNeedsYouDismissedBatch` atomically
+applies thread dismissals/restorations. The UI permits one dismissal write in
+flight and retains undo history until restoration is acknowledged successfully.
+
+Account deletion removes the account's FTS rows before cascading cached-message
+deletion, within one transaction. SQLite DSNs apply foreign-key enforcement,
+`busy_timeout(5000)`, and WAL to each physical connection, including replacements
+after `driver.ErrBadConn`. Filesystem paths are escaped as SQLite file URIs;
+existing SQLite file URIs and in-memory databases remain supported.
+
+OAuth transport gates run before IMAP/SMTP plaintext dialing and token refresh.
+SMTP XOAUTH2 also rejects `ServerInfo.TLS == false` before constructing the bearer
+response. Implicit TLS on port 465 remains independent of the STARTTLS setting.

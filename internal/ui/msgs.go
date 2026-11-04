@@ -59,6 +59,8 @@ type MessagesLoadedMsg struct {
 }
 
 type MailboxSyncedMsg struct {
+	More        bool
+	Warning     error
 	MailboxID   int64
 	NewCount    int
 	NewMessages []db.Message // genuinely-new unread mail, for notification sender/subject
@@ -253,8 +255,10 @@ type CommitSendMsg struct {
 }
 
 type DraftSavedMsg struct {
-	DraftID int64
-	Err     error
+	Session  uint64
+	Revision uint64
+	DraftID  int64
+	Err      error
 }
 
 type DraftDeletedMsg struct {
@@ -356,6 +360,7 @@ type AddressBookLoadedMsg struct {
 type ErrMsg struct{ Err error }
 
 type GrammarCheckedMsg struct {
+	Request   *grammarRequest
 	Corrected string
 	Err       error
 }

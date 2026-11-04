@@ -93,7 +93,7 @@ func (db *DB) AddContactWithMetadata(rawAddr, rawName, source string, meta Conta
 		INSERT INTO contacts (addr, display_name, source, created_at, phone, organization, title, note)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(addr) DO UPDATE SET
-			display_name = excluded.display_name,
+			display_name = CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE contacts.display_name END,
 			source       = excluded.source,
 			phone        = CASE WHEN excluded.phone != '' THEN excluded.phone ELSE contacts.phone END,
 			organization = CASE WHEN excluded.organization != '' THEN excluded.organization ELSE contacts.organization END,

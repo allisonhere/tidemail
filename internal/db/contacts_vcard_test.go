@@ -130,3 +130,20 @@ func TestImportVCardMalformed(t *testing.T) {
 		t.Fatal("expected error for malformed vCard")
 	}
 }
+
+// A card with an email but no name must not erase the name already saved for
+// that address.
+func TestImportVCardWithoutNameKeepsSavedName(t *testing.T) {
+	const card = "BEGIN:VCARD\r\n" +
+		"VERSION:4.0\r\n" +
+		"EMAIL:ann@example.com\r\n" +
+		"END:VCARD\r\n"
+	d := newTestDB(t)
+	id, _ := d.AddContact("ann@example.com", "Ann Lee", "manual")
+	if _, err := d.ImportVCard(strings.NewReader(card)); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if got := contactName(t, d, id); got != "Ann Lee" {
+		t.Fatalf("nameless vCard erased the saved name: got %q", got)
+	}
+}

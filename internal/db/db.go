@@ -3,8 +3,10 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -27,7 +29,11 @@ func Open() (*DB, error) {
 // OpenPath opens (creating if needed) a TideMail database at path. Open uses
 // it for the user's cache; tools use it for throwaway fixture databases.
 func OpenPath(path string) (*DB, error) {
-	conn, err := sql.Open("sqlite", path)
+	dsn, err := sqliteDSN(path)
+	if err != nil {
+		return nil, fmt.Errorf("database path: %w", err)
+	}
+	conn, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
@@ -42,6 +48,37 @@ func OpenPath(path string) (*DB, error) {
 	return db, nil
 }
 
+// sqliteDSN configures every physical connection, including replacements after
+// driver.ErrBadConn. File paths are URI-escaped so ?, # and % remain filename bytes.
+func sqliteDSN(path string) (string, error) {
+	var dsn string
+	var params url.Values
+	switch {
+	case strings.HasPrefix(path, "file:"):
+		u, err := url.Parse(path)
+		if err != nil {
+			return "", err
+		}
+		params = u.Query()
+		u.RawQuery = ""
+		dsn = u.String()
+	case path == ":memory:" || path == "":
+		dsn = path
+		params = make(url.Values)
+	default:
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return "", err
+		}
+		dsn = (&url.URL{Scheme: "file", Path: filepath.ToSlash(absolute)}).String()
+		params = make(url.Values)
+	}
+	for _, pragma := range []string{"foreign_keys(1)", "busy_timeout(5000)", "journal_mode(WAL)"} {
+		params.Add("_pragma", pragma)
+	}
+	return dsn + "?" + params.Encode(), nil
+}
+
 func (db *DB) init() error {
 	pragmas := []string{
 		"PRAGMA journal_mode=WAL",
@@ -54,6 +91,9 @@ func (db *DB) init() error {
 		}
 	}
 	if err := db.migrate(); err != nil {
+		return err
+	}
+	if err := db.pruneStatusMailTags(); err != nil {
 		return err
 	}
 	backfilled, err := db.GetSetting("mail_tags_backfill_v1")

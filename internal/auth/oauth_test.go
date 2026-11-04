@@ -44,3 +44,37 @@ func TestRotatedTokenPersistenceRetriesBeforeReuse(t *testing.T) {
 		t.Fatal("persisted token written again")
 	}
 }
+
+func TestRefreshIsolationAndForget(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	c := &tokenCache{states: map[string]*tokenState{}, refresh: func(ctx context.Context, _, _, token string) (*oauth2.Token, error) {
+		if token == "slow" {
+			close(entered)
+			<-release
+		}
+		return &oauth2.Token{AccessToken: token, Expiry: time.Now().Add(time.Hour)}, nil
+	}}
+	done := make(chan error, 1)
+	go func() { _, err := c.accessToken(context.Background(), "", "", "a", "slow"); done <- err }()
+	<-entered
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	token, err := c.accessToken(ctx, "", "", "b", "fast")
+	if err != nil || token != "fast" {
+		t.Fatalf("other account blocked: %q %v", token, err)
+	}
+	canceled, stop := context.WithCancel(context.Background())
+	stop()
+	if _, err := c.accessToken(canceled, "", "", "a", "slow"); err == nil {
+		t.Fatal("same-account waiter ignored cancellation")
+	}
+	c.forget("a")
+	close(release)
+	if err := <-done; err == nil {
+		t.Fatal("forgotten refresh was accepted")
+	}
+	if _, ok := c.latest("a"); ok {
+		t.Fatal("forgotten credentials repopulated")
+	}
+}

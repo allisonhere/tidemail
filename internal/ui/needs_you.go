@@ -23,7 +23,8 @@ type needsYouState struct {
 	dismissed map[int64]bool
 	// lastDismissed is the most recent dismissal (all messages of a threaded
 	// row), for ctrl+z.
-	lastDismissed []int64
+	lastDismissed    []int64
+	dismissalPending bool
 }
 
 type (
@@ -119,6 +120,7 @@ func (m Model) handleNeedsYouMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case needsYouDismissMsg:
+		m.needsYou.dismissalPending = false
 		if msg.Err != nil {
 			// Nothing changed in the database, so the row stays.
 			m.setStatus("Needs You: "+msg.Err.Error(), true)
@@ -137,17 +139,15 @@ func (m Model) handleNeedsYouMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // setDismissedCmd dismisses or restores messages off the Update loop. It
-// stops at the first failure, leaving the UI unchanged for it.
+// commits the whole batch or leaves both the database and UI unchanged.
 func setDismissedCmd(database *db.DB, ids []int64, dismissed bool) tea.Cmd {
 	ids = append([]int64(nil), ids...)
 	return func() tea.Msg {
 		if database == nil {
 			return needsYouDismissMsg{MessageIDs: ids, Dismissed: dismissed, Err: fmt.Errorf("no database")}
 		}
-		for _, id := range ids {
-			if err := database.SetNeedsYouDismissed(id, dismissed); err != nil {
-				return needsYouDismissMsg{MessageIDs: ids, Dismissed: dismissed, Err: err}
-			}
+		if err := database.SetNeedsYouDismissedBatch(ids, dismissed); err != nil {
+			return needsYouDismissMsg{MessageIDs: ids, Dismissed: dismissed, Err: err}
 		}
 		return needsYouDismissMsg{MessageIDs: ids, Dismissed: dismissed}
 	}
@@ -164,7 +164,8 @@ func (m Model) dismissCurrent() (tea.Model, tea.Cmd) {
 	for i, msg := range msgs {
 		ids[i] = msg.ID
 	}
-	return m, setDismissedCmd(m.db, ids, true)
+	cmd := m.startDismissal(ids, true)
+	return m, cmd
 }
 
 // undoNeedsYouDismissal restores the latest dismissal while Needs You is open.
@@ -173,8 +174,7 @@ func (m *Model) undoNeedsYouDismissal() (tea.Cmd, bool) {
 		return nil, false
 	}
 	ids := m.needsYou.lastDismissed
-	m.needsYou.lastDismissed = nil
-	return setDismissedCmd(m.db, ids, false), true
+	return m.startDismissal(ids, false), true
 }
 
 func (m Model) needsYouCommandItems() []commandItem {
@@ -210,7 +210,8 @@ func (m Model) executeNeedsYouCommand(id string) (tea.Model, tea.Cmd) {
 	case "needs-you-dismiss":
 		return m.dismissCurrent()
 	case "needs-you-restore":
-		return m, setDismissedCmd(m.db, []int64{msg.ID}, false)
+		cmd := m.startDismissal([]int64{msg.ID}, false)
+		return m, cmd
 	}
 	return m, nil
 }
@@ -323,4 +324,14 @@ func (m *Model) rowBadgeIDs(msg db.Message, thread messageThread) []int64 {
 		return ids
 	}
 	return []int64{msg.ID}
+}
+
+// Serialize dismiss/restore acknowledgments so undo cannot be lost to a later
+// request that completes first. Repeated undo is consumed while a write settles.
+func (m *Model) startDismissal(ids []int64, dismissed bool) tea.Cmd {
+	if m.needsYou.dismissalPending {
+		return nil
+	}
+	m.needsYou.dismissalPending = true
+	return setDismissedCmd(m.db, ids, dismissed)
 }

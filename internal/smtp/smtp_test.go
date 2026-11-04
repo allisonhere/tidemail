@@ -147,6 +147,16 @@ func TestSendMail(t *testing.T) {
 	}
 }
 
+type deadlineRecordingConn struct {
+	net.Conn
+	deadlines []time.Time
+}
+
+func (c *deadlineRecordingConn) SetDeadline(t time.Time) error {
+	c.deadlines = append(c.deadlines, t)
+	return c.Conn.SetDeadline(t)
+}
+
 func TestSendSTARTTLS_NoTLS(t *testing.T) {
 	server, clientConn := net.Pipe()
 
@@ -192,6 +202,7 @@ func TestSendSTARTTLS_NoTLS(t *testing.T) {
 	}()
 
 	// Override dial to return pipe connection
+	recording := &deadlineRecordingConn{Conn: clientConn}
 	oldDial := smtpDial
 	oldClient := smtpNewClient
 	defer func() {
@@ -200,7 +211,7 @@ func TestSendSTARTTLS_NoTLS(t *testing.T) {
 	}()
 
 	smtpDial = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		return clientConn, nil
+		return recording, nil
 	}
 	smtpNewClient = func(conn net.Conn, host string) (*smtp.Client, error) {
 		return smtp.NewClient(conn, host)
@@ -212,6 +223,12 @@ func TestSendSTARTTLS_NoTLS(t *testing.T) {
 	}, "alice@x", []string{"bob@x"}, []byte("Subject: Hello\r\n\r\nBody"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(recording.deadlines) != 2 {
+		t.Fatalf("deadlines: %v", recording.deadlines)
+	}
+	if time.Until(recording.deadlines[0]) > 30*time.Second || time.Until(recording.deadlines[1]) < 9*time.Minute {
+		t.Fatalf("setup/upload deadlines: %v", recording.deadlines)
 	}
 	<-done
 }
