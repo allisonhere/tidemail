@@ -551,3 +551,30 @@ func TestExpandableWideTextAndTaggedRowSizing(t *testing.T) {
 		}
 	}
 }
+
+func TestExpandableCollapseClearsHiddenUnreadFilterMarkers(t *testing.T) {
+	m := expandableModel(t)
+	// Each conversation has an unread newest parent, unread child, read child.
+	for i := range m.messages {
+		m.messages[i].Read = m.messages[i].ID%3 == 1
+	}
+	m.applyFilter()
+	m.toggleCurrentConversation() // B
+	m.messageCursor = m.indexOfMessageSelection(3, true)
+	m.toggleCurrentConversation() // A remains independently expanded
+	m.showUnreadOnly = true
+	m.applyFilter()
+	m.messageCursor = m.indexOfMessageSelection(6, true)
+	m.toggleCurrentConversation() // explicitly collapse B with its read child hidden
+	m.showUnreadOnly = false
+	m.applyFilter()
+	for _, thread := range m.messageThreads {
+		want := thread.Representative.ID == 3
+		if m.threadExpanded(thread) != want {
+			t.Fatalf("conversation %d expanded=%v want %v", thread.Representative.ID, m.threadExpanded(thread), want)
+		}
+	}
+	if got := visibleMessageIDs(&m); !reflect.DeepEqual(got, []int64{6, 3, 2, 1}) {
+		t.Fatalf("visible rows after disabling Unread Only: %v", got)
+	}
+}

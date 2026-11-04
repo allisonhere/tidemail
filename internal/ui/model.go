@@ -930,7 +930,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case MessagesLoadedMsg:
 		if msg.ReadVersion < m.readVersion {
-			cmd := m.reloadReadMessagesCmd()
+			cmd := m.reloadReadMessagesCmd(msg.ReadReloadIDs...)
 			return m, cmd
 		}
 		m.initialLoading = false
@@ -951,7 +951,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.setStatus(msg.Err.Error(), true)
 				return m, m.clearStatusCmd()
 			}
-			collapsed := m.preserveCollapsedReadSelection(msg.ReadReload)
+			collapsed := m.preserveCollapsedReadSelection(msg.ReadReloadIDs)
 			currentID := int64(0)
 			if current := m.currentRowMessage(); current != nil {
 				currentID = current.ID
@@ -993,7 +993,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// background sync) doesn't yank the list back to the top mid-triage.
 			prevCursor := m.messageCursor
 			prevOffset := m.listOffset
-			collapsed := m.preserveCollapsedReadSelection(msg.ReadReload)
+			collapsed := m.preserveCollapsedReadSelection(msg.ReadReloadIDs)
 			var focusedID int64
 			if cur := m.currentRowMessage(); cur != nil && m.conversationView() == m.expansionView {
 				focusedID = cur.ID

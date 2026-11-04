@@ -248,8 +248,8 @@ closed; expanded selection follows the exact email ID. With explicit selection,
 
 Expansion currently shows messages already included in the folder or search
 results, not additional Sent or archived history. In Unread Only mode, read
-messages remain hidden even when a conversation is expanded; retaining that
-history is planned for a later milestone.
+messages remain hidden even when a conversation is expanded. A conversation
+with only one visible unread email has no chevron.
 
 ### Thunderbird / IMAP mail tags
 
@@ -1445,8 +1445,8 @@ triggers one fresh-connection source cleanup attempt without repeating COPY;
 if cleanup fails, TideMail reports the completed copy and unconfirmed removal.
 
 Message deletion updates its cached message, attachments, search index, and
-deletion marker in one transaction. Needs You dismiss/restore applies to every
-message in a thread together; failures leave the database unchanged. A failed
+deletion marker in one transaction. Needs You dismiss/restore targets the
+selected email; failures leave the database unchanged. A failed
 Ctrl+Z restore keeps undo available for retry after the write finishes.
 
 Removing an account also removes its cached search entries atomically with the

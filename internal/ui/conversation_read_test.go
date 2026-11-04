@@ -538,3 +538,45 @@ func TestConversationReadSnapshotBeforeCompletionKeepsCollapsed(t *testing.T) {
 	m = settle(t, next.(Model), reload)
 	assertConversationReadSelection(t, &m, ids[0], false)
 }
+
+func TestConversationReadReloadPreservesAdvancedTargetOnArrival(t *testing.T) {
+	m, entered, release, _ := conversationReadModel(t, []bool{false, false, false})
+	mailboxID := m.mailboxes[0].ID
+	insert := func(uid uint32, date int64) int64 {
+		t.Helper()
+		if err := m.db.UpsertMessage(db.Message{MailboxID: mailboxID, UID: uid, MessageID: fmt.Sprintf("<b-%d>", uid), InReplyTo: "<b>", Subject: "B", Date: time.Unix(date, 0)}); err != nil {
+			t.Fatal(err)
+		}
+		messages, err := m.db.ListMessages(mailboxID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, msg := range messages {
+			if msg.UID == uid {
+				return msg.ID
+			}
+		}
+		t.Fatal("inserted message missing")
+		return 0
+	}
+	b1 := insert(4, 50)
+	insert(5, 40)
+	m.messages, _ = m.db.ListMessages(mailboxID)
+	m.applyFilter()
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	m = next.(Model)
+	assertConversationReadSelection(t, &m, b1, false)
+	done := readRemoteResults(cmd)
+	awaitReadStore(t, entered)
+	release <- nil
+	next, reload := m.Update(receiveReadResult(t, done))
+	m = next.(Model)
+	assertConversationReadSelection(t, &m, b1, false)
+	// Arrive after completion schedules its SQL reload, before that reload runs.
+	b2 := insert(6, 500)
+	m = settle(t, m, reload)
+	assertConversationReadSelection(t, &m, b1, true)
+	if m.currentParentThread() != nil || m.contentMessageID != b1 {
+		t.Fatalf("arrival %d replaced the captured target %d or its preview", b2, b1)
+	}
+}

@@ -205,7 +205,7 @@ func (m *Model) ensureReadAnimation() tea.Cmd {
 }
 
 // Reload through the normal view-specific SQL ordering and ID-based selection.
-func (m *Model) reloadReadMessagesCmd() tea.Cmd {
+func (m *Model) reloadReadMessagesCmd(readIDs ...int64) tea.Cmd {
 	var cmd tea.Cmd
 	if m.searchActive() {
 		cmd = m.searchAllMessagesCmd(m.searchQuery)
@@ -218,7 +218,7 @@ func (m *Model) reloadReadMessagesCmd() tea.Cmd {
 	return func() tea.Msg {
 		msg := cmd()
 		if loaded, ok := msg.(MessagesLoadedMsg); ok {
-			loaded.ReadReload = true
+			loaded.ReadReloadIDs = readIDs
 			return loaded
 		}
 		return msg
@@ -242,7 +242,7 @@ func (m *Model) finishReadChanges(msg readRemoteCompletedMsg) tea.Cmd {
 	}
 	mailboxes := make(map[int64]bool)
 	currentID := int64(0)
-	collapsed := m.currentConversationCollapsed()
+	collapsed := m.preserveCollapsedReadSelection(msg.IDs)
 	if current := m.currentRowMessage(); current != nil {
 		currentID = current.ID
 	}
@@ -294,7 +294,7 @@ func (m *Model) finishReadChanges(msg readRemoteCompletedMsg) tea.Cmd {
 				}
 			}
 		}
-		cmds = append(cmds, m.reloadReadMessagesCmd())
+		cmds = append(cmds, m.reloadReadMessagesCmd(msg.IDs...))
 	}
 	if msg.Err != nil {
 		m.setStatus("mark read failed: "+msg.Err.Error(), true)

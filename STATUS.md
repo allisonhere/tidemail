@@ -15,8 +15,8 @@ Current release: **v1.7.0**.
   Collapsed `x` toggles the whole conversation; expanded rows toggle individually
   and show individual read state. Mark-read actions advance before reordering;
   reconciliation preserves the next target and collapsed state. Passive selection
-  follows database message identity. Read history in Unread Only and broader
-  conversation loading remain for later milestones.
+  follows database message identity. Unread Only displays only unread
+  messages; expansion stays within the current folder or search results.
 
 - **Interactive CLI**: `tidemail cli` command chooser, step-by-step compose/draft
   wizard with Ripple, attachment browser, review, durable sending and undo.

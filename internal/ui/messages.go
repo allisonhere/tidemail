@@ -323,7 +323,7 @@ func (m Model) hasSelection() bool {
 }
 
 func (m *Model) applyFilter() {
-	m.applyFilterPreservingCollapsed(m.preserveCollapsedReadSelection(false))
+	m.applyFilterPreservingCollapsed(m.preserveCollapsedReadSelection(nil))
 }
 
 func (m *Model) applyFilterPreservingCollapsed(collapsed bool) {

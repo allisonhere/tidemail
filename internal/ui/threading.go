@@ -148,12 +148,19 @@ func (m *Model) currentConversationCollapsed() bool {
 
 // A SQL snapshot can see a successful write before its completion event arrives.
 // Preserve the collapsed read selection during that pending window as well.
-func (m *Model) preserveCollapsedReadSelection(readReload bool) bool {
+func (m *Model) preserveCollapsedReadSelection(readIDs []int64) bool {
 	if !m.currentConversationCollapsed() {
 		return false
 	}
 	thread := m.currentParentThread()
-	return readReload || m.rowReadPending(thread.Representative, *thread)
+	for _, member := range thread.Messages {
+		for _, id := range readIDs {
+			if member.ID == id {
+				return true
+			}
+		}
+	}
+	return m.rowReadPending(thread.Representative, *thread)
 }
 
 // A collapsed selection follows its representative without revealing children.
@@ -185,7 +192,20 @@ func (m *Model) toggleCurrentConversation() bool {
 	if m.expandedMessages == nil {
 		m.expandedMessages = make(map[int64]bool)
 	}
-	for _, msg := range thread.Messages {
+	members := thread.Messages
+	if expanded && m.showUnreadOnly {
+		// Hidden cached members may still carry expansion markers. Clear only
+		// this conversation, without exposing read history in the visible rows.
+		for _, cached := range buildMessageThreads(m.messages) {
+			for _, member := range cached.Messages {
+				if member.ID == id {
+					members = cached.Messages
+					break
+				}
+			}
+		}
+	}
+	for _, msg := range members {
 		if expanded {
 			delete(m.expandedMessages, msg.ID)
 		} else {
@@ -201,6 +221,9 @@ func (m *Model) toggleCurrentConversation() bool {
 // Keep the existing cursor/offset model for every visible row.
 func (m *Model) keepMessageCursorVisible() {
 	count := m.activeMessageRowCount()
+	if m.selectedDraftsMailbox() {
+		count = len(m.drafts)
+	}
 	m.messageCursor = clamp(m.messageCursor, 0, max(0, count-1))
 	m.listOffset = clamp(m.listOffset, 0, max(0, count-1))
 	visible := max(1, m.articleRowsVisible())
