@@ -111,7 +111,10 @@ func newManagerChrome(width int, t Theme, plainUI bool) managerChrome {
 	if successFg == "" {
 		successFg = accent
 	}
-	successFg = accentReadableOn(greener(successFg), baseBg, 4.5)
+	if !isAlertGreen(successFg) {
+		successFg = greener(successFg)
+	}
+	successFg = accentReadableOn(successFg, baseBg, 4.5)
 	successFg = accentReadableOn(successFg, statusBg, 4.5)
 	cursor := t.Cursor
 	if cursor == "" {

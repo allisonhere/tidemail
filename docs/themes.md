@@ -32,9 +32,10 @@ A theme supplies the colors TideMail's interface is drawn with:
 | Border / focus border | Unfocused and focused pane borders (the accent) |
 | Selection | Selected rows (the accent, with a readable text color chosen on top) |
 | Surface | Status bar, dialogs, command palette, input fields |
-| Unread, success | Unread counts and badges, confirmations |
-| Warning | Starred-row tint and cautions |
-| Error | Error text |
+| Unread | Unread counts and badges |
+| Success | Confirmations and "OK" states (fixed alert green, see below) |
+| Warning | Starred-row tint and cautions (fixed alert yellow) |
+| Error | Error text and failures (fixed alert red) |
 | Link | Hyperlinks in messages |
 | Quote | Quoted text and its bars |
 | Match | Search matches |
@@ -42,15 +43,43 @@ A theme supplies the colors TideMail's interface is drawn with:
 | Cursor | The text cursor in compose |
 
 Where an upstream palette has no direct equivalent, the closest of its own
-colors is used: for example Rosé Pine has no green, so foam stands in for
-success; Oxocarbon has no yellow, so its pink is the warning color.
+colors is used.
+
+### Alert colors
+
+Success, warning and error don't come from the theme palette. TideMail uses
+the same three color pairs everywhere, so green always means OK, yellow always
+means caution and red always means a failure:
+
+| Alert | Fill | Text |
+|---|---|---|
+| Green (OK) | `#70C68E` | `#1A5E33` |
+| Yellow (warning) | `#FCD05F` | `#AA7B18` |
+| Red (error) | `#DD6A6A` | `#8C1A22` |
+
+Status bar pills use each pair exactly on every theme: the fill as the
+background and the text color on top. That covers the yellow undo pill for a
+pending delete, archive or move, the green confirmation pill when it finishes,
+and the red pill for an error. As the undo pill drains, the drained part swaps
+the two yellows (`#AA7B18` fill, `#FCD05F` text). When the action finishes, the
+yellow pill fades into the green or red one. The pairs are used as given, without
+contrast correction.
+
+Alert text drawn straight on the theme background, such as error lines, the
+Outbox badge and form messages, uses one color of the pair: the fill color on
+dark themes and the text color on light ones.
+
+For that alert text, the single-hue retro themes `vt100` and `vt52` keep their
+own colors, and `match-omarchy` follows the Omarchy desktop palette. Themes
+drawn without color (`vt52`) show pills as plain `[brackets]`. The theme picker's swatch
+and sample show these alert colors, not the upstream palette's own.
 
 ### Legibility
 
 Upstream palettes are designed for editor syntax highlighting, and many of
 their accent colors are under the 4.5:1 contrast of WCAG AA as text. The
 palette values are never edited. Instead, text roles (link, quote, success,
-warning, error, tag, unread) are lightness-adjusted at the point of use, keeping
+warning, error, tag, unread, including the fixed alert colors) are lightness-adjusted at the point of use, keeping
 hue and saturation, until they reach 4.5:1 on the theme background (3:1 for
 the cursor and search-match colors). Status bar text is adjusted the same way
 when needed; that applies to `tokyo-night-day`, `solarized-light` and

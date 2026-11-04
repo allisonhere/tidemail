@@ -49,6 +49,8 @@ var BuiltinThemes = func() []Theme {
 			themes[i] = VT100
 		case ThemeNameVT52:
 			themes[i] = VT52
+		default:
+			themes[i] = withAlertColors(t)
 		}
 	}
 	return themes

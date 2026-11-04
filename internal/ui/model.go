@@ -347,6 +347,12 @@ type Model struct {
 	statusErr bool
 	// statusPill draws statusMsg as a pill; setStatus clears it.
 	statusPill bool
+	// pillFade blends the status pill in from pillFadeFrom over pillFadeDuration
+	// after a delete, archive or move finishes; a zero pillFadeStart means no
+	// fade. setStatus cancels it.
+	pillFadeFrom       alertPill
+	pillFadeStart      time.Time
+	pillFadeGeneration uint64
 
 	// browserReopen is the message whose browser export blocked remote images;
 	// pressing the open-in-browser key on it again reopens with images loaded.
@@ -1511,6 +1517,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.accountManager.mode = amList
 		m.accountManager.statusMsg = "DELETED ACCOUNT"
 		return m, m.loadAccountsCmd()
+
+	case pillFadeTickMsg:
+		cmd := m.pillFadeTick(msg)
+		return m, cmd
 
 	case readAnimationTickMsg:
 		if !m.readAnimationRunning || msg.Generation != m.readAnimationGeneration {
@@ -4013,6 +4023,20 @@ func (m *Model) renderStatusBar() string {
 		parts = append(parts, m.statusBarContextHintStrip())
 		return style.Width(w).Render(m.statusLine(m.statusBarJoin(parts...), updateActionPart))
 	}
+	if working := m.destructiveWorkingPrompt(); working != "" {
+		// Past its undo window and waiting on the server: the undo pill refills
+		// to bright yellow, then fades into the result when it arrives.
+		style := m.styles.StatusBar
+		parts := []string{m.pillTextWith(working, alertPillYellow)}
+		if updateInfoPart != "" {
+			parts = append(parts, updateInfoPart)
+		}
+		if linkPart != "" {
+			parts = append(parts, linkPart)
+		}
+		parts = append(parts, m.statusBarContextHintStrip())
+		return style.Width(w).Render(m.statusLine(m.statusBarJoin(parts...), updateActionPart))
+	}
 
 	if m.statusMsg != "" {
 		style := m.styles.StatusBar
@@ -4020,7 +4044,10 @@ func (m *Model) renderStatusBar() string {
 			style = m.styles.StatusError
 		}
 		parts := []string{m.statusBarInlineText(style, m.statusMsg)}
-		if m.statusPill && !m.statusErr {
+		switch {
+		case m.statusErr && !m.styles.PlainUI:
+			parts[0] = m.pillTextWith(m.statusMsg, alertPillRed)
+		case m.statusPill && !m.statusErr:
 			parts[0] = m.statusPillText()
 		}
 		if updateInfoPart != "" && !m.statusMsgCoversUpdateState() {
@@ -4580,6 +4607,7 @@ func (m *Model) setStatus(msg string, isErr bool) {
 	m.statusMsg = msg
 	m.statusErr = isErr
 	m.statusPill = false
+	m.pillFadeStart = time.Time{}
 	// Push to log buffer (ring buffer, max 100 entries)
 	const maxLogEntries = 100
 	m.logBuffer = append(m.logBuffer, logEntry{Time: time.Now(), Message: msg, IsError: isErr})
@@ -4594,29 +4622,82 @@ func (m *Model) setStatusPill(msg string) {
 	m.statusPill = true
 }
 
-// statusPillText draws the status message as a pill tinted only slightly away
-// from the status bar, so it stands out without a jarring contrast. Plain
-// themes use brackets.
+// statusPillText draws the status message as a green pill, since it confirms a
+// finished delete, archive or move. Plain themes use brackets.
 func (m Model) statusPillText() string { return m.pillText(m.statusMsg) }
 
-// pillText draws text as a status bar pill; see statusPillText.
-func (m Model) pillText(text string) string {
+// pillText draws text as a green status bar pill; see statusPillText.
+func (m Model) pillText(text string) string { return m.pillTextWith(text, alertPillGreen) }
+
+// pillTextWith draws text as a status bar pill in the exact fill and text
+// colors of p. Plain themes use brackets.
+func (m Model) pillTextWith(text string, p alertPill) string {
 	style := m.styles.StatusBar.UnsetPadding()
 	if m.styles.PlainUI {
 		return style.Render("[" + text + "]")
 	}
 	barBg, _ := m.styles.StatusBar.GetBackground().(lipgloss.Color)
-	barFg, _ := m.styles.StatusBar.GetForeground().(lipgloss.Color)
-	bg := mixColors(barBg, barFg, 0.18)
-	fg := readableText(barFg, bg, 4.5)
+	p = m.fadedPill(p, time.Now())
 	chip := tagChip{text: text, filled: true, ends: config.TagEndsRound}
-	return renderChipsWith([]tagChip{chip}, func(string) tagColor { return tagColor{bg: bg, fg: fg} }, barBg, style)
+	return renderChipsWith([]tagChip{chip}, func(string) tagColor { return tagColor{bg: p.fill, fg: p.text} }, barBg, style)
 }
 
-// gaugePillText draws the undo prompt as a pill whose background drains like a
-// fuel gauge: the share of the undo window still left keeps a stronger tint, the
-// rest the usual pill tint. Plain themes have no background to fill, so they
-// show whole seconds left instead.
+const (
+	pillFadeDuration = 400 * time.Millisecond
+	pillFadeInterval = 40 * time.Millisecond
+)
+
+type pillFadeTickMsg struct{ Generation uint64 }
+
+// startPillFade blends the status pill in from from, redrawing every
+// pillFadeInterval until pillFadeDuration has passed. Call it after setStatus,
+// which cancels any fade.
+func (m *Model) startPillFade(from alertPill) tea.Cmd {
+	if m.styles.PlainUI {
+		return nil
+	}
+	m.pillFadeFrom = from
+	m.pillFadeStart = time.Now()
+	m.pillFadeGeneration++
+	gen := m.pillFadeGeneration
+	return tea.Tick(pillFadeInterval, func(time.Time) tea.Msg { return pillFadeTickMsg{Generation: gen} })
+}
+
+// pillFadeTick re-arms the fade until it is done; the tick itself only exists
+// to trigger a redraw.
+func (m *Model) pillFadeTick(msg pillFadeTickMsg) tea.Cmd {
+	if msg.Generation != m.pillFadeGeneration || m.pillFadeStart.IsZero() {
+		return nil
+	}
+	if time.Since(m.pillFadeStart) >= pillFadeDuration {
+		m.pillFadeStart = time.Time{}
+		return nil
+	}
+	gen := msg.Generation
+	return tea.Tick(pillFadeInterval, func(time.Time) tea.Msg { return pillFadeTickMsg{Generation: gen} })
+}
+
+// fadedPill returns p blended from the fade's starting pill by how far the
+// fade has run at now, or p itself when no fade is running.
+func (m Model) fadedPill(p alertPill, now time.Time) alertPill {
+	if m.pillFadeStart.IsZero() {
+		return p
+	}
+	t := float64(now.Sub(m.pillFadeStart)) / float64(pillFadeDuration)
+	if t >= 1 {
+		return p
+	}
+	t = max(0, t)
+	return alertPill{
+		fill: mixColors(m.pillFadeFrom.fill, p.fill, t),
+		text: mixColors(m.pillFadeFrom.text, p.text, t),
+	}
+}
+
+// gaugePillText draws the undo prompt as a yellow pill that drains like a fuel
+// gauge: the share of the undo window still left is the yellow fill with the
+// deep yellow text, and the drained share swaps the two. Plain themes have no
+// background to fill, so they show whole seconds left instead.
 func (m Model) gaugePillText(text string, remaining time.Duration) string {
 	if text == "" {
 		return ""
@@ -4627,47 +4708,26 @@ func (m Model) gaugePillText(text string, remaining time.Duration) string {
 		secs := int((remaining + time.Second - 1) / time.Second)
 		return style.Render(fmt.Sprintf("[%s %ds]", text, secs))
 	}
-	barBg, _ := m.styles.StatusBar.GetBackground().(lipgloss.Color)
-	barFg, _ := m.styles.StatusBar.GetForeground().(lipgloss.Color)
-	emptyBg := mixColors(barBg, barFg, 0.18)
-	fullBg := mixColors(barBg, barFg, 0.40)
-	fg := gaugeTextColor(barFg, fullBg, emptyBg)
+	full := alertPillYellow
+	drained := alertPill{fill: full.text, text: full.fill}
 	runes := []rune(text)
 	filled := int(math.Round(float64(remaining) / float64(destructiveUndoWindow) * float64(len(runes))))
-	leftBg, rightBg := emptyBg, emptyBg
+	left, right := drained, drained
 	if filled > 0 {
-		leftBg = fullBg
+		left = full
 	}
 	if filled == len(runes) {
-		rightBg = fullBg
+		right = full
 	}
-	body := func(s string, bg lipgloss.Color) string {
+	body := func(s string, p alertPill) string {
 		if s == "" {
 			return ""
 		}
-		return lipgloss.NewStyle().Background(bg).Foreground(fg).Bold(true).Render(s)
+		return lipgloss.NewStyle().Background(p.fill).Foreground(p.text).Bold(true).Render(s)
 	}
-	caps := style
-	return caps.Foreground(leftBg).Render(pillCapLeft) +
-		body(string(runes[:filled]), fullBg) + body(string(runes[filled:]), emptyBg) +
-		caps.Foreground(rightBg).Render(pillCapRight)
-}
-
-// gaugeTextColor picks the text color for a gauge pill: the status bar's own
-// foreground when it reads on both halves, else the plain black or white that
-// reads best on the worse of the two backgrounds.
-func gaugeTextColor(preferred, bgA, bgB lipgloss.Color) lipgloss.Color {
-	worst := func(c lipgloss.Color) float64 {
-		return math.Min(contrastRatio(c, bgA), contrastRatio(c, bgB))
-	}
-	if preferred != "" && worst(preferred) >= 4.5 {
-		return preferred
-	}
-	best := lipgloss.Color("#ffffff")
-	if worst("#000000") > worst(best) {
-		best = "#000000"
-	}
-	return best
+	return style.Foreground(left.fill).Render(pillCapLeft) +
+		body(string(runes[:filled]), full) + body(string(runes[filled:]), drained) +
+		style.Foreground(right.fill).Render(pillCapRight)
 }
 
 // configSave is a seam over config.Save so tests can simulate a failed write.

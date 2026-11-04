@@ -238,8 +238,12 @@ Ctrl+Z restore keeps undo available for retry after the write finishes.
 Delete feedback: messages remain visible for the six-second undo
 window and show pending feedback until server confirmation. Delete counts
 change on confirmation; archive and move retain their existing presentation.
-The status bar shows one undo pill for all three, drained like a fuel gauge by the
-read clock (250 ms redraws); plain themes show the seconds left.
+The status bar shows one yellow undo pill (`#FCD05F` fill, `#AA7B18` text) for all
+three, drained like a fuel gauge by the read clock (250 ms redraws); the drained part
+swaps the two yellows, and plain themes show the seconds left. While the server
+confirms, the pill reads `deleting ⠋` (`archiving`, `moving to …`) on the same clock,
+then fades over 400 ms (40 ms ticks, stopped when done) into the green confirmation
+(`#70C68E` / `#1A5E33`) or the red error pill (`#DD6A6A` / `#8C1A22`).
 Mailbox/account mark-all-read (server-side) reserves its targets and rejects conflicting
 pending operations. Delete completions reconcile unread counts from the cache,
 keep the highlighted message visible, and suppress remote successes whose local

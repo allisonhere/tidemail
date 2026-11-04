@@ -285,6 +285,8 @@ func executeDestructiveRemote(kind destructiveActionKind, database *db.DB, sessi
 }
 
 func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.Cmd {
+	// The working pill is on screen unless another action's undo pill is.
+	workingShown := m.latestUndoableDestructive() == nil
 	action, ok := m.removeDestructiveAction(result.ID)
 	if !ok {
 		return nil
@@ -358,6 +360,10 @@ func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.C
 	default:
 		m.setStatusPill(verb)
 	}
+	if workingShown && (m.statusPill || m.statusErr) {
+		// Fade the yellow working pill into the green or red result.
+		return tea.Batch(m.clearStatusCmd(), m.startPillFade(alertPillYellow))
+	}
 	return m.clearStatusCmd()
 }
 
@@ -414,8 +420,44 @@ func (m Model) destructiveUndoPrompt() string {
 	if action == nil {
 		return ""
 	}
+	return destructiveVerb(*action, false) + " · ctrl+z undo"
+}
+
+// committingDestructive returns the latest action whose undo window has passed
+// and is now waiting on the server, or nil.
+func (m Model) committingDestructive() *pendingDestructiveAction {
+	for i := len(m.pendingDestructiveActions) - 1; i >= 0; i-- {
+		if m.pendingDestructiveActions[i].Committing {
+			return &m.pendingDestructiveActions[i]
+		}
+	}
+	return nil
+}
+
+// destructiveWorkingPrompt is the status pill shown while an action waits on
+// the server, after its undo window: "deleting ⠋", "moving to Work ⠋". Plain
+// themes get an ellipsis instead of the spinner.
+func (m Model) destructiveWorkingPrompt() string {
+	action := m.committingDestructive()
+	if action == nil {
+		return ""
+	}
+	verb := destructiveVerb(*action, true)
+	if m.styles.PlainUI {
+		return verb + "…"
+	}
+	return verb + " " + readAnimationFrames[m.readAnimationFrame%len(readAnimationFrames)]
+}
+
+// destructiveVerb describes an action for the status bar, as it waits out its
+// undo window ("delete pending", "moved 2 to Work") or, when working, while the
+// server confirms it ("deleting", "moving 2 to Work").
+func destructiveVerb(action pendingDestructiveAction, working bool) string {
 	verb := destructivePastTense(action.Kind)
-	if action.Kind == destructiveDelete {
+	switch {
+	case working:
+		verb = destructivePresentTense(action.Kind)
+	case action.Kind == destructiveDelete:
 		verb = "delete pending"
 	}
 	if action.Kind == destructiveMove && len(action.Entries) > 0 {
@@ -424,14 +466,25 @@ func (m Model) destructiveUndoPrompt() string {
 			target = action.Entries[0].Target.Name
 		}
 		if len(action.Entries) > 1 {
-			verb = fmt.Sprintf("moved %d to %s", len(action.Entries), cleanDisplayName(target))
-		} else {
-			verb = "moved to " + cleanDisplayName(target)
+			return fmt.Sprintf("%s %d to %s", verb, len(action.Entries), cleanDisplayName(target))
 		}
-	} else if len(action.Entries) > 1 {
+		return verb + " to " + cleanDisplayName(target)
+	}
+	if len(action.Entries) > 1 {
 		verb += fmt.Sprintf(" %d", len(action.Entries))
 	}
-	return verb + " · ctrl+z undo"
+	return verb
+}
+
+func destructivePresentTense(kind destructiveActionKind) string {
+	switch kind {
+	case destructiveArchive:
+		return "archiving"
+	case destructiveDelete:
+		return "deleting"
+	default:
+		return "moving"
+	}
 }
 
 func destructivePastTense(kind destructiveActionKind) string {
@@ -523,15 +576,10 @@ func (m Model) HasPendingDestructiveActions() bool {
 	return len(m.pendingDestructiveActions) > 0
 }
 
-// Delete row feedback and the status bar's undo gauge share the read clock;
-// each deadline remains independent.
+// Delete row feedback, the status bar's undo gauge and the working pill's
+// spinner share the read clock; each deadline remains independent.
 func (m Model) deleteFeedbackActive() bool {
-	for _, action := range m.pendingDestructiveActions {
-		if action.Kind == destructiveDelete {
-			return true
-		}
-	}
-	return m.latestUndoableDestructive() != nil
+	return len(m.pendingDestructiveActions) > 0
 }
 
 func (m Model) messageActionPending(id int64) bool {

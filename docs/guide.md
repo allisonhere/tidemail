@@ -393,10 +393,14 @@ If a server-confirmed delete cannot be removed from the local cache, TideMail
 reports the cache error and keeps it hidden for this session. Later list reloads
 retry local cleanup without repeating the IMAP deletion.
 While a delete, archive, or move waits out its undo window, the status bar shows one pill,
-for example `delete pending · ctrl+z undo`. Its background drains like a fuel gauge, so the
-stronger-tinted part shrinks as the six seconds run out; plain themes use brackets and show
-the whole seconds left instead. When the action completes, the confirmation is a pill too,
-tinted only slightly away from the bar.
+for example `delete pending · ctrl+z undo`. It is yellow (`#FCD05F` with `#AA7B18` text) and
+drains like a fuel gauge: the drained part swaps the two yellows, so the bright part shrinks
+as the six seconds run out. Plain themes use brackets and show the whole seconds left
+instead. Once the undo window has passed, the pill refills to bright yellow and reads
+`deleting`, `archiving` or `moving to …` with a spinner while the server confirms. When it
+does, the pill fades over 0.4 seconds into the green confirmation (`#70C68E` with `#1A5E33`
+text), or into a red error pill (`#DD6A6A` with `#8C1A22` text) if the action failed. Other
+errors in the status bar show as the same red pill.
 
 ### Waiting on Them
 
@@ -1289,6 +1293,13 @@ word must match the family, the variant, the theme's name, or `light` / `dark`
 (`rose dawn`, `light`, `night`). Each row has a swatch of the theme's accent,
 success, warning, error and tag colors, and a sample below the list shows how
 selection, text, links, quotes and status colors look in the highlighted theme.
+
+Alert colors are the same in every built-in theme: green for OK, yellow for
+cautions and warnings, and red for failures. Status bar pills use a fixed fill and
+text color pair for each on every theme. Plain alert text uses the brighter color
+on dark themes and the deeper one on light themes; for that text, the retro
+`vt100` and `vt52` themes and `match-omarchy` keep their own. The values are listed in
+[themes.md](themes.md#alert-colors).
 
 Every built-in theme is checked against WCAG-style contrast minimums by
 automated tests. The full list of themes and variants, with where each palette

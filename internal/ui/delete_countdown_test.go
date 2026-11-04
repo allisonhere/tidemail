@@ -756,3 +756,95 @@ func TestUndoGaugeClockRunsForArchiveAndMove(t *testing.T) {
 		t.Fatal("clock still wanted after undo")
 	}
 }
+
+// Past the undo window, the pill stays up as a yellow "deleting" pill with a
+// spinner until the server confirms, so there is no blank gap.
+func TestCommittingDeleteShowsWorkingPill(t *testing.T) {
+	trueColor(t)
+	f := newUndoTestFixture(t, 2)
+	m := f.model
+	m.rebuildSidebar()
+	m.cursorToMailbox(f.source.ID)
+	m.scheduleDelete(f.messages[:1])
+	m.beginDestructiveCommit(m.pendingDestructiveActions[0].ID)
+	m.width = 120
+
+	row := m.renderStatusBar()
+	if !strings.Contains(ansi.Strip(row), "deleting ") || !strings.Contains(row, background(t, alertPillYellow.fill)) {
+		t.Fatalf("status bar = %q, want a yellow deleting pill", row)
+	}
+	if !m.deleteFeedbackActive() {
+		t.Fatal("the read clock must keep running to turn the spinner")
+	}
+	m.styles.PlainUI = true
+	if got := ansi.Strip(m.renderStatusBar()); !strings.Contains(got, "[deleting…]") {
+		t.Fatalf("plain status bar = %q", got)
+	}
+}
+
+// When the server confirms, the yellow pill fades into the green result, and
+// ends on the exact green pair.
+func TestFinishedDeleteFadesFromYellowToGreen(t *testing.T) {
+	trueColor(t)
+	f := newUndoTestFixture(t, 2)
+	m := f.model
+	m.rebuildSidebar()
+	m.cursorToMailbox(f.source.ID)
+	m.scheduleDelete(f.messages[:1])
+	id := m.pendingDestructiveActions[0].ID
+	m.beginDestructiveCommit(id)
+	action := m.pendingDestructiveActions[0]
+	if cmd := m.handleDestructiveResult(executeDestructiveBatches(action, f.database, func([]pendingDestructiveEntry) error { return nil })); cmd == nil {
+		t.Fatal("expected status clear and fade ticks")
+	}
+	if m.pillFadeStart.IsZero() || m.pillFadeFrom != alertPillYellow {
+		t.Fatalf("fade not started from yellow: %+v", m.pillFadeFrom)
+	}
+
+	start := m.pillFadeStart
+	mid := m.fadedPill(alertPillGreen, start.Add(pillFadeDuration/2))
+	if want := mixColors(alertPillYellow.fill, alertPillGreen.fill, 0.5); mid.fill != want {
+		t.Fatalf("midway fill = %s, want %s", mid.fill, want)
+	}
+	if end := m.fadedPill(alertPillGreen, start.Add(pillFadeDuration)); end != alertPillGreen {
+		t.Fatalf("end pill = %+v, want exact green", end)
+	}
+
+	// The tick re-arms mid-fade, stops once done, and ignores stale generations.
+	if m.pillFadeTick(pillFadeTickMsg{Generation: m.pillFadeGeneration}) == nil {
+		t.Fatal("fade stopped early")
+	}
+	if m.pillFadeTick(pillFadeTickMsg{Generation: m.pillFadeGeneration - 1}) != nil {
+		t.Fatal("stale fade tick re-armed")
+	}
+	m.pillFadeStart = time.Now().Add(-pillFadeDuration)
+	if m.pillFadeTick(pillFadeTickMsg{Generation: m.pillFadeGeneration}) != nil || !m.pillFadeStart.IsZero() {
+		t.Fatal("fade did not stop after its duration")
+	}
+
+	// An unrelated status never inherits a half-faded color.
+	m.pillFadeStart = time.Now()
+	m.setStatus("synced", false)
+	if !m.pillFadeStart.IsZero() {
+		t.Fatal("setStatus did not cancel the fade")
+	}
+}
+
+// A failed delete fades from yellow into the red error pill.
+func TestFailedDeleteFadesToRed(t *testing.T) {
+	f := newUndoTestFixture(t, 2)
+	m := f.model
+	m.rebuildSidebar()
+	m.cursorToMailbox(f.source.ID)
+	m.scheduleDelete(f.messages[:1])
+	m.beginDestructiveCommit(m.pendingDestructiveActions[0].ID)
+	action := m.pendingDestructiveActions[0]
+	m.handleDestructiveResult(executeDestructiveBatches(action, f.database, func([]pendingDestructiveEntry) error { return errors.New("offline") }))
+	if !m.statusErr || m.pillFadeStart.IsZero() || m.pillFadeFrom != alertPillYellow {
+		t.Fatalf("err=%v fadeFrom=%+v start=%v", m.statusErr, m.pillFadeFrom, m.pillFadeStart)
+	}
+	mid := m.fadedPill(alertPillRed, m.pillFadeStart.Add(pillFadeDuration/2))
+	if want := mixColors(alertPillYellow.fill, alertPillRed.fill, 0.5); mid.fill != want {
+		t.Fatalf("midway fill = %s, want %s", mid.fill, want)
+	}
+}

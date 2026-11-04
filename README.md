@@ -218,9 +218,11 @@ and destructive operations lock conflicting actions on the affected messages.
 Mailbox/account mark-all-read is blocked during conflicting operations: retry
 it when TideMail reports a pending operation. A confirmed delete with a local
 cache error stays hidden while later list reloads retry the cache cleanup.
-The pending state shows in the status bar as a pill that drains like a fuel
-gauge over the six-second undo window (plain themes show the seconds left), and
-the confirmation is a subtle pill.
+The pending state shows in the status bar as a yellow pill that drains like a
+fuel gauge over the six-second undo window (plain themes show the seconds left),
+then reads `deleting ⠋` while the server confirms and fades into a green
+confirmation pill, or a red one if it failed. Errors show as a red pill. See
+[alert colors](docs/themes.md#alert-colors) for the exact colors.
 
 ## Compose with the right account
 
