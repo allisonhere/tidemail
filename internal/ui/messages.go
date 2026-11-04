@@ -54,17 +54,16 @@ func (m *Model) renderMessagesPane() string {
 			msg2 := *m.rowMessage(i)
 			threadUnread := 0
 			var thread messageThread
-			gutter, tree := "", ""
+			chevron, tree := "", ""
 			if m.threadedMessagesEnabled() {
 				row := m.messageRows[i]
-				gutter = "  "
 				if row.MessageIndex == 0 {
 					thread = m.messageThreads[row.ThreadIndex]
 					threadUnread = thread.UnreadCount
 					if thread.Count > 1 {
-						gutter = "▸ "
+						chevron = "▸"
 						if m.threadExpanded(thread) {
-							gutter = "▾ "
+							chevron = "▾"
 						}
 					}
 				} else {
@@ -130,6 +129,10 @@ func (m *Model) renderMessagesPane() string {
 			subject := m.messageRowTitle(msg2)
 			style = applyMessageRowState(style, msgSelected, msg2.Starred, cursor, m.styles.Theme)
 			star := m.messageRowStar(msg2.Starred)
+			if chevron != "" {
+				// Use the existing spacer after the star, not a new status gutter.
+				star = strings.TrimSuffix(star, " ") + chevron
+			}
 			var sender string
 			senderW := 0
 			if m.cfg.Display.ShowSender {
@@ -141,7 +144,7 @@ func (m *Model) renderMessagesPane() string {
 					sender = waitingFor
 				}
 			}
-			rows = append(rows, m.renderMessageRow(style, gutter+dot, star, sender, m.cfg.Display.ShowSender, senderW, subject, tags, age, w, tree))
+			rows = append(rows, m.renderMessageRow(style, dot, star, sender, m.cfg.Display.ShowSender, senderW, subject, tags, age, w, tree))
 		}
 
 		if len(m.filteredMessages) == 0 {

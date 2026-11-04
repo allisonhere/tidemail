@@ -204,10 +204,14 @@ unsubscribe option when the message provides one.
 
 Press `g` to toggle conversation grouping (also in Settings → Display).
 Conversations start collapsed with `▸`; `Enter` on their parent expands or
-collapses them with `▾`, keeping focus in the message list. Several conversations
-can stay open. Children have muted `├─` / `└─` connectors in both the sender and
-subject columns, or just the subject when the sender column is hidden. There
-are no message counts or duplicate rows: the parent is a real email.
+collapses them with `▾`, keeping focus in the message list. The chevron uses the
+existing spacer immediately before the sender; the read/unread indicator and
+sender/subject columns stay fixed. Several conversations can stay open. Children
+have muted `├─` / `└─` connectors at the parent's sender and subject column starts,
+indenting only the child text. With the sender hidden, the chevron precedes the
+subject and only the subject has tree connectors. Selection highlights the entire
+row, including connectors and spacing. There are no message counts or duplicate
+rows: the parent is a real email.
 
 Moving through visible rows previews only that email. `Enter` on a child or
 single message opens the reader; `Right` / `l` or `Tab` opens it for any row,

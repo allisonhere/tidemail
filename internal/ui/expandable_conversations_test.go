@@ -529,7 +529,7 @@ func TestExpandableWideTextAndTaggedRowSizing(t *testing.T) {
 	for _, sender := range []bool{false, true} {
 		for _, width := range []int{3, 8, 14, 24, 40, 80} {
 			tags := []annotationTag{{kind: tagCategory, category: "project", color: "#ff0000"}, {kind: tagReply}}
-			row := m.renderMessageRow(m.styles.ArticleUnread, "  "+m.messageRowPrefix(false), m.messageRowStar(true), "李明 💬", sender, min(22, width/3), "進捗✨ "+strings.Repeat("界", 40), tags, "Nov 4", width, "├─ ")
+			row := m.renderMessageRow(m.styles.ArticleUnread, m.messageRowPrefix(false), m.messageRowStar(true), "李明 💬", sender, min(22, width/3), "進捗✨ "+strings.Repeat("界", 40), tags, "Nov 4", width, "├─ ")
 			lines := strings.Split(ansi.Strip(row), "\n")
 			if len(lines) != m.styles.ListItemLineStride() {
 				t.Fatalf("width=%d sender=%t wrapped into %d lines", width, sender, len(lines))

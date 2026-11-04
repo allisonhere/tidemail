@@ -541,24 +541,29 @@ func tagBudget(titleSpace int) int {
 // column, subject, tags, and the age column, styled with style. Rows without
 // tags are exactly the classic layout.
 func (m *Model) renderMessageRow(style lipgloss.Style, prefix, star, sender string, showSender bool, senderW int, title string, tags []annotationTag, age string, width int, tree string) string {
-	// Connectors share the row background but have their own muted foreground.
-	// Reserve their cells inside the existing sender column, keeping subjects aligned.
+	inline := style.UnsetWidth().UnsetMaxWidth().UnsetPadding()
 	if tree != "" {
-		connector := style.UnsetWidth().UnsetMaxWidth().UnsetPadding().
-			Foreground(messageMutedColor(m.styles.Theme)).Bold(false)
+		connector := inline.Foreground(messageMutedColor(m.styles.Theme)).Bold(false)
 		title = connector.Render(tree) + title
 		if showSender {
-			n := min(lipgloss.Width(tree), max(0, senderW))
-			// The first two prefix cells are the fixed disclosure gutter.
-			prefix = "  " + connector.Render(truncate(tree, n)) + strings.TrimPrefix(prefix, "  ")
-			senderW -= n
+			// Keep the sender column's origin and width; indent only its text.
+			sender = connector.Render(tree) + sender
 		}
+	}
+	renderLine := func(line string) string {
+		line = truncate(line, width)
+		if tree != "" {
+			// Connector resets must restore the active row style before subsequent
+			// text and spaces, just as embedded widget styles do in form fields.
+			line = fillLineBg(line, width, inline)
+		}
+		return style.Width(width).Render(line)
 	}
 	classic := func(age string) string {
 		if showSender {
-			return style.Width(width).Render(truncate(renderArticleRowWithSender(prefix, star, sender, title, age, width, senderW), width))
+			return renderLine(renderArticleRowWithSender(prefix, star, sender, title, age, width, senderW))
 		}
-		return style.Width(width).Render(truncate(renderArticleRow(prefix, star, title, age, width), width))
+		return renderLine(renderArticleRow(prefix, star, title, age, width))
 	}
 	if len(tags) == 0 {
 		return classic(age)
@@ -592,7 +597,6 @@ func (m *Model) renderMessageRow(style lipgloss.Style, prefix, star, sender stri
 
 	// Colored tags: draw the row in self-styled segments so each keeps the
 	// row background, then let the row style add its padding.
-	inline := style.UnsetPadding().UnsetWidth().UnsetMaxWidth()
 	chipsW := chipsWidth(chips)
 	titleW := max(0, titleSpace-chipsW-2)
 	left := prefix + star
@@ -608,7 +612,7 @@ func (m *Model) renderMessageRow(style lipgloss.Style, prefix, star, sender stri
 	if rest := width - lipgloss.Width(left) - chipsW; rest > 0 {
 		line += inline.Render(padRight(right, rest))
 	}
-	return style.Width(width).Render(truncate(line, width))
+	return renderLine(line)
 }
 
 func layoutMailTags(tags []annotationTag, style, ends string, icons bool, budget int) []tagChip {
