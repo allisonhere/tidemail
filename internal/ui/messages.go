@@ -51,15 +51,31 @@ func (m *Model) renderMessagesPane() string {
 		end := min(m.listOffset+m.articleRowsVisible(), rowCount)
 		mixedAccounts := m.selectedUnifiedInbox() || m.selectedNeedsYou() || m.selectedWaiting() || m.selectedSnoozed()
 		for i := m.listOffset; i < end; i++ {
-			msg2 := m.filteredMessages[i]
-			threadCount := 1
+			msg2 := *m.rowMessage(i)
 			threadUnread := 0
 			var thread messageThread
+			gutter, tree := "", ""
 			if m.threadedMessagesEnabled() {
-				thread = m.messageThreads[i]
-				msg2 = thread.Representative
-				threadCount = thread.Count
-				threadUnread = thread.UnreadCount
+				row := m.messageRows[i]
+				gutter = "  "
+				if row.MessageIndex == 0 {
+					thread = m.messageThreads[row.ThreadIndex]
+					threadUnread = thread.UnreadCount
+					if thread.Count > 1 {
+						gutter = "▸ "
+						if m.threadExpanded(thread) {
+							gutter = "▾ "
+						}
+					}
+				} else {
+					tree = "├─ "
+					if row.MessageIndex == len(m.messageThreads[row.ThreadIndex].Messages)-1 {
+						tree = "└─ "
+					}
+					if !msg2.Read {
+						threadUnread = 1
+					}
+				}
 			} else if !msg2.Read {
 				threadUnread = 1
 			}
@@ -112,9 +128,6 @@ func (m *Model) renderMessagesPane() string {
 				dot = m.pendingReadIndicator() + " "
 			}
 			subject := m.messageRowTitle(msg2)
-			if threadCount > 1 {
-				subject = fmt.Sprintf("%s (%d)", subject, threadCount)
-			}
 			style = applyMessageRowState(style, msgSelected, msg2.Starred, cursor, m.styles.Theme)
 			star := m.messageRowStar(msg2.Starred)
 			var sender string
@@ -128,7 +141,7 @@ func (m *Model) renderMessagesPane() string {
 					sender = waitingFor
 				}
 			}
-			rows = append(rows, m.renderMessageRow(style, dot, star, sender, m.cfg.Display.ShowSender, senderW, subject, tags, age, w))
+			rows = append(rows, m.renderMessageRow(style, gutter+dot, star, sender, m.cfg.Display.ShowSender, senderW, subject, tags, age, w, tree))
 		}
 
 		if len(m.filteredMessages) == 0 {
@@ -297,6 +310,16 @@ func (m Model) hasSelection() bool {
 }
 
 func (m *Model) applyFilter() {
+	var selectedID int64
+	if msg := m.currentRowMessage(); msg != nil {
+		selectedID = msg.ID
+	}
+	view := m.conversationView()
+	if view != m.expansionView {
+		m.expandedMessages = nil
+		m.expansionView = view
+		selectedID = 0
+	}
 	visible := make([]db.Message, 0, len(m.messages))
 	for _, msg := range m.messages {
 		if !m.messagePendingDestructive(msg.ID) {
@@ -320,6 +343,10 @@ func (m *Model) applyFilter() {
 	m.filteredMessages = filtered
 	m.sortFilteredStarred()
 	m.rebuildMessageThreads()
+	if idx := m.indexOfFilteredMessage(selectedID); idx >= 0 {
+		m.messageCursor = idx
+	}
+	m.keepMessageCursorVisible()
 }
 
 // sortFilteredStarred stably floats starred messages to the top when the

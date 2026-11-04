@@ -584,7 +584,7 @@ func TestAdjacentMarkersInBodyDoNotCrashRender(t *testing.T) {
 	}
 }
 
-func TestThreadConsentCoversAllMessagesAndRendersBoth(t *testing.T) {
+func TestConversationConsentCoversOnlyDisplayedMessage(t *testing.T) {
 	m, _ := graphicsModel(t)
 	m.cfg.Display.ThreadedConversations = true
 	u1 := "https://cdn.example.com/a.png"
@@ -593,9 +593,11 @@ func TestThreadConsentCoversAllMessagesAndRendersBoth(t *testing.T) {
 		{ID: 11, BodyHTML: `<img src="` + u1 + `" width="600" height="300" alt="A">`},
 		{ID: 12, BodyHTML: `<img src="` + u2 + `" width="600" height="300" alt="B">`},
 	}}
-	m.messageThreads = []messageThread{thread}
-	m.messageCursor = 0
-	m.contentMessageID = 11
+	m.messages = thread.Messages
+	m.filteredMessages = m.messages
+	m.rebuildMessageThreads()
+	m.messageCursor = m.indexOfFilteredMessage(11)
+	m.setViewportForCurrentRow()
 	m.focused = paneContent
 	m.contentLineCount = 5
 
@@ -604,8 +606,8 @@ func TestThreadConsentCoversAllMessagesAndRendersBoth(t *testing.T) {
 	}
 
 	_, _ = m.handleMainKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
-	if !m.images.isAllowed(11) || !m.images.isAllowed(12) {
-		t.Fatalf("i must grant consent to every message in the thread: 11=%v 12=%v",
+	if !m.images.isAllowed(11) || m.images.isAllowed(12) {
+		t.Fatalf("i must grant consent only to the displayed email: 11=%v 12=%v",
 			m.images.isAllowed(11), m.images.isAllowed(12))
 	}
 
@@ -613,8 +615,8 @@ func TestThreadConsentCoversAllMessagesAndRendersBoth(t *testing.T) {
 	m.images.recordRemote(u2, &remoteEntry{data: pngBytes(t, 240, 120), ctype: "image/png", done: true})
 	m.bodyCache.clear()
 	m.viewportCache.clear()
-	if _, imgs := m.renderThreadContentImages(thread); len(imgs) != 2 {
-		t.Fatalf("expected both thread images to render, got %d", len(imgs))
+	if _, imgs := m.renderThreadContentImages(thread); len(imgs) != 1 {
+		t.Fatalf("expected only the consented image to render, got %d", len(imgs))
 	}
 }
 

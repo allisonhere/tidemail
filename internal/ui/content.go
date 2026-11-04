@@ -610,12 +610,6 @@ func (m *Model) setViewportForCurrentRow() {
 		}
 		return
 	}
-	if m.threadedMessagesEnabled() {
-		if m.messageCursor >= 0 && m.messageCursor < len(m.messageThreads) {
-			m.setViewportThread(m.messageThreads[m.messageCursor])
-		}
-		return
-	}
 	if msg := m.currentRowMessage(); msg != nil {
 		m.setViewportMessage(*msg)
 	}

@@ -540,12 +540,25 @@ func tagBudget(titleSpace int) int {
 // renderMessageRow lays out one message row: prefix, star, optional sender
 // column, subject, tags, and the age column, styled with style. Rows without
 // tags are exactly the classic layout.
-func (m *Model) renderMessageRow(style lipgloss.Style, prefix, star, sender string, showSender bool, senderW int, title string, tags []annotationTag, age string, width int) string {
+func (m *Model) renderMessageRow(style lipgloss.Style, prefix, star, sender string, showSender bool, senderW int, title string, tags []annotationTag, age string, width int, tree string) string {
+	// Connectors share the row background but have their own muted foreground.
+	// Reserve their cells inside the existing sender column, keeping subjects aligned.
+	if tree != "" {
+		connector := style.UnsetWidth().UnsetMaxWidth().UnsetPadding().
+			Foreground(messageMutedColor(m.styles.Theme)).Bold(false)
+		title = connector.Render(tree) + title
+		if showSender {
+			n := min(lipgloss.Width(tree), max(0, senderW))
+			// The first two prefix cells are the fixed disclosure gutter.
+			prefix = "  " + connector.Render(truncate(tree, n)) + strings.TrimPrefix(prefix, "  ")
+			senderW -= n
+		}
+	}
 	classic := func(age string) string {
 		if showSender {
-			return style.Width(width).Render(renderArticleRowWithSender(prefix, star, sender, title, age, width, senderW))
+			return style.Width(width).Render(truncate(renderArticleRowWithSender(prefix, star, sender, title, age, width, senderW), width))
 		}
-		return style.Width(width).Render(renderArticleRow(prefix, star, title, age, width))
+		return style.Width(width).Render(truncate(renderArticleRow(prefix, star, title, age, width), width))
 	}
 	if len(tags) == 0 {
 		return classic(age)
@@ -595,7 +608,7 @@ func (m *Model) renderMessageRow(style lipgloss.Style, prefix, star, sender stri
 	if rest := width - lipgloss.Width(left) - chipsW; rest > 0 {
 		line += inline.Render(padRight(right, rest))
 	}
-	return style.Width(width).Render(line)
+	return style.Width(width).Render(truncate(line, width))
 }
 
 func layoutMailTags(tags []annotationTag, style, ends string, icons bool, budget int) []tagChip {

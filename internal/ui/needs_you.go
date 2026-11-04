@@ -21,8 +21,7 @@ type needsYouState struct {
 	messageIDs  map[int64]bool
 	// dismissed holds dismissed message IDs, for "Restore to Needs You".
 	dismissed map[int64]bool
-	// lastDismissed is the most recent dismissal (all messages of a threaded
-	// row), for ctrl+z.
+	// lastDismissed is the most recent dismissal, for ctrl+z.
 	lastDismissed    []int64
 	dismissalPending bool
 }
@@ -153,8 +152,7 @@ func setDismissedCmd(database *db.DB, ids []int64, dismissed bool) tea.Cmd {
 	}
 }
 
-// dismissCurrent dismisses the selected message (every message of a threaded
-// row) from Needs You.
+// dismissCurrent dismisses only the selected email from Needs You.
 func (m Model) dismissCurrent() (tea.Model, tea.Cmd) {
 	msgs := m.currentRowMessages()
 	if len(msgs) == 0 {

@@ -186,6 +186,9 @@ type Model struct {
 	messages         []db.Message
 	filteredMessages []db.Message
 	messageThreads   []messageThread
+	messageRows      []messageRow
+	expandedMessages map[int64]bool
+	expansionView    conversationView
 	drafts           []db.Draft
 	messageCursor    int
 	listOffset       int
@@ -990,7 +993,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			prevCursor := m.messageCursor
 			prevOffset := m.listOffset
 			var focusedID int64
-			if cur := m.currentRowMessage(); cur != nil {
+			if cur := m.currentRowMessage(); cur != nil && m.conversationView() == m.expansionView {
 				focusedID = cur.ID
 			}
 
@@ -1013,6 +1016,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.messageCursor = idx
 				}
 				m.pendingSelectMessageID = 0
+				rowCount = m.activeMessageRowCount() // revealing a child can add rows
 				m.messageCursor = clamp(m.messageCursor, 0, max(0, rowCount-1))
 				m.listOffset = clamp(m.listOffset, 0, max(0, rowCount-1))
 			case focusedID != 0 && m.indexOfFilteredMessage(focusedID) >= 0:
@@ -2215,6 +2219,9 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, m.syncMailboxCmd(selected.ID, true)
 			}
 		}
+		if m.focused == paneMessages && m.toggleCurrentConversation() {
+			return m, nil
+		}
 		if m.focused == paneMessages && (m.activeMessageRowCount() > 0 || (m.selectedDraftsMailbox() && len(m.drafts) > 0)) {
 			return m.focusPane(paneContent)
 		}
@@ -2279,6 +2286,9 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			var cmds []tea.Cmd
 			if !m.hasSelection() {
+				if thread := m.currentParentThread(); thread != nil && thread.UnreadCount > 0 {
+					msgs = thread.Messages
+				}
 				read := false
 				for _, msg2 := range msgs {
 					if !msg2.Read {
@@ -2579,8 +2589,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.setStatus("image display is off in config ([display] images = \"auto\")", true)
 				return m, m.clearStatusCmd()
 			}
-			// Consent covers every message the pane is showing, not just the
-			// thread representative, or a reply's images stay blocked.
+			// Consent covers only the selected email displayed in the reader.
 			for _, id := range m.imageConsentMessageIDs() {
 				m.images.allow(id)
 			}
@@ -2666,8 +2675,7 @@ func (m Model) focusPane(next pane) (tea.Model, tea.Cmd) {
 	}
 	// No re-render on a focus change. The body is identical in both focus
 	// states — the focus-dependent chrome (rails, focus line) is drawn from
-	// m.focused at render time — and re-rendering it made Tab pay for a full
-	// HTML render of every message in the thread.
+	// m.focused at render time — so Tab does not repeat HTML rendering.
 	if wasMessages && next == paneContent {
 		if msg := m.currentRowMessage(); msg != nil {
 			cmd := m.openedMessageCmd(*msg)
@@ -3793,6 +3801,9 @@ func (m Model) renderPaneHint(p pane) string {
 			m.keyHint(m.keys.Archive) + " archive  " + m.keyHint(m.keys.Move) + " move  " + m.keyHint(m.keys.Delete) + " delete  " +
 			m.keyHint(m.keys.Sync) + " sync  " +
 			m.keyHint(m.keys.Command) + " command"
+		if thread := m.currentParentThread(); thread != nil && thread.Count > 1 {
+			hint = m.keyHint(m.keys.Enter) + " expand/collapse  " + m.keyHint(m.keys.Right) + " read  " + hint
+		}
 		if m.pgpHintApplies() {
 			hint += "  " + m.keyHint(m.keys.PGPDecode) + " decrypt"
 		}
@@ -4323,6 +4334,8 @@ func (m *Model) clearMessages() {
 	m.messages = nil
 	m.filteredMessages = nil
 	m.messageThreads = nil
+	m.messageRows = nil
+	m.expandedMessages = nil
 	m.drafts = nil
 	m.messageCursor = 0
 	m.listOffset = 0
@@ -4347,6 +4360,8 @@ func (m Model) handleSearchCharacter(newValue string) (tea.Model, tea.Cmd) {
 	m.messages = nil
 	m.filteredMessages = nil
 	m.messageThreads = nil
+	m.messageRows = nil
+	m.expandedMessages = nil
 	m.clearSelection()
 	if m.searchQuery == "" {
 		return m, nil
@@ -4517,12 +4532,26 @@ func (m *Model) accountByID(accountID int64) *db.Account {
 
 // loadCollapseState restores sidebar collapse state from the database.
 
-func (m Model) indexOfFilteredMessage(messageID int64) int {
+// Resolve exact message identity. Reveal a surviving member if its parent changed.
+func (m *Model) indexOfFilteredMessage(messageID int64) int {
+	if messageID == 0 {
+		return -1
+	}
 	if m.threadedMessagesEnabled() {
-		for i, thread := range m.messageThreads {
+		for i, row := range m.messageRows {
+			if m.messageThreads[row.ThreadIndex].Messages[row.MessageIndex].ID == messageID {
+				return i
+			}
+		}
+		for _, thread := range m.messageThreads {
 			for _, msg := range thread.Messages {
 				if msg.ID == messageID {
-					return i
+					if m.expandedMessages == nil {
+						m.expandedMessages = make(map[int64]bool)
+					}
+					m.expandedMessages[messageID] = true
+					m.rebuildMessageRows()
+					return m.indexOfFilteredMessage(messageID)
 				}
 			}
 		}

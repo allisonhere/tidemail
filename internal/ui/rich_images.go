@@ -1119,23 +1119,15 @@ func (m Model) threadImageRenderKey(thread messageThread) string {
 	return b.String()
 }
 
-// currentViewMessages returns the messages the reading pane is showing: every
-// message in the current thread, or the single current message. Consent and
-// remote-URL discovery both go through here so they always cover the same set.
+// currentViewMessages returns only the email displayed in the reader.
 func (m Model) currentViewMessages() []db.Message {
-	if m.threadedMessagesEnabled() && m.messageCursor >= 0 && m.messageCursor < len(m.messageThreads) {
-		return m.messageThreads[m.messageCursor].Messages
-	}
-	if msg := m.currentRowMessage(); msg != nil {
+	if msg := m.currentContentMessage(); msg != nil {
 		return []db.Message{*msg}
 	}
 	return nil
 }
 
-// imageConsentMessageIDs is every message that `i` should grant remote-image
-// consent to. In a thread that is the whole conversation, so a reply with its
-// own remote images is not left blocked because only the representative was
-// authorised.
+// Image consent applies only to the displayed email.
 func (m Model) imageConsentMessageIDs() []int64 {
 	seen := map[int64]bool{}
 	var ids []int64

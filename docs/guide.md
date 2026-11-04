@@ -200,6 +200,41 @@ It also works from the message list and the command palette ("View message
 source"). `Ctrl+U` opens the mailing list's
 unsubscribe option when the message provides one.
 
+### Expandable conversations
+
+Press `g` to toggle conversation grouping (also in Settings → Display).
+Conversations start collapsed with `▸`; `Enter` on their parent expands or
+collapses them with `▾`, keeping focus in the message list. Several conversations
+can stay open. Children have muted `├─` / `└─` connectors in both the sender and
+subject columns, or just the subject when the sender column is hidden. There
+are no message counts or duplicate rows: the parent is a real email.
+
+Moving through visible rows previews only that email. `Enter` on a child or
+single message opens the reader; `Right` / `l` or `Tab` opens it for any row,
+including a parent. Reader `Enter` still opens the selected or focused link;
+`Esc` clears text selection first, then returns to the list. Double-click has
+the same behavior as `Enter` on each row.
+
+Parents follow the active message ordering: with Unread First, unread messages
+precede read messages, newest first within each group. Starred First retains
+its priority; Needs You, Waiting on Them, and Snoozed retain their view ordering.
+Selection follows the email's database identity across sorting and refreshes.
+If a selected parent becomes a child, its conversation opens to keep it visible.
+Expansion lasts through refreshes in the same view; changing folders, searches,
+or disabling grouping resets it.
+
+Delete, archive, move, star, tags, and `Space` selection affect only the selected
+email, including a parent. Removing a parent promotes the next-ranked surviving
+email. Explicit multi-selection still acts on the selected emails.
+The exception is `x`: a parent with unread members marks its conversation read;
+when every member is read, it marks only the parent unread. On a child, `x`
+toggles only that email. With explicit selection, it toggles each selected email.
+
+Expansion currently shows messages already included in the folder or search
+results, not additional Sent or archived history. In Unread Only mode, read
+messages remain hidden even when a conversation is expanded; retaining that
+history is planned for a later milestone.
+
 ### Thunderbird / IMAP mail tags
 
 TideMail recognizes message tags stored as IMAP keywords, including Thunderbird's
@@ -368,8 +403,8 @@ already stored: it never runs a plugin or goes online.
 
 The most pressing messages come first: urgent, then needing a reply, then
 important (a message with several of these ranks higher), newest first within
-each. With threaded conversations a whole thread appears if any of its
-messages qualifies, and its tags combine the thread's signals.
+each. With threaded conversations, qualifying messages are grouped and the
+parent's tags combine those messages' signals. Children show their own tags.
 
 If a message doesn't belong there, press `X` (or choose **Dismiss from Needs
 You** in the palette). The message and its tags are untouched; TideMail just
@@ -1112,6 +1147,8 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Ctrl+T` in the account form | Test the connection without saving |
 | `Ctrl+L` in the account form | Look up a Custom account's servers from its email domain (DNS SRV, MX, then HTTPS autoconfig) |
 | `s` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
+| `Enter` on a conversation parent | Expand/collapse; `Right` / `l` or `Tab` opens its email in the reader |
+| `Enter` on a child or single message | Focus the reader |
 | `Enter` on a folder | Fetch that folder now; on a folder with subfolders, collapse or expand it |
 | `n` / `r` / `d` in Accounts | New, rename, delete the selected folder (see Managing folders) |
 | `H` in Accounts | Hide or unhide the selected folder (local only) |
@@ -1312,8 +1349,9 @@ click-drag text selection and copy keep working untouched. Turn it on to use:
   selects that entry; other content clicks only position or focus the reader.
   Press `o` or `Enter` to open a deliberately selected entry.
   While message search is active, clicking its search row resumes editing the query.
-- **Double-click** a message row (or draft) to open it, the same as `Enter`; on a
-  sidebar row it does what `Enter` does there (expand/collapse, or sync the folder).
+- **Double-click** a conversation parent to expand/collapse it; a child, single
+  message, or draft opens. This matches `Enter`. On a sidebar row it also matches
+  `Enter` (expand/collapse, or sync the folder).
 - **Scroll wheel** over the sidebar or message list moves the selection three
   rows at a time; over the reading pane it scrolls three rows and clears link
   selection. With **Focus line** on, keyboard reading resumes in the visible text.
@@ -1365,13 +1403,14 @@ Messages retain their local read state, unread count, and sorting classification
 until the server confirms. Successful updates are saved locally and the current
 view reloads using its existing ordering, preserving the highlighted message by
 ID where it remains visible. This includes Unread First ordering and Unread Only
-filtering; conversation grouping and ordering remain unchanged. A pending
+filtering. A conversation's parent can change as its members change read state;
+the selected email stays selected while it remains in the view. A pending
 message's row number can shift as other completed messages move.
 
 The indicator takes the place of the row's unread or cursor marker until the
 server confirms, so the row does not shift; the highlight still marks the
-cursor row. A conversation shows
-pending while a visible member is pending. Failures clear pending and appear in
+cursor row. A parent shows pending while any member in the current result is
+pending; a child shows only its own pending state. Failures clear pending and appear in
 the existing status/log mechanism without changing that operation's local read
 state. Mixed bulk actions apply successful groups and leave failed groups
 unchanged. There is no automatic retry or rollback. Other clients and normal

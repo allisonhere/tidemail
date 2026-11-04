@@ -211,7 +211,7 @@ func TestTagsKeepSubjectReadable(t *testing.T) {
 	tags := m.annotationTags(msgs[0].ID)
 	style := m.styles.ArticleRead
 	for _, w := range []int{30, 40, 50, 60, 80, 120, 160} {
-		row := m.renderMessageRow(style, "  ", m.messageRowStar(false), "", false, 0, subject, tags, "Dec 31", w)
+		row := m.renderMessageRow(style, "  ", m.messageRowStar(false), "", false, 0, subject, tags, "Dec 31", w, "")
 		first := strings.Split(ansi.Strip(row), "\n")[0]
 		if got := lipgloss.Width(first); got != w {
 			t.Errorf("width %d: row is %d wide: %q", w, got, first)

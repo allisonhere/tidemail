@@ -18,26 +18,162 @@ func (m *Model) threadedMessagesEnabled() bool {
 	return m.cfg.Display.ThreadedConversations && !m.selectedDraftsMailbox()
 }
 
+// messageRow references one real message; index zero is the conversation parent.
+// The shared thread engine remains chronological; only its UI result is ranked.
+type messageRow struct {
+	ThreadIndex  int
+	MessageIndex int
+}
+
+// Expansion belongs to one folder or search result, never to persistent mail state.
+type conversationView struct {
+	kind      sidebarRowKind
+	mailboxID int64
+	query     string
+}
+
+func (m *Model) conversationView() conversationView {
+	if m.searchActive() {
+		return conversationView{query: m.searchQuery}
+	}
+	if m.sidebarCursor >= 0 && m.sidebarCursor < len(m.sidebarRows) {
+		row := m.sidebarRows[m.sidebarCursor]
+		return conversationView{kind: row.kind, mailboxID: row.mailboxID}
+	}
+	return conversationView{}
+}
+
 func (m *Model) rebuildMessageThreads() {
-	if m.threadedMessagesEnabled() {
-		threads := buildMessageThreads(m.filteredMessages)
-		if m.selectedNeedsYou() || m.selectedWaiting() || m.selectedSnoozed() {
-			// These views arrive in their own order (attention rank, longest
-			// wait, wake time); keep it instead of newest-first.
-			keepListOrder(threads, m.filteredMessages)
-		}
-		if m.starredFirst {
-			// buildMessageThreads orders by date; float threads containing a
-			// starred message to the top while preserving that date order among
-			// equals (mirrors sortFilteredStarred for the non-threaded list).
-			sort.SliceStable(threads, func(i, j int) bool {
-				return threadStarred(threads[i]) && !threadStarred(threads[j])
-			})
-		}
-		m.messageThreads = threads
+	if !m.threadedMessagesEnabled() {
+		m.messageThreads = nil
+		m.messageRows = nil
+		m.expandedMessages = nil
 		return
 	}
-	m.messageThreads = nil
+	threads := buildMessageThreads(m.filteredMessages)
+	virtual := m.selectedNeedsYou() || m.selectedWaiting() || m.selectedSnoozed()
+	var positions map[int64]int
+	if virtual {
+		positions = make(map[int64]int, len(m.filteredMessages))
+		for i, msg := range m.filteredMessages {
+			positions[msg.ID] = i
+		}
+	}
+	less := func(a, b db.Message) bool {
+		if virtual {
+			return positions[a.ID] < positions[b.ID]
+		}
+		if m.starredFirst && a.Starred != b.Starred {
+			return a.Starred
+		}
+		if m.cfg.Display.UnreadFirst && a.Read != b.Read {
+			return !a.Read
+		}
+		if !a.Date.Equal(b.Date) {
+			return a.Date.After(b.Date)
+		}
+		return a.ID > b.ID
+	}
+	for i := range threads {
+		t := &threads[i]
+		sort.SliceStable(t.Messages, func(i, j int) bool { return less(t.Messages[i], t.Messages[j]) })
+		t.Representative = t.Messages[0]
+	}
+	sort.SliceStable(threads, func(i, j int) bool {
+		if m.starredFirst && threadStarred(threads[i]) != threadStarred(threads[j]) {
+			return threadStarred(threads[i])
+		}
+		return less(threads[i].Representative, threads[j].Representative)
+	})
+	m.messageThreads = threads
+	m.rebuildMessageRows()
+}
+
+func (m *Model) threadExpanded(thread messageThread) bool {
+	for _, msg := range thread.Messages {
+		if m.expandedMessages[msg.ID] {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Model) rebuildMessageRows() {
+	m.messageRows = nil
+	for i, thread := range m.messageThreads {
+		m.messageRows = append(m.messageRows, messageRow{ThreadIndex: i})
+		if !m.threadExpanded(thread) {
+			continue
+		}
+		for j, msg := range thread.Messages {
+			m.expandedMessages[msg.ID] = true // include new arrivals
+			if j > 0 {
+				m.messageRows = append(m.messageRows, messageRow{ThreadIndex: i, MessageIndex: j})
+			}
+		}
+	}
+}
+
+func (m *Model) rowMessage(index int) *db.Message {
+	if m.threadedMessagesEnabled() {
+		if index < 0 || index >= len(m.messageRows) {
+			return nil
+		}
+		row := m.messageRows[index]
+		return &m.messageThreads[row.ThreadIndex].Messages[row.MessageIndex]
+	}
+	if index < 0 || index >= len(m.filteredMessages) {
+		return nil
+	}
+	return &m.filteredMessages[index]
+}
+
+// currentParentThread is deliberately separate from ordinary message actions.
+func (m *Model) currentParentThread() *messageThread {
+	if !m.threadedMessagesEnabled() || m.messageCursor < 0 || m.messageCursor >= len(m.messageRows) {
+		return nil
+	}
+	row := m.messageRows[m.messageCursor]
+	if row.MessageIndex != 0 {
+		return nil
+	}
+	return &m.messageThreads[row.ThreadIndex]
+}
+
+func (m *Model) toggleCurrentConversation() bool {
+	thread := m.currentParentThread()
+	if thread == nil || thread.Count < 2 {
+		return false
+	}
+	id := thread.Representative.ID
+	expanded := m.threadExpanded(*thread)
+	if m.expandedMessages == nil {
+		m.expandedMessages = make(map[int64]bool)
+	}
+	for _, msg := range thread.Messages {
+		if expanded {
+			delete(m.expandedMessages, msg.ID)
+		} else {
+			m.expandedMessages[msg.ID] = true
+		}
+	}
+	m.rebuildMessageRows()
+	m.messageCursor = m.indexOfFilteredMessage(id)
+	m.keepMessageCursorVisible()
+	return true
+}
+
+// Keep the existing cursor/offset model for every visible row.
+func (m *Model) keepMessageCursorVisible() {
+	count := m.activeMessageRowCount()
+	m.messageCursor = clamp(m.messageCursor, 0, max(0, count-1))
+	m.listOffset = clamp(m.listOffset, 0, max(0, count-1))
+	visible := max(1, m.articleRowsVisible())
+	if m.messageCursor < m.listOffset {
+		m.listOffset = m.messageCursor
+	} else if m.messageCursor >= m.listOffset+visible {
+		m.listOffset = m.messageCursor - visible + 1
+	}
 }
 
 // threadStarred reports whether any message in the thread is starred.
@@ -52,31 +188,17 @@ func threadStarred(t messageThread) bool {
 
 func (m *Model) activeMessageRowCount() int {
 	if m.threadedMessagesEnabled() {
-		return len(m.messageThreads)
+		return len(m.messageRows)
 	}
 	return len(m.filteredMessages)
 }
 
 func (m *Model) currentRowMessage() *db.Message {
-	if m.threadedMessagesEnabled() {
-		if m.messageCursor < 0 || m.messageCursor >= len(m.messageThreads) {
-			return nil
-		}
-		return &m.messageThreads[m.messageCursor].Representative
-	}
-	if m.messageCursor < 0 || m.messageCursor >= len(m.filteredMessages) {
-		return nil
-	}
-	return &m.filteredMessages[m.messageCursor]
+	return m.rowMessage(m.messageCursor)
 }
 
+// Ordinary actions always address real selected emails, including parents.
 func (m Model) currentRowMessages() []db.Message {
-	if m.threadedMessagesEnabled() {
-		if m.messageCursor < 0 || m.messageCursor >= len(m.messageThreads) {
-			return nil
-		}
-		return append([]db.Message(nil), m.messageThreads[m.messageCursor].Messages...)
-	}
 	if msg := m.currentRowMessage(); msg != nil {
 		return []db.Message{*msg}
 	}
@@ -117,34 +239,6 @@ func (m *Model) toggleCurrentRowSelection() {
 	}
 }
 
-func (m *Model) messageRowSelected(msg db.Message, thread messageThread) bool {
-	if m.threadedMessagesEnabled() && thread.Count > 0 {
-		for _, item := range thread.Messages {
-			if m.selectedMessages[item.ID] {
-				return true
-			}
-		}
-		return false
-	}
+func (m *Model) messageRowSelected(msg db.Message, _ messageThread) bool {
 	return m.selectedMessages[msg.ID]
-}
-
-// keepListOrder sorts threads by where their first message appears in list.
-func keepListOrder(threads []messageThread, list []db.Message) {
-	pos := make(map[int64]int, len(list))
-	for i, msg := range list {
-		if _, ok := pos[msg.ID]; !ok {
-			pos[msg.ID] = i
-		}
-	}
-	first := func(t messageThread) int {
-		best := len(list)
-		for _, msg := range t.Messages {
-			if p, ok := pos[msg.ID]; ok && p < best {
-				best = p
-			}
-		}
-		return best
-	}
-	sort.SliceStable(threads, func(i, j int) bool { return first(threads[i]) < first(threads[j]) })
 }
