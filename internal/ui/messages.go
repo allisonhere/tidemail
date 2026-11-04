@@ -60,6 +60,12 @@ func (m *Model) renderMessagesPane() string {
 				if row.MessageIndex == 0 {
 					thread = m.messageThreads[row.ThreadIndex]
 					threadUnread = thread.UnreadCount
+					if m.threadExpanded(thread) {
+						threadUnread = 0
+						if !msg2.Read {
+							threadUnread = 1
+						}
+					}
 					if thread.Count > 1 {
 						chevron = "▸"
 						if m.threadExpanded(thread) {
@@ -123,7 +129,11 @@ func (m *Model) renderMessagesPane() string {
 			}
 			// Pending feedback replaces the unread/cursor marker in place so the
 			// prefix keeps its two-cell width; the row highlight marks the cursor.
-			if m.rowReadPending(msg2, thread) {
+			pendingThread := thread
+			if m.threadExpanded(thread) {
+				pendingThread = messageThread{}
+			}
+			if m.rowReadPending(msg2, pendingThread) {
 				dot = m.pendingReadIndicator() + " "
 			}
 			subject := m.messageRowTitle(msg2)
@@ -313,6 +323,10 @@ func (m Model) hasSelection() bool {
 }
 
 func (m *Model) applyFilter() {
+	m.applyFilterPreservingCollapsed(m.preserveCollapsedReadSelection(false))
+}
+
+func (m *Model) applyFilterPreservingCollapsed(collapsed bool) {
 	var selectedID int64
 	if msg := m.currentRowMessage(); msg != nil {
 		selectedID = msg.ID
@@ -346,7 +360,7 @@ func (m *Model) applyFilter() {
 	m.filteredMessages = filtered
 	m.sortFilteredStarred()
 	m.rebuildMessageThreads()
-	if idx := m.indexOfFilteredMessage(selectedID); idx >= 0 {
+	if idx := m.indexOfMessageSelection(selectedID, collapsed); idx >= 0 {
 		m.messageCursor = idx
 	}
 	m.keepMessageCursorVisible()

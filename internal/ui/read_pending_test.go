@@ -250,7 +250,7 @@ func TestServerConfirmedReadBulkAndThread(t *testing.T) {
 			done := readRemoteResults(cmd)
 			stores, completions := 2, 1
 			if threaded {
-				stores, completions = 3, 3
+				stores, completions = 1, 1
 			}
 			for i := 0; i < stores; i++ {
 				awaitReadStore(t, entered)

@@ -140,6 +140,41 @@ func (m *Model) currentParentThread() *messageThread {
 	return &m.messageThreads[row.ThreadIndex]
 }
 
+// Collapsed rows select a conversation; expanded rows select an exact email.
+func (m *Model) currentConversationCollapsed() bool {
+	thread := m.currentParentThread()
+	return thread != nil && thread.Count > 1 && !m.threadExpanded(*thread)
+}
+
+// A SQL snapshot can see a successful write before its completion event arrives.
+// Preserve the collapsed read selection during that pending window as well.
+func (m *Model) preserveCollapsedReadSelection(readReload bool) bool {
+	if !m.currentConversationCollapsed() {
+		return false
+	}
+	thread := m.currentParentThread()
+	return readReload || m.rowReadPending(thread.Representative, *thread)
+}
+
+// A collapsed selection follows its representative without revealing children.
+// Explicit message requests still use indexOfFilteredMessage directly.
+func (m *Model) indexOfMessageSelection(messageID int64, collapsed bool) int {
+	if collapsed && m.threadedMessagesEnabled() {
+		for i, row := range m.messageRows {
+			if row.MessageIndex != 0 {
+				continue
+			}
+			for _, msg := range m.messageThreads[row.ThreadIndex].Messages {
+				if msg.ID == messageID {
+					return i
+				}
+			}
+		}
+		return -1
+	}
+	return m.indexOfFilteredMessage(messageID)
+}
+
 func (m *Model) toggleCurrentConversation() bool {
 	thread := m.currentParentThread()
 	if thread == nil || thread.Count < 2 {

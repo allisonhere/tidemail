@@ -230,9 +230,21 @@ or disabling grouping resets it.
 Delete, archive, move, star, tags, and `Space` selection affect only the selected
 email, including a parent. Removing a parent promotes the next-ranked surviving
 email. Explicit multi-selection still acts on the selected emails.
-The exception is `x`: a parent with unread members marks its conversation read;
-when every member is read, it marks only the parent unread. On a child, `x`
-toggles only that email. With explicit selection, it toggles each selected email.
+When collapsed, a conversation shows unread if any member is unread. Pressing
+`x` marks every member read if any is unread; if all are read, it marks every
+member unread. The conversation stays collapsed. When expanded, both parent and
+child rows show their individual read state, and `x` toggles only that email.
+Single-message rows keep their normal individual behavior.
+
+Marking an unread email read with `x` immediately advances to the next visible
+email in its conversation, or the following list row when no conversation member
+follows. Marking a collapsed conversation read advances to the next visible
+conversation. At the end of the list, selection stays in place. The next target
+is chosen before read-state sorting changes, and confirmation or reloads do not
+undo the move. Marking read mail unread does not advance. Without advancement,
+a collapsed read action follows its conversation's new parent while keeping it
+closed; expanded selection follows the exact email ID. With explicit selection,
+`x` toggles each selected email individually without advancing.
 
 Expansion currently shows messages already included in the folder or search
 results, not additional Sent or archived history. In Unread Only mode, read
@@ -1167,7 +1179,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `e` | Correct classification and manage tags for the current message |
 | `Space` in Category | Toggle the selected server tag, preserving other assignments |
 | `e` / `c` / `r` in Tag names and colors | Rename a discovered tag locally, choose its color, or use the theme color |
-| `x` | Toggle selected message(s) read/unread |
+| `x` | Collapsed: toggle conversation; expanded/single: toggle email. Mark-read advances; explicit selections toggle individually without advancing |
 | `*` | Toggle star (IMAP `\Flagged`) on selected message(s); syncs to the server |
 | `a` | Archive selected message |
 | `d` | Delete selected message |
@@ -1399,22 +1411,26 @@ white dotted border only while Support is open.
 
 Read/unread requests show an animated Braille indicator (four frames per
 second; `~` in plain or icon-disabled display) and lock the affected messages
-against further read/unread changes. Single-message unread-to-read actions
-advance the cursor immediately using the existing navigation rules. Other
+against further read/unread changes. Unread-to-read `x` actions advance the
+cursor immediately to the next visible email or collapsed conversation. Other
 messages remain available while the server operation is pending.
 
 Messages retain their local read state, unread count, and sorting classification
 until the server confirms. Successful updates are saved locally and the current
 view reloads using its existing ordering, preserving the highlighted message by
 ID where it remains visible. This includes Unread First ordering and Unread Only
-filtering. A conversation's parent can change as its members change read state;
-the selected email stays selected while it remains in the view. A pending
-message's row number can shift as other completed messages move.
+filtering. A conversation's parent can change as its members change read state.
+Read reconciliation keeps collapsed selections on their conversation without
+opening it; expanded selections retain their exact email ID. Intentional `x`
+advancement retains its next target through that reconciliation. Passive refreshes
+continue to preserve message identity. A pending message's row number can shift
+as other completed messages move.
 
 The indicator takes the place of the row's unread or cursor marker until the
 server confirms, so the row does not shift; the highlight still marks the
-cursor row. A parent shows pending while any member in the current result is
-pending; a child shows only its own pending state. Failures clear pending and appear in
+cursor row. A collapsed parent shows pending while any member in the current
+result is pending, and refuses another conversation toggle until those operations
+finish. Expanded rows show only their own pending state. Failures clear pending and appear in
 the existing status/log mechanism without changing that operation's local read
 state. Mixed bulk actions apply successful groups and leave failed groups
 unchanged. There is no automatic retry or rollback. Other clients and normal

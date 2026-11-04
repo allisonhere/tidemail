@@ -97,7 +97,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{"auto", "moving down past the last message loads older mail from the server"},
 				{keys.Space.Help().Key, "select message and advance"},
 				{keys.SelectAll.Help().Key, "select all messages in current view"},
-				{keys.MarkRead.Help().Key, "parent: unread members → conversation read; all read → parent unread; child: toggle only that email; explicit selections toggle individually"},
+				{keys.MarkRead.Help().Key, "collapsed: toggle all members; expanded/single: toggle this email; marking read advances; marking unread stays; explicit selections toggle individually without advancing"},
 				{keys.ToggleStar.Help().Key, "toggle star on selected message(s)"},
 				{keys.Archive.Help().Key, "archive selected message(s)"},
 				{keys.Move.Help().Key, "move selected message(s) to folder/label"},

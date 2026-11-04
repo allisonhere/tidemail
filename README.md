@@ -318,11 +318,14 @@ the parent, and children have muted tree connectors in the sender and subject
 columns. `Enter` expands/collapses a parent; on a child or single email it opens
 the reader. `Right` / `l` or `Tab` opens any selected email, including a parent.
 Each row previews only its own email. Delete, archive, move, star and `Space`
-affect only that email; explicit multi-selection remains available. Parent `x`
-marks the conversation read if any member is unread, otherwise only the parent
-unread; child `x` toggles that email. Expansion survives same-view refreshes;
-selection follows message identity. Unread Only still hides read history in this
-first milestone. See [Expandable conversations](docs/guide.md#expandable-conversations).
+affect only that email; explicit multi-selection remains available. Collapsed
+conversations show aggregate unread state; `x` marks all members read if any is
+unread, otherwise all unread. Expanded parents and children show and toggle only
+their own read state. Marking unread mail read advances to the next visible row;
+marking it unread does not. Confirmation and reloads retain that next target,
+while collapsed read actions keep their conversation closed. Explicit selections
+toggle individually without advancement. Expansion survives same-view refreshes;
+passive selection follows message identity. Unread Only still hides read history. See [Expandable conversations](docs/guide.md#expandable-conversations).
 
 With **Focus line** on, Up/Down moves the reading highlight. With it off,
 Up/Down scrolls one row. At the bottom, another Down selects the first LINKS
@@ -428,7 +431,7 @@ shows the `message_raw` and `message_compose` permissions.
 | `r` / `f` | Reply or forward from the reading pane |
 | `Space` | Select a message for a bulk action |
 | `a` / `m` / `d` | Archive, move, or delete |
-| `x` | Toggle read state for selected messages |
+| `x` | Collapsed: toggle conversation; expanded/single: toggle email. Mark-read advances; explicit selections toggle individually without advancing |
 | `*` | Toggle the IMAP star |
 | `/` | Search messages |
 | `Ctrl+Z` | Cancel a send still in its delay, or undo a queued message action |

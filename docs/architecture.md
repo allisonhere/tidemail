@@ -206,9 +206,14 @@ tracks member database IDs rather than unstable union-find root keys. Expansion
 resets when the folder/search context changes or grouping is disabled.
 
 `currentRowMessage` resolves visible rows; `currentRowMessages` and ordinary
-unselected action targets return only that email. Parent `x` explicitly obtains
-conversation members through `currentParentThread`. Selection restoration reveals
-a surviving hidden member when parent changes require it. The reader always uses
+unselected action targets return only that email. Collapsed `x` explicitly obtains
+conversation members through `currentParentThread` and submits one mailbox-batched
+`acceptReadChanges` request; expanded `x` toggles only its email. Mark-read captures
+the next visible message ID before any reordering. Read reconciliation uses
+`indexOfMessageSelection` to preserve collapsed conversation selection without
+revealing children; expanded selection stays ID-based. `MessagesLoadedMsg.ReadReload`
+carries this read-specific selection policy through the asynchronous SQL reload.
+Passive selection restoration still reveals a surviving hidden member when needed. The reader always uses
 `setViewportMessage`; expansion does not rebuild the selected message's reader or
 clear body/viewport caches. Unread Only remains message-level in milestone 1.
 

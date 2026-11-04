@@ -12,9 +12,11 @@ Current release: **v1.7.0**.
   parents, independent session expansion, muted sender/subject tree connectors,
   individual-email previews, and existing keyboard/mouse navigation. Ordinary
   actions target one email even on parents; explicit selections stay separate.
-  Parent `x` retains its special conversation-read behavior. Selection follows
-  database message identity across refreshes and parent changes. Read history
-  in Unread Only and broader conversation loading remain for later milestones.
+  Collapsed `x` toggles the whole conversation; expanded rows toggle individually
+  and show individual read state. Mark-read actions advance before reordering;
+  reconciliation preserves the next target and collapsed state. Passive selection
+  follows database message identity. Read history in Unread Only and broader
+  conversation loading remain for later milestones.
 
 - **Interactive CLI**: `tidemail cli` command chooser, step-by-step compose/draft
   wizard with Ripple, attachment browser, review, durable sending and undo.

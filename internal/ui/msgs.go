@@ -39,6 +39,7 @@ type AccountsLoadedMsg struct {
 }
 
 type MessagesLoadedMsg struct {
+	ReadReload     bool   // read reconciliation retains collapsed conversation selection
 	ReadVersion    uint64 // read confirmations invalidate older snapshots
 	MailTagVersion uint64 // rejects searches captured before a tag edit or mapping change
 	MailboxID      int64

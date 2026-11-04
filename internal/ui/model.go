@@ -951,6 +951,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.setStatus(msg.Err.Error(), true)
 				return m, m.clearStatusCmd()
 			}
+			collapsed := m.preserveCollapsedReadSelection(msg.ReadReload)
 			currentID := int64(0)
 			if current := m.currentRowMessage(); current != nil {
 				currentID = current.ID
@@ -960,8 +961,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshMailTagTarget(msg.Messages)
 			m.plugins.annotations = msg.Annotations
 			m.plugins.overrides = msg.Overrides
-			m.applyFilter()
-			if idx := m.indexOfFilteredMessage(currentID); idx >= 0 {
+			m.applyFilterPreservingCollapsed(collapsed)
+			if idx := m.indexOfMessageSelection(currentID, collapsed); idx >= 0 {
 				m.messageCursor = idx
 			} else {
 				m.messageCursor = clamp(m.messageCursor, 0, max(0, m.activeMessageRowCount()-1))
@@ -992,6 +993,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// background sync) doesn't yank the list back to the top mid-triage.
 			prevCursor := m.messageCursor
 			prevOffset := m.listOffset
+			collapsed := m.preserveCollapsedReadSelection(msg.ReadReload)
 			var focusedID int64
 			if cur := m.currentRowMessage(); cur != nil && m.conversationView() == m.expansionView {
 				focusedID = cur.ID
@@ -1006,7 +1008,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Rows can leave a virtual view as their state changes.
 				m.pruneSelection()
 			}
-			m.applyFilter()
+			m.applyFilterPreservingCollapsed(collapsed)
 
 			rowCount := m.activeMessageRowCount()
 			switch {
@@ -1019,10 +1021,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				rowCount = m.activeMessageRowCount() // revealing a child can add rows
 				m.messageCursor = clamp(m.messageCursor, 0, max(0, rowCount-1))
 				m.listOffset = clamp(m.listOffset, 0, max(0, rowCount-1))
-			case focusedID != 0 && m.indexOfFilteredMessage(focusedID) >= 0:
+			case focusedID != 0 && m.indexOfMessageSelection(focusedID, collapsed) >= 0:
 				// The focused row survived: keep it on the same screen line by
 				// shifting the scroll offset with it.
-				idx := m.indexOfFilteredMessage(focusedID)
+				idx := m.indexOfMessageSelection(focusedID, collapsed)
 				shifted := prevOffset + (idx - prevCursor)
 				if prevOffset == 0 {
 					// Already at the top: mail that arrived above the focused
@@ -2284,27 +2286,21 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if len(msgs) == 0 {
 				return m, nil
 			}
-			var cmds []tea.Cmd
-			if !m.hasSelection() {
-				if thread := m.currentParentThread(); thread != nil && thread.UnreadCount > 0 {
-					msgs = thread.Messages
-				}
-				read := false
-				for _, msg2 := range msgs {
-					if !msg2.Read {
-						read = true
-						break
-					}
-				}
-				for i, msg2 := range msgs {
-					advance := !msg2.Read && read && len(msgs) == 1 && i == 0
-					cmds = append(cmds, m.setMessageReadCmd(msg2, read, advance))
-				}
-				return m, tea.Batch(cmds...)
+			if m.hasSelection() {
+				cmd := m.setSelectedMessagesReadCmd(msgs)
+				m.clearSelection()
+				return m, cmd
 			}
-			cmds = append(cmds, m.setSelectedMessagesReadCmd(msgs))
-			m.clearSelection()
-			return m, tea.Batch(cmds...)
+			thread := m.currentParentThread()
+			if m.currentConversationCollapsed() {
+				if m.rowReadPending(thread.Representative, *thread) {
+					return m, nil
+				}
+				read := thread.UnreadCount > 0
+				return m, m.acceptReadChanges(thread.Messages, &read, read)
+			}
+			msg2 := msgs[0]
+			return m, m.setMessageReadCmd(msg2, !msg2.Read, !msg2.Read)
 		}
 		return m, nil
 

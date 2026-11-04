@@ -394,7 +394,16 @@ func TestExpandableReadActionScope(t *testing.T) {
 						t.Fatal("parent unread target")
 					}
 				}
-			case "parent-read", "child":
+			case "parent-read":
+				if len(m.pendingReads) != 3 {
+					t.Fatal("collapsed read parent did not toggle all members unread")
+				}
+				for _, pending := range m.pendingReads {
+					if pending.Read {
+						t.Fatal("collapsed read target")
+					}
+				}
+			case "child":
 				if len(m.pendingReads) != 1 {
 					t.Fatal("single toggle targeted siblings")
 				}
