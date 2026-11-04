@@ -692,3 +692,21 @@ func TestDeleteSuccessStatusIsPill(t *testing.T) {
 		t.Fatal("pill flag survived a new status")
 	}
 }
+
+func TestPendingDeleteAndUndoShareOnePill(t *testing.T) {
+	f := newUndoTestFixture(t, 2)
+	m := f.model
+	m.rebuildSidebar()
+	m.cursorToMailbox(f.source.ID)
+	m.scheduleDelete(f.messages[:1])
+	m.width = 120
+	row := ansi.Strip(m.renderStatusBar())
+	want := pillCapLeft + "delete pending · ctrl+z undo" + pillCapRight
+	if !strings.Contains(row, want) {
+		t.Fatalf("status bar = %q, want one pill %q", row, want)
+	}
+	m.styles.PlainUI = true
+	if row := ansi.Strip(m.renderStatusBar()); !strings.Contains(row, "[delete pending · ctrl+z undo]") {
+		t.Fatalf("plain status bar = %q", row)
+	}
+}

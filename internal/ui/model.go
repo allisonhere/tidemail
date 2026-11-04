@@ -4002,7 +4002,7 @@ func (m *Model) renderStatusBar() string {
 	}
 	if prompt := m.destructiveUndoPrompt(); prompt != "" {
 		style := m.styles.StatusBar
-		parts := []string{m.statusBarInlineText(style, prompt)}
+		parts := []string{m.pillText(prompt)}
 		if updateInfoPart != "" {
 			parts = append(parts, updateInfoPart)
 		}
@@ -4596,16 +4596,19 @@ func (m *Model) setStatusPill(msg string) {
 // statusPillText draws the status message as a pill tinted only slightly away
 // from the status bar, so it stands out without a jarring contrast. Plain
 // themes use brackets.
-func (m Model) statusPillText() string {
+func (m Model) statusPillText() string { return m.pillText(m.statusMsg) }
+
+// pillText draws text as a status bar pill; see statusPillText.
+func (m Model) pillText(text string) string {
 	style := m.styles.StatusBar.UnsetPadding()
 	if m.styles.PlainUI {
-		return style.Render("[" + m.statusMsg + "]")
+		return style.Render("[" + text + "]")
 	}
 	barBg, _ := m.styles.StatusBar.GetBackground().(lipgloss.Color)
 	barFg, _ := m.styles.StatusBar.GetForeground().(lipgloss.Color)
 	bg := mixColors(barBg, barFg, 0.18)
 	fg := readableText(barFg, bg, 4.5)
-	chip := tagChip{text: m.statusMsg, filled: true, ends: config.TagEndsRound}
+	chip := tagChip{text: text, filled: true, ends: config.TagEndsRound}
 	return renderChipsWith([]tagChip{chip}, func(string) tagColor { return tagColor{bg: bg, fg: fg} }, barBg, style)
 }
 
