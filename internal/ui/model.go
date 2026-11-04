@@ -4013,7 +4013,7 @@ func (m *Model) renderStatusBar() string {
 	}
 	if prompt := m.destructiveUndoPrompt(); prompt != "" {
 		style := m.styles.StatusBar
-		parts := []string{m.gaugePillText(prompt, m.latestUndoableDestructive().Deadline.Sub(time.Now()))}
+		parts := []string{m.gaugePillText(prompt, time.Until(m.latestUndoableDestructive().Deadline))}
 		if updateInfoPart != "" {
 			parts = append(parts, updateInfoPart)
 		}
