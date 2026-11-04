@@ -11,6 +11,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/db"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 )
 
@@ -660,5 +661,34 @@ func TestDeleteSyntheticThreadedPartialDeletion(t *testing.T) {
 	if m.currentRowMessage().ID != root.ID || m.messageCursor != 1 ||
 		m.rowDeleteIndicator(root, m.messageThreads[m.messageCursor], time.Now()) != "" {
 		t.Fatal("thread failure moved selection or retained feedback")
+	}
+}
+
+func TestDeleteSuccessStatusIsPill(t *testing.T) {
+	f := newUndoTestFixture(t, 2)
+	m := f.model
+	m.rebuildSidebar()
+	m.cursorToMailbox(f.source.ID)
+	m.scheduleDelete(f.messages[:1])
+	action := m.pendingDestructiveActions[0]
+	m.handleDestructiveResult(executeDestructiveBatches(action, f.database, func([]pendingDestructiveEntry) error { return nil }))
+	if m.statusMsg != "deleted" || m.statusErr || !m.statusPill {
+		t.Fatalf("status = %q err=%v pill=%v", m.statusMsg, m.statusErr, m.statusPill)
+	}
+
+	m.styles.PlainUI = false
+	pill := m.statusPillText()
+	if !strings.Contains(pill, "deleted") || !strings.Contains(pill, pillCapLeft) {
+		t.Fatalf("pill = %q", pill)
+	}
+	m.styles.PlainUI = true
+	if got := ansi.Strip(m.statusPillText()); got != "[deleted]" {
+		t.Fatalf("plain pill = %q", got)
+	}
+
+	// Any later status goes back to plain text.
+	m.setStatus("synced", false)
+	if m.statusPill {
+		t.Fatal("pill flag survived a new status")
 	}
 }

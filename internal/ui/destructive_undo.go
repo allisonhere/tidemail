@@ -354,9 +354,9 @@ func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.C
 	case len(result.Failed) > 0:
 		m.setStatus(fmt.Sprintf("%s %d; %d failed and restored: %v", verb, len(result.Succeeded), len(result.Failed), result.Err), true)
 	case len(result.Succeeded) > 1:
-		m.setStatus(fmt.Sprintf("%s %d", verb, len(result.Succeeded)), false)
+		m.setStatusPill(fmt.Sprintf("%s %d", verb, len(result.Succeeded)))
 	default:
-		m.setStatus(verb, false)
+		m.setStatusPill(verb)
 	}
 	return m.clearStatusCmd()
 }

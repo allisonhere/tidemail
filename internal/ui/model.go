@@ -344,6 +344,8 @@ type Model struct {
 
 	statusMsg string
 	statusErr bool
+	// statusPill draws statusMsg as a pill; setStatus clears it.
+	statusPill bool
 
 	// browserReopen is the message whose browser export blocked remote images;
 	// pressing the open-in-browser key on it again reopens with images loaded.
@@ -696,6 +698,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.compose.clearRoutedStatus()
 		m.statusMsg = ""
 		m.statusErr = false
+		m.statusPill = false
 		m.browserReopen = 0
 		return m, nil
 
@@ -4016,6 +4019,9 @@ func (m *Model) renderStatusBar() string {
 			style = m.styles.StatusError
 		}
 		parts := []string{m.statusBarInlineText(style, m.statusMsg)}
+		if m.statusPill && !m.statusErr {
+			parts[0] = m.statusPillText()
+		}
 		if updateInfoPart != "" && !m.statusMsgCoversUpdateState() {
 			parts = append(parts, updateInfoPart)
 		}
@@ -4572,12 +4578,35 @@ func (c *ComposeModel) clearRoutedStatus() {
 func (m *Model) setStatus(msg string, isErr bool) {
 	m.statusMsg = msg
 	m.statusErr = isErr
+	m.statusPill = false
 	// Push to log buffer (ring buffer, max 100 entries)
 	const maxLogEntries = 100
 	m.logBuffer = append(m.logBuffer, logEntry{Time: time.Now(), Message: msg, IsError: isErr})
 	if len(m.logBuffer) > maxLogEntries {
 		m.logBuffer = m.logBuffer[1:]
 	}
+}
+
+// setStatusPill sets a non-error status that the status bar draws as a pill.
+func (m *Model) setStatusPill(msg string) {
+	m.setStatus(msg, false)
+	m.statusPill = true
+}
+
+// statusPillText draws the status message as a pill tinted only slightly away
+// from the status bar, so it stands out without a jarring contrast. Plain
+// themes use brackets.
+func (m Model) statusPillText() string {
+	style := m.styles.StatusBar.UnsetPadding()
+	if m.styles.PlainUI {
+		return style.Render("[" + m.statusMsg + "]")
+	}
+	barBg, _ := m.styles.StatusBar.GetBackground().(lipgloss.Color)
+	barFg, _ := m.styles.StatusBar.GetForeground().(lipgloss.Color)
+	bg := mixColors(barBg, barFg, 0.18)
+	fg := readableText(barFg, bg, 4.5)
+	chip := tagChip{text: m.statusMsg, filled: true, ends: config.TagEndsRound}
+	return renderChipsWith([]tagChip{chip}, func(string) tagColor { return tagColor{bg: bg, fg: fg} }, barBg, style)
 }
 
 // configSave is a seam over config.Save so tests can simulate a failed write.

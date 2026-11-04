@@ -392,6 +392,8 @@ after it finishes. While mark-all-read runs, its target mailboxes are reserved.
 If a server-confirmed delete cannot be removed from the local cache, TideMail
 reports the cache error and keeps it hidden for this session. Later list reloads
 retry local cleanup without repeating the IMAP deletion.
+A completed delete, archive, or move is confirmed in the status bar as a pill (brackets in
+plain themes), tinted only slightly away from the bar.
 
 ### Waiting on Them
 
