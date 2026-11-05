@@ -491,13 +491,17 @@ func TestNeedsYouCountUpdatesDuringDestructiveActions(t *testing.T) {
 				}
 			}
 			schedule()
-			if got := m.displayNeedsYouCount(); got != 1 || !strings.Contains(m.renderNeedsYouRow(false, 40), "(1)") {
-				t.Fatalf("pending badge = %d, want 1", got)
+			pendingCount := 1
+			if kind == "delete" {
+				pendingCount = 2
 			}
-			// Reloading the badge during the undo window must keep it reduced.
+			if got := m.displayNeedsYouCount(); got != pendingCount || !strings.Contains(m.renderNeedsYouRow(false, 40), fmt.Sprintf("(%d)", pendingCount)) {
+				t.Fatalf("pending badge = %d, want %d", got, pendingCount)
+			}
+			// Delete retains its count until confirmation; archive/move hide now.
 			m = settle(t, m, loadNeedsYouCountCmd(m.db))
-			if got := m.displayNeedsYouCount(); got != 1 {
-				t.Fatalf("refreshed pending badge = %d, want 1", got)
+			if got := m.displayNeedsYouCount(); got != pendingCount {
+				t.Fatalf("refreshed pending badge = %d, want %d", got, pendingCount)
 			}
 			m.undoLatestDestructive()
 			if got := m.displayNeedsYouCount(); got != 2 {

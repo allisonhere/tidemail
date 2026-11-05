@@ -16,6 +16,22 @@ All notable changes to TideMail are documented in this file.
 
 ### Changed
 
+- Alert colors are now fixed color pairs: green (`#70C68E` fill, `#1A5E33` text)
+  for OK, yellow (`#FCD05F` / `#AA7B18`) for warnings and red (`#DD6A6A` /
+  `#8C1A22`) for failures. Status bar pills use each pair exactly on every theme,
+  and errors in the status bar are now a red pill. Plain alert text uses the first
+  color on dark themes and the second on light ones; for that text `vt100`, `vt52`
+  and `match-omarchy` keep their own.
+- Deleting a message keeps it visible during the six-second undo window with a
+  6–1 countdown (struck-through subject), then a spinner until the server confirms.
+  It disappears only after confirmation; a failed delete restores the row. The
+  cursor advances immediately and stays anchored through list reflows. Mark-all-read
+  is blocked while a read or delete is pending in the same mailbox.
+  The pending state (`delete pending · ctrl+z undo`) of a delete, archive or move
+  is one yellow status bar pill that drains like a fuel gauge over the undo window
+  (the drained part swaps the two yellows; plain themes show the seconds left). While
+  the server confirms, it reads `deleting ⠋` (or `archiving`/`moving`) with a spinner,
+  then fades into the green confirmation, or into a red pill if the action failed.
 - Support links (Settings → Support, README, release notes and the repository
   Sponsor button) now point to GitHub Sponsors instead of Ko-fi.
 - The compose footer is a fixed three rows. The recipients/message headings are

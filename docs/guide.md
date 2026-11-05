@@ -430,8 +430,28 @@ Needs You** in the palette does the same for a dismissed message opened from
 its normal folder. **Why is this in Needs You?** lists the reasons and the
 annotations behind them. All the usual actions (reply, archive, delete, move,
 star, mark read) work on messages here. The sidebar count updates immediately
-when you delete, archive, or move messages, including during the six-second
-undo window. Undoing the action or a failed action restores the count.
+when you archive or move messages, including during the six-second undo
+window. Delete keeps the message and count visible until server confirmation.
+Its subject is struck through while deletion is pending. Its marker counts
+down 6–1, then shows a pending spinner (plain UI: `~`).
+The cursor advances immediately; `Ctrl+Z` during the countdown cancels deletion
+without moving the cursor. Failure clears the spinner and retains the message.
+Pending read/unread and destructive actions block conflicting operations on the
+affected messages; other messages remain interactive. Mailbox/account mark-all-read
+is blocked if a target mailbox has a pending read or destructive operation; retry
+after it finishes. While mark-all-read runs, its target mailboxes are reserved.
+If a server-confirmed delete cannot be removed from the local cache, TideMail
+reports the cache error and keeps it hidden for this session. Later list reloads
+retry local cleanup without repeating the IMAP deletion.
+While a delete, archive, or move waits out its undo window, the status bar shows one pill,
+for example `delete pending · ctrl+z undo`. It is yellow (`#FCD05F` with `#AA7B18` text) and
+drains like a fuel gauge: the drained part swaps the two yellows, so the bright part shrinks
+as the six seconds run out. Plain themes use brackets and show the whole seconds left
+instead. Once the undo window has passed, the pill refills to bright yellow and reads
+`deleting`, `archiving` or `moving to …` with a spinner while the server confirms. When it
+does, the pill fades over 0.4 seconds into the green confirmation (`#70C68E` with `#1A5E33`
+text), or into a red error pill (`#DD6A6A` with `#8C1A22` text) if the action failed. Other
+errors in the status bar show as the same red pill.
 
 ### Waiting on Them
 
@@ -1326,6 +1346,13 @@ word must match the family, the variant, the theme's name, or `light` / `dark`
 (`rose dawn`, `light`, `night`). Each row has a swatch of the theme's accent,
 success, warning, error and tag colors, and a sample below the list shows how
 selection, text, links, quotes and status colors look in the highlighted theme.
+
+Alert colors are the same in every built-in theme: green for OK, yellow for
+cautions and warnings, and red for failures. Status bar pills use a fixed fill and
+text color pair for each on every theme. Plain alert text uses the brighter color
+on dark themes and the deeper one on light themes; for that text, the retro
+`vt100` and `vt52` themes and `match-omarchy` keep their own. The values are listed in
+[themes.md](themes.md#alert-colors).
 
 Every built-in theme is checked against WCAG-style contrast minimums by
 automated tests. The full list of themes and variants, with where each palette

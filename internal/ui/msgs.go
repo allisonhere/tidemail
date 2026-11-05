@@ -221,8 +221,10 @@ type ClipboardReadMsg struct {
 }
 
 type MailboxReadUpdatedMsg struct {
-	MailboxIDs []int64
-	Err        error
+	Token              uint64
+	ReservedMailboxIDs []int64
+	MailboxIDs         []int64
+	Err                error
 }
 
 type MessageSentMsg struct {

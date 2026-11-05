@@ -136,8 +136,15 @@ func (m *Model) renderMessagesPane() string {
 			if m.rowReadPending(msg2, pendingThread) {
 				dot = m.pendingReadIndicator() + " "
 			}
+			deleteIndicator := m.rowDeleteIndicator(msg2, thread, time.Now())
+			if indicator := deleteIndicator; indicator != "" {
+				dot = indicator + " "
+			}
 			subject := m.messageRowTitle(msg2)
 			style = applyMessageRowState(style, msgSelected, msg2.Starred, cursor, m.styles.Theme)
+			if deleteIndicator != "" {
+				subject = style.UnsetPadding().UnsetWidth().UnsetMaxWidth().Strikethrough(true).Render(subject)
+			}
 			star := m.messageRowStar(msg2.Starred)
 			if chevron != "" {
 				// Use the existing spacer after the star, not a new status gutter.
@@ -339,7 +346,7 @@ func (m *Model) applyFilterPreservingCollapsed(collapsed bool) {
 	}
 	visible := make([]db.Message, 0, len(m.messages))
 	for _, msg := range m.messages {
-		if !m.messagePendingDestructive(msg.ID) {
+		if !m.messageHiddenDestructive(msg.ID) {
 			visible = append(visible, msg)
 		}
 	}
@@ -489,7 +496,29 @@ func (m *Model) markAccountReadCmd(accountID int64) tea.Cmd {
 	return m.markMailboxesReadCmd(ids)
 }
 
+// markMailboxesReadCmd marks whole mailboxes read on the server (and the cache).
+// It reserves every target before dispatch and rejects conflicts rather than
+// partially marking a busy mailbox; the reservation is released by the
+// MailboxReadUpdatedMsg carrying the same token.
 func (m *Model) markMailboxesReadCmd(ids []int64) tea.Cmd {
+	if len(ids) == 0 {
+		return nil
+	}
+	for _, id := range ids {
+		busy := m.pendingBulkReads[id] != 0
+		for _, pending := range m.pendingReads {
+			busy = busy || pending.MailboxID == id
+		}
+		for _, action := range m.pendingDestructiveActions {
+			for _, entry := range action.Entries {
+				busy = busy || entry.Message.MailboxID == id
+			}
+		}
+		if busy {
+			m.setStatus("mark all read blocked: message operation pending; try again when it finishes", true)
+			return m.clearStatusCmd()
+		}
+	}
 	type task struct {
 		mailbox db.Mailbox
 		account config.AccountConfig
@@ -505,9 +534,17 @@ func (m *Model) markMailboxesReadCmd(ids []int64) tea.Cmd {
 		cfg, err := m.accountCfgForMailbox(id)
 		tasks = append(tasks, task{*mb, cfg, err})
 	}
+	if m.pendingBulkReads == nil {
+		m.pendingBulkReads = make(map[int64]uint64)
+	}
+	m.nextReadOperation++
+	token := m.nextReadOperation
+	for _, id := range ids {
+		m.pendingBulkReads[id] = token
+	}
 	database, sessions := m.db, m.sessions
 	return func() tea.Msg {
-		result := MailboxReadUpdatedMsg{}
+		result := MailboxReadUpdatedMsg{Token: token, ReservedMailboxIDs: ids}
 		for _, task := range tasks {
 			if task.err != nil {
 				result.Err = task.err

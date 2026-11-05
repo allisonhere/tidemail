@@ -136,7 +136,7 @@ Current release: **v1.7.0**.
 - **Search**, unread-only filtering, command palette, desktop notifications.
 - **Experimental plugins**: manual and automatic metadata classification,
   stored tags with local corrections (`e` on a message), Needs You with immediate
-  sidebar count updates for delete/archive/move and undo, result cards
+  sidebar count updates for archive/move and undo (delete on confirmation), result cards
   with technical Details, and a host-owned `u` unsubscribe action that uses TideMail's existing confirmed flow without
   exposing unsubscribe links to plugins.
 - **Plugin catalog**: Settings → Plugins → `b` (and the palette) lists the
@@ -244,3 +244,17 @@ Ctrl+Z restore keeps undo available for retry after the write finishes.
 - Short-terminal navigation and resize keep message/draft focus in the viewport.
   Single-account compose starts in To. IMAP envelopes decode legacy MIME charsets.
   Indented plain-text/Reddit bodies wrap within their full available width.
+
+Delete feedback: messages remain visible for the six-second undo
+window and show pending feedback until server confirmation. Delete counts
+change on confirmation; archive and move retain their existing presentation.
+The status bar shows one yellow undo pill (`#FCD05F` fill, `#AA7B18` text) for all
+three, drained like a fuel gauge by the read clock (250 ms redraws); the drained part
+swaps the two yellows, and plain themes show the seconds left. While the server
+confirms, the pill reads `deleting ⠋` (`archiving`, `moving to …`) on the same clock,
+then fades over 400 ms (40 ms ticks, stopped when done) into the green confirmation
+(`#70C68E` / `#1A5E33`) or the red error pill (`#DD6A6A` / `#8C1A22`).
+Mailbox/account mark-all-read (server-side) reserves its targets and rejects conflicting
+pending operations. Delete completions reconcile unread counts from the cache,
+keep the highlighted message visible, and suppress remote successes whose local
+cleanup failed until a later list reload can reconcile them.

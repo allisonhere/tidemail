@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -207,6 +208,8 @@ type Model struct {
 
 	pendingDestructiveActions []pendingDestructiveAction
 	nextDestructiveActionID   uint64
+	confirmedDeleteCache      map[int64]MessageRef // remote success awaiting local cache cleanup
+	pendingUnreadExcluded     map[int64]bool       // archive/move IDs absent from the last SQL unread snapshot
 
 	pendingSends []pendingSend
 
@@ -309,6 +312,7 @@ type Model struct {
 	composeBackdrop         *composeBackdropCache
 	readerPanes             *readerPaneCache
 	pendingReads            map[int64]pendingRead
+	pendingBulkReads        map[int64]uint64 // mailbox reservations for local mark-all-read
 	nextReadOperation       uint64
 	readVersion             uint64 // invalidates read-state snapshots captured before confirmation
 	readAnimationFrame      int
@@ -344,6 +348,14 @@ type Model struct {
 
 	statusMsg string
 	statusErr bool
+	// statusPill draws statusMsg as a pill; setStatus clears it.
+	statusPill bool
+	// pillFade blends the status pill in from pillFadeFrom over pillFadeDuration
+	// after a delete, archive or move finishes; a zero pillFadeStart means no
+	// fade. setStatus cancels it.
+	pillFadeFrom       alertPill
+	pillFadeStart      time.Time
+	pillFadeGeneration uint64
 
 	// browserReopen is the message whose browser export blocked remote images;
 	// pressing the open-in-browser key on it again reopens with images loaded.
@@ -696,6 +708,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.compose.clearRoutedStatus()
 		m.statusMsg = ""
 		m.statusErr = false
+		m.statusPill = false
 		m.browserReopen = 0
 		return m, nil
 
@@ -933,6 +946,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.reloadReadMessagesCmd(msg.ReadReloadIDs...)
 			return m, cmd
 		}
+		msg.Messages = m.reconcileConfirmedDeletes(msg.Messages)
 		m.initialLoading = false
 		if msg.Err == nil && m.db != nil && m.mailTags.operation > 0 {
 			if err := m.db.RefreshMailFlags(msg.Messages); err != nil {
@@ -1043,13 +1057,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.listOffset = clamp(prevOffset, 0, max(0, rowCount-1))
 			}
 
-			if visible := m.articleRowsVisible(); visible > 0 {
-				if m.messageCursor < m.listOffset {
-					m.listOffset = m.messageCursor
-				} else if m.messageCursor >= m.listOffset+visible {
-					m.listOffset = m.messageCursor - visible + 1
-				}
-			}
+			m.keepMessageCursorVisible()
 
 			if msg := m.currentRowMessage(); msg != nil {
 				m.setViewportForCurrentRow()
@@ -1516,11 +1524,15 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.accountManager.statusMsg = "DELETED ACCOUNT"
 		return m, m.loadAccountsCmd()
 
+	case pillFadeTickMsg:
+		cmd := m.pillFadeTick(msg)
+		return m, cmd
+
 	case readAnimationTickMsg:
 		if !m.readAnimationRunning || msg.Generation != m.readAnimationGeneration {
 			return m, nil
 		}
-		if len(m.pendingReads) == 0 {
+		if len(m.pendingReads) == 0 && !m.deleteFeedbackActive() {
 			m.readAnimationRunning = false
 			return m, nil
 		}
@@ -1711,9 +1723,24 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case MailboxReadUpdatedMsg:
+		matched := false
+		for _, id := range msg.ReservedMailboxIDs {
+			if token, ok := m.pendingBulkReads[id]; ok && token == msg.Token {
+				delete(m.pendingBulkReads, id)
+				matched = true
+			}
+		}
+		if !matched {
+			return m, nil
+		}
 		if len(msg.MailboxIDs) > 0 {
 			m.readVersion++
 			m.markMailboxesReadInMemory(msg.MailboxIDs)
+			for _, id := range msg.MailboxIDs {
+				if err := m.recountMailboxUnread(id); err != nil && msg.Err == nil {
+					msg.Err = err
+				}
+			}
 		}
 		if msg.Err != nil {
 			m.setStatus(fmt.Sprintf("mark read failed: %v", msg.Err), true)
@@ -3993,7 +4020,21 @@ func (m *Model) renderStatusBar() string {
 	}
 	if prompt := m.destructiveUndoPrompt(); prompt != "" {
 		style := m.styles.StatusBar
-		parts := []string{m.statusBarInlineText(style, prompt)}
+		parts := []string{m.gaugePillText(prompt, time.Until(m.latestUndoableDestructive().Deadline))}
+		if updateInfoPart != "" {
+			parts = append(parts, updateInfoPart)
+		}
+		if linkPart != "" {
+			parts = append(parts, linkPart)
+		}
+		parts = append(parts, m.statusBarContextHintStrip())
+		return style.Width(w).Render(m.statusLine(m.statusBarJoin(parts...), updateActionPart))
+	}
+	if working := m.destructiveWorkingPrompt(); working != "" {
+		// Past its undo window and waiting on the server: the undo pill refills
+		// to bright yellow, then fades into the result when it arrives.
+		style := m.styles.StatusBar
+		parts := []string{m.pillTextWith(working, alertPillYellow)}
 		if updateInfoPart != "" {
 			parts = append(parts, updateInfoPart)
 		}
@@ -4010,6 +4051,12 @@ func (m *Model) renderStatusBar() string {
 			style = m.styles.StatusError
 		}
 		parts := []string{m.statusBarInlineText(style, m.statusMsg)}
+		switch {
+		case m.statusErr && !m.styles.PlainUI:
+			parts[0] = m.pillTextWith(m.statusMsg, alertPillRed)
+		case m.statusPill && !m.statusErr:
+			parts[0] = m.statusPillText()
+		}
 		if updateInfoPart != "" && !m.statusMsgCoversUpdateState() {
 			parts = append(parts, updateInfoPart)
 		}
@@ -4584,12 +4631,128 @@ func (c *ComposeModel) clearRoutedStatus() {
 func (m *Model) setStatus(msg string, isErr bool) {
 	m.statusMsg = msg
 	m.statusErr = isErr
+	m.statusPill = false
+	m.pillFadeStart = time.Time{}
 	// Push to log buffer (ring buffer, max 100 entries)
 	const maxLogEntries = 100
 	m.logBuffer = append(m.logBuffer, logEntry{Time: time.Now(), Message: msg, IsError: isErr})
 	if len(m.logBuffer) > maxLogEntries {
 		m.logBuffer = m.logBuffer[1:]
 	}
+}
+
+// setStatusPill sets a non-error status that the status bar draws as a pill.
+func (m *Model) setStatusPill(msg string) {
+	m.setStatus(msg, false)
+	m.statusPill = true
+}
+
+// statusPillText draws the status message as a green pill, since it confirms a
+// finished delete, archive or move. Plain themes use brackets.
+func (m Model) statusPillText() string { return m.pillText(m.statusMsg) }
+
+// pillText draws text as a green status bar pill; see statusPillText.
+func (m Model) pillText(text string) string { return m.pillTextWith(text, alertPillGreen) }
+
+// pillTextWith draws text as a status bar pill in the exact fill and text
+// colors of p. Plain themes use brackets.
+func (m Model) pillTextWith(text string, p alertPill) string {
+	style := m.styles.StatusBar.UnsetPadding()
+	if m.styles.PlainUI {
+		return style.Render("[" + text + "]")
+	}
+	barBg, _ := m.styles.StatusBar.GetBackground().(lipgloss.Color)
+	p = m.fadedPill(p, time.Now())
+	chip := tagChip{text: text, filled: true, ends: config.TagEndsRound}
+	return renderChipsWith([]tagChip{chip}, func(string) tagColor { return tagColor{bg: p.fill, fg: p.text} }, barBg, style)
+}
+
+const (
+	pillFadeDuration = 400 * time.Millisecond
+	pillFadeInterval = 40 * time.Millisecond
+)
+
+type pillFadeTickMsg struct{ Generation uint64 }
+
+// startPillFade blends the status pill in from from, redrawing every
+// pillFadeInterval until pillFadeDuration has passed. Call it after setStatus,
+// which cancels any fade.
+func (m *Model) startPillFade(from alertPill) tea.Cmd {
+	if m.styles.PlainUI {
+		return nil
+	}
+	m.pillFadeFrom = from
+	m.pillFadeStart = time.Now()
+	m.pillFadeGeneration++
+	gen := m.pillFadeGeneration
+	return tea.Tick(pillFadeInterval, func(time.Time) tea.Msg { return pillFadeTickMsg{Generation: gen} })
+}
+
+// pillFadeTick re-arms the fade until it is done; the tick itself only exists
+// to trigger a redraw.
+func (m *Model) pillFadeTick(msg pillFadeTickMsg) tea.Cmd {
+	if msg.Generation != m.pillFadeGeneration || m.pillFadeStart.IsZero() {
+		return nil
+	}
+	if time.Since(m.pillFadeStart) >= pillFadeDuration {
+		m.pillFadeStart = time.Time{}
+		return nil
+	}
+	gen := msg.Generation
+	return tea.Tick(pillFadeInterval, func(time.Time) tea.Msg { return pillFadeTickMsg{Generation: gen} })
+}
+
+// fadedPill returns p blended from the fade's starting pill by how far the
+// fade has run at now, or p itself when no fade is running.
+func (m Model) fadedPill(p alertPill, now time.Time) alertPill {
+	if m.pillFadeStart.IsZero() {
+		return p
+	}
+	t := float64(now.Sub(m.pillFadeStart)) / float64(pillFadeDuration)
+	if t >= 1 {
+		return p
+	}
+	t = max(0, t)
+	return alertPill{
+		fill: mixColors(m.pillFadeFrom.fill, p.fill, t),
+		text: mixColors(m.pillFadeFrom.text, p.text, t),
+	}
+}
+
+// gaugePillText draws the undo prompt as a yellow pill that drains like a fuel
+// gauge: the share of the undo window still left is the yellow fill with the
+// deep yellow text, and the drained share swaps the two. Plain themes have no
+// background to fill, so they show whole seconds left instead.
+func (m Model) gaugePillText(text string, remaining time.Duration) string {
+	if text == "" {
+		return ""
+	}
+	remaining = max(0, min(remaining, destructiveUndoWindow))
+	style := m.styles.StatusBar.UnsetPadding()
+	if m.styles.PlainUI {
+		secs := int((remaining + time.Second - 1) / time.Second)
+		return style.Render(fmt.Sprintf("[%s %ds]", text, secs))
+	}
+	full := alertPillYellow
+	drained := alertPill{fill: full.text, text: full.fill}
+	runes := []rune(text)
+	filled := int(math.Round(float64(remaining) / float64(destructiveUndoWindow) * float64(len(runes))))
+	left, right := drained, drained
+	if filled > 0 {
+		left = full
+	}
+	if filled == len(runes) {
+		right = full
+	}
+	body := func(s string, p alertPill) string {
+		if s == "" {
+			return ""
+		}
+		return lipgloss.NewStyle().Background(p.fill).Foreground(p.text).Bold(true).Render(s)
+	}
+	return style.Foreground(left.fill).Render(pillCapLeft) +
+		body(string(runes[:filled]), full) + body(string(runes[filled:]), drained) +
+		style.Foreground(right.fill).Render(pillCapRight)
 }
 
 // configSave is a seam over config.Save so tests can simulate a failed write.

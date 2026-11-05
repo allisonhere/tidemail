@@ -22,7 +22,12 @@ func sgr(t *testing.T, layer int, c lipgloss.Color) string {
 	if _, err := fmt.Sscanf(string(c), "#%02x%02x%02x", &r, &g, &b); err != nil {
 		t.Fatalf("parse color %q: %v", c, err)
 	}
-	return fmt.Sprintf("%d;2;%d;%d;%d", layer, r, g, b)
+	// termenv converts each channel through a float (n * (1/255) * 255) and
+	// truncates, which turns some values into n-1 (0x6a becomes 105), so do the
+	// same here.
+	factor := 1.0 / 255.0
+	ch := func(n int) int { return int(uint8(float64(n) * factor * 255)) }
+	return fmt.Sprintf("%d;2;%d;%d;%d", layer, ch(r), ch(g), ch(b))
 }
 
 func foreground(t *testing.T, c lipgloss.Color) string { return sgr(t, 38, c) }

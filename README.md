@@ -211,7 +211,18 @@ a key. TideMail keeps the help screen inside the app and lets you search it.
   unsubscribe header.
 
 Delete, archive, and move wait six seconds before TideMail sends them to the
-server. `Ctrl+Z` restores the last queued action.
+server. `Ctrl+Z` restores the last queued action. Deletes stay visible with a
+6–1 marker countdown, then a pending spinner until the server confirms removal.
+The cursor advances immediately; undo leaves it in place. Pending read/unread
+and destructive operations lock conflicting actions on the affected messages.
+Mailbox/account mark-all-read is blocked during conflicting operations: retry
+it when TideMail reports a pending operation. A confirmed delete with a local
+cache error stays hidden while later list reloads retry the cache cleanup.
+The pending state shows in the status bar as a yellow pill that drains like a
+fuel gauge over the six-second undo window (plain themes show the seconds left),
+then reads `deleting ⠋` while the server confirms and fades into a green
+confirmation pill, or a red one if it failed. Errors show as a red pill. See
+[alert colors](docs/themes.md#alert-colors) for the exact colors.
 
 ## Compose with the right account
 

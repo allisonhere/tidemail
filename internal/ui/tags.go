@@ -552,11 +552,10 @@ func (m *Model) renderMessageRow(style lipgloss.Style, prefix, star, sender stri
 	}
 	renderLine := func(line string) string {
 		line = truncate(line, width)
-		if tree != "" {
-			// Connector resets must restore the active row style before subsequent
-			// text and spaces, just as embedded widget styles do in form fields.
-			line = fillLineBg(line, width, inline)
-		}
+		// Embedded resets (connectors, struck-through pending-delete subjects)
+		// must restore the active row style before subsequent text and spaces,
+		// just as embedded widget styles do in form fields.
+		line = fillLineBg(line, width, inline)
 		return style.Width(width).Render(line)
 	}
 	classic := func(age string) string {
