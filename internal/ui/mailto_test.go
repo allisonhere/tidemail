@@ -240,7 +240,7 @@ func TestReaderMailtoFocusedAndOrdinaryInteractions(t *testing.T) {
 	}
 }
 
-func TestReaderMailtoThreadSource(t *testing.T) {
+func TestReaderMailtoSelectedConversationMessage(t *testing.T) {
 	requests, apply := recordReaderActivations(t)
 	m := mailtoTestModel(t, 1)
 	first := m.messages[0]
@@ -266,10 +266,15 @@ func TestReaderMailtoThreadSource(t *testing.T) {
 	if m.contentMessageID != 2 {
 		t.Fatal("representative should be other account")
 	}
+	if len(m.contentLinks) != 0 {
+		t.Fatal("parent inherited a child's links")
+	}
+	m.messageCursor = m.indexOfFilteredMessage(first.ID)
+	m.setViewportForCurrentRow()
 	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlN})
 	m = apply(m, readerOpenKey)
 	if m.overlay != overlayCompose || m.compose.selectedAccount().ID != "work" || len(*requests) != 0 {
-		t.Fatal("thread used representative instead of link owner")
+		t.Fatal("selected child used the parent's sending account")
 	}
 }
 

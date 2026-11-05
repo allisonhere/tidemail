@@ -200,6 +200,57 @@ It also works from the message list and the command palette ("View message
 source"). `Ctrl+U` opens the mailing list's
 unsubscribe option when the message provides one.
 
+### Expandable conversations
+
+Press `g` to toggle conversation grouping (also in Settings → Display).
+Conversations start collapsed with `▸`; `Enter` on their parent expands or
+collapses them with `▾`, keeping focus in the message list. The chevron uses the
+existing spacer immediately before the sender; the read/unread indicator and
+sender/subject columns stay fixed. Several conversations can stay open. Children
+have muted `├─` / `└─` connectors at the parent's sender and subject column starts,
+indenting only the child text. With the sender hidden, the chevron precedes the
+subject and only the subject has tree connectors. Selection highlights the entire
+row, including connectors and spacing. There are no message counts or duplicate
+rows: the parent is a real email.
+
+Moving through visible rows previews only that email. `Enter` on a child or
+single message opens the reader; `Right` / `l` or `Tab` opens it for any row,
+including a parent. Reader `Enter` still opens the selected or focused link;
+`Esc` clears text selection first, then returns to the list. Double-click has
+the same behavior as `Enter` on each row.
+
+Parents follow the active message ordering: with Unread First, unread messages
+precede read messages, newest first within each group. Starred First retains
+its priority; Needs You, Waiting on Them, and Snoozed retain their view ordering.
+Selection follows the email's database identity across sorting and refreshes.
+If a selected parent becomes a child, its conversation opens to keep it visible.
+Expansion lasts through refreshes in the same view; changing folders, searches,
+or disabling grouping resets it.
+
+Delete, archive, move, star, tags, and `Space` selection affect only the selected
+email, including a parent. Removing a parent promotes the next-ranked surviving
+email. Explicit multi-selection still acts on the selected emails.
+When collapsed, a conversation shows unread if any member is unread. Pressing
+`x` marks every member read if any is unread; if all are read, it marks every
+member unread. The conversation stays collapsed. When expanded, both parent and
+child rows show their individual read state, and `x` toggles only that email.
+Single-message rows keep their normal individual behavior.
+
+Marking an unread email read with `x` immediately advances to the next visible
+email in its conversation, or the following list row when no conversation member
+follows. Marking a collapsed conversation read advances to the next visible
+conversation. At the end of the list, selection stays in place. The next target
+is chosen before read-state sorting changes, and confirmation or reloads do not
+undo the move. Marking read mail unread does not advance. Without advancement,
+a collapsed read action follows its conversation's new parent while keeping it
+closed; expanded selection follows the exact email ID. With explicit selection,
+`x` toggles each selected email individually without advancing.
+
+Expansion currently shows messages already included in the folder or search
+results, not additional Sent or archived history. In Unread Only mode, read
+messages remain hidden even when a conversation is expanded. A conversation
+with only one visible unread email has no chevron.
+
 ### Thunderbird / IMAP mail tags
 
 TideMail recognizes message tags stored as IMAP keywords, including Thunderbird's
@@ -368,8 +419,8 @@ already stored: it never runs a plugin or goes online.
 
 The most pressing messages come first: urgent, then needing a reply, then
 important (a message with several of these ranks higher), newest first within
-each. With threaded conversations a whole thread appears if any of its
-messages qualifies, and its tags combine the thread's signals.
+each. With threaded conversations, qualifying messages are grouped and the
+parent's tags combine those messages' signals. Children show their own tags.
 
 If a message doesn't belong there, press `X` (or choose **Dismiss from Needs
 You** in the palette). The message and its tags are untouched; TideMail just
@@ -1132,6 +1183,8 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `Ctrl+T` in the account form | Test the connection without saving |
 | `Ctrl+L` in the account form | Look up a Custom account's servers from its email domain (DNS SRV, MX, then HTTPS autoconfig) |
 | `s` | Sync current mailbox (Unified Inbox: syncs all inboxes) |
+| `Enter` on a conversation parent | Expand/collapse; `Right` / `l` or `Tab` opens its email in the reader |
+| `Enter` on a child or single message | Focus the reader |
 | `Enter` on a folder | Fetch that folder now; on a folder with subfolders, collapse or expand it |
 | `n` / `r` / `d` in Accounts | New, rename, delete the selected folder (see Managing folders) |
 | `H` in Accounts | Hide or unhide the selected folder (local only) |
@@ -1146,7 +1199,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `e` | Correct classification and manage tags for the current message |
 | `Space` in Category | Toggle the selected server tag, preserving other assignments |
 | `e` / `c` / `r` in Tag names and colors | Rename a discovered tag locally, choose its color, or use the theme color |
-| `x` | Toggle selected message(s) read/unread |
+| `x` | Collapsed: toggle conversation; expanded/single: toggle email. Mark-read advances; explicit selections toggle individually without advancing |
 | `*` | Toggle star (IMAP `\Flagged`) on selected message(s); syncs to the server |
 | `a` | Archive selected message |
 | `d` | Delete selected message |
@@ -1339,8 +1392,9 @@ click-drag text selection and copy keep working untouched. Turn it on to use:
   selects that entry; other content clicks only position or focus the reader.
   Press `o` or `Enter` to open a deliberately selected entry.
   While message search is active, clicking its search row resumes editing the query.
-- **Double-click** a message row (or draft) to open it, the same as `Enter`; on a
-  sidebar row it does what `Enter` does there (expand/collapse, or sync the folder).
+- **Double-click** a conversation parent to expand/collapse it; a child, single
+  message, or draft opens. This matches `Enter`. On a sidebar row it also matches
+  `Enter` (expand/collapse, or sync the folder).
 - **Scroll wheel** over the sidebar or message list moves the selection three
   rows at a time; over the reading pane it scrolls three rows and clears link
   selection. With **Focus line** on, keyboard reading resumes in the visible text.
@@ -1384,21 +1438,26 @@ white dotted border only while Support is open.
 
 Read/unread requests show an animated Braille indicator (four frames per
 second; `~` in plain or icon-disabled display) and lock the affected messages
-against further read/unread changes. Single-message unread-to-read actions
-advance the cursor immediately using the existing navigation rules. Other
+against further read/unread changes. Unread-to-read `x` actions advance the
+cursor immediately to the next visible email or collapsed conversation. Other
 messages remain available while the server operation is pending.
 
 Messages retain their local read state, unread count, and sorting classification
 until the server confirms. Successful updates are saved locally and the current
 view reloads using its existing ordering, preserving the highlighted message by
 ID where it remains visible. This includes Unread First ordering and Unread Only
-filtering; conversation grouping and ordering remain unchanged. A pending
-message's row number can shift as other completed messages move.
+filtering. A conversation's parent can change as its members change read state.
+Read reconciliation keeps collapsed selections on their conversation without
+opening it; expanded selections retain their exact email ID. Intentional `x`
+advancement retains its next target through that reconciliation. Passive refreshes
+continue to preserve message identity. A pending message's row number can shift
+as other completed messages move.
 
 The indicator takes the place of the row's unread or cursor marker until the
 server confirms, so the row does not shift; the highlight still marks the
-cursor row. A conversation shows
-pending while a visible member is pending. Failures clear pending and appear in
+cursor row. A collapsed parent shows pending while any member in the current
+result is pending, and refuses another conversation toggle until those operations
+finish. Expanded rows show only their own pending state. Failures clear pending and appear in
 the existing status/log mechanism without changing that operation's local read
 state. Mixed bulk actions apply successful groups and leave failed groups
 unchanged. There is no automatic retry or rollback. Other clients and normal
@@ -1413,8 +1472,8 @@ triggers one fresh-connection source cleanup attempt without repeating COPY;
 if cleanup fails, TideMail reports the completed copy and unconfirmed removal.
 
 Message deletion updates its cached message, attachments, search index, and
-deletion marker in one transaction. Needs You dismiss/restore applies to every
-message in a thread together; failures leave the database unchanged. A failed
+deletion marker in one transaction. Needs You dismiss/restore targets the
+selected email; failures leave the database unchanged. A failed
 Ctrl+Z restore keeps undo available for retry after the write finishes.
 
 Removing an account also removes its cached search entries atomically with the

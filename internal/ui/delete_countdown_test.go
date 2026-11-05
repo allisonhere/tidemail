@@ -182,7 +182,7 @@ func TestDeletePrototypeRowBackgroundAfterSubject(t *testing.T) {
 	for _, style := range []lipgloss.Style{unread, selected} {
 		inline := style.UnsetPadding().UnsetWidth().UnsetMaxWidth()
 		title := inline.Strikethrough(true).Render("subject")
-		row := m.renderMessageRow(style, "6 ", "", "", false, 0, title, nil, "", 40)
+		row := m.renderMessageRow(style, "6 ", "", "", false, 0, title, nil, "", 40, "")
 		// Seven subject cells and two marker cells leave 31 background cells.
 		if !strings.Contains(row, inline.Render(strings.Repeat(" ", 31))) {
 			t.Fatal("trailing row padding does not restore row colors")
@@ -652,7 +652,7 @@ func TestDeleteSyntheticThreadedPartialDeletion(t *testing.T) {
 	if m.currentRowMessage().ID != root.ID || m.messageCursor != 1 ||
 		m.messageThreads[m.messageCursor].Count != 1 ||
 		m.messageCursor < m.listOffset || m.messageCursor >= m.listOffset+m.articleRowsVisible() {
-		t.Fatal("representative deletion lost surviving conversation")
+		t.Fatalf("representative deletion lost surviving conversation: cur=%d (want root %d) cursor=%d threads=%d count=%v off=%d vis=%d rows=%d", m.currentRowMessage().ID, root.ID, m.messageCursor, len(m.messageThreads), m.messageThreads[min(m.messageCursor, len(m.messageThreads)-1)].Count, m.listOffset, m.articleRowsVisible(), len(m.messageRows))
 	}
 	if got := m.rowDeleteIndicator(root, m.messageThreads[m.messageCursor], time.Now()); got == "" {
 		t.Fatal("surviving pending member lost feedback")

@@ -151,8 +151,8 @@ func (m *Model) acceptReadChanges(messages []db.Message, target *bool, advance b
 			return result
 		})
 	}
-	if target != nil && len(entries) == 1 && advance {
-		m.advanceReadCursor(entries[0].MessageID)
+	if target != nil && advance {
+		m.advanceReadCursor(messages[0].ID)
 	}
 	cmds = append(cmds, m.ensureReadAnimation())
 	return tea.Batch(cmds...)
@@ -180,7 +180,9 @@ func (m *Model) pendingReadIndicator() string {
 func (m *Model) advanceReadCursor(messageID int64) {
 	rowCount := m.activeMessageRowCount()
 	if idx := m.indexOfFilteredMessage(messageID); idx >= 0 && idx == m.messageCursor && idx < rowCount-1 {
-		m.messageCursor = idx + 1
+		// Capture the following visible email before read state can reorder rows.
+		nextID := m.rowMessage(idx + 1).ID
+		m.messageCursor = m.indexOfFilteredMessage(nextID)
 		visible := max(1, m.articleRowsVisible())
 		if m.messageCursor >= m.listOffset+visible {
 			m.listOffset = m.messageCursor - visible + 1
@@ -204,11 +206,24 @@ func (m *Model) ensureReadAnimation() tea.Cmd {
 }
 
 // Reload through the normal view-specific SQL ordering and ID-based selection.
-func (m *Model) reloadReadMessagesCmd() tea.Cmd {
+func (m *Model) reloadReadMessagesCmd(readIDs ...int64) tea.Cmd {
+	var cmd tea.Cmd
 	if m.searchActive() {
-		return m.searchAllMessagesCmd(m.searchQuery)
+		cmd = m.searchAllMessagesCmd(m.searchQuery)
+	} else {
+		cmd = m.visibleMessagesCmd()
 	}
-	return m.visibleMessagesCmd()
+	if cmd == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		msg := cmd()
+		if loaded, ok := msg.(MessagesLoadedMsg); ok {
+			loaded.ReadReloadIDs = readIDs
+			return loaded
+		}
+		return msg
+	}
 }
 
 func (m *Model) finishReadChanges(msg readRemoteCompletedMsg) tea.Cmd {
@@ -228,6 +243,7 @@ func (m *Model) finishReadChanges(msg readRemoteCompletedMsg) tea.Cmd {
 	}
 	mailboxes := make(map[int64]bool)
 	currentID := int64(0)
+	collapsed := m.preserveCollapsedReadSelection(msg.IDs)
 	if current := m.currentRowMessage(); current != nil {
 		currentID = current.ID
 	}
@@ -247,8 +263,8 @@ func (m *Model) finishReadChanges(msg readRemoteCompletedMsg) tea.Cmd {
 	var cmds []tea.Cmd
 	if len(mailboxes) > 0 {
 		m.readVersion++
-		m.applyFilter()
-		if idx := m.indexOfFilteredMessage(currentID); idx >= 0 {
+		m.applyFilterPreservingCollapsed(collapsed)
+		if idx := m.indexOfMessageSelection(currentID, collapsed); idx >= 0 {
 			m.messageCursor = idx
 		} else {
 			m.messageCursor = clamp(m.messageCursor, 0, max(0, m.activeMessageRowCount()-1))
@@ -266,7 +282,7 @@ func (m *Model) finishReadChanges(msg readRemoteCompletedMsg) tea.Cmd {
 				msg.Err = err
 			}
 		}
-		cmds = append(cmds, m.reloadReadMessagesCmd())
+		cmds = append(cmds, m.reloadReadMessagesCmd(msg.IDs...))
 	}
 	if msg.Err != nil {
 		m.setStatus("mark read failed: "+msg.Err.Error(), true)

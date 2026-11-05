@@ -155,10 +155,19 @@ func (m *Model) undoLatestDestructive() tea.Cmd {
 		if action.Committing {
 			continue
 		}
+		currentID := int64(0)
+		if current := m.currentRowMessage(); current != nil {
+			currentID = current.ID
+		}
 		m.removeDestructiveAction(action.ID)
 		m.applyFilter()
 		if action.Kind != destructiveDelete {
 			m.focusRestoredMessage(action.Entries)
+		} else if idx := m.indexOfFilteredMessage(currentID); idx >= 0 {
+			// A pending delete never left the list and advanced the highlight;
+			// undo keeps it on the same message even if rebuilding rows moved it.
+			m.messageCursor = idx
+			m.keepMessageCursorVisible()
 		}
 		m.setStatus(fmt.Sprintf("restored %d", len(action.Entries)), false)
 		return m.clearStatusCmd()
@@ -302,7 +311,11 @@ func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.C
 		}
 		if removed[currentID] {
 			// Keep the conversation selected when its representative is deleted.
-			for _, member := range m.currentRowMessages() {
+			members := m.currentRowMessages()
+			if thread := m.currentParentThread(); thread != nil {
+				members = thread.Messages
+			}
+			for _, member := range members {
 				if !removed[member.ID] {
 					currentID = member.ID
 					break
@@ -512,40 +525,17 @@ func (m *Model) clampMessageViewAfterDestructiveChange() {
 	m.setViewportForCurrentRow()
 }
 
-func (m *Model) keepMessageCursorVisible() {
-	if visible := m.articleRowsVisible(); visible > 0 {
-		if m.messageCursor < m.listOffset {
-			m.listOffset = m.messageCursor
-		} else if m.messageCursor >= m.listOffset+visible {
-			m.listOffset = m.messageCursor - visible + 1
-		}
-	}
-}
-
 func (m *Model) focusRestoredMessage(entries []pendingDestructiveEntry) {
 	if len(entries) == 0 {
 		m.clampMessageViewAfterDestructiveChange()
 		return
 	}
 	id := entries[0].Message.ID
-	if m.threadedMessagesEnabled() {
-		for i, thread := range m.messageThreads {
-			for _, msg := range thread.Messages {
-				if msg.ID == id {
-					m.messageCursor = i
-					m.setViewportForCurrentRow()
-					return
-				}
-			}
-		}
-	} else {
-		for i, msg := range m.filteredMessages {
-			if msg.ID == id {
-				m.messageCursor = i
-				m.setViewportForCurrentRow()
-				return
-			}
-		}
+	if idx := m.indexOfFilteredMessage(id); idx >= 0 {
+		m.messageCursor = idx
+		m.keepMessageCursorVisible()
+		m.setViewportForCurrentRow()
+		return
 	}
 	m.clampMessageViewAfterDestructiveChange()
 }

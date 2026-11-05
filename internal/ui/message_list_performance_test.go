@@ -363,3 +363,46 @@ func TestMessageListNavigationEventQueueDrain(t *testing.T) {
 		})
 	}
 }
+
+// Expanded conversations reuse the same viewport-sized renderer and warmed
+// single-message reader, even when most children are outside the viewport.
+func BenchmarkExpandedConversation(b *testing.B) {
+	for _, html := range []bool{false, true} {
+		b.Run(fmt.Sprintf("html=%t", html), func(b *testing.B) {
+			m := expandableModel(b)
+			base := m.messages[0]
+			if html {
+				base.BodyHTML = benchHTMLBody(21 * 1024)
+			}
+			m.messages = nil
+			for i := 1; i <= 1000; i++ {
+				msg := base
+				msg.ID = int64(i)
+				msg.MessageID = fmt.Sprintf("<bench%d>", i)
+				msg.Date = time.Unix(int64(i), 0)
+				m.messages = append(m.messages, msg)
+			}
+			m.applyFilter()
+			m.messageCursor = 0
+			m.toggleCurrentConversation()
+			for i := 0; i < 2; i++ {
+				m.messageCursor = i
+				m.setViewportForCurrentRow()
+			}
+			b.Run("view", func(b *testing.B) {
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					runtime.KeepAlive(m.View())
+				}
+			})
+			b.Run("navigate", func(b *testing.B) {
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					next, _ := m.selectMessageRow(i % 2)
+					m = next.(Model)
+					runtime.KeepAlive(m.View())
+				}
+			})
+		})
+	}
+}

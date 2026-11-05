@@ -55,7 +55,7 @@ func TestBuildMessageThreadsLeavesHeaderlessMessagesSeparate(t *testing.T) {
 	}
 }
 
-func TestCurrentRowMessagesReturnsWholeThreadWhenThreaded(t *testing.T) {
+func TestCurrentRowMessagesReturnsOnlyParentWhenThreaded(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Display.ThreadedConversations = true
 	m := NewModel(nil, cfg, "dev", false)
@@ -67,8 +67,8 @@ func TestCurrentRowMessagesReturnsWholeThreadWhenThreaded(t *testing.T) {
 
 	msgs := m.currentRowMessages()
 
-	if len(msgs) != 2 || msgs[0].ID != 1 || msgs[1].ID != 2 {
-		t.Fatalf("expected chronological thread messages, got %+v", msgs)
+	if len(msgs) != 1 || msgs[0].ID != 2 {
+		t.Fatalf("expected selected parent only, got %+v", msgs)
 	}
 	if rep := m.currentRowMessage(); rep == nil || rep.ID != 2 {
 		t.Fatalf("expected newest representative, got %+v", rep)
@@ -89,7 +89,7 @@ func TestCurrentRowMessagesStaysFlatWhenThreadingDisabled(t *testing.T) {
 	}
 }
 
-func TestThreadedMessageListAndContentRenderConversation(t *testing.T) {
+func TestThreadedMessageListAndIndividualPreview(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Display.ThreadedConversations = true
 	m := NewModel(nil, cfg, "dev", false)
@@ -103,18 +103,14 @@ func TestThreadedMessageListAndContentRenderConversation(t *testing.T) {
 	m.rebuildMessageThreads()
 
 	list := m.renderMessagesPane()
-	if !strings.Contains(list, "Re: Plan (2)") {
-		t.Fatalf("expected thread count in message list, got %q", list)
+	if !strings.Contains(list, "Re: Plan") || !strings.Contains(list, "▸") || strings.Contains(list, "(2)") {
+		t.Fatalf("expected collapsed parent without count, got %q", list)
 	}
 
-	content := m.renderThreadContent(m.messageThreads[0])
-	first := strings.Index(content, "first")
-	second := strings.Index(content, "second")
-	if first < 0 || second < 0 || first > second {
-		t.Fatalf("expected chronological thread content, got %q", content)
-	}
-	if !strings.Contains(content, "Ada") || !strings.Contains(content, "Bob") {
-		t.Fatalf("expected per-message sender separators, got %q", content)
+	m.setViewportForCurrentRow()
+	content := strings.Join(m.contentLines, "\n")
+	if !strings.Contains(content, "second") || strings.Contains(content, "first") {
+		t.Fatalf("expected only parent email in preview, got %q", content)
 	}
 }
 

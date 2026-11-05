@@ -324,6 +324,20 @@ settings stay unchanged. Tags also appear below the date and sender in the
 content pane; use **Show tags in message header** under **Settings → Display →
 Message tags** to hide that row only. See the [user guide](docs/guide.md#thunderbird--imap-mail-tags).
 
+Conversation grouping (`g`) now uses expandable message rows: `▸` / `▾` marks
+the parent, and children have muted tree connectors in the sender and subject
+columns. `Enter` expands/collapses a parent; on a child or single email it opens
+the reader. `Right` / `l` or `Tab` opens any selected email, including a parent.
+Each row previews only its own email. Delete, archive, move, star and `Space`
+affect only that email; explicit multi-selection remains available. Collapsed
+conversations show aggregate unread state; `x` marks all members read if any is
+unread, otherwise all unread. Expanded parents and children show and toggle only
+their own read state. Marking unread mail read advances to the next visible row;
+marking it unread does not. Confirmation and reloads retain that next target,
+while collapsed read actions keep their conversation closed. Explicit selections
+toggle individually without advancement. Expansion survives same-view refreshes;
+passive selection follows message identity. Unread Only still hides read history. See [Expandable conversations](docs/guide.md#expandable-conversations).
+
 With **Focus line** on, Up/Down moves the reading highlight. With it off,
 Up/Down scrolls one row. At the bottom, another Down selects the first LINKS
 entry. Arrows then move between entries without wrapping; Up from the first
@@ -423,12 +437,12 @@ shows the `message_raw` and `message_compose` permissions.
 | `j` / `k` | Move down or up |
 | `Tab` / `Shift+Tab` | Move between panes or compose fields |
 | `Up` / `Down` (compose headers) | Move between From, To, Cc, Bcc, and Subject |
-| `Enter` | Open a message, immediately sync a folder, or open a draft or picker |
+| `Enter` | Expand/collapse a conversation parent; open a child, single message, draft or picker; immediately sync a folder |
 | `c` | Compose |
 | `r` / `f` | Reply or forward from the reading pane |
 | `Space` | Select a message for a bulk action |
 | `a` / `m` / `d` | Archive, move, or delete |
-| `x` | Toggle read state for selected messages |
+| `x` | Collapsed: toggle conversation; expanded/single: toggle email. Mark-read advances; explicit selections toggle individually without advancing |
 | `*` | Toggle the IMAP star |
 | `/` | Search messages |
 | `Ctrl+Z` | Cancel a send still in its delay, or undo a queued message action |
@@ -596,7 +610,7 @@ OAuth refreshes run independently per account. A malformed COPY acknowledgment
 triggers one fresh-connection source cleanup attempt without repeating COPY;
 if cleanup fails, TideMail reports the completed copy and unconfirmed removal.
 
-Cache deletion and threaded Needs You dismissal are atomic. A failed Needs You
+Cache deletion and Needs You dismiss/restore writes are atomic. A failed Needs You
 undo retains its history so you can retry.
 
 OAuth requires encrypted IMAP and SMTP connections, including localhost. Enable

@@ -540,22 +540,29 @@ func tagBudget(titleSpace int) int {
 // renderMessageRow lays out one message row: prefix, star, optional sender
 // column, subject, tags, and the age column, styled with style. Rows without
 // tags are exactly the classic layout.
-func (m *Model) renderMessageRow(style lipgloss.Style, prefix, star, sender string, showSender bool, senderW int, title string, tags []annotationTag, age string, width int) string {
-	inline := style.UnsetPadding().UnsetWidth().UnsetMaxWidth()
-	// An embedded subject reset must also restore the row colors for padding
-	// and columns that follow it. Render each segment with the row style.
-	render := func(text string) string {
-		segments := strings.SplitAfter(text, "\x1b[0m")
-		for i, segment := range segments {
-			segments[i] = inline.Render(segment)
+func (m *Model) renderMessageRow(style lipgloss.Style, prefix, star, sender string, showSender bool, senderW int, title string, tags []annotationTag, age string, width int, tree string) string {
+	inline := style.UnsetWidth().UnsetMaxWidth().UnsetPadding()
+	if tree != "" {
+		connector := inline.Foreground(messageMutedColor(m.styles.Theme)).Bold(false)
+		title = connector.Render(tree) + title
+		if showSender {
+			// Keep the sender column's origin and width; indent only its text.
+			sender = connector.Render(tree) + sender
 		}
-		return strings.Join(segments, "")
+	}
+	renderLine := func(line string) string {
+		line = truncate(line, width)
+		// Embedded resets (connectors, struck-through pending-delete subjects)
+		// must restore the active row style before subsequent text and spaces,
+		// just as embedded widget styles do in form fields.
+		line = fillLineBg(line, width, inline)
+		return style.Width(width).Render(line)
 	}
 	classic := func(age string) string {
 		if showSender {
-			return style.Width(width).Render(render(renderArticleRowWithSender(prefix, star, sender, title, age, width, senderW)))
+			return renderLine(renderArticleRowWithSender(prefix, star, sender, title, age, width, senderW))
 		}
-		return style.Width(width).Render(render(renderArticleRow(prefix, star, title, age, width)))
+		return renderLine(renderArticleRow(prefix, star, title, age, width))
 	}
 	if len(tags) == 0 {
 		return classic(age)
@@ -600,11 +607,11 @@ func (m *Model) renderMessageRow(style lipgloss.Style, prefix, star, sender stri
 	if age != "" {
 		right = "  " + age + "  "
 	}
-	line := render(left) + m.renderChips(chips, inline)
+	line := inline.Render(left) + m.renderChips(chips, inline)
 	if rest := width - lipgloss.Width(left) - chipsW; rest > 0 {
 		line += inline.Render(padRight(right, rest))
 	}
-	return style.Width(width).Render(line)
+	return renderLine(line)
 }
 
 func layoutMailTags(tags []annotationTag, style, ends string, icons bool, budget int) []tagChip {
