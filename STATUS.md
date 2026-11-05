@@ -253,7 +253,8 @@ three, drained like a fuel gauge by the read clock (250 ms redraws); the drained
 swaps the two yellows, and plain themes show the seconds left. While the server
 confirms, the pill reads `deleting ⠋` (`archiving`, `moving to …`) on the same clock,
 then fades over 400 ms (40 ms ticks, stopped when done) into the green confirmation
-(`#70C68E` / `#1A5E33`) or the red error pill (`#DD6A6A` / `#8C1A22`).
+(`#70C68E` / `#1A5E33`) or the red error pill (`#DD6A6A` / `#8C1A22`). Every other main status-bar message is
+the same green pill (`setStatus` sets `statusPill` for all non-error messages).
 Mailbox/account mark-all-read (server-side) reserves its targets and rejects conflicting
 pending operations. Delete completions reconcile unread counts from the cache,
 keep the highlighted message visible, and suppress remote successes whose local

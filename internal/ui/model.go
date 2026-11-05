@@ -348,7 +348,8 @@ type Model struct {
 
 	statusMsg string
 	statusErr bool
-	// statusPill draws statusMsg as a pill; setStatus clears it.
+	// statusPill draws statusMsg as a pill; setStatus sets it for every non-error
+	// message (errors get the red pill via statusErr).
 	statusPill bool
 	// pillFade blends the status pill in from pillFadeFrom over pillFadeDuration
 	// after a delete, archive or move finishes; a zero pillFadeStart means no
@@ -4636,7 +4637,7 @@ func (c *ComposeModel) clearRoutedStatus() {
 func (m *Model) setStatus(msg string, isErr bool) {
 	m.statusMsg = msg
 	m.statusErr = isErr
-	m.statusPill = false
+	m.statusPill = !isErr
 	m.pillFadeStart = time.Time{}
 	// Push to log buffer (ring buffer, max 100 entries)
 	const maxLogEntries = 100
@@ -4646,14 +4647,12 @@ func (m *Model) setStatus(msg string, isErr bool) {
 	}
 }
 
-// setStatusPill sets a non-error status that the status bar draws as a pill.
-func (m *Model) setStatusPill(msg string) {
-	m.setStatus(msg, false)
-	m.statusPill = true
-}
+// setStatusPill sets a non-error status; every non-error status is drawn as a
+// pill, so this is the same as setStatus(msg, false).
+func (m *Model) setStatusPill(msg string) { m.setStatus(msg, false) }
 
-// statusPillText draws the status message as a green pill, since it confirms a
-// finished delete, archive or move. Plain themes use brackets.
+// statusPillText draws the status message as a green pill. Plain themes use
+// brackets.
 func (m Model) statusPillText() string { return m.pillText(m.statusMsg) }
 
 // pillText draws text as a green status bar pill; see statusPillText.

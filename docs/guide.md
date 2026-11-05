@@ -451,7 +451,9 @@ instead. Once the undo window has passed, the pill refills to bright yellow and 
 `deleting`, `archiving` or `moving to …` with a spinner while the server confirms. When it
 does, the pill fades over 0.4 seconds into the green confirmation (`#70C68E` with `#1A5E33`
 text), or into a red error pill (`#DD6A6A` with `#8C1A22` text) if the action failed. Other
-errors in the status bar show as the same red pill.
+errors in the status bar show as the same red pill, and every other status message
+(synced, marked read, starred and so on) shows as the same green pill. Plain themes wrap them in
+brackets instead.
 
 ### Waiting on Them
 

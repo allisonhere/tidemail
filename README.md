@@ -221,7 +221,7 @@ cache error stays hidden while later list reloads retry the cache cleanup.
 The pending state shows in the status bar as a yellow pill that drains like a
 fuel gauge over the six-second undo window (plain themes show the seconds left),
 then reads `deleting ⠋` while the server confirms and fades into a green
-confirmation pill, or a red one if it failed. Errors show as a red pill. See
+confirmation pill, or a red one if it failed. Errors show as a red pill and every other status message as a green one. See
 [alert colors](docs/themes.md#alert-colors) for the exact colors.
 
 ## Compose with the right account

@@ -686,10 +686,29 @@ func TestDeleteSuccessStatusIsPill(t *testing.T) {
 		t.Fatalf("plain pill = %q", got)
 	}
 
-	// Any later status goes back to plain text.
+	// Every non-error status is a pill; errors are drawn by the red pill instead.
 	m.setStatus("synced", false)
+	if !m.statusPill {
+		t.Fatal("a plain status should be a pill")
+	}
+	m.setStatus("boom", true)
 	if m.statusPill {
-		t.Fatal("pill flag survived a new status")
+		t.Fatal("an error should not use the green pill")
+	}
+}
+
+func TestEveryStatusRendersAsPill(t *testing.T) {
+	f := newUndoTestFixture(t, 1)
+	m := f.model
+	m.width = 100
+	m.styles.PlainUI = false
+	m.setStatus("marked read", false)
+	if bar := m.renderStatusBar(); !strings.Contains(bar, pillCapLeft) {
+		t.Fatalf("status bar = %q, want a pill", ansi.Strip(bar))
+	}
+	m.styles.PlainUI = true
+	if bar := ansi.Strip(m.renderStatusBar()); !strings.Contains(bar, "[marked read]") {
+		t.Fatalf("plain status bar = %q, want bracketed text", bar)
 	}
 }
 
