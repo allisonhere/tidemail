@@ -749,3 +749,88 @@ func mustDial(t *testing.T, port int) net.Conn {
 	}
 	return conn
 }
+
+// TestMoveMessages_TransientSystemError covers Gmail's intermittent
+// "NO System Error (Failure)" on a move to Trash. If the message is gone from
+// the source afterwards the move counts as done; if it is still there the MOVE
+// is retried.
+func TestMoveMessages_TransientSystemError(t *testing.T) {
+	t.Run("moved despite NO", func(t *testing.T) { testTransientMove(t, false, 1) })
+	t.Run("not moved, retried", func(t *testing.T) { testTransientMove(t, true, 2) })
+}
+
+func testTransientMove(t *testing.T, stillThere bool, wantMoves int) {
+	old := moveRetryDelays
+	moveRetryDelays = []time.Duration{time.Millisecond, time.Millisecond}
+	defer func() { moveRetryDelays = old }()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	moves := 0
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		reader := bufio.NewReader(conn)
+		write := func(s string) { _, _ = conn.Write([]byte(s)) }
+		write("* OK [CAPABILITY IMAP4rev1 MOVE UIDPLUS] ready\r\n")
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				return
+			}
+			fields := strings.Fields(line)
+			if len(fields) < 2 {
+				continue
+			}
+			tag, cmd := fields[0], strings.ToUpper(fields[1])
+			switch {
+			case cmd == "LOGIN":
+				write(tag + " OK LOGIN completed\r\n")
+			case cmd == "CAPABILITY":
+				write("* CAPABILITY IMAP4rev1 MOVE UIDPLUS\r\n")
+				write(tag + " OK CAPABILITY completed\r\n")
+			case cmd == "SELECT":
+				write("* 1 EXISTS\r\n* OK [UIDVALIDITY 1] .\r\n* OK [UIDNEXT 2] .\r\n")
+				write(tag + " OK [READ-WRITE] SELECT completed\r\n")
+			case cmd == "UID" && len(fields) >= 3 && strings.ToUpper(fields[2]) == "SEARCH":
+				if stillThere && moves < 2 {
+					write("* SEARCH 1\r\n")
+				} else {
+					write("* SEARCH\r\n")
+				}
+				write(tag + " OK SEARCH completed\r\n")
+			case cmd == "UID" && len(fields) >= 3 && strings.ToUpper(fields[2]) == "MOVE":
+				moves++
+				if moves == 1 {
+					write(tag + " NO System Error (Failure)\r\n")
+				} else {
+					write("* 1 EXPUNGE\r\n")
+					write(tag + " OK MOVE completed\r\n")
+				}
+			case cmd == "LOGOUT":
+				write("* BYE\r\n" + tag + " OK LOGOUT completed\r\n")
+				return
+			default:
+				write(tag + " OK completed\r\n")
+			}
+		}
+	}()
+
+	client := New(config.AccountConfig{IMAPHost: "127.0.0.1", IMAPPort: ln.Addr().(*net.TCPAddr).Port, User: "u", Password: "p"})
+	if err := client.Connect(context.Background()); err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+	defer client.Close()
+	if err := client.MoveMessages(context.Background(), "INBOX", []uint32{1}, "[Gmail]/Trash"); err != nil {
+		t.Fatalf("expected the retry to succeed, got: %v", err)
+	}
+	if moves != wantMoves {
+		t.Fatalf("expected %d MOVE attempts, got %d", wantMoves, moves)
+	}
+}
