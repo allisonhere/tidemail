@@ -8,6 +8,12 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- Word wrapping and mouse support in the compose body. Text now wraps between
+  words instead of mid-word (turn it off in **Settings → Editor → Wrap at word
+  boundaries**, or `compose_word_wrap = false`); wrapping is visual only and never
+  changes your message. With **Mouse support** on, click to place the caret, drag to
+  select (dragging past the top or bottom scrolls), double-click to select a word,
+  and use the wheel to scroll.
 - Find and replace in compose. `Ctrl+F` opens Find with live match highlights and
   a match count; `Ctrl+R` in the bar shows Replace. `Enter` in Find goes to the next
   match, `Alt+Enter` replaces all in one undo step, `Alt+C` toggles match case and

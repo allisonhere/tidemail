@@ -130,6 +130,9 @@ func newCompose(cfg config.Config, a config.AccountConfig, d db.Draft, opts Comp
 	editor.SetSize(78, 17)
 	editor.SetValue(d.BodyText)
 	editor.SetPlaceholder("Write your email. Enter adds a new line.")
+	if cfg.Display.ComposeWordWrap {
+		editor.SetWrapMode(ripple.WrapWord)
+	}
 	if cfg.Display.ComposeVim {
 		editor.SetInputMode(ripple.ModeVim)
 	}

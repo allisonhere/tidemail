@@ -521,6 +521,7 @@ default_account = "8f43c9e644384bd5a25a27ff0d9c2701"
 send_delay_seconds = 5
 send_max_attempts = 3  # total attempts; 1 disables automatic retries
 compose_vim = true
+compose_word_wrap = true  # wrap compose text between words (default); false wraps at the edge
 images = "auto"  # "auto" (inline + blocked remote), or "off" (text placeholders)
 
 [[account]]

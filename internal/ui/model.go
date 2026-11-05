@@ -460,6 +460,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 	// (read in newEditorArea), the same way the clipboard is injected.
 	setEditorVimMode(cfg.Display.ComposeVim)
 	setEditorSearchRegex(cfg.Display.ComposeSearchRegex)
+	setEditorWordWrap(cfg.Display.ComposeWordWrap)
 	setEditorSpell(cfg.Display.ComposeSpell, cfg.Display.ComposeSpellLang, loadSpellWords(database))
 	addSpellNames(accountSpellEntries(cfg))
 
@@ -600,7 +601,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// (sync, resize, theme, etc.), so let the next View rebuild the backdrop.
 	keepBackdrop := m.overlay == overlayCompose
 	switch msg := msg.(type) {
-	case tea.KeyMsg, cursor.BlinkMsg:
+	case tea.KeyMsg, cursor.BlinkMsg, tea.MouseMsg:
 	case DraftSavedMsg:
 		keepBackdrop = keepBackdrop && msg.Err == nil
 	default:
@@ -664,6 +665,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Defense in depth: the mouse ProgramOption isn't registered at
 			// all when this is off, so no tea.MouseMsg should normally arrive.
 			return m, nil
+		}
+		if m.overlay == overlayCompose {
+			return m.handleComposeMouse(msg, time.Now())
 		}
 		if tea.MouseEvent(msg).IsWheel() {
 			return m.handleMouseWheel(msg)
@@ -3511,6 +3515,7 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Apply the vim toggle to future compose editors (read in newEditorArea).
 			setEditorVimMode(m.cfg.Display.ComposeVim)
 			setEditorSearchRegex(m.cfg.Display.ComposeSearchRegex)
+			setEditorWordWrap(m.cfg.Display.ComposeWordWrap)
 			setEditorSpell(m.cfg.Display.ComposeSpell, m.cfg.Display.ComposeSpellLang, loadSpellWords(m.db))
 			merged, _ := MergedThemeFromConfig(m.cfg)
 			m.setStyles(BuildStyles(merged, m.cfg.Display.Density, m.cfg.Display.PaneCorners))

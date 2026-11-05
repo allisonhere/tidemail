@@ -71,6 +71,7 @@ type ComposeModel struct {
 	bccInput     textinput.Model
 	subjectInput textinput.Model
 	bodyInput    editorArea
+	bodyMouse    composeMouseState
 
 	maximized    bool // Session-only; every new composer starts compact.
 	focusedField composeField
@@ -1412,6 +1413,15 @@ func (c ComposeModel) composeLayout(width, height int, styles Styles) (hints str
 }
 
 func (c ComposeModel) View(width, height int, styles Styles) string {
+	view, _ := c.viewWithBodyTop(width, height, styles)
+	return view
+}
+
+// viewWithBodyTop renders the compose view and also reports the row, within the
+// returned view, where the message body editor starts (-1 when the body is not
+// on screen, such as the attachment picker). Mouse handling uses it so click
+// positions follow the real layout instead of a hand-kept copy of it.
+func (c ComposeModel) viewWithBodyTop(width, height int, styles Styles) (string, int) {
 	// c is a copy: size its inputs so freshly opened (prefilled) fields scroll
 	// to their cursor without waiting for a keypress.
 	c.SetWidth(width)
@@ -1419,7 +1429,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 
 	// File picker view
 	if c.picker.active {
-		return c.pickerView(width, height, chrome)
+		return c.pickerView(width, height, chrome), -1
 	}
 
 	hints, bodyInputW, bodyH, senderSpacer := c.composeLayout(width, height, styles)
@@ -1538,6 +1548,10 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	rows = append(rows, blankRow(chrome.baseBg)) // gap between recipients and Subject
 	rows = append(rows, softInput("Subject", c.subjectInput, composeFieldSubject))
 	rows = append(rows, blankRow(chrome.baseBg)) // spacer before body
+	bodyTop := 0
+	for _, row := range rows {
+		bodyTop += lipgloss.Height(row)
+	}
 	rows = append(rows, bodyRow)
 
 	// attachments
@@ -1555,7 +1569,7 @@ func (c ComposeModel) View(width, height int, styles Styles) string {
 	rows = append(rows, hints)
 
 	content := lipgloss.JoinVertical(lipgloss.Left, rows...)
-	return clampView(content, width, height, chrome.baseBg)
+	return clampView(content, width, height, chrome.baseBg), bodyTop
 }
 
 // pickerView renders the yazi-style file browser.
