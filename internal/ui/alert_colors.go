@@ -18,12 +18,20 @@ const (
 // alertPill is a status bar pill's fill and the text color drawn on it.
 type alertPill struct{ fill, text lipgloss.Color }
 
+// Text colors for the pills: dark enough on each bright fill to meet the WCAG
+// AA 4.5:1 ratio for normal text. TestStatusPillsMeetContrast enforces it.
+const (
+	alertPillRedText    = lipgloss.Color("#3D1D1D")
+	alertPillYellowText = lipgloss.Color("#6C5928")
+	alertPillGreenText  = lipgloss.Color("#2B4D37")
+)
+
 // The status bar pills use each pair exactly, on every theme: the bright color
-// as the fill and the deep one as the text.
+// as the fill and a dark text color that stays readable on it.
 var (
-	alertPillRed    = alertPill{fill: alertRedDark, text: alertRedLight}
-	alertPillYellow = alertPill{fill: alertYellowDark, text: alertYellowLight}
-	alertPillGreen  = alertPill{fill: alertGreenDark, text: alertGreenLight}
+	alertPillRed    = alertPill{fill: alertRedDark, text: alertPillRedText}
+	alertPillYellow = alertPill{fill: alertYellowDark, text: alertPillYellowText}
+	alertPillGreen  = alertPill{fill: alertGreenDark, text: alertPillGreenText}
 )
 
 // withAlertColors returns t with its Error, Warning and Success roles replaced

@@ -264,3 +264,45 @@ func TestAllThemesContrastReport(t *testing.T) {
 	}
 	fmt.Println() // keep linter happy
 }
+
+// statusPills are the fixed alert pairs drawn behind delete and other status
+// messages. They ignore the theme, so text on fill is checked once.
+var statusPills = []struct {
+	name string
+	pill alertPill
+}{
+	{"red", alertPillRed},
+	{"yellow", alertPillYellow},
+	{"green", alertPillGreen},
+}
+
+func TestStatusPillsMeetContrast(t *testing.T) {
+	for _, sp := range statusPills {
+		// The undo gauge swaps fill and text as it drains; the ratio is the same
+		// both ways, but check the drained pair explicitly.
+		drained := alertPill{fill: sp.pill.text, text: sp.pill.fill}
+		for _, p := range []alertPill{sp.pill, drained} {
+			if ratio := contrastRatio(p.text, p.fill); ratio < 4.5 {
+				t.Errorf("%s pill text/fill contrast %.2f:1 < 4.5:1 (text=%s fill=%s)", sp.name, ratio, p.text, p.fill)
+			}
+		}
+	}
+}
+
+// The caps are the pill's decorative edge; its text is the content and is
+// enforced above. A fixed bright fill cannot reach 3:1 on every theme, so this
+// only logs the weakest cases (run with -v).
+func TestStatusPillCapsOnStatusBarReport(t *testing.T) {
+	for _, theme := range BuiltinThemes {
+		styles := BuildStyles(theme, "comfortable", "square")
+		barBg := styleColor(styles.StatusBar.GetBackground())
+		if barBg == "" {
+			continue
+		}
+		for _, sp := range statusPills {
+			if ratio := contrastRatio(sp.pill.fill, barBg); ratio < 3.0 {
+				t.Logf("%s: %s pill cap contrast %.2f:1 < 3.0:1 (fill=%s bar=%s)", theme.Name, sp.name, ratio, sp.pill.fill, barBg)
+			}
+		}
+	}
+}
