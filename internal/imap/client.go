@@ -549,16 +549,23 @@ func (c *Client) MoveMessages(ctx context.Context, mailboxName string, uids []ui
 			// resp-code on the OK response (see isCopyUIDParseError).
 			return nil
 		}
-		if !isTransientServerError(err) {
+		if attempt == 0 && !isTransientServerError(err) {
 			break
 		}
 		// Gmail sometimes completes the move and still answers NO, so look
 		// at the source mailbox before deciding anything: if our messages
-		// are gone, the move worked.
-		if remaining, serr := c.remainingUIDs(uidSet); serr == nil && len(remaining) == 0 {
+		// are gone, the move worked. This also covers a retry that fails
+		// because the earlier attempt had in fact moved the mail. If the
+		// check itself fails, report the original error rather than
+		// re-sending a MOVE that may already have happened.
+		remaining, serr := c.remainingUIDs(uidSet)
+		if serr != nil {
+			break
+		}
+		if len(remaining) == 0 {
 			return nil
 		}
-		if attempt >= len(moveRetryDelays) {
+		if !isTransientServerError(err) || attempt >= len(moveRetryDelays) {
 			break
 		}
 		select {

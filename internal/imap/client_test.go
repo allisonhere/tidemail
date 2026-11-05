@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -750,16 +751,78 @@ func mustDial(t *testing.T, port int) net.Conn {
 	return conn
 }
 
+// moveScenario scripts a fake server for MoveMessages tests. move(n) returns the
+// tagged status line text for the n-th MOVE; search(n) returns the UID SEARCH
+// reply once n MOVEs have been seen ("" means the search answers NO).
+type moveScenario struct {
+	move      func(n int) string
+	search    func(n int) string
+	wantMoves int
+	wantErr   bool
+}
+
 // TestMoveMessages_TransientSystemError covers Gmail's intermittent
 // "NO System Error (Failure)" on a move to Trash. If the message is gone from
 // the source afterwards the move counts as done; if it is still there the MOVE
-// is retried.
+// is retried; if that check fails the original error is reported without
+// re-sending the MOVE.
 func TestMoveMessages_TransientSystemError(t *testing.T) {
-	t.Run("moved despite NO", func(t *testing.T) { testTransientMove(t, false, 1) })
-	t.Run("not moved, retried", func(t *testing.T) { testTransientMove(t, true, 2) })
+	const sysErr = "NO System Error (Failure)"
+	t.Run("moved despite NO", func(t *testing.T) {
+		runMoveScenario(t, moveScenario{
+			move:      func(int) string { return sysErr },
+			search:    func(int) string { return "* SEARCH" },
+			wantMoves: 1,
+		})
+	})
+	t.Run("not moved, retried", func(t *testing.T) {
+		runMoveScenario(t, moveScenario{
+			move: func(n int) string {
+				if n == 1 {
+					return sysErr
+				}
+				return "OK MOVE completed"
+			},
+			search:    func(int) string { return "* SEARCH 1" },
+			wantMoves: 2,
+		})
+	})
+	t.Run("search fails, no second MOVE", func(t *testing.T) {
+		runMoveScenario(t, moveScenario{
+			move:      func(int) string { return sysErr },
+			search:    func(int) string { return "" },
+			wantMoves: 1,
+			wantErr:   true,
+		})
+	})
+	t.Run("retry refused because first attempt moved it", func(t *testing.T) {
+		runMoveScenario(t, moveScenario{
+			move: func(n int) string {
+				if n == 1 {
+					return sysErr
+				}
+				return "NO [NONEXISTENT] No matching messages"
+			},
+			search: func(n int) string {
+				if n < 2 {
+					return "* SEARCH 1"
+				}
+				return "* SEARCH"
+			},
+			wantMoves: 2,
+		})
+	})
+	t.Run("persistent failure gives up", func(t *testing.T) {
+		runMoveScenario(t, moveScenario{
+			move:      func(int) string { return sysErr },
+			search:    func(int) string { return "* SEARCH 1" },
+			wantMoves: 3,
+			wantErr:   true,
+		})
+	})
 }
 
-func testTransientMove(t *testing.T, stillThere bool, wantMoves int) {
+func runMoveScenario(t *testing.T, sc moveScenario) {
 	old := moveRetryDelays
 	moveRetryDelays = []time.Duration{time.Millisecond, time.Millisecond}
 	defer func() { moveRetryDelays = old }()
@@ -769,7 +832,7 @@ func testTransientMove(t *testing.T, stillThere bool, wantMoves int) {
 		t.Fatalf("listen: %v", err)
 	}
 	defer ln.Close()
-	moves := 0
+	var moves atomic.Int32
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -799,20 +862,18 @@ func testTransientMove(t *testing.T, stillThere bool, wantMoves int) {
 				write("* 1 EXISTS\r\n* OK [UIDVALIDITY 1] .\r\n* OK [UIDNEXT 2] .\r\n")
 				write(tag + " OK [READ-WRITE] SELECT completed\r\n")
 			case cmd == "UID" && len(fields) >= 3 && strings.ToUpper(fields[2]) == "SEARCH":
-				if stillThere && moves < 2 {
-					write("* SEARCH 1\r\n")
+				if reply := sc.search(int(moves.Load())); reply == "" {
+					write(tag + " NO search failed\r\n")
 				} else {
-					write("* SEARCH\r\n")
+					write(reply + "\r\n" + tag + " OK SEARCH completed\r\n")
 				}
-				write(tag + " OK SEARCH completed\r\n")
 			case cmd == "UID" && len(fields) >= 3 && strings.ToUpper(fields[2]) == "MOVE":
-				moves++
-				if moves == 1 {
-					write(tag + " NO System Error (Failure)\r\n")
-				} else {
+				n := int(moves.Add(1))
+				status := sc.move(n)
+				if strings.HasPrefix(status, "OK") {
 					write("* 1 EXPUNGE\r\n")
-					write(tag + " OK MOVE completed\r\n")
 				}
+				write(tag + " " + status + "\r\n")
 			case cmd == "LOGOUT":
 				write("* BYE\r\n" + tag + " OK LOGOUT completed\r\n")
 				return
@@ -827,10 +888,11 @@ func testTransientMove(t *testing.T, stillThere bool, wantMoves int) {
 		t.Fatalf("Connect failed: %v", err)
 	}
 	defer client.Close()
-	if err := client.MoveMessages(context.Background(), "INBOX", []uint32{1}, "[Gmail]/Trash"); err != nil {
-		t.Fatalf("expected the retry to succeed, got: %v", err)
+	err = client.MoveMessages(context.Background(), "INBOX", []uint32{1}, "[Gmail]/Trash")
+	if (err != nil) != sc.wantErr {
+		t.Fatalf("MoveMessages error = %v, wantErr %v", err, sc.wantErr)
 	}
-	if moves != wantMoves {
-		t.Fatalf("expected %d MOVE attempts, got %d", wantMoves, moves)
+	if got := int(moves.Load()); got != sc.wantMoves {
+		t.Fatalf("expected %d MOVE attempts, got %d", sc.wantMoves, got)
 	}
 }
