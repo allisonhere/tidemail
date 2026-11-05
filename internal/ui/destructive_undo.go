@@ -368,24 +368,11 @@ func (m *Model) focusRestoredMessage(entries []pendingDestructiveEntry) {
 		return
 	}
 	id := entries[0].Message.ID
-	if m.threadedMessagesEnabled() {
-		for i, thread := range m.messageThreads {
-			for _, msg := range thread.Messages {
-				if msg.ID == id {
-					m.messageCursor = i
-					m.setViewportForCurrentRow()
-					return
-				}
-			}
-		}
-	} else {
-		for i, msg := range m.filteredMessages {
-			if msg.ID == id {
-				m.messageCursor = i
-				m.setViewportForCurrentRow()
-				return
-			}
-		}
+	if idx := m.indexOfFilteredMessage(id); idx >= 0 {
+		m.messageCursor = idx
+		m.keepMessageCursorVisible()
+		m.setViewportForCurrentRow()
+		return
 	}
 	m.clampMessageViewAfterDestructiveChange()
 }

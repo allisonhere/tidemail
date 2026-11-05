@@ -39,8 +39,9 @@ type AccountsLoadedMsg struct {
 }
 
 type MessagesLoadedMsg struct {
-	ReadVersion    uint64 // read confirmations invalidate older snapshots
-	MailTagVersion uint64 // rejects searches captured before a tag edit or mapping change
+	ReadReloadIDs  []int64 // only affected conversations retain collapsed selection
+	ReadVersion    uint64  // read confirmations invalidate older snapshots
+	MailTagVersion uint64  // rejects searches captured before a tag edit or mapping change
 	MailboxID      int64
 	Messages       []db.Message
 	Search         bool

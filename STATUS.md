@@ -8,6 +8,16 @@ Current release: **v1.7.0**.
 
 ## Working
 
+- **Expandable conversations, milestone 1**: derived visible rows, sorting-aware
+  parents, independent session expansion, muted sender/subject tree connectors,
+  individual-email previews, and existing keyboard/mouse navigation. Ordinary
+  actions target one email even on parents; explicit selections stay separate.
+  Collapsed `x` toggles the whole conversation; expanded rows toggle individually
+  and show individual read state. Mark-read actions advance before reordering;
+  reconciliation preserves the next target and collapsed state. Passive selection
+  follows database message identity. Unread Only displays only unread
+  messages; expansion stays within the current folder or search results.
+
 - **Interactive CLI**: `tidemail cli` command chooser, step-by-step compose/draft
   wizard with Ripple, attachment browser, review, durable sending and undo.
   Automatic prompts respect pipes, JSON, agents, and `--no-interactive`; explicit
@@ -219,8 +229,8 @@ triggers one fresh-connection source cleanup attempt without repeating COPY;
 if cleanup fails, TideMail reports the completed copy and unconfirmed removal.
 
 Message deletion updates its cached message, attachments, search index, and
-deletion marker in one transaction. Needs You dismiss/restore applies to every
-message in a thread together; failures leave the database unchanged. A failed
+deletion marker in one transaction. Needs You dismiss/restore targets the
+selected email, including a conversation parent; failures leave the database unchanged. A failed
 Ctrl+Z restore keeps undo available for retry after the write finishes.
 
 - Account deletion cleans its FTS index and cached account data atomically.

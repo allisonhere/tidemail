@@ -198,3 +198,31 @@ func TestDraftPreviewIsCachedUntilTheDraftChanges(t *testing.T) {
 		t.Fatalf("expected the edited draft, got:\n%s", body)
 	}
 }
+
+func TestDraftSelectionSurvivesDelayedSummaryCompletion(t *testing.T) {
+	inbox, _, _, ids := conversationReadModel(t, []bool{true, true, true})
+	inbox.summaryGenerating = true
+	inbox.summaryMessage = inbox.messages[0]
+	// Closing the summary does not cancel its background request.
+	next, _ := inbox.handleSummaryKey(tea.KeyMsg{Type: tea.KeyEsc})
+	inbox = next.(Model)
+	m := draftsPreviewModel(t)
+	m.db = inbox.db
+	m.summaryGenerating = inbox.summaryGenerating
+	m.summaryMessage = inbox.summaryMessage
+	m.messageCursor = 1
+	m.setViewportForCurrentRow()
+	before := contentText(m)
+	if !strings.Contains(before, "Second draft") {
+		t.Fatal("fixture must preview the second draft")
+	}
+	next, _ = m.Update(AISummaryFetchedMsg{MessageID: ids[0], Summary: "Delayed Inbox summary"})
+	m = next.(Model)
+	if m.messageCursor != 1 || contentText(m) != before {
+		t.Fatalf("late summary changed draft selection or preview: cursor=%d", m.messageCursor)
+	}
+	m.setViewportForCurrentRow()
+	if contentText(m) != before {
+		t.Fatal("selected draft no longer matches its preview")
+	}
+}

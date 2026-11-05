@@ -108,28 +108,9 @@ func usableMailtoAccount(a config.AccountConfig) bool {
 	return err == nil && strings.Contains(addr.Address, "@") && !strings.ContainsAny(sender, "\r\n") && strings.TrimSpace(a.SMTPHost) != ""
 }
 
-// Resolve the owner of the displayed link, not the sidebar or To header. The
-// merged thread footer deduplicates targets; its first displayed occurrence owns
-// the entry.
-func (m Model) mailtoSourceMessage(target string) *db.Message {
-	if !m.threadedMessagesEnabled() {
-		return m.currentContentMessage()
-	}
-	cur := m.currentRowMessage()
-	if cur == nil || cur.ID != m.contentMessageID {
-		return nil
-	}
-	messages := m.currentRowMessages()
-	for _, msg := range messages {
-		result := m.renderMessageForDisplay(msg, m.contentBodyWidth())
-		for _, link := range result.links {
-			if link == target {
-				copy := msg
-				return &copy
-			}
-		}
-	}
-	return nil
+// The displayed email owns the link and determines the sending account.
+func (m Model) mailtoSourceMessage(_ string) *db.Message {
+	return m.currentContentMessage()
 }
 
 func (m *Model) openReaderLink(target string) tea.Cmd {

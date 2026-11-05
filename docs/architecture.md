@@ -196,6 +196,27 @@ enqueues work from `MailboxSyncedMsg.NewMessages`, which sync fills with
 stored row IDs, and skips syncs marked `Cold` (first sync or cache rebuild).
 Rendering reads a cached status snapshot.
 
+### Expandable conversation rows
+
+`conversation.BuildThreads` remains the shared header-based grouping engine.
+`ui.rebuildMessageThreads` ranks its UI copy using the active message ordering;
+`messageRows` references each visible real email by thread/member index. Member
+zero is the parent; expanded children omit it. Session-local `expandedMessages`
+tracks member database IDs rather than unstable union-find root keys. Expansion
+resets when the folder/search context changes or grouping is disabled.
+
+`currentRowMessage` resolves visible rows; `currentRowMessages` and ordinary
+unselected action targets return only that email. Collapsed `x` explicitly obtains
+conversation members through `currentParentThread` and submits one mailbox-batched
+`acceptReadChanges` request; expanded `x` toggles only its email. Mark-read captures
+the next visible message ID before any reordering. Read reconciliation uses
+`indexOfMessageSelection` to preserve collapsed conversation selection without
+revealing children; expanded selection stays ID-based. `MessagesLoadedMsg.ReadReload`
+carries this read-specific selection policy through the asynchronous SQL reload.
+Passive selection restoration still reveals a surviving hidden member when needed. The reader always uses
+`setViewportMessage`; expansion does not rebuild the selected message's reader or
+clear body/viewport caches. Unread Only remains message-level in milestone 1.
+
 ### Needs You
 
 `internal/db/attention.go` holds the qualification rules (conventional
@@ -314,7 +335,7 @@ persistence state. Only the active compose request can apply a grammar response.
 
 `DeleteMessage` uses one transaction for lookup, tombstone insertion, attachment
 and FTS removal, and message deletion. `SetNeedsYouDismissedBatch` atomically
-applies thread dismissals/restorations. The UI permits one dismissal write in
+applies dismissal/restoration batches; the UI targets the selected email. The UI permits one dismissal write in
 flight and retains undo history until restoration is acknowledged successfully.
 
 Account deletion removes the account's FTS rows before cascading cached-message

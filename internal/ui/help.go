@@ -90,11 +90,14 @@ func helpSections(keys KeyMap) []helpSection {
 		{
 			name: "Message List",
 			entries: []helpEntry{
-				{keys.Enter.Help().Key, "open selected message; in Drafts, reopen draft compose"},
+				{keys.Enter.Help().Key, "expand/collapse a conversation parent; open a child or single message; in Drafts, reopen draft compose"},
+				{keys.Right.Help().Key + "/" + keys.NextPane.Help().Key, "focus the reader, including on a conversation parent"},
+				{"conversations", "▸ collapsed, ▾ expanded; children have muted tree connectors; every row previews one email"},
+				{"actions", "delete, archive, move, star and Space affect only the selected email, including parents; explicit selections remain separate"},
 				{"auto", "moving down past the last message loads older mail from the server"},
 				{keys.Space.Help().Key, "select message and advance"},
 				{keys.SelectAll.Help().Key, "select all messages in current view"},
-				{keys.MarkRead.Help().Key, "toggle selected message(s) read/unread"},
+				{keys.MarkRead.Help().Key, "collapsed: toggle all members; expanded/single: toggle this email; marking read advances; marking unread stays; explicit selections toggle individually without advancing"},
 				{keys.ToggleStar.Help().Key, "toggle star on selected message(s)"},
 				{keys.Archive.Help().Key, "archive selected message(s)"},
 				{keys.Move.Help().Key, "move selected message(s) to folder/label"},
@@ -338,7 +341,7 @@ func helpSections(keys KeyMap) []helpSection {
 			entries: []helpEntry{
 				{"enable", "Settings → Display → Mouse support (off by default; keeps native text selection while off)"},
 				{"click", "select a row or LINKS entry, or focus a pane; reader clicks never open links; click a search row to edit"},
-				{"double-click", "open a message or draft (same as enter); on a sidebar row, expand/collapse or sync like enter"},
+				{"double-click", "expand/collapse a conversation parent; open a child, single message or draft; on a sidebar row, expand/collapse or sync like enter"},
 				{"scroll wheel", "move three rows; reader clears link selection; keep pane focus"},
 				{"right-click", "select the row and open a menu of its actions (folder, account, or message); enter or click runs one, esc closes"},
 				{"overlays", "mouse input is ignored while Settings, Accounts, Compose, or any other overlay is open"},
