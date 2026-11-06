@@ -250,6 +250,8 @@ Press `Alt+M` in the compose panel to maximize it across the full terminal or re
 The standard compose editor supports Shift-selection, clipboard shortcuts,
 undo and redo, word movement, and Home/End. Turn Vim mode on in Settings if you
 prefer commands such as `dw`, `dd`, `:w`, and `:q`.
+The compose body soft-wraps at word boundaries (with character fallback for long
+words and URLs) without adding line breaks to messages or saved drafts.
 
 ## Mail state belongs to the server
 

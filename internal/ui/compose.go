@@ -171,6 +171,7 @@ func NewCompose(acfg config.AccountConfig, accounts []config.AccountConfig, addr
 	c.bccInput.Placeholder = "bcc (optional)"
 	c.subjectInput = newComposeInput("Subject")
 	c.bodyInput = newEditorArea()
+	c.bodyInput.ed.SetWrapMode(ripple.WrapWord)
 	// The compose footer draws the body's Find/Replace bar, so opening search
 	// never takes rows away from the message text.
 	c.bodyInput.ed.SetSearchBarExternal(true)
