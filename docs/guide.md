@@ -692,6 +692,11 @@ The standard editor is on by default. Use Shift with the arrow keys to select
 text, `Ctrl+C`/`Ctrl+X`/`Ctrl+V` for the system clipboard, `Ctrl+Z`/`Ctrl+Y` for
 undo and redo, and Ctrl with the arrow keys to move by word.
 
+The compose body soft-wraps at word boundaries, falling back to character
+wrapping for long words and URLs. It reflows when resized or maximized without
+adding line breaks to your message or saved draft. Hard line breaks and blank
+lines stay as entered.
+
 Press `Ctrl+F` in the compose body to open Find. Matches highlight as you type;
 `Enter` or `F3` goes forward, `Shift+F3` goes backward, and navigation wraps.
 Press `Ctrl+R` inside Find to show Replace and focus the replacement field

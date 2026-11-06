@@ -119,6 +119,8 @@ Current release: **v1.7.0**.
   `Alt+R` regex. Requires Ripple v0.5.0.
 - **Compose**: optional vim mode (`compose_vim`), backed by the extracted
   [`ripple`](https://github.com/allisonhere/ripple) editor library.
+  The body uses upstream word-aware soft wrapping with character fallback for
+  long tokens; resizing and maximizing preserve message and draft text.
 - **Gmail & Outlook OAuth** (optional): the account form's **Auth** row is a
   `‹ ›` selector (App password ⇄ OAuth) for both providers; the OAuth guidance
   shows only while that cluster is focused. Gmail uses bundled Desktop app

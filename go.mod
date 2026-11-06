@@ -33,7 +33,7 @@ require (
 
 require (
 	github.com/alecthomas/chroma/v2 v2.20.0 // indirect
-	github.com/allisonhere/ripple v0.5.0
+	github.com/allisonhere/ripple v0.5.1-0.20261105022651-9b597652c893
 	github.com/andybalholm/cascadia v1.3.2 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
