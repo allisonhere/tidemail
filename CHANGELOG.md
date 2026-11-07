@@ -20,6 +20,12 @@ All notable changes to TideMail are documented in this file.
   `Alt+R` toggles regex (turn it on in **Settings → Editor → Advanced regex
   search**). In vim mode, `/`, `?`, `n` and `N` search.
 
+- Inline images inside terminal multiplexers such as Herdr. When the environment
+  doesn't identify a Kitty-graphics terminal, TideMail asks the terminal at
+  startup and uses Kitty graphics if it answers. `TIDEMAIL_IMAGE_PROTOCOL=kitty`
+  or `none` still forces the choice.
+- On Linux, the installer adds TideMail to your app launcher (icon and desktop
+  entry under `~/.local/share`); it opens in your default terminal.
 - **Settings → Display → Transparent background** (`transparent = true` under
   `[display]`) lets your terminal's background opacity show through the theme
   background. Selected rows, overlays and the other surfaces stay solid.
@@ -41,7 +47,8 @@ All notable changes to TideMail are documented in this file.
   through folder switches, searches and reloads during the six-second undo window
   and while the server works. A refused delete, or one the server never answers
   within 90 seconds, brings the message back with an error. The cursor stays on its
-  message unless that message was removed. Mark-all-read is blocked while a read or
+  message unless that message was removed, so deleting a selection made elsewhere
+  no longer moves it. Mark-all-read is blocked while a read or
   delete is pending in the same mailbox.
   The pending state (`delete pending · ctrl+z undo`) of a delete, archive or move
   is one yellow status bar pill that drains like a fuel gauge over the undo window
@@ -113,6 +120,9 @@ All notable changes to TideMail are documented in this file.
 - SMTP uploads have a ten-minute submission budget with bounded setup. Multipart
   messages use stable boundaries and omit a redundant nested MIME preamble.
 
+- Gmail's temporary `NO System Error` reply to a move is treated as success when
+  the message has left the source folder, and TideMail no longer sends the move a
+  second time when it can't confirm that.
 - `Ctrl+Z` no longer cancels a scheduled send or one waiting to retry; it only
   takes back a send still in its undo delay.
 - Reading, starring, moving and deleting refuse to act when the server has
