@@ -327,6 +327,10 @@ retain the sync watermark until continuation finishes. UID search also includes
 unknown identifiers above the cached history floor to recover old-dated moves.
 Remote moves evict source cache rows without deletion tombstones; destination
 sync obtains the new mailbox-scoped UID.
+On Gmail, a confirmed delete also calls `EvictMessageCopies`, which removes the
+message's cached copies in the account's other folders (All Mail, Sent Mail,
+labels) by Message-ID, without tombstones; the UI hides those copies while the
+delete is pending. Messages without a Message-ID are left to folder sync.
 
 OAuth caches use per-account context-aware refresh gates; the provider mutex never
 spans refresh HTTP requests. Forgotten state invalidates outstanding results.

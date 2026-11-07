@@ -215,7 +215,8 @@ Custom provider).
   June 2026 design review; the rest of that roadmap has shipped.
 
 - Mail safety fixes: Drafts reject ordinary message actions; remote moves evict
-  source cache rows and filter deletes perform the server operation first.
+  source cache rows; Gmail deletes evict the message's other-folder copies once
+  confirmed; a failed delete, archive or move returns the cursor to the message and filter deletes perform the server operation first.
   Actionable links reject terminal controls and Unicode hard breaks; multipart boundaries are stable
   for a message identity, and nested alternatives have no redundant preamble.
   Parsed and rendered mail strips bare CR while preserving CRLF line boundaries.
