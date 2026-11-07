@@ -6,6 +6,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.8.0
+
 ### Added
 
 - Word wrapping and mouse support in the compose body. Text now wraps between
