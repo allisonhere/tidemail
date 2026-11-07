@@ -73,11 +73,12 @@ func Probe() {
 	if err != nil {
 		return
 	}
-	defer term.Restore(in, state)
+	// Best effort: there is nothing more to do if restoring fails.
+	defer func() { _ = term.Restore(in, state) }()
 	if os.Stdin.SetReadDeadline(time.Now().Add(probeTimeout)) != nil {
 		return
 	}
-	defer os.Stdin.SetReadDeadline(time.Time{})
+	defer func() { _ = os.Stdin.SetReadDeadline(time.Time{}) }()
 	if _, err := os.Stdout.WriteString(probeQuery); err != nil {
 		return
 	}
