@@ -315,24 +315,15 @@ func TestExpandableParentActionsAreSingleMessage(t *testing.T) {
 					if len(m.pendingDestructiveActions) != 1 || len(m.pendingDestructiveActions[0].Entries) != 1 || m.pendingDestructiveActions[0].Entries[0].Message.ID != id {
 						t.Fatal("ordinary action targeted hidden members")
 					}
-					// Archive hides its target at once. A pending delete stays on
-					// screen, struck through with its countdown, until it commits.
-					wantVisible := 2
-					if action == "delete" {
-						wantVisible = 3
-					}
-					if len(m.filteredMessages) != wantVisible {
+					// Delete and archive both hide their target at once.
+					if len(m.filteredMessages) != 2 {
 						t.Fatal("ordinary action hid siblings")
 					}
-					if action == "archive" && !child && m.currentRowMessage().ID != f.messages[1].ID {
+					if !child && m.currentRowMessage().ID != f.messages[1].ID {
 						t.Fatal("parent not replaced by next-ranked survivor")
 					}
-					// Archive undo returns to the restored message. A pending delete
-					// advanced the highlight and undo leaves it on that message.
+					// Undo returns to the restored message.
 					wantID := id
-					if action == "delete" {
-						wantID = m.currentRowMessage().ID
-					}
 					m.undoLatestDestructive()
 					if m.currentRowMessage().ID != wantID {
 						t.Fatalf("undo did not restore exact identity: got %d want %d", m.currentRowMessage().ID, wantID)

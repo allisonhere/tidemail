@@ -12,6 +12,7 @@ picker, or choose one under **Settings → Display → Theme**.
 | Search | `/` in the picker, then type. Every word must match the family, the variant, the stored name, or `light` / `dark`: `rose dawn`, `night`, `light`. `Enter` stops typing, `Esc` clears the search, a second `Esc` leaves the search box, and one more closes the picker. |
 | Swatch and sample | Each row shows five color cells: accent, success, warning, error and tag. Below the list, a sample shows a selected row, body, muted, link and quoted text, and the success, warning, error, tag and search-match colors in the highlighted theme. |
 | Settings | **Settings → Display → Theme** steps through the same list with `←`/`→`. |
+| Background | Every theme paints a solid background, the color the picker shows, even when your terminal has background opacity set. To let that opacity show through instead, turn on **Settings → Display → Transparent background** (`transparent = true` under `[display]`); selected rows, overlays and other surfaces stay solid. |
 | Config file | `theme = "rose-pine-moon"` in `config.toml`. Names are listed below. An unknown name falls back to `catppuccin-mocha`. |
 
 Every name an earlier version accepted still works, so saved settings are
@@ -98,7 +99,7 @@ These five are TideMail's own designs, not ports:
 | Name | Description |
 |---|---|
 | `vt100` | Green phosphor on black, with dim and bright green levels. |
-| `vt52` | An amber-monitor-inspired palette: warm golden text on charcoal black with muted bronze accents, and ASCII borders and glyphs. An aesthetic preset, not a claim about the colors of any historical VT52 display. |
+| `vt52` | An amber-monitor-inspired palette: warm golden text on pure black with muted bronze accents, and ASCII borders and glyphs. An aesthetic preset, not a claim about the colors of any historical VT52 display. |
 | `magenta-geode` | Dark mineral palette: deep plum with polished magenta, fuchsia and violet highlights. |
 | `coral-sunset` | Dark coastal-sunset palette: coral, salmon, peach and rose-gold over a muted dusk purple. |
 | `lavender-fields-forever` | Gentle lilac palette: heather purple and soft violet with readable neutral text. |
@@ -106,7 +107,8 @@ These five are TideMail's own designs, not ports:
 The phosphor themes are plain palettes: there are no CRT effects, animation or
 terminal escape tricks. TideMail dims their focus and selection accent a step
 below the library's full-bright value (`#116611` for `vt100`, `#664400` for
-`vt52`) so the focused-pane border clears its 7:1 contrast floor. The `[display.vt100]` and
+`vt52`) so the focused-pane border clears its 7:1 contrast floor, and `vt52`'s page background is pure
+black like `vt100`'s. The `[display.vt100]` and
 `[display.vt52]` config tables can still override their colors.
 
 ## Themes and variants

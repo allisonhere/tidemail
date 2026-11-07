@@ -14,6 +14,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/cli"
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
+	"github.com/allisonhere/tidemail/internal/termimage"
 	"github.com/allisonhere/tidemail/internal/ui"
 )
 
@@ -130,7 +131,13 @@ func run() (code int, restartExec string) {
 		}
 	}
 
-	if setColors, resetColors := ui.TerminalColorSequences(cfg.Theme); setColors != "" {
+	if cfg.Display.Images != "off" {
+		// Terminals behind a multiplexer may support Kitty graphics without
+		// saying so in the environment; ask before the UI owns the terminal.
+		termimage.Probe()
+	}
+
+	if setColors, resetColors := ui.TerminalColorSequences(cfg.Theme, cfg.Display.Transparent); setColors != "" {
 		fmt.Print(setColors)
 		defer fmt.Print(resetColors)
 	}

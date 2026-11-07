@@ -36,8 +36,15 @@ var (
 	// clears TideMail's 7:1 contrast floor.
 	VT100 = retroAccent(tideui.VT100, "#116611")
 	// VT52: accent dimmed from tideui's #ffb020 for the same reason.
-	VT52 = retroAccent(tideui.VT52, "#664400")
+	VT52 = retroBlack(retroAccent(tideui.VT52, "#664400"))
 )
+
+// retroBlack makes the theme's page background pure black, as VT100's is.
+// tideui's VT52 uses a charcoal #14110d that reads as grey next to it.
+func retroBlack(t Theme) Theme {
+	t.Bg = "#000000"
+	return t
+}
 
 // BuiltinThemes is tideui's collection, grouped by family, with TideMail's
 // VT100 and VT52 in place of tideui's.

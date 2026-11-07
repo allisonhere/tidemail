@@ -492,13 +492,10 @@ func TestNeedsYouCountUpdatesDuringDestructiveActions(t *testing.T) {
 			}
 			schedule()
 			pendingCount := 1
-			if kind == "delete" {
-				pendingCount = 2
-			}
 			if got := m.displayNeedsYouCount(); got != pendingCount || !strings.Contains(m.renderNeedsYouRow(false, 40), fmt.Sprintf("(%d)", pendingCount)) {
 				t.Fatalf("pending badge = %d, want %d", got, pendingCount)
 			}
-			// Delete retains its count until confirmation; archive/move hide now.
+			// Delete, archive and move all drop the count now.
 			m = settle(t, m, loadNeedsYouCountCmd(m.db))
 			if got := m.displayNeedsYouCount(); got != pendingCount {
 				t.Fatalf("refreshed pending badge = %d, want %d", got, pendingCount)

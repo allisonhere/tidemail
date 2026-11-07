@@ -136,15 +136,8 @@ func (m *Model) renderMessagesPane() string {
 			if m.rowReadPending(msg2, pendingThread) {
 				dot = m.pendingReadIndicator() + " "
 			}
-			deleteIndicator := m.rowDeleteIndicator(msg2, thread, time.Now())
-			if indicator := deleteIndicator; indicator != "" {
-				dot = indicator + " "
-			}
 			subject := m.messageRowTitle(msg2)
 			style = applyMessageRowState(style, msgSelected, msg2.Starred, cursor, m.styles.Theme)
-			if deleteIndicator != "" {
-				subject = style.UnsetPadding().UnsetWidth().UnsetMaxWidth().Strikethrough(true).Render(subject)
-			}
 			star := m.messageRowStar(msg2.Starred)
 			if chevron != "" {
 				// Use the existing spacer after the star, not a new status gutter.

@@ -120,7 +120,8 @@ Current release: **v1.7.0**.
 - **Compose**: optional vim mode (`compose_vim`), backed by the extracted
   [`ripple`](https://github.com/allisonhere/ripple) editor library.
   The body uses upstream word-aware soft wrapping with character fallback for
-  long tokens; resizing and maximizing preserve message and draft text.
+  long tokens (switchable in Settings → Editor); resizing and maximizing preserve
+  message and draft text.
 - **Gmail & Outlook OAuth** (optional): the account form's **Auth** row is a
   `‹ ›` selector (App password ⇄ OAuth) for both providers; the OAuth guidance
   shows only while that cluster is focused. Gmail uses bundled Desktop app
@@ -138,7 +139,7 @@ Current release: **v1.7.0**.
 - **Search**, unread-only filtering, command palette, desktop notifications.
 - **Experimental plugins**: manual and automatic metadata classification,
   stored tags with local corrections (`e` on a message), Needs You with immediate
-  sidebar count updates for archive/move and undo (delete on confirmation), result cards
+  sidebar count updates for delete, archive, move and undo, result cards
   with technical Details, and a host-owned `u` unsubscribe action that uses TideMail's existing confirmed flow without
   exposing unsubscribe links to plugins.
 - **Plugin catalog**: Settings → Plugins → `b` (and the palette) lists the
@@ -153,7 +154,7 @@ Current release: **v1.7.0**.
   GnuPG. Not yet: attachments inside encrypted mail, encrypted-mail search,
   CLI sending, key management.
 - **Settings**: theme, display density, pane corners, pane header bars, Needs You / Waiting on Them sidebar rows, modal
-  drop shadow, AI provider config, editor, update checks, a dedicated Plugins
+  drop shadow, transparent background (solid by default), AI provider config, editor, update checks, a dedicated Plugins
   section with inline administration and configuration, a read-only Changelog
   view (the embedded CHANGELOG.md, scrollable, works offline), and an optional
   Support page with open/copy actions for the GitHub Sponsors link. About is an
@@ -255,7 +256,8 @@ three, drained like a fuel gauge by the read clock (250 ms redraws); the drained
 swaps the two yellows, and plain themes show the seconds left. While the server
 confirms, the pill reads `deleting ⠋` (`archiving`, `moving to …`) on the same clock,
 then fades over 400 ms (40 ms ticks, stopped when done) into the green confirmation
-(`#70C68E` / `#1A5E33`) or the red error pill (`#DD6A6A` / `#8C1A22`).
+(`#70C68E` / `#1A5E33`) or the red error pill (`#DD6A6A` / `#8C1A22`). Every other main status-bar message is
+the same green pill (`setStatus` sets `statusPill` for all non-error messages).
 Mailbox/account mark-all-read (server-side) reserves its targets and rejects conflicting
 pending operations. Delete completions reconcile unread counts from the cache,
 keep the highlighted message visible, and suppress remote successes whose local

@@ -47,12 +47,15 @@ func TestComposeWordWrapAcrossConstructors(t *testing.T) {
 			}
 		})
 	}
-	e := newEditorArea() // Template and other editors retain Ripple's default.
+	// Every editor follows Settings → Editor → Wrap at word boundaries; off
+	// restores Ripple's character wrapping.
+	setEditorWordWrap(false)
+	e := newEditorArea()
 	e.SetSize(10, 8)
 	e.Blur()
 	e.SetValue("hello world again")
 	if row := strings.Split(ansi.Strip(e.View()), "\n")[0]; strings.TrimSpace(row) != "hello worl" {
-		t.Fatalf("shared editor changed: %q", row)
+		t.Fatalf("word wrap off still wraps by word: %q", row)
 	}
 }
 

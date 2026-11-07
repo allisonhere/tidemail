@@ -52,6 +52,7 @@ const (
 	sfDisplayDensity
 	sfPaneCorners
 	sfShadow
+	sfTransparent
 	sfTagStyle // Appearance → Annotation Tags
 	sfShowMessageTagsInHeader
 	sfMailTags
@@ -89,6 +90,7 @@ const (
 	sfMouseSupport
 	sfComposeVim
 	sfComposeSearchRegex
+	sfComposeWordWrap
 	sfComposeSpell
 	sfSpellLang
 	sfSpellDictionary
@@ -340,6 +342,7 @@ type Settings struct {
 	focusLine               bool
 	supportReminder         bool
 	shadow                  bool
+	transparent             bool
 	showSender              bool
 	threadedConversations   bool
 	defaultUnreadOnly       bool
@@ -355,6 +358,7 @@ type Settings struct {
 	mouseSupport            bool
 	composeVim              bool
 	composeSearchRegex      bool
+	composeWordWrap         bool
 	composeSpell            bool
 	spellLangIdx            int
 	cliQuitAfterSend        bool
@@ -466,6 +470,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		focusLine:               cfg.Display.FocusLine,
 		supportReminder:         cfg.Display.SupportReminder,
 		shadow:                  cfg.Display.Shadow,
+		transparent:             cfg.Display.Transparent,
 		showSender:              cfg.Display.ShowSender,
 		threadedConversations:   cfg.Display.ThreadedConversations,
 		defaultUnreadOnly:       cfg.Display.DefaultUnreadOnly,
@@ -481,6 +486,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		mouseSupport:            cfg.Display.MouseSupport,
 		composeVim:              cfg.Display.ComposeVim,
 		composeSearchRegex:      cfg.Display.ComposeSearchRegex,
+		composeWordWrap:         cfg.Display.ComposeWordWrap,
 		composeSpell:            cfg.Display.ComposeSpell,
 		spellLangIdx:            spellLangIndex(cfg.Display.ComposeSpellLang),
 		cliQuitAfterSend:        cfg.Display.CLIQuitAfterSend,
@@ -560,6 +566,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.FocusLine = s.focusLine
 	cfg.Display.SupportReminder = s.supportReminder
 	cfg.Display.Shadow = s.shadow
+	cfg.Display.Transparent = s.transparent
 	cfg.Display.ShowSender = s.showSender
 	cfg.Display.ThreadedConversations = s.threadedConversations
 	cfg.Display.DefaultUnreadOnly = s.defaultUnreadOnly
@@ -577,6 +584,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.MouseSupport = s.mouseSupport
 	cfg.Display.ComposeVim = s.composeVim
 	cfg.Display.ComposeSearchRegex = s.composeSearchRegex
+	cfg.Display.ComposeWordWrap = s.composeWordWrap
 	cfg.Display.ComposeSpell = s.composeSpell
 	cfg.Display.ComposeSpellLang = spellLangs[s.spellLangIdx].id
 	cfg.Display.CLIQuitAfterSend = s.cliQuitAfterSend
@@ -824,7 +832,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 	case ssDisplay:
 		// Keep this order in lockstep with the ssDisplay case in viewSectionBody:
 		// Appearance, Terminal colors (retro themes), Message list, Reading, Behavior.
-		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfPaneCorners, sfIcons, sfShowPaneHeaders, sfShowNeedsYou, sfShowWaiting, sfDateFormat, sfFocusLine, sfShadow, sfSupportReminder, sfTagStyle, sfShowMessageTagsInHeader, sfTagColors, sfMailTags}
+		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfPaneCorners, sfIcons, sfShowPaneHeaders, sfShowNeedsYou, sfShowWaiting, sfDateFormat, sfFocusLine, sfShadow, sfTransparent, sfSupportReminder, sfTagStyle, sfShowMessageTagsInHeader, sfTagColors, sfMailTags}
 		if config.IsRetroTerminalTheme(s.themeName) {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
@@ -832,7 +840,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		fields = append(fields, sfReadingWidth, sfShowHeaders, sfMarkReadOnOpen, sfMarkReadOnFocus, sfActionableLinks, sfFilterLinks, sfImages)
 		return append(fields, sfBrowser, sfConfirmQuit, sfNotifications, sfMouseSupport)
 	case ssEditor:
-		return []settingsField{sfBackToSections, sfComposeVim, sfComposeSearchRegex, sfComposeSpell, sfSpellLang, sfSpellDictionary, sfSendDelay, sfSendMaxAttempts}
+		return []settingsField{sfBackToSections, sfComposeVim, sfComposeWordWrap, sfComposeSearchRegex, sfComposeSpell, sfSpellLang, sfSpellDictionary, sfSendDelay, sfSendMaxAttempts}
 	case ssCLI:
 		return []settingsField{sfBackToSections, sfCLIQuitAfterSend, sfCLISkipReview, sfCLISignature}
 	case ssUpdates:
@@ -1508,6 +1516,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfTransparent:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.transparent = !s.transparent
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfShowSender:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.showSender = !s.showSender
@@ -1593,6 +1610,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 	case sfComposeVim:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.composeVim = !s.composeVim
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
+	case sfComposeWordWrap:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.composeWordWrap = !s.composeWordWrap
 		} else if keyMatches(key, keys.Down) {
 			s.setFocusedField(s.nextField())
 		} else if keyMatches(key, keys.Up) {
@@ -2089,6 +2115,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addDateFormatSelector()
 		b.addToggle("Focus line", s.focusLine, sfFocusLine)
 		b.addToggle("Modal drop shadow", s.shadow, sfShadow)
+		b.addToggle("Transparent background", s.transparent, sfTransparent)
 		b.addToggle("Support reminder", s.supportReminder, sfSupportReminder)
 		b.addGroup("Message tags")
 		b.addTagStyleSelector()
@@ -2137,6 +2164,8 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 	case ssEditor:
 		b.addGroup("Compose")
 		b.addToggle("Vim keys in compose", s.composeVim, sfComposeVim)
+		b.addToggle("Wrap at word boundaries", s.composeWordWrap, sfComposeWordWrap)
+		b.addHint("Wraps compose text between words instead of mid-word. Display only; your message text is not changed.")
 		b.addToggle("Advanced regex search", s.composeSearchRegex, sfComposeSearchRegex)
 		b.addHint("Shows an optional Regex toggle in compose Find. Searches stay literal until you enable it in the search bar.")
 		b.addToggle("Spell check in compose (F7)", s.composeSpell, sfComposeSpell)
@@ -3324,6 +3353,8 @@ func (s Settings) fieldHint(field settingsField) string {
 		return "show the Waiting on Them view in the sidebar; when off, only the row is hidden"
 	case sfShadow:
 		return "draw a soft drop shadow behind modal overlays"
+	case sfTransparent:
+		return "let your terminal's background opacity show through the theme background (kitty, Ghostty and others with opacity set); off keeps the background solid"
 	case sfTagStyle:
 		return "← → to compare Pills (Square/Round/None), Compact, Plain, Glyph Pills (Round), and Tag icons; Round and Tag icons need a Nerd Font"
 	case sfShowSender:

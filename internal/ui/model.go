@@ -348,7 +348,8 @@ type Model struct {
 
 	statusMsg string
 	statusErr bool
-	// statusPill draws statusMsg as a pill; setStatus clears it.
+	// statusPill draws statusMsg as a pill; setStatus sets it for every non-error
+	// message (errors get the red pill via statusErr).
 	statusPill bool
 	// pillFade blends the status pill in from pillFadeFrom over pillFadeDuration
 	// after a delete, archive or move finishes; a zero pillFadeStart means no
@@ -460,6 +461,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 	// (read in newEditorArea), the same way the clipboard is injected.
 	setEditorVimMode(cfg.Display.ComposeVim)
 	setEditorSearchRegex(cfg.Display.ComposeSearchRegex)
+	setEditorWordWrap(cfg.Display.ComposeWordWrap)
 	setEditorSpell(cfg.Display.ComposeSpell, cfg.Display.ComposeSpellLang, loadSpellWords(database))
 	addSpellNames(accountSpellEntries(cfg))
 
@@ -600,7 +602,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// (sync, resize, theme, etc.), so let the next View rebuild the backdrop.
 	keepBackdrop := m.overlay == overlayCompose
 	switch msg := msg.(type) {
-	case tea.KeyMsg, cursor.BlinkMsg:
+	case tea.KeyMsg, cursor.BlinkMsg, tea.MouseMsg:
 	case DraftSavedMsg:
 		keepBackdrop = keepBackdrop && msg.Err == nil
 	default:
@@ -664,6 +666,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Defense in depth: the mouse ProgramOption isn't registered at
 			// all when this is off, so no tea.MouseMsg should normally arrive.
 			return m, nil
+		}
+		if m.overlay == overlayCompose {
+			return m.handleComposeMouse(msg, time.Now())
 		}
 		if tea.MouseEvent(msg).IsWheel() {
 			return m.handleMouseWheel(msg)
@@ -732,7 +737,16 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case CommitDestructiveActionMsg:
-		return m, m.beginDestructiveCommit(msg.ID)
+		commit := m.beginDestructiveCommit(msg.ID)
+		if commit == nil {
+			return m, nil
+		}
+		id := msg.ID
+		watchdog := tea.Tick(destructiveCommitTimeout, func(time.Time) tea.Msg { return DestructiveCommitTimeoutMsg{ID: id} })
+		return m, tea.Batch(commit, watchdog)
+
+	case DestructiveCommitTimeoutMsg:
+		return m, m.failStuckDestructive(msg.ID)
 
 	case DestructiveActionResultMsg:
 		cmd := m.handleDestructiveResult(msg)
@@ -3425,7 +3439,7 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.activeMessageRowCount() > 0 {
 			m.setViewportForCurrentRow()
 		}
-		cmd = tea.Batch(cmd, setTermColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg))
+		cmd = tea.Batch(cmd, m.termColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg))
 	}
 	action := m.settings.takeAction()
 	switch action {
@@ -3511,6 +3525,7 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Apply the vim toggle to future compose editors (read in newEditorArea).
 			setEditorVimMode(m.cfg.Display.ComposeVim)
 			setEditorSearchRegex(m.cfg.Display.ComposeSearchRegex)
+			setEditorWordWrap(m.cfg.Display.ComposeWordWrap)
 			setEditorSpell(m.cfg.Display.ComposeSpell, m.cfg.Display.ComposeSpellLang, loadSpellWords(m.db))
 			merged, _ := MergedThemeFromConfig(m.cfg)
 			m.setStyles(BuildStyles(merged, m.cfg.Display.Density, m.cfg.Display.PaneCorners))
@@ -3530,7 +3545,7 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.overlay = overlayNone
 			m.clearMessages()
-			cmds := []tea.Cmd{m.loadAccountsCmd(), omarchyCmd}
+			cmds := []tea.Cmd{m.loadAccountsCmd(), omarchyCmd, m.termColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg)}
 			// A view just hidden can't stay open; fall back to the Unified
 			// Inbox, always the first sidebar row.
 			if prevKind, _ := m.currentSidebarSelection(); (prevKind == rowKindNeedsYou && !m.cfg.Display.ShowNeedsYou) || (prevKind == rowKindWaiting && !m.cfg.Display.ShowWaiting) {
@@ -3558,7 +3573,7 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeMessageRowCount() > 0 {
 				m.setViewportForCurrentRow()
 			}
-			return m, setTermColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg)
+			return m, m.termColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg)
 		}
 		return m, nil
 	}
@@ -3774,11 +3789,15 @@ func (m Model) View() string {
 		view = m.renderOverlay(view)
 	}
 	view = clampView(view, m.width, m.height, m.styles.Theme.Bg)
-	return lipgloss.NewStyle().
+	view = lipgloss.NewStyle().
 		Width(m.width).
 		Height(m.height).
 		Background(m.styles.Theme.Bg).
 		Render(view)
+	if m.cfg.Display.Transparent {
+		view = transparentBackground(view, m.styles.Theme.Bg)
+	}
+	return view
 }
 
 // ── Pane renderers ────────────────────────────────────────────────────────────
@@ -4631,7 +4650,7 @@ func (c *ComposeModel) clearRoutedStatus() {
 func (m *Model) setStatus(msg string, isErr bool) {
 	m.statusMsg = msg
 	m.statusErr = isErr
-	m.statusPill = false
+	m.statusPill = !isErr
 	m.pillFadeStart = time.Time{}
 	// Push to log buffer (ring buffer, max 100 entries)
 	const maxLogEntries = 100
@@ -4641,14 +4660,12 @@ func (m *Model) setStatus(msg string, isErr bool) {
 	}
 }
 
-// setStatusPill sets a non-error status that the status bar draws as a pill.
-func (m *Model) setStatusPill(msg string) {
-	m.setStatus(msg, false)
-	m.statusPill = true
-}
+// setStatusPill sets a non-error status; every non-error status is drawn as a
+// pill, so this is the same as setStatus(msg, false).
+func (m *Model) setStatusPill(msg string) { m.setStatus(msg, false) }
 
-// statusPillText draws the status message as a green pill, since it confirms a
-// finished delete, archive or move. Plain themes use brackets.
+// statusPillText draws the status message as a green pill. Plain themes use
+// brackets.
 func (m Model) statusPillText() string { return m.pillText(m.statusMsg) }
 
 // pillText draws text as a green status bar pill; see statusPillText.

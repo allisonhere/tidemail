@@ -8,25 +8,48 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- Word wrapping and mouse support in the compose body. Text now wraps between
+  words instead of mid-word (turn it off in **Settings → Editor → Wrap at word
+  boundaries**, or `compose_word_wrap = false`); wrapping is visual only and never
+  changes your message. With **Mouse support** on, click to place the caret, drag to
+  select (dragging past the top or bottom scrolls), double-click to select a word,
+  and use the wheel to scroll.
 - Find and replace in compose. `Ctrl+F` opens Find with live match highlights and
   a match count; `Ctrl+R` in the bar shows Replace. `Enter` in Find goes to the next
   match, `Alt+Enter` replaces all in one undo step, `Alt+C` toggles match case and
   `Alt+R` toggles regex (turn it on in **Settings → Editor → Advanced regex
   search**). In vim mode, `/`, `?`, `n` and `N` search.
 
+- Inline images inside terminal multiplexers such as Herdr. When the environment
+  doesn't identify a Kitty-graphics terminal, TideMail asks the terminal at
+  startup and uses Kitty graphics if it answers. `TIDEMAIL_IMAGE_PROTOCOL=kitty`
+  or `none` still forces the choice.
+- On Linux, the installer adds TideMail to your app launcher (icon and desktop
+  entry under `~/.local/share`); it opens in your default terminal.
+- **Settings → Display → Transparent background** (`transparent = true` under
+  `[display]`) lets your terminal's background opacity show through the theme
+  background. Selected rows, overlays and the other surfaces stay solid.
+
 ### Changed
 
+- Every theme now has a solid background, the same color the theme picker shows.
+  Terminals such as kitty apply their background opacity to any cell whose color
+  equals the terminal's default background, and TideMail set that default to the
+  theme's own background, so with opacity configured the whole app looked
+  see-through. `vt52`'s background is now pure black, like `vt100`'s.
 - Alert colors are now fixed color pairs: green (`#70C68E` fill, `#1A5E33` text)
   for OK, yellow (`#FCD05F` / `#AA7B18`) for warnings and red (`#DD6A6A` /
   `#8C1A22`) for failures. Status bar pills use each pair exactly on every theme,
   and errors in the status bar are now a red pill. Plain alert text uses the first
   color on dark themes and the second on light ones; for that text `vt100`, `vt52`
   and `match-omarchy` keep their own.
-- Deleting a message keeps it visible during the six-second undo window with a
-  6–1 countdown (struck-through subject), then a spinner until the server confirms.
-  It disappears only after confirmation; a failed delete restores the row. The
-  cursor advances immediately and stays anchored through list reflows. Mark-all-read
-  is blocked while a read or delete is pending in the same mailbox.
+- Deleting a message hides it at once, like archive and move, and keeps it hidden
+  through folder switches, searches and reloads during the six-second undo window
+  and while the server works. A refused delete, or one the server never answers
+  within 90 seconds, brings the message back with an error. The cursor stays on its
+  message unless that message was removed, so deleting a selection made elsewhere
+  no longer moves it. Mark-all-read is blocked while a read or
+  delete is pending in the same mailbox.
   The pending state (`delete pending · ctrl+z undo`) of a delete, archive or move
   is one yellow status bar pill that drains like a fuel gauge over the undo window
   (the drained part swaps the two yellows; plain themes show the seconds left). While
@@ -97,6 +120,9 @@ All notable changes to TideMail are documented in this file.
 - SMTP uploads have a ten-minute submission budget with bounded setup. Multipart
   messages use stable boundaries and omit a redundant nested MIME preamble.
 
+- Gmail's temporary `NO System Error` reply to a move is treated as success when
+  the message has left the source folder, and TideMail no longer sends the move a
+  second time when it can't confirm that.
 - `Ctrl+Z` no longer cancels a scheduled send or one waiting to retry; it only
   takes back a send still in its undo delay.
 - Reading, starring, moving and deleting refuse to act when the server has

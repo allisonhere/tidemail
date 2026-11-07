@@ -538,15 +538,68 @@ func (c *Client) MoveMessages(ctx context.Context, mailboxName string, uids []ui
 		}
 		return c.markDeletedAndExpunge(uidSet)
 	}
-	if _, err := c.conn.Move(uidSet, targetMailbox).Wait(); err != nil {
+	var err error
+	for attempt := 0; ; attempt++ {
+		_, err = c.conn.Move(uidSet, targetMailbox).Wait()
+		if err == nil {
+			return nil
+		}
 		if isCopyUIDParseError(err) {
 			// The MOVE succeeded; go-imap only choked parsing the COPYUID
 			// resp-code on the OK response (see isCopyUIDParseError).
 			return nil
 		}
-		return fmt.Errorf("move to %s: %w", targetMailbox, err)
+		if attempt == 0 && !isTransientServerError(err) {
+			break
+		}
+		// Gmail sometimes completes the move and still answers NO, so look
+		// at the source mailbox before deciding anything: if our messages
+		// are gone, the move worked. This also covers a retry that fails
+		// because the earlier attempt had in fact moved the mail. If the
+		// check itself fails, report the original error rather than
+		// re-sending a MOVE that may already have happened.
+		remaining, serr := c.remainingUIDs(uidSet)
+		if serr != nil {
+			break
+		}
+		if len(remaining) == 0 {
+			return nil
+		}
+		if !isTransientServerError(err) || attempt >= len(moveRetryDelays) {
+			break
+		}
+		select {
+		case <-time.After(moveRetryDelays[attempt]):
+		case <-ctx.Done():
+			return fmt.Errorf("move to %s: %w", targetMailbox, err)
+		}
 	}
-	return nil
+	return fmt.Errorf("move to %s: %w", targetMailbox, err)
+}
+
+// remainingUIDs returns which of uidSet are still present in the selected mailbox.
+func (c *Client) remainingUIDs(uidSet imap.UIDSet) ([]imap.UID, error) {
+	found, err := c.conn.UIDSearch(&imap.SearchCriteria{UID: []imap.UIDSet{uidSet}}, nil).Wait()
+	if err != nil {
+		return nil, err
+	}
+	return found.AllUIDs(), nil
+}
+
+// moveRetryDelays is the pause before each retry of a MOVE the server refused
+// with a transient error. A var so tests can shorten it.
+var moveRetryDelays = []time.Duration{500 * time.Millisecond, 1500 * time.Millisecond}
+
+// isTransientServerError reports whether err is a tagged NO that the server
+// itself calls a system failure. Gmail answers moves to [Gmail]/Trash with
+// "NO System Error (Failure)" intermittently, sometimes after the move already
+// happened and sometimes before it did.
+func isTransientServerError(err error) bool {
+	var ie *imap.Error
+	if !errors.As(err, &ie) || ie.Type != imap.StatusResponseTypeNo {
+		return false
+	}
+	return strings.Contains(strings.ToLower(ie.Text), "system error")
 }
 
 // isCopyUIDParseError reports whether err is go-imap failing to parse a COPYUID

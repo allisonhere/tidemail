@@ -28,6 +28,19 @@ var editorVimMode bool
 
 var editorSearchRegex bool
 
+// editorWordWrap, when true, wraps compose text at word boundaries instead of
+// at the editor's right edge. Visual only: the message text is never changed.
+var editorWordWrap = true
+
+func setEditorWordWrap(on bool) { editorWordWrap = on }
+
+func editorWrapMode() ripple.WrapMode {
+	if editorWordWrap {
+		return ripple.WrapWord
+	}
+	return ripple.WrapCharacter
+}
+
 func setEditorSearchRegex(on bool) { editorSearchRegex = on }
 
 // setEditorVimMode sets whether new compose editors use vim modal editing.
@@ -118,6 +131,7 @@ func newEditorArea() editorArea {
 	ed := ripple.New()
 	ed.SetClipboard(editorClipboard)
 	ed.SetRegexSearchEnabled(editorSearchRegex)
+	ed.SetWrapMode(editorWrapMode())
 	if editorVimMode {
 		ed.SetInputMode(ripple.ModeVim)
 	}

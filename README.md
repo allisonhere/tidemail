@@ -160,6 +160,9 @@ a different writable destination. If an older `tidemail` earlier on `PATH`
 would still run first, the installer removes it when possible or prints the
 exact cleanup command.
 
+On Linux the installer also adds TideMail to your app launcher (icon and desktop
+entry under `~/.local/share`); it opens in your default terminal.
+
 The installer also puts a manual page in `~/.local/share/man/man1`, so
 `man tidemail` works. The page is built into the program: if you installed some
 other way, `tidemail man | man -l -` shows it, and `tidemail man > tidemail.1`
@@ -211,9 +214,11 @@ a key. TideMail keeps the help screen inside the app and lets you search it.
   unsubscribe header.
 
 Delete, archive, and move wait six seconds before TideMail sends them to the
-server. `Ctrl+Z` restores the last queued action. Deletes stay visible with a
-6–1 marker countdown, then a pending spinner until the server confirms removal.
-The cursor advances immediately; undo leaves it in place. Pending read/unread
+server. `Ctrl+Z` restores the last queued action. The message leaves the list at once
+and stays hidden through folder switches, searches and reloads; the status bar
+shows the countdown and then a working pill until the server confirms. If the
+server refuses, or never answers within 90 seconds, the message comes back with
+an error. The cursor stays on its message unless that message was removed. Pending read/unread
 and destructive operations lock conflicting actions on the affected messages.
 Mailbox/account mark-all-read is blocked during conflicting operations: retry
 it when TideMail reports a pending operation. A confirmed delete with a local
@@ -221,7 +226,7 @@ cache error stays hidden while later list reloads retry the cache cleanup.
 The pending state shows in the status bar as a yellow pill that drains like a
 fuel gauge over the six-second undo window (plain themes show the seconds left),
 then reads `deleting ⠋` while the server confirms and fades into a green
-confirmation pill, or a red one if it failed. Errors show as a red pill. See
+confirmation pill, or a red one if it failed. Errors show as a red pill and every other status message as a green one. See
 [alert colors](docs/themes.md#alert-colors) for the exact colors.
 
 ## Compose with the right account
@@ -251,7 +256,8 @@ The standard compose editor supports Shift-selection, clipboard shortcuts,
 undo and redo, word movement, and Home/End. Turn Vim mode on in Settings if you
 prefer commands such as `dw`, `dd`, `:w`, and `:q`.
 The compose body soft-wraps at word boundaries (with character fallback for long
-words and URLs) without adding line breaks to messages or saved drafts.
+words and URLs) without adding line breaks to messages or saved drafts; turn it
+off in Settings → Editor → Wrap at word boundaries.
 
 ## Mail state belongs to the server
 
@@ -300,6 +306,12 @@ terminals without graphics support every image becomes a labelled text placehold
 Choose **Settings → Display → Reading → Images** (`Auto` or `Off`) and press
 `Ctrl+S` to save. The change takes effect immediately; remote images still require
 `i` to load. The setting also shows whether inline images are supported.
+
+TideMail picks the graphics mode from your terminal's environment. If that finds
+nothing (for example inside a terminal multiplexer such as Herdr), it asks the
+terminal at startup whether it supports Kitty graphics and uses them if it
+does, so no setup is needed. To force the choice, set
+`TIDEMAIL_IMAGE_PROTOCOL=kitty` or `none`.
 
 **foot and WezTerm: inline images are currently unsupported.** TideMail uses
 text placeholders there. foot supports Sixel images, but TideMail's renderer
@@ -523,6 +535,7 @@ default_account = "8f43c9e644384bd5a25a27ff0d9c2701"
 send_delay_seconds = 5
 send_max_attempts = 3  # total attempts; 1 disables automatic retries
 compose_vim = true
+compose_word_wrap = true  # wrap compose text between words (default); false wraps at the edge
 images = "auto"  # "auto" (inline + blocked remote), or "off" (text placeholders)
 
 [[account]]

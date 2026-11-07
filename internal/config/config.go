@@ -210,8 +210,10 @@ type DisplayConfig struct {
 	Density                 string `toml:"density"`
 	PaneCorners             string `toml:"pane_corners"` // "square" or "round"
 	Shadow                  bool   `toml:"shadow"`       // drop shadow behind modal overlays
+	Transparent             bool   `toml:"transparent"`  // let the terminal's background opacity show through
 	ComposeVim              bool   `toml:"compose_vim"`
 	ComposeSearchRegex      bool   `toml:"compose_search_regex"` // expose the advanced Regex search toggle
+	ComposeWordWrap         bool   `toml:"compose_word_wrap"`    // wrap compose text at word boundaries (on by default)
 	ComposeSpell            bool   `toml:"compose_spell"`        // offline spell check in compose (off by default)
 	ComposeSpellLang        string `toml:"compose_spell_lang"`   // spell check language code; empty means English
 	// Interactive CLI only; scripted commands ignore these.
@@ -601,6 +603,7 @@ func DefaultConfig() Config {
 			ShowPaneHeaders:         true,
 			ShowMessageTagsInHeader: true,
 			ShowNeedsYou:            true,
+			ComposeWordWrap:         true,
 			ShowWaiting:             true,
 			DateFormat:              "relative",
 			MarkReadOnOpen:          true,

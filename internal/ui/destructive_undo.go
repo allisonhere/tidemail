@@ -36,7 +36,9 @@ type pendingDestructiveAction struct {
 	Kind       destructiveActionKind
 	Entries    []pendingDestructiveEntry
 	Committing bool
-	Runtime    *destructiveActionRuntime
+	// CommitStarted is when the server call was launched, for the Logs pane.
+	CommitStarted time.Time
+	Runtime       *destructiveActionRuntime
 }
 
 type destructiveActionRuntime struct {
@@ -45,6 +47,15 @@ type destructiveActionRuntime struct {
 }
 
 type CommitDestructiveActionMsg struct{ ID uint64 }
+
+// destructiveCommitTimeout is a watchdog on top of the 45s server timeout. If
+// an action's result never reaches the UI, its rows would otherwise sit on the
+// spinner forever and ignore further keys; after this long it is treated as
+// failed and the message is restored. A later sync reconciles the real state.
+const destructiveCommitTimeout = 90 * time.Second
+
+// DestructiveCommitTimeoutMsg fires destructiveCommitTimeout after a commit starts.
+type DestructiveCommitTimeoutMsg struct{ ID uint64 }
 
 type DestructiveActionResultMsg struct {
 	ID          uint64
@@ -55,6 +66,8 @@ type DestructiveActionResultMsg struct {
 	RemoteErr   error
 	Failed      []db.Message
 	Err         error
+	// Elapsed is how long the server and cache work itself took.
+	Elapsed time.Duration
 }
 
 func (m *Model) scheduleArchive(msgs []db.Message) tea.Cmd {
@@ -137,14 +150,27 @@ func (m *Model) scheduleDestructive(kind destructiveActionKind, entries []pendin
 	id := m.nextDestructiveActionID
 	m.pendingDestructiveActions = append(m.pendingDestructiveActions, pendingDestructiveAction{ID: id, Kind: kind, Entries: entries, Deadline: time.Now().Add(destructiveUndoWindow)})
 	m.clearSelection()
-	m.applyFilter()
-	m.clampMessageViewAfterDestructiveChange()
-	timer := tea.Tick(destructiveUndoWindow, func(time.Time) tea.Msg { return CommitDestructiveActionMsg{ID: id} })
-	if kind == destructiveDelete {
-		if current := m.currentRowMessage(); current != nil {
-			m.advanceReadCursor(current.ID)
+	// Focus only moves when the focused message is one being acted on; acting on
+	// other messages (a selection made elsewhere) leaves the cursor where it is.
+	focusedID, focusedAffected := int64(0), false
+	if current := m.currentRowMessage(); current != nil {
+		focusedID = current.ID
+		for _, entry := range entries {
+			if entry.Message.ID == focusedID {
+				focusedAffected = true
+				break
+			}
 		}
 	}
+	m.applyFilter()
+	if focusedID != 0 && !focusedAffected {
+		// Removed rows above the cursor shift every index; follow the message.
+		if idx := m.indexOfFilteredMessage(focusedID); idx >= 0 {
+			m.messageCursor = idx
+		}
+	}
+	m.clampMessageViewAfterDestructiveChange()
+	timer := tea.Tick(destructiveUndoWindow, func(time.Time) tea.Msg { return CommitDestructiveActionMsg{ID: id} })
 	// The read clock also redraws the undo gauge in the status bar.
 	return tea.Batch(timer, m.ensureReadAnimation())
 }
@@ -155,20 +181,9 @@ func (m *Model) undoLatestDestructive() tea.Cmd {
 		if action.Committing {
 			continue
 		}
-		currentID := int64(0)
-		if current := m.currentRowMessage(); current != nil {
-			currentID = current.ID
-		}
 		m.removeDestructiveAction(action.ID)
 		m.applyFilter()
-		if action.Kind != destructiveDelete {
-			m.focusRestoredMessage(action.Entries)
-		} else if idx := m.indexOfFilteredMessage(currentID); idx >= 0 {
-			// A pending delete never left the list and advanced the highlight;
-			// undo keeps it on the same message even if rebuilding rows moved it.
-			m.messageCursor = idx
-			m.keepMessageCursorVisible()
-		}
+		m.focusRestoredMessage(action.Entries)
 		m.setStatus(fmt.Sprintf("restored %d", len(action.Entries)), false)
 		return m.clearStatusCmd()
 	}
@@ -181,9 +196,31 @@ func (m *Model) beginDestructiveCommit(id uint64) tea.Cmd {
 			continue
 		}
 		m.pendingDestructiveActions[i].Committing = true
+		m.pendingDestructiveActions[i].CommitStarted = time.Now()
 		m.pendingDestructiveActions[i].Runtime = &destructiveActionRuntime{done: make(chan struct{})}
 		action := m.pendingDestructiveActions[i]
+		m.addToLog(fmt.Sprintf("%s: sending %d message(s) to the server", action.Kind, len(action.Entries)), false)
 		return m.commitDestructiveActionCmd(action)
+	}
+	return nil
+}
+
+// failStuckDestructive restores an action whose result never arrived. It does
+// nothing when the result already did.
+func (m *Model) failStuckDestructive(id uint64) tea.Cmd {
+	for _, action := range m.pendingDestructiveActions {
+		if action.ID != id || !action.Committing {
+			continue
+		}
+		failed := make([]db.Message, 0, len(action.Entries))
+		for _, entry := range action.Entries {
+			failed = append(failed, entry.Message)
+		}
+		m.addToLog(fmt.Sprintf("%s: no answer after %s; restoring the message(s)", action.Kind, destructiveCommitTimeout), true)
+		return m.handleDestructiveResult(DestructiveActionResultMsg{
+			ID: id, Kind: action.Kind, Failed: failed,
+			Err: errors.New("timed out waiting for the server; the next sync will show the real state"),
+		})
 	}
 	return nil
 }
@@ -193,7 +230,9 @@ func (m Model) commitDestructiveActionCmd(action pendingDestructiveAction) tea.C
 	sessions := m.sessions
 	return func() tea.Msg {
 		defer close(action.Runtime.done)
+		started := time.Now()
 		result := executeDestructiveAction(action, database, sessions)
+		result.Elapsed = time.Since(started)
 		action.Runtime.err = result.Err
 		return result
 	}
@@ -299,6 +338,13 @@ func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.C
 	action, ok := m.removeDestructiveAction(result.ID)
 	if !ok {
 		return nil
+	}
+	if !action.CommitStarted.IsZero() {
+		// Two clocks: how long the work took, and how long until the UI saw the
+		// result. A big gap between them means the UI loop was blocked.
+		m.addToLog(fmt.Sprintf("%s: server work took %s, result seen %s after sending; %d ok, %d failed",
+			action.Kind, result.Elapsed.Round(time.Millisecond), time.Since(action.CommitStarted).Round(time.Millisecond),
+			len(result.Succeeded), len(result.Failed)), len(result.Failed) > 0)
 	}
 	currentID := int64(0)
 	if current := m.currentRowMessage(); current != nil {
@@ -407,9 +453,6 @@ func (m Model) messagePendingDestructive(id int64) bool {
 func (m Model) pendingUnreadCount(mailboxID int64) int64 {
 	var count int64
 	for _, action := range m.pendingDestructiveActions {
-		if action.Kind == destructiveDelete {
-			continue
-		}
 		for _, entry := range action.Entries {
 			if entry.Message.MailboxID == mailboxID && !entry.Message.Read && !m.pendingUnreadExcluded[entry.Message.ID] {
 				count++
@@ -583,9 +626,6 @@ func (m Model) messageHiddenDestructive(id int64) bool {
 		return true
 	}
 	for _, action := range m.pendingDestructiveActions {
-		if action.Kind == destructiveDelete {
-			continue
-		}
 		for _, entry := range action.Entries {
 			if entry.Message.ID == id {
 				return true
@@ -593,33 +633,6 @@ func (m Model) messageHiddenDestructive(id int64) bool {
 		}
 	}
 	return false
-}
-
-func (m *Model) rowDeleteIndicator(msg db.Message, thread messageThread, now time.Time) string {
-	indicator := ""
-	for _, action := range m.pendingDestructiveActions {
-		if action.Kind != destructiveDelete {
-			continue
-		}
-		for _, entry := range action.Entries {
-			affected := entry.Message.ID == msg.ID
-			for _, member := range thread.Messages {
-				affected = affected || member.ID == entry.Message.ID
-			}
-			if !affected {
-				continue
-			}
-			if action.Committing {
-				return m.pendingReadIndicator()
-			}
-			seconds := max(1, min(6, int((action.Deadline.Sub(now)+time.Second-1)/time.Second)))
-			value := fmt.Sprint(seconds)
-			if indicator == "" || value < indicator {
-				indicator = value
-			}
-		}
-	}
-	return indicator
 }
 
 // A failed local write must not undo confirmed remote deletion. Retry only the

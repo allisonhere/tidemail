@@ -15,8 +15,10 @@ import (
 )
 
 func preserveComposeEditorState(tb testing.TB) {
-	vim, spell, gen, names := editorVimMode, editorSpell, editorSpellGen, editorSpellNames
-	tb.Cleanup(func() { editorVimMode, editorSpell, editorSpellGen, editorSpellNames = vim, spell, gen, names })
+	vim, spell, gen, names, wrap := editorVimMode, editorSpell, editorSpellGen, editorSpellNames, editorWordWrap
+	tb.Cleanup(func() {
+		editorVimMode, editorSpell, editorSpellGen, editorSpellNames, editorWordWrap = vim, spell, gen, names, wrap
+	})
 }
 
 func composeEventModel(width, height int, spell bool) Model {

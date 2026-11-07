@@ -240,6 +240,7 @@ func (m *Model) showBulkProgress() {
 	r := m.plugins.bulk
 	m.statusMsg = fmt.Sprintf("%s: running on %s… %d / %d", r.name, r.scope, r.done, r.total)
 	m.statusErr = false
+	m.statusPill = true
 }
 
 // handleBulkStep records one finished message, updates its badges at once,

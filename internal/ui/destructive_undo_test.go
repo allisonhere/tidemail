@@ -64,15 +64,15 @@ func (m *Model) sourceMailboxForUndoTest(sourceID, targetID, accountID, unread i
 	}
 }
 
-func TestPendingDeleteVisibleWithoutTouchingDatabaseAndUndoRestores(t *testing.T) {
+func TestPendingDeleteHiddenWithoutTouchingDatabaseAndUndoRestores(t *testing.T) {
 	f := newUndoTestFixture(t, 1)
 	m := f.model
 	cmd := m.scheduleDelete(f.messages)
 	if cmd == nil {
 		t.Fatal("expected delayed commit timer")
 	}
-	if len(m.filteredMessages) != 1 {
-		t.Fatalf("expected pending message visible, got %d visible", len(m.filteredMessages))
+	if len(m.filteredMessages) != 0 {
+		t.Fatalf("expected pending message hidden, got %d visible", len(m.filteredMessages))
 	}
 	stored, err := f.database.GetMessage(f.messages[0].ID)
 	if err != nil || stored.MailboxID != f.source.ID {
@@ -91,7 +91,7 @@ func TestPendingDeleteVisibleWithoutTouchingDatabaseAndUndoRestores(t *testing.T
 	}
 }
 
-func TestPendingDeleteStaysVisibleAfterReload(t *testing.T) {
+func TestPendingDeleteStaysHiddenAfterReload(t *testing.T) {
 	f := newUndoTestFixture(t, 1)
 	m := f.model
 	m.scheduleDelete(f.messages)
@@ -101,8 +101,8 @@ func TestPendingDeleteStaysVisibleAfterReload(t *testing.T) {
 	}
 	m.messages = reloaded
 	m.applyFilter()
-	if len(m.filteredMessages) != 1 {
-		t.Fatal("database reload hid a pending delete")
+	if len(m.filteredMessages) != 0 {
+		t.Fatal("database reload brought back a pending delete")
 	}
 }
 
@@ -120,7 +120,7 @@ func TestUndoStackRestoresNewestBatchFirst(t *testing.T) {
 	if len(m.pendingDestructiveActions) != 1 || m.pendingDestructiveActions[0].Kind != destructiveDelete {
 		t.Fatalf("expected newest move undone first, got %+v", m.pendingDestructiveActions)
 	}
-	if len(m.filteredMessages) != 2 {
+	if len(m.filteredMessages) != 1 || m.filteredMessages[0].ID != f.messages[1].ID {
 		t.Fatalf("expected only newest batch restored, got %+v", m.filteredMessages)
 	}
 }
@@ -170,8 +170,8 @@ func TestPendingUnreadCountsAreDerivedAndUndoable(t *testing.T) {
 	f := newUndoTestFixture(t, 1)
 	m := f.model
 	m.scheduleDelete(f.messages)
-	if got := m.displayMailboxUnreadCount(f.source); got != f.source.UnreadCount {
-		t.Fatalf("expected pending delete to retain display count, got %d", got)
+	if got := m.displayMailboxUnreadCount(f.source); got != 0 {
+		t.Fatalf("expected pending delete to drop the display count at once, got %d", got)
 	}
 	m.undoLatestDestructive()
 	if got := m.displayMailboxUnreadCount(f.source); got != 1 {

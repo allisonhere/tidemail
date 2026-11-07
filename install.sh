@@ -157,6 +157,45 @@ if [ -n "${XDG_DATA_HOME:-}" ] || [ -n "${HOME:-}" ]; then
   fi
 fi
 
+# ── Launcher entry (Linux) ────────────────────────────────────────────────
+# Adds TideMail to the app launcher (Omarchy's Walker, GNOME, KDE, rofi...).
+# Best effort: a failure here never fails the install. The entry runs the
+# installed binary by absolute path in the user's default terminal.
+if [ "$OS" = "linux" ] && { [ -n "${XDG_DATA_HOME:-}" ] || [ -n "${HOME:-}" ]; }; then
+  DATA_DIR="${XDG_DATA_HOME:-${HOME}/.local/share}"
+  ICON_URL="https://raw.githubusercontent.com/${REPO}/main/images/tidemail-icon.png"
+  APP_DIR="${DATA_DIR}/applications"
+  ICON_DIR="${DATA_DIR}/icons"
+  ICON_OK=""
+  if mkdir -p "$APP_DIR" "$ICON_DIR" 2>/dev/null \
+    && curl -fsSL -o "${TMP}/${BINARY}.png" "$ICON_URL" 2>/dev/null \
+    && [ -s "${TMP}/${BINARY}.png" ] \
+    && install -m 0644 "${TMP}/${BINARY}.png" "${ICON_DIR}/${BINARY}.png" 2>/dev/null; then
+    ICON_OK=1
+  fi
+  cat > "${TMP}/${BINARY}.desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=TideMail
+GenericName=Mail Client
+Comment=Keyboard-first terminal email client
+Exec="${INSTALL_DIR}/${BINARY}"
+Icon=${ICON_OK:+${ICON_DIR}/${BINARY}.png}
+Terminal=true
+Categories=Network;Email;ConsoleOnly;
+Keywords=mail;email;imap;smtp;inbox;terminal;
+DESKTOP
+  if [ -z "$ICON_OK" ]; then
+    sed -i 's/^Icon=$/Icon=mail-unread/' "${TMP}/${BINARY}.desktop"
+  fi
+  if install -m 0644 "${TMP}/${BINARY}.desktop" "${APP_DIR}/${BINARY}.desktop" 2>/dev/null; then
+    command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APP_DIR" >/dev/null 2>&1 || true
+    success "Added TideMail to your app launcher"
+  else
+    warn "Could not add the launcher entry; see the App launcher section of docs/guide.md"
+  fi
+fi
+
 # Resolve a directory to its canonical, symlink-free form so alternate
 # spellings of the same directory on PATH ("..", symlinks, trailing slashes)
 # are recognised as our install dir and never deleted as a "stale" copy.

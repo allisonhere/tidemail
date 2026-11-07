@@ -49,9 +49,11 @@ is no keychain support yet: passwords and tokens are stored in plain text in
 
 ### App launcher entry (optional)
 
-The Arch Linux package (`tidemail-bin`) installs a desktop entry and the
-TideMail icon for you. With the install script or a source build, you can add
-them yourself from a checkout of the repository:
+The Arch Linux package (`tidemail-bin`) and the install script on Linux both
+add a desktop entry and the TideMail icon, so TideMail appears in your app
+launcher (including Omarchy's). The script writes them to
+`~/.local/share/applications` and `~/.local/share/icons`. With a source build,
+you can add them yourself from a checkout of the repository:
 
 ```bash
 install -Dm644 images/tidemail-icon.png ~/.local/share/icons/tidemail.png
@@ -431,11 +433,13 @@ its normal folder. **Why is this in Needs You?** lists the reasons and the
 annotations behind them. All the usual actions (reply, archive, delete, move,
 star, mark read) work on messages here. The sidebar count updates immediately
 when you archive or move messages, including during the six-second undo
-window. Delete keeps the message and count visible until server confirmation.
-Its subject is struck through while deletion is pending. Its marker counts
-down 6–1, then shows a pending spinner (plain UI: `~`).
-The cursor advances immediately; `Ctrl+Z` during the countdown cancels deletion
-without moving the cursor. Failure clears the spinner and retains the message.
+window. Delete works the same way: the message and its count leave the list at once and
+stay hidden through folder switches, searches and reloads while the undo window runs and
+while the server works, so it cannot flicker back. Only the status-bar pill shows the
+countdown. The cursor stays on its message, or moves to the next one if the focused message
+was removed; `Ctrl+Z` during the countdown restores the message in place. If the server
+refuses, the message returns with an error. If the server never answers, it is restored
+after 90 seconds with a "timed out" error; the next sync shows its real state.
 Pending read/unread and destructive actions block conflicting operations on the
 affected messages; other messages remain interactive. Mailbox/account mark-all-read
 is blocked if a target mailbox has a pending read or destructive operation; retry
@@ -451,7 +455,13 @@ instead. Once the undo window has passed, the pill refills to bright yellow and 
 `deleting`, `archiving` or `moving to …` with a spinner while the server confirms. When it
 does, the pill fades over 0.4 seconds into the green confirmation (`#70C68E` with `#1A5E33`
 text), or into a red error pill (`#DD6A6A` with `#8C1A22` text) if the action failed. Other
-errors in the status bar show as the same red pill.
+errors in the status bar show as the same red pill, and every other status message
+(synced, marked read, starred and so on) shows as the same green pill. Plain themes wrap them in
+brackets instead.
+
+Each delete, archive or move also writes two lines to the Logs pane: one when it is sent to the
+server and one when it finishes, with how long the server work took and how long the app took to
+see the result. If a pill ever seems stuck, those two times show which side was slow.
 
 ### Waiting on Them
 
@@ -558,6 +568,12 @@ press `i` again when prompted to reload it.
 Choose **Settings → Display → Reading → Images** (`Auto` or `Off`) and press
 `Ctrl+S` to save. The change takes effect immediately; remote images still require
 `i` to load. The setting also shows whether inline images are supported.
+
+TideMail picks the graphics mode from your terminal's environment. If that finds
+nothing (for example inside a terminal multiplexer such as Herdr), it asks the
+terminal at startup whether it supports Kitty graphics and uses them if it
+does, so no setup is needed. To force the choice, set
+`TIDEMAIL_IMAGE_PROTOCOL=kitty` or `none`.
 
 **foot and WezTerm: inline images are currently unsupported.** TideMail uses
 text placeholders there because the renderer requires Kitty Unicode placeholders
@@ -695,7 +711,8 @@ undo and redo, and Ctrl with the arrow keys to move by word.
 The compose body soft-wraps at word boundaries, falling back to character
 wrapping for long words and URLs. It reflows when resized or maximized without
 adding line breaks to your message or saved draft. Hard line breaks and blank
-lines stay as entered.
+lines stay as entered. To wrap at the edge of the pane instead, turn off
+**Settings → Editor → Wrap at word boundaries** (`compose_word_wrap = false`).
 
 Press `Ctrl+F` in the compose body to open Find. Matches highlight as you type;
 `Enter` or `F3` goes forward, `Shift+F3` goes backward, and navigation wraps.
@@ -1351,6 +1368,12 @@ word must match the family, the variant, the theme's name, or `light` / `dark`
 (`rose dawn`, `light`, `night`). Each row has a swatch of the theme's accent,
 success, warning, error and tag colors, and a sample below the list shows how
 selection, text, links, quotes and status colors look in the highlighted theme.
+
+Every theme paints a solid background, the same color the picker shows, even when
+your terminal has background opacity set (kitty, Ghostty and others). To let that
+opacity show through instead, turn on **Settings → Display → Transparent
+background** (`transparent = true` under `[display]`). Only the theme background
+becomes see-through; selected rows, overlays and other surfaces stay solid.
 
 Alert colors are the same in every built-in theme: green for OK, yellow for
 cautions and warnings, and red for failures. Status bar pills use a fixed fill and

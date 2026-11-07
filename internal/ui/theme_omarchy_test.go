@@ -180,7 +180,7 @@ func TestTerminalColorSequencesResolveMatchOmarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	set, reset := TerminalColorSequences(ThemeNameMatchOmarchy)
+	set, reset := TerminalColorSequences(ThemeNameMatchOmarchy, true)
 	for _, want := range []string{"\x1b]10;#a8dfff\x07", "\x1b]11;#0a0f1a\x07"} {
 		if !strings.Contains(set, want) {
 			t.Fatalf("startup sequences %q do not contain resolved Omarchy color %q", set, want)
