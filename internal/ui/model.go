@@ -5,11 +5,9 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -306,10 +304,10 @@ type Model struct {
 	activeTheme    int
 	styles         Styles
 	themePicker    tideui.ThemePicker
-	// composeBackdrop caches only the main panes behind compose. Typing and
-	// successful autosaves do not alter them; every other event invalidates it.
+	// composeBackdrop owns display-keyed render stages behind compact compose.
 	// Pointer-owned so the render-time cache survives Model's value receivers.
 	composeBackdrop         *composeBackdropCache
+	composeDisplayRevision  uint64
 	readerPanes             *readerPaneCache
 	pendingReads            map[int64]pendingRead
 	pendingBulkReads        map[int64]uint64 // mailbox reservations for local mark-all-read
@@ -597,28 +595,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.readerPanes.valid = false
 		}
 	}
-	// Keys go exclusively to the open compose overlay. A successful autosave
-	// updates only compose state. Other events can change the panes underneath
-	// (sync, resize, theme, etc.), so let the next View rebuild the backdrop.
-	keepBackdrop := m.overlay == overlayCompose
-	switch msg := msg.(type) {
-	case tea.KeyMsg, cursor.BlinkMsg, tea.MouseMsg:
-	case DraftSavedMsg:
-		keepBackdrop = keepBackdrop && msg.Err == nil
-	default:
-		// Bubbles also sends unexported initial/cancel messages. They only
-		// affect cursors and cannot change the underlying application panes.
-		t := reflect.TypeOf(msg)
-		keepBackdrop = keepBackdrop && t != nil && t.PkgPath() == "github.com/charmbracelet/bubbles/cursor"
-	}
-	if !keepBackdrop && m.composeBackdrop != nil {
-		m.composeBackdrop.valid = false
-	}
+
 	next, cmd := m.update(msg)
-	if updated, ok := next.(Model); ok && updated.overlay == overlayCompose {
-		updated.sizeCompose()
+	if updated, ok := next.(Model); ok {
+		if updated.overlay == overlayCompose {
+			updated.sizeCompose()
+		}
+		// Validate display dependencies lazily in View; release artifacts on close.
+		if updated.overlay != overlayCompose && updated.composeBackdrop != nil && updated.composeBackdrop.valid {
+			updated.composeBackdrop.Invalidate()
+		}
 		next = updated
 	}
+
 	// Any update may change the images on screen. Their upload is collected
 	// here so no individual handler has to thread the command through.
 	if m.images != nil {
@@ -737,6 +726,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case CommitDestructiveActionMsg:
+		m.invalidateComposePanes()
 		commit := m.beginDestructiveCommit(msg.ID)
 		if commit == nil {
 			return m, nil
@@ -746,9 +736,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(commit, watchdog)
 
 	case DestructiveCommitTimeoutMsg:
+		m.invalidateComposePanes()
 		return m, m.failStuckDestructive(msg.ID)
 
 	case DestructiveActionResultMsg:
+		m.invalidateComposePanes()
 		cmd := m.handleDestructiveResult(msg)
 		// Archive, delete, and move can end or change a waiting conversation.
 		return m, tea.Batch(cmd, m.requestWaitingRefresh(), m.needsYouRefreshCmd())
@@ -1116,6 +1108,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case MailboxSyncedMsg:
+		m.invalidateComposePanes()
 		delete(m.syncing, msg.MailboxID)
 		delete(m.syncVisible, msg.MailboxID)
 		deferredFolderCmd := m.rearmDeferredFolderSettle()
@@ -1195,6 +1188,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case OlderMessagesLoadedMsg:
+		m.invalidateComposePanes()
 		delete(m.syncing, msg.MailboxID)
 		delete(m.syncVisible, msg.MailboxID)
 		if msg.Err != nil {
@@ -1412,9 +1406,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case CatalogLoadedMsg:
+		m.invalidateComposePanes()
 		return m.handleCatalogLoaded(msg)
 
 	case CatalogChangedMsg:
+		m.invalidateComposePanes()
 		return m.handleCatalogChanged(msg)
 
 	case PGPDecodedMsg:
@@ -1583,6 +1579,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case pluginResultMsg:
+		m.invalidateComposePanes()
 		return m.handlePluginResult(msg)
 
 	case reportSavedMsg:
@@ -1593,33 +1590,41 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handlePluginReport(msg)
 
 	case pluginBulkStepMsg:
+		m.invalidateComposePanes()
 		return m.handleBulkStep(msg)
 
 	case pluginAnnotationCountsMsg, pluginAnnotationsClearedMsg:
+		m.invalidateComposePanes()
 		return m.handlePluginCleanupMsg(msg)
 
 	case pluginEventMsg:
+		m.invalidateComposePanes()
 		return m.handlePluginEvent(msg)
 
 	case pluginAnnotationsRefreshedMsg:
+		m.invalidateComposePanes()
 		return m.handlePluginAnnotationsRefreshed(msg)
 
 	case pluginSecretPresenceMsg, pluginSecretSavedMsg, pluginTestResultMsg:
 		return m.handlePluginSettingsMsg(msg)
 
 	case mailTagChangedMsg:
+		m.invalidateComposePanes()
 		return m.handleMailTagChanged(msg)
 
 	case classificationOverrideMsg:
+		m.invalidateComposePanes()
 		return m.handleClassificationMsg(msg)
 
 	case needsYouCountMsg, needsYouDismissMsg:
 		return m.handleNeedsYouMsg(msg)
 
 	case waitingLoadedMsg, waitingStopMsg:
+		m.invalidateComposePanes()
 		return m.handleWaitingMsg(msg)
 
 	case snoozeLoadedMsg, snoozeAppliedMsg:
+		m.invalidateComposePanes()
 		return m.handleSnoozeMsg(msg)
 
 	case snoozeTickMsg:
@@ -1737,6 +1742,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case MailboxReadUpdatedMsg:
+		m.invalidateComposePanes()
 		matched := false
 		for _, id := range msg.ReservedMailboxIDs {
 			if token, ok := m.pendingBulkReads[id]; ok && token == msg.Token {
@@ -1787,6 +1793,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleOutgoingProtected(msg)
 
 	case CommitSendMsg:
+		m.invalidateComposePanes()
 		return m, m.commitPendingSend(msg.ID)
 
 	case MessageSentMsg:
@@ -3764,27 +3771,22 @@ func (m Model) View() string {
 		return m.renderOverlay("")
 	}
 
-	var main string
-	if m.overlay == overlayCompose && m.composeBackdrop != nil && m.composeBackdrop.valid {
-		main = m.composeBackdrop.panes
+	if m.overlay == overlayCompose && m.composeBackdrop != nil {
+		return m.viewCachedCompose()
+	}
+	var accounts, messages string
+	cacheReader := m.overlay == overlayNone && m.readerPanes != nil && (m.focused == paneContent || m.readerPanes.navigationOnly)
+	if cacheReader && m.readerPanes.valid {
+		accounts, messages = m.readerPanes.accounts, m.readerPanes.messages
 	} else {
-		var accounts, messages string
-		cacheReader := m.overlay == overlayNone && m.readerPanes != nil && (m.focused == paneContent || m.readerPanes.navigationOnly)
-		if cacheReader && m.readerPanes.valid {
-			accounts, messages = m.readerPanes.accounts, m.readerPanes.messages
-		} else {
-			accounts, messages = m.renderAccountsPane(), m.renderMessagesPane()
-			if cacheReader {
-				m.readerPanes.accounts, m.readerPanes.messages = accounts, messages
-				m.readerPanes.valid = true
-			}
-		}
-		right := lipgloss.JoinVertical(lipgloss.Left, messages, m.renderContentPane())
-		main = lipgloss.JoinHorizontal(lipgloss.Top, accounts, right)
-		if m.overlay == overlayCompose && m.composeBackdrop != nil {
-			m.composeBackdrop.panes, m.composeBackdrop.valid = main, true
+		accounts, messages = m.renderAccountsPane(), m.renderMessagesPane()
+		if cacheReader {
+			m.readerPanes.accounts, m.readerPanes.messages = accounts, messages
+			m.readerPanes.valid = true
 		}
 	}
+	right := lipgloss.JoinVertical(lipgloss.Left, messages, m.renderContentPane())
+	main := lipgloss.JoinHorizontal(lipgloss.Top, accounts, right)
 	view := lipgloss.JoinVertical(lipgloss.Left, main, m.renderStatusBar())
 
 	if m.overlay != overlayNone {
@@ -4294,6 +4296,7 @@ func (m *Model) ensureSpinner() tea.Cmd {
 // of them a correlated subquery, and the pool is a single connection — so
 // doing this per frame put database round-trips on the draw path.
 func (m *Model) refreshDraftCounts() {
+	m.invalidateComposePanes()
 	if m.db == nil {
 		m.draftCounts = nil
 		return
@@ -4315,6 +4318,7 @@ func (m *Model) refreshDraftCounts() {
 // the Omarchy live-follow rebuilds colours under a fixed name — so the name
 // alone cannot catch it, and density or corner changes reshape layout too.
 func (m *Model) setStyles(s Styles) {
+	m.invalidateComposePanes()
 	if m.readerPanes != nil {
 		m.readerPanes.valid = false
 	}
@@ -4341,6 +4345,7 @@ func sameSidebarRow(a, b sidebarRow) bool {
 }
 
 func (m *Model) rebuildSidebar() {
+	m.invalidateComposePanes()
 	// config.toml order is the one order everything shows; the database's
 	// position column is only insertion order.
 	m.accounts = sortAccountsByConfigOrder(m.accounts, m.cfg.Accounts)

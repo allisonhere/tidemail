@@ -14,6 +14,7 @@ import (
 )
 
 func (m *Model) refreshOutbox() {
+	m.invalidateComposePanes()
 	if m.db == nil {
 		return
 	}
