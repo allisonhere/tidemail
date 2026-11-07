@@ -152,7 +152,7 @@ func (m Model) renderSaveAttachPicker(width, height int, chrome managerChrome) s
 		Foreground(chrome.muted).
 		Width(width).
 		Padding(0, 2).
-		Render(clampView(dirStr, width-2, 1, chrome.baseBg))
+		Render(clampView(dirStr, max(1, width-4), 1, chrome.baseBg))
 
 	// Entry list — scroll within available height
 	labelW := max(1, width-2) // minus the 2-cell rail

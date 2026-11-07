@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -683,4 +684,44 @@ func (db *DB) KnownMessageUIDs(mailboxID int64) (map[uint32]bool, error) {
 		known[uid] = true
 	}
 	return known, rows.Err()
+}
+
+// EvictMessageCopies removes the cached copies of a message from an account's
+// other folders without recording deletion tombstones, and returns them. Gmail
+// shows one message under several folders (Inbox, All Mail, labels); once it
+// confirms a delete, every copy is gone, but each folder's cache would keep its
+// own until that folder is next synced. Copies are matched by MessageKey; keep
+// lists folders to leave alone, such as the Trash the message was moved to.
+func (db *DB) EvictMessageCopies(accountID int64, key string, keep ...int64) ([]Message, error) {
+	if !strings.HasPrefix(key, "<") {
+		return nil, nil // no Message-ID: nothing identifies the copies safely
+	}
+	rows, err := db.Query(`
+		SELECT messages.id, messages.mailbox_id FROM messages
+		JOIN mailboxes ON mailboxes.id = messages.mailbox_id
+		WHERE mailboxes.account_id = ? AND `+messageKeySQL+` = ?`, accountID, key)
+	if err != nil {
+		return nil, err
+	}
+	var copies []Message
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.MailboxID); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if !slices.Contains(keep, m.MailboxID) {
+			copies = append(copies, m)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, m := range copies {
+		if err := db.EvictMessage(m.ID); err != nil {
+			return nil, err
+		}
+	}
+	return copies, nil
 }

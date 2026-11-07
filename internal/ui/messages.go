@@ -339,7 +339,7 @@ func (m *Model) applyFilterPreservingCollapsed(collapsed bool) {
 	}
 	visible := make([]db.Message, 0, len(m.messages))
 	for _, msg := range m.messages {
-		if !m.messageHiddenDestructive(msg.ID) {
+		if !m.messageHiddenDestructive(msg.ID) && !m.gmailCopyPendingDelete(msg) {
 			visible = append(visible, msg)
 		}
 	}

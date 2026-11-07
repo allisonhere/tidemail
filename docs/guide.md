@@ -438,7 +438,11 @@ stay hidden through folder switches, searches and reloads while the undo window 
 while the server works, so it cannot flicker back. Only the status-bar pill shows the
 countdown. The cursor stays on its message, or moves to the next one if the focused message
 was removed; `Ctrl+Z` during the countdown restores the message in place. If the server
-refuses, the message returns with an error. If the server never answers, it is restored
+refuses, the message returns with an error, and the cursor goes back to it if you
+haven't moved since, so pressing `d` again retries the same message. On Gmail, where
+one message appears under several folders, the delete also hides and then removes its
+copies in All Mail, Sent Mail and labels, so it doesn't reappear when you open another
+folder. If the server never answers, it is restored
 after 90 seconds with a "timed out" error; the next sync shows its real state.
 Pending read/unread and destructive actions block conflicting operations on the
 affected messages; other messages remain interactive. Mailbox/account mark-all-read

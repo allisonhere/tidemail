@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/allisonhere/tidemail/internal/config"
@@ -39,6 +40,12 @@ type pendingDestructiveAction struct {
 	// CommitStarted is when the server call was launched, for the Logs pane.
 	CommitStarted time.Time
 	Runtime       *destructiveActionRuntime
+	// FocusedID is the message the cursor was on when it was one of the entries,
+	// and ReplacementID the message the cursor moved to when it disappeared. If
+	// the action fails and the cursor hasn't moved since, it goes back to
+	// FocusedID, so a retry acts on the same message rather than its neighbour.
+	FocusedID     int64
+	ReplacementID int64
 }
 
 type destructiveActionRuntime struct {
@@ -62,10 +69,13 @@ type DestructiveActionResultMsg struct {
 	Kind        destructiveActionKind
 	Succeeded   []MessageRef
 	CacheFailed []MessageRef
-	CacheErr    error
-	RemoteErr   error
-	Failed      []db.Message
-	Err         error
+	// Evicted are a Gmail message's cached copies in other folders, dropped
+	// from the cache once Gmail confirmed the delete.
+	Evicted   []MessageRef
+	CacheErr  error
+	RemoteErr error
+	Failed    []db.Message
+	Err       error
 	// Elapsed is how long the server and cache work itself took.
 	Elapsed time.Duration
 }
@@ -170,6 +180,13 @@ func (m *Model) scheduleDestructive(kind destructiveActionKind, entries []pendin
 		}
 	}
 	m.clampMessageViewAfterDestructiveChange()
+	if focusedAffected {
+		action := &m.pendingDestructiveActions[len(m.pendingDestructiveActions)-1]
+		action.FocusedID = focusedID
+		if replacement := m.currentRowMessage(); replacement != nil {
+			action.ReplacementID = replacement.ID
+		}
+	}
 	timer := tea.Tick(destructiveUndoWindow, func(time.Time) tea.Msg { return CommitDestructiveActionMsg{ID: id} })
 	// The read clock also redraws the undo gauge in the status bar.
 	return tea.Batch(timer, m.ensureReadAnimation())
@@ -279,6 +296,15 @@ func executeDestructiveBatches(action pendingDestructiveAction, database *db.DB,
 			var err error
 			if action.Kind == destructiveDelete {
 				err = database.DeleteMessage(entry.Message.ID)
+				if err == nil && gmailAccount(entry.Account) {
+					// Gmail trashed every copy; the other folders' caches would show
+					// theirs until synced. A failure here only delays that cleanup.
+					if copies, copyErr := database.EvictMessageCopies(entry.Source.AccountID, db.MessageKey(entry.Message), entry.Target.ID); copyErr == nil {
+						for _, c := range copies {
+							result.Evicted = append(result.Evicted, MessageRef{ID: c.ID, MailboxID: c.MailboxID})
+						}
+					}
+				}
 			} else if entry.Account.IMAPHost != "" && entry.Message.UID != 0 {
 				err = database.EvictMessage(entry.Message.ID)
 			} else {
@@ -350,6 +376,14 @@ func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.C
 	if current := m.currentRowMessage(); current != nil {
 		currentID = current.ID
 	}
+	if action.FocusedID != 0 && currentID == action.ReplacementID {
+		for _, failed := range result.Failed {
+			if failed.ID == action.FocusedID {
+				currentID = action.FocusedID
+				break
+			}
+		}
+	}
 	if m.threadedMessagesEnabled() {
 		removed := make(map[int64]bool, len(result.Succeeded))
 		for _, ref := range result.Succeeded {
@@ -381,6 +415,14 @@ func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.C
 	}
 	mailboxes := make(map[int64]bool)
 	for _, ref := range result.Succeeded {
+		mailboxes[ref.MailboxID] = true
+		if m.needsYou.messageIDs[ref.ID] {
+			delete(m.needsYou.messageIDs, ref.ID)
+			m.needsYou.count--
+		}
+		m.removeMessageFromMemory(ref.ID)
+	}
+	for _, ref := range result.Evicted {
 		mailboxes[ref.MailboxID] = true
 		if m.needsYou.messageIDs[ref.ID] {
 			delete(m.needsYou.messageIDs, ref.ID)
@@ -424,6 +466,42 @@ func (m *Model) handleDestructiveResult(result DestructiveActionResultMsg) tea.C
 		return tea.Batch(m.clearStatusCmd(), m.startPillFade(alertPillYellow))
 	}
 	return m.clearStatusCmd()
+}
+
+// gmailAccount reports whether an account is Gmail, where one message shows
+// under several folders and deleting it removes it from all of them.
+func gmailAccount(a config.AccountConfig) bool {
+	return a.Provider == "Gmail" || strings.EqualFold(strings.TrimSpace(a.IMAPHost), "imap.gmail.com")
+}
+
+// gmailCopyPendingDelete reports whether msg is another folder's copy of a
+// Gmail message with a delete pending, such as its All Mail copy. Those copies
+// are hidden too, so switching folders mid-delete can't bring the message back.
+func (m Model) gmailCopyPendingDelete(msg db.Message) bool {
+	key := ""
+	for _, action := range m.pendingDestructiveActions {
+		if action.Kind != destructiveDelete {
+			continue
+		}
+		for _, entry := range action.Entries {
+			if entry.Message.ID == msg.ID || msg.MailboxID == entry.Target.ID || !gmailAccount(entry.Account) {
+				continue
+			}
+			if key == "" {
+				key = db.MessageKey(msg)
+				if !strings.HasPrefix(key, "<") {
+					return false
+				}
+			}
+			if db.MessageKey(entry.Message) != key {
+				continue
+			}
+			if mb := m.mailboxByID(msg.MailboxID); mb != nil && mb.AccountID == entry.Source.AccountID {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (m *Model) removeDestructiveAction(id uint64) (pendingDestructiveAction, bool) {

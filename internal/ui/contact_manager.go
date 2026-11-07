@@ -851,7 +851,7 @@ func (cm ContactManager) viewFilePicker(width, height int, chrome managerChrome)
 		Foreground(chrome.muted).
 		Width(width).
 		Padding(0, 2).
-		Render(clampView(cm.filePicker.currentDir, width-2, 1, chrome.baseBg))
+		Render(clampView(cm.filePicker.currentDir, max(1, width-4), 1, chrome.baseBg))
 
 	labelW := max(1, width-2) // minus the 2-cell rail
 	listH := max(1, height-lipgloss.Height(dirLine)-4)

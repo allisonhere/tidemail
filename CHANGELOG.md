@@ -123,6 +123,16 @@ All notable changes to TideMail are documented in this file.
 - Gmail's temporary `NO System Error` reply to a move is treated as success when
   the message has left the source folder, and TideMail no longer sends the move a
   second time when it can't confirm that.
+- On Gmail, a deleted message no longer lingers in All Mail, Sent Mail or labels
+  (even after a restart) until those folders sync: its copies there are hidden
+  while the delete is pending and removed from the cache once Gmail confirms.
+- Search keeps the spaces you type between words; `E2E 0` used to search for
+  `E2E0`.
+- The folder path in the move, save-attachments and contact-import pickers stays
+  on one line instead of wrapping.
+- When a delete, archive or move fails and the message comes back, the cursor
+  returns to it if you haven't moved, so a retry acts on the same message rather
+  than the one that took its place.
 - `Ctrl+Z` no longer cancels a scheduled send or one waiting to retry; it only
   takes back a send still in its undo delay.
 - Reading, starring, moving and deleting refuse to act when the server has

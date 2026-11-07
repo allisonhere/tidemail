@@ -1017,6 +1017,33 @@ func TestSearchCursorFollowsPromptAndTypedQuery(t *testing.T) {
 	}
 }
 
+// Found driving a real mailbox: typing "E2E 0" searched for "E2E0".
+func TestSearchKeepsSpacesBetweenWords(t *testing.T) {
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.focused = paneMessages
+	send := func(k tea.KeyMsg) {
+		next, _ := m.handleMainKey(k)
+		m = next.(Model)
+	}
+	send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	for _, k := range []tea.KeyMsg{
+		{Type: tea.KeyRunes, Runes: []rune{'a'}},
+		{Type: tea.KeySpace, Runes: []rune{' '}},
+		{Type: tea.KeyRunes, Runes: []rune{'b'}},
+	} {
+		send(k)
+	}
+	if m.searchQuery != "a b" || m.searchInput.Value() != "a b" {
+		t.Fatalf("query=%q box=%q, want both %q", m.searchQuery, m.searchInput.Value(), "a b")
+	}
+	send(tea.KeyMsg{Type: tea.KeyBackspace})
+	send(tea.KeyMsg{Type: tea.KeyBackspace})
+	send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	if m.searchQuery != "ac" {
+		t.Fatalf("after deleting the space: query=%q, want %q", m.searchQuery, "ac")
+	}
+}
+
 func TestHiddenPaneHeadersMoveFocusedContextToStatusLine(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Display.ShowPaneHeaders = false
@@ -1127,6 +1154,7 @@ func TestSearchModePersistsAfterMultipleCharacters(t *testing.T) {
 	mm.searchMode = true
 	mm.searchEditing = true
 	mm.searchQuery = "l"
+	mm.searchInput.SetValue("l") // the box and the query always move together
 
 	// Type second character — search mode and editing should stay active.
 	next, _ := mm.handleMainKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})

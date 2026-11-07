@@ -1952,11 +1952,13 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.searchEditing = false
 			m.searchInput.Blur()
 			return m, nil
+		// Build on the box's own text, not searchQuery: the query is trimmed, so
+		// appending to it would drop a space typed between words.
 		case keyMatches(msg, m.keys.Backspace):
-			return m.handleSearchCharacter(deleteLastRune(m.searchQuery))
+			return m.handleSearchCharacter(deleteLastRune(m.searchInput.Value()))
 		default:
 			if msg.String() != "" && len(msg.Runes) > 0 {
-				return m.handleSearchCharacter(m.searchQuery + string(msg.Runes))
+				return m.handleSearchCharacter(m.searchInput.Value() + string(msg.Runes))
 			}
 		}
 		return m, nil

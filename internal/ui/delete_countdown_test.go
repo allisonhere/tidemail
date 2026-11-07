@@ -61,11 +61,11 @@ func TestDeletePrototypeResultsAndStaleReload(t *testing.T) {
 			result.Err = errors.New("rejected")
 		}
 		m.handleDestructiveResult(result)
-		want := 3
+		want, wantCursor := 3, f.messages[0].ID // a failure puts the cursor back on the message
 		if success {
-			want = 2
+			want, wantCursor = 2, currentID
 		}
-		if len(m.filteredMessages) != want || m.currentRowMessage().ID != currentID || m.messagePendingDestructive(f.messages[0].ID) {
+		if len(m.filteredMessages) != want || m.currentRowMessage().ID != wantCursor || m.messagePendingDestructive(f.messages[0].ID) {
 			t.Fatal("bad result state")
 		}
 		if success {
@@ -887,5 +887,38 @@ func TestPendingDeleteStaysHiddenAcrossReloadsFolderSwitchesAndSearch(t *testing
 	m.handleDestructiveResult(DestructiveActionResultMsg{ID: id, Kind: destructiveDelete, Failed: []db.Message{deleted}, Err: errors.New("rejected")})
 	if len(m.filteredMessages) != 3 || m.indexOfFilteredMessage(deleted.ID) < 0 {
 		t.Fatal("a rejected delete must restore the message")
+	}
+}
+
+// Found driving a real mailbox offline: a failed delete brought its message
+// back but left the cursor on the neighbour that had taken its place, so
+// pressing d again to retry would delete the wrong message.
+func TestFailedDeleteReturnsCursorToTheRestoredMessage(t *testing.T) {
+	for _, moved := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cursorMoved=%v", moved), func(t *testing.T) {
+			f := newUndoTestFixture(t, 4)
+			m := f.model
+			m.messageCursor = m.indexOfFilteredMessage(f.messages[1].ID)
+			target := m.currentRowMessage().ID
+			m.scheduleDelete([]db.Message{*m.currentRowMessage()})
+			replacement := m.currentRowMessage().ID
+			if replacement == target {
+				t.Fatal("fixture: the cursor should have moved off the deleted message")
+			}
+			if moved {
+				m.messageCursor = m.indexOfFilteredMessage(f.messages[3].ID)
+			}
+			stayOn := m.currentRowMessage().ID
+			id := m.pendingDestructiveActions[0].ID
+			deleted := []db.Message{f.messages[1]}
+			m.handleDestructiveResult(DestructiveActionResultMsg{ID: id, Kind: destructiveDelete, Failed: deleted, Err: errors.New("network is unreachable")})
+			want := target
+			if moved {
+				want = stayOn // the user went somewhere else; don't yank them back
+			}
+			if got := m.currentRowMessage().ID; got != want {
+				t.Fatalf("cursor on %d after the failed delete, want %d", got, want)
+			}
+		})
 	}
 }

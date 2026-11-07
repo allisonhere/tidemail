@@ -311,7 +311,7 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 		Foreground(chrome.muted).
 		Width(width).
 		Padding(0, 2).
-		Render(clampView(path, width-2, 1, chrome.baseBg))
+		Render(clampView(path, max(1, width-4), 1, chrome.baseBg))
 
 	labelW := max(1, width-2) // minus the 2-cell rail
 	listH := max(1, height-6)

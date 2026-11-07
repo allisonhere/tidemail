@@ -5,7 +5,11 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 
+	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 )
 
@@ -155,4 +159,25 @@ func moveEntryLabels(entries []moveEntry) string {
 		labels = append(labels, entry.label)
 	}
 	return strings.Join(labels, ",")
+}
+
+// Found driving a real mailbox: "Claude Test account / INBOX" wrapped onto two
+// lines in a 74-column picker because the path was padded past its padding.
+func TestMovePickerPathStaysOnOneLine(t *testing.T) {
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	m.movePicker = movePicker{accountName: "Claude Test account", currentPath: "INBOX"}
+	chrome := newManagerChrome(74, m.styles.Theme, false)
+	view := ansi.Strip(m.renderMovePicker(74, 20, chrome))
+	first := strings.Split(view, "\n")[0]
+	if !strings.Contains(first, "Claude Test account / INBOX") {
+		t.Fatalf("path line wrapped: first line %q", first)
+	}
+	for i, line := range strings.Split(view, "\n") {
+		if w := lipgloss.Width(line); w != 74 {
+			t.Fatalf("line %d is %d cells wide, want 74: %q", i, w, line)
+		}
+	}
 }
