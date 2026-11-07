@@ -6,22 +6,21 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
-## v1.8.0
+## v1.9.0
 
 ### Added
 
+- Expandable conversations. With conversation grouping on (`g`), a conversation
+  is one row marked `▸`; `Enter` expands it (`▾`) and shows its emails with muted
+  tree connectors. Every row previews only its own email, and delete, archive,
+  move, star and `Space` act on that email alone. `x` on a collapsed conversation
+  marks every member read (or unread); marking mail read moves to the next one.
 - Word wrapping and mouse support in the compose body. Text now wraps between
   words instead of mid-word (turn it off in **Settings → Editor → Wrap at word
   boundaries**, or `compose_word_wrap = false`); wrapping is visual only and never
   changes your message. With **Mouse support** on, click to place the caret, drag to
   select (dragging past the top or bottom scrolls), double-click to select a word,
   and use the wheel to scroll.
-- Find and replace in compose. `Ctrl+F` opens Find with live match highlights and
-  a match count; `Ctrl+R` in the bar shows Replace. `Enter` in Find goes to the next
-  match, `Alt+Enter` replaces all in one undo step, `Alt+C` toggles match case and
-  `Alt+R` toggles regex (turn it on in **Settings → Editor → Advanced regex
-  search**). In vim mode, `/`, `?`, `n` and `N` search.
-
 - Inline images inside terminal multiplexers such as Herdr. When the environment
   doesn't identify a Kitty-graphics terminal, TideMail asks the terminal at
   startup and uses Kitty graphics if it answers. `TIDEMAIL_IMAGE_PROTOCOL=kitty`
@@ -57,6 +56,35 @@ All notable changes to TideMail are documented in this file.
   (the drained part swaps the two yellows; plain themes show the seconds left). While
   the server confirms, it reads `deleting ⠋` (or `archiving`/`moving`) with a spinner,
   then fades into the green confirmation, or into a red pill if the action failed.
+
+### Fixed
+
+- Gmail's temporary `NO System Error` reply to a move is treated as success when
+  the message has left the source folder, and TideMail no longer sends the move a
+  second time when it can't confirm that.
+- On Gmail, a deleted message no longer lingers in All Mail, Sent Mail or labels
+  (even after a restart) until those folders sync: its copies there are hidden
+  while the delete is pending and removed from the cache once Gmail confirms.
+- Search keeps the spaces you type between words; `E2E 0` used to search for
+  `E2E0`.
+- The folder path in the move, save-attachments and contact-import pickers stays
+  on one line instead of wrapping.
+- When a delete, archive or move fails and the message comes back, the cursor
+  returns to it if you haven't moved, so a retry acts on the same message rather
+  than the one that took its place.
+
+## v1.8.0
+
+### Added
+
+- Find and replace in compose. `Ctrl+F` opens Find with live match highlights and
+  a match count; `Ctrl+R` in the bar shows Replace. `Enter` in Find goes to the next
+  match, `Alt+Enter` replaces all in one undo step, `Alt+C` toggles match case and
+  `Alt+R` toggles regex (turn it on in **Settings → Editor → Advanced regex
+  search**). In vim mode, `/`, `?`, `n` and `N` search.
+
+### Changed
+
 - Support links (Settings → Support, README, release notes and the repository
   Sponsor button) now point to GitHub Sponsors instead of Ko-fi.
 - The compose footer is a fixed three rows. The recipients/message headings are
@@ -122,19 +150,6 @@ All notable changes to TideMail are documented in this file.
 - SMTP uploads have a ten-minute submission budget with bounded setup. Multipart
   messages use stable boundaries and omit a redundant nested MIME preamble.
 
-- Gmail's temporary `NO System Error` reply to a move is treated as success when
-  the message has left the source folder, and TideMail no longer sends the move a
-  second time when it can't confirm that.
-- On Gmail, a deleted message no longer lingers in All Mail, Sent Mail or labels
-  (even after a restart) until those folders sync: its copies there are hidden
-  while the delete is pending and removed from the cache once Gmail confirms.
-- Search keeps the spaces you type between words; `E2E 0` used to search for
-  `E2E0`.
-- The folder path in the move, save-attachments and contact-import pickers stays
-  on one line instead of wrapping.
-- When a delete, archive or move fails and the message comes back, the cursor
-  returns to it if you haven't moved, so a retry acts on the same message rather
-  than the one that took its place.
 - `Ctrl+Z` no longer cancels a scheduled send or one waiting to retry; it only
   takes back a send still in its undo delay.
 - Reading, starring, moving and deleting refuse to act when the server has
