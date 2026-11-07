@@ -136,7 +136,7 @@ Current release: **v1.7.0**.
 - **Search**, unread-only filtering, command palette, desktop notifications.
 - **Experimental plugins**: manual and automatic metadata classification,
   stored tags with local corrections (`e` on a message), Needs You with immediate
-  sidebar count updates for archive/move and undo (delete on confirmation), result cards
+  sidebar count updates for delete, archive, move and undo, result cards
   with technical Details, and a host-owned `u` unsubscribe action that uses TideMail's existing confirmed flow without
   exposing unsubscribe links to plugins.
 - **Plugin catalog**: Settings → Plugins → `b` (and the palette) lists the

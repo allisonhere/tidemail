@@ -49,9 +49,11 @@ is no keychain support yet: passwords and tokens are stored in plain text in
 
 ### App launcher entry (optional)
 
-The Arch Linux package (`tidemail-bin`) installs a desktop entry and the
-TideMail icon for you. With the install script or a source build, you can add
-them yourself from a checkout of the repository:
+The Arch Linux package (`tidemail-bin`) and the install script on Linux both
+add a desktop entry and the TideMail icon, so TideMail appears in your app
+launcher (including Omarchy's). The script writes them to
+`~/.local/share/applications` and `~/.local/share/icons`. With a source build,
+you can add them yourself from a checkout of the repository:
 
 ```bash
 install -Dm644 images/tidemail-icon.png ~/.local/share/icons/tidemail.png
@@ -431,11 +433,13 @@ its normal folder. **Why is this in Needs You?** lists the reasons and the
 annotations behind them. All the usual actions (reply, archive, delete, move,
 star, mark read) work on messages here. The sidebar count updates immediately
 when you archive or move messages, including during the six-second undo
-window. Delete keeps the message and count visible until server confirmation.
-Its subject is struck through while deletion is pending. Its marker counts
-down 6–1, then shows a pending spinner (plain UI: `~`).
-The cursor advances immediately; `Ctrl+Z` during the countdown cancels deletion
-without moving the cursor. Failure clears the spinner and retains the message.
+window. Delete works the same way: the message and its count leave the list at once and
+stay hidden through folder switches, searches and reloads while the undo window runs and
+while the server works, so it cannot flicker back. Only the status-bar pill shows the
+countdown. The cursor stays on its message, or moves to the next one if the focused message
+was removed; `Ctrl+Z` during the countdown restores the message in place. If the server
+refuses, the message returns with an error. If the server never answers, it is restored
+after 90 seconds with a "timed out" error; the next sync shows its real state.
 Pending read/unread and destructive actions block conflicting operations on the
 affected messages; other messages remain interactive. Mailbox/account mark-all-read
 is blocked if a target mailbox has a pending read or destructive operation; retry
@@ -454,6 +458,10 @@ text), or into a red error pill (`#DD6A6A` with `#8C1A22` text) if the action fa
 errors in the status bar show as the same red pill, and every other status message
 (synced, marked read, starred and so on) shows as the same green pill. Plain themes wrap them in
 brackets instead.
+
+Each delete, archive or move also writes two lines to the Logs pane: one when it is sent to the
+server and one when it finishes, with how long the server work took and how long the app took to
+see the result. If a pill ever seems stuck, those two times show which side was slow.
 
 ### Waiting on Them
 
@@ -560,6 +568,12 @@ press `i` again when prompted to reload it.
 Choose **Settings → Display → Reading → Images** (`Auto` or `Off`) and press
 `Ctrl+S` to save. The change takes effect immediately; remote images still require
 `i` to load. The setting also shows whether inline images are supported.
+
+TideMail picks the graphics mode from your terminal's environment. If that finds
+nothing (for example inside a terminal multiplexer such as Herdr), it asks the
+terminal at startup whether it supports Kitty graphics and uses them if it
+does, so no setup is needed. To force the choice, set
+`TIDEMAIL_IMAGE_PROTOCOL=kitty` or `none`.
 
 **foot and WezTerm: inline images are currently unsupported.** TideMail uses
 text placeholders there because the renderer requires Kitty Unicode placeholders

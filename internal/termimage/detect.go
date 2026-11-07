@@ -14,6 +14,9 @@ import (
 // and geometry instead.
 func DetectFromEnv() Capabilities {
 	caps := Detect(os.Getenv, DetectGeometry())
+	if caps.Protocol == ProtocolNone && probedKitty.Load() {
+		caps.Protocol = ProtocolKitty
+	}
 	// Never write graphics escapes into a redirected stdout: if the override is
 	// not forcing a protocol and stdout is not a terminal, fall back to text.
 	if os.Getenv("TIDEMAIL_IMAGE_PROTOCOL") == "" && !term.IsTerminal(int(os.Stdout.Fd())) {

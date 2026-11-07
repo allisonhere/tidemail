@@ -260,3 +260,47 @@ func TestScaleForUploadDownscalesOnly(t *testing.T) {
 		t.Fatal("must not upscale")
 	}
 }
+
+func TestParseProbeReply(t *testing.T) {
+	tests := []struct {
+		name         string
+		reply        string
+		graphics, ok bool
+	}{
+		{"graphics then DA1", "\x1b_Gi=31;OK\x1b\\\x1b[?62;4c", true, true},
+		{"DA1 only", "\x1b[?1;2c", false, true},
+		{"graphics error", "\x1b_Gi=31;ENOTSUPPORTED\x1b\\\x1b[?62c", false, true},
+		{"partial DA1", "\x1b_Gi=31;OK\x1b\\\x1b[?62", true, false},
+		{"nothing", "", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g, done := parseProbeReply([]byte(tt.reply))
+			if g != tt.graphics || done != tt.ok {
+				t.Fatalf("got graphics=%v done=%v, want %v %v", g, done, tt.graphics, tt.ok)
+			}
+		})
+	}
+}
+
+func TestProbeEligible(t *testing.T) {
+	tests := []struct {
+		name string
+		env  map[string]string
+		want bool
+	}{
+		{"multiplexer", map[string]string{"TERM": "xterm-256color"}, true},
+		{"already kitty", map[string]string{"TERM": "xterm-kitty"}, false},
+		{"override set", map[string]string{"TERM": "xterm-256color", "TIDEMAIL_IMAGE_PROTOCOL": "none"}, false},
+		{"foot", map[string]string{"TERM": "foot"}, false},
+		{"wezterm", map[string]string{"TERM": "xterm-256color", "WEZTERM_PANE": "1"}, false},
+		{"dumb", map[string]string{"TERM": "dumb"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := probeEligible(func(k string) string { return tt.env[k] }); got != tt.want {
+				t.Fatalf("probeEligible = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

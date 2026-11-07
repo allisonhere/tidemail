@@ -312,9 +312,6 @@ func (m *Model) recountMailboxUnread(id int64) error {
 	}
 	excluded := make(map[int64]bool)
 	for _, action := range m.pendingDestructiveActions {
-		if action.Kind == destructiveDelete {
-			continue
-		}
 		for _, entry := range action.Entries {
 			if entry.Message.MailboxID != id || entry.Message.Read {
 				continue

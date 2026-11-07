@@ -15,38 +15,26 @@ import (
 	"github.com/muesli/termenv"
 )
 
-func TestDeletePrototypeCountdownUndoAndSpinner(t *testing.T) {
+func TestDeleteHidesRowImmediatelyAndUndoRestoresIt(t *testing.T) {
 	f := newUndoTestFixture(t, 3)
 	m := f.model
 	first := f.messages[0]
 	m.scheduleDelete(f.messages[:1])
-	if len(m.filteredMessages) != 3 || m.messageCursor != 1 {
-		t.Fatal("delete must stay visible and advance cursor")
-	}
-	deadline := m.pendingDestructiveActions[0].Deadline
-	for seconds := 6; seconds >= 1; seconds-- {
-		now := deadline.Add(-time.Duration(seconds) * time.Second)
-		if got := m.rowDeleteIndicator(first, messageThread{}, now); got != string(rune('0'+seconds)) {
-			t.Fatalf("countdown %d: %q", seconds, got)
-		}
+	if len(m.filteredMessages) != 2 || m.indexOfFilteredMessage(first.ID) >= 0 {
+		t.Fatal("pending delete must hide the row at once")
 	}
 	m.scheduleDelete(f.messages[1:2])
-	m.pendingDestructiveActions[1].Deadline = deadline.Add(time.Second)
-	if got := m.rowDeleteIndicator(f.messages[1], messageThread{}, deadline.Add(-2*time.Second)); got != "3" {
-		t.Fatal("independent deadline", got)
+	if len(m.filteredMessages) != 1 {
+		t.Fatal("second pending delete must hide its row too")
 	}
-	cursor := m.messageCursor
 	m.undoLatestDestructive()
-	if m.messageCursor != cursor || m.rowDeleteIndicator(f.messages[1], messageThread{}, time.Now()) != "" {
-		t.Fatal("undo changed cursor or retained marker")
+	if len(m.filteredMessages) != 2 || m.indexOfFilteredMessage(f.messages[1].ID) < 0 || m.indexOfFilteredMessage(first.ID) >= 0 {
+		t.Fatal("undo must restore only the latest delete")
 	}
 	id := m.pendingDestructiveActions[0].ID
 	m.beginDestructiveCommit(id)
-	if got := m.rowDeleteIndicator(first, messageThread{}, time.Now()); got != m.pendingReadIndicator() {
-		t.Fatal("missing spinner", got)
-	}
-	if got := m.rowDeleteIndicator(f.messages[2], messageThread{Messages: []db.Message{first}}, time.Now()); got != m.pendingReadIndicator() {
-		t.Fatal("thread missing spinner")
+	if m.indexOfFilteredMessage(first.ID) >= 0 {
+		t.Fatal("a delete the server is working on must stay hidden")
 	}
 }
 
@@ -118,81 +106,6 @@ func TestDeletePrototypeConflictingLocks(t *testing.T) {
 	}
 }
 
-func TestDeletePrototypeSubjectStrikethrough(t *testing.T) {
-	previous := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
-	f := newUndoTestFixture(t, 2)
-	m := f.model
-	m.width, m.height = 120, 40
-	check := func(want bool) {
-		t.Helper()
-		if got := regexp.MustCompile("\x1b\\[(?:[0-9]+;)*9(?:;[0-9]+)*m").MatchString(m.renderMessagesPane()); got != want {
-			t.Fatalf("subject strikethrough = %v, want %v", got, want)
-		}
-	}
-	check(false)
-	m.scheduleDelete(f.messages[:1])
-	check(true)
-	m.undoLatestDestructive()
-	check(false)
-	m.scheduleDelete(f.messages[:1])
-	id := m.pendingDestructiveActions[0].ID
-	m.beginDestructiveCommit(id)
-	check(true)
-	m.handleDestructiveResult(DestructiveActionResultMsg{ID: id, Kind: destructiveDelete, Failed: f.messages[:1], Err: errors.New("rejected")})
-	check(false)
-	m.pendingReads = map[int64]pendingRead{f.messages[0].ID: {Token: 1}}
-	check(false)
-}
-
-func TestDeletePrototypeSubjectInheritsRowStyle(t *testing.T) {
-	previous := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
-	f := newUndoTestFixture(t, 2)
-	m := f.model
-	m.width, m.height = 120, 40
-	m.messages[0].Read = false
-	m.applyFilter()
-	m.scheduleDelete(m.messages[:1])
-	for _, cursor := range []int{1, 0} {
-		m.messageCursor = cursor
-		unread, _, selected, _, _, _ := m.messageRowStyles()
-		style := applyMessageRowState(unread, selected, false, cursor == 0, m.styles.Theme)
-		subject := style.UnsetPadding().UnsetWidth().UnsetMaxWidth().Strikethrough(true).Render(m.messageRowTitle(m.messages[0]))
-		for _, segment := range strings.SplitAfter(subject, "\x1b[0m") {
-			if !strings.Contains(m.renderMessagesPane(), segment) {
-				t.Fatalf("pending subject lost row colors, cursor=%d", cursor)
-			}
-		}
-	}
-	if m.messages[0].Read {
-		t.Fatal("rendering changed unread state")
-	}
-}
-
-func TestDeletePrototypeRowBackgroundAfterSubject(t *testing.T) {
-	previous := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
-	f := newUndoTestFixture(t, 1)
-	m := f.model
-	unread, _, selected, _, _, _ := m.messageRowStyles()
-	for _, style := range []lipgloss.Style{unread, selected} {
-		inline := style.UnsetPadding().UnsetWidth().UnsetMaxWidth()
-		title := inline.Strikethrough(true).Render("subject")
-		row := m.renderMessageRow(style, "6 ", "", "", false, 0, title, nil, "", 40, "")
-		// Seven subject cells and two marker cells leave 31 background cells.
-		if !strings.Contains(row, inline.Render(strings.Repeat(" ", 31))) {
-			t.Fatal("trailing row padding does not restore row colors")
-		}
-		if lipgloss.Width(row) != 40 {
-			t.Fatal("row width changed")
-		}
-	}
-}
-
 func TestDeleteCompletionKeepsCursorVisibleOutOfOrder(t *testing.T) {
 	f := newUndoTestFixture(t, 40)
 	m := f.model
@@ -205,13 +118,14 @@ func TestDeleteCompletionKeepsCursorVisibleOutOfOrder(t *testing.T) {
 	currentID := m.currentRowMessage().ID
 	// The second operation resolves first, above the scrolled viewport.
 	m.handleDestructiveResult(m.beginDestructiveCommit(second)().(DestructiveActionResultMsg))
-	if m.currentRowMessage().ID != currentID || m.messageCursor != 11 || m.listOffset > m.messageCursor ||
+	if m.currentRowMessage().ID != currentID || m.messageCursor != 12 || m.listOffset > m.messageCursor ||
 		m.messageCursor >= m.listOffset+m.articleRowsVisible() {
 		t.Fatal("highlight left viewport after ID restoration")
 	}
-	cursor, offset := m.messageCursor, m.listOffset
 	m.handleDestructiveResult(DestructiveActionResultMsg{ID: first, Kind: destructiveDelete, Failed: f.messages[:1], Err: errors.New("rejected")})
-	if m.currentRowMessage().ID != currentID || m.messageCursor != cursor || m.listOffset != offset {
+	// The rejected row returns above the highlight: it stays on the same message.
+	if m.currentRowMessage().ID != currentID || m.messageCursor != 13 || m.listOffset > m.messageCursor ||
+		m.messageCursor >= m.listOffset+m.articleRowsVisible() {
 		t.Fatal("out-of-order failure moved highlight")
 	}
 }
@@ -548,11 +462,11 @@ func TestDeleteSyntheticMixedDestructiveCounts(t *testing.T) {
 			deleteID := m.pendingDestructiveActions[0].ID
 			m.scheduleMove(m.messages[1:2], f.target)
 			moveID := m.pendingDestructiveActions[1].ID
-			check(2) // Move hides immediately; delete remains visible.
+			check(1) // Delete and move both hide immediately.
 			if err := m.recountMailboxUnread(f.source.ID); err != nil {
 				t.Fatal(err)
 			}
-			check(2) // Still subtract a pending entry present in the SQL count.
+			check(1) // Still subtract a pending entry present in the SQL count.
 			deletion := m.beginDestructiveCommit(deleteID)().(DestructiveActionResultMsg)
 			moved := m.beginDestructiveCommit(moveID)().(DestructiveActionResultMsg)
 			results := []DestructiveActionResultMsg{deletion, moved}
@@ -637,30 +551,23 @@ func TestDeleteSyntheticThreadedPartialDeletion(t *testing.T) {
 	}
 	m.scheduleDelete([]db.Message{reply})
 	replyAction := m.pendingDestructiveActions[0].ID
+	if len(m.messageThreads) != 2 || m.indexOfFilteredMessage(reply.ID) >= 0 || m.indexOfFilteredMessage(root.ID) < 0 {
+		t.Fatal("deleting a thread's newest message must leave the conversation with its surviving member")
+	}
 	m.scheduleDelete([]db.Message{root})
 	rootAction := m.pendingDestructiveActions[1].ID
-	m.messageCursor = m.indexOfFilteredMessage(reply.ID)
-	if m.rowDeleteIndicator(reply, m.messageThreads[m.messageCursor], time.Now()) == "" {
-		t.Fatal("missing thread countdown")
+	if len(m.messageThreads) != 1 || m.currentRowMessage().ID != other.ID {
+		t.Fatal("deleting every member must hide the whole conversation")
 	}
 	// Mark commits without dispatching worker commands: no SQL rows or network.
 	m.beginDestructiveCommit(replyAction)
-	if got := m.rowDeleteIndicator(reply, m.messageThreads[m.messageCursor], time.Now()); got != m.pendingReadIndicator() {
-		t.Fatal("missing thread spinner")
-	}
 	m.handleDestructiveResult(DestructiveActionResultMsg{ID: replyAction, Kind: destructiveDelete, Succeeded: []MessageRef{{ID: reply.ID, MailboxID: reply.MailboxID}}})
-	if m.currentRowMessage().ID != root.ID || m.messageCursor != 1 ||
-		m.messageThreads[m.messageCursor].Count != 1 ||
-		m.messageCursor < m.listOffset || m.messageCursor >= m.listOffset+m.articleRowsVisible() {
-		t.Fatalf("representative deletion lost surviving conversation: cur=%d (want root %d) cursor=%d threads=%d count=%v off=%d vis=%d rows=%d", m.currentRowMessage().ID, root.ID, m.messageCursor, len(m.messageThreads), m.messageThreads[min(m.messageCursor, len(m.messageThreads)-1)].Count, m.listOffset, m.articleRowsVisible(), len(m.messageRows))
-	}
-	if got := m.rowDeleteIndicator(root, m.messageThreads[m.messageCursor], time.Now()); got == "" {
-		t.Fatal("surviving pending member lost feedback")
+	if len(m.messageThreads) != 1 || m.indexOfFilteredMessage(root.ID) >= 0 {
+		t.Fatal("a confirmed delete must not bring back a still-pending sibling")
 	}
 	m.handleDestructiveResult(DestructiveActionResultMsg{ID: rootAction, Kind: destructiveDelete, Failed: []db.Message{root}, Err: errors.New("synthetic rejection")})
-	if m.currentRowMessage().ID != root.ID || m.messageCursor != 1 ||
-		m.rowDeleteIndicator(root, m.messageThreads[m.messageCursor], time.Now()) != "" {
-		t.Fatal("thread failure moved selection or retained feedback")
+	if m.indexOfFilteredMessage(root.ID) < 0 || m.indexOfFilteredMessage(reply.ID) >= 0 {
+		t.Fatal("a rejected delete must restore exactly its own message")
 	}
 }
 
@@ -865,5 +772,120 @@ func TestFailedDeleteFadesToRed(t *testing.T) {
 	mid := m.fadedPill(alertPillRed, m.pillFadeStart.Add(pillFadeDuration/2))
 	if want := mixColors(alertPillYellow.fill, alertPillRed.fill, 0.5); mid.fill != want {
 		t.Fatalf("midway fill = %s, want %s", mid.fill, want)
+	}
+}
+
+func TestDeleteCommitIsLogged(t *testing.T) {
+	f := newUndoTestFixture(t, 1)
+	m := f.model
+	m.rebuildSidebar()
+	m.cursorToMailbox(f.source.ID)
+	m.scheduleDelete(f.messages[:1])
+	id := m.pendingDestructiveActions[0].ID
+	m.beginDestructiveCommit(id)
+	result := executeDestructiveBatches(m.pendingDestructiveActions[0], f.database, func([]pendingDestructiveEntry) error { return nil })
+	result.Elapsed = 1500 * time.Millisecond
+	m.handleDestructiveResult(result)
+	var logs []string
+	for _, e := range m.logBuffer {
+		logs = append(logs, e.Message)
+	}
+	joined := strings.Join(logs, "\n")
+	if !strings.Contains(joined, "delete: sending 1 message(s) to the server") ||
+		!strings.Contains(joined, "delete: server work took 1.5s") ||
+		!strings.Contains(joined, "1 ok, 0 failed") {
+		t.Fatalf("delete lifecycle missing from the log:\n%s", joined)
+	}
+}
+
+func TestDeleteLeavesCursorWhenFocusedMessageNotDeleted(t *testing.T) {
+	f := newUndoTestFixture(t, 4)
+	m := f.model
+	m.messageCursor = 2
+	focused := f.messages[2].ID
+	if cur := m.currentRowMessage(); cur == nil || cur.ID != focused {
+		t.Fatalf("fixture cursor not on message 2: %+v", cur)
+	}
+	m.scheduleDelete(f.messages[:1])
+	if cur := m.currentRowMessage(); cur == nil || cur.ID != focused {
+		t.Fatalf("cursor moved off the focused message: %+v", cur)
+	}
+}
+
+func TestStuckDeleteIsRestoredByWatchdog(t *testing.T) {
+	f := newUndoTestFixture(t, 2)
+	m := f.model
+	m.scheduleDelete(f.messages[:1])
+	id := m.pendingDestructiveActions[0].ID
+	if cmd := m.failStuckDestructive(id); cmd != nil || len(m.pendingDestructiveActions) != 1 {
+		t.Fatal("watchdog must ignore an action that has not started committing")
+	}
+	m.beginDestructiveCommit(id)
+	m.failStuckDestructive(id)
+	if len(m.pendingDestructiveActions) != 0 || m.messageActionPending(f.messages[0].ID) {
+		t.Fatal("stuck delete was not cleared")
+	}
+	if len(m.filteredMessages) != 2 {
+		t.Fatalf("message not restored: %d rows", len(m.filteredMessages))
+	}
+	// A late real result for the same action is ignored.
+	m.handleDestructiveResult(DestructiveActionResultMsg{ID: id, Kind: destructiveDelete})
+}
+
+// A pending delete is hidden by a filter over whatever list is loaded, so it
+// has to stay hidden through every reload path until the server answers.
+func TestPendingDeleteStaysHiddenAcrossReloadsFolderSwitchesAndSearch(t *testing.T) {
+	f := newUndoTestFixture(t, 3)
+	m := f.model
+	m.rebuildSidebar()
+	m.cursorToMailbox(f.source.ID)
+	deleted := f.messages[0]
+	all := append([]db.Message(nil), f.messages...)
+	m.scheduleDelete([]db.Message{deleted})
+
+	hidden := func(step string) {
+		t.Helper()
+		if m.indexOfFilteredMessage(deleted.ID) >= 0 || len(m.filteredMessages) != 2 {
+			t.Fatalf("%s: pending delete resurfaced (%d visible)", step, len(m.filteredMessages))
+		}
+	}
+	reload := func(msg MessagesLoadedMsg) {
+		next, _ := m.Update(msg)
+		m = next.(Model)
+	}
+
+	// A fresh reload and a stale one, both still carrying the message.
+	reload(MessagesLoadedMsg{ReadVersion: m.readVersion, MailboxID: f.source.ID, Messages: all})
+	hidden("fresh reload")
+	reload(MessagesLoadedMsg{ReadVersion: m.readVersion - 1, MailboxID: f.source.ID, Messages: all})
+	hidden("stale reload")
+
+	// Away to another folder and back again.
+	reload(MessagesLoadedMsg{ReadVersion: m.readVersion, MailboxID: f.target.ID, Messages: nil})
+	m.cursorToMailbox(f.target.ID)
+	m.cursorToMailbox(f.source.ID)
+	reload(MessagesLoadedMsg{ReadVersion: m.readVersion, MailboxID: f.source.ID, Messages: all})
+	hidden("folder switch")
+
+	// Search results that include the message, then leaving search.
+	m.messages = append([]db.Message(nil), all...)
+	m.searchMode = true
+	m.applyFilter()
+	hidden("search results")
+	m.searchMode = false
+	m.messages = append([]db.Message(nil), all...)
+	m.applyFilter()
+	hidden("leaving search")
+
+	// While the server is working on it.
+	m.beginDestructiveCommit(m.pendingDestructiveActions[0].ID)
+	reload(MessagesLoadedMsg{ReadVersion: m.readVersion, MailboxID: f.source.ID, Messages: all})
+	hidden("reload while committing")
+
+	// Only a rejection brings it back, exactly once.
+	id := m.pendingDestructiveActions[0].ID
+	m.handleDestructiveResult(DestructiveActionResultMsg{ID: id, Kind: destructiveDelete, Failed: []db.Message{deleted}, Err: errors.New("rejected")})
+	if len(m.filteredMessages) != 3 || m.indexOfFilteredMessage(deleted.ID) < 0 {
+		t.Fatal("a rejected delete must restore the message")
 	}
 }

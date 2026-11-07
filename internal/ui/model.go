@@ -737,7 +737,16 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case CommitDestructiveActionMsg:
-		return m, m.beginDestructiveCommit(msg.ID)
+		commit := m.beginDestructiveCommit(msg.ID)
+		if commit == nil {
+			return m, nil
+		}
+		id := msg.ID
+		watchdog := tea.Tick(destructiveCommitTimeout, func(time.Time) tea.Msg { return DestructiveCommitTimeoutMsg{ID: id} })
+		return m, tea.Batch(commit, watchdog)
+
+	case DestructiveCommitTimeoutMsg:
+		return m, m.failStuckDestructive(msg.ID)
 
 	case DestructiveActionResultMsg:
 		cmd := m.handleDestructiveResult(msg)
