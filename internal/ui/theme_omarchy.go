@@ -182,5 +182,5 @@ func (m Model) handleOmarchyThemeTick(msg omarchyThemeTickMsg) (tea.Model, tea.C
 	if m.activeMessageRowCount() > 0 {
 		m.setViewportForCurrentRow()
 	}
-	return m, tea.Batch(omarchyWatchCmd(msg.Generation), setTermColorsCmd(merged.Fg, merged.Bg))
+	return m, tea.Batch(omarchyWatchCmd(msg.Generation), m.termColorsCmd(merged.Fg, merged.Bg))
 }

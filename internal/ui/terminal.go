@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -46,7 +48,12 @@ func openTTY() (*os.File, error) {
 // — message bodies, and any text following an ANSI reset — in the theme color
 // instead of the terminal's own default. This matters most for the monochrome
 // phosphor themes (vt52/vt100), where that default would otherwise be white.
-func TerminalColorSequences(themeName string) (set string, reset string) {
+//
+// With transparent off, the default background is set one step away from the
+// theme's: terminals such as kitty apply their background opacity to every cell
+// whose color equals the default background, and every TideMail cell is painted
+// in the theme background, so an exact match would make the whole UI see-through.
+func TerminalColorSequences(themeName string, transparent bool) (set string, reset string) {
 	var theme Theme
 	if isMatchOmarchy(themeName) {
 		theme = omarchyOrFallbackTheme()
@@ -57,8 +64,8 @@ func TerminalColorSequences(themeName string) (set string, reset string) {
 		set += fmt.Sprintf("\x1b]10;%s\x07", string(theme.Fg))
 		reset += "\x1b]110\x07"
 	}
-	if theme.Bg != "" {
-		set += fmt.Sprintf("\x1b]11;%s\x07", string(theme.Bg))
+	if bg := terminalDefaultBg(theme.Bg, transparent); bg != "" {
+		set += fmt.Sprintf("\x1b]11;%s\x07", string(bg))
 		reset += "\x1b]111\x07"
 	}
 	return set, reset
@@ -80,4 +87,78 @@ func setTermColorsCmd(fg, bg lipgloss.Color) tea.Cmd {
 		}
 		return nil
 	}
+}
+
+// terminalDefaultBg is the color TideMail sets as the terminal's default
+// background. Transparent uses the theme background itself, so the terminal's
+// opacity applies to it; otherwise it is nudged by one step in one channel,
+// invisible to the eye but enough that no painted cell matches it.
+func terminalDefaultBg(bg lipgloss.Color, transparent bool) lipgloss.Color {
+	if bg == "" || transparent {
+		return bg
+	}
+	hex := strings.TrimPrefix(string(bg), "#")
+	if len(hex) != 6 {
+		return bg
+	}
+	v, err := strconv.ParseUint(hex, 16, 32)
+	if err != nil {
+		return bg
+	}
+	if v&0xff == 0xff {
+		v--
+	} else {
+		v++
+	}
+	return lipgloss.Color(fmt.Sprintf("#%06x", v))
+}
+
+// termColorsCmd sets the terminal's default colors for a theme, honoring the
+// transparent-background setting.
+func (m Model) termColorsCmd(fg, bg lipgloss.Color) tea.Cmd {
+	return setTermColorsCmd(fg, terminalDefaultBg(bg, m.cfg.Display.Transparent))
+}
+
+// transparentBackground rewrites every cell painted in the theme background to
+// the terminal's default background, which TideMail has set to the same color,
+// so the terminal's own opacity shows through. Selected rows, overlays and
+// other surfaces keep their colors and stay solid.
+func transparentBackground(view string, bg lipgloss.Color) string {
+	if bg == "" {
+		return view
+	}
+	params := themeBgParams(bg)
+	if params == "" {
+		return view
+	}
+	r := strings.NewReplacer(
+		"\x1b["+params+"m", "\x1b[49m",
+		"\x1b["+params+";", "\x1b[49;",
+		";"+params+"m", ";49m",
+		";"+params+";", ";49;",
+	)
+	return r.Replace(view)
+}
+
+var themeBgParamsCache sync.Map // lipgloss.Color + profile → SGR parameters
+
+// themeBgParams returns the SGR parameters ("48;2;r;g;b" or "48;5;n") the
+// current color profile uses for bg.
+func themeBgParams(bg lipgloss.Color) string {
+	key := fmt.Sprintf("%s/%d", bg, lipgloss.ColorProfile())
+	if v, ok := themeBgParamsCache.Load(key); ok {
+		return v.(string)
+	}
+	out := lipgloss.NewStyle().Background(bg).Render("x")
+	params := ""
+	if start := strings.Index(out, "\x1b["); start >= 0 {
+		if end := strings.IndexByte(out[start:], 'm'); end > 2 {
+			params = out[start+2 : start+end]
+		}
+	}
+	if !strings.HasPrefix(params, "48;") {
+		params = ""
+	}
+	themeBgParamsCache.Store(key, params)
+	return params
 }

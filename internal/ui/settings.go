@@ -52,6 +52,7 @@ const (
 	sfDisplayDensity
 	sfPaneCorners
 	sfShadow
+	sfTransparent
 	sfTagStyle // Appearance → Annotation Tags
 	sfShowMessageTagsInHeader
 	sfMailTags
@@ -341,6 +342,7 @@ type Settings struct {
 	focusLine               bool
 	supportReminder         bool
 	shadow                  bool
+	transparent             bool
 	showSender              bool
 	threadedConversations   bool
 	defaultUnreadOnly       bool
@@ -468,6 +470,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		focusLine:               cfg.Display.FocusLine,
 		supportReminder:         cfg.Display.SupportReminder,
 		shadow:                  cfg.Display.Shadow,
+		transparent:             cfg.Display.Transparent,
 		showSender:              cfg.Display.ShowSender,
 		threadedConversations:   cfg.Display.ThreadedConversations,
 		defaultUnreadOnly:       cfg.Display.DefaultUnreadOnly,
@@ -563,6 +566,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 	cfg.Display.FocusLine = s.focusLine
 	cfg.Display.SupportReminder = s.supportReminder
 	cfg.Display.Shadow = s.shadow
+	cfg.Display.Transparent = s.transparent
 	cfg.Display.ShowSender = s.showSender
 	cfg.Display.ThreadedConversations = s.threadedConversations
 	cfg.Display.DefaultUnreadOnly = s.defaultUnreadOnly
@@ -828,7 +832,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 	case ssDisplay:
 		// Keep this order in lockstep with the ssDisplay case in viewSectionBody:
 		// Appearance, Terminal colors (retro themes), Message list, Reading, Behavior.
-		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfPaneCorners, sfIcons, sfShowPaneHeaders, sfShowNeedsYou, sfShowWaiting, sfDateFormat, sfFocusLine, sfShadow, sfSupportReminder, sfTagStyle, sfShowMessageTagsInHeader, sfTagColors, sfMailTags}
+		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfPaneCorners, sfIcons, sfShowPaneHeaders, sfShowNeedsYou, sfShowWaiting, sfDateFormat, sfFocusLine, sfShadow, sfTransparent, sfSupportReminder, sfTagStyle, sfShowMessageTagsInHeader, sfTagColors, sfMailTags}
 		if config.IsRetroTerminalTheme(s.themeName) {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
@@ -1512,6 +1516,15 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 			s.setFocusedField(s.prevField())
 		}
 
+	case sfTransparent:
+		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
+			s.transparent = !s.transparent
+		} else if keyMatches(key, keys.Down) {
+			s.setFocusedField(s.nextField())
+		} else if keyMatches(key, keys.Up) {
+			s.setFocusedField(s.prevField())
+		}
+
 	case sfShowSender:
 		if keyMatches(key, keys.Space) || keyMatches(key, keys.Enter) {
 			s.showSender = !s.showSender
@@ -2102,6 +2115,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addDateFormatSelector()
 		b.addToggle("Focus line", s.focusLine, sfFocusLine)
 		b.addToggle("Modal drop shadow", s.shadow, sfShadow)
+		b.addToggle("Transparent background", s.transparent, sfTransparent)
 		b.addToggle("Support reminder", s.supportReminder, sfSupportReminder)
 		b.addGroup("Message tags")
 		b.addTagStyleSelector()
@@ -3339,6 +3353,8 @@ func (s Settings) fieldHint(field settingsField) string {
 		return "show the Waiting on Them view in the sidebar; when off, only the row is hidden"
 	case sfShadow:
 		return "draw a soft drop shadow behind modal overlays"
+	case sfTransparent:
+		return "let your terminal's background opacity show through the theme background (kitty, Ghostty and others with opacity set); off keeps the background solid"
 	case sfTagStyle:
 		return "← → to compare Pills (Square/Round/None), Compact, Plain, Glyph Pills (Round), and Tag icons; Round and Tag icons need a Nerd Font"
 	case sfShowSender:

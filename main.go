@@ -137,7 +137,7 @@ func run() (code int, restartExec string) {
 		termimage.Probe()
 	}
 
-	if setColors, resetColors := ui.TerminalColorSequences(cfg.Theme); setColors != "" {
+	if setColors, resetColors := ui.TerminalColorSequences(cfg.Theme, cfg.Display.Transparent); setColors != "" {
 		fmt.Print(setColors)
 		defer fmt.Print(resetColors)
 	}

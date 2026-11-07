@@ -151,7 +151,7 @@ Current release: **v1.7.0**.
   GnuPG. Not yet: attachments inside encrypted mail, encrypted-mail search,
   CLI sending, key management.
 - **Settings**: theme, display density, pane corners, pane header bars, Needs You / Waiting on Them sidebar rows, modal
-  drop shadow, AI provider config, editor, update checks, a dedicated Plugins
+  drop shadow, transparent background (solid by default), AI provider config, editor, update checks, a dedicated Plugins
   section with inline administration and configuration, a read-only Changelog
   view (the embedded CHANGELOG.md, scrollable, works offline), and an optional
   Support page with open/copy actions for the GitHub Sponsors link. About is an

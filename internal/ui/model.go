@@ -3439,7 +3439,7 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.activeMessageRowCount() > 0 {
 			m.setViewportForCurrentRow()
 		}
-		cmd = tea.Batch(cmd, setTermColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg))
+		cmd = tea.Batch(cmd, m.termColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg))
 	}
 	action := m.settings.takeAction()
 	switch action {
@@ -3545,7 +3545,7 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.overlay = overlayNone
 			m.clearMessages()
-			cmds := []tea.Cmd{m.loadAccountsCmd(), omarchyCmd}
+			cmds := []tea.Cmd{m.loadAccountsCmd(), omarchyCmd, m.termColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg)}
 			// A view just hidden can't stay open; fall back to the Unified
 			// Inbox, always the first sidebar row.
 			if prevKind, _ := m.currentSidebarSelection(); (prevKind == rowKindNeedsYou && !m.cfg.Display.ShowNeedsYou) || (prevKind == rowKindWaiting && !m.cfg.Display.ShowWaiting) {
@@ -3573,7 +3573,7 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeMessageRowCount() > 0 {
 				m.setViewportForCurrentRow()
 			}
-			return m, setTermColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg)
+			return m, m.termColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg)
 		}
 		return m, nil
 	}
@@ -3789,11 +3789,15 @@ func (m Model) View() string {
 		view = m.renderOverlay(view)
 	}
 	view = clampView(view, m.width, m.height, m.styles.Theme.Bg)
-	return lipgloss.NewStyle().
+	view = lipgloss.NewStyle().
 		Width(m.width).
 		Height(m.height).
 		Background(m.styles.Theme.Bg).
 		Render(view)
+	if m.cfg.Display.Transparent {
+		view = transparentBackground(view, m.styles.Theme.Bg)
+	}
+	return view
 }
 
 // ── Pane renderers ────────────────────────────────────────────────────────────

@@ -210,6 +210,7 @@ type DisplayConfig struct {
 	Density                 string `toml:"density"`
 	PaneCorners             string `toml:"pane_corners"` // "square" or "round"
 	Shadow                  bool   `toml:"shadow"`       // drop shadow behind modal overlays
+	Transparent             bool   `toml:"transparent"`  // let the terminal's background opacity show through
 	ComposeVim              bool   `toml:"compose_vim"`
 	ComposeSearchRegex      bool   `toml:"compose_search_regex"` // expose the advanced Regex search toggle
 	ComposeWordWrap         bool   `toml:"compose_word_wrap"`    // wrap compose text at word boundaries (on by default)

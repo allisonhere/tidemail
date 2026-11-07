@@ -1363,6 +1363,12 @@ word must match the family, the variant, the theme's name, or `light` / `dark`
 success, warning, error and tag colors, and a sample below the list shows how
 selection, text, links, quotes and status colors look in the highlighted theme.
 
+Every theme paints a solid background, the same color the picker shows, even when
+your terminal has background opacity set (kitty, Ghostty and others). To let that
+opacity show through instead, turn on **Settings → Display → Transparent
+background** (`transparent = true` under `[display]`). Only the theme background
+becomes see-through; selected rows, overlays and other surfaces stay solid.
+
 Alert colors are the same in every built-in theme: green for OK, yellow for
 cautions and warnings, and red for failures. Status bar pills use a fixed fill and
 text color pair for each on every theme. Plain alert text uses the brighter color
