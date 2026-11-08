@@ -465,6 +465,7 @@ func (m *Model) adjustMailboxUnreadCount(mailboxID int64, delta int64) {
 	for i := range m.mailboxes {
 		if m.mailboxes[i].ID == mailboxID {
 			m.mailboxes[i].UnreadCount = max(0, m.mailboxes[i].UnreadCount+delta)
+			m.invalidateComposePanes()
 			return
 		}
 	}

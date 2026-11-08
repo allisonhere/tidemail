@@ -859,6 +859,7 @@ func (m *Model) syncMailboxCmdWithMode(mailboxID int64, manual, passive bool) te
 			m.syncVisible = make(map[int64]bool)
 		}
 		m.syncVisible[mailboxID] = true
+		m.invalidateComposePanes()
 	}
 	database := m.db
 	mailbox, err := database.GetMailbox(mailboxID)

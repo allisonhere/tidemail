@@ -374,6 +374,7 @@ func (m *Model) viewportContentFor(key viewportCacheKey, render func() renderedC
 }
 
 func (m *Model) setViewportMessage(msg db.Message) {
+	m.invalidateComposePanes()
 	sameMsg := m.contentMessageID == msg.ID && m.contentLineCount > 0
 	m.setContentLinkContext(fmt.Sprintf("msg:%d", msg.ID))
 	m.syncContentLinks(msg)
@@ -507,6 +508,7 @@ func (m Model) renderDraftContent(d db.Draft) string {
 // contentMessageID at zero: that field is looked up against filteredMessages,
 // and a draft ID reused there would resolve to an unrelated message.
 func (m *Model) setViewportDraft(d db.Draft) {
+	m.invalidateComposePanes()
 	sameDraft := m.contentDraftID == d.ID && m.contentLineCount > 0
 	m.setContentLinkContext(fmt.Sprintf("draft:%d", d.ID))
 	previewText, _ := draftPreviewText(d.BodyText)
@@ -543,6 +545,7 @@ func (m *Model) setViewportDraft(d db.Draft) {
 }
 
 func (m *Model) setViewportThread(thread messageThread) {
+	m.invalidateComposePanes()
 	rep := thread.Representative
 	sameMsg := m.contentMessageID == rep.ID && m.contentLineCount > 0
 	m.setContentLinkContext("thread:" + thread.Key)
@@ -616,6 +619,7 @@ func (m *Model) setViewportForCurrentRow() {
 }
 
 func (m *Model) clearViewportMessage() {
+	m.invalidateComposePanes()
 	m.contentLinkContext = ""
 	m.contentFocusedLink = ""
 	m.clearViewportImages()

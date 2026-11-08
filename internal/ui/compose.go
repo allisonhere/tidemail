@@ -58,11 +58,31 @@ type fileEntry struct {
 	size  int64
 }
 
-// composeBackdropCache holds the unchanged main panes while editing.
-// The compose overlay and status bar are always rendered from current state.
+type composeBackgroundKey struct{ panes, status string }
+
+// composeBackdropCache owns compose's background stages. Other modals still use
+// the uncached reference path. All entries survive Model's value receivers.
 type composeBackdropCache struct {
-	panes string
-	valid bool
+	panes           string
+	valid           bool
+	paneStage       renderCache[displayKey, string]
+	statusStage     renderCache[composeStatusState, string]
+	backgroundStage renderCache[composeBackgroundKey, string]
+	composite       modalComposite
+	finish          modalFinish
+	labelsExpire    time.Time
+	clockRevision   uint64
+}
+
+func (c *composeBackdropCache) Invalidate() {
+	c.valid = false
+	c.labelsExpire = time.Time{}
+	c.panes = ""
+	c.paneStage.Invalidate()
+	c.statusStage.Invalidate()
+	c.backgroundStage.Invalidate()
+	c.composite.prepared.Invalidate()
+	c.finish.rows = nil
 }
 
 type ComposeModel struct {

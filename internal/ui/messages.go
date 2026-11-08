@@ -315,6 +315,7 @@ func (m *Model) messageRowStyles() (lipgloss.Style, lipgloss.Style, lipgloss.Sty
 }
 
 func (m *Model) clearSelection() {
+	m.invalidateComposePanes()
 	m.selectedMessages = make(map[int64]bool)
 }
 
@@ -327,6 +328,7 @@ func (m *Model) applyFilter() {
 }
 
 func (m *Model) applyFilterPreservingCollapsed(collapsed bool) {
+	m.invalidateComposePanes()
 	var selectedID int64
 	if msg := m.currentRowMessage(); msg != nil {
 		selectedID = msg.ID

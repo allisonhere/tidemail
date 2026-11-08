@@ -99,6 +99,7 @@ func (m *Model) threadExpanded(thread messageThread) bool {
 }
 
 func (m *Model) rebuildMessageRows() {
+	m.invalidateComposePanes()
 	m.messageRows = nil
 	for i, thread := range m.messageThreads {
 		m.messageRows = append(m.messageRows, messageRow{ThreadIndex: i})

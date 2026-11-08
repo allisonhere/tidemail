@@ -48,7 +48,7 @@ func TestComposeBackdropReusedDuringEditing(t *testing.T) {
 			t.Fatal("successful autosave invalidated unchanged panes")
 		}
 	}
-	// The status line is not in the cache and must still reflect current state.
+	// The independently cached status must reflect current state.
 	m.setStatus("fresh compose status", false)
 	if !strings.Contains(ansi.Strip(m.View()), "fresh compose status") {
 		t.Fatal("status line was cached")
@@ -63,24 +63,18 @@ func TestComposeBackdropRefreshesForBackgroundChanges(t *testing.T) {
 	old := m.composeBackdrop.panes
 	next, _ := m.Update(MessagesLoadedMsg{MailboxID: 7, Messages: []db.Message{{ID: 999, MailboxID: 7, Subject: "newly synced mail"}}})
 	m = next.(Model)
-	if m.composeBackdrop.valid {
-		t.Fatal("mail update kept a stale backdrop")
-	}
 	assertComposeBackdropMatchesFresh(t, m)
 	if m.composeBackdrop.panes == old || !strings.Contains(ansi.Strip(m.composeBackdrop.panes), "newly synced mail") {
 		t.Fatal("mail changes did not reach the backdrop")
 	}
 	next, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 45})
 	m = next.(Model)
-	if m.composeBackdrop.valid {
-		t.Fatal("resize kept a stale backdrop")
-	}
 	assertComposeBackdropMatchesFresh(t, m)
 	failureResult := armDraftSaveResult(&m, DraftSavedMsg{Err: errors.New("synthetic failure")})
 	next, _ = m.Update(failureResult)
 	m = next.(Model)
-	if m.composeBackdrop.valid {
-		t.Fatal("draft error did not invalidate backdrop")
+	if !m.composeBackdrop.valid {
+		t.Fatal("status-only error invalidated unchanged panes")
 	}
 	assertComposeBackdropMatchesFresh(t, m)
 }
@@ -209,9 +203,6 @@ func TestDraftAutosaveRefreshesDraftsListBehindCompose(t *testing.T) {
 	}
 	next, _ = m.Update(loaded)
 	m = next.(Model)
-	if m.composeBackdrop.valid {
-		t.Fatal("reloaded drafts kept a stale backdrop")
-	}
 	assertComposeBackdropMatchesFresh(t, m)
 }
 

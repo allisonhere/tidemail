@@ -321,6 +321,9 @@ func (m Model) renderOverlay(base string) string {
 	if m.overlay == overlayCompose && m.compose.maximized {
 		return clampView(box, m.width, m.height, m.styles.Theme.Bg)
 	}
+	if m.overlay == overlayCompose && m.composeBackdrop != nil {
+		return m.composeBackdrop.composite.View(base, box, m.width, m.height, m.styles.Theme.Bg, m.cfg.Display.Shadow)
+	}
 	return overlayOnBase(base, box, m.width, m.height, m.styles.Theme.Bg, m.cfg.Display.Shadow)
 }
 
