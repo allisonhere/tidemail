@@ -20,8 +20,6 @@ var (
 	geminiListModelsURL  = "https://generativelanguage.googleapis.com/v1beta/models"
 )
 
-const claudeValidateModel = "claude-haiku-4-5-20251001"
-
 // ValidateCredentials checks that the configured provider accepts the current
 // credentials (one lightweight HTTP call per backend).
 func ValidateCredentials(ctx context.Context, cfg config.AIConfig) error {
@@ -29,7 +27,7 @@ func ValidateCredentials(ctx context.Context, cfg config.AIConfig) error {
 	case "openai":
 		return validateOpenAI(ctx, cfg.OpenAIKey)
 	case "claude":
-		return validateClaude(ctx, cfg.ClaudeKey)
+		return validateClaude(ctx, cfg.ClaudeKey, cfg.ClaudeModel)
 	case "gemini":
 		return validateGemini(ctx, cfg.GeminiKey)
 	case "ollama":
@@ -78,13 +76,15 @@ func openAIErrorBody(code int, body []byte) string {
 	return fmt.Sprintf("HTTP %d", code)
 }
 
-func validateClaude(ctx context.Context, key string) error {
+// validateClaude sends a one-token request to the configured model, so a
+// model the API doesn't know fails the test the way it would fail later.
+func validateClaude(ctx context.Context, key, model string) error {
 	key = strings.TrimSpace(key)
 	if key == "" {
 		return fmt.Errorf("empty Claude API key")
 	}
 	body, _ := json.Marshal(map[string]any{
-		"model":      claudeValidateModel,
+		"model":      ClaudeModel(model),
 		"max_tokens": 1,
 		"messages": []map[string]string{
 			{"role": "user", "content": "ping"},

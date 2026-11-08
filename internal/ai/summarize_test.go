@@ -293,3 +293,56 @@ func TestTruncateContent(t *testing.T) {
 		t.Fatalf("expected 10 chars, got %d: %q", len(got), got)
 	}
 }
+
+func TestClaudeChatSkipsThinkingBlockAndUsesModel(t *testing.T) {
+	var gotModel string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		gotModel, _ = req["model"].(string)
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]any{
+			"content": []map[string]string{
+				{"type": "thinking", "thinking": ""},
+				{"type": "text", "text": "Fixed text."},
+			},
+			"stop_reason": "end_turn",
+		})
+	}))
+	defer srv.Close()
+	old := anthropicChatURL
+	anthropicChatURL = srv.URL
+	defer func() { anthropicChatURL = old }()
+
+	c := &claude{key: "k", model: "claude-sonnet-4"}
+	got, err := c.CheckGrammar(context.Background(), "fixd text")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Fixed text." {
+		t.Fatalf("got %q", got)
+	}
+	if gotModel != "claude-sonnet-5-5" {
+		t.Fatalf("legacy model sent as %q, want it mapped to claude-sonnet-5-5", gotModel)
+	}
+}
+
+func TestClaudeChatReportsUnknownModel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]any{
+			"type":  "error",
+			"error": map[string]string{"type": "not_found_error", "message": "model: claude-made-up"},
+		})
+	}))
+	defer srv.Close()
+	old := anthropicChatURL
+	anthropicChatURL = srv.URL
+	defer func() { anthropicChatURL = old }()
+
+	c := &claude{key: "k", model: "claude-made-up"}
+	_, err := c.CheckGrammar(context.Background(), "x")
+	if err == nil || !strings.Contains(err.Error(), "HTTP 404") || !strings.Contains(err.Error(), "claude-made-up") {
+		t.Fatalf("err = %v", err)
+	}
+}

@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/allisonhere/tidemail/internal/ai"
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/termimage"
 	"github.com/allisonhere/tidemail/internal/update"
@@ -196,7 +197,7 @@ var (
 	aiProviderLabels      = []string{"none", "OpenAI", "Claude", "Gemini", "Ollama"}
 	aiProviderIDs         = []string{"", "openai", "claude", "gemini", "ollama"}
 	openaiModelLabels     = []string{"gpt-4o-mini", "gpt-4o", "gpt-4.1", "o3-mini", "o1"}
-	claudeModelLabels     = []string{"claude-sonnet-4", "claude-haiku", "claude-opus-4"}
+	claudeModelLabels     = []string{"claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"}
 	geminiModelLabels     = []string{"gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"}
 	ollamaModelLabels     = []string{"llama3.2", "llama3.1", "mistral", "gemma3", "phi4"}
 	settingsSectionLabels = [settingsSectionCount]string{
@@ -296,6 +297,7 @@ func openaiModelIndex(s string) int {
 }
 
 func claudeModelIndex(s string) int {
+	s = ai.ClaudeModel(s)
 	for i, label := range claudeModelLabels {
 		if strings.EqualFold(label, s) {
 			return i
@@ -512,7 +514,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		openaiInput:             mkInput(cfg.AI.OpenAIKey, "sk-...", true),
 		openaiModelInput:        mkInput(cfg.AI.OpenAIModel, "gpt-4o-mini", false),
 		claudeInput:             mkInput(cfg.AI.ClaudeKey, "sk-ant-...", true),
-		claudeModelInput:        mkInput(cfg.AI.ClaudeModel, "claude-sonnet-4", false),
+		claudeModelInput:        mkInput(cfg.AI.ClaudeModel, "claude-haiku-5-5", false),
 		geminiInput:             mkInput(cfg.AI.GeminiKey, "AIza...", true),
 		geminiModelInput:        mkInput(cfg.AI.GeminiModel, "gemini-1.5-flash", false),
 		ollamaURLInput:          mkInput(cfg.AI.OllamaURL, "http://localhost:11434", false),
@@ -676,7 +678,7 @@ func (s Settings) draftAIConfig() config.AIConfig {
 		OpenAIKey:           strings.TrimSpace(s.openaiInput.Value()),
 		OpenAIModel:         strings.TrimSpace(s.openaiModelInput.Value()),
 		ClaudeKey:           strings.TrimSpace(s.claudeInput.Value()),
-		ClaudeModel:         strings.TrimSpace(s.claudeModelInput.Value()),
+		ClaudeModel:         claudeModelLabels[s.claudeModelIdx],
 		GeminiKey:           strings.TrimSpace(s.geminiInput.Value()),
 		GeminiModel:         strings.TrimSpace(s.geminiModelInput.Value()),
 		OllamaURL:           strings.TrimSpace(s.ollamaURLInput.Value()),

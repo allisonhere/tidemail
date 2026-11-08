@@ -245,8 +245,25 @@ func NewReply(original db.Message, acfg config.AccountConfig, accounts []config.
 	if replyTo == "" {
 		replyTo = original.From
 	}
-	c.toInput.SetValue(replyTo)
+	c.toInput.SetValue(formatAddressField(replyTo))
 	return c
+}
+
+// formatAddressField rewrites a stored address header into a list To/Cc can
+// send. Stored headers are decoded for display, so a display name holding a
+// comma ("Merk, Philipp <p@x>") comes back unquoted and would not parse as one
+// address; formatting each participant quotes such names again. A value no
+// address can be recovered from is left as it was.
+func formatAddressField(raw string) string {
+	parts := conversation.ParseParticipants(raw)
+	if len(parts) == 0 {
+		return raw
+	}
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		out = append(out, formatParticipant(p))
+	}
+	return strings.Join(out, ", ")
 }
 
 // NewReplyAll is NewReply plus the original's other recipients on Cc. To is
