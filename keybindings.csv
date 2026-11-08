@@ -100,3 +100,4 @@ ComposeFindControls,tab,tab,next search control,compose-find
 ComposeFindClose,esc,esc,close search without closing compose,compose-find
 MaximizeCompose,alt+m,alt+m,maximize/restore compose (session only),compose
 GrammarQuit,"ctrl+c,ctrl+q",ctrl+c/ctrl+q,cancel grammar check and follow normal quit flow,compose grammar check
+ReaderMouseCopy,ctrl+c,ctrl+c,copy reader mouse selection preserving displayed line breaks,content
