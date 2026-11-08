@@ -1416,6 +1416,13 @@ hide those two rows when turned off. Only the row goes away: nothing is deleted,
 view as it was. If you turn off the view you have open, TideMail returns to the
 Unified Inbox.
 
+Mouse-driven text selection and copying in the reading pane is available with
+Focus Line either enabled or disabled. With Mouse support on, left-drag over text
+and press **Ctrl+C** to copy it, preserving displayed line breaks. Release keeps
+the highlight; another click clears it. Drag above or below the reader to
+autoscroll and extend the selection. Keyboard navigation clears the mouse
+selection. Clicking or dragging hyperlinks never opens them.
+
 **Mouse support** is off by default, so your terminal's own native
 click-drag text selection and copy keep working untouched. Turn it on to use:
 

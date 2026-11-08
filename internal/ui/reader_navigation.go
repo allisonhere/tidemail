@@ -11,7 +11,16 @@ func (m Model) readerOnlyNavigation(msg tea.Msg) bool {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		return m.focused == paneContent && keyMatches(msg, m.keys.Up, m.keys.Down)
+	case readerSelectionTick:
+		return true
 	case tea.MouseMsg:
+		if m.readerMouse.dragging {
+			return true
+		}
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			target, _, _, ok := m.paneAt(msg.X, msg.Y)
+			return ok && target == paneContent
+		}
 		if !m.cfg.Display.MouseSupport || !tea.MouseEvent(msg).IsWheel() {
 			return false
 		}

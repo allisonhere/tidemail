@@ -30,7 +30,11 @@ func TestReaderLinkSelectionInputEquivalence(t *testing.T) {
 						y := m.articlesPaneOuterHeight() + 1 + m.paneHeaderHeight() + row - m.viewport.YOffset
 						click := leftClick(m.feedsPaneWidth()+4, y)
 						m = apply(m, click)
+						release := click
+						release.Action = tea.MouseActionRelease
+						m = apply(m, release)
 						m = apply(m, click) // clicking the selection again keeps it
+						m = apply(m, release)
 					case "down":
 						m.selectContentLinkAt(m.contentLinkRows[0])
 						m = apply(m, tea.KeyMsg{Type: tea.KeyDown})

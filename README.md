@@ -119,6 +119,10 @@ One inbox, 51 built-in themes in 23 families — Catppuccin, Tokyo Night, Rosé 
   terminal's native text selection keeps working). Then click rows and panes,
   double-click a message to open it, use the scroll wheel over any pane, and
   right-click a folder, account, or message for a menu of just its actions.
+  In the reading pane, drag to select text and press **Ctrl+C** to copy it with
+  displayed line breaks. This works with Focus Line enabled or disabled. Drag
+  above or below the reader to autoscroll; release retains the highlight and
+  another click clears it.
 - **Optional support, kept out of your way.** Open **Settings → Support** to
   visit or copy Tidemail's GitHub Sponsors link; **About** and **Support** are small
   animated scenes. No donation prompts appear during normal email use.

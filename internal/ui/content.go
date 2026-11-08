@@ -29,6 +29,7 @@ func (m *Model) renderContentPane() string {
 	vp.Height = vpH
 	vp.Style = lipgloss.NewStyle().Background(bg)
 	body := m.renderContentFocusLine(vp.View(), w, vpH, focused)
+	body = m.renderReaderMouseSelection(body)
 	body = clampView(body, w, vpH, bg)
 
 	content := body
@@ -405,6 +406,7 @@ func (m *Model) setViewportMessage(msg db.Message) {
 	m.applyViewportImages(vc.images)
 	m.contentMessageID = msg.ID
 	m.contentDraftID = 0
+	m.clearReaderMouseSelection()
 	m.contentLines, m.contentLineLinks = vc.lines, vc.lineLinks
 	m.contentLinkRows = vc.linkRows
 	m.updateContentLinkLine()
@@ -532,6 +534,7 @@ func (m *Model) setViewportDraft(d db.Draft) {
 	m.viewport.SetContent(vc.content)
 	m.contentMessageID = 0
 	m.contentDraftID = d.ID
+	m.clearReaderMouseSelection()
 	m.contentLines, m.contentLineLinks = vc.lines, vc.lineLinks
 	m.contentLinkRows = nil
 	m.contentLineCount = len(m.contentLines)
@@ -567,6 +570,7 @@ func (m *Model) setViewportThread(thread messageThread) {
 	m.applyViewportImages(vc.images)
 	m.contentMessageID = rep.ID
 	m.contentDraftID = 0
+	m.clearReaderMouseSelection()
 	m.contentLines, m.contentLineLinks = vc.lines, vc.lineLinks
 	m.contentLinkRows = vc.linkRows
 	m.updateContentLinkLine()
@@ -634,6 +638,7 @@ func (m *Model) clearViewportMessage() {
 	m.contentFocusPending = false
 	m.contentLineCount = 0
 	m.contentFocusable = nil
+	m.clearReaderMouseSelection()
 	m.contentLines = nil
 	m.contentLineLinks = nil
 	m.contentAttachments = nil

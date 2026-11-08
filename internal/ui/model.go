@@ -239,6 +239,7 @@ type Model struct {
 	contentFocusLine    int
 	contentLineCount    int
 	contentFocusable    []bool
+	readerMouse         readerMouseSelection
 	contentLines        []string
 	// contentLineLinks holds the hyperlink target for each contentLines entry,
 	// including explicit LINKS destinations when OSC 8 is unavailable. Body
@@ -589,6 +590,17 @@ func (m Model) Init() tea.Cmd {
 // ── Update ───────────────────────────────────────────────────────────────────
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if !m.keepReaderSelectionView(msg) {
+		m.invalidateReaderSelectionView()
+	}
+	switch event := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.clearReaderMouseSelection()
+	case tea.KeyMsg:
+		if event.String() != "ctrl+c" {
+			m.clearReaderMouseSelection()
+		}
+	}
 	if m.readerPanes != nil {
 		m.readerPanes.navigationOnly = m.readerOnlyNavigation(msg)
 		if !m.readerPanes.navigationOnly {
@@ -598,6 +610,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	next, cmd := m.update(msg)
 	if updated, ok := next.(Model); ok {
+		if updated.overlay != overlayNone || !updated.cfg.Display.MouseSupport {
+			updated.clearReaderMouseSelection()
+		}
 		if updated.overlay == overlayCompose {
 			updated.sizeCompose()
 		}
@@ -650,6 +665,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case readerSelectionTick:
+		return m.handleReaderSelectionTick(msg)
+
 	case tea.MouseMsg:
 		if !m.cfg.Display.MouseSupport {
 			// Defense in depth: the mouse ProgramOption isn't registered at
@@ -658,6 +676,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.overlay == overlayCompose {
 			return m.handleComposeMouse(msg, time.Now())
+		}
+		if handled, cmd := m.readerSelectionMouse(msg); handled {
+			return m, cmd
 		}
 		if tea.MouseEvent(msg).IsWheel() {
 			return m.handleMouseWheel(msg)
@@ -2236,7 +2257,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case msg.String() == "y" || msg.String() == "ctrl+c":
 		if m.focused == paneContent && m.contentMessageID != 0 {
-			text := m.contentSelectionText(msg.String() == "ctrl+c")
+			text := m.readerMouseText()
+			if !m.readerMouse.moved {
+				text = m.contentSelectionText(msg.String() == "ctrl+c")
+			}
 			if text == "" {
 				m.setStatus("nothing to copy", false)
 				return m, m.clearStatusCmd()
@@ -3771,6 +3795,10 @@ func (m Model) View() string {
 		return m.renderOverlay("")
 	}
 
+	if m.overlay == overlayNone && m.cfg.Display.MouseSupport && m.readerMouse.view != nil && (m.readerMouse.dragging || m.readerMouse.moved) {
+		return m.renderReaderSelectionView()
+	}
+
 	if m.overlay == overlayCompose && m.composeBackdrop != nil {
 		return m.viewCachedCompose()
 	}
@@ -4319,6 +4347,7 @@ func (m *Model) refreshDraftCounts() {
 // alone cannot catch it, and density or corner changes reshape layout too.
 func (m *Model) setStyles(s Styles) {
 	m.invalidateComposePanes()
+	m.invalidateReaderSelectionView()
 	if m.readerPanes != nil {
 		m.readerPanes.valid = false
 	}
@@ -4655,6 +4684,7 @@ func (c *ComposeModel) clearRoutedStatus() {
 }
 
 func (m *Model) setStatus(msg string, isErr bool) {
+	m.invalidateReaderSelectionView()
 	m.statusMsg = msg
 	m.statusErr = isErr
 	m.statusPill = !isErr

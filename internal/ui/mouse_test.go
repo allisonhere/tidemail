@@ -110,7 +110,10 @@ func TestMouseClickFocusesContentPaneOnNonLinkLine(t *testing.T) {
 	x := m.feedsPaneWidth() + 1
 	y := interiorTop + 1 // the second content line, "No link on this line."
 
-	next, cmd := m.Update(leftClick(x, y))
+	next, _ := m.Update(leftClick(x, y))
+	pressed := next.(Model)
+	// Reader clicks complete on release so a press can begin a text drag.
+	next, cmd := pressed.Update(tea.MouseMsg{Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft, X: x, Y: y})
 	got := next.(Model)
 	if got.focused != paneContent {
 		t.Fatalf("expected click to focus the content pane, got %v", got.focused)
@@ -136,7 +139,10 @@ func TestMouseClickOnlyFocusesContentLink(t *testing.T) {
 	x := m.feedsPaneWidth() + 1
 	y := interiorTop + 1 // the link line
 
-	next, cmd := m.Update(leftClick(x, y))
+	next, _ := m.Update(leftClick(x, y))
+	pressed := next.(Model)
+	// Reader clicks complete on release so a press can begin a text drag.
+	next, cmd := pressed.Update(tea.MouseMsg{Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft, X: x, Y: y})
 	got := next.(Model)
 	if got.focused != paneContent {
 		t.Fatalf("expected click to focus the content pane, got %v", got.focused)
