@@ -53,12 +53,22 @@ func ParseParticipants(fields ...string) []Participant {
 			// Sloppy or hostile headers (a control character in one display
 			// name rejects the whole list): split on commas and pull out each
 			// <address> and the name before it.
+			// A piece with no address is the front of a display name that
+			// itself held a comma ("Merk, Philipp <p@x>"): carry it into the
+			// next piece instead of dropping it.
+			carry := ""
 			for _, part := range strings.Split(f, ",") {
+				if carry != "" {
+					part = carry + "," + part
+				}
+				carry = ""
 				if m := angleAddressRe.FindStringSubmatch(part); m != nil {
 					name := strings.Trim(strings.TrimSpace(part[:strings.Index(part, "<")]), `"`)
 					out = append(out, Participant{Name: name, Addr: strings.ToLower(m[1])})
 				} else if a := BareAddress(part); a != "" {
 					out = append(out, Participant{Addr: a})
+				} else if strings.TrimSpace(part) != "" && !strings.Contains(part, "@") {
+					carry = part
 				}
 			}
 			continue

@@ -1753,7 +1753,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.compose.grammarRequest = nil
 		m.compose.busy = false
 		if msg.Err != nil {
-			m.compose.statusMsg = "grammar check failed"
+			m.compose.statusMsg = grammarFailedStatus(msg.Err)
 			m.compose.isErr = true
 		} else {
 			m.grammarOriginal = m.compose.bodyInput.Value()

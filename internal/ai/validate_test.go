@@ -83,7 +83,7 @@ func TestValidateClaude_OK(t *testing.T) {
 	anthropicMessagesURL = srv.URL
 	defer func() { anthropicMessagesURL = old }()
 
-	err := validateClaude(context.Background(), "k-ant-test")
+	err := validateClaude(context.Background(), "k-ant-test", "")
 	if err != nil {
 		t.Fatal(err)
 	}

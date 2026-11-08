@@ -6,6 +6,20 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- Replying to a sender whose name contains a comma (`Merk, Philipp <…>`) no
+  longer fails with "invalid email: mail: missing '@' or angle-addr". Reply now
+  quotes the name the way reply all does, and reply all keeps the whole name
+  instead of dropping the part before the comma (#102).
+- Claude grammar checks and summaries failed with every model Settings offered,
+  because those names (`claude-sonnet-4`, `claude-haiku`, `claude-opus-4`) aren't
+  API model IDs. Settings now offers `claude-haiku-5-5` (default),
+  `claude-sonnet-5-5`, and `claude-opus-5-5`, and a saved old name maps to the
+  model of the same tier, so no settings change is needed. **Test connection**
+  now tries the selected model, Claude replies that open with a thinking block
+  are read correctly, and a failed grammar check shows the reason (#103).
+
 ## v1.9.0
 
 ### Added

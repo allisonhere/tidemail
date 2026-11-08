@@ -108,3 +108,15 @@ func (m *Model) grammarCheckCmd(body string) tea.Cmd {
 		return GrammarCheckedMsg{Request: request, Corrected: corrected, Err: err}
 	}
 }
+
+// grammarFailedStatus is the compose footer text for a failed grammar check:
+// the provider's own reason (a wrong model, a bad key, a timeout), on one line
+// and short enough for the footer.
+func grammarFailedStatus(err error) string {
+	reason := strings.Join(strings.Fields(err.Error()), " ")
+	const maxReason = 120
+	if r := []rune(reason); len(r) > maxReason {
+		reason = string(r[:maxReason-1]) + "…"
+	}
+	return "grammar check failed: " + reason
+}
