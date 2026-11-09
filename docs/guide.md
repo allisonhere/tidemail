@@ -222,7 +222,9 @@ including a parent. Reader `Enter` still opens the selected or focused link;
 the same behavior as `Enter` on each row.
 
 Parents follow the active message ordering: with Unread First, unread messages
-precede read messages, newest first within each group. Starred First retains
+precede read messages, newest first within each group. A message marked read
+when you open it keeps its place until you leave the reader (see Pending
+read/unread changes). Starred First retains
 its priority; Needs You, Waiting on Them, and Snoozed retain their view ordering.
 Selection follows the email's database identity across sorting and refreshes.
 If a selected parent becomes a child, its conversation opens to keep it visible.
@@ -1485,7 +1487,12 @@ Messages retain their local read state, unread count, and sorting classification
 until the server confirms. Successful updates are saved locally and the current
 view reloads using its existing ordering, preserving the highlighted message by
 ID where it remains visible. This includes Unread First ordering and Unread Only
-filtering. A conversation's parent can change as its members change read state.
+filtering. The exception is a message marked read by opening it: while it stays
+open in the focused reader it keeps its unread position, and stays listed under
+Unread Only, so the list does not move out from under you. When focus leaves the
+reader or another message opens, it moves to its place among the read messages,
+and the cursor stays on the same row, which is now the next unread message.
+Dialogs opened over the reader, such as a reply, do not end the hold. A conversation's parent can change as its members change read state.
 Read reconciliation keeps collapsed selections on their conversation without
 opening it; expanded selections retain their exact email ID. Intentional `x`
 advancement retains its next target through that reconciliation. Passive refreshes

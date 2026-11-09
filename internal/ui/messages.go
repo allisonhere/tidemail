@@ -350,11 +350,12 @@ func (m *Model) applyFilterPreservingCollapsed(collapsed bool) {
 	// here would have to re-implement that matching locally, and the subject-only
 	// substring test this used to do silently dropped every message that matched
 	// on sender or body. The unread toggle is the only filter left to apply.
+	visible = m.keepHeldUnreadPosition(visible)
 	filtered := visible
 	if m.showUnreadOnly {
 		filtered = make([]db.Message, 0, len(visible))
 		for _, msg := range visible {
-			if !msg.Read {
+			if !m.sortsAsRead(msg) {
 				filtered = append(filtered, msg)
 			}
 		}
@@ -467,7 +468,86 @@ func (m *Model) openedMessageCmd(msg db.Message) tea.Cmd {
 	if !m.cfg.Display.MarkReadOnOpen || msg.Read {
 		return nil
 	}
-	return m.setMessageReadCmd(msg, true, false)
+	cmd := m.setMessageReadCmd(msg, true, false)
+	if cmd != nil && (m.cfg.Display.UnreadFirst || m.showUnreadOnly) {
+		m.heldReadID = msg.ID
+	}
+	return cmd
+}
+
+// sortsAsRead reports whether msg orders and filters as read. The message
+// held by heldReadID still counts as unread, so reading it does not move it
+// out from under the user.
+func (m *Model) sortsAsRead(msg db.Message) bool {
+	return msg.Read && (m.heldReadID == 0 || msg.ID != m.heldReadID)
+}
+
+// readingHeldMessage reports whether the held message is still open in the
+// focused reader. A dialog opened over the reader (help, palette, reply)
+// keeps the hold.
+func (m *Model) readingHeldMessage() bool {
+	if m.contentMessageID != m.heldReadID {
+		return false
+	}
+	return m.focused == paneContent || m.overlay != overlayNone
+}
+
+// releaseHeldRead lets the held message move to its real place. If the
+// cursor was on it, the cursor keeps its row, which is now the next message
+// in the unread block, instead of following the message down.
+func (m *Model) releaseHeldRead() tea.Cmd {
+	heldID := m.heldReadID
+	m.heldReadID = 0
+	row, offset := m.messageCursor, m.listOffset
+	cur := m.currentRowMessage()
+	onHeld := cur != nil && cur.ID == heldID
+	m.applyFilter()
+	if !onHeld || m.activeMessageRowCount() == 0 {
+		return nil
+	}
+	m.messageCursor = clamp(row, 0, m.activeMessageRowCount()-1)
+	m.listOffset = clamp(offset, 0, m.messageCursor)
+	m.keepMessageCursorVisible()
+	m.setViewportForCurrentRow()
+	if m.focused == paneMessages {
+		if msg := m.currentRowMessage(); msg != nil {
+			return m.focusedMessageChangedCmd(*msg)
+		}
+	}
+	return nil
+}
+
+// keepHeldUnreadPosition puts the held message back where Unread first
+// ordering had it before it was read: in the unread block, by date.
+func (m *Model) keepHeldUnreadPosition(list []db.Message) []db.Message {
+	if m.heldReadID == 0 || !m.cfg.Display.UnreadFirst {
+		return list
+	}
+	h := -1
+	for i, msg := range list {
+		if msg.ID == m.heldReadID {
+			h = i
+			break
+		}
+	}
+	if h < 0 || !list[h].Read {
+		return list
+	}
+	held := list[h]
+	rest := make([]db.Message, 0, len(list))
+	rest = append(rest, list[:h]...)
+	rest = append(rest, list[h+1:]...)
+	at := len(rest)
+	for i, msg := range rest {
+		if m.sortsAsRead(msg) || held.Date.After(msg.Date) || held.Date.Equal(msg.Date) && held.ID > msg.ID {
+			at = i
+			break
+		}
+	}
+	out := make([]db.Message, 0, len(list))
+	out = append(out, rest[:at]...)
+	out = append(out, held)
+	return append(out, rest[at:]...)
 }
 
 func (m *Model) focusedMessageChangedCmd(msg db.Message) tea.Cmd {
