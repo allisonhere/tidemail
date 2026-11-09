@@ -192,6 +192,126 @@ func TestSessionPoolCloseInterruptsInFlightOp(t *testing.T) {
 	}
 }
 
+// go-imap resets the socket's read deadline before and after every response it
+// reads, so an expired deadline from Close can be erased before the reader's
+// next read and the op then blocks forever (seen as a hang on quit mid-sync).
+// Close must still unwind it.
+func TestSessionPoolCloseInterruptsOpThatResetsDeadline(t *testing.T) {
+	local, remote := net.Pipe()
+	defer remote.Close()
+
+	p := &SessionPool{
+		entries: map[string]*session{},
+		stop:    make(chan struct{}),
+		connect: func(ctx context.Context, cfg config.AccountConfig) (*Client, error) {
+			return &Client{cfg: cfg, netConn: local}, nil
+		},
+		validate: func(ctx context.Context, c *Client) error { return nil },
+	}
+	acfg := config.AccountConfig{Name: "Acct", IMAPHost: "imap.x", User: "a@x"}
+
+	started := make(chan struct{})
+	opDone := make(chan error, 1)
+	go func() {
+		opDone <- p.Do(context.Background(), acfg, func(c *Client) error {
+			close(started)
+			for {
+				c.netConn.SetReadDeadline(time.Time{}) //nolint:errcheck // as go-imap does between responses
+				_, err := c.netConn.Read(make([]byte, 1))
+				if ne, ok := err.(net.Error); ok && ne.Timeout() {
+					continue
+				}
+				return err
+			}
+		})
+	}()
+	<-started
+	time.Sleep(20 * time.Millisecond)
+
+	closed := make(chan struct{})
+	go func() { p.Close(); close(closed) }()
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close blocked on an op that cleared the expired deadline")
+	}
+	select {
+	case err := <-opDone:
+		if err == nil {
+			t.Fatal("expected the interrupted op to return an error")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("interrupted op did not return")
+	}
+}
+
+// Operations queued behind the in-flight one (sync-all queues one per folder)
+// must not run once Close starts: Close's own lock request waits behind them,
+// so each would otherwise reconnect and run a full fetch before quit finishes.
+func TestSessionPoolCloseSkipsQueuedOps(t *testing.T) {
+	var dials atomic.Int32
+	release := make(chan struct{})
+	p := &SessionPool{
+		entries: map[string]*session{},
+		stop:    make(chan struct{}),
+		connect: func(ctx context.Context, cfg config.AccountConfig) (*Client, error) {
+			dials.Add(1)
+			return &Client{cfg: cfg}, nil
+		},
+		validate: func(ctx context.Context, c *Client) error { return nil },
+	}
+	acfg := config.AccountConfig{Name: "Acct", IMAPHost: "imap.x", User: "a@x"}
+
+	started := make(chan struct{})
+	first := make(chan error, 1)
+	go func() {
+		first <- p.Do(context.Background(), acfg, func(c *Client) error {
+			close(started)
+			<-release
+			return nil
+		})
+	}()
+	<-started
+
+	const queued = 5
+	var ran atomic.Int32
+	results := make(chan error, queued)
+	for range queued {
+		go func() {
+			results <- p.Do(context.Background(), acfg, func(c *Client) error {
+				ran.Add(1)
+				time.Sleep(200 * time.Millisecond) // a full fetch each
+				return nil
+			})
+		}()
+	}
+	time.Sleep(50 * time.Millisecond) // let them queue on the session lock
+
+	closed := make(chan struct{})
+	go func() { p.Close(); close(closed) }()
+	time.Sleep(20 * time.Millisecond)
+	close(release) // the in-flight op finishes (a real one is interrupted)
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("Close waited for the queued operations to run")
+	}
+	for range queued {
+		if err := <-results; !errors.Is(err, ErrPoolClosed) {
+			t.Fatalf("queued op returned %v, want ErrPoolClosed", err)
+		}
+	}
+	if n := ran.Load(); n != 0 {
+		t.Fatalf("%d queued ops ran after Close", n)
+	}
+	if n := dials.Load(); n != 1 {
+		t.Fatalf("dials = %d, want 1", n)
+	}
+	if err := p.Do(context.Background(), acfg, func(*Client) error { return nil }); !errors.Is(err, ErrPoolClosed) {
+		t.Fatalf("Do after Close returned %v, want ErrPoolClosed", err)
+	}
+}
+
 func TestSessionPoolReapsIdleConnections(t *testing.T) {
 	p, dials := newTestPool()
 	acfg := config.AccountConfig{Name: "Acct", IMAPHost: "imap.x", User: "a@x"}

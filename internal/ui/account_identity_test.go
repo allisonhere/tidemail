@@ -732,3 +732,38 @@ func TestForwardCommandCarriesStoredAttachments(t *testing.T) {
 		t.Fatalf("overlay=%v attachments=%+v status=%q", m.overlay, m.compose.attachments, m.statusMsg)
 	}
 }
+
+// The f key and the palette's Forward share forwardSource, so a forward started
+// from the keyboard carries the stored attachments too.
+func TestForwardKeyCarriesStoredAttachments(t *testing.T) {
+	for _, pane := range []pane{paneMessages, paneContent} {
+		m, _, _ := newIdentityModel(t, acct("Personal", "imap.example.com", "me@example.com", "pw"))
+		mailboxID, err := m.db.UpsertMailbox(db.Mailbox{AccountID: m.accounts[0].ID, Name: "INBOX"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		message := db.Message{MailboxID: mailboxID, UID: 1, MessageID: "<a@x>", Subject: "Report", BodyText: "attached", HasAttachment: true}
+		if err := m.db.UpsertMessage(message); err != nil {
+			t.Fatal(err)
+		}
+		stored, err := m.db.ListMessages(mailboxID)
+		if err != nil || len(stored) != 1 {
+			t.Fatalf("messages = %v, %v", stored, err)
+		}
+		if _, err := m.db.SaveAttachment(stored[0].ID, db.Attachment{Filename: "report.txt", ContentType: "text/plain", Data: []byte("hello"), Size: 5}); err != nil {
+			t.Fatal(err)
+		}
+		m.mailboxes, _ = m.db.ListMailboxes(m.accounts[0].ID)
+		m.messages, m.filteredMessages = stored, stored
+		m.focused = pane
+		if pane == paneContent {
+			m.contentMessageID = stored[0].ID
+		}
+
+		next, _ := m.handleMainKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+		m = next.(Model)
+		if m.overlay != overlayCompose || len(m.compose.attachments) != 1 || string(m.compose.attachments[0].Data) != "hello" || m.compose.attachments[0].Name != "report.txt" {
+			t.Fatalf("pane %v: overlay=%v attachments=%+v status=%q", pane, m.overlay, m.compose.attachments, m.statusMsg)
+		}
+	}
+}

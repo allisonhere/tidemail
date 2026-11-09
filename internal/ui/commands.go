@@ -234,17 +234,7 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 			m.setStatus("forward failed: "+err.Error(), true)
 			return m, m.clearStatusCmd()
 		}
-		fwd := *msg
-		if fwd.HasAttachment && m.db != nil {
-			// AttachmentData is transient, so a stored message has none; load the
-			// contents (embedded images included) so they travel with the forward.
-			atts, err := m.db.GetAttachments(fwd.ID)
-			if err != nil {
-				m.setStatus("couldn't load attachments to forward: "+err.Error(), true)
-			}
-			fwd.AttachmentData = atts
-		}
-		m.compose = NewForward(fwd, acfg, m.cfg.Accounts, m.addressBook)
+		m.compose = NewForward(m.forwardSource(*msg), acfg, m.cfg.Accounts, m.addressBook)
 		m.overlay = overlayCompose
 		return m, nil
 	case "archive":
@@ -358,4 +348,18 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
+}
+
+// forwardSource returns msg with its stored attachments loaded, so they travel
+// with the forward. AttachmentData is transient, so a message read from the
+// cache has none; this loads the contents (embedded images included).
+func (m *Model) forwardSource(msg db.Message) db.Message {
+	if msg.HasAttachment && len(msg.AttachmentData) == 0 && m.db != nil {
+		atts, err := m.db.GetAttachments(msg.ID)
+		if err != nil {
+			m.setStatus("couldn't load attachments to forward: "+err.Error(), true)
+		}
+		msg.AttachmentData = atts
+	}
+	return msg
 }
