@@ -6,6 +6,14 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- With Unread first or Unread only on, a message marked read when you open it
+  now stays in its place while you read it. It moves to the read messages (or
+  out of the Unread only list) when you leave the reader or open another
+  message, and the cursor stays where it was, on the next unread message,
+  instead of following the read message to the bottom of the list.
+
 ### Fixed
 
 - Quitting during a sync could hang forever on "Safely Quitting…". Sync all

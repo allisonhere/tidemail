@@ -66,8 +66,8 @@ func (m *Model) rebuildMessageThreads() {
 		if m.starredFirst && a.Starred != b.Starred {
 			return a.Starred
 		}
-		if m.cfg.Display.UnreadFirst && a.Read != b.Read {
-			return !a.Read
+		if m.cfg.Display.UnreadFirst && m.sortsAsRead(a) != m.sortsAsRead(b) {
+			return !m.sortsAsRead(a)
 		}
 		if !a.Date.Equal(b.Date) {
 			return a.Date.After(b.Date)

@@ -203,6 +203,10 @@ type Model struct {
 	showUnreadOnly   bool
 	starredFirst     bool
 	selectedMessages map[int64]bool
+	// heldReadID is a message marked read on open that keeps its unread
+	// position (Unread first) or stays listed (Unread only) until the reader
+	// loses focus or shows another message. See releaseHeldRead.
+	heldReadID int64
 
 	pendingDestructiveActions []pendingDestructiveAction
 	nextDestructiveActionID   uint64
@@ -590,6 +594,15 @@ func (m Model) Init() tea.Cmd {
 // ── Update ───────────────────────────────────────────────────────────────────
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.handleUpdate(msg)
+	if nm, ok := next.(Model); ok && nm.heldReadID != 0 && !nm.readingHeldMessage() {
+		releaseCmd := nm.releaseHeldRead()
+		return nm, tea.Batch(cmd, releaseCmd)
+	}
+	return next, cmd
+}
+
+func (m Model) handleUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !m.keepReaderSelectionView(msg) {
 		m.invalidateReaderSelectionView()
 	}
