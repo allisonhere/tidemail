@@ -53,7 +53,7 @@ Summary,`,`,AI summary,main
 VisualSelect,v,v,visual select,content
 VisualLine,V,V,select message,content
 CopyText,C,C,copy text,summary
-PasteText,ctrl+p,ctrl+p,paste text,compose
+PasteText,ctrl+v,ctrl+v,paste text,compose
 SaveMD,M,M,save as .md,summary
 DiscardDraft,d,d,discard draft,compose
 ContentSearch,ctrl+f,ctrl+f,find in content,content
@@ -69,7 +69,7 @@ Delete,d,d,delete (messages: hidden at once, 6s undo window then server confirma
 SaveAccount,"ctrl+s,f2",ctrl+s,save account,account_manager
 TestAccount,"ctrl+t,f5",ctrl+t,test account,account_manager
 DiscoverServers,ctrl+l,ctrl+l,look up Custom account servers (DNS SRV, MX, HTTPS autoconfig),account_manager
-AttachFile,ctrl+a,ctrl+a,attach file,compose
+AttachFile,alt+f,alt+f,attach file,compose
 GrammarCheck,ctrl+g,ctrl+g,AI grammar check,compose
 SpellCheck,f7,f7,offline spell check (needs Settings → Editor → Spell check),compose
 PGPSign,"alt+s,f8",alt+s,sign with PGP (needs a PGP plugin),compose

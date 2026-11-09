@@ -2535,7 +2535,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.setStatus("forward failed: "+err.Error(), true)
 				return m, m.clearStatusCmd()
 			}
-			m.compose = NewForward(*cur, acfg, m.cfg.Accounts, m.addressBook)
+			m.compose = NewForward(m.forwardSource(*cur), acfg, m.cfg.Accounts, m.addressBook)
 			m.overlay = overlayCompose
 		}
 		return m, nil

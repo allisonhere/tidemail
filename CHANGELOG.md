@@ -16,6 +16,16 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Quitting during a sync could hang forever on "Safely Quitting…". Sync all
+  queues one fetch per folder on each account's connection, and quitting had to
+  wait for every queued fetch to reconnect and run. Queued fetches now stop as
+  soon as quitting starts, and the in-flight one is cut off by closing its
+  socket rather than only expiring a deadline the IMAP library could reset.
+- Forwarding with `f` dropped the original's attachments; only Forward from the
+  command palette or the right-click menu kept them. The key now loads them the
+  same way, from the message list or the reading pane.
+- `keybindings.csv` listed `Ctrl+A` for attach file and `Ctrl+P` for paste in
+  compose; the keys are `Alt+F` and `Ctrl+V`, as Help and the guide say.
 - Replying to a sender whose name contains a comma (`Merk, Philipp <…>`) no
   longer fails with "invalid email: mail: missing '@' or angle-addr". Reply now
   quotes the name the way reply all does, and reply all keeps the whole name

@@ -158,14 +158,23 @@ func (c *Client) Close() error {
 	return c.closeConn(true)
 }
 
-// interrupt expires the socket so any in-flight read/write returns immediately
-// with a deadline error. It is safe to call concurrently with an operation in
-// progress (net.Conn methods are goroutine-safe) and is used on shutdown to abort
-// a blocked fetch instead of waiting the full network timeout for it to finish.
+// interrupt aborts whatever operation is in flight on the connection, for
+// shutdown. It closes the transport rather than only expiring its deadline:
+// go-imap resets the read deadline around every response it reads, so an
+// expired deadline set between two responses is erased and the reader then
+// blocks with no deadline at all, which hung quitting mid-sync. A closed
+// socket can't be reopened, so the blocked read always fails. For TLS the raw
+// TCP socket is closed, so nothing waits on a close_notify write.
 func (c *Client) interrupt() {
-	if c.netConn != nil {
-		c.netConn.SetDeadline(time.Now()) //nolint:errcheck
+	conn := c.netConn
+	if conn == nil {
+		return
 	}
+	conn.SetDeadline(time.Now()) //nolint:errcheck
+	if tc, ok := conn.(*tls.Conn); ok {
+		conn = tc.NetConn()
+	}
+	conn.Close() //nolint:errcheck
 }
 
 // closeConn tears down the connection. When logout is true it sends a graceful

@@ -2,6 +2,7 @@ package imap
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,6 +20,9 @@ type SessionPool struct {
 	mu      sync.Mutex
 	entries map[string]*session
 	stop    chan struct{}
+	// closed is set first thing in Close. Operations that get the session lock
+	// afterwards return ErrPoolClosed instead of running; see Close.
+	closed atomic.Bool
 
 	// connect and validate are seams for tests.
 	connect  func(ctx context.Context, cfg config.AccountConfig) (*Client, error)
@@ -55,6 +59,9 @@ func (s *session) unlock() { <-s.lockCh }
 
 const sessionIdleTimeout = 3 * time.Minute
 
+// ErrPoolClosed is returned by Do once Close has started.
+var ErrPoolClosed = errors.New("imap: session pool closed")
+
 func NewSessionPool() *SessionPool {
 	p := &SessionPool{
 		entries: map[string]*session{},
@@ -82,6 +89,9 @@ func (p *SessionPool) Do(ctx context.Context, acfg config.AccountConfig, fn func
 		return err
 	}
 	defer s.unlock()
+	if p.closed.Load() {
+		return ErrPoolClosed
+	}
 
 	// A changed account config (edited credentials, host) invalidates the
 	// cached connection; so does failing the NOOP liveness probe.
@@ -107,11 +117,23 @@ func (p *SessionPool) Do(ctx context.Context, acfg config.AccountConfig, fn func
 	// Publish the live client so Close can interrupt this operation on shutdown.
 	s.active.Store(s.client)
 	defer s.active.Store(nil)
+	if p.closed.Load() {
+		// Close started while this op was connecting and may already have
+		// looked for an active client to interrupt, so don't start one.
+		return ErrPoolClosed
+	}
 	return fn(s.client)
 }
 
-// Close shuts down the reaper and closes all pooled connections.
+// Close shuts down the reaper and closes all pooled connections. It marks the
+// pool closed before anything else: operations already queued on a session
+// lock (sync-all queues one per folder) then return ErrPoolClosed when their
+// turn comes instead of reconnecting and running a full fetch each, which made
+// quitting mid-sync wait for the whole queue.
 func (p *SessionPool) Close() {
+	if p.closed.Swap(true) {
+		return
+	}
 	close(p.stop)
 	p.mu.Lock()
 	entries := make([]*session, 0, len(p.entries))
