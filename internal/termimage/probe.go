@@ -75,16 +75,17 @@ func Probe() {
 	}
 	// Best effort: there is nothing more to do if restoring fails.
 	defer func() { _ = term.Restore(in, state) }()
-	if os.Stdin.SetReadDeadline(time.Now().Add(probeTimeout)) != nil {
-		return
-	}
-	defer func() { _ = os.Stdin.SetReadDeadline(time.Time{}) }()
 	if _, err := os.Stdout.WriteString(probeQuery); err != nil {
 		return
 	}
+	deadline := time.Now().Add(probeTimeout)
 	var buf []byte
 	chunk := make([]byte, 256)
 	for len(buf) < 4096 {
+		ready, err := readReady(in, time.Until(deadline))
+		if err != nil || !ready {
+			return
+		}
 		n, err := os.Stdin.Read(chunk)
 		buf = append(buf, chunk[:n]...)
 		if graphics, done := parseProbeReply(buf); done || err != nil {

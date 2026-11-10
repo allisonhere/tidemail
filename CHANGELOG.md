@@ -16,6 +16,10 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Inline images now work inside Herdr. TideMail recognises Herdr from its environment,
+  and the startup Kitty-graphics probe added in v1.9.0, which never actually sent its
+  query on a real terminal, now works for other multiplexers too. Reported by
+  @SteveMcGrath (#47).
 - Quitting during a sync could hang forever on "Safely Quitting…". Sync all
   queues one fetch per folder on each account's connection, and quitting had to
   wait for every queued fetch to reconnect and run. Queued fetches now stop as

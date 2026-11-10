@@ -73,6 +73,12 @@ func DetectProtocol(getenv func(string) string) Protocol {
 		program == "wezterm" || strings.Contains(term, "wezterm") {
 		return ProtocolNone
 	}
+	// Herdr passes Kitty graphics through but leaves TERM at xterm-256color and
+	// does not reliably answer the startup probe, so identify it by its own
+	// markers. Checked after foot/WezTerm, whose limits still apply beneath it.
+	if strings.TrimSpace(getenv("HERDR_ENV")) != "" || program == "herdr" {
+		return ProtocolKitty
+	}
 	if strings.TrimSpace(getenv("KITTY_WINDOW_ID")) != "" {
 		return ProtocolKitty
 	}
