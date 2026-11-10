@@ -6,6 +6,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.9.1
+
 ### Added
 
 - Select and copy text in the reading pane with the mouse. With Mouse support on,
