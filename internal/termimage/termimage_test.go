@@ -44,6 +44,10 @@ func TestDetectProtocol(t *testing.T) {
 		{"foot inherited program", map[string]string{"TERM": "foot", "TERM_PROGRAM": "ghostty"}, ProtocolNone},
 		{"foot program", map[string]string{"TERM_PROGRAM": "foot", "KITTY_WINDOW_ID": "7"}, ProtocolNone},
 		{"foot explicit opt in", map[string]string{"TERM": "foot", "TIDEMAIL_IMAGE_PROTOCOL": "kitty"}, ProtocolKitty},
+		{"herdr env", map[string]string{"TERM": "xterm-256color", "HERDR_ENV": "1"}, ProtocolKitty},
+		{"herdr program", map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "herdr"}, ProtocolKitty},
+		{"herdr over wezterm", map[string]string{"TERM_PROGRAM": "herdr", "HERDR_ENV": "1", "WEZTERM_PANE": "0"}, ProtocolNone},
+		{"herdr force off", map[string]string{"HERDR_ENV": "1", "TIDEMAIL_IMAGE_PROTOCOL": "none"}, ProtocolNone},
 		{"dumb", map[string]string{"TERM": "dumb"}, ProtocolNone},
 		{"plain xterm", map[string]string{"TERM": "xterm-256color"}, ProtocolNone},
 		{"empty env", map[string]string{}, ProtocolNone},
@@ -291,6 +295,7 @@ func TestProbeEligible(t *testing.T) {
 	}{
 		{"multiplexer", map[string]string{"TERM": "xterm-256color"}, true},
 		{"already kitty", map[string]string{"TERM": "xterm-kitty"}, false},
+		{"herdr detected", map[string]string{"TERM": "xterm-256color", "HERDR_ENV": "1"}, false},
 		{"override set", map[string]string{"TERM": "xterm-256color", "TIDEMAIL_IMAGE_PROTOCOL": "none"}, false},
 		{"foot", map[string]string{"TERM": "foot"}, false},
 		{"wezterm", map[string]string{"TERM": "xterm-256color", "WEZTERM_PANE": "1"}, false},

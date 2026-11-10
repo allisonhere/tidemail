@@ -575,11 +575,13 @@ Choose **Settings → Display → Reading → Images** (`Auto` or `Off`) and pre
 `Ctrl+S` to save. The change takes effect immediately; remote images still require
 `i` to load. The setting also shows whether inline images are supported.
 
-TideMail picks the graphics mode from your terminal's environment. If that finds
-nothing (for example inside a terminal multiplexer such as Herdr), it asks the
-terminal at startup whether it supports Kitty graphics and uses them if it
-does, so no setup is needed. To force the choice, set
-`TIDEMAIL_IMAGE_PROTOCOL=kitty` or `none`.
+TideMail picks the graphics mode from your terminal's environment, and
+recognises Herdr automatically. If that finds nothing (for example inside another
+terminal multiplexer), it asks the terminal at startup whether it supports Kitty
+graphics and uses them if it does, so no setup is needed. If images still show as
+text placeholders in a terminal that supports them, force the choice by launching
+with `TIDEMAIL_IMAGE_PROTOCOL=kitty` (or `none` to turn graphics off), for example
+`TIDEMAIL_IMAGE_PROTOCOL=kitty tidemail`.
 
 **foot and WezTerm: inline images are currently unsupported.** TideMail uses
 text placeholders there because the renderer requires Kitty Unicode placeholders
