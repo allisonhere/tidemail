@@ -6,8 +6,18 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Select and copy text in the reading pane with the mouse. With Mouse support on,
+  drag over text and press `Ctrl+C` to copy it; dragging past the top or bottom
+  scrolls and extends the selection, and keyboard navigation clears it. Thanks to
+  @jchristophm.
+
 ### Changed
 
+- Opening and closing the compose window is faster: the dimmed background and
+  modal overlays are cached instead of redrawn on every update. Thanks to
+  @jchristophm.
 - With Unread first or Unread only on, a message marked read when you open it
   now stays in its place while you read it. It moves to the read messages (or
   out of the Unread only list) when you leave the reader or open another
