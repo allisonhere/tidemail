@@ -51,7 +51,9 @@ jobs:
 
       # The race detector needs cgo, which ubuntu-latest provides via gcc.
       - name: Test
-        run: go test ./... -race
+        # The UI package has over a thousand tests; its race run can exceed
+        # Go's default 10-minute per-package limit on hosted runners.
+        run: go test ./... -race -timeout 20m
 
       - name: Interactive CLI smoke test
         run: |

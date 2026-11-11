@@ -17,6 +17,10 @@ import (
 // abandoned.
 func settle(t *testing.T, m Model, cmd tea.Cmd) Model {
 	t.Helper()
+	// Update can start IDLE watchers and session workers while following a
+	// command chain. Model copies share these resources, so closing the model
+	// at test end also closes workers started by later Update calls.
+	t.Cleanup(m.CloseSessions)
 	queue := []tea.Cmd{cmd}
 	for steps := 0; len(queue) > 0 && steps < 200; steps++ {
 		c := queue[0]
