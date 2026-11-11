@@ -5,8 +5,11 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -37,7 +40,12 @@ func discardSQLiteConnection(t *testing.T, d *DB) {
 }
 
 func TestOpenPathSettingsSurviveConnectionReplacement(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "mail ? # %.db")
+	// The name must survive URI escaping. Windows forbids "?" in file names.
+	name := "mail ? # %.db"
+	if runtime.GOOS == "windows" {
+		name = "mail # %.db"
+	}
+	path := filepath.Join(t.TempDir(), name)
 	d, err := OpenPath(path)
 	if err != nil {
 		t.Fatal(err)
@@ -136,6 +144,49 @@ func TestDeleteAccountFTSCleanupIsAtomicAndScoped(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// SQLite refuses a file: URI whose authority is not empty or "localhost". On
+// Windows a drive-letter path used to land in the authority (file://C:/...),
+// so TideMail could not open its database at all there.
+func TestFileURIKeepsAuthorityEmpty(t *testing.T) {
+	for _, tc := range []struct{ path, want string }{
+		{"C:/Users/me/AppData/Roaming/tidemail/mail.db", "file:///C:/Users/me/AppData/Roaming/tidemail/mail.db"},
+		{"D:/mail ? # %.db", "file:///D:/mail%20%3F%20%23%20%25.db"},
+		{"/home/me/.local/share/tidemail/mail.db", "file:///home/me/.local/share/tidemail/mail.db"},
+		{"//server/share/mail.db", "file:////server/share/mail.db"},
+	} {
+		got := fileURI(tc.path)
+		if got != tc.want {
+			t.Errorf("fileURI(%q) = %q, want %q", tc.path, got, tc.want)
+		}
+		u, err := url.Parse(got)
+		if err != nil || u.Host != "" {
+			t.Errorf("fileURI(%q) = %q has authority %q (err %v)", tc.path, got, u.Host, err)
+		}
+	}
+}
+
+func TestSQLiteDSNForFilePathHasNoAuthority(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mail.db")
+	dsn, err := sqliteDSN(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Scheme != "file" || u.Host != "" {
+		t.Fatalf("dsn %q: scheme %q authority %q", dsn, u.Scheme, u.Host)
+	}
+	want := filepath.ToSlash(path)
+	if !strings.HasPrefix(want, "/") {
+		want = "/" + want // C:/... on Windows
+	}
+	if u.Path != want {
+		t.Fatalf("dsn %q names %q, want %q", dsn, u.Path, want)
 	}
 }
 
