@@ -165,6 +165,26 @@ If you use [Homebrew](https://brew.sh), install TideMail with the following comm
 brew install tidemail
 ```
 
+### Nix
+
+The repository is a flake. Run TideMail without installing it:
+
+```bash
+nix run github:allisonhere/tidemail
+```
+
+To install it, add the flake as an input and use
+`inputs.tidemail.packages.${system}.default` (or apply
+`inputs.tidemail.overlays.default` and use `pkgs.tidemail`) in
+`environment.systemPackages` or `home.packages`. You can also run
+`nix profile install github:allisonhere/tidemail`. The package includes the
+man page, desktop entry, and icon, and adds `secret-tool`, `xdg-open`, and
+`notify-send` to the end of TideMail's `PATH` on Linux. Update it through Nix
+(`nix flake update`, or `nix profile upgrade`), not the in-app updater.
+
+`nix develop` opens a shell with Go, gopls, golangci-lint, and delve for
+working on TideMail.
+
 ### Everywhere else
 
 ```bash
