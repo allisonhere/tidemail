@@ -28,6 +28,7 @@ func TestIdleEventTriggersInboxSyncAndRearms(t *testing.T) {
 	}
 
 	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	t.Cleanup(m.CloseSessions)
 	next, _ := m.Update(AccountsLoadedMsg{
 		Accounts:  []db.Account{{ID: accountID, Name: "Personal"}},
 		Mailboxes: []db.Mailbox{{ID: mailboxID, AccountID: accountID, Name: "INBOX"}},
@@ -61,6 +62,7 @@ func TestIdleEventFromStaleWatcherIsIgnored(t *testing.T) {
 	defer database.Close()
 
 	m := NewModel(database, config.DefaultConfig(), "dev", false)
+	t.Cleanup(m.CloseSessions)
 
 	stale := imapClient.NewWatcher(config.AccountConfig{Name: "Old", IMAPHost: "127.0.0.1", IMAPPort: 1}, "INBOX", nil)
 	defer stale.Close()
