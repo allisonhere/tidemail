@@ -26,6 +26,29 @@ func newTestPool() (*SessionPool, *atomic.Int32) {
 	return p, &dials
 }
 
+func TestSessionPoolStartsReaperLazily(t *testing.T) {
+	p := NewSessionPool()
+	t.Cleanup(p.Close)
+
+	if p.reaperStarted.Load() {
+		t.Fatal("new, unused session pool started its idle reaper")
+	}
+
+	// Use a test connection seam so the first operation does not touch the
+	// network. The reaper should begin only once the pool is actually used.
+	p.connect = func(ctx context.Context, cfg config.AccountConfig) (*Client, error) {
+		return &Client{cfg: cfg}, nil
+	}
+	p.validate = func(ctx context.Context, c *Client) error { return nil }
+	acfg := config.AccountConfig{Name: "Acct", IMAPHost: "imap.x", User: "a@x"}
+	if err := p.Do(context.Background(), acfg, func(*Client) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if !p.reaperStarted.Load() {
+		t.Fatal("used session pool did not start its idle reaper")
+	}
+}
+
 func TestSessionPoolReusesConnectionPerAccount(t *testing.T) {
 	p, dials := newTestPool()
 	acfg := config.AccountConfig{Name: "Acct", IMAPHost: "imap.x", User: "a@x"}
