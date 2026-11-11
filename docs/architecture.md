@@ -345,8 +345,10 @@ flight and retains undo history until restoration is acknowledged successfully.
 Account deletion removes the account's FTS rows before cascading cached-message
 deletion, within one transaction. SQLite DSNs apply foreign-key enforcement,
 `busy_timeout(5000)`, and WAL to each physical connection, including replacements
-after `driver.ErrBadConn`. Filesystem paths are escaped as SQLite file URIs;
-existing SQLite file URIs and in-memory databases remain supported.
+after `driver.ErrBadConn`. Filesystem paths are escaped as SQLite file URIs
+with an empty authority (`file:///C:/...` on Windows), so a drive letter is
+never read as a host; existing SQLite file URIs and in-memory databases remain
+supported.
 
 OAuth transport gates run before IMAP/SMTP plaintext dialing and token refresh.
 SMTP XOAUTH2 also rejects `ServerInfo.TLS == false` before constructing the bearer

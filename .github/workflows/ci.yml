@@ -58,6 +58,25 @@ jobs:
           go build -o /tmp/tidemail-agent-cli .
           python scripts/verify-cli-interactive.py /tmp/tidemail-agent-cli
 
+  # Cross-vetting cannot catch runtime differences such as Windows paths, so
+  # run the database tests, which open real files, on Windows too.
+  windows-db-test:
+    name: Windows database tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        env:
+          CGO_ENABLED: "0"
+        run: go test ./internal/db/...
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

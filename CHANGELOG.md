@@ -6,6 +6,13 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- TideMail would not start on Windows since v1.8.0: it exited with `error
+  opening database: init db: SQL logic error: out of memory (1)`. The database
+  path was handed to SQLite as `file://C:/...`, so SQLite took `C:` for a host
+  name and refused to open it; it is now `file:///C:/...` (#109).
+
 ## v1.9.1
 
 ### Added
