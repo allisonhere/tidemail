@@ -152,6 +152,14 @@ sync repo, so it reports success and leaves TideMail where it was. TideMail
 notices it was installed this way and points you at the right command instead
 of trying to replace a root-owned binary itself.
 
+### Homebrew (Linux &amp; macOS)
+
+If you use [Homebrew](https://brew.sh), install TideMail with the following command:
+
+```bash
+brew install tidemail
+```
+
 ### Everywhere else
 
 ```bash
