@@ -29,3 +29,6 @@ cmd/editortest/editortest
 dist/
 # Example plugin build output.
 examples/plugins/example/tidemail-plugin-example
+# Nix build output
+result
+result-*
