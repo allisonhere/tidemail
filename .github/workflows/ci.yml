@@ -51,12 +51,33 @@ jobs:
 
       # The race detector needs cgo, which ubuntu-latest provides via gcc.
       - name: Test
-        run: go test ./... -race
+        # The UI package has over a thousand tests; its race run can exceed
+        # Go's default 10-minute per-package limit on hosted runners.
+        run: go test ./... -race -timeout 20m
 
       - name: Interactive CLI smoke test
         run: |
           go build -o /tmp/tidemail-agent-cli .
           python scripts/verify-cli-interactive.py /tmp/tidemail-agent-cli
+
+  # Cross-vetting cannot catch runtime differences such as Windows paths, so
+  # run the database tests, which open real files, on Windows too.
+  windows-db-test:
+    name: Windows database tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        env:
+          CGO_ENABLED: "0"
+        run: go test ./internal/db/...
 
   lint:
     name: Lint

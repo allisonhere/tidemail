@@ -8,6 +8,15 @@ Current release: **v1.9.0**.
 
 ## Working
 
+- **HTML signature file**: an account can point at an `.html` file used as the
+  signature in the HTML part (text signature stays the plain part), with a
+  file-browser key (`Alt+F`) in the account form. The file is vetted (HTML only,
+  no scripts, frames or forms) when chosen and again at send.
+
+- **Additional sending addresses**: configure multiple From addresses on one
+  account as a comma-separated list, select one in compose, and retain it in
+  drafts and queued retries.
+
 - **Expandable conversations, milestone 1**: derived visible rows, sorting-aware
   parents, independent session expansion, muted sender/subject tree connectors,
   individual-email previews, and existing keyboard/mouse navigation. Ordinary
@@ -242,7 +251,8 @@ Ctrl+Z restore keeps undo available for retry after the write finishes.
 
 - Account deletion cleans its FTS index and cached account data atomically.
   SQLite replacement connections keep foreign keys, the five-second busy timeout,
-  and WAL settings; punctuation in filesystem database paths is URI-escaped.
+  and WAL settings; punctuation in filesystem database paths is URI-escaped,
+  and Windows drive-letter paths open correctly.
 
 - OAuth transport protection: plaintext IMAP and SMTP OAuth configurations are
   rejected before connecting or refreshing credentials; SMTP XOAUTH2 also verifies

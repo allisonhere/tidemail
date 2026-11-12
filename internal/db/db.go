@@ -70,13 +70,27 @@ func sqliteDSN(path string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		dsn = (&url.URL{Scheme: "file", Path: filepath.ToSlash(absolute)}).String()
+		dsn = fileURI(filepath.ToSlash(absolute))
 		params = make(url.Values)
 	}
 	for _, pragma := range []string{"foreign_keys(1)", "busy_timeout(5000)", "journal_mode(WAL)"} {
 		params.Add("_pragma", pragma)
 	}
 	return dsn + "?" + params.Encode(), nil
+}
+
+// fileURI turns an absolute, slash-separated path into an SQLite file: URI.
+// SQLite only accepts an empty or "localhost" authority, so the URI path must
+// start with "/". A Windows path such as C:/Users/me/mail.db therefore becomes
+// file:///C:/Users/me/mail.db, and SQLite drops the slash before the drive
+// letter again when it opens the file. Without the slash net/url produces
+// file://C:/Users/me/mail.db, SQLite reads "C:" as the authority and refuses
+// to open it, which the driver reports as "SQL logic error: out of memory".
+func fileURI(slashPath string) string {
+	if !strings.HasPrefix(slashPath, "/") {
+		slashPath = "/" + slashPath
+	}
+	return (&url.URL{Scheme: "file", Path: slashPath}).String()
 }
 
 func (db *DB) init() error {
@@ -391,6 +405,7 @@ func (db *DB) migrate() error {
 	if err := db.migrateDraftsBCC(); err != nil {
 		return err
 	}
+	db.Exec(`ALTER TABLE drafts ADD COLUMN sender_from TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
 	if err := db.migrateMessageFTS(); err != nil {
 		return err
 	}

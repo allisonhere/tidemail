@@ -65,7 +65,7 @@ func TestSignatureArrowsWalkLinesThenLeave(t *testing.T) {
 
 	// Cursor starts on the last line after SetValue, so down leaves immediately.
 	am := sendKey(sigForm(t, "one\ntwo\nthree"), down)
-	if am.focusedField != amFieldSyncInterval {
+	if am.focusedField != amFieldSignatureHTML {
 		t.Fatalf("down on the last line should leave the field, focus = %v", am.focusedField)
 	}
 
@@ -79,7 +79,7 @@ func TestSignatureArrowsWalkLinesThenLeave(t *testing.T) {
 		t.Fatalf("up to the first line should stay inside, focus = %v", am.focusedField)
 	}
 	am = sendKey(am, up)
-	if am.focusedField != amFieldFrom {
+	if am.focusedField != amFieldAliases {
 		t.Fatalf("up from the first line should leave, focus = %v", am.focusedField)
 	}
 }
@@ -91,7 +91,7 @@ func TestSignatureTabLeavesFromTheMiddle(t *testing.T) {
 		t.Fatal("expected to still be in the signature")
 	}
 	am = sendKey(am, tea.KeyMsg{Type: tea.KeyTab})
-	if am.focusedField != amFieldSyncInterval {
+	if am.focusedField != amFieldSignatureHTML {
 		t.Fatalf("tab did not leave the signature, focus = %v", am.focusedField)
 	}
 }

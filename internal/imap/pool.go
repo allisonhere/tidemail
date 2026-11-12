@@ -20,6 +20,12 @@ type SessionPool struct {
 	mu      sync.Mutex
 	entries map[string]*session
 	stop    chan struct{}
+	// The idle reaper is started lazily by the first operation. UI models are
+	// cheap to construct and many render-only tests never use IMAP; eagerly
+	// starting a reaper for every model leaked thousands of idle goroutines
+	// into the race-test process.
+	reaperOnce    sync.Once
+	reaperStarted atomic.Bool
 	// closed is set first thing in Close. Operations that get the session lock
 	// afterwards return ErrPoolClosed instead of running; see Close.
 	closed atomic.Bool
@@ -75,7 +81,6 @@ func NewSessionPool() *SessionPool {
 		},
 		validate: func(ctx context.Context, c *Client) error { return c.Noop(ctx) },
 	}
-	go p.reapLoop()
 	return p
 }
 
@@ -84,6 +89,7 @@ func NewSessionPool() *SessionPool {
 // time; different accounts proceed in parallel. The connection is kept open
 // for later operations — fn must not close it.
 func (p *SessionPool) Do(ctx context.Context, acfg config.AccountConfig, fn func(*Client) error) error {
+	p.startReaper()
 	s := p.entry(acfg)
 	if err := s.lock(ctx); err != nil {
 		return err
@@ -123,6 +129,13 @@ func (p *SessionPool) Do(ctx context.Context, acfg config.AccountConfig, fn func
 		return ErrPoolClosed
 	}
 	return fn(s.client)
+}
+
+func (p *SessionPool) startReaper() {
+	p.reaperOnce.Do(func() {
+		p.reaperStarted.Store(true)
+		go p.reapLoop()
+	})
 }
 
 // Close shuts down the reaper and closes all pooled connections. It marks the

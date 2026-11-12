@@ -362,12 +362,20 @@ func TestAccountManagerFormNavigationMatchesVisualOrder(t *testing.T) {
 	am.focusField(amFieldFrom)
 
 	am.advanceField(1)
+	if am.focusedField != amFieldAliases {
+		t.Fatalf("expected aliases after sender identity, got field %v", am.focusedField)
+	}
+	am.advanceField(1)
 	if am.focusedField != amFieldSignature {
 		t.Fatalf("expected signature after sender identity, got field %v", am.focusedField)
 	}
 	am.advanceField(1)
+	if am.focusedField != amFieldSignatureHTML {
+		t.Fatalf("expected HTML signature after signature, got field %v", am.focusedField)
+	}
+	am.advanceField(1)
 	if am.focusedField != amFieldSyncInterval {
-		t.Fatalf("expected sync after signature, got field %v", am.focusedField)
+		t.Fatalf("expected sync after HTML signature, got field %v", am.focusedField)
 	}
 }
 

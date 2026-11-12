@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/mail"
+	"strings"
+	"time"
+
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	imapClient "github.com/allisonhere/tidemail/internal/imap"
 	"github.com/allisonhere/tidemail/internal/smtp"
-	"strings"
-	"time"
 )
 
 type Result struct {
@@ -27,6 +29,9 @@ func Enqueue(database *db.DB, cfg config.Config, account config.AccountConfig, m
 	draft.AccountName = account.Name
 	draft.AccountUser = account.User
 	msg.EnsureIdentity(smtp.AccountSender(account))
+	// Resolve From from the current account or the draft's selected alias at
+	// delivery time, so editing the default address also fixes queued mail.
+	msg.From = ""
 	payload, err := json.Marshal(msg)
 	if err != nil {
 		return 0, err
@@ -58,7 +63,27 @@ func ResolveOutboxAccount(cfg config.Config, item db.OutboxItem) (config.Account
 func OutboxMessage(item db.OutboxItem, account config.AccountConfig) (smtp.OutgoingMessage, error) {
 	var msg smtp.OutgoingMessage
 	err := json.Unmarshal(item.MessageJSON, &msg)
+	if err != nil {
+		return msg, err
+	}
 	msg.From = smtp.AccountSender(account)
+	var draft db.Draft
+	if json.Unmarshal(item.DraftJSON, &draft) == nil && draft.SenderFrom != "" {
+		matched := false
+		if aliases, err := mail.ParseAddressList(account.Aliases); err == nil {
+			selected, selectedErr := mail.ParseAddress(draft.SenderFrom)
+			for _, alias := range aliases {
+				if selectedErr == nil && strings.EqualFold(alias.Address, selected.Address) {
+					msg.From = draft.SenderFrom
+					matched = true
+					break
+				}
+			}
+		}
+		if !matched {
+			return msg, fmt.Errorf("sending address %q is no longer configured for this account", draft.SenderFrom)
+		}
+	}
 	return msg, err
 }
 

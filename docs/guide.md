@@ -115,7 +115,7 @@ tries, in order:
   shared provider database. It uses only servers TideMail can reach securely
   (IMAP over TLS, sending over TLS or STARTTLS) with a password. If the file
   says your login is not your full address, the login row takes that login and
-  your address moves to **From address**.
+  your address moves to **From**.
 
 The lookup runs in the background and only fills in the form: nothing
 connects or saves until you press `Ctrl+T` or `Ctrl+S`. DNS answers aren't
@@ -141,7 +141,7 @@ the Gmail, Outlook, Yahoo, and iCloud
 providers the **Email** row must be a full address; a **Custom** account's
 **Email / login** is whatever your host issues, which need not be an address at all
 — cPanel's `alice+example.com`, an Exchange `DOMAIN\alice`, a bare ISP login.
-When it is not an address, the **From address** row becomes required: there is
+When it is not an address, the **From** row becomes required: there is
 no address to send as otherwise, and the form says so rather than leaving the
 first send to be refused by the server.
 
@@ -621,11 +621,22 @@ previous row, like `Tab` and `Shift+Tab`, except that `Up` stops at the top row.
 the recipient suggestions are open, `Up` and `Down` choose a suggestion instead. In the
 body they move the text cursor.
 
-With one account, compose starts in **To** so you can type immediately.
-With multiple accounts, it starts in **From**, which works as an account picker.
+With one sending address, compose starts in **To** so you can type immediately.
+With multiple accounts or sending addresses, it starts in **From**, which works as a sender picker.
 Focus it with `Shift+Tab` or `Up` from the To row, then press `Enter` or `Space` and
-choose the account. `Ctrl+U` cycles through the same list. TideMail uses that
-account's SMTP settings, From address, and signature.
+choose the account or one of its other From addresses. `Ctrl+U` cycles through
+the same list. An additional address uses its parent account's SMTP settings,
+Drafts folder, and signature. The selected address stays with a draft and queued
+send, including retries. If the address is removed before a retry, TideMail
+stops the send and reports that the address must be restored or the message
+edited. Reopening a draft whose address was removed shows a warning and selects
+the account default. Replies preselect a configured
+address when it appears in the original message's To or Cc header.
+
+In **Accounts → Edit → Sending identity**, enter additional From addresses in
+**Email Alias**, separated by commas. Incoming mail for these
+addresses still arrives in the account's normal Inbox.
+Your mail provider must permit sending from each additional address.
 
 A new message starts from your default account — the one marked `★ [default]`
 in **Accounts**. Set it by highlighting an account there and pressing `Space`.
@@ -674,11 +685,11 @@ the server may have taken the message before the connection went, so it is not
 a failure and TideMail will not retry it on its own. Check Sent mail before
 you retry one by hand.
 
-Every attempt takes the sending address from the account as it stands at that
-moment, not from a copy saved when the message was queued. So if a send failed
-because the account's **From address** was wrong, correcting it and pressing
-`r` is enough — the queued message does not have to be rewritten or composed
-again.
+Every attempt takes the default sending address from the account as it stands
+at that moment. A queued message explicitly sent from an additional address
+keeps it while that address remains configured. If a send failed because the
+account's default **From** was wrong, correcting it and pressing `r`
+is enough — the queued message does not have to be rewritten.
 
 Failed deliveries retry after one minute. The maximum attempt setting includes
 the first try; it defaults to `3`, and `1` disables automatic retries. An
@@ -944,7 +955,7 @@ signature = "Alice\nSent with TideMail"
 sync_minutes = 0  # 0 = push (IDLE), N = poll every N min, -1 = manual only
 ```
 
-`from` is the **From address** row in the account form. Give it an address —
+`from` is the **From** row in the account form. Give it an address —
 `alice@example.com` or `Alice <alice@example.com>` — or leave it blank to send
 as `user`, which works only when `user` is itself an address. A display name on
 its own is not enough: the account form refuses to save one, because SMTP has
@@ -981,6 +992,24 @@ signature = """
 Alice
 Sent with TideMail"""
 ```
+
+**HTML signature.** Under the signature box, **HTML Signature** takes the path to
+an `.html` file (for example `~/signature.html`; config key
+`signature_html_file`). Type or paste the path, or press `Alt+F` on that row to
+browse: `Enter` opens a folder or chooses a file, `←` goes up, `Esc` goes back.
+The file's contents replace the text signature in the HTML part of the message;
+the text signature remains the plain-text part, so keep both. A fragment is sent
+as written; for a whole HTML document only the contents of `<body>` are used.
+The file must end in `.html` or `.htm`, be under 64 KB, and contain HTML. Because
+its contents go out in every message, TideMail refuses other files (a key or a
+config file chosen by mistake, for instance) and any HTML with `<script>`,
+`<iframe>`, `<object>`, `<embed>` or `<form>`, `on…` event attributes, or
+`javascript:` links. The browser shows the reason and stays open; saving the
+account checks again. The file is read and checked again when you send, so edits
+apply immediately. If it has been moved, deleted, or no longer passes, the send
+is refused with a message rather than going out unsigned. Images must use absolute `https://` URLs;
+local paths and many embedded images do not display for recipients. PGP-encrypted
+messages are unaffected.
 
 `auth_method` is set for you: it becomes `"oauth2"` once you complete a `Ctrl+O`
 sign-in for a Gmail/Outlook account, otherwise `"password"`. The refresh token
@@ -1248,7 +1277,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `O` | Open the Outbox |
 | `o` or `Enter` | Open an explicitly selected LINKS entry or a visible link deliberately focused with the keyboard |
 | `Ctrl+U` | Unsubscribe from the mailing list for the open message |
-| `Ctrl+U` in compose | Cycle the sending account; focus From and press `Enter` to open the account picker |
+| `Ctrl+U` in compose | Cycle the sending account or address; focus From and press `Enter` to open the sender picker |
 | `Ctrl+N` / `Alt+N` | Select the next LINKS entry and scroll it into view |
 | `Alt+P` | Select the previous LINKS entry and scroll it into view |
 | `Alt+P` on the account form's Password row | Enter the password in a native dialog (`zenity` or `kdialog`) |

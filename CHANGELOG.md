@@ -8,9 +8,24 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- Configure additional From addresses on one account, choose them in compose,
+  and keep the chosen address through drafts and queued retries, so iCloud+
+  custom domains and other aliases can be sent from (#113).
+- An account can use an `.html` file as its signature in the HTML part of sent
+  mail (**HTML Signature** in the account form, `Alt+F` to browse); the text
+  signature remains the plain-text part. Files that are not HTML, or that
+  contain scripts, frames or forms, are refused when chosen and again at send.
 - Page through the message list and the reading pane with `PgDn` / `PgUp` or
   `Shift+J` / `Shift+K`. In the sidebar and Accounts, `Shift+J` / `Shift+K`
   keep reordering.
+
+### Fixed
+
+- TideMail would not start on Windows since v1.8.0: it exited with `error
+  opening database: init db: SQL logic error: out of memory (1)`. The database
+  path was handed to SQLite as `file://C:/...`, so SQLite took `C:` for a host
+  name and refused to open it; it is now `file:///C:/...` (#109,
+  thanks @OmiChrome).
 
 ## v1.9.1
 
