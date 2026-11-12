@@ -6,6 +6,12 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Page through the message list and the reading pane with `PgDn` / `PgUp` or
+  `Shift+J` / `Shift+K`. In the sidebar and Accounts, `Shift+J` / `Shift+K`
+  keep reordering.
+
 ## v1.9.1
 
 ### Added

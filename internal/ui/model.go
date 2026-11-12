@@ -2256,6 +2256,12 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.Down):
 		return m.handleDown()
 
+	case keyMatches(msg, m.keys.PageUp):
+		return m.handlePage(-1)
+
+	case keyMatches(msg, m.keys.PageDown):
+		return m.handlePage(1)
+
 	case keyMatches(msg, m.keys.VisualSelect):
 		if m.focused == paneContent && m.contentMessageID != 0 {
 			m.startContentSelection()
@@ -2899,6 +2905,35 @@ func (m Model) handleDown() (tea.Model, tea.Cmd) {
 		} else {
 			m.scrollContentWithoutFocus(1)
 		}
+	}
+	return m, nil
+}
+
+// handlePage moves a screenful up (dir < 0) or down in the message list or
+// the content pane. The sidebar keeps Shift+J/K for reordering folders and has
+// no paging.
+func (m Model) handlePage(dir int) (tea.Model, tea.Cmd) {
+	switch m.focused {
+	case paneMessages:
+		count := m.activeMessageRowCount()
+		if m.selectedDraftsMailbox() {
+			count = len(m.drafts)
+		}
+		if count == 0 {
+			return m, nil
+		}
+		step := max(1, m.articleRowsVisible()-1)
+		idx := clamp(m.messageCursor+dir*step, 0, count-1)
+		if idx == m.messageCursor {
+			if dir > 0 {
+				// Already on the last row: same as Down, which pages in older mail.
+				return m.handleDown()
+			}
+			return m, nil
+		}
+		return m.selectMessageRow(idx)
+	case paneContent:
+		m.pageContent(dir)
 	}
 	return m, nil
 }
