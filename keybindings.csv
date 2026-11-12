@@ -75,7 +75,7 @@ SpellCheck,f7,f7,offline spell check (needs Settings → Editor → Spell check)
 PGPSign,"alt+s,f8",alt+s,sign with PGP (needs a PGP plugin),compose
 PGPEncrypt,"alt+e,f9",alt+e,encrypt with PGP (needs a PGP plugin),compose
 RemoveAttach,ctrl+r,ctrl+r,remove attachment,compose
-CycleSender,ctrl+u,ctrl+u,change sender,compose
+CycleSender,ctrl+u,ctrl+u,cycle account or From address,compose
 Confirm,enter,enter,confirm,overlay
 Cancel,esc,esc,cancel (during grammar check: stop check and keep editing),overlay
 Space," ",space,toggle select (unavailable in Drafts),main

@@ -102,6 +102,7 @@ type ComposeModel struct {
 
 	accounts     []config.AccountConfig
 	accountIndex int
+	senderFrom   string // empty selects the account's current default From
 
 	// senderPickerOpen exposes the account choice behind the From row without
 	// changing accountIndex until the highlighted option is confirmed.
@@ -239,6 +240,23 @@ func NewComposeFromDraft(draft db.Draft, accounts []config.AccountConfig, addres
 	c := NewCompose(acfg, accounts, addressBook)
 	c.draftID = draft.ID
 	c.accountIndex = draft.AccountIndex
+	c.senderFrom = draft.SenderFrom
+	if c.senderFrom != "" {
+		found := false
+		for _, choice := range c.senderChoices() {
+			if choice.accountIndex == c.accountIndex && choice.from != "" &&
+				conversation.BareAddress(choice.from) == conversation.BareAddress(c.senderFrom) {
+				c.senderFrom = choice.from
+				found = true
+				break
+			}
+		}
+		if !found {
+			c.senderFrom = ""
+			c.statusMsg = "saved sending address was removed; using the account default"
+			c.isErr = true
+		}
+	}
 	c.toInput.SetValue(draft.To)
 	c.ccInput.SetValue(draft.CC)
 	c.bccInput.SetValue(draft.BCC)
@@ -296,8 +314,10 @@ func NewReplyAll(original db.Message, acfg config.AccountConfig, accounts []conf
 	var raw []string
 	for _, a := range accounts {
 		raw = append(raw, a.User, a.From)
+		raw = append(raw, splitAccountAddresses(a.Aliases)...)
 	}
 	raw = append(raw, acfg.User, acfg.From)
+	raw = append(raw, splitAccountAddresses(acfg.Aliases)...)
 	me := conversation.MyAddresses(raw...)
 
 	replyTo := original.ReplyTo
@@ -338,6 +358,14 @@ func formatParticipant(p conversation.Participant) string {
 // headers, and the quoted original.
 func newReplyBase(original db.Message, acfg config.AccountConfig, accounts []config.AccountConfig, addressBook []string) ComposeModel {
 	c := NewCompose(acfg, accounts, addressBook)
+	for _, recipient := range conversation.ParseParticipants(original.To, original.CC) {
+		for _, alias := range splitAccountAddresses(c.selectedAccount().Aliases) {
+			if parsed, err := mail.ParseAddress(alias); err == nil && strings.EqualFold(parsed.Address, recipient.Addr) {
+				c.senderFrom = alias
+				break
+			}
+		}
+	}
 	subject := original.Subject
 	if !strings.HasPrefix(strings.ToLower(subject), "re:") {
 		subject = "Re: " + subject
@@ -856,8 +884,9 @@ func (c ComposeModel) Update(msg tea.Msg, keys KeyMap) (ComposeModel, tea.Cmd, b
 		return c, nil, false
 
 	case keyMatches(km, keys.CycleSender):
-		if len(c.accounts) > 1 {
-			c.accountIndex = (c.accountIndex + 1) % len(c.accounts)
+		if len(c.senderChoices()) > 1 {
+			choices := c.senderChoices()
+			c.chooseSender((c.selectedSenderChoice() + 1) % len(choices))
 			c.statusMsg = fmt.Sprintf("sender: %s", c.selectedAccountLabel())
 			c.isErr = false
 		}
@@ -1056,7 +1085,7 @@ func (c ComposeModel) updatePicker(km tea.KeyMsg, keys KeyMap) (ComposeModel, te
 // firstHeaderField is the topmost field Tab can reach: From only exists in the
 // cycle when there is more than one account to choose from.
 func (c ComposeModel) firstHeaderField() composeField {
-	if len(c.accounts) > 1 {
+	if len(c.senderChoices()) > 1 {
 		return composeFieldFrom
 	}
 	return composeFieldTo
@@ -1070,7 +1099,7 @@ func (c *ComposeModel) advanceField(delta int) {
 	next := int(c.focusedField)
 	for {
 		next = (next + delta + int(composeFieldCount)) % int(composeFieldCount)
-		if composeField(next) != composeFieldFrom || len(c.accounts) > 1 {
+		if composeField(next) != composeFieldFrom || len(c.senderChoices()) > 1 {
 			break
 		}
 	}
@@ -1101,23 +1130,24 @@ func (c *ComposeModel) advanceField(delta int) {
 const maxSenderOptions = 5
 
 func (c *ComposeModel) openSenderPicker() {
-	if len(c.accounts) < 2 {
+	if len(c.senderChoices()) < 2 {
 		return
 	}
-	c.senderCursor = clamp(c.accountIndex, 0, len(c.accounts)-1)
+	c.senderCursor = c.selectedSenderChoice()
 	c.senderPickerOpen = true
 }
 
 func (c ComposeModel) updateSenderPicker(km tea.KeyMsg, keys KeyMap) (ComposeModel, tea.Cmd, bool) {
+	choices := c.senderChoices()
 	switch {
 	case keyMatches(km, keys.Cancel):
 		c.senderPickerOpen = false
 	case keyMatches(km, keys.Up):
-		c.senderCursor = (c.senderCursor - 1 + len(c.accounts)) % len(c.accounts)
+		c.senderCursor = (c.senderCursor - 1 + len(choices)) % len(choices)
 	case keyMatches(km, keys.Down):
-		c.senderCursor = (c.senderCursor + 1) % len(c.accounts)
+		c.senderCursor = (c.senderCursor + 1) % len(choices)
 	case keyMatches(km, keys.Confirm):
-		c.accountIndex = clamp(c.senderCursor, 0, len(c.accounts)-1)
+		c.chooseSender(c.senderCursor)
 		c.senderPickerOpen = false
 		c.statusMsg = fmt.Sprintf("sender: %s", c.selectedAccountLabel())
 		c.isErr = false
@@ -1126,19 +1156,61 @@ func (c ComposeModel) updateSenderPicker(km tea.KeyMsg, keys KeyMap) (ComposeMod
 }
 
 func (c ComposeModel) visibleSenderRange() (start, end int) {
-	count := min(maxSenderOptions, len(c.accounts))
+	count := min(maxSenderOptions, len(c.senderChoices()))
 	if count == 0 {
 		return 0, 0
 	}
-	start = clamp(c.senderCursor-count/2, 0, len(c.accounts)-count)
+	start = clamp(c.senderCursor-count/2, 0, len(c.senderChoices())-count)
 	return start, start + count
 }
 
 func (c ComposeModel) selectedAccount() config.AccountConfig {
 	if c.accountIndex >= 0 && c.accountIndex < len(c.accounts) {
-		return c.accounts[c.accountIndex]
+		account := c.accounts[c.accountIndex]
+		if c.senderFrom != "" {
+			account.From = c.senderFrom
+		}
+		return account
 	}
-	return c.accountCfg
+	account := c.accountCfg
+	if c.senderFrom != "" {
+		account.From = c.senderFrom
+	}
+	return account
+}
+
+type senderChoice struct {
+	accountIndex int
+	from         string
+}
+
+func (c ComposeModel) senderChoices() []senderChoice {
+	var choices []senderChoice
+	for i, account := range c.accounts {
+		choices = append(choices, senderChoice{accountIndex: i})
+		for _, alias := range splitAccountAddresses(account.Aliases) {
+			choices = append(choices, senderChoice{accountIndex: i, from: alias})
+		}
+	}
+	if len(choices) == 0 {
+		choices = append(choices, senderChoice{})
+	}
+	return choices
+}
+
+func (c ComposeModel) selectedSenderChoice() int {
+	for i, choice := range c.senderChoices() {
+		if choice.accountIndex == c.accountIndex && choice.from == c.senderFrom {
+			return i
+		}
+	}
+	return 0
+}
+
+func (c *ComposeModel) chooseSender(index int) {
+	choices := c.senderChoices()
+	choice := choices[clamp(index, 0, len(choices)-1)]
+	c.accountIndex, c.senderFrom = choice.accountIndex, choice.from
 }
 
 // A generated marker alone is not an authored message or template.
@@ -1163,6 +1235,7 @@ func (c ComposeModel) toDraftRecord() db.Draft {
 		AccountName:     account.Name,
 		AccountUser:     account.User,
 		AccountIndex:    c.accountIndex,
+		SenderFrom:      c.senderFrom,
 		To:              strings.TrimSpace(c.toInput.Value()),
 		CC:              strings.TrimSpace(c.ccInput.Value()),
 		BCC:             strings.TrimSpace(c.bccInput.Value()),
@@ -1339,8 +1412,13 @@ func (c ComposeModel) renderSenderRows(width, labelW int, chrome managerChrome) 
 			bg = chrome.fieldBg
 			fg = chrome.text
 		}
+		choice := c.senderChoices()[i]
+		account := c.accounts[choice.accountIndex]
+		if choice.from != "" {
+			account.From = choice.from
+		}
 		label := lipgloss.NewStyle().Background(bg).Foreground(fg).
-			Render(indent + "  " + truncate(senderOptionLabel(c.accounts[i]), max(1, rowW-labelW-4)))
+			Render(indent + "  " + truncate(senderOptionLabel(account), max(1, rowW-labelW-4)))
 		rows = append(rows, softRail(chrome, selected, bg)+padStyled(label, rowW, bg))
 	}
 	return rows
@@ -1555,7 +1633,7 @@ func (c ComposeModel) viewWithBodyTop(width, height int, styles Styles) (string,
 	// right edge instead of sitting one cell out from the rest of the block.
 	fromInner := renderSoftDropdown(max(1, fromW-4), fromLabel, fromFocused, c.senderPickerOpen, chrome)
 	fromControl := renderInsetControl(fromInner, fromW, 2, chrome)
-	if len(c.accounts) < 2 {
+	if len(c.senderChoices()) < 2 {
 		fromText := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render(fromLabel)
 		fromControl = renderInsetControl(fromText, fromW, 2, chrome)
 	}

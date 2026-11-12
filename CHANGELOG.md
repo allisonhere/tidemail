@@ -6,6 +6,12 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Configure additional From addresses on one account, choose them in compose,
+  and keep the chosen address through drafts and queued retries. Address views
+  in the sidebar can filter a shared Inbox by recipient address (#113).
+
 ### Fixed
 
 - TideMail would not start on Windows since v1.8.0: it exited with `error

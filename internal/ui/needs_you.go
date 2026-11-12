@@ -85,6 +85,8 @@ func loadNeedsYouCountCmd(database *db.DB) tea.Cmd {
 // Needs You), or returns nil when a real mailbox is selected.
 func (m *Model) virtualViewCmd() tea.Cmd {
 	switch {
+	case m.selectedAddressView() != nil:
+		return m.loadAddressViewCmd()
 	case m.selectedUnifiedInbox():
 		return m.loadUnifiedInboxCmd()
 	case m.selectedNeedsYou():

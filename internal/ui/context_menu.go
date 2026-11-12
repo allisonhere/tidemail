@@ -69,6 +69,8 @@ func (m Model) sidebarContextItems() []commandItem {
 		}
 	case rowKindOutbox:
 		return []commandItem{{id: "outbox", label: "Open Outbox", enabled: true}}
+	case rowKindAddressView:
+		return []commandItem{{id: "sync", label: "Sync account Inbox", enabled: true}}
 	default:
 		return []commandItem{{id: "sync-all", label: "Sync all mailboxes", enabled: len(m.mailboxes) > 0}}
 	}

@@ -363,6 +363,10 @@ type AccountConfig struct {
 	User       string `toml:"user"`
 	Password   string `toml:"password"`
 	From       string `toml:"from"`
+	// Aliases are additional sending identities on this account's SMTP connection.
+	Aliases string `toml:"aliases,omitempty"`
+	// AddressViews are recipient-filtered local views of this account's mail.
+	AddressViews string `toml:"address_views,omitempty"`
 	// SyncMinutes selects how the account refreshes in the background:
 	//
 	//	< 0  manual only — no polling and no push connection
