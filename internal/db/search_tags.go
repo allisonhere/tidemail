@@ -11,19 +11,82 @@ import (
 // screen. Terms match by prefix, so "#git" already finds #github while
 // typing; several tags must all match.
 
-// SearchTerms is a search split into full-text words and #tags.
-type SearchTerms struct {
-	Text string
-	Tags []string
+// Field operators: "from:", "to:", "cc:" and "subject:" limit a term to one
+// header, as in "to:work@example.com". "to:" means anyone the message was
+// addressed to, so it covers Cc as well; "cc:" is Cc alone. Operator names are
+// case-insensitive; a value with spaces is quoted: from:"Jo Smith".
+var searchFieldColumns = map[string][]string{
+	"from":    {"from_addr"},
+	"to":      {"to_addr", "cc_addr"},
+	"cc":      {"cc_addr"},
+	"subject": {"subject"},
 }
 
-// ParseSearch splits a search into free text and lowercase #tag names. A
-// lone "#" or a tag with no usable characters is ignored.
+// FieldTerm is one operator's value and the full-text columns it searches.
+type FieldTerm struct {
+	Columns []string
+	Value   string
+	// Prefix matches the value as a prefix, so a name matches while it is still
+	// being typed. It is set only on the last term and never for something that
+	// reads as a complete address: "to:work@example.com" must not also find
+	// work@example.company.
+	Prefix bool
+}
+
+// SearchTerms is a search split into full-text words, field operators and
+// #tags.
+type SearchTerms struct {
+	Text   string
+	Fields []FieldTerm
+	Tags   []string
+	// LastIsField reports that the search ends with an operator, so the free
+	// words are complete and only that operator's value is still being typed.
+	LastIsField bool
+}
+
+// completeAddress reports a value shaped like a whole address (name@host.tld).
+func completeAddress(v string) bool {
+	_, host, ok := strings.Cut(v, "@")
+	return ok && strings.Contains(host, ".") && !strings.HasSuffix(host, ".")
+}
+
+// parseFieldOperator splits a "name:value" token into its columns and value;
+// known reports whether the token starts with an operator at all. A quoted value
+// loses its quotes. The value is empty while the user is still typing it.
+func parseFieldOperator(token string) (columns []string, value string, known bool) {
+	name, rest, found := strings.Cut(token, ":")
+	if !found {
+		return nil, "", false
+	}
+	columns, known = searchFieldColumns[strings.ToLower(name)]
+	if !known {
+		return nil, "", false
+	}
+	if strings.HasPrefix(rest, "\"") {
+		rest = strings.TrimSuffix(strings.TrimPrefix(rest, "\""), "\"")
+		rest = strings.NewReplacer(`\"`, `"`, `\\`, `\`).Replace(rest)
+	}
+	return columns, strings.TrimSpace(rest), true
+}
+
+// ParseSearch splits a search into free text, field operators and lowercase
+// #tag names. A lone "#" or a tag with no usable characters is ignored, and so
+// is an operator that has no value yet.
 func ParseSearch(query string) SearchTerms {
 	var words []string
 	var terms SearchTerms
-	for _, f := range searchTokenPattern.FindAllString(query, -1) {
+	tokens := searchTokenPattern.FindAllString(query, -1)
+	for i, f := range tokens {
 		if !strings.HasPrefix(f, "#") {
+			if columns, value, known := parseFieldOperator(f); known {
+				if value == "" {
+					continue // "to:" with nothing after it yet
+				}
+				last := i == len(tokens)-1
+				terms.Fields = append(terms.Fields, FieldTerm{Columns: columns, Value: value, Prefix: last && !completeAddress(value)})
+				terms.LastIsField = last
+				continue
+			}
 			words = append(words, f)
 			continue
 		}
@@ -51,7 +114,7 @@ func ParseSearch(query string) SearchTerms {
 	return terms
 }
 
-var searchTokenPattern = regexp.MustCompile(`#+"(?:[^"\\\n]|\\.)*(?:"|$)|\S+`)
+var searchTokenPattern = regexp.MustCompile(`#+"(?:[^"\\\n]|\\.)*(?:"|$)|(?i:from|to|cc|subject):"(?:[^"\\\n]|\\.)*(?:"|$)|\S+`)
 
 // Attention tags as they appear on rows, with accepted spellings.
 var attentionTagNames = []struct {

@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/allisonhere/tidemail/internal/mailtag"
 )
@@ -170,7 +171,7 @@ func (db *DB) SearchAllMessagesPage(query string, unreadOnly bool, limit, offset
 
 func (db *DB) searchAllMessages(query string, unreadFirst, unreadOnly bool, limit, offset int) ([]Message, int, error) {
 	terms := ParseSearch(query)
-	match := ftsQuery(terms.Text)
+	match := searchMatch(terms)
 	if match == "" && len(terms.Tags) == 0 {
 		return nil, 0, nil
 	}
@@ -535,7 +536,31 @@ func scanMessagesWithContext(rows interface {
 // vanish mid-word and only reappear once the word is finished. Only the last
 // term is treated this way — earlier terms are complete words the user has
 // already moved past.
-func ftsQuery(query string) string {
+// searchMatch is the full-text MATCH expression for free words and field
+// operators, ANDed together; "" when there is nothing to match. The last thing
+// typed is matched as a prefix, so results follow the user while they type.
+func searchMatch(terms SearchTerms) string {
+	var parts []string
+	if text := ftsQueryPrefix(terms.Text, !terms.LastIsField); text != "" {
+		parts = append(parts, text)
+	}
+	for _, f := range terms.Fields {
+		if !strings.ContainsFunc(f.Value, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) {
+			continue // nothing the tokenizer would index, e.g. "to:@"
+		}
+		phrase := `"` + strings.ReplaceAll(f.Value, `"`, `""`) + `"`
+		if f.Prefix {
+			phrase += "*"
+		}
+		parts = append(parts, "{"+strings.Join(f.Columns, " ")+"} : "+phrase)
+	}
+	return strings.Join(parts, " AND ")
+}
+
+func ftsQuery(query string) string { return ftsQueryPrefix(query, true) }
+
+// ftsQueryPrefix is ftsQuery with the prefix match on the last word optional.
+func ftsQueryPrefix(query string, prefixLast bool) string {
 	parts := strings.Fields(strings.TrimSpace(query))
 	if len(parts) == 0 {
 		return ""
@@ -551,7 +576,9 @@ func ftsQuery(query string) string {
 	if len(quoted) == 0 {
 		return ""
 	}
-	quoted[len(quoted)-1] += "*"
+	if prefixLast {
+		quoted[len(quoted)-1] += "*"
+	}
 	return strings.Join(quoted, " AND ")
 }
 

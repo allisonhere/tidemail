@@ -188,6 +188,16 @@ Press `/` to search, `u` to show unread mail, and `t` to place starred messages
 first. Search covers subject, sender, recipients, and message body across every
 account and folder, and matches as you type.
 
+Limit a word to one header with an operator: `from:`, `to:`, `cc:`, or
+`subject:`. `to:work@example.com` finds mail addressed to that address in either
+To or Cc, which separates a shared inbox such as iCloud+ custom domains; `cc:`
+matches Cc alone. Put a value with spaces in quotes, as in `from:"Jo Smith"`.
+A complete address matches exactly, while a name matches as you type
+(`from:pat` finds `pat@...` and `Patricia`). Operators combine with each other,
+with words, and with `#tags`: `to:work@example.com invoice #billing`. They match
+the headers stored with cached mail, so an address that appears only in Bcc is
+not found.
+
 Type `#` and a tag name to search by the tags shown on message rows:
 `#github`, `#billing`, or any other category, and `#reply`, `#urgent`, or
 `#important`. Tags match as you type (`#git` already finds `#github`), several

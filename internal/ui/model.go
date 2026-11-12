@@ -469,7 +469,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 	addSpellNames(accountSpellEntries(cfg))
 
 	si := textinput.New()
-	si.Placeholder = "search messages... (#tag for tags)"
+	si.Placeholder = "search messages... (#tag, to:, from:)"
 	si.CharLimit = 100
 
 	ci := textinput.New()
