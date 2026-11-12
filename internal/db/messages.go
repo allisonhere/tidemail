@@ -557,8 +557,6 @@ func searchMatch(terms SearchTerms) string {
 	return strings.Join(parts, " AND ")
 }
 
-func ftsQuery(query string) string { return ftsQueryPrefix(query, true) }
-
 // ftsQueryPrefix is ftsQuery with the prefix match on the last word optional.
 func ftsQueryPrefix(query string, prefixLast bool) string {
 	parts := strings.Fields(strings.TrimSpace(query))
