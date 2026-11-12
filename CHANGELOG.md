@@ -62,6 +62,9 @@ All notable changes to TideMail are documented in this file.
   queued outbox mail, which used to stay behind in the local database. The
   confirmation says what is removed. Rows that cannot be tied to exactly one
   account are kept rather than risk deleting another account's data.
+- Inline images were blank inside tmux: the Kitty graphics escapes were sent
+  raw and tmux dropped them. They are now wrapped in tmux's DCS passthrough
+  (needs `allow-passthrough on`).
 - The recent-searches list is correct again after you clear the search box (it
   no longer shows a leftover filtered subset), closes when deleting its last
   matching entry, and clicking an entry highlights it instead of selecting a

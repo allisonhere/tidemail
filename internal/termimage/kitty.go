@@ -84,7 +84,7 @@ func (b *KittyBackend) Transmit(id uint32, img image.Image, cols, rows, pxWidth,
 		return nil, false
 	}
 	control := fmt.Sprintf("a=T,f=100,i=%d,U=1,c=%d,r=%d,q=2", id, cols, rows)
-	return kittyUpload(control, pngBuf.Bytes()), true
+	return b.wrap(kittyUpload(control, pngBuf.Bytes())), true
 }
 
 // Delete builds the escape that removes an image id (and its virtual placement)
@@ -93,7 +93,36 @@ func (b *KittyBackend) Delete(id uint32) []byte {
 	if _, _, ok := idParts(id); !ok {
 		return nil
 	}
-	return []byte(fmt.Sprintf("\x1b_Ga=d,d=I,i=%d,q=2\x1b\\", id))
+	return b.wrap([]byte(fmt.Sprintf("\x1b_Ga=d,d=I,i=%d,q=2\x1b\\", id)))
+}
+
+// wrap makes graphics escapes survive tmux. Inside tmux each APC sequence is
+// sent in a DCS passthrough envelope with its ESC bytes doubled; tmux needs
+// `allow-passthrough on` to forward it. Outside tmux the bytes are unchanged.
+func (b *KittyBackend) wrap(seq []byte) []byte {
+	if !b.caps.InTmux {
+		return seq
+	}
+	return tmuxPassthrough(seq)
+}
+
+// tmuxPassthrough wraps each APC escape (ESC _ ... ESC \) in seq separately,
+// so no single DCS is larger than one upload chunk.
+func tmuxPassthrough(seq []byte) []byte {
+	const st = "\x1b\\"
+	var out bytes.Buffer
+	for len(seq) > 0 {
+		end := bytes.Index(seq, []byte(st))
+		n := len(seq)
+		if end >= 0 {
+			n = end + len(st)
+		}
+		out.WriteString("\x1bPtmux;")
+		out.Write(bytes.ReplaceAll(seq[:n], []byte("\x1b"), []byte("\x1b\x1b")))
+		out.WriteString(st)
+		seq = seq[n:]
+	}
+	return out.Bytes()
 }
 
 // PlaceholderRows builds the text rows that display an already-transmitted
