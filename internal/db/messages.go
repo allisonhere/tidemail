@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"net/mail"
 	"slices"
 	"strings"
 	"time"
@@ -132,52 +131,6 @@ func (db *DB) ListUnifiedInbox(unreadOnly bool) ([]Message, error) {
 	}
 	defer rows.Close()
 	return scanMessages(rows)
-}
-
-// ListAddressInbox is a local view of one account's cached inbox, filtered by
-// the recipient addresses stored in To and Cc. It does not alter IMAP folders.
-func (db *DB) ListAddressInbox(accountID int64, address string, unreadOnly bool) ([]Message, error) {
-	want, err := mail.ParseAddress(address)
-	if err != nil {
-		return nil, err
-	}
-	readClause := ""
-	if unreadOnly {
-		readClause = " AND messages.read = 0"
-	}
-	rows, err := db.Query(`SELECT `+messageColumns+` FROM messages
-		JOIN mailboxes ON mailboxes.id = messages.mailbox_id
-		WHERE mailboxes.account_id = ? AND `+inboxMailboxPredicate+readClause+`
-		ORDER BY messages.date DESC, messages.id DESC`, accountID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	messages, err := scanMessages(rows)
-	if err != nil {
-		return nil, err
-	}
-	var result []Message
-	for _, message := range messages {
-		for _, field := range []string{message.To, message.CC} {
-			addresses, err := mail.ParseAddressList(field)
-			if err != nil {
-				continue
-			}
-			found := false
-			for _, recipient := range addresses {
-				if strings.EqualFold(recipient.Address, want.Address) {
-					found = true
-					break
-				}
-			}
-			if found {
-				result = append(result, message)
-				break
-			}
-		}
-	}
-	return result, nil
 }
 
 func (db *DB) ListUnifiedInboxUnreadFirst(unreadOnly bool) ([]Message, error) {

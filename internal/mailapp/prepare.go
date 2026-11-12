@@ -83,9 +83,18 @@ func Prepare(account config.AccountConfig, draft db.Draft, signature bool) (smtp
 	msg.HTMLBody = smtp.MarkdownToHTML(draft.BodyText)
 	msg.InReplyTo = draft.InReplyTo
 	msg.References = draft.References
-	if sig := strings.TrimSpace(account.Signature); signature && sig != "" {
-		msg.Body = strings.TrimRight(msg.Body, "\n") + "\n\n-- \n" + sig + "\n"
-		msg.HTMLBody += smtp.SignatureHTML(sig)
+	if signature {
+		sigHTML, err := signatureHTMLFor(account)
+		if err != nil {
+			return msg, err
+		}
+		if sig := strings.TrimSpace(account.Signature); sig != "" {
+			msg.Body = strings.TrimRight(msg.Body, "\n") + "\n\n-- \n" + sig + "\n"
+			if sigHTML == "" {
+				msg.HTMLBody += smtp.SignatureHTML(sig)
+			}
+		}
+		msg.HTMLBody += sigHTML
 	}
 	for _, a := range draft.Attachments {
 		if strings.ContainsAny(a.Filename, "\r\n") {

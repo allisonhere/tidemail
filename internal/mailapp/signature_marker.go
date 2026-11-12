@@ -23,7 +23,11 @@ const SignatureMarker = "⁂"
 // protection. A body without a marker is intentionally unsigned, including old
 // drafts. The draft itself is never modified, so undo/edit restores the marker.
 func PrepareCompose(account config.AccountConfig, draft db.Draft) (smtp.OutgoingMessage, error) {
-	body, html, err := composeBody(draft.BodyText, account.Signature)
+	sigHTML, err := signatureHTMLFor(account)
+	if err != nil {
+		return smtp.OutgoingMessage{}, err
+	}
+	body, html, err := composeBody(draft.BodyText, account.Signature, sigHTML)
 	if err != nil {
 		return smtp.OutgoingMessage{}, err
 	}
@@ -38,7 +42,7 @@ func PrepareCompose(account config.AccountConfig, draft db.Draft) (smtp.Outgoing
 	return msg, nil
 }
 
-func composeBody(body, signature string) (string, string, error) {
+func composeBody(body, signature, signatureHTML string) (string, string, error) {
 	var html string
 	switch strings.Count(body, SignatureMarker) {
 	case 0:
@@ -72,7 +76,7 @@ func composeBody(body, signature string) (string, string, error) {
 			return "", "", fmt.Errorf("put ⁂ in its own paragraph outside quotes, lists, and code blocks (add blank lines), or delete it")
 		}
 		sig := strings.TrimSpace(signature)
-		doc.ReplaceChild(doc, marker, &signatureBlock{signature: sig})
+		doc.ReplaceChild(doc, marker, &signatureBlock{signature: sig, html: signatureHTML})
 		var rendered bytes.Buffer
 		if err := md.Renderer().Render(&rendered, source, doc); err != nil {
 			return "", "", err
@@ -102,6 +106,7 @@ var signatureBlockKind = ast.NewNodeKind("ComposeSignature")
 type signatureBlock struct {
 	ast.BaseBlock
 	signature string
+	html      string // from the account's HTML signature file; replaces the text-derived HTML
 }
 
 func (n *signatureBlock) Kind() ast.NodeKind            { return signatureBlockKind }
@@ -112,7 +117,12 @@ type signatureRenderer struct{}
 func (signatureRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 	reg.Register(signatureBlockKind, func(w util.BufWriter, _ []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if entering {
-			_, err := w.WriteString(smtp.SignatureHTML(node.(*signatureBlock).signature))
+			block := node.(*signatureBlock)
+			if block.html != "" {
+				_, err := w.WriteString(block.html)
+				return ast.WalkSkipChildren, err
+			}
+			_, err := w.WriteString(smtp.SignatureHTML(block.signature))
 			return ast.WalkSkipChildren, err
 		}
 		return ast.WalkContinue, nil

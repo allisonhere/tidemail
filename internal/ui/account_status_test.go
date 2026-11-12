@@ -5,6 +5,7 @@ import (
 	"github.com/allisonhere/tideui"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -63,11 +64,15 @@ func TestAccountManagerFailureStatusIsFilledRed(t *testing.T) {
 
 	line := lineContaining(t, am.viewForm(80, 40, chrome), "FROM NEEDS AN EMAIL ADDRESS")
 
-	if !strings.Contains(line, background(t, chrome.errorFg)) {
-		t.Fatalf("expected the failure label to be filled with the error color, got %q", line)
+	// Same red pill, with round ends, as the main status bar.
+	if !strings.Contains(line, background(t, alertPillRed.fill)) {
+		t.Fatalf("expected the failure label to be filled with the pill red, got %q", line)
 	}
-	if !strings.Contains(line, foreground(t, contrastFg(chrome.errorFg))) {
-		t.Fatalf("expected the failure label to use a contrasting foreground, got %q", line)
+	if !strings.Contains(line, foreground(t, alertPillRed.text)) {
+		t.Fatalf("expected the failure label to use the pill's text color, got %q", line)
+	}
+	if !strings.Contains(line, pillCapLeft) || !strings.Contains(line, pillCapRight) {
+		t.Fatalf("expected round pill ends, got %q", line)
 	}
 	// The fill hugs the message; the rest of the row stays on the status
 	// line's gray band rather than becoming a full-width red bar.
@@ -134,7 +139,7 @@ func TestAccountManagerEditingRejectedFieldClearsTheMark(t *testing.T) {
 }
 
 // A duplicate name does not stop the save, so it must not be dressed as one.
-func TestAccountManagerNoteStatusStaysPlain(t *testing.T) {
+func TestAccountManagerNoteStatusIsNotRed(t *testing.T) {
 	trueColor(t)
 
 	am := newFromFormAccountManager()
@@ -143,13 +148,13 @@ func TestAccountManagerNoteStatusStaysPlain(t *testing.T) {
 
 	line := lineContaining(t, am.viewForm(80, 40, chrome), "ANOTHER ACCOUNT IS ALSO NAMED")
 
-	if strings.Contains(line, background(t, chrome.errorFg)) {
-		t.Fatalf("expected a note to stay unfilled, got %q", line)
+	if strings.Contains(line, background(t, alertPillRed.fill)) {
+		t.Fatalf("expected a note not to be red, got %q", line)
 	}
 }
 
 // A confirmation is not a failure either.
-func TestAccountManagerSuccessStatusStaysPlain(t *testing.T) {
+func TestAccountManagerSuccessStatusIsAGreenPill(t *testing.T) {
 	trueColor(t)
 
 	am := newFromFormAccountManager()
@@ -158,11 +163,11 @@ func TestAccountManagerSuccessStatusStaysPlain(t *testing.T) {
 
 	line := lineContaining(t, am.viewForm(80, 40, chrome), "SAVED: PERSONAL")
 
-	if strings.Contains(line, background(t, chrome.errorFg)) {
-		t.Fatalf("expected a confirmation to stay unfilled, got %q", line)
+	if strings.Contains(line, background(t, alertPillRed.fill)) {
+		t.Fatalf("expected a confirmation not to be red, got %q", line)
 	}
-	if !strings.Contains(line, foreground(t, chrome.successFg)) {
-		t.Fatalf("expected a confirmation to keep the success color, got %q", line)
+	if !strings.Contains(line, background(t, alertPillGreen.fill)) || !strings.Contains(line, pillCapLeft) {
+		t.Fatalf("expected a green pill with round ends, got %q", line)
 	}
 }
 
@@ -192,8 +197,13 @@ func TestAccountManagerStatusBandIsCentered(t *testing.T) {
 	centered := func(t *testing.T, line, text string) {
 		t.Helper()
 		plain := strings.TrimRight(ansi.Strip(line), " ")
-		left := strings.Index(plain, text)
-		right := 80 - (left + len(text))
+		idx := strings.Index(plain, text)
+		if idx < 0 {
+			t.Fatalf("%q not found in %q", text, plain)
+		}
+		// Count cells, not bytes: the pill's round ends are multi-byte glyphs.
+		left := utf8.RuneCountInString(plain[:idx])
+		right := 80 - (left + utf8.RuneCountInString(text))
 		if left < 0 || left-right > 1 || right-left > 1 {
 			t.Fatalf("%q not centered: %d cells left, %d right", text, left, right)
 		}

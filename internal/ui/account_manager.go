@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/mail"
 	"strconv"
 	"strings"
@@ -25,6 +26,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidemail/internal/imap"
+	"github.com/allisonhere/tidemail/internal/mailapp"
 	"github.com/allisonhere/tidemail/internal/passprompt"
 )
 
@@ -234,6 +236,7 @@ const (
 	amAdd
 	amEdit
 	amConfirmDelete
+	amPickSigHTML // browsing for the HTML signature file
 )
 
 type amField int
@@ -257,8 +260,8 @@ const (
 	amFieldOAuthCode
 	amFieldFrom
 	amFieldAliases
-	amFieldAddressViews
 	amFieldSignature
+	amFieldSignatureHTML
 	amFieldSyncInterval
 	amFieldCount
 )
@@ -318,9 +321,11 @@ type AccountManager struct {
 	passInput     textinput.Model
 	fromInput     textinput.Model
 	aliasesInput  textinput.Model
-	viewsInput    textinput.Model
 	syncInput     textinput.Model
 	sigArea       textarea.Model
+	sigHTMLInput  textinput.Model
+	sigPicker     pathPicker
+	pickReturn    amMode
 
 	provider      string
 	focusedField  amField
@@ -388,10 +393,10 @@ func NewAccountManager(database *db.DB) AccountManager {
 	am.userInput = newAMInput("you@example.com", false)
 	am.passInput = newAMInput("password", true)
 	am.fromInput = newAMInput("Your Name <you@example.com>", false)
-	am.aliasesInput = newAMInput("alias@example.com, Name <other@example.com>", false)
-	am.viewsInput = newAMInput("alias@example.com, other@example.com", false)
+	am.aliasesInput = newAMInput("Name <alias@example.com>,", false)
 	am.syncInput = newAMInput("0 = push", false)
 	am.sigArea = newAMSigArea()
+	am.sigHTMLInput = newAMInput("~/signature.html", false)
 	am.oauthCodeInput = newAMInput("code, or full browser redirect URL", false)
 	am.oauthCodeInput.CharLimit = 2048 // a pasted redirect URL is long
 	return am
@@ -447,6 +452,8 @@ func (am *AccountManager) focusField(f amField) {
 	am.fromInput.Blur()
 	am.syncInput.Blur()
 	am.sigArea.Blur()
+	am.aliasesInput.Blur()
+	am.sigHTMLInput.Blur()
 	am.oauthCodeInput.Blur()
 	switch f {
 	case amFieldName:
@@ -471,12 +478,12 @@ func (am *AccountManager) focusField(f amField) {
 		am.fromInput.Focus()
 	case amFieldAliases:
 		am.aliasesInput.Focus()
-	case amFieldAddressViews:
-		am.viewsInput.Focus()
 	case amFieldSyncInterval:
 		am.syncInput.Focus()
 	case amFieldSignature:
 		_ = am.sigArea.Focus()
+	case amFieldSignatureHTML:
+		am.sigHTMLInput.Focus()
 	}
 }
 
@@ -499,10 +506,10 @@ func (am *AccountManager) populateFormFrom(acfg config.AccountConfig) {
 	am.passInput.SetValue(acfg.Password)
 	am.fromInput.SetValue(acfg.From)
 	am.aliasesInput.SetValue(acfg.Aliases)
-	am.viewsInput.SetValue(acfg.AddressViews)
 	am.syncInput.SetValue(strconv.Itoa(acfg.SyncMinutes))
 	// The form is single-line; real newlines round-trip as literal \n escapes.
 	am.sigArea.SetValue(acfg.Signature)
+	am.sigHTMLInput.SetValue(acfg.SignatureHTMLFile)
 	// Auth method comes from the explicit marker, never from "a token exists".
 	am.useOAuth = acfg.AuthMethod == config.AuthOAuth2
 	// Carry the existing refresh token so buildCfg preserves OAuth on save.
@@ -519,22 +526,22 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 	imapPort, _ := parsePort(am.imapPortInput.Value(), defaultIMAPPort)
 	smtpPort, _ := parsePort(am.smtpPortInput.Value(), defaultSMTPPort)
 	cfg := config.AccountConfig{
-		ID:           am.editConfigID,
-		Provider:     am.provider,
-		Name:         strings.TrimSpace(am.nameInput.Value()),
-		IMAPHost:     strings.TrimSpace(am.imapHostInput.Value()),
-		IMAPPort:     imapPort,
-		IMAPTLS:      am.imapTLS,
-		SMTPHost:     strings.TrimSpace(am.smtpHostInput.Value()),
-		SMTPPort:     smtpPort,
-		SMTPTLS:      am.smtpTLS,
-		User:         strings.TrimSpace(am.userInput.Value()),
-		Password:     am.passInput.Value(),
-		From:         strings.TrimSpace(am.fromInput.Value()),
-		Aliases:      strings.Join(splitAccountAddresses(am.aliasesInput.Value()), ", "),
-		AddressViews: strings.Join(splitAccountAddresses(am.viewsInput.Value()), ", "),
-		SyncMinutes:  func() int { n, _ := parseSyncMinutes(am.syncInput.Value()); return n }(),
-		Signature:    strings.TrimSpace(am.sigArea.Value()),
+		ID:                am.editConfigID,
+		Provider:          am.provider,
+		Name:              strings.TrimSpace(am.nameInput.Value()),
+		IMAPHost:          strings.TrimSpace(am.imapHostInput.Value()),
+		IMAPPort:          imapPort,
+		IMAPTLS:           am.imapTLS,
+		SMTPHost:          strings.TrimSpace(am.smtpHostInput.Value()),
+		SMTPPort:          smtpPort,
+		SMTPTLS:           am.smtpTLS,
+		User:              strings.TrimSpace(am.userInput.Value()),
+		Password:          am.passInput.Value(),
+		From:              strings.TrimSpace(am.fromInput.Value()),
+		Aliases:           strings.Join(splitAccountAddresses(am.aliasesInput.Value()), ", "),
+		SyncMinutes:       func() int { n, _ := parseSyncMinutes(am.syncInput.Value()); return n }(),
+		Signature:         strings.TrimSpace(am.sigArea.Value()),
+		SignatureHTMLFile: strings.TrimSpace(am.sigHTMLInput.Value()),
 	}
 	if preset, ok := providerPresets[am.provider]; ok {
 		cfg.IMAPHost = preset.IMAPHost
@@ -759,27 +766,35 @@ func (am AccountManager) statusIsFailure(chrome managerChrome) bool {
 	return !strings.HasPrefix(msg, "NOTE:") && !strings.HasPrefix(msg, "SERVER LOOKUP FAILED")
 }
 
-// renderStatusBar draws the message under the account manager. A failure is a
-// filled badge rather than red text: it is the reason a save did not happen,
-// and on a form this dense one more line of colored text is easy to read past.
-// Everything else stays plain, so the fill keeps meaning "this stopped".
+// statusPill picks the pill a status message is drawn in, the same fills the
+// main status bar uses: red for what stopped, green for what went through, and
+// yellow for a note or a lookup still in progress.
+func (am AccountManager) statusPill(chrome managerChrome) alertPill {
+	switch {
+	case am.statusIsFailure(chrome):
+		return alertPillRed
+	case am.statusForeground(chrome) == chrome.successFg:
+		return alertPillGreen
+	default:
+		return alertPillYellow
+	}
+}
+
+// renderStatusBar draws the message under the account manager as a round-ended
+// pill, matching the main status bar. Plain themes use brackets instead.
 func (am AccountManager) renderStatusBar(width int, chrome managerChrome) string {
 	if am.statusMsg == "" {
 		return ""
 	}
-	text := am.redactSensitive(am.statusMsg)
-	if !am.statusIsFailure(chrome) {
-		return statusBand(width, chrome, am.statusForeground(chrome), text)
+	text := truncate(am.redactSensitive(am.statusMsg), max(1, width-4))
+	if chrome.plainUI {
+		return statusBand(width, chrome, am.statusForeground(chrome), "["+text+"]")
 	}
-	// The badge hugs its text, so the red still means "this stopped"; the band
-	// around it stays gray.
-	badge := lipgloss.NewStyle().
-		Background(chrome.errorFg).
-		Foreground(contrastFg(chrome.errorFg)).
-		Bold(true).
-		Padding(0, 1).
-		Render(truncate(text, max(1, width-4)))
-	return lipgloss.PlaceHorizontal(width, lipgloss.Center, badge, lipgloss.WithWhitespaceBackground(chrome.statusBg))
+	pill := am.statusPill(chrome)
+	row := lipgloss.NewStyle().Background(chrome.statusBg)
+	chip := tagChip{text: text, filled: true, ends: config.TagEndsRound}
+	rendered := renderChipsWith([]tagChip{chip}, func(string) tagColor { return tagColor{bg: pill.fill, fg: pill.text} }, chrome.statusBg, row)
+	return lipgloss.PlaceHorizontal(width, lipgloss.Center, rendered, lipgloss.WithWhitespaceBackground(chrome.statusBg))
 }
 
 // statusBand draws a status or progress message centered on the status line's
@@ -826,6 +841,8 @@ func (am AccountManager) Update(msg tea.Msg, keys KeyMap) (AccountManager, tea.C
 		return am, cmd, done
 	case amConfirmDelete:
 		return am.updateConfirmDelete(msg, keys)
+	case amPickSigHTML:
+		return am.updateSigPicker(msg, keys)
 	}
 	return am, nil, false
 }
@@ -920,12 +937,12 @@ func (am *AccountManager) updateFocusedInput(msg tea.Msg) tea.Cmd {
 		am.fromInput, cmd = am.fromInput.Update(msg)
 	case amFieldAliases:
 		am.aliasesInput, cmd = am.aliasesInput.Update(msg)
-	case amFieldAddressViews:
-		am.viewsInput, cmd = am.viewsInput.Update(msg)
 	case amFieldSyncInterval:
 		am.syncInput, cmd = am.syncInput.Update(msg)
 	case amFieldSignature:
 		am.sigArea, cmd = am.sigArea.Update(msg)
+	case amFieldSignatureHTML:
+		am.sigHTMLInput, cmd = am.sigHTMLInput.Update(msg)
 	}
 	return cmd
 }
@@ -1020,6 +1037,8 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 		}
 		am.mode = amList
 		am.statusMsg = ""
+	case keyMatches(km, keys.AttachFile) && am.focusedField == amFieldSignatureHTML:
+		return am.openSigPicker()
 	case keyMatches(km, keys.TestAccount):
 		return am.testForm()
 	case keyMatches(km, keys.Save):
@@ -1756,13 +1775,17 @@ func (f formFailure) ok() bool { return f.msg == "" }
 // validateForm checks the raw form text that buildCfg has to collapse into
 // typed fields, then defers to the connection-level checks.
 func (am AccountManager) validateForm(acfg config.AccountConfig) formFailure {
+	if path := strings.TrimSpace(am.sigHTMLInput.Value()); path != "" {
+		if err := mailapp.CheckSignatureHTMLFile(path); err != nil {
+			return fail(amFieldSignatureHTML, "HTML SIGNATURE: "+strings.ToUpper(mailapp.SignatureHTMLReason(err)))
+		}
+	}
 	for _, entry := range []struct {
 		raw   string
 		field amField
 		label string
 	}{
-		{am.aliasesInput.Value(), amFieldAliases, "OTHER FROM ADDRESSES"},
-		{am.viewsInput.Value(), amFieldAddressViews, "ADDRESS VIEWS"},
+		{am.aliasesInput.Value(), amFieldAliases, "EMAIL ALIAS"},
 	} {
 		if strings.TrimSpace(entry.raw) != "" {
 			addresses, err := mail.ParseAddressList(entry.raw)
@@ -1950,8 +1973,8 @@ func (am *AccountManager) resetForm() {
 	am.passInput.Reset()
 	am.fromInput.Reset()
 	am.aliasesInput.Reset()
-	am.viewsInput.Reset()
 	am.sigArea.Reset()
+	am.sigHTMLInput.Reset()
 	am.syncInput.SetValue("0")
 	am.cancelOAuth()
 	am.oauthSignedIn = false
@@ -1975,6 +1998,9 @@ func (am AccountManager) View(width, height int, styles Styles) string {
 		return am.viewForm(width, height, chrome)
 	case amConfirmDelete:
 		return am.viewConfirmDelete(width, chrome)
+	case amPickSigHTML:
+		return am.sigPicker.view(width, height, chrome, am.renderStatusBar(width, chrome),
+			"enter", "open/choose", "←", "parent", "esc", "back")
 	default:
 		return am.viewList(width, height, chrome, styles)
 	}
@@ -1989,6 +2015,8 @@ func (am AccountManager) softTitle() string {
 		return "edit account"
 	case amConfirmDelete:
 		return "delete account?"
+	case amPickSigHTML:
+		return "html signature file"
 	default:
 		return "accounts"
 	}
@@ -2455,12 +2483,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	}
 
 	addSection("Sending identity")
-	addControl(amFieldFrom, row("From address", am.fromInput, amFieldFrom))
-	addHint("Format: Name <you@example.com>")
-	addControl(amFieldAliases, row("Other From addresses", am.aliasesInput, amFieldAliases))
-	addHint("Comma-separated sending addresses; uses this account's SMTP login")
-	addControl(amFieldAddressViews, row("Address views", am.viewsInput, amFieldAddressViews))
-	addHint("Comma-separated recipient addresses shown as local sidebar views")
+	addControl(amFieldFrom, row("From", am.fromInput, amFieldFrom))
 	// The fallback the second hint describes only exists when the login is
 	// itself an address; otherwise validation requires this field, so the hint
 	// says that instead. An untouched login stays on the default wording.
@@ -2469,10 +2492,14 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	} else {
 		addHint("Blank sends as the username")
 	}
+	addControl(amFieldAliases, row("Email Alias", am.aliasesInput, amFieldAliases))
+	addHint("Comma-separated sending addresses")
 	addControl(amFieldSignature, sigRow("Signature", am.sigArea, amFieldSignature))
 	for _, line := range strings.Split(ansi.Wrap("A ⁂ symbol will mark signature placement. The signature is inserted on send. Delete it to send without a signature.", max(8, fieldW-4), ""), "\n") {
 		addHint(line)
 	}
+	addControl(amFieldSignatureHTML, row("HTML Signature", am.sigHTMLInput, amFieldSignatureHTML))
+	addHint("Optional .html file for the HTML part · alt+f browses")
 	addSection("Sync")
 	addControl(amFieldSyncInterval, row("Refresh", am.syncInput, amFieldSyncInterval))
 	addHint("0 = push (IMAP IDLE) · -1 = manual only")
@@ -2582,4 +2609,67 @@ func deleteAccountCmd(accountID int64, configID, accountName string) tea.Cmd {
 	return func() tea.Msg {
 		return AccountDeletedMsg{AccountID: accountID, ConfigID: configID, AccountName: accountName}
 	}
+}
+
+// openSigPicker browses for the HTML signature file, starting in the current
+// path's folder or the home folder.
+func (am AccountManager) openSigPicker() (AccountManager, tea.Cmd, bool) {
+	path := mailapp.ExpandHome(strings.TrimSpace(am.sigHTMLInput.Value()))
+	if err := am.sigPicker.openAt(path, homeDir()); err != nil {
+		am.statusMsg = "CANNOT OPEN FOLDER: " + shortFileError(err)
+		return am, nil, false
+	}
+	am.pickReturn = am.mode
+	am.mode = amPickSigHTML
+	am.statusMsg = ""
+	return am, nil, false
+}
+
+func (am AccountManager) updateSigPicker(msg tea.Msg, keys KeyMap) (AccountManager, tea.Cmd, bool) {
+	km, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return am, nil, false
+	}
+	var err error
+	am.statusMsg = ""
+	switch {
+	case keyMatches(km, keys.Cancel), keyMatches(km, keys.Back):
+		am.mode = am.pickReturn
+		am.statusMsg = ""
+	case keyMatches(km, keys.Up):
+		am.sigPicker.move(-1)
+	case keyMatches(km, keys.Down):
+		am.sigPicker.move(1)
+	case keyMatches(km, keys.Left):
+		err = am.sigPicker.parent()
+	case keyMatches(km, keys.Confirm):
+		var path string
+		var picked bool
+		if path, picked, err = am.sigPicker.enter(); err == nil && picked {
+			// A wrong pick (a key, a config file) must not reach an outgoing
+			// message, so refuse it here and stay in the browser.
+			if checkErr := mailapp.CheckSignatureHTMLFile(path); checkErr != nil {
+				am.statusMsg = "CANNOT USE THAT FILE: " + strings.ToUpper(mailapp.SignatureHTMLReason(checkErr))
+			} else {
+				am.sigHTMLInput.SetValue(path)
+				am.sigHTMLInput.CursorEnd()
+				am.mode = am.pickReturn
+			}
+		}
+	default:
+		am.sigPicker.jump(km.String())
+	}
+	if err != nil {
+		am.statusMsg = "CANNOT OPEN FOLDER: " + shortFileError(err)
+	}
+	return am, nil, false
+}
+
+// shortFileError drops the path from an os error, which the form already shows.
+func shortFileError(err error) string {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return strings.ToUpper(pe.Err.Error())
+	}
+	return strings.ToUpper(err.Error())
 }

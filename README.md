@@ -67,8 +67,7 @@ One inbox, 51 built-in themes in 23 families — Catppuccin, Tokyo Night, Rosé 
   folder, or label from the same three-pane screen.
 - **Send from the right address.** Pick an account or an additional From address
   from the compose From row. Additional addresses share their account's SMTP
-  settings, Drafts folder, and signature. Create recipient-filtered local views
-  beneath an account to separate mail delivered to each address.
+  settings, Drafts folder, and signature.
 - **Mail state stays in sync.** Read state, stars, archive, move, and delete use
   IMAP. Changes made in Gmail or another client return to TideMail on sync.
 - **A few seconds to change your mind.** Press `Ctrl+Z` to stop a queued send or
@@ -248,8 +247,8 @@ Compose starts in To with one sending address, ready for typing. With multiple
 accounts or additional addresses, it starts in From, which serves as a sender
 picker. Additional addresses use their account's SMTP login, drafts, and
 signature. Replies select a matching address from the original To or Cc header;
-reopened drafts keep their selected address. Edit an account to add comma-separated
-**Other From addresses** and manual **Address views** for its cached Inbox.
+reopened drafts keep their selected address. Edit an account to add
+comma-separated **Email Alias**.
 
 A standalone `⁂` in the compose body marks where the selected account's signature
 will be added when sending, before quoted text by default. Move it to change the
@@ -567,7 +566,6 @@ smtp_tls = true
 user = "mira@example.com"
 from = "Mira Chen <mira@example.com>"  # optional, but a name alone is not an address
 aliases = "Work <mira@work.example>, mira@another.example" # additional From addresses
-address_views = "mira@work.example" # optional local Inbox recipient views
 signature = """
 Mira
 Sent with TideMail"""
@@ -577,6 +575,12 @@ sync_minutes = 0  # push via IMAP IDLE; N polls every N min, -1 is manual only
 The signature is a multi-line box in the account form, so `Enter` gives you a
 new line and there is no escape to remember; editing the file by hand works too,
 and a TOML multi-line string is easier to read than `\n` escapes.
+
+For a formatted signature, set **HTML Signature** in the account form (or
+`signature_html_file = "~/signature.html"`) to an `.html` file. Its contents are
+the signature in the HTML part of your mail; the text signature above stays as
+the plain-text part. Press `Alt+F` on that row to browse for the file. Only
+HTML files without scripts, frames or forms are accepted.
 
 The order of the `[[account]]` blocks is the order accounts appear everywhere:
 the sidebar, the account list, and the `Ctrl+U` sender picker in compose; each
