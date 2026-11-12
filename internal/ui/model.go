@@ -200,9 +200,15 @@ type Model struct {
 	searchQuery      string
 	searchMode       bool
 	searchEditing    bool
-	showUnreadOnly   bool
-	starredFirst     bool
-	selectedMessages map[int64]bool
+	// Search history (search_history.go): the entries shown under an empty or
+	// Up/Down-opened search box, the highlighted one (-1 = none), and whether a
+	// typed query has opened the list.
+	searchHistory       []string
+	searchHistoryCursor int
+	searchHistoryOpen   bool
+	showUnreadOnly      bool
+	starredFirst        bool
+	selectedMessages    map[int64]bool
 	// heldReadID is a message marked read on open that keeps its unread
 	// position (Unread first) or stays listed (Unread only) until the reader
 	// loses focus or shows another message. See releaseHeldRead.
@@ -1990,8 +1996,28 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case keyMatches(msg, m.keys.Cancel):
 			return m.exitSearchMode()
 		case keyMatches(msg, m.keys.Confirm):
-			m.searchEditing = false
-			m.searchInput.Blur()
+			// A highlighted history entry is run; otherwise the typed query is kept.
+			if entry, ok := m.highlightedSearch(); ok {
+				next, cmd := m.handleSearchCharacter(entry)
+				nm := next.(Model)
+				nm, recordCmd := nm.commitSearch()
+				return nm, tea.Batch(cmd, recordCmd)
+			}
+			return m.commitSearch()
+		// Arrow keys only: k and j are ordinary text in the search box.
+		case msg.Type == tea.KeyUp:
+			m.moveSearchHistory(-1)
+			return m, nil
+		case msg.Type == tea.KeyDown:
+			m.moveSearchHistory(1)
+			return m, nil
+		case msg.Type == tea.KeyTab:
+			if entry, ok := m.completeSearch(); ok {
+				return m.handleSearchCharacter(entry)
+			}
+			return m, nil
+		case msg.String() == "ctrl+d":
+			m.deleteHighlightedSearch()
 			return m, nil
 		// Build on the box's own text, not searchQuery: the query is trimmed, so
 		// appending to it would drop a space typed between words.
@@ -2101,6 +2127,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.searchEditing = true
 			m.searchInput.SetValue(m.searchQuery)
 			m.searchInput.Focus()
+			m.beginSearchEditing()
 			return m, nil
 		}
 		// Enter persistent search mode.
@@ -2108,6 +2135,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.searchEditing = true
 		m.searchInput.SetValue(m.searchQuery)
 		m.searchInput.Focus()
+		m.beginSearchEditing()
 		return m, nil
 
 	case keyMatches(msg, m.keys.Command):
@@ -3177,6 +3205,7 @@ func (m Model) handleMessagesClick(y int) (tea.Model, tea.Cmd) {
 		nm.searchEditing = true
 		nm.searchInput.SetValue(nm.searchQuery)
 		nm.searchInput.Focus()
+		nm.beginSearchEditing()
 		return nm, cmd
 	}
 	idx, ok := m.messageRowAt(y)
@@ -4018,7 +4047,7 @@ func (m Model) statusBarContextHintStrip() string {
 	if m.searchMode && m.searchEditing {
 		return m.statusBarJoin(
 			m.statusBarInlineText(m.styles.StatusBar, "Search"),
-			m.styles.StatusHint.Render("type search  enter finish  esc exit  backspace erase"),
+			m.styles.StatusHint.Render("type search  ↑↓ history  tab complete  enter finish  esc exit"),
 		)
 	}
 	parts := []string{
@@ -4494,10 +4523,12 @@ func (m Model) exitSearchMode() (tea.Model, tea.Cmd) {
 	m.searchEditing = false
 	m.searchQuery = ""
 	m.searchInput.Reset()
+	m.closeSearchHistory()
 	return m, m.visibleMessagesCmd()
 }
 
 func (m Model) handleSearchCharacter(newValue string) (tea.Model, tea.Cmd) {
+	m.closeSearchHistory() // typing hands the pane back to the live results
 	m.searchInput.SetValue(newValue)
 	m.searchInput.CursorEnd()
 	m.searchQuery = strings.TrimSpace(newValue)

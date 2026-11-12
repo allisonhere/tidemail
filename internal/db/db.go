@@ -278,6 +278,11 @@ func (db *DB) migrate() error {
 			value TEXT NOT NULL DEFAULT ''
 		);
 
+		CREATE TABLE IF NOT EXISTS search_history (
+			query   TEXT PRIMARY KEY COLLATE NOCASE,
+			used_at INTEGER NOT NULL
+		);
+
 		CREATE TABLE IF NOT EXISTS contacts (
 			id           INTEGER PRIMARY KEY AUTOINCREMENT,
 			addr         TEXT    NOT NULL UNIQUE,

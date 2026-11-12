@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -20,7 +21,9 @@ type displayKey struct {
 	viewportOffset, viewportWidth, viewportHeight                                       int
 	contentFocus, contentLink, searchIndex, selectionAnchor                             int
 	contentPending, selection, selectionAll, searchMode, searchEditing, unread, starred bool
-	searchQuery, searchInput, spinner                                                   string
+	searchQuery, searchInput, spinner, history                                          string
+	historyCursor                                                                       int
+	historyOpen                                                                         bool
 	readFrame, pendingReads, pendingBulkReads, syncCount                                int
 	needsYou, waiting, snoozed                                                          int
 	profile                                                                             int
@@ -69,6 +72,7 @@ func (m *Model) composePaneKey() displayKey {
 		contentPending: m.contentFocusPending, selection: m.contentSelectionActive, selectionAll: m.contentSelectionAll,
 		searchMode: m.searchMode, searchEditing: m.searchEditing, unread: m.showUnreadOnly, starred: m.starredFirst,
 		searchQuery: m.searchQuery, searchInput: m.searchInput.Value(), spinner: m.spinner.View(), readFrame: m.readAnimationFrame,
+		history: strings.Join(m.searchHistory, "\x00"), historyCursor: m.searchHistoryCursor, historyOpen: m.searchHistoryOpen,
 		pendingReads: len(m.pendingReads), pendingBulkReads: len(m.pendingBulkReads), syncCount: len(m.syncVisible),
 		needsYou: m.needsYou.count, waiting: m.waiting.count, snoozed: m.snooze.count,
 		profile: int(lipgloss.ColorProfile()), dark: lipgloss.HasDarkBackground(), bg: m.styles.Theme.Bg, animation: animation,

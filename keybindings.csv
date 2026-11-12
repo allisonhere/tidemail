@@ -26,6 +26,10 @@ Unsubscribe,ctrl+u,ctrl+u,unsubscribe,content
 NextLink,"ctrl+n,alt+n",ctrl+n,next LINKS entry (scroll into view; ctrl+c copies full URL),content
 PrevLink,alt+p,alt+p,previous LINKS entry (scroll into view),content
 Search,/,/,search,main
+SearchHistoryUp,up,↑,previous history entry; on a typed query opens history filtered by it (while typing in search),search
+SearchHistoryDown,down,↓,next history entry; on a typed query opens history filtered by it (while typing in search),search
+SearchComplete,tab,tab,complete the search from history (while typing in search),search
+SearchHistoryDelete,ctrl+d,ctrl+d,forget the highlighted history entry (while typing in search),search
 UnreadOnly,u,u,toggle unread only,main
 Compose,c,c,compose (one account starts in To; multiple accounts start in From),main
 Reply,r,r,reply,main

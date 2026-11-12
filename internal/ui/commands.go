@@ -103,6 +103,7 @@ func (m Model) mainCommandItems() []commandItem {
 		{id: "sync-all", label: "Sync all mailboxes", enabled: len(m.mailboxes) > 0},
 		{id: "accounts", label: "Manage accounts", enabled: true},
 		{id: "filters", label: "Manage filters (AI rules)", enabled: true},
+		{id: "clear-search-history", label: "Clear search history", enabled: m.db != nil},
 		{id: "settings", label: "Open settings", enabled: true},
 		{id: "support", label: "Support Tidemail", enabled: true},
 	}
@@ -266,6 +267,10 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		m.overlay = overlayAccountManager
 		m.accountManager = m.newAccountManager()
 		return m, nil
+	case "clear-search-history":
+		m.clearSearchHistory()
+		m.setStatus("search history cleared", false)
+		return m, m.clearStatusCmd()
 	case "filters":
 		m.filterManager = m.newFilterManager()
 		m.overlay = overlayFilterManager
