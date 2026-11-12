@@ -465,6 +465,7 @@ shows the `message_raw` and `message_compose` permissions.
 | Key | Action |
 |---|---|
 | `j` / `k` | Move down or up |
+| `PgDn` / `PgUp`, `Shift+J` / `Shift+K` | Page down or up in the message list and reading pane |
 | `Tab` / `Shift+Tab` | Move between panes or compose fields |
 | `Up` / `Down` (compose headers) | Move between From, To, Cc, Bcc, and Subject |
 | `Enter` | Expand/collapse a conversation parent; open a child, single message, draft or picker; immediately sync a folder |

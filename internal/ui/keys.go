@@ -83,6 +83,8 @@ type KeyMap struct {
 	DiscoverServers key.Binding
 	PasswordDialog  key.Binding
 	OAuthSignIn     key.Binding
+	PageUp          key.Binding
+	PageDown        key.Binding
 	MoveAccountUp   key.Binding
 	MoveAccountDown key.Binding
 	IndentFolder    key.Binding
@@ -194,6 +196,8 @@ var DefaultKeys = KeyMap{
 	PasswordDialog:  key.NewBinding(key.WithKeys("alt+p"), key.WithHelp("alt+p", "password dialog")),
 	// Shift-cased J/K: key.Matches compares msg.String() verbatim, so these
 	// never shadow the lowercase Up/Down movement keys.
+	PageUp:          key.NewBinding(key.WithKeys("pgup", "K"), key.WithHelp("pgup/shift+k", "page up")),
+	PageDown:        key.NewBinding(key.WithKeys("pgdown", "J"), key.WithHelp("pgdn/shift+j", "page down")),
 	MoveAccountUp:   key.NewBinding(key.WithKeys("K"), key.WithHelp("shift+k", "move account up")),
 	MoveAccountDown: key.NewBinding(key.WithKeys("J"), key.WithHelp("shift+j", "move account down")),
 	IndentFolder:    key.NewBinding(key.WithKeys(">"), key.WithHelp(">", "nest folder under the one above")),

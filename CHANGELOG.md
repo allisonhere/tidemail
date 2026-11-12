@@ -15,6 +15,9 @@ All notable changes to TideMail are documented in this file.
   mail (**HTML Signature** in the account form, `Alt+F` to browse); the text
   signature remains the plain-text part. Files that are not HTML, or that
   contain scripts, frames or forms, are refused when chosen and again at send.
+- Page through the message list and the reading pane with `PgDn` / `PgUp` or
+  `Shift+J` / `Shift+K`. In the sidebar and Accounts, `Shift+J` / `Shift+K`
+  keep reordering.
 
 ### Fixed
 

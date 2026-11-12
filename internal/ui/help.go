@@ -97,6 +97,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{"auto", "moving down past the last message loads older mail from the server"},
 				{keys.Space.Help().Key, "select message and advance"},
 				{keys.SelectAll.Help().Key, "select all messages in current view"},
+				{keys.PageUp.Help().Key + "/" + keys.PageDown.Help().Key, "move up or down a screenful (at the last row, pages in older mail like down)"},
 				{keys.MarkRead.Help().Key, "collapsed: toggle all members; expanded/single: toggle this email; marking read advances; marking unread stays; explicit selections toggle individually without advancing"},
 				{keys.ToggleStar.Help().Key, "toggle star on selected message(s)"},
 				{keys.Archive.Help().Key, "archive selected message(s)"},
@@ -125,6 +126,7 @@ func helpSections(keys KeyMap) []helpSection {
 			name: "Content Pane",
 			entries: []helpEntry{
 				{keys.Up.Help().Key + "/" + keys.Down.Help().Key, "Focus line on: move highlight; off: scroll one row"},
+				{keys.PageUp.Help().Key + "/" + keys.PageDown.Help().Key, "page up or down (Focus line on: moves the highlight a screen)"},
 				{"LINKS", "Focus off: Down at bottom selects first; arrows step; Up from first exits; no wrap"},
 				{keys.Back.Help().Key, "return to message list"},
 				{keys.Enter.Help().Key, "open explicitly selected or keyboard-focused visible link"},

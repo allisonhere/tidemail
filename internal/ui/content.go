@@ -816,6 +816,31 @@ func (m *Model) scrollToContentMatch(idx int) {
 	m.viewport.SetYOffset(max(0, line-m.viewport.Height/2))
 }
 
+// pageContent moves the content pane a screenful, keeping one line of overlap.
+// Without the focus line it scrolls the viewport; with it, the highlight walks
+// the same number of lines through moveContentFocusLine, so link and header
+// handling match single steps.
+func (m *Model) pageContent(dir int) {
+	n := max(1, m.viewport.Height-1)
+	if !m.cfg.Display.FocusLine {
+		m.clearContentLinkSelection()
+		if dir < 0 {
+			m.viewport.ScrollUp(n)
+		} else {
+			m.viewport.ScrollDown(n)
+		}
+		m.reconcileContentFocus(dir)
+		return
+	}
+	for i := 0; i < n; i++ {
+		before, pending := m.contentFocusLine, m.contentFocusPending
+		m.moveContentFocusLine(dir)
+		if m.contentFocusLine == before && m.contentFocusPending == pending {
+			break // reached the top or bottom
+		}
+	}
+}
+
 func (m *Model) moveContentFocusLine(delta int) {
 	m.clearContentLinkSelection()
 	if m.contentLineCount <= 0 {
