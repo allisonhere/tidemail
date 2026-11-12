@@ -22,6 +22,10 @@ All notable changes to TideMail are documented in this file.
   `to:work@example.com` finds mail addressed to that address in To or Cc, which
   separates a shared inbox such as iCloud+ custom domains (#113). Operators
   combine with words and `#tags`.
+- Search remembers the last 30 searches you keep with `Enter`. An empty search
+  box lists them (`↑`/`↓`, `Enter` to run), `↑`/`↓` on typed text opens the list
+  filtered by it, `Tab` completes from history and `Ctrl+D` forgets an entry.
+  **Clear search history** is in the command palette.
 
 ### Fixed
 

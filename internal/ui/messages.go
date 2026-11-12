@@ -27,7 +27,9 @@ func (m *Model) renderMessagesPane() string {
 	msgUnread, msgRead, msgSelected, headerActive, borderColor, borderFocus := m.messageRowStyles()
 
 	rows := []string{}
-	if m.selectedDraftsMailbox() {
+	if m.searchHistoryVisible() {
+		rows = m.searchHistoryRows(w, msgRead, msgSelected)
+	} else if m.selectedDraftsMailbox() {
 		end := min(m.listOffset+m.articleRowsVisible(), len(m.drafts))
 		for i := m.listOffset; i < end; i++ {
 			draft := m.drafts[i]

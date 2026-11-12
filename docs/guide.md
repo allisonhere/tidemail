@@ -198,6 +198,17 @@ with words, and with `#tags`: `to:work@example.com invoice #billing`. They match
 the headers stored with cached mail, so an address that appears only in Bcc is
 not found.
 
+**Search history.** Pressing `Enter` to keep a search remembers it (the last 30,
+newest first, stored locally in TideMail's database, never sent anywhere). With
+an empty search box the message list shows your recent searches: `↓` / `↑` move
+through them and `Enter` runs the highlighted one; `↑` from the first entry goes
+back to typing. After you have typed something, `↑` or `↓` opens the list
+filtered to entries that start with your text, and `Tab` completes the box from
+the newest matching entry (or the highlighted one) so you can edit it before
+pressing `Enter`. `Ctrl+D` forgets the highlighted entry. Typing closes the list
+and shows live results again. Run **Clear search history** from the command
+palette to forget everything. Escaping out of a search does not remember it.
+
 Type `#` and a tag name to search by the tags shown on message rows:
 `#github`, `#billing`, or any other category, and `#reply`, `#urgent`, or
 `#important`. Tags match as you type (`#git` already finds `#github`), several
