@@ -18,6 +18,10 @@ All notable changes to TideMail are documented in this file.
 - Page through the message list and the reading pane with `PgDn` / `PgUp` or
   `Shift+J` / `Shift+K`. In the sidebar and Accounts, `Shift+J` / `Shift+K`
   keep reordering.
+- Search can limit a word to one header with `from:`, `to:`, `cc:` and `subject:`.
+  `to:work@example.com` finds mail addressed to that address in To or Cc, which
+  separates a shared inbox such as iCloud+ custom domains (#113). Operators
+  combine with words and `#tags`.
 
 ### Fixed
 
