@@ -365,8 +365,6 @@ type AccountConfig struct {
 	From       string `toml:"from"`
 	// Aliases are additional sending identities on this account's SMTP connection.
 	Aliases string `toml:"aliases,omitempty"`
-	// AddressViews are recipient-filtered local views of this account's mail.
-	AddressViews string `toml:"address_views,omitempty"`
 	// SyncMinutes selects how the account refreshes in the background:
 	//
 	//	< 0  manual only — no polling and no push connection
@@ -380,6 +378,9 @@ type AccountConfig struct {
 	// The account form accepts literal \n escapes for multi-line signatures;
 	// TOML multi-line strings work too when editing the file directly.
 	Signature string `toml:"signature"`
+	// SignatureHTMLFile is an optional .html file sent as the signature in the
+	// HTML part of outgoing mail. Signature stays the plain-text part.
+	SignatureHTMLFile string `toml:"signature_html_file,omitempty"`
 
 	// OAuth2 — if RefreshToken is set, OAuth2 is used instead of password.
 	// ClientID and ClientSecret are auto-filled from the app-level [oauth] config at load time.

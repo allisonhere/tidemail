@@ -72,8 +72,9 @@ func TestEmailRowIsFirstInTheForm(t *testing.T) {
 		if login < 0 || prov < 0 || login > prov {
 			t.Fatalf("%s: login row %q at %d, Provider at %d; want login first:\n%s", provider, label, login, prov, view)
 		}
-		if strings.Count(view, label+" ") != 1 {
-			t.Fatalf("%s: login row rendered %d times", provider, strings.Count(view, label+" "))
+		// The "Email Alias" row shares the "Email " prefix.
+		if n := strings.Count(strings.ReplaceAll(view, "Email Alias", ""), label+" "); n != 1 {
+			t.Fatalf("%s: login row rendered %d times", provider, n)
 		}
 	}
 }

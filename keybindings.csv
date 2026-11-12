@@ -69,7 +69,7 @@ Delete,d,d,delete (messages: hidden at once, 6s undo window then server confirma
 SaveAccount,"ctrl+s,f2",ctrl+s,save account,account_manager
 TestAccount,"ctrl+t,f5",ctrl+t,test account,account_manager
 DiscoverServers,ctrl+l,ctrl+l,look up Custom account servers (DNS SRV, MX, HTTPS autoconfig),account_manager
-AttachFile,alt+f,alt+f,attach file,compose
+AttachFile,alt+f,alt+f,attach file (account form: browse for the HTML signature file),compose+account form
 GrammarCheck,ctrl+g,ctrl+g,AI grammar check,compose
 SpellCheck,f7,f7,offline spell check (needs Settings → Editor → Spell check),compose
 PGPSign,"alt+s,f8",alt+s,sign with PGP (needs a PGP plugin),compose

@@ -115,7 +115,7 @@ tries, in order:
   shared provider database. It uses only servers TideMail can reach securely
   (IMAP over TLS, sending over TLS or STARTTLS) with a password. If the file
   says your login is not your full address, the login row takes that login and
-  your address moves to **From address**.
+  your address moves to **From**.
 
 The lookup runs in the background and only fills in the form: nothing
 connects or saves until you press `Ctrl+T` or `Ctrl+S`. DNS answers aren't
@@ -141,7 +141,7 @@ the Gmail, Outlook, Yahoo, and iCloud
 providers the **Email** row must be a full address; a **Custom** account's
 **Email / login** is whatever your host issues, which need not be an address at all
 — cPanel's `alice+example.com`, an Exchange `DOMAIN\alice`, a bare ISP login.
-When it is not an address, the **From address** row becomes required: there is
+When it is not an address, the **From** row becomes required: there is
 no address to send as otherwise, and the form says so rather than leaving the
 first send to be refused by the server.
 
@@ -634,12 +634,8 @@ the account default. Replies preselect a configured
 address when it appears in the original message's To or Cc header.
 
 In **Accounts → Edit → Sending identity**, enter additional From addresses in
-**Other From addresses**, separated by commas. Add recipient addresses to
-**Address views** to show local views below the account in the sidebar. These
-views contain cached Inbox messages whose To or Cc header names that address;
-they do not move messages or create server folders. An additional From address
-does not create a view until you add it to **Address views**. Mail without a
-matching To or Cc header remains visible in the account's normal Inbox.
+**Email Alias**, separated by commas. Incoming mail for these
+addresses still arrives in the account's normal Inbox.
 Your mail provider must permit sending from each additional address.
 
 A new message starts from your default account — the one marked `★ [default]`
@@ -692,7 +688,7 @@ you retry one by hand.
 Every attempt takes the default sending address from the account as it stands
 at that moment. A queued message explicitly sent from an additional address
 keeps it while that address remains configured. If a send failed because the
-account's default **From address** was wrong, correcting it and pressing `r`
+account's default **From** was wrong, correcting it and pressing `r`
 is enough — the queued message does not have to be rewritten.
 
 Failed deliveries retry after one minute. The maximum attempt setting includes
@@ -959,7 +955,7 @@ signature = "Alice\nSent with TideMail"
 sync_minutes = 0  # 0 = push (IDLE), N = poll every N min, -1 = manual only
 ```
 
-`from` is the **From address** row in the account form. Give it an address —
+`from` is the **From** row in the account form. Give it an address —
 `alice@example.com` or `Alice <alice@example.com>` — or leave it blank to send
 as `user`, which works only when `user` is itself an address. A display name on
 its own is not enough: the account form refuses to save one, because SMTP has
@@ -996,6 +992,24 @@ signature = """
 Alice
 Sent with TideMail"""
 ```
+
+**HTML signature.** Under the signature box, **HTML Signature** takes the path to
+an `.html` file (for example `~/signature.html`; config key
+`signature_html_file`). Type or paste the path, or press `Alt+F` on that row to
+browse: `Enter` opens a folder or chooses a file, `←` goes up, `Esc` goes back.
+The file's contents replace the text signature in the HTML part of the message;
+the text signature remains the plain-text part, so keep both. A fragment is sent
+as written; for a whole HTML document only the contents of `<body>` are used.
+The file must end in `.html` or `.htm`, be under 64 KB, and contain HTML. Because
+its contents go out in every message, TideMail refuses other files (a key or a
+config file chosen by mistake, for instance) and any HTML with `<script>`,
+`<iframe>`, `<object>`, `<embed>` or `<form>`, `on…` event attributes, or
+`javascript:` links. The browser shows the reason and stays open; saving the
+account checks again. The file is read and checked again when you send, so edits
+apply immediately. If it has been moved, deleted, or no longer passes, the send
+is refused with a message rather than going out unsigned. Images must use absolute `https://` URLs;
+local paths and many embedded images do not display for recipients. PGP-encrypted
+messages are unaffected.
 
 `auth_method` is set for you: it becomes `"oauth2"` once you complete a `Ctrl+O`
 sign-in for a Gmail/Outlook account, otherwise `"password"`. The refresh token

@@ -8,10 +8,14 @@ Current release: **v1.9.0**.
 
 ## Working
 
-- **Additional sending addresses and address views**: configure multiple From
-  addresses on one account, select one in compose, retain it in drafts and queued
-  retries, and add manual sidebar views filtering the account's cached Inbox by
-  To or Cc recipient address.
+- **HTML signature file**: an account can point at an `.html` file used as the
+  signature in the HTML part (text signature stays the plain part), with a
+  file-browser key (`Alt+F`) in the account form. The file is vetted (HTML only,
+  no scripts, frames or forms) when chosen and again at send.
+
+- **Additional sending addresses**: configure multiple From addresses on one
+  account as a comma-separated list, select one in compose, and retain it in
+  drafts and queued retries.
 
 - **Expandable conversations, milestone 1**: derived visible rows, sorting-aware
   parents, independent session expansion, muted sender/subject tree connectors,

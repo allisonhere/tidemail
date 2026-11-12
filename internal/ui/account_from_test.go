@@ -73,9 +73,6 @@ func TestAccountManagerFormLabelsFromAsAddress(t *testing.T) {
 
 	view := ansi.Strip(am.viewForm(80, 40, chrome))
 
-	if !strings.Contains(view, "From address") {
-		t.Fatalf("expected the From row to be labeled as an address, got %q", view)
-	}
 	if !strings.Contains(view, "you@example.com") {
 		t.Fatalf("expected the From row to show the expected address shape, got %q", view)
 	}

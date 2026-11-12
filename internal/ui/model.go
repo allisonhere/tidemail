@@ -56,7 +56,6 @@ const (
 	rowKindWaiting
 	// rowKindSnoozed is the standing Snoozed entry (see snooze.go).
 	rowKindSnoozed
-	rowKindAddressView
 )
 
 type sidebarRow struct {
@@ -1036,16 +1035,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			if selected := m.selectedMailbox(); selected != nil && msg.MailboxID == selected.ID {
 				m.clearMessages()
-			} else if msg.AddressView != "" && m.selectedAddressView() != nil {
-				m.clearMessages()
 			}
 			m.setStatus(msg.Err.Error(), true)
 			return m, m.clearStatusCmd()
 		}
-		if (msg.NeedsYou && m.selectedNeedsYou()) || (msg.Waiting && m.selectedWaiting()) || (msg.Snoozed && m.selectedSnoozed()) || (msg.AddressView != "" && func() bool {
-			row := m.selectedAddressView()
-			return row != nil && row.accountID == msg.AddressAccountID && row.label == msg.AddressView
-		}()) || (!msg.NeedsYou && !msg.Waiting && !msg.Snoozed && msg.AddressView == "" && msg.MailboxID == 0 && m.selectedUnifiedInbox()) || (!msg.NeedsYou && !msg.Waiting && !msg.Snoozed && msg.AddressView == "" && func() bool {
+		if (msg.NeedsYou && m.selectedNeedsYou()) || (msg.Waiting && m.selectedWaiting()) || (msg.Snoozed && m.selectedSnoozed()) || (!msg.NeedsYou && !msg.Waiting && !msg.Snoozed && msg.MailboxID == 0 && m.selectedUnifiedInbox()) || (!msg.NeedsYou && !msg.Waiting && !msg.Snoozed && func() bool {
 			selected := m.selectedMailbox()
 			return selected != nil && msg.MailboxID == selected.ID
 		}()) {
@@ -2291,9 +2285,6 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keyMatches(msg, m.keys.Enter):
 		if m.focused == paneAccounts {
-			if cmd := m.syncAddressViewCmd(); cmd != nil {
-				return m, cmd
-			}
 			if m.selectedOutboxRow() {
 				m.openOutbox()
 				return m, nil
@@ -2348,9 +2339,6 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.Sync):
-		if cmd := m.syncAddressViewCmd(); cmd != nil {
-			return m, cmd
-		}
 		if m.selectedUnifiedInbox() || m.selectedNeedsYou() || m.selectedWaiting() {
 			// Sync all inboxes when 'f' is pressed on Unified Inbox
 			var cmds []tea.Cmd
@@ -4166,8 +4154,6 @@ func (m *Model) renderStatusBar() string {
 			parts = append(parts, m.statusBarInlineText(sb, "Waiting on Them"))
 		} else if m.selectedNeedsYou() {
 			parts = append(parts, m.statusBarInlineText(sb, "Needs You"))
-		} else if view := m.selectedAddressView(); view != nil {
-			parts = append(parts, m.statusBarInlineText(sb, view.label))
 		} else if m.selectedUnifiedInbox() {
 			parts = append(parts, m.statusBarInlineText(sb, "Unified Inbox"))
 			if unread := m.unifiedUnreadCount(); unread > 0 {
@@ -4392,8 +4378,6 @@ func sameSidebarRow(a, b sidebarRow) bool {
 	switch a.kind {
 	case rowKindMailbox:
 		return a.mailboxID == b.mailboxID
-	case rowKindAddressView:
-		return a.accountID == b.accountID && a.label == b.label
 	case rowKindAccount:
 		return a.accountID == b.accountID
 	case rowKindSysFolderHeader, rowKindPersonalFolderHeader:
@@ -4412,7 +4396,7 @@ func (m *Model) rebuildSidebar() {
 		row := m.sidebarRows[m.sidebarCursor]
 		selected = &row
 	}
-	m.sidebarRows = buildSidebarRows(m.accounts, m.mailboxes, m.collapsedAccounts, m.collapsedSections, folderView{prefs: m.mailboxPrefs, configs: m.cfg.Accounts, showHidden: m.showHiddenFolders, hideNeedsYou: !m.cfg.Display.ShowNeedsYou, hideWaiting: !m.cfg.Display.ShowWaiting})
+	m.sidebarRows = buildSidebarRows(m.accounts, m.mailboxes, m.collapsedAccounts, m.collapsedSections, folderView{prefs: m.mailboxPrefs, showHidden: m.showHiddenFolders, hideNeedsYou: !m.cfg.Display.ShowNeedsYou, hideWaiting: !m.cfg.Display.ShowWaiting})
 	m.refreshDraftCounts()
 	// Rows come and go (folders created, pruned, hidden). Keep the highlight on
 	// the same row rather than the same position, or it slides onto a different
@@ -4586,9 +4570,6 @@ func (m Model) currentSidebarSelection() (sidebarRowKind, int64) {
 	}
 	if row.kind == rowKindAccount {
 		return rowKindAccount, row.accountID
-	}
-	if row.kind == rowKindAddressView {
-		return rowKindAddressView, 0 // rebuildSidebar keeps the full address identity
 	}
 	if row.kind == rowKindSysFolderHeader || row.kind == rowKindPersonalFolderHeader {
 		return row.kind, row.accountID
