@@ -621,11 +621,26 @@ previous row, like `Tab` and `Shift+Tab`, except that `Up` stops at the top row.
 the recipient suggestions are open, `Up` and `Down` choose a suggestion instead. In the
 body they move the text cursor.
 
-With one account, compose starts in **To** so you can type immediately.
-With multiple accounts, it starts in **From**, which works as an account picker.
+With one sending address, compose starts in **To** so you can type immediately.
+With multiple accounts or sending addresses, it starts in **From**, which works as a sender picker.
 Focus it with `Shift+Tab` or `Up` from the To row, then press `Enter` or `Space` and
-choose the account. `Ctrl+U` cycles through the same list. TideMail uses that
-account's SMTP settings, From address, and signature.
+choose the account or one of its other From addresses. `Ctrl+U` cycles through
+the same list. An additional address uses its parent account's SMTP settings,
+Drafts folder, and signature. The selected address stays with a draft and queued
+send, including retries. If the address is removed before a retry, TideMail
+stops the send and reports that the address must be restored or the message
+edited. Reopening a draft whose address was removed shows a warning and selects
+the account default. Replies preselect a configured
+address when it appears in the original message's To or Cc header.
+
+In **Accounts → Edit → Sending identity**, enter additional From addresses in
+**Other From addresses**, separated by commas. Add recipient addresses to
+**Address views** to show local views below the account in the sidebar. These
+views contain cached Inbox messages whose To or Cc header names that address;
+they do not move messages or create server folders. An additional From address
+does not create a view until you add it to **Address views**. Mail without a
+matching To or Cc header remains visible in the account's normal Inbox.
+Your mail provider must permit sending from each additional address.
 
 A new message starts from your default account — the one marked `★ [default]`
 in **Accounts**. Set it by highlighting an account there and pressing `Space`.
@@ -674,11 +689,11 @@ the server may have taken the message before the connection went, so it is not
 a failure and TideMail will not retry it on its own. Check Sent mail before
 you retry one by hand.
 
-Every attempt takes the sending address from the account as it stands at that
-moment, not from a copy saved when the message was queued. So if a send failed
-because the account's **From address** was wrong, correcting it and pressing
-`r` is enough — the queued message does not have to be rewritten or composed
-again.
+Every attempt takes the default sending address from the account as it stands
+at that moment. A queued message explicitly sent from an additional address
+keeps it while that address remains configured. If a send failed because the
+account's default **From address** was wrong, correcting it and pressing `r`
+is enough — the queued message does not have to be rewritten.
 
 Failed deliveries retry after one minute. The maximum attempt setting includes
 the first try; it defaults to `3`, and `1` disables automatic retries. An
@@ -1247,7 +1262,7 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | `O` | Open the Outbox |
 | `o` or `Enter` | Open an explicitly selected LINKS entry or a visible link deliberately focused with the keyboard |
 | `Ctrl+U` | Unsubscribe from the mailing list for the open message |
-| `Ctrl+U` in compose | Cycle the sending account; focus From and press `Enter` to open the account picker |
+| `Ctrl+U` in compose | Cycle the sending account or address; focus From and press `Enter` to open the sender picker |
 | `Ctrl+N` / `Alt+N` | Select the next LINKS entry and scroll it into view |
 | `Alt+P` | Select the previous LINKS entry and scroll it into view |
 | `Alt+P` on the account form's Password row | Enter the password in a native dialog (`zenity` or `kdialog`) |

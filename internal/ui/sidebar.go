@@ -3,6 +3,7 @@ package ui
 import (
 	"encoding/json"
 	"fmt"
+	"net/mail"
 	"slices"
 	"strings"
 
@@ -46,6 +47,8 @@ func (m *Model) renderAccountsPane() string {
 					rows = append(rows, m.renderSidebarMailboxRow(*mb, row, selected, innerW))
 				}
 			}
+		case rowKindAddressView:
+			rows = append(rows, m.renderAddressViewRow(row, selected, innerW))
 		case rowKindSysFolderHeader:
 			rows = append(rows, m.renderSectionHeader("System", row.count, rowKindSysFolderHeader, row.accountID, selected, innerW))
 		case rowKindPersonalFolderHeader:
@@ -79,6 +82,7 @@ func (m *Model) renderAccountsPane() string {
 // folders are hidden or custom-ordered, and whether hidden ones are shown.
 type folderView struct {
 	prefs      map[int64]map[string]db.MailboxPref
+	configs    []config.AccountConfig
 	showHidden bool
 	// hideNeedsYou and hideWaiting drop those standing rows (Settings → Display).
 	hideNeedsYou, hideWaiting bool
@@ -143,6 +147,14 @@ func buildSidebarRows(accounts []db.Account, mailboxes []db.Mailbox, collapsed m
 		rows = append(rows, sidebarRow{kind: rowKindAccount, accountID: acc.ID})
 		if collapsed[acc.ID] {
 			continue
+		}
+		for _, cfg := range view.configs {
+			if cfg.ID != acc.ConfigID {
+				continue
+			}
+			for _, address := range splitAccountAddresses(cfg.AddressViews) {
+				rows = append(rows, sidebarRow{kind: rowKindAddressView, accountID: acc.ID, label: address})
+			}
 		}
 		mbs := byAccount[acc.ID]
 
@@ -813,6 +825,19 @@ func (m *Model) renderUnifiedInboxRow(selected bool, width int) string {
 		style = m.sidebarSelectedStyle("")
 	}
 	return style.Width(width).Render(row)
+}
+
+func (m *Model) renderAddressViewRow(row sidebarRow, selected bool, width int) string {
+	label := row.label
+	if address, err := mail.ParseAddress(label); err == nil {
+		label = address.Address
+	}
+	text := renderFeedRow("  @ ", label, "", width)
+	style := m.styles.FeedItem
+	if selected {
+		style = m.sidebarSelectedStyle("")
+	}
+	return style.Width(width).Render(text)
 }
 
 // renderOutboxRow draws the standing Outbox entry. Its badge counts only what

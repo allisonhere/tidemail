@@ -405,6 +405,7 @@ func (db *DB) migrate() error {
 	if err := db.migrateDraftsBCC(); err != nil {
 		return err
 	}
+	db.Exec(`ALTER TABLE drafts ADD COLUMN sender_from TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
 	if err := db.migrateMessageFTS(); err != nil {
 		return err
 	}

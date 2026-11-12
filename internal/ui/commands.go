@@ -254,6 +254,9 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 	case "sync":
+		if cmd := m.syncAddressViewCmd(); cmd != nil {
+			return m, cmd
+		}
 		if selected := m.selectedMailbox(); selected != nil {
 			return m, m.syncMailboxCmd(selected.ID, true)
 		}

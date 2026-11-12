@@ -8,6 +8,11 @@ Current release: **v1.9.0**.
 
 ## Working
 
+- **Additional sending addresses and address views**: configure multiple From
+  addresses on one account, select one in compose, retain it in drafts and queued
+  retries, and add manual sidebar views filtering the account's cached Inbox by
+  To or Cc recipient address.
+
 - **Expandable conversations, milestone 1**: derived visible rows, sorting-aware
   parents, independent session expansion, muted sender/subject tree connectors,
   individual-email previews, and existing keyboard/mouse navigation. Ordinary

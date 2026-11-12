@@ -362,6 +362,14 @@ func TestAccountManagerFormNavigationMatchesVisualOrder(t *testing.T) {
 	am.focusField(amFieldFrom)
 
 	am.advanceField(1)
+	if am.focusedField != amFieldAliases {
+		t.Fatalf("expected aliases after sender identity, got field %v", am.focusedField)
+	}
+	am.advanceField(1)
+	if am.focusedField != amFieldAddressViews {
+		t.Fatalf("expected address views after aliases, got field %v", am.focusedField)
+	}
+	am.advanceField(1)
 	if am.focusedField != amFieldSignature {
 		t.Fatalf("expected signature after sender identity, got field %v", am.focusedField)
 	}

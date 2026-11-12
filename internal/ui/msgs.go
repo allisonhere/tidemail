@@ -56,7 +56,9 @@ type MessagesLoadedMsg struct {
 	// Waiting marks the Waiting on Them view's list.
 	Waiting bool
 	// Snoozed marks the Snoozed view's list.
-	Snoozed bool
+	Snoozed          bool
+	AddressView      string
+	AddressAccountID int64
 }
 
 type MailboxSyncedMsg struct {

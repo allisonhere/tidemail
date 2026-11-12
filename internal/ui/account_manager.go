@@ -256,6 +256,8 @@ const (
 	amFieldOAuthSignIn
 	amFieldOAuthCode
 	amFieldFrom
+	amFieldAliases
+	amFieldAddressViews
 	amFieldSignature
 	amFieldSyncInterval
 	amFieldCount
@@ -315,6 +317,8 @@ type AccountManager struct {
 	userInput     textinput.Model
 	passInput     textinput.Model
 	fromInput     textinput.Model
+	aliasesInput  textinput.Model
+	viewsInput    textinput.Model
 	syncInput     textinput.Model
 	sigArea       textarea.Model
 
@@ -384,6 +388,8 @@ func NewAccountManager(database *db.DB) AccountManager {
 	am.userInput = newAMInput("you@example.com", false)
 	am.passInput = newAMInput("password", true)
 	am.fromInput = newAMInput("Your Name <you@example.com>", false)
+	am.aliasesInput = newAMInput("alias@example.com, Name <other@example.com>", false)
+	am.viewsInput = newAMInput("alias@example.com, other@example.com", false)
 	am.syncInput = newAMInput("0 = push", false)
 	am.sigArea = newAMSigArea()
 	am.oauthCodeInput = newAMInput("code, or full browser redirect URL", false)
@@ -463,6 +469,10 @@ func (am *AccountManager) focusField(f amField) {
 		am.oauthCodeInput.Focus()
 	case amFieldFrom:
 		am.fromInput.Focus()
+	case amFieldAliases:
+		am.aliasesInput.Focus()
+	case amFieldAddressViews:
+		am.viewsInput.Focus()
 	case amFieldSyncInterval:
 		am.syncInput.Focus()
 	case amFieldSignature:
@@ -488,6 +498,8 @@ func (am *AccountManager) populateFormFrom(acfg config.AccountConfig) {
 	am.userInput.SetValue(acfg.User)
 	am.passInput.SetValue(acfg.Password)
 	am.fromInput.SetValue(acfg.From)
+	am.aliasesInput.SetValue(acfg.Aliases)
+	am.viewsInput.SetValue(acfg.AddressViews)
 	am.syncInput.SetValue(strconv.Itoa(acfg.SyncMinutes))
 	// The form is single-line; real newlines round-trip as literal \n escapes.
 	am.sigArea.SetValue(acfg.Signature)
@@ -507,20 +519,22 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 	imapPort, _ := parsePort(am.imapPortInput.Value(), defaultIMAPPort)
 	smtpPort, _ := parsePort(am.smtpPortInput.Value(), defaultSMTPPort)
 	cfg := config.AccountConfig{
-		ID:          am.editConfigID,
-		Provider:    am.provider,
-		Name:        strings.TrimSpace(am.nameInput.Value()),
-		IMAPHost:    strings.TrimSpace(am.imapHostInput.Value()),
-		IMAPPort:    imapPort,
-		IMAPTLS:     am.imapTLS,
-		SMTPHost:    strings.TrimSpace(am.smtpHostInput.Value()),
-		SMTPPort:    smtpPort,
-		SMTPTLS:     am.smtpTLS,
-		User:        strings.TrimSpace(am.userInput.Value()),
-		Password:    am.passInput.Value(),
-		From:        strings.TrimSpace(am.fromInput.Value()),
-		SyncMinutes: func() int { n, _ := parseSyncMinutes(am.syncInput.Value()); return n }(),
-		Signature:   strings.TrimSpace(am.sigArea.Value()),
+		ID:           am.editConfigID,
+		Provider:     am.provider,
+		Name:         strings.TrimSpace(am.nameInput.Value()),
+		IMAPHost:     strings.TrimSpace(am.imapHostInput.Value()),
+		IMAPPort:     imapPort,
+		IMAPTLS:      am.imapTLS,
+		SMTPHost:     strings.TrimSpace(am.smtpHostInput.Value()),
+		SMTPPort:     smtpPort,
+		SMTPTLS:      am.smtpTLS,
+		User:         strings.TrimSpace(am.userInput.Value()),
+		Password:     am.passInput.Value(),
+		From:         strings.TrimSpace(am.fromInput.Value()),
+		Aliases:      strings.Join(splitAccountAddresses(am.aliasesInput.Value()), ", "),
+		AddressViews: strings.Join(splitAccountAddresses(am.viewsInput.Value()), ", "),
+		SyncMinutes:  func() int { n, _ := parseSyncMinutes(am.syncInput.Value()); return n }(),
+		Signature:    strings.TrimSpace(am.sigArea.Value()),
 	}
 	if preset, ok := providerPresets[am.provider]; ok {
 		cfg.IMAPHost = preset.IMAPHost
@@ -904,6 +918,10 @@ func (am *AccountManager) updateFocusedInput(msg tea.Msg) tea.Cmd {
 		am.oauthCodeInput, cmd = am.oauthCodeInput.Update(msg)
 	case amFieldFrom:
 		am.fromInput, cmd = am.fromInput.Update(msg)
+	case amFieldAliases:
+		am.aliasesInput, cmd = am.aliasesInput.Update(msg)
+	case amFieldAddressViews:
+		am.viewsInput, cmd = am.viewsInput.Update(msg)
 	case amFieldSyncInterval:
 		am.syncInput, cmd = am.syncInput.Update(msg)
 	case amFieldSignature:
@@ -1657,6 +1675,28 @@ func isEmailAddress(s string) bool {
 	return err == nil
 }
 
+func splitAccountAddresses(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	addresses, err := mail.ParseAddressList(raw)
+	if err != nil {
+		return nil
+	}
+	result := make([]string, 0, len(addresses))
+	for _, address := range addresses {
+		switch {
+		case address.Name == "":
+			result = append(result, address.Address)
+		case !strings.ContainsAny(address.Name, `,\"<>`):
+			result = append(result, address.Name+" <"+address.Address+">")
+		default:
+			result = append(result, address.String())
+		}
+	}
+	return result
+}
+
 // hashForAtError catches an address typed with "#" where "@" belongs —
 // info#example.com. On a Nordic layout "@" is AltGr+2 and "#" is Shift+3, so
 // it is an easy slip, and nothing downstream can recover from it: "#" is
@@ -1716,6 +1756,26 @@ func (f formFailure) ok() bool { return f.msg == "" }
 // validateForm checks the raw form text that buildCfg has to collapse into
 // typed fields, then defers to the connection-level checks.
 func (am AccountManager) validateForm(acfg config.AccountConfig) formFailure {
+	for _, entry := range []struct {
+		raw   string
+		field amField
+		label string
+	}{
+		{am.aliasesInput.Value(), amFieldAliases, "OTHER FROM ADDRESSES"},
+		{am.viewsInput.Value(), amFieldAddressViews, "ADDRESS VIEWS"},
+	} {
+		if strings.TrimSpace(entry.raw) != "" {
+			addresses, err := mail.ParseAddressList(entry.raw)
+			if err != nil || len(addresses) == 0 {
+				return fail(entry.field, entry.label+" MUST BE COMMA-SEPARATED EMAIL ADDRESSES")
+			}
+			for _, address := range addresses {
+				if !strings.Contains(address.Address, "@") {
+					return fail(entry.field, entry.label+" NEED A VALID EMAIL ADDRESS")
+				}
+			}
+		}
+	}
 	if _, ok := parsePort(am.imapPortInput.Value(), defaultIMAPPort); !ok {
 		return fail(amFieldIMAPPort, "IMAP PORT MUST BE A NUMBER")
 	}
@@ -1889,6 +1949,8 @@ func (am *AccountManager) resetForm() {
 	am.userInput.Reset()
 	am.passInput.Reset()
 	am.fromInput.Reset()
+	am.aliasesInput.Reset()
+	am.viewsInput.Reset()
 	am.sigArea.Reset()
 	am.syncInput.SetValue("0")
 	am.cancelOAuth()
@@ -2395,6 +2457,10 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	addSection("Sending identity")
 	addControl(amFieldFrom, row("From address", am.fromInput, amFieldFrom))
 	addHint("Format: Name <you@example.com>")
+	addControl(amFieldAliases, row("Other From addresses", am.aliasesInput, amFieldAliases))
+	addHint("Comma-separated sending addresses; uses this account's SMTP login")
+	addControl(amFieldAddressViews, row("Address views", am.viewsInput, amFieldAddressViews))
+	addHint("Comma-separated recipient addresses shown as local sidebar views")
 	// The fallback the second hint describes only exists when the login is
 	// itself an address; otherwise validation requires this field, so the hint
 	// says that instead. An untouched login stays on the default wording.

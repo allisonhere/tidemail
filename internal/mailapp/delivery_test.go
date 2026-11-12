@@ -29,6 +29,33 @@ func fixture(t *testing.T) (*db.DB, config.AccountConfig, int64) {
 	}
 	return database, a, id
 }
+
+func TestQueuedAliasResolvesAfterReopen(t *testing.T) {
+	database, err := db.OpenPath(filepath.Join(t.TempDir(), "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	account := config.AccountConfig{ID: "icloud", Name: "iCloud", User: "primary@icloud.com", From: "primary@icloud.com", Aliases: "Work <work@example.com>"}
+	draft := db.Draft{SenderFrom: "Work <work@example.com>", To: "person@example.com"}
+	message := smtp.OutgoingMessage{From: draft.SenderFrom, To: []string{draft.To}}
+	id, err := Enqueue(database, config.Config{}, account, message, draft, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := database.GetOutbox(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := OutboxMessage(item, account)
+	if err != nil || resolved.From != draft.SenderFrom {
+		t.Fatalf("resolved From = %q, err = %v", resolved.From, err)
+	}
+	account.Aliases = ""
+	if _, err := OutboxMessage(item, account); err == nil {
+		t.Fatal("removed alias sent from another address")
+	}
+}
 func TestDeliveryRecordsSuccessBeforeSentAppend(t *testing.T) {
 	database, a, id := fixture(t)
 	var identity string

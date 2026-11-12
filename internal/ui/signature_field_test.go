@@ -79,7 +79,7 @@ func TestSignatureArrowsWalkLinesThenLeave(t *testing.T) {
 		t.Fatalf("up to the first line should stay inside, focus = %v", am.focusedField)
 	}
 	am = sendKey(am, up)
-	if am.focusedField != amFieldFrom {
+	if am.focusedField != amFieldAddressViews {
 		t.Fatalf("up from the first line should leave, focus = %v", am.focusedField)
 	}
 }
