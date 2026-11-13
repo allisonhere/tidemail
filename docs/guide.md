@@ -835,8 +835,15 @@ same templates; see the [command line](cli.md).
 ## Contacts
 
 Press `C` to open Contacts. Press `n` to add someone, `f` to browse addresses
-found in your mail, `i` to import a vCard, or `x` to export `contacts.vcf`.
+found in your mail, `i` to import vCards, or `x` to export `contacts.vcf`.
 Select contacts with `Space`, then press `c` to write to them.
+
+In the import picker, choose a `.vcf` file, or choose the first row, **import
+every .vcf file in this folder**, to read a whole address book at once (a
+vdirsyncer or Nextcloud folder, for example). Subfolders are not searched. Press
+`.` to show hidden files and folders such as `~/.contacts`. A card with no email
+address cannot be saved, so the import tells you how many it skipped, and a
+file that cannot be read is counted without stopping the rest.
 
 Compose suggestions show saved contacts before addresses gathered from your
 mail. To search an address book TideMail does not hold (CardDAV, khard and the

@@ -286,7 +286,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{keys.Edit.Help().Key, "edit selected contact"},
 				{keys.Delete.Help().Key, "delete selected contact(s)"},
 				{"f", "add addresses already seen in mail"},
-				{"i/x", "import/export vCard name, email, phone, org, title, note"},
+				{"i/x", "import/export vCard name, email, phone, org, title, note (import: pick a file, or the first row to read every .vcf in a folder; . shows hidden files; cards without an email are counted, not saved)"},
 				{keys.Tab.Help().Key, "next contact form field"},
 				{"Seen picker", "type to filter; space selects; enter/a adds"},
 				{"File picker", "enter opens/selects; h/left goes parent; letters jump"},

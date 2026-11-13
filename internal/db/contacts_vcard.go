@@ -2,38 +2,69 @@ package db
 
 import (
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/emersion/go-vcard"
 )
 
+// VCardImport is what an import did. A card with no email address cannot be
+// kept (contacts are keyed by address), so it is counted instead of dropped
+// silently.
+type VCardImport struct {
+	Added   int // new contacts saved
+	Cards   int // cards read
+	NoEmail int // cards skipped because they have no email address
+}
+
+// Add folds another result into r.
+func (r *VCardImport) Add(o VCardImport) {
+	r.Added += o.Added
+	r.Cards += o.Cards
+	r.NoEmail += o.NoEmail
+}
+
+// ImportVCard reads vCards from r and returns how many contacts it added.
 func (db *DB) ImportVCard(r io.Reader) (int, error) {
+	res, err := db.ImportVCardCounts(r)
+	return res.Added, err
+}
+
+// ImportVCardCounts is ImportVCard with a full account of what was skipped.
+func (db *DB) ImportVCardCounts(r io.Reader) (VCardImport, error) {
 	dec := vcard.NewDecoder(r)
-	added := 0
+	var res VCardImport
 	for {
 		card, err := dec.Decode()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return added, err
+			return res, err
 		}
+		res.Cards++
 		name := vcardDisplayName(card)
 		meta := vcardContactMetadata(card)
+		hasEmail := false
 		for _, field := range card[vcard.FieldEmail] {
 			if field == nil || strings.TrimSpace(field.Value) == "" {
 				continue
 			}
+			hasEmail = true
 			id, err := db.AddContactWithMetadata(field.Value, name, "vcard", meta)
 			if err != nil {
-				return added, err
+				return res, err
 			}
 			if id != 0 {
-				added++
+				res.Added++
 			}
 		}
+		if !hasEmail {
+			res.NoEmail++
+		}
 	}
-	return added, nil
+	return res, nil
 }
 
 func vcardDisplayName(card vcard.Card) string {
@@ -116,4 +147,44 @@ func (db *DB) ExportVCard(w io.Writer) error {
 		}
 	}
 	return nil
+}
+
+// VCardDirImport is what importing a folder of .vcf files did.
+type VCardDirImport struct {
+	VCardImport
+	Files     int    // .vcf files found
+	Failed    int    // files that could not be read or parsed
+	FirstFail string // the first failing file, with its reason, for the status line
+}
+
+// ImportVCardDir imports every .vcf file directly inside dir (subfolders are
+// not searched, so one address book is one folder, as vdirsyncer lays them
+// out). A file that fails does not stop the rest: it is counted and the import
+// carries on, so one odd card cannot hide the other hundreds.
+func (db *DB) ImportVCardDir(dir string) (VCardDirImport, error) {
+	var res VCardDirImport
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return res, err
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.EqualFold(filepath.Ext(e.Name()), ".vcf") {
+			continue
+		}
+		res.Files++
+		f, err := os.Open(filepath.Join(dir, e.Name()))
+		if err == nil {
+			var one VCardImport
+			one, err = db.ImportVCardCounts(f)
+			_ = f.Close()
+			res.Add(one) // keep what was read before any error in this file
+		}
+		if err != nil {
+			res.Failed++
+			if res.FirstFail == "" {
+				res.FirstFail = e.Name() + ": " + err.Error()
+			}
+		}
+	}
+	return res, nil
 }
