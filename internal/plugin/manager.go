@@ -220,7 +220,7 @@ func (m *Manager) Errors() []DiscoveryError {
 // (MessageMetadata) and are refused here, so the check cannot be bypassed.
 func (m *Manager) Call(ctx context.Context, pluginID, method string, data json.RawMessage) (Response, error) {
 	if method == MethodMessageMetadata || method == EventMessageReceived || method == MethodReportRun ||
-		method == MethodMessageDecode || method == MethodMessagePrepare {
+		method == MethodMessageDecode || method == MethodMessagePrepare || method == MethodContactsSearch {
 		return Response{}, fmt.Errorf("plugin %q: %s must go through its permission-checked entry point", pluginID, method)
 	}
 	p, ok := m.Plugin(pluginID)

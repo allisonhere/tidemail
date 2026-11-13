@@ -459,6 +459,7 @@ read-only queries are covered in [queries](docs/plugins/queries.md) and
 [examples/plugins/analytics](examples/plugins/analytics/). The
 [PGP plugin](https://github.com/allisonhere/tidemail-plugins/tree/main/plugins/pgp)
 shows the `message_raw` and `message_compose` permissions.
+A plugin with the `contacts_read` permission can serve as an external address book: name it under `[contacts] provider` and press `Ctrl+T` in a recipient field.
 
 ## Keys worth learning
 

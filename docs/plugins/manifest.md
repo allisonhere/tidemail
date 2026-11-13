@@ -54,6 +54,7 @@ network = false
 message_body = false
 message_raw = false                  # decrypt/verify received mail (message.decode)
 message_compose = false              # sign/encrypt outgoing mail (message.prepare)
+contacts_read = false                # look up recipients (contacts.search)
 messages_query = false               # read-only queries (report.run)
 threads_query = false
 annotations_query = false
@@ -146,8 +147,8 @@ report.run
 
 ### `[permissions]` (optional)
 
-Ten booleans, all `false` by default: `message_metadata`, `annotations`,
-`network`, `message_body`, `message_raw`, `message_compose`, and the read-only query permissions
+Eleven booleans, all `false` by default: `message_metadata`, `annotations`,
+`network`, `message_body`, `message_raw`, `message_compose`, `contacts_read`, and the read-only query permissions
 `messages_query`, `threads_query`, `annotations_query`, `analytics_read`. What
 each one allows (and what it cannot prevent) is in
 [permissions.md](permissions.md).

@@ -25,6 +25,7 @@ type Config struct {
 	DefaultAccountID string `toml:"default_account"`
 
 	Display  DisplayConfig   `toml:"display"`
+	Contacts ContactsConfig  `toml:"contacts"`
 	Feed     FeedConfig      `toml:"feed"`
 	Updates  UpdatesConfig   `toml:"updates"`
 	AI       AIConfig        `toml:"ai"`
@@ -34,6 +35,14 @@ type Config struct {
 	// Plugins holds per-plugin user settings for the experimental plugin
 	// system, keyed by plugin ID. A missing entry means every setting is off.
 	Plugins PluginSettingsMap `toml:"plugins,omitempty"`
+}
+
+// ContactsConfig chooses where recipient lookups beyond TideMail's own contacts
+// come from.
+type ContactsConfig struct {
+	// Provider is the ID of an installed plugin that declares the
+	// contacts_read permission. Empty means no external lookup.
+	Provider string `toml:"provider,omitempty"`
 }
 
 // PluginSettings is one plugin's user settings.

@@ -1832,6 +1832,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case OutgoingProtectedMsg:
 		return m.handleOutgoingProtected(msg)
 
+	case ContactsFoundMsg:
+		return m.handleContactsFound(msg)
+
 	case CommitSendMsg:
 		m.invalidateComposePanes()
 		return m, m.commitPendingSend(msg.ID)
@@ -3777,6 +3780,9 @@ func (m Model) handleCompose(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.sizeCompose()
 	searching := (m.compose.focusedField == composeFieldBody && m.compose.bodyInput.ed.SearchActive()) ||
 		(m.compose.tmplOpen && m.compose.tmplEditing && m.compose.tmplEd.ed.SearchActive())
+	if km, ok := msg.(tea.KeyMsg); ok && !m.compose.busy && keyMatches(km, m.keys.LookupContacts) && m.compose.focusedRecipientInput() != nil {
+		return m.lookupContacts()
+	}
 	// Intercept grammar check key before compose gets it
 	if km, ok := msg.(tea.KeyMsg); ok && !m.compose.busy && !searching && keyMatches(km, m.keys.GrammarCheck) {
 		// Only check the reply the user wrote, not the quoted/forwarded original.

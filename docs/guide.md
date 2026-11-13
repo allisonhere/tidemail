@@ -839,7 +839,12 @@ found in your mail, `i` to import a vCard, or `x` to export `contacts.vcf`.
 Select contacts with `Space`, then press `c` to write to them.
 
 Compose suggestions show saved contacts before addresses gathered from your
-mail. vCard imports and exports include names, email addresses, phone numbers,
+mail. To search an address book TideMail does not hold (CardDAV, khard and the
+like), install a plugin that declares the `contacts_read` permission, name it
+with `provider = "<plugin id>"` under `[contacts]` in `config.toml`, then press
+`Ctrl+T` in To, Cc or Bcc. The text you typed goes to the plugin, and its
+matches join the suggestions. They are never saved, and nothing runs while you
+type. vCard imports and exports include names, email addresses, phone numbers,
 organizations, titles, and notes. Adding or importing an address you already
 saved fills in missing details but never blanks a saved name; edit the contact
 to clear it.

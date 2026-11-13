@@ -1122,6 +1122,7 @@ func permissionChecklist(p plugin.Permissions, plain bool) []string {
 		mark(p.MessageBody, "Message body"),
 		mark(p.MessageRaw, "Decrypt/verify received mail"),
 		mark(p.MessageCompose, "Sign/encrypt outgoing mail"),
+		mark(p.ContactsRead, "Look up contacts"),
 		mark(p.Network, "Network"),
 	}
 	for _, q := range []struct {
