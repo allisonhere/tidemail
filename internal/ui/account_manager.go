@@ -2560,7 +2560,7 @@ func (am AccountManager) viewConfirmDelete(width int, chrome managerChrome) stri
 		Foreground(chrome.text).
 		Width(width).
 		Padding(1, 2).
-		Render(fmt.Sprintf("Delete %q? All mailboxes and messages will be removed.", name))
+		Render(fmt.Sprintf("Delete %q? Cached mail, local drafts, attachments, and outbox items will be removed.", name))
 	actions := renderSoftHints(width, chrome, "y", "delete", "esc", "cancel")
 	return lipgloss.JoinVertical(lipgloss.Left, body, actions)
 }

@@ -243,6 +243,15 @@ func TestDeleteAccountRemovesItFromConfig(t *testing.T) {
 	if workID == 0 {
 		t.Fatalf("Work account not loaded: %#v", m.accounts)
 	}
+	legacyDraftID, err := database.SaveDraft(db.Draft{AccountName: "Work", AccountUser: "work@example.com",
+		Attachments: []db.DraftAttachment{{Filename: "work.txt", Data: []byte("work")}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.EnqueueOutbox(db.OutboxItem{AccountName: "Work", AccountUser: "work@example.com",
+		DraftID: legacyDraftID, MessageJSON: []byte(`{}`), DraftJSON: []byte(`{}`)}); err != nil {
+		t.Fatal(err)
+	}
 
 	delMsg := deleteAccountCmd(workID, workConfigID, "Work")().(AccountDeletedMsg)
 	if delMsg.Err != nil {
@@ -271,6 +280,12 @@ func TestDeleteAccountRemovesItFromConfig(t *testing.T) {
 	if len(m.cfg.Accounts) != 1 || m.cfg.Accounts[0].Name != "Personal" {
 		t.Fatalf("expected in-memory config to drop Work, got %#v", m.cfg.Accounts)
 	}
+	for _, query := range []string{`SELECT count(*) FROM drafts`, `SELECT count(*) FROM draft_attachments`, `SELECT count(*) FROM outbox`} {
+		var count int
+		if err := database.QueryRow(query).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("legacy account data left after delete: %s count=%d err=%v", query, count, err)
+		}
+	}
 
 	// The reload the completion handler kicks off must not resurrect the account.
 	if cmd == nil {
@@ -282,6 +297,21 @@ func TestDeleteAccountRemovesItFromConfig(t *testing.T) {
 	}
 	if len(reloaded.Accounts) != 1 || reloaded.Accounts[0].Name != "Personal" {
 		t.Fatalf("deleted account came back on reload: %#v", reloaded.Accounts)
+	}
+}
+
+func TestUnambiguousLegacyAccountUser(t *testing.T) {
+	request := AccountDeletedMsg{ConfigID: "cfg-a", AccountName: "Shared"}
+	accounts := []config.AccountConfig{
+		{ID: "cfg-a", Name: "Shared", User: "a@example.com"},
+		{ID: "cfg-b", Name: "Shared", User: "b@example.com"},
+	}
+	if got := unambiguousLegacyAccountUser(accounts, request); len(got) != 1 || got[0] != "a@example.com" {
+		t.Fatalf("unique legacy identity: %v", got)
+	}
+	accounts[1].User = "a@example.com"
+	if got := unambiguousLegacyAccountUser(accounts, request); len(got) != 0 {
+		t.Fatalf("ambiguous legacy identity must be preserved: %v", got)
 	}
 }
 

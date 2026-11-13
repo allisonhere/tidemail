@@ -197,12 +197,31 @@ func (db *DB) MigrateAccountConfigIDs(links []AccountLink) error {
 	return nil
 }
 
-func (db *DB) DeleteAccount(id int64) error {
+// DeleteAccount removes an account and its local mail in one transaction.
+// Pass a legacy user only when the account's (name, user) pair is unambiguous;
+// old drafts and outbox rows have no stable config ID to distinguish peers.
+func (db *DB) DeleteAccount(id int64, legacyUser ...string) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback() //nolint:errcheck
+	var configID, name string
+	if err := tx.QueryRow(`SELECT config_id, name FROM accounts WHERE id = ?`, id).Scan(&configID, &name); err != nil {
+		return err
+	}
+	for _, table := range []string{"outbox", "drafts"} {
+		if configID != "" {
+			if _, err := tx.Exec(`DELETE FROM `+table+` WHERE account_config_id = ?`, configID); err != nil {
+				return err
+			}
+		}
+		if len(legacyUser) > 0 {
+			if _, err := tx.Exec(`DELETE FROM `+table+` WHERE account_config_id = '' AND account_name = ? AND account_user = ?`, name, legacyUser[0]); err != nil {
+				return err
+			}
+		}
+	}
 	if _, err := tx.Exec(`DELETE FROM messages_fts WHERE rowid IN (SELECT messages.id FROM messages JOIN mailboxes ON messages.mailbox_id = mailboxes.id WHERE mailboxes.account_id = ?)`, id); err != nil {
 		return err
 	}

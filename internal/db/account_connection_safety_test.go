@@ -147,6 +147,79 @@ func TestDeleteAccountFTSCleanupIsAtomicAndScoped(t *testing.T) {
 	}
 }
 
+func TestDeleteAccountRemovesOwnedDraftsAttachmentsAndOutboxAtomically(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(fmt.Sprint(fail), func(t *testing.T) {
+			d, err := OpenPath(filepath.Join(t.TempDir(), "mail.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { d.Close() })
+			accountID, err := d.AddAccount("cfg-target", "Shared", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := d.AddAccount("cfg-peer", "Shared", ""); err != nil {
+				t.Fatal(err)
+			}
+			type ownedRow struct {
+				draftID, outboxID int64
+				remove            bool
+			}
+			var rows []ownedRow
+			for _, tc := range []struct {
+				configID, name, user string
+				remove               bool
+			}{
+				{"cfg-target", "Old name", "old@example.com", true},
+				{"", "Shared", "target@example.com", true},
+				{"cfg-peer", "Shared", "target@example.com", false},
+				{"", "Shared", "peer@example.com", false},
+			} {
+				draftID, err := d.SaveDraft(Draft{AccountConfigID: tc.configID, AccountName: tc.name, AccountUser: tc.user,
+					Subject: "saved", Attachments: []DraftAttachment{{Filename: "data.txt", Data: []byte("data")}}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				outboxID, err := d.EnqueueOutbox(OutboxItem{AccountConfigID: tc.configID, AccountName: tc.name,
+					AccountUser: tc.user, DraftID: draftID, MessageJSON: []byte(`{}`), DraftJSON: []byte(`{}`)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				rows = append(rows, ownedRow{draftID: draftID, outboxID: outboxID, remove: tc.remove})
+			}
+			if fail {
+				if _, err := d.Exec(`CREATE TRIGGER fail_account_delete BEFORE DELETE ON accounts BEGIN SELECT RAISE(ABORT,'forced account failure'); END`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err = d.DeleteAccount(accountID, "target@example.com")
+			if (err != nil) != fail {
+				t.Fatalf("DeleteAccount error=%v, fail=%v", err, fail)
+			}
+			for _, row := range rows {
+				want := 1
+				if row.remove && !fail {
+					want = 0
+				}
+				for _, check := range []struct {
+					query string
+					id    int64
+				}{
+					{`SELECT count(*) FROM drafts WHERE id = ?`, row.draftID},
+					{`SELECT count(*) FROM draft_attachments WHERE draft_id = ?`, row.draftID},
+					{`SELECT count(*) FROM outbox WHERE id = ?`, row.outboxID},
+				} {
+					var got int
+					if err := d.QueryRow(check.query, check.id).Scan(&got); err != nil || got != want {
+						t.Fatalf("%s id=%d: got %d, want %d, err=%v", check.query, check.id, got, want, err)
+					}
+				}
+			}
+		})
+	}
+}
+
 // SQLite refuses a file: URI whose authority is not empty or "localhost". On
 // Windows a drive-letter path used to land in the authority (file://C:/...),
 // so TideMail could not open its database at all there.

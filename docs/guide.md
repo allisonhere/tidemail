@@ -92,6 +92,9 @@ tidemail
 ```
 
 Press `M` to open the account manager, then add your IMAP and SMTP details.
+Deleting an account there removes its cached mail, local drafts and attachments,
+and outbox items from TideMail. Mail on the server is unaffected.
+
 Gmail, Outlook, Yahoo, and iCloud have their servers built in. For a **Custom**
 account, TideMail can look the servers up from your email address: type the
 address in the **Email / login** row at the top of the form and move on, and

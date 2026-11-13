@@ -4987,11 +4987,29 @@ func deleteAccountDatabaseCmd(database *db.DB, request AccountDeletedMsg, previo
 			result.Err = fmt.Errorf("database unavailable")
 			return result
 		}
-		if err := database.DeleteAccount(request.AccountID); err != nil {
+		if err := database.DeleteAccount(request.AccountID, unambiguousLegacyAccountUser(previousCfg.Accounts, request)...); err != nil {
 			result.Err = fmt.Errorf("delete account database: %w", err)
 		}
 		return result
 	}
+}
+
+func unambiguousLegacyAccountUser(accounts []config.AccountConfig, request AccountDeletedMsg) []string {
+	for _, account := range accounts {
+		if account.ID != request.ConfigID || account.Name != request.AccountName {
+			continue
+		}
+		matches := 0
+		for _, other := range accounts {
+			if other.Name == account.Name && other.User == account.User {
+				matches++
+			}
+		}
+		if matches == 1 {
+			return []string{account.User}
+		}
+	}
+	return nil
 }
 
 // persistAccountConfigChange applies mutate to a copy of the config and writes
