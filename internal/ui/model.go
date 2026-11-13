@@ -1582,12 +1582,18 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.readAnimationRunning || msg.Generation != m.readAnimationGeneration {
 			return m, nil
 		}
+		var expired tea.Cmd
+		if n := m.expireStaleReads(time.Now()); n > 0 {
+			m.invalidateComposePanes()
+			m.setStatus("a read/unread change didn't finish; try it again", true)
+			expired = m.clearStatusCmd()
+		}
 		if len(m.pendingReads) == 0 && !m.deleteFeedbackActive() {
 			m.readAnimationRunning = false
-			return m, nil
+			return m, expired
 		}
 		m.readAnimationFrame = (m.readAnimationFrame + 1) % len(readAnimationFrames)
-		return m, readAnimationTick(m.readAnimationGeneration)
+		return m, tea.Batch(expired, readAnimationTick(m.readAnimationGeneration))
 	case readRemoteCompletedMsg:
 		cmd := m.finishReadChanges(msg)
 		return m, cmd
@@ -2412,19 +2418,26 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			if m.hasSelection() {
 				cmd := m.setSelectedMessagesReadCmd(msgs)
+				if cmd == nil {
+					cmd = m.readStillSavingNotice(msgs)
+				}
 				m.clearSelection()
 				return m, cmd
 			}
 			thread := m.currentParentThread()
 			if m.currentConversationCollapsed() {
 				if m.rowReadPending(thread.Representative, *thread) {
-					return m, nil
+					return m, m.readStillSavingNotice(nil)
 				}
 				read := thread.UnreadCount > 0
 				return m, m.acceptReadChanges(thread.Messages, &read, read)
 			}
 			msg2 := msgs[0]
-			return m, m.setMessageReadCmd(msg2, !msg2.Read, !msg2.Read)
+			cmd := m.setMessageReadCmd(msg2, !msg2.Read, !msg2.Read)
+			if cmd == nil {
+				cmd = m.readStillSavingNotice(msgs[:1])
+			}
+			return m, cmd
 		}
 		return m, nil
 

@@ -33,6 +33,10 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- A read or unread change that never finished no longer leaves the message
+  showing the working spinner forever and ignoring later toggles. After 45
+  seconds TideMail releases it and says so. Pressing `x` on a message that is
+  still saving now says so instead of doing nothing.
 - TideMail would not start on Windows since v1.8.0: it exited with `error
   opening database: init db: SQL logic error: out of memory (1)`. The database
   path was handed to SQLite as `file://C:/...`, so SQLite took `C:` for a host
