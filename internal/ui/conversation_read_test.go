@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"strings"
 	"testing"
@@ -220,9 +221,11 @@ func TestConversationReadDuplicateFailureAndReload(t *testing.T) {
 	m = next.(Model)
 	done := readRemoteResults(cmd)
 	awaitReadStore(t, entered)
-	next, duplicate := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	// A duplicate may start only the status timer (it says "still saving"), so
+	// check that no read was started or replaced, not that no command ran.
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	m = next.(Model)
-	if duplicate != nil || len(m.pendingReads) != 3 {
+	if len(m.pendingReads) != 3 {
 		t.Fatal("duplicate collapsed request accepted")
 	}
 	release <- errors.New("read rejected")
@@ -406,9 +409,10 @@ func TestConversationReadUnifiedMailboxBatchesAndPartialFailure(t *testing.T) {
 				next, reload := m.Update(event)
 				m = settle(t, next.(Model), reload)
 				if i == 0 {
-					next, duplicate := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+					before := maps.Clone(m.pendingReads)
+					next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 					m = next.(Model)
-					if duplicate != nil {
+					if !maps.Equal(before, m.pendingReads) {
 						t.Fatal("collapsed operation restarted while another mailbox remained pending")
 					}
 				}
@@ -507,9 +511,9 @@ func TestConversationReadExpandedDuplicateDoesNotAdvanceAgain(t *testing.T) {
 	awaitReadStore(t, entered)
 	token := m.pendingReads[ids[0]].Token
 	m.messageCursor = m.indexOfFilteredMessage(ids[0])
-	next, duplicate := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	m = next.(Model)
-	if duplicate != nil || m.currentRowMessage().ID != ids[0] || len(m.pendingReads) != 1 || m.pendingReads[ids[0]].Token != token {
+	if m.currentRowMessage().ID != ids[0] || len(m.pendingReads) != 1 || m.pendingReads[ids[0]].Token != token {
 		t.Fatal("duplicate expanded request advanced or replaced pending operation")
 	}
 	// Return to the intentional next target before delivering confirmation.
