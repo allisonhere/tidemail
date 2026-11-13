@@ -8,6 +8,10 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- Look up recipients in an external address book through a plugin. A plugin
+  that declares `contacts_read` answers `contacts.search`; name it under
+  `[contacts] provider` and press `Ctrl+T` in To, Cc or Bcc. Matches join the
+  suggestions and are never stored. (First step toward #116.)
 - Configure additional From addresses on one account, choose them in compose,
   and keep the chosen address through drafts and queued retries, so iCloud+
   custom domains and other aliases can be sent from (#113).

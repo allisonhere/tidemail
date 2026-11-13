@@ -139,6 +139,7 @@ message.prepare
 | `report.run` | the user, with `enter` in the plugin list; once per round | `capabilities = ["report.run"]` | the round, context, your state, and query results | `{"queries": …, "state": …}`, `{"report": …}`, or `{"view": …}`; see [queries.md](queries.md) and [views.md](views.md) |
 | `message.decode` | the user opening a received message that is encrypted or signed; once per protected part | `message_raw` | one [decode request](#messagedecode) | the plaintext and a signature verdict |
 | `message.prepare` | the user sending a message with Sign or Encrypt on | `message_compose` | one [prepare request](#messageprepare) | an armored signature or an armored encrypted message |
+| `contacts.search` | the user pressing `ctrl+t` in a recipient field | `contacts_read`, and the user naming the plugin in `[contacts] provider` | one [search request](#contactssearch) | a list of matching contacts |
 
 `message.metadata` and `message.received` go through the same permission
 checks, validation, and storage. Treat them the same way; the method name
@@ -263,3 +264,25 @@ unprotected.
 
 Both methods may wait on a passphrase or smartcard prompt, so they get the
 manifest's `timeout` (up to 120 seconds) instead of the 5-second default.
+
+### `contacts.search`
+
+Sent, with the `contacts_read` permission, when the user presses `ctrl+t` in
+To, Cc or Bcc and the plugin is named in `[contacts] provider`. It is never
+sent while the user types, and it times out after 5 seconds.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `query` | string | The recipient text being typed, trimmed, at most 200 characters. |
+| `limit` | number | The most matches TideMail will show (50). |
+
+Answer with:
+
+```json
+{"contacts": [{"addr": "ann@example.com", "name": "Ann Lee"}]}
+```
+
+`addr` must be one bare address (no display name). `name` is optional. A match
+with an invalid address, a control character or an escape sequence is dropped,
+and the list is cut to the limit. TideMail shows at most five matches and
+stores none of them. An error is shown in compose and changes nothing.

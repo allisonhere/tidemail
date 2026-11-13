@@ -80,6 +80,7 @@ GrammarCheck,ctrl+g,ctrl+g,AI grammar check,compose
 SpellCheck,f7,f7,offline spell check (needs Settings → Editor → Spell check),compose
 PGPSign,"alt+s,f8",alt+s,sign with PGP (needs a PGP plugin),compose
 PGPEncrypt,"alt+e,f9",alt+e,encrypt with PGP (needs a PGP plugin),compose
+LookupContacts,ctrl+t,ctrl+t,look up the typed recipient with the contacts provider plugin ([contacts] provider),compose
 RemoveAttach,ctrl+r,ctrl+r,remove attachment,compose
 CycleSender,ctrl+u,ctrl+u,cycle account or From address,compose
 Confirm,enter,enter,confirm,overlay

@@ -32,6 +32,10 @@ type Permissions struct {
 	// MessageCompose allows TideMail to send an outgoing message's content to
 	// message.prepare, which signs and/or encrypts it.
 	MessageCompose bool `toml:"message_compose" json:"message_compose,omitempty"`
+	// ContactsRead allows TideMail to send the text typed in a recipient field
+	// to contacts.search and show the matches as suggestions. Nothing the
+	// plugin returns is stored.
+	ContactsRead bool `toml:"contacts_read" json:"contacts_read,omitempty"`
 
 	// The read-only query permissions below let TideMail disclose selected
 	// structured data to a plugin during a report (see query.go). They never
@@ -65,6 +69,7 @@ func (p Permissions) Names() []string {
 		{p.Annotations, "annotations"},
 		{p.MessageRaw, "raw message"},
 		{p.MessageCompose, "compose"},
+		{p.ContactsRead, "contacts"},
 		{p.MessagesQuery, "messages query"},
 		{p.ThreadsQuery, "threads query"},
 		{p.AnnotationsQuery, "annotations query"},

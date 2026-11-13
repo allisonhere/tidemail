@@ -25,6 +25,7 @@ type KeyMap struct {
 	PGPDecode       key.Binding
 	PGPSign         key.Binding
 	PGPEncrypt      key.Binding
+	LookupContacts  key.Binding
 	EditTags        key.Binding
 	MarkAllRead     key.Binding
 	ToggleStar      key.Binding
@@ -211,6 +212,8 @@ var DefaultKeys = KeyMap{
 	Templates:    key.NewBinding(key.WithKeys("f6"), key.WithHelp("f6", "templates")),
 	PGPSign:      key.NewBinding(key.WithKeys("alt+s", "f8"), key.WithHelp("alt+s", "sign (PGP)")),
 	PGPEncrypt:   key.NewBinding(key.WithKeys("alt+e", "f9"), key.WithHelp("alt+e", "encrypt (PGP)")),
+
+	LookupContacts: key.NewBinding(key.WithKeys("ctrl+t"), key.WithHelp("ctrl+t", "look up contact")),
 
 	RemoveAttach: key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "remove attachment")),
 
