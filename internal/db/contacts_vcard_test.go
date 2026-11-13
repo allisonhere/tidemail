@@ -2,6 +2,8 @@ package db
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -145,5 +147,68 @@ func TestImportVCardWithoutNameKeepsSavedName(t *testing.T) {
 	}
 	if got := contactName(t, d, id); got != "Ann Lee" {
 		t.Fatalf("nameless vCard erased the saved name: got %q", got)
+	}
+}
+
+// A card with no EMAIL line cannot be saved. It must be counted, not dropped
+// without a word. These are two cards from a real Radicale address book that
+// look alike but differ in exactly this.
+func TestImportVCardCountsCardsWithoutEmail(t *testing.T) {
+	const cards = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Tom Kettle\r\nN:Kettle;Tom;;;\r\nEMAIL;TYPE=home:tkettle@mail.com\r\nEND:VCARD\r\n" +
+		"BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Joe & Jane Binger\r\nN:Binger;Joe & Jane;;;\r\nADR;TYPE=home:;;;Bradenton;FL;;\r\nEND:VCARD\r\n"
+	d := newTestDB(t)
+	res, err := d.ImportVCardCounts(strings.NewReader(cards))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Cards != 2 || res.Added != 1 || res.NoEmail != 1 {
+		t.Fatalf("result = %+v, want 2 cards, 1 added, 1 without email", res)
+	}
+}
+
+func TestImportVCardDir(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	card := func(fn, email string) string {
+		s := "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:" + fn + "\r\n"
+		if email != "" {
+			s += "EMAIL:" + email + "\r\n"
+		}
+		return s + "END:VCARD\r\n"
+	}
+	write("a.vcf", card("Ann", "ann@example.com"))
+	write("B.VCF", card("Bob", "bob@example.com"))
+	write("nomail.vcf", card("Nobody", ""))
+	write("broken.vcf", "BEGIN:VCARD\r\nFN:Broken\r\n")
+	write("notes.txt", card("Ignored", "ignored@example.com"))
+	if err := os.Mkdir(filepath.Join(dir, "sub.vcf"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "deeper"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "deeper", "c.vcf"), []byte(card("Cy", "cy@example.com")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	d := newTestDB(t)
+	res, err := d.ImportVCardDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Files != 4 || res.Added != 2 || res.NoEmail != 1 || res.Failed != 1 {
+		t.Fatalf("result = %+v, want 4 files, 2 added, 1 without email, 1 failed", res)
+	}
+	if !strings.HasPrefix(res.FirstFail, "broken.vcf:") {
+		t.Fatalf("FirstFail = %q", res.FirstFail)
+	}
+	got, _ := d.ListContacts()
+	if len(got) != 2 {
+		t.Fatalf("saved %d contacts, want 2 (subfolders and non-.vcf files are not read)", len(got))
 	}
 }

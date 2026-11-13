@@ -288,6 +288,17 @@ func (cm *ContactManager) setFormFocus(index int) {
 	cm.focusEmail = cm.formFocus == 1
 }
 
+// Rows at the top of the file picker that act on the folder being viewed
+// instead of opening an entry.
+const (
+	selectFolderRow = "✓ select this folder"                    // export: write contacts.vcf here
+	importFolderRow = "✓ import every .vcf file in this folder" // import: read the whole folder
+)
+
+func isFolderActionRow(name string) bool {
+	return name == selectFolderRow || name == importFolderRow
+}
+
 func (cm *ContactManager) beginFilePicker(importing bool) {
 	cm.mode = cmPickFile
 	cm.importing = importing
@@ -523,24 +534,26 @@ func (cm *ContactManager) openContactFilePicker(dir string) {
 	}
 
 	var fe []fileEntry
-	if !cm.importing {
-		fe = append(fe, fileEntry{name: "✓ select this folder", isDir: false, size: 0})
+	if cm.importing {
+		fe = append(fe, fileEntry{name: importFolderRow})
+	} else {
+		fe = append(fe, fileEntry{name: selectFolderRow})
 	}
 	if dir != "/" {
 		fe = append(fe, fileEntry{name: "..", isDir: true})
 	}
 	for _, entry := range entries {
 		info, err := entry.Info()
-		if err != nil || strings.HasPrefix(entry.Name(), ".") {
+		if err != nil || (!cm.filePicker.showHidden && strings.HasPrefix(entry.Name(), ".")) {
 			continue
 		}
 		fe = append(fe, fileEntry{name: entry.Name(), isDir: entry.IsDir(), size: info.Size()})
 	}
 	sort.Slice(fe, func(i, j int) bool {
-		if fe[i].name == "✓ select this folder" {
+		if isFolderActionRow(fe[i].name) {
 			return true
 		}
-		if fe[j].name == "✓ select this folder" {
+		if isFolderActionRow(fe[j].name) {
 			return false
 		}
 		if fe[i].isDir != fe[j].isDir {
@@ -579,6 +592,10 @@ func (cm ContactManager) updateFilePicker(msg tea.Msg, keys KeyMap) (ContactMana
 		return cm, nil, false
 	case keyMatches(km, keys.Enter):
 		return cm.confirmFilePicker(), nil, false
+	case km.String() == ".":
+		cm.filePicker.showHidden = !cm.filePicker.showHidden
+		cm.openContactFilePicker(cm.filePicker.currentDir)
+		return cm, nil, false
 	}
 	if len(km.String()) == 1 && ((km.String() >= "a" && km.String() <= "z") || (km.String() >= "A" && km.String() <= "Z")) {
 		lower := strings.ToLower(km.String())
@@ -597,6 +614,9 @@ func (cm ContactManager) confirmFilePicker() ContactManager {
 		return cm
 	}
 	entry := cm.filePicker.entries[cm.filePicker.cursor]
+	if cm.importing && entry.name == importFolderRow {
+		return cm.importFolder(cm.filePicker.currentDir)
+	}
 	if entry.isDir {
 		if entry.name == ".." {
 			cm.openContactFilePicker(filepath.Dir(cm.filePicker.currentDir))
@@ -613,14 +633,15 @@ func (cm ContactManager) confirmFilePicker() ContactManager {
 			return cm
 		}
 		defer f.Close()
-		n, err := cm.db.ImportVCard(f)
+		res, err := cm.db.ImportVCardCounts(f)
 		if err != nil {
 			cm.setStatus("import failed: "+err.Error(), true)
 			return cm
 		}
 		cm.mode = cmList
 		cm.reload()
-		cm.setStatus(fmt.Sprintf("imported %d contacts", n), false)
+		msg, isErr := importSummary(res, 0, 0, "")
+		cm.setStatus(msg, isErr)
 		return cm
 	}
 	path := filepath.Join(cm.filePicker.currentDir, "contacts.vcf")
@@ -874,7 +895,7 @@ func (cm ContactManager) viewFilePicker(width, height int, chrome managerChrome)
 			fg = chrome.text
 		case entry.isDir:
 			fg = chrome.accent
-		case entry.name == "✓ select this folder":
+		case isFolderActionRow(entry.name):
 			fg = chrome.successFg
 		}
 		cell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(fg).Render(" " + truncate(label, max(1, labelW-1)))
@@ -893,13 +914,49 @@ func (cm ContactManager) viewFilePicker(width, height int, chrome managerChrome)
 	if !cm.importing {
 		action = "open/export"
 	}
-	parts = append(parts, renderSoftHints(width, chrome, "enter", action, "←", "parent", "esc", "cancel"))
+	parts = append(parts, renderSoftHints(width, chrome, "enter", action, "←", "parent", ".", "hidden", "esc", "cancel"))
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+// importFolder imports every .vcf file in dir.
+func (cm ContactManager) importFolder(dir string) ContactManager {
+	res, err := cm.db.ImportVCardDir(dir)
+	if err != nil {
+		cm.setStatus("import failed: "+err.Error(), true)
+		return cm
+	}
+	if res.Files == 0 {
+		cm.setStatus("no .vcf files in this folder", true)
+		return cm
+	}
+	cm.mode = cmList
+	cm.reload()
+	msg, isErr := importSummary(res.VCardImport, res.Files, res.Failed, res.FirstFail)
+	cm.setStatus(msg, isErr)
+	return cm
+}
+
+// importSummary words an import's outcome. Cards that were skipped or files
+// that failed are always mentioned, so an import never quietly drops contacts.
+// files is 0 for a single-file import. A result that saved nothing is shown as
+// an error, since that is almost never what the user wanted.
+func importSummary(r db.VCardImport, files, failed int, firstFail string) (string, bool) {
+	msg := fmt.Sprintf("imported %d contacts", r.Added)
+	if files > 0 {
+		msg += fmt.Sprintf(" from %d files", files)
+	}
+	if r.NoEmail > 0 {
+		msg += fmt.Sprintf("; skipped %d cards with no email address", r.NoEmail)
+	}
+	if failed > 0 {
+		msg += fmt.Sprintf("; %d files failed (%s)", failed, firstFail)
+	}
+	return msg, r.Added == 0 && (r.NoEmail > 0 || failed > 0)
 }
 
 func contactFileEntryLabel(entry fileEntry) string {
 	switch {
-	case entry.name == "✓ select this folder":
+	case isFolderActionRow(entry.name):
 		return entry.name
 	case entry.isDir && entry.name == "..":
 		return "📁 ../"

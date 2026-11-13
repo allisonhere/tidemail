@@ -8,6 +8,10 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- Import a whole folder of contact files: in the contact import picker, the
+  first row reads every `.vcf` file in the folder you are in (a vdirsyncer or
+  Nextcloud address book is one folder of `.vcf` files). One unreadable file
+  no longer stops the rest. (#125, #116)
 - Look up recipients in an external address book through a plugin. A plugin
   that declares `contacts_read` answers `contacts.search`; name it under
   `[contacts] provider` and press `Ctrl+T` in To, Cc or Bcc. Matches join the
@@ -33,6 +37,10 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Importing contacts now says how many cards it skipped because they have no
+  email address, instead of importing fewer contacts without a word. (#116)
+- The contact import picker can show hidden files and folders with `.`, like
+  the attachment picker. (#124)
 - TideMail would not start on Windows since v1.8.0: it exited with `error
   opening database: init db: SQL logic error: out of memory (1)`. The database
   path was handed to SQLite as `file://C:/...`, so SQLite took `C:` for a host
