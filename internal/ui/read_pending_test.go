@@ -350,10 +350,13 @@ func TestServerConfirmedReadViewsAndMultiplePending(t *testing.T) {
 			awaitReadStore(t, entered)
 			// Returning to the pending message must not toggle it or advance again.
 			m.messageCursor = 0
-			next, duplicate := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+			pendingBefore := len(m.pendingReads)
+			next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 			m = next.(Model)
-			if duplicate != nil || m.messageCursor != 0 {
-				t.Fatal("duplicate key accepted")
+			// The only thing a duplicate may start is the status timer: no new
+			// read, no cursor move, and it says why nothing happened.
+			if len(m.pendingReads) != pendingBefore || m.messageCursor != 0 || !strings.Contains(m.statusMsg, "still saving") {
+				t.Fatalf("duplicate key accepted or unexplained: pending %d->%d cursor=%d status=%q", pendingBefore, len(m.pendingReads), m.messageCursor, m.statusMsg)
 			}
 			m.messageCursor = 1
 			next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})

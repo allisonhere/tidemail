@@ -17,7 +17,53 @@ type pendingRead struct {
 	Token     uint64
 	Read      bool
 	MailboxID int64
+	// Started is when the change was queued. A zero value means "never
+	// expire", which keeps hand-built test entries alive.
+	Started time.Time
 }
+
+// readPendingMaxAge is how long a read or unread change may stay pending. The
+// server call gives up after 30 seconds, so anything older has lost its
+// completion message (or is blocked outside that timeout). Without this, the
+// message would show the working indicator forever and ignore every later
+// read toggle.
+const readPendingMaxAge = 45 * time.Second
+
+// readStillSavingNotice explains a read toggle that did nothing because the
+// message's last change is still being saved. A key that silently does nothing
+// reads as the app being broken. With no messages it assumes the caller already
+// knows a change is pending (the collapsed-thread check).
+func (m *Model) readStillSavingNotice(msgs []db.Message) tea.Cmd {
+	if m.statusErr {
+		return nil // never replace a real error with a hint
+	}
+	pending := msgs == nil
+	for _, msg := range msgs {
+		if _, ok := m.pendingReads[msg.ID]; ok {
+			pending = true
+			break
+		}
+	}
+	if !pending {
+		return nil
+	}
+	m.setStatus("still saving the last change to this message; try again in a moment", false)
+	return m.clearStatusCmd()
+}
+
+// expireStaleReads releases pending changes older than readPendingMaxAge and
+// reports how many it released.
+func (m *Model) expireStaleReads(now time.Time) int {
+	n := 0
+	for id, pending := range m.pendingReads {
+		if !pending.Started.IsZero() && now.Sub(pending.Started) > readPendingMaxAge {
+			delete(m.pendingReads, id)
+			n++
+		}
+	}
+	return n
+}
+
 type readRemoteCompletedMsg struct {
 	Token   uint64
 	IDs     []int64
@@ -80,7 +126,7 @@ func (m *Model) acceptReadChanges(messages []db.Message, target *bool, advance b
 		token := m.nextReadOperation
 		ids := messageIDs(b.messages)
 		for _, entry := range b.entries {
-			m.pendingReads[entry.MessageID] = pendingRead{Token: token, Read: entry.Read, MailboxID: entry.MailboxID}
+			m.pendingReads[entry.MessageID] = pendingRead{Token: token, Read: entry.Read, MailboxID: entry.MailboxID, Started: time.Now()}
 		}
 		database, sessions := m.db, m.sessions
 		withSession := m.readSession
