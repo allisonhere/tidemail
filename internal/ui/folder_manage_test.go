@@ -685,6 +685,50 @@ func TestHidingHiddenFoldersClearsTheListOfAHiddenSelectedFolder(t *testing.T) {
 	}
 }
 
+func TestRemovingSelectedFolderLoadsNewSidebarSelection(t *testing.T) {
+	for _, action := range []string{"delete", "hide", "hide-hidden"} {
+		t.Run(action, func(t *testing.T) {
+			m, database, accountID := folderManageModel(t)
+			zedID, err := database.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "Zed", Delimiter: "/"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := database.UpsertMessage(db.Message{MailboxID: zedID, UID: 1, Subject: "message in Zed"}); err != nil {
+				t.Fatal(err)
+			}
+			m.mailboxes = mustListMailboxes(t, database, accountID)
+			m.rebuildSidebar()
+			workID := mailboxIDByName(t, m, "Work")
+			cursorOnMailbox(t, &m, workID)
+			m.messages = []db.Message{{ID: -1, Subject: "old folder"}}
+
+			var cmd tea.Cmd
+			switch action {
+			case "delete":
+				removed := []int64{workID, mailboxIDByName(t, m, "Work/Projects"), mailboxIDByName(t, m, "Work/Projects/Alpha")}
+				next, c := m.handleFolderDeleted(FolderDeletedMsg{Name: "Work", Removed: removed})
+				m, cmd = next.(Model), c
+			case "hide":
+				next, c := m.toggleHideSelectedFolder()
+				m, cmd = next.(Model), c
+			case "hide-hidden":
+				m.setPref(accountID, "Work", func(p *db.MailboxPref) { p.Hidden = true })
+				m.showHiddenFolders = true
+				m.rebuildSidebar()
+				next, c := m.toggleShowHiddenFolders()
+				m, cmd = next.(Model), c
+			}
+			m = settle(t, m, cmd)
+			if selected := m.selectedMailbox(); selected == nil || selected.ID != zedID {
+				t.Fatalf("selected folder after %s: %+v, want Zed", action, selected)
+			}
+			if len(m.messages) != 1 || m.messages[0].Subject != "message in Zed" {
+				t.Fatalf("message pane after %s: %+v", action, m.messages)
+			}
+		})
+	}
+}
+
 func TestShowingHiddenFoldersKeepsSelectedVisibleFolder(t *testing.T) {
 	m, _, accountID := folderManageModel(t)
 	m.setPref(accountID, "Sent", func(p *db.MailboxPref) { p.Hidden = true })

@@ -402,6 +402,9 @@ func syncPollInterval(syncMinutes int) (time.Duration, bool) {
 
 // scheduleNextSync arms the next background refresh for an account.
 func (m *Model) scheduleNextSync(accountID int64) tea.Cmd {
+	if m.syncTimerGeneration == nil {
+		m.syncTimerGeneration = make(map[int64]uint64)
+	}
 	for _, acc := range m.accounts {
 		if acc.ID != accountID {
 			continue
@@ -412,10 +415,16 @@ func (m *Model) scheduleNextSync(accountID int64) tea.Cmd {
 		}
 		interval, ok := syncPollInterval(acfg.SyncMinutes)
 		if !ok {
+			m.syncTimerGeneration[accountID]++
 			return nil
 		}
+		if acfg.SyncMinutes == 0 && m.idleWatchers[accountID].unsupported {
+			interval = idleFallbackPollInterval
+		}
+		m.syncTimerGeneration[accountID]++
+		generation := m.syncTimerGeneration[accountID]
 		return tea.Every(interval, func(t time.Time) tea.Msg {
-			return AutoSyncMsg{AccountID: accountID}
+			return AutoSyncMsg{AccountID: accountID, Generation: generation}
 		})
 	}
 	return nil
@@ -428,6 +437,8 @@ func (m *Model) scheduleNextSync(accountID int64) tea.Cmd {
 // nothing to show the user. This poll bounds that staleness without
 // reintroducing the per-minute chatter push exists to avoid.
 const pushSafetyPollInterval = 30 * time.Minute
+
+const idleFallbackPollInterval = 5 * time.Minute
 
 func (m *Model) startSyncTimers() tea.Cmd {
 	var cmds []tea.Cmd

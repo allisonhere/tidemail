@@ -130,6 +130,45 @@ func finishRead(t *testing.T, m Model, done <-chan tea.Msg) Model {
 	}
 }
 
+func TestMouseReaderFocusStartsMarkReadOnOpen(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		msg  func(Model) tea.MouseMsg
+	}{
+		{"left press", func(m Model) tea.MouseMsg { return leftClick(m.feedsPaneWidth()+2, m.readerMouseBoundsTop()) }},
+		{"right press", func(m Model) tea.MouseMsg {
+			return tea.MouseMsg{X: m.feedsPaneWidth() + 2, Y: m.readerMouseBoundsTop(), Action: tea.MouseActionPress, Button: tea.MouseButtonRight}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, entered, release := readPendingModel(t)
+			m.cfg.Display.MouseSupport = true
+			m.cfg.Display.MarkReadOnOpen = true
+			m.contentLines = []string{"reader text"}
+			m.contentLineCount = 1
+			msgID := m.currentRowMessage().ID
+			next, cmd := m.Update(tc.msg(m))
+			m = next.(Model)
+			if m.focused != paneContent || cmd == nil || m.pendingReads[msgID].Token == 0 {
+				t.Fatalf("reader focus lost read command: focus=%v cmd=%v pending=%v", m.focused, cmd != nil, m.pendingReads[msgID])
+			}
+			done := readRemoteResults(cmd)
+			awaitReadStore(t, entered)
+			release <- nil
+			m = finishRead(t, m, done)
+			stored, err := m.db.GetMessage(msgID)
+			if err != nil || !stored.Read || len(m.pendingReads) != 0 {
+				t.Fatalf("read did not complete: message=%+v pending=%v err=%v", stored, m.pendingReads, err)
+			}
+		})
+	}
+}
+
+func (m Model) readerMouseBoundsTop() int {
+	_, top, _, _ := m.readerMouseBounds()
+	return top
+}
+
 func TestServerConfirmedReadAcceptanceAndCompletion(t *testing.T) {
 	m, entered, release := readPendingModel(t)
 	msg, nextID := m.messages[0], m.messages[1].ID

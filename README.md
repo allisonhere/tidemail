@@ -280,6 +280,7 @@ local SQLite cache for speed and search, then reconciles it with the server on
 sync. By default an account uses IMAP IDLE, so mail lands as the server
 announces it (`sync_minutes = 0`); interval polling stays available for servers
 that need it, and `-1` keeps an account manual-only.
+If a push account's server lacks IDLE, TideMail reports it and checks every five minutes.
 
 Drafts live under the selected sender account. Sent messages use that account's
 SMTP settings and are filed in its server-side Sent folder; Gmail's own SMTP

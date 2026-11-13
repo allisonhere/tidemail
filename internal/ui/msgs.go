@@ -333,7 +333,8 @@ type AttachmentsSavedMsg struct {
 type StatusClearMsg struct{}
 
 type AutoSyncMsg struct {
-	AccountID int64
+	AccountID  int64
+	Generation uint64
 }
 
 // MailboxesRefreshedMsg reports the result of an account-level folder LIST.

@@ -597,6 +597,7 @@ func (m Model) handleFolderDeleted(msg FolderDeletedMsg) (tea.Model, tea.Cmd) {
 	if m.sidebarCursor >= 0 && m.sidebarCursor < len(m.sidebarRows) {
 		selectedGone = removed[m.sidebarRows[m.sidebarCursor].mailboxID]
 	}
+	var reloadCmd tea.Cmd
 	if len(removed) > 0 {
 		kept := m.mailboxes[:0:0]
 		for _, mb := range m.mailboxes {
@@ -610,14 +611,24 @@ func (m Model) handleFolderDeleted(msg FolderDeletedMsg) (tea.Model, tea.Cmd) {
 		m.rebuildSidebar()
 		if selectedGone {
 			m.clearMessages()
+			reloadCmd = m.reloadAfterFolderRemovalCmd()
 		}
 	}
 	if msg.Err != nil {
 		m.setStatus("delete folder failed: "+msg.Err.Error(), true)
-		return m, m.clearStatusCmd()
+		return m, tea.Batch(reloadCmd, m.clearStatusCmd())
 	}
 	m.setStatus("folder deleted: "+cleanDisplayName(msg.Name), false)
-	return m, m.clearStatusCmd()
+	return m, tea.Batch(reloadCmd, m.clearStatusCmd())
+}
+
+// A folder removal can change the sidebar selection while search keeps its
+// own view. Reload whichever message list is actually visible.
+func (m *Model) reloadAfterFolderRemovalCmd() tea.Cmd {
+	if m.searchActive() && m.searchQuery != "" {
+		return m.searchAllMessagesCmd(m.searchQuery)
+	}
+	return m.loadSelectedFolderCmd()
 }
 
 // folderPromptRow renders the inline name prompt.
@@ -682,9 +693,11 @@ func (m Model) toggleHideSelectedFolder() (tea.Model, tea.Cmd) {
 	m.setPref(mb.AccountID, mb.Name, func(p *db.MailboxPref) { p.Hidden = hide })
 	prev := m.sidebarCursor
 	m.rebuildSidebar()
+	var reloadCmd tea.Cmd
 	if hide && !m.showHiddenFolders {
 		m.sidebarCursor = clamp(prev, 0, max(0, len(m.sidebarRows)-1))
 		m.clearMessages()
+		reloadCmd = m.reloadAfterFolderRemovalCmd()
 		m.setStatus("folder hidden (only in TideMail). Use \"Show hidden folders\" in the command palette to bring it back", false)
 	} else if hide {
 		m.cursorToMailbox(mb.ID)
@@ -693,7 +706,7 @@ func (m Model) toggleHideSelectedFolder() (tea.Model, tea.Cmd) {
 		m.cursorToMailbox(mb.ID)
 		m.setStatus("folder shown", false)
 	}
-	return m, m.clearStatusCmd()
+	return m, tea.Batch(reloadCmd, m.clearStatusCmd())
 }
 
 func (m Model) toggleShowHiddenFolders() (tea.Model, tea.Cmd) {
@@ -716,12 +729,16 @@ func (m Model) toggleShowHiddenFolders() (tea.Model, tea.Cmd) {
 		// The open folder just vanished from the sidebar: don't leave its messages up.
 		m.clearMessages()
 	}
+	var reloadCmd tea.Cmd
+	if losing {
+		reloadCmd = m.reloadAfterFolderRemovalCmd()
+	}
 	if m.showHiddenFolders {
 		m.setStatus("showing hidden folders", false)
 	} else {
 		m.setStatus("hidden folders are hidden again", false)
 	}
-	return m, m.clearStatusCmd()
+	return m, tea.Batch(reloadCmd, m.clearStatusCmd())
 }
 
 // folderSiblings returns the sidebar row indexes of the folders that share the

@@ -372,6 +372,34 @@ func TestSettingsSaveDisablesMouseAtRuntime(t *testing.T) {
 	}
 }
 
+func TestSettingsSaveReloadsActiveSearch(t *testing.T) {
+	m := settingsSaveTestModel(t, false)
+	accountID, err := m.db.AddAccount("", "Personal", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailboxID, err := m.db.UpsertMailbox(db.Mailbox{AccountID: accountID, Name: "INBOX", Delimiter: "/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.db.UpsertMessage(db.Message{MailboxID: mailboxID, UID: 1, Subject: "needle in settings"}); err != nil {
+		t.Fatal(err)
+	}
+	m.searchMode = true
+	m.searchQuery = "needle"
+	m.messages = []db.Message{{ID: -1, Subject: "old results"}}
+	m.settings.notifications = !m.settings.notifications
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = settle(t, next.(Model), cmd)
+	if !m.searchActive() || m.searchQuery != "needle" {
+		t.Fatalf("search was lost after settings save: active=%v query=%q", m.searchActive(), m.searchQuery)
+	}
+	if len(m.messages) != 1 || m.messages[0].Subject != "needle in settings" {
+		t.Fatalf("search results after settings save: %+v", m.messages)
+	}
+}
+
 func TestSettingsSaveWithoutMouseChangeOmitsMouseCommand(t *testing.T) {
 	m := settingsSaveTestModel(t, false)
 	m.settings.notifications = !m.settings.notifications // change something unrelated

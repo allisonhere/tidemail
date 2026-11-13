@@ -170,7 +170,9 @@ accounts fetch no mail on their own, not even at launch: they refresh only when 
 Push (`0`) is the default and the best choice for servers that support IDLE,
 including Gmail. The safety poll exists because IDLE goes silent on a connection
 that wedges without dropping, so push alone can stall with nothing to show for
-it. Use `-1` if you want an account to refresh only when you press `s`.
+it. If a server does not support IDLE, TideMail reports this in the status line
+and checks that account every five minutes for the rest of the session. Use `-1`
+if you want an account to refresh only when you press `s`.
 
 ## Reading and organizing mail
 
@@ -187,6 +189,7 @@ unread badges update after confirmation. Failed mailboxes retain their local sta
 Press `/` to search, `u` to show unread mail, and `t` to place starred messages
 first. Search covers subject, sender, recipients, and message body across every
 account and folder, and matches as you type.
+Saving Settings refreshes the results for an open search.
 
 Limit a word to one header with an operator: `from:`, `to:`, `cc:`, or
 `subject:`. `to:work@example.com` finds mail addressed to that address in either
@@ -405,6 +408,8 @@ deleting, and moving messages still work. In the left pane:
 - `H` hides the selected folder (and its subfolders) from TideMail's sidebar
   only; nothing changes on the server. "Show hidden folders" in the command
   palette lists them again, marked `(hidden)`, and `H` on one unhides it.
+  After hiding or deleting the selected folder, TideMail loads the view now
+  highlighted in the sidebar.
 - `Shift+K` / `Shift+J` walk the selected folder up or down the tree one row at a
   time, and it is shown indented while it is inside a parent. Passing a sibling
   just reorders it (the order is local to TideMail). Moving onto an open folder

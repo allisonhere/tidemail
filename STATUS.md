@@ -68,6 +68,7 @@ Current release: **v1.9.0**.
   connection per account — deliberately outside the pool, since IDLE monopolizes a
   connection and would otherwise serialize every other operation behind it.
   `sync_minutes = 0` selects push; a positive value polls on that interval.
+  Servers without IDLE fall back to five-minute polling for push accounts.
 - **Cache correctness**: UIDVALIDITY is tracked per mailbox and invalidates the local
   cache when a server renumbers (`internal/db/reconcile.go`). Tombstones keep deleted
   mail from resurrecting through date-granular re-fetches.

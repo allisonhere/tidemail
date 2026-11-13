@@ -167,6 +167,32 @@ func TestContactManagerBulkDelete(t *testing.T) {
 	}
 }
 
+func TestContactManagerMarksStayWithContactsAfterReload(t *testing.T) {
+	d := newContactTestDB(t)
+	for _, name := range []string{"Bob", "Carol", "Zed"} {
+		if _, err := d.AddContact(strings.ToLower(name)+"@example.com", name, "manual"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cm := NewContactManager(d)
+	cm, _, _ = cm.Update(tea.KeyMsg{Type: tea.KeySpace}, DefaultKeys)
+	cm, _, _ = cm.Update(tea.KeyMsg{Type: tea.KeySpace}, DefaultKeys)
+	if _, err := d.AddContact("amy@example.com", "Amy", "manual"); err != nil {
+		t.Fatal(err)
+	}
+	cm.reload()
+	marked := cm.targetContacts()
+	if len(marked) != 2 || marked[0].Addr != "bob@example.com" || marked[1].Addr != "carol@example.com" {
+		t.Fatalf("marks moved after reload: %+v", marked)
+	}
+	cm, _, _ = cm.Update(rune1('d'), DefaultKeys)
+	cm, _, _ = cm.Update(rune1('y'), DefaultKeys)
+	remaining, err := d.ListContacts()
+	if err != nil || len(remaining) != 2 || remaining[0].Addr != "amy@example.com" || remaining[1].Addr != "zed@example.com" {
+		t.Fatalf("deleted wrong contacts: %+v, %v", remaining, err)
+	}
+}
+
 func TestContactManagerPickerAddsSeenAddresses(t *testing.T) {
 	d := newContactTestDB(t)
 	accountID, _ := d.AddAccount("", "Acct", "")

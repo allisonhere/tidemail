@@ -178,3 +178,43 @@ func TestStartIdleWatchersReconcilesInsteadOfRestarting(t *testing.T) {
 		t.Fatal("expected the replaced watcher to be closed")
 	}
 }
+
+func TestUnsupportedIdleSwitchesPushToOnePollingLoop(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	database, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	cfg := config.DefaultConfig()
+	cfg.Accounts = []config.AccountConfig{{Name: "Push", IMAPHost: "127.0.0.1", IMAPPort: 1, SyncMinutes: 0}}
+	m := NewModel(database, cfg, "dev", false)
+	m.accounts = []db.Account{{ID: 1, Name: "Push"}}
+	m.mailboxes = []db.Mailbox{{ID: 10, AccountID: 1, Name: "INBOX"}}
+	if m.startIdleWatchers() == nil {
+		t.Fatal("expected a watcher")
+	}
+	t.Cleanup(m.stopIdleWatchers)
+	watcher := m.idleWatchers[1].watcher
+	m.scheduleNextSync(1)
+	oldGeneration := m.syncTimerGeneration[1]
+	next, cmd := m.Update(IdleEventMsg{AccountID: 1, MailboxID: 10, Watcher: watcher, Stopped: true})
+	m = next.(Model)
+	if !m.idleWatchers[1].unsupported || cmd == nil || m.syncTimerGeneration[1] != oldGeneration+1 || m.statusMsg == "" {
+		t.Fatalf("fallback not scheduled: watcher=%+v generation=%d status=%q", m.idleWatchers[1], m.syncTimerGeneration[1], m.statusMsg)
+	}
+	if m.startIdleWatchers() != nil || m.idleWatchers[1].watcher != watcher {
+		t.Fatal("account reload restarted unsupported watcher")
+	}
+	next, _ = m.Update(AutoSyncMsg{AccountID: 1, Generation: oldGeneration})
+	m = next.(Model)
+	if m.syncing[10] || m.syncTimerGeneration[1] != oldGeneration+1 {
+		t.Fatal("stale safety timer started a second polling loop")
+	}
+	next, cmd = m.Update(AutoSyncMsg{AccountID: 1, Generation: m.syncTimerGeneration[1]})
+	m = next.(Model)
+	if !m.syncing[10] || cmd == nil || m.syncTimerGeneration[1] != oldGeneration+2 {
+		t.Fatal("fallback timer did not sync and reschedule")
+	}
+}

@@ -397,7 +397,8 @@ type Model struct {
 
 	// idleWatchers holds the per-account IMAP IDLE push watchers (keyed by
 	// account ID); see startIdleWatchers. The map is shared across Model copies.
-	idleWatchers map[int64]idleWatcherEntry
+	idleWatchers        map[int64]idleWatcherEntry
+	syncTimerGeneration map[int64]uint64
 
 	firstLoad              bool
 	pendingSelectMailboxID int64
@@ -529,6 +530,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		olderExhausted:         make(map[int64]bool),
 		lastFolderRefresh:      make(map[int64]time.Time),
 		idleWatchers:           make(map[int64]idleWatcherEntry),
+		syncTimerGeneration:    make(map[int64]uint64),
 		collapsedAccounts:      map[int64]bool{},
 		collapsedSections:      map[string]bool{},
 		firstLoad:              true,
@@ -1339,7 +1341,17 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case IdleEventMsg:
 		// Ignore events from a watcher that has since been replaced or stopped —
 		// re-arming a wait on it would leak a goroutine per stale event.
-		if msg.Stopped || m.idleWatchers[msg.AccountID].watcher != msg.Watcher {
+		entry, current := m.idleWatchers[msg.AccountID]
+		if !current || entry.watcher != msg.Watcher || entry.unsupported {
+			return m, nil
+		}
+		if msg.Stopped {
+			entry.unsupported = true
+			m.idleWatchers[msg.AccountID] = entry
+			if entry.cfg.SyncMinutes == 0 {
+				m.setStatus("server lacks IMAP IDLE; checking "+entry.cfg.Name+" every 5 minutes", false)
+				return m, tea.Batch(m.scheduleNextSync(msg.AccountID), m.clearStatusCmd())
+			}
 			return m, nil
 		}
 		// Re-arm the wait first, then sync the inbox the server nudged us about.
@@ -1352,6 +1364,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AutoSyncMsg:
 		var cmds []tea.Cmd
+		if msg.Generation != 0 && msg.Generation != m.syncTimerGeneration[msg.AccountID] {
+			return m, nil
+		}
 		// A timer that was already pending when the account was switched to
 		// manual-only can still fire once; it must not fetch.
 		if !m.syncsAutomatically(msg.AccountID) {
@@ -2645,7 +2660,9 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if err != nil {
 				return m, saveAttachmentsCmd(m.db, m.contentAttachments)
 			}
-			m.openSaveAttachPicker(filepath.Join(home, "Downloads"))
+			if err := m.openSaveAttachPicker(filepath.Join(home, "Downloads")); err != nil {
+				return m, saveAttachmentsCmd(m.db, m.contentAttachments)
+			}
 			m.overlay = overlaySaveAttach
 			return m, nil
 		}
@@ -2833,21 +2850,23 @@ func (m Model) focusPane(next pane) (tea.Model, tea.Cmd) {
 // click calls it with the clicked row's absolute index, jumping directly
 // instead of stepping through every row in between.
 func (m Model) selectSidebarRow(idx int) (tea.Model, tea.Cmd) {
+	var focusCmd tea.Cmd
 	if m.focused != paneAccounts {
-		next, _ := m.focusPane(paneAccounts)
+		next, cmd := m.focusPane(paneAccounts)
 		m = next.(Model)
+		focusCmd = cmd
 	}
 	if idx < 0 || idx >= len(m.sidebarRows) || idx == m.sidebarCursor {
-		return m, nil
+		return m, focusCmd
 	}
 	m.cancelFolderSettle()
 	m.sidebarCursor = idx
 	m.clampSidebarOffset()
 	if m.searchActive() {
-		return m, nil
+		return m, focusCmd
 	}
 	if cmd := m.virtualViewCmd(); cmd != nil {
-		return m, cmd
+		return m, tea.Batch(focusCmd, cmd)
 	}
 	if selected := m.selectedMailbox(); selected != nil {
 		cmd := m.loadMailboxMessagesCmd(selected.ID)
@@ -2855,10 +2874,10 @@ func (m Model) selectSidebarRow(idx int) (tea.Model, tea.Cmd) {
 			cmd = tea.Batch(cmd, m.loadDraftsCmd(selected.ID))
 		}
 		// Fill the folder from the server too, once the cursor settles.
-		return m, tea.Batch(cmd, m.scheduleFolderSettle())
+		return m, tea.Batch(focusCmd, cmd, m.scheduleFolderSettle())
 	}
 	m.clearMessages()
-	return m, nil
+	return m, focusCmd
 }
 
 // selectMessageRow jumps the message-list cursor directly to idx and runs
@@ -2870,16 +2889,18 @@ func (m Model) selectSidebarRow(idx int) (tea.Model, tea.Cmd) {
 // absolute index, jumping directly instead of stepping through every row in
 // between.
 func (m Model) selectMessageRow(idx int) (tea.Model, tea.Cmd) {
+	var focusCmd tea.Cmd
 	if m.focused != paneMessages {
-		next, _ := m.focusPane(paneMessages)
+		next, cmd := m.focusPane(paneMessages)
 		m = next.(Model)
+		focusCmd = cmd
 	}
 	count := m.activeMessageRowCount()
 	if m.selectedDraftsMailbox() {
 		count = len(m.drafts)
 	}
 	if idx < 0 || idx >= count || idx == m.messageCursor {
-		return m, nil
+		return m, focusCmd
 	}
 	m.messageCursor = idx
 	visible := max(1, m.articleRowsVisible())
@@ -2890,14 +2911,14 @@ func (m Model) selectMessageRow(idx int) (tea.Model, tea.Cmd) {
 	}
 	if m.selectedDraftsMailbox() {
 		m.setViewportForCurrentRow()
-		return m, nil
+		return m, focusCmd
 	}
 	if msg2 := m.currentRowMessage(); msg2 != nil {
 		m.setViewportForCurrentRow()
 		cmd := m.focusedMessageChangedCmd(*msg2)
-		return m, cmd
+		return m, tea.Batch(focusCmd, cmd)
 	}
-	return m, nil
+	return m, focusCmd
 }
 
 func (m Model) handleUp() (tea.Model, tea.Cmd) {
@@ -3138,16 +3159,16 @@ func (m Model) handleMouseRightClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if idx, ok := m.sidebarRowAt(y); ok {
 			model, cmd = m.selectSidebarRow(idx)
 		} else {
-			model, _ = m.focusPane(paneAccounts)
+			model, cmd = m.focusPane(paneAccounts)
 		}
 	case paneMessages:
 		if idx, ok := m.messageRowAt(y); ok {
 			model, cmd = m.selectMessageRow(idx)
 		} else {
-			model, _ = m.focusPane(paneMessages)
+			model, cmd = m.focusPane(paneMessages)
 		}
 	default:
-		model, _ = m.focusPane(paneContent)
+		model, cmd = m.focusPane(paneContent)
 	}
 	nm := model.(Model)
 	nm.lastClickAt = time.Time{} // a right-click never starts a double-click
@@ -3242,13 +3263,15 @@ func (m Model) handleMessagesClick(y int) (tea.Model, tea.Cmd) {
 // can establish selection; body clicks merely position the reader.
 func (m Model) handleContentClick(x, y, paneTop int) (tea.Model, tea.Cmd) {
 	m.clearContentLinkSelection()
+	var focusCmd tea.Cmd
 	interiorTop := paneTop + 1 + m.paneHeaderHeight()
 	if y < interiorTop {
 		return m.focusPane(paneContent)
 	}
 	if m.focused != paneContent {
-		next, _ := m.focusPane(paneContent)
+		next, cmd := m.focusPane(paneContent)
 		m = next.(Model)
+		focusCmd = cmd
 	}
 	line := m.viewport.YOffset + (y - interiorTop)
 	if line >= 0 && line < m.contentLineCount && y < m.mainHeight()-1 {
@@ -3258,7 +3281,7 @@ func (m Model) handleContentClick(x, y, paneTop int) (tea.Model, tea.Cmd) {
 			m.selectContentLinkAt(line)
 		}
 	}
-	return m, nil
+	return m, focusCmd
 }
 
 func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -3672,6 +3695,9 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.overlay = overlayNone
 			m.clearMessages()
 			cmds := []tea.Cmd{m.loadAccountsCmd(), omarchyCmd, m.termColorsCmd(m.styles.Theme.Fg, m.styles.Theme.Bg)}
+			if m.searchActive() && m.searchQuery != "" {
+				cmds = append(cmds, m.searchAllMessagesCmd(m.searchQuery))
+			}
 			// A view just hidden can't stay open; fall back to the Unified
 			// Inbox, always the first sidebar row.
 			if prevKind, _ := m.currentSidebarSelection(); (prevKind == rowKindNeedsYou && !m.cfg.Display.ShowNeedsYou) || (prevKind == rowKindWaiting && !m.cfg.Display.ShowWaiting) {

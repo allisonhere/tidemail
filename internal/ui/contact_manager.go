@@ -29,7 +29,7 @@ type ContactManager struct {
 
 	contacts []db.Contact
 	cursor   int
-	marked   map[int]bool
+	marked   map[int64]bool
 	mode     cmMode
 
 	nameInput         textinput.Model
@@ -57,7 +57,7 @@ type ContactManager struct {
 func NewContactManager(database *db.DB) ContactManager {
 	cm := ContactManager{
 		db:         database,
-		marked:     map[int]bool{},
+		marked:     map[int64]bool{},
 		pickMarked: map[int]bool{},
 	}
 	cm.nameInput = newAMInput("Display name (optional)", false)
@@ -73,6 +73,15 @@ func NewContactManager(database *db.DB) ContactManager {
 
 func (cm *ContactManager) reload() {
 	cm.contacts, _ = cm.db.ListContacts()
+	present := make(map[int64]bool, len(cm.contacts))
+	for _, contact := range cm.contacts {
+		present[contact.ID] = true
+	}
+	for id := range cm.marked {
+		if !present[id] {
+			delete(cm.marked, id)
+		}
+	}
 	cm.clampCursor()
 }
 
@@ -102,13 +111,13 @@ func (cm *ContactManager) setStatus(msg string, isErr bool) {
 }
 
 func (cm *ContactManager) clearMarks() {
-	cm.marked = map[int]bool{}
+	cm.marked = map[int64]bool{}
 }
 
 func (cm ContactManager) targetIndexes() []int {
 	var indexes []int
 	for i := range cm.contacts {
-		if cm.marked[i] {
+		if cm.marked[cm.contacts[i].ID] {
 			indexes = append(indexes, i)
 		}
 	}
@@ -151,10 +160,11 @@ func (cm *ContactManager) toggleMarkAdvance() {
 	if len(cm.contacts) == 0 {
 		return
 	}
-	if cm.marked[cm.cursor] {
-		delete(cm.marked, cm.cursor)
+	id := cm.contacts[cm.cursor].ID
+	if cm.marked[id] {
+		delete(cm.marked, id)
 	} else {
-		cm.marked[cm.cursor] = true
+		cm.marked[id] = true
 	}
 	if cm.cursor < len(cm.contacts)-1 {
 		cm.cursor++
@@ -743,7 +753,7 @@ func (cm ContactManager) renderContactRow(width int, chrome managerChrome, style
 		label = fmt.Sprintf("%s  <%s>", c.DisplayName, c.Addr)
 	}
 	mark := "  "
-	if cm.marked[index] {
+	if cm.marked[c.ID] {
 		if chrome.plainUI {
 			mark = "* "
 		} else {

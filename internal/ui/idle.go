@@ -25,6 +25,7 @@ type IdleEventMsg struct {
 // so startIdleWatchers can tell "unchanged" apart from "needs restart".
 type idleWatcherEntry struct {
 	watcher     *imapClient.Watcher
+	unsupported bool
 	cfg         config.AccountConfig
 	mailboxID   int64
 	mailboxName string
@@ -68,6 +69,7 @@ func (m *Model) startIdleWatchers() tea.Cmd {
 		desired[acc.ID] = idleWatcherEntry{cfg: acfg, mailboxID: inbox.ID, mailboxName: inbox.Name}
 	}
 
+	var cmds []tea.Cmd
 	// Close watchers that are gone or whose spec changed (edited credentials,
 	// different inbox); keep matching ones untouched.
 	for id, e := range m.idleWatchers {
@@ -77,9 +79,12 @@ func (m *Model) startIdleWatchers() tea.Cmd {
 		}
 		e.watcher.Close()
 		delete(m.idleWatchers, id)
+		if e.unsupported {
+			// Replacing the account configuration gives IDLE another chance.
+			cmds = append(cmds, m.scheduleNextSync(id))
+		}
 	}
 
-	var cmds []tea.Cmd
 	for id, want := range desired {
 		if _, running := m.idleWatchers[id]; running {
 			continue

@@ -12,12 +12,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func (m *Model) openSaveAttachPicker(dir string) {
+func (m *Model) openSaveAttachPicker(dir string) error {
 	fe, err := listDirEntries(dir, m.saveAttachPicker.showHidden)
 	if err != nil {
-		// Fall back to immediate save
-		m.overlay = overlayNone
-		return
+		return err
 	}
 
 	// Prepend "select this folder" entry above the parent-dir entry.
@@ -27,6 +25,7 @@ func (m *Model) openSaveAttachPicker(dir string) {
 	m.saveAttachPicker.entries = fe
 	m.saveAttachPicker.cursor = 0
 	m.saveAttachPicker.active = true
+	return nil
 }
 
 func (m *Model) saveAttachPickerUp() {
@@ -42,15 +41,18 @@ func (m *Model) saveAttachPickerDown() {
 }
 
 func (m *Model) saveAttachPickerEnterDir() {
+	if m.saveAttachPicker.cursor < 0 || m.saveAttachPicker.cursor >= len(m.saveAttachPicker.entries) {
+		return
+	}
 	entry := m.saveAttachPicker.entries[m.saveAttachPicker.cursor]
 	if entry.name == ".." {
 		parent := filepath.Dir(m.saveAttachPicker.currentDir)
-		m.openSaveAttachPicker(parent)
+		m.openSaveAttachPicker(parent) //nolint:errcheck // retain the current directory on failure
 		return
 	}
 	if entry.isDir {
 		sub := filepath.Join(m.saveAttachPicker.currentDir, entry.name)
-		m.openSaveAttachPicker(sub)
+		m.openSaveAttachPicker(sub) //nolint:errcheck // retain the current directory on failure
 		return
 	}
 }
@@ -62,7 +64,7 @@ func (m *Model) saveAttachPickerUpDir() {
 		m.overlay = overlayNone
 		return
 	}
-	m.openSaveAttachPicker(parent)
+	m.openSaveAttachPicker(parent) //nolint:errcheck // retain the current directory on failure
 }
 
 func (m Model) handleSaveAttachPicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -81,6 +83,11 @@ func (m Model) handleSaveAttachPicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.Confirm):
+		if m.saveAttachPicker.cursor < 0 || m.saveAttachPicker.cursor >= len(m.saveAttachPicker.entries) {
+			m.saveAttachPicker.active = false
+			m.overlay = overlayNone
+			return m, nil
+		}
 		entry := m.saveAttachPicker.entries[m.saveAttachPicker.cursor]
 		if entry.isDir {
 			m.saveAttachPickerEnterDir()
@@ -97,7 +104,7 @@ func (m Model) handleSaveAttachPicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case msg.String() == ".":
 		m.saveAttachPicker.showHidden = !m.saveAttachPicker.showHidden
-		m.openSaveAttachPicker(m.saveAttachPicker.currentDir)
+		m.openSaveAttachPicker(m.saveAttachPicker.currentDir) //nolint:errcheck // retain the current listing on failure
 		return m, nil
 
 	default:

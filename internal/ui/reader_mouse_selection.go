@@ -141,7 +141,7 @@ func (m *Model) readerSelectionMouse(msg tea.MouseMsg) (bool, tea.Cmd) {
 	if m.overlay != overlayNone || len(m.contentLines) == 0 || msg.X < left || msg.X >= left+width || msg.Y < top || msg.Y >= top+height {
 		return false, nil
 	}
-	next, _ := m.focusPane(paneContent)
+	next, focusCmd := m.focusPane(paneContent)
 	*m = next.(Model)
 	m.clearContentLinkSelection()
 	p := m.readerMousePoint(msg.X, msg.Y)
@@ -149,7 +149,7 @@ func (m *Model) readerSelectionMouse(msg tea.MouseMsg) (bool, tea.Cmd) {
 	m.readerMouse.dragging = true
 	m.readerMouse.view = &readerSelectionViewCache{}
 	m.readerMouse.x, m.readerMouse.y = msg.X, msg.Y
-	return true, nil
+	return true, focusCmd
 }
 
 func (m *Model) renderReaderMouseSelection(body string) string {
