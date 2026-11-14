@@ -190,7 +190,7 @@ func accountSpellEntries(cfg config.Config) []string {
 			out = append(out, a.From)
 		}
 		if strings.Contains(a.User, "@") {
-			out = append(out, a.Name+" <"+a.User+">")
+			out = append(out, db.FormatMailbox(a.Name, a.User))
 		}
 	}
 	return out

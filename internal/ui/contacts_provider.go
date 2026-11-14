@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidemail/internal/plugin"
 )
 
@@ -96,11 +97,7 @@ func (m Model) handleContactsFound(msg ContactsFoundMsg) (tea.Model, tea.Cmd) {
 	}
 	rows := make([]string, 0, maxRecipientSuggestions)
 	for _, c := range msg.Matches {
-		if c.Name != "" {
-			rows = append(rows, c.Name+" <"+c.Addr+">")
-		} else {
-			rows = append(rows, c.Addr)
-		}
+		rows = append(rows, db.FormatMailbox(c.Name, c.Addr))
 		if len(rows) == maxRecipientSuggestions {
 			break
 		}

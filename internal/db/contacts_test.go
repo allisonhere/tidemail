@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"net/mail"
 	"path/filepath"
 	"testing"
 
@@ -349,4 +350,26 @@ func contactName(t *testing.T, d *DB, id int64) string {
 		t.Fatal(err)
 	}
 	return name
+}
+
+func TestFormatMailboxQuotesSpecials(t *testing.T) {
+	cases := []struct{ name, want string }{
+		{"", "j@example.com"},
+		{"John Doe", "John Doe <j@example.com>"},
+		{"José Müller", "José Müller <j@example.com>"},
+		{"Doe, John", `"Doe, John" <j@example.com>`},
+		{`Say "hi"`, `"Say \"hi\"" <j@example.com>`},
+	}
+	for _, tc := range cases {
+		got := FormatMailbox(tc.name, "j@example.com")
+		if got != tc.want {
+			t.Errorf("FormatMailbox(%q) = %q, want %q", tc.name, got, tc.want)
+		}
+		parsed, err := mail.ParseAddress(got)
+		if err != nil {
+			t.Errorf("FormatMailbox(%q) = %q does not parse: %v", tc.name, got, err)
+		} else if parsed.Name != tc.name || parsed.Address != "j@example.com" {
+			t.Errorf("round trip of %q gave %+v", tc.name, parsed)
+		}
+	}
 }

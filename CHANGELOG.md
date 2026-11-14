@@ -37,6 +37,9 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Recipient suggestions for names containing a comma (such as "Doe, John") are
+  inserted in quotes, so they no longer block sending, and a comma inside a
+  quoted name no longer splits the recipient being typed.
 - Importing contacts now says how many cards it skipped because they have no
   email address, instead of importing fewer contacts without a word. (#116)
 - The contact import picker can show hidden files and folders with `.`, like

@@ -142,10 +142,7 @@ func (cm ContactManager) targetContacts() []db.Contact {
 }
 
 func contactAddress(c db.Contact) string {
-	if c.DisplayName != "" {
-		return c.DisplayName + " <" + c.Addr + ">"
-	}
-	return c.Addr
+	return db.FormatMailbox(c.DisplayName, c.Addr)
 }
 
 func contactAddressList(contacts []db.Contact) []string {

@@ -854,7 +854,9 @@ address cannot be saved, so the import tells you how many it skipped, and a
 file that cannot be read is counted without stopping the rest.
 
 Compose suggestions show saved contacts before addresses gathered from your
-mail. To search an address book TideMail does not hold (CardDAV, khard and the
+mail. A name containing a comma, such as "Doe, John", is inserted in quotes so
+the recipient stays valid, and a comma inside quotes does not split the
+recipient you are typing. To search an address book TideMail does not hold (CardDAV, khard and the
 like), install a plugin that declares the `contacts_read` permission, name it
 with `provider = "<plugin id>"` under `[contacts]` in `config.toml`, then press
 `Ctrl+T` in To, Cc or Bcc. The text you typed goes to the plugin, and its

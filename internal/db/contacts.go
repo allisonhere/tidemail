@@ -151,7 +151,7 @@ func (db *DB) ContactAddresses() ([]string, error) {
 	out := make([]string, 0, len(contacts))
 	for _, c := range contacts {
 		if c.DisplayName != "" {
-			out = append(out, c.DisplayName+" <"+c.Addr+">")
+			out = append(out, FormatMailbox(c.DisplayName, c.Addr))
 		} else {
 			out = append(out, c.Addr)
 		}
@@ -173,7 +173,7 @@ func (db *DB) AutocompleteAddresses() ([]string, error) {
 	}
 	for _, c := range seen {
 		if c.DisplayName != "" {
-			out = append(out, c.DisplayName+" <"+c.Addr+">")
+			out = append(out, FormatMailbox(c.DisplayName, c.Addr))
 		} else {
 			out = append(out, c.Addr)
 		}
@@ -223,4 +223,18 @@ func (db *DB) SeenAddresses() ([]Contact, error) {
 		return li < lj
 	})
 	return out, nil
+}
+
+// FormatMailbox renders "Name <addr>" for use in a recipient field. Names with
+// RFC 5322 specials (commas, angle brackets, quotes, ...) are quoted so the
+// result stays parseable; other names, including non-ASCII ones, are kept
+// verbatim. An empty name yields the bare address.
+func FormatMailbox(name, addr string) string {
+	if name == "" {
+		return addr
+	}
+	if strings.ContainsAny(name, "()<>[]:;@\\,\"") {
+		name = `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(name) + `"`
+	}
+	return name + " <" + addr + ">"
 }

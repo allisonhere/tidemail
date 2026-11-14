@@ -969,7 +969,22 @@ func (c ComposeModel) suggestionsVisible() bool {
 // already committed (through the last comma and any following spaces) and the
 // segment still being typed.
 func splitActiveSegment(value string) (prefix, seg string) {
-	i := strings.LastIndex(value, ",") + 1
+	i := 0
+	inQuote := false
+	for j := 0; j < len(value); j++ {
+		switch value[j] {
+		case '\\':
+			if inQuote {
+				j++
+			}
+		case '"':
+			inQuote = !inQuote
+		case ',':
+			if !inQuote {
+				i = j + 1
+			}
+		}
+	}
 	prefix, seg = value[:i], value[i:]
 	trimmed := strings.TrimLeft(seg, " ")
 	prefix += seg[:len(seg)-len(trimmed)]

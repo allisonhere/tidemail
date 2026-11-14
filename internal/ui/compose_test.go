@@ -1399,3 +1399,19 @@ func TestReplyHasNoUnusedQuoteToggleRow(t *testing.T) {
 		t.Fatal("original quotation must remain in the editable body")
 	}
 }
+
+func TestSplitActiveSegmentIgnoresQuotedCommas(t *testing.T) {
+	cases := []struct{ in, prefix, seg string }{
+		{"a@x.com, bo", "a@x.com, ", "bo"},
+		{`"Doe, John" <j@x.com>`, "", `"Doe, John" <j@x.com>`},
+		{`"Doe, Jo`, "", `"Doe, Jo`},
+		{`a@x.com, "Doe, John" <j@x.com>, d`, `a@x.com, "Doe, John" <j@x.com>, `, "d"},
+		{`"a\", b" <x@x.com>`, "", `"a\", b" <x@x.com>`},
+	}
+	for _, tc := range cases {
+		p, s := splitActiveSegment(tc.in)
+		if p != tc.prefix || s != tc.seg {
+			t.Errorf("splitActiveSegment(%q) = (%q, %q), want (%q, %q)", tc.in, p, s, tc.prefix, tc.seg)
+		}
+	}
+}
