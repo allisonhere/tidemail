@@ -366,6 +366,9 @@ type Model struct {
 	pillFadeFrom       alertPill
 	pillFadeStart      time.Time
 	pillFadeGeneration uint64
+	// statusGeneration counts setStatus calls so a clear timer scheduled for an
+	// earlier status cannot erase a newer one.
+	statusGeneration uint64
 
 	// browserReopen is the message whose browser export blocked remote images;
 	// pressing the open-in-browser key on it again reopens with images loaded.
@@ -743,6 +746,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleSupportNudge()
 
 	case StatusClearMsg:
+		if msg.Generation != 0 && msg.Generation != m.statusGeneration {
+			return m, nil
+		}
 		m.compose.clearRoutedStatus()
 		m.statusMsg = ""
 		m.statusErr = false
@@ -4413,8 +4419,9 @@ func (m Model) showAvailableUpdatePrompt() bool {
 // silently ignored — logging is best-effort and must never fail a sync.
 
 func (m *Model) clearStatusCmd() tea.Cmd {
+	gen := m.statusGeneration
 	return tea.Tick(4*time.Second, func(time.Time) tea.Msg {
-		return StatusClearMsg{}
+		return StatusClearMsg{Generation: gen}
 	})
 }
 
@@ -4814,6 +4821,7 @@ func (c *ComposeModel) clearRoutedStatus() {
 
 func (m *Model) setStatus(msg string, isErr bool) {
 	m.invalidateReaderSelectionView()
+	m.statusGeneration++
 	m.statusMsg = msg
 	m.statusErr = isErr
 	m.statusPill = !isErr

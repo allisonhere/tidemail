@@ -330,7 +330,10 @@ type AttachmentsSavedMsg struct {
 	Err   error
 }
 
-type StatusClearMsg struct{}
+// StatusClearMsg clears the status line. Generation names the status it was
+// scheduled for; a clear for a status that has since been replaced is ignored.
+// Zero clears unconditionally.
+type StatusClearMsg struct{ Generation uint64 }
 
 type AutoSyncMsg struct {
 	AccountID  int64

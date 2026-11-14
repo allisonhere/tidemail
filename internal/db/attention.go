@@ -90,7 +90,7 @@ func effectiveSignalExists(key string, values []string, overrideValues []string)
 	return `(EXISTS (SELECT 1 FROM classification_overrides co
 		WHERE co.message_id = messages.id AND co.key = ? AND co.value IN (` + placeholders + `))
 		OR (NOT EXISTS (SELECT 1 FROM classification_overrides co
-			WHERE co.message_id = messages.id AND co.key = ?)
+			WHERE co.message_id = messages.id AND co.key = ? AND co.value != 'plugin')
 			AND ` + pluginExpr + `))`, args
 }
 

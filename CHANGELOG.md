@@ -37,6 +37,12 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Quitting now exits with status 1 when a pending send or message action fails
+  to flush, instead of 0, so scripts can tell a failed send from a clean exit.
+- A message with a stored "plugin" classification correction no longer drops out
+  of Needs You while keeping its Needs Reply badge.
+- A status message is no longer wiped early by the clear timer of an earlier
+  one, and an error no longer flashes away.
 - A complete address in `to:`, `cc:` or `from:` now matches only that address.
   `to:work@example.com` no longer also finds `work@example.com.au` or
   `network-work@example.com`, as the guide already said.

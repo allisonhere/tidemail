@@ -257,3 +257,24 @@ func TestSetNeedsYouDismissedRejectsBadID(t *testing.T) {
 		t.Fatal("dismissing a message that does not exist should fail the foreign key")
 	}
 }
+
+// A stored "plugin" correction means "use the plugin", so it must not hide a
+// message the plugin flagged — the same rule the search path and
+// attention.Compute apply.
+func TestNeedsYouPluginOverrideDefersToPlugin(t *testing.T) {
+	a := newAttentionDB(t)
+	id := a.add(a.inbox, "back to plugin", 1, "p needs_reply true")
+	if err := a.SetClassificationOverride(id, ClassificationNeedsReply, ClassificationPlugin); err != nil {
+		t.Fatal(err)
+	}
+	silenced := a.add(a.inbox, "silenced", 2, "p needs_reply true")
+	if err := a.SetClassificationOverride(silenced, ClassificationNeedsReply, "false"); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.subjects(false); !reflect.DeepEqual(got, []string{"back to plugin"}) {
+		t.Fatalf("needs you = %v, want only the plugin-deferred message", got)
+	}
+	if a.count() != 1 {
+		t.Fatalf("count = %d, want 1", a.count())
+	}
+}
