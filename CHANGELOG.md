@@ -37,6 +37,14 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- The recent-searches list is correct again after you clear the search box (it
+  no longer shows a leftover filtered subset), closes when deleting its last
+  matching entry, and clicking an entry highlights it instead of selecting a
+  hidden message.
+- `y` copies a mouse-drag selection in the reader, like `ctrl+c`, instead of
+  reporting "nothing to copy".
+- Microsoft browser sign-in also listens on IPv6 loopback, so it works where
+  `localhost` resolves to `::1` first.
 - Quitting now exits with status 1 when a pending send or message action fails
   to flush, instead of 0, so scripts can tell a failed send from a clean exit.
 - A message with a stored "plugin" classification correction no longer drops out

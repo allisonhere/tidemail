@@ -139,6 +139,25 @@ func (m *Model) deleteHighlightedSearch() {
 	cursor := m.searchHistoryCursor
 	m.refreshSearchHistory(prefix)
 	m.searchHistoryCursor = min(cursor, len(m.searchHistory)-1)
+	if len(m.searchHistory) == 0 && m.searchHistoryOpen {
+		// Nothing left to show for the typed text: hand the pane back to the
+		// live results instead of "no recent searches" over a non-empty box.
+		m.closeSearchHistory()
+	}
+}
+
+// handleSearchHistoryClick maps a click while the history list is drawn to its
+// entries. The list is drawn one line per row under a "recent searches"
+// heading, unlike message rows, so the message row math does not apply.
+// Clicking an entry highlights it; Enter then runs it.
+func (m Model) handleSearchHistoryClick(y int) (tea.Model, tea.Cmd) {
+	interiorTop := 1 + m.paneHeaderHeight() + m.messageSearchRowHeight()
+	idx := y - interiorTop - 1
+	if y < interiorTop || idx < 0 || idx >= len(m.searchHistory) {
+		return m, nil
+	}
+	m.searchHistoryCursor = idx
+	return m, nil
 }
 
 // searchHistoryRows draws the list for the message pane.

@@ -623,7 +623,11 @@ func (m Model) handleUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.clearReaderMouseSelection()
 	case tea.KeyMsg:
-		if event.String() != "ctrl+c" {
+		// ctrl+c and y copy the drag selection, so they must see it. Like ctrl+c,
+		// y leaves the highlight in place after copying.
+		copiesSelection := event.String() == "ctrl+c" ||
+			(event.String() == "y" && m.focused == paneContent && m.contentMessageID != 0)
+		if !copiesSelection {
 			m.clearReaderMouseSelection()
 		}
 	}
@@ -3256,6 +3260,9 @@ func (m Model) handleMessagesClick(y int) (tea.Model, tea.Cmd) {
 		nm.beginSearchEditing()
 		return nm, cmd
 	}
+	if m.searchHistoryVisible() {
+		return m.handleSearchHistoryClick(y)
+	}
 	idx, ok := m.messageRowAt(y)
 	if !ok {
 		return m.focusPane(paneMessages)
@@ -4586,6 +4593,11 @@ func (m Model) exitSearchMode() (tea.Model, tea.Cmd) {
 
 func (m Model) handleSearchCharacter(newValue string) (tea.Model, tea.Cmd) {
 	m.closeSearchHistory() // typing hands the pane back to the live results
+	if strings.TrimSpace(newValue) == "" {
+		// An empty box shows the full recent list again; it may have been
+		// narrowed to a prefix while the user had text typed.
+		m.refreshSearchHistory("")
+	}
 	m.searchInput.SetValue(newValue)
 	m.searchInput.CursorEnd()
 	m.searchQuery = strings.TrimSpace(newValue)

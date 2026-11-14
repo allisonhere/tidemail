@@ -86,3 +86,30 @@ func TestReaderMouseSelectionAutoscroll(t *testing.T) {
 		t.Fatal("autoscroll selection empty")
 	}
 }
+
+// y is the documented alias of ctrl+c, so it must copy a drag selection
+// instead of clearing it first and reporting "nothing to copy".
+func TestYCopiesReaderMouseSelection(t *testing.T) {
+	m := readerScrollModel(1024, 100, 35, true)
+	m.contentLines = []string{"abcdef", "ghijkl", "mnopqr"}
+	m.contentLineCount = 3
+	m.viewport.SetContent("abcdef\nghijkl\nmnopqr")
+	m.viewport.SetYOffset(0)
+	x, y, _, _ := m.readerMouseBounds()
+	for _, e := range []tea.MouseMsg{
+		{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: x + 2, Y: y},
+		{Action: tea.MouseActionMotion, Button: tea.MouseButtonLeft, X: x + 3, Y: y + 1},
+		{Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft, X: x + 3, Y: y + 1},
+	} {
+		next, _ := m.Update(e)
+		m = next.(Model)
+	}
+	if m.contentMessageID == 0 {
+		t.Skip("model has no open message; copy path needs one")
+	}
+	next, copyCmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	m = next.(Model)
+	if copyCmd == nil || m.statusMsg == "nothing to copy" {
+		t.Fatalf("y did not copy the drag selection (status %q)", m.statusMsg)
+	}
+}

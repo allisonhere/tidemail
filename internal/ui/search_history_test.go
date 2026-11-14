@@ -7,6 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/allisonhere/tidemail/internal/db"
 )
 
 func historyModel(t *testing.T) Model {
@@ -187,5 +189,66 @@ func TestClearSearchHistoryCommand(t *testing.T) {
 	m = hOpen(m)
 	if pane := ansi.Strip(m.renderMessagesPane()); !strings.Contains(pane, "no recent searches") {
 		t.Fatalf("empty history should say so:\n%s", pane)
+	}
+}
+
+// After a prefix-filtered list, clearing the box must show the full recent
+// list again, not the stale filtered subset.
+func TestClearingTheBoxRestoresTheFullHistoryList(t *testing.T) {
+	m := historyModel(t)
+	for _, q := range []string{"to:work@example.com", "to:home@example.com", "invoice"} {
+		_ = m.db.RecordSearch(q)
+	}
+	m = histType(hOpen(m), "to:")
+	m = hkey(m, keyDnArr) // filtered to the two "to:" entries
+	if len(m.searchHistory) != 2 {
+		t.Fatalf("setup: filtered list = %v", m.searchHistory)
+	}
+	for range 3 {
+		m = hkey(m, tea.KeyMsg{Type: tea.KeyBackspace})
+	}
+	if !m.searchHistoryVisible() {
+		t.Fatal("an empty box should show the history list")
+	}
+	if len(m.searchHistory) != 3 {
+		t.Fatalf("history after clearing = %v, want all 3 entries", m.searchHistory)
+	}
+}
+
+// Deleting the last entry of a filtered list closes it rather than showing
+// "no recent searches" over a box that still has text.
+func TestDeletingLastFilteredEntryClosesTheList(t *testing.T) {
+	m := historyModel(t)
+	_ = m.db.RecordSearch("to:work@example.com")
+	m = histType(hOpen(m), "to:")
+	m = hkey(m, keyDnArr)
+	m = hkey(m, tea.KeyMsg{Type: tea.KeyCtrlD})
+	if m.searchHistoryOpen || m.searchHistoryVisible() {
+		t.Fatalf("list should close once it is empty (open=%v visible=%v)", m.searchHistoryOpen, m.searchHistoryVisible())
+	}
+}
+
+// Clicks while the history list is drawn address its entries, not the hidden
+// message rows underneath.
+func TestClickingAHistoryRowHighlightsThatEntry(t *testing.T) {
+	m := historyModel(t)
+	for _, q := range []string{"alpha", "beta", "gamma"} {
+		_ = m.db.RecordSearch(q)
+	}
+	m.filteredMessages = []db.Message{{ID: 1, Subject: "hidden one"}, {ID: 2, Subject: "hidden two"}}
+	m.cfg.Display.MouseSupport = true
+	m = hOpen(m)
+	m.messageCursor = 0
+	top := 1 + m.paneHeaderHeight() + m.messageSearchRowHeight()
+	x := m.feedsPaneWidth() + 5
+
+	// Line 0 under the top is the heading; entries follow, newest first.
+	next, _ := m.Update(leftClick(x, top+2))
+	m = next.(Model)
+	if m.searchHistoryCursor != 1 {
+		t.Fatalf("cursor = %d, want 1 (second entry)", m.searchHistoryCursor)
+	}
+	if m.messageCursor != 0 || m.contentMessageID != 0 {
+		t.Fatalf("click reached the hidden message list: cursor=%d content=%d", m.messageCursor, m.contentMessageID)
 	}
 }

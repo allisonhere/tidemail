@@ -80,6 +80,12 @@ func StartMicrosoftBrowserFlow(ctx context.Context, clientID string) (*Microsoft
 			cancel()
 		}
 	}()
+	// The redirect must say "localhost", which a browser may resolve to ::1
+	// first (or only). Listen there too, on the same port, so that works; a host
+	// without IPv6 loopback, or one where the port is taken, just keeps IPv4.
+	if listener6, err := net.Listen("tcp6", fmt.Sprintf("[::1]:%d", port)); err == nil {
+		go func() { _ = f.server.Serve(listener6) }()
+	}
 	go func() {
 		defer cancel()
 		var result microsoftBrowserResult

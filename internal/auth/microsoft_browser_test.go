@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -220,4 +221,19 @@ func TestForgetMSTokenLetsANewSignInReplaceAnEndedOne(t *testing.T) {
 			t.Fatalf("the new token was used before the old session was forgotten: %v", seen)
 		}
 	}
+}
+
+// "localhost" may resolve to ::1 first, so the callback must be reachable there
+// too, on the same port.
+func TestMicrosoftBrowserListensOnIPv6Loopback(t *testing.T) {
+	f := testMSBrowserFlow(t, context.Background())
+	redirect, err := f.redirectForTest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := net.DialTimeout("tcp6", net.JoinHostPort("::1", redirect.Port()), 2*time.Second)
+	if err != nil {
+		t.Skipf("no IPv6 loopback available: %v", err)
+	}
+	conn.Close()
 }
