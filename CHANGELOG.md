@@ -37,6 +37,12 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- A complete address in `to:`, `cc:` or `from:` now matches only that address.
+  `to:work@example.com` no longer also finds `work@example.com.au` or
+  `network-work@example.com`, as the guide already said.
+- The command palette no longer offers reply, archive, move, delete and other
+  message actions while Drafts is selected, where they acted on an unrelated
+  cached message or did nothing.
 - Opening a message's source, decoding PGP, or loading older mail no longer acts
   on stale cached UIDs after a folder was recreated on the server; it asks you to
   sync instead of showing the wrong message.

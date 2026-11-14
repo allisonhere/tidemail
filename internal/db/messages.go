@@ -193,6 +193,14 @@ func (db *DB) searchAllMessages(query string, unreadFirst, unreadOnly bool, limi
 		args = append(args, match)
 		orderBy = "bm25(messages_fts), " + orderBy
 	}
+	// FTS phrases match a token run anywhere, so a complete address also needs
+	// an end-anchored check or to:work@example.com finds work@example.com.au.
+	for _, f := range terms.Fields {
+		if expr, exactArgs := exactAddressWhere(f); expr != "" {
+			where = append(where, expr)
+			args = append(args, exactArgs...)
+		}
+	}
 	if len(terms.Tags) > 0 {
 		expr, tagArgs := tagsWhere(terms.Tags)
 		where = append(where, expr)
@@ -563,6 +571,37 @@ func searchMatch(terms SearchTerms) string {
 		parts = append(parts, "{"+strings.Join(f.Columns, " ")+"} : "+phrase)
 	}
 	return strings.Join(parts, " AND ")
+}
+
+// addressSeparators are the characters that delimit one address from the next
+// (or from its display name) in a stored header value.
+var addressSeparators = []string{"<", ">", ",", ";", `"`, "(", ")", "\t", "\n", "\r"}
+
+// exactAddressWhere restricts a complete-address operator (to:a@b.com) to rows
+// where that address appears as a whole address in one of the columns, not as a
+// prefix of a longer one. It returns "" for terms that are not a complete
+// address or that are still being typed.
+func exactAddressWhere(f FieldTerm) (string, []any) {
+	if f.Prefix || !completeAddress(f.Value) {
+		return "", nil
+	}
+	want := " " + strings.ToLower(f.Value) + " "
+	var exprs []string
+	var args []any
+	for _, col := range f.Columns {
+		norm := "lower(messages." + col + ")"
+		for _, sep := range addressSeparators {
+			switch sep {
+			case "\t", "\n", "\r":
+				norm = "replace(" + norm + ", char(" + map[string]string{"\t": "9", "\n": "10", "\r": "13"}[sep] + "), ' ')"
+			default:
+				norm = "replace(" + norm + ", '" + sep + "', ' ')"
+			}
+		}
+		exprs = append(exprs, "instr(' ' || "+norm+" || ' ', ?) > 0")
+		args = append(args, want)
+	}
+	return "(" + strings.Join(exprs, " OR ") + ")", args
 }
 
 // ftsQueryPrefix is ftsQuery with the prefix match on the last word optional.

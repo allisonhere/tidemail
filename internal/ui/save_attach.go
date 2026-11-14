@@ -109,7 +109,7 @@ func (m Model) handleSaveAttachPicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	default:
 		// Single-key quick-jump: press a letter to jump to first entry starting with it
-		if len(msg.String()) == 1 && msg.String() >= "a" && msg.String() <= "z" || msg.String() >= "A" && msg.String() <= "Z" {
+		if k := msg.String(); len(k) == 1 && (k >= "a" && k <= "z" || k >= "A" && k <= "Z") {
 			lower := strings.ToLower(msg.String())
 			for i, e := range m.saveAttachPicker.entries {
 				if strings.HasPrefix(strings.ToLower(e.name), lower) {

@@ -82,14 +82,18 @@ func (m Model) commandItems() []commandItem {
 }
 
 func (m Model) mainCommandItems() []commandItem {
-	hasMessage := m.activeMessageRowCount() > 0 && m.focused != paneAccounts
+	// The Drafts pane lists m.drafts, indexed by the same cursor that indexes
+	// cached messages elsewhere, so message actions would hit an unrelated row.
+	inDrafts := m.selectedDraftsMailbox()
+	hasMessage := m.activeMessageRowCount() > 0 && m.focused != paneAccounts && !inDrafts
+	hasContent := m.contentMessageID != 0 && !inDrafts
 	hasMailbox := m.selectedMailbox() != nil
 	items := []commandItem{
 		{id: "outbox", label: "Open Outbox (queued, failed, and sent mail)", enabled: true},
 		{id: "compose", label: "Compose new message", enabled: len(m.cfg.Accounts) > 0},
-		{id: "reply", label: "Reply to current message", enabled: m.contentMessageID != 0 || hasMessage},
-		{id: "reply-all", label: "Reply all to current message", enabled: m.contentMessageID != 0 || hasMessage},
-		{id: "forward", label: "Forward current message", enabled: m.contentMessageID != 0 || hasMessage},
+		{id: "reply", label: "Reply to current message", enabled: hasContent || hasMessage},
+		{id: "reply-all", label: "Reply all to current message", enabled: hasContent || hasMessage},
+		{id: "forward", label: "Forward current message", enabled: hasContent || hasMessage},
 		{id: "archive", label: "Archive current message", enabled: hasMessage},
 		{id: "move", label: "Move current message", enabled: hasMessage},
 		{id: "delete", label: "Delete current message", enabled: hasMessage},
@@ -110,10 +114,10 @@ func (m Model) mainCommandItems() []commandItem {
 	items = append(items, m.needsYouCommandItems()...)
 	items = append(items, m.waitingCommandItems()...)
 	items = append(items, m.snoozeCommandItems()...)
-	items = append(items, commandItem{id: "view-source", label: "View message source", enabled: hasMessage || m.contentMessageID != 0})
+	items = append(items, commandItem{id: "view-source", label: "View message source", enabled: hasMessage || hasContent})
 	items = append(items, commandItem{id: "plugin-catalog", label: "Browse available plugins…", enabled: true})
 	if _, ok := m.pgpPlugin(); ok {
-		items = append(items, commandItem{id: "pgp-decode", label: "Decrypt / verify (PGP)", enabled: hasMessage || m.contentMessageID != 0})
+		items = append(items, commandItem{id: "pgp-decode", label: "Decrypt / verify (PGP)", enabled: hasMessage || hasContent})
 	}
 	return append(items, m.pluginCommandItems(hasMessage)...)
 }

@@ -245,3 +245,21 @@ func TestCommandPaletteExecuteSaveAttachSaveUsesCurrentFolder(t *testing.T) {
 		t.Fatalf("unexpected saved content %q", data)
 	}
 }
+
+// In Drafts the cursor indexes m.drafts, so message actions in the palette
+// would act on an unrelated cached message (or nothing). They stay disabled.
+func TestCommandPaletteDisablesMessageActionsInDrafts(t *testing.T) {
+	m := draftsPreviewModel(t)
+	m.messages = []db.Message{{ID: 1, MailboxID: 2, UID: 20, Subject: "cached"}}
+	m.filteredMessages = m.messages
+	m.contentMessageID = 1
+
+	for _, item := range m.commandItems() {
+		switch item.id {
+		case "reply", "reply-all", "forward", "archive", "move", "delete", "toggle-read", "view-source":
+			if item.enabled {
+				t.Errorf("%q is enabled while Drafts is selected", item.id)
+			}
+		}
+	}
+}
