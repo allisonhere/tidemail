@@ -217,11 +217,12 @@ func (m Model) startPGPDecode(msg db.Message) (tea.Model, tea.Cmd) {
 	m.viewportCache.clear()
 	m.setViewportForCurrentRow()
 
-	sessions, mgr, parent := m.sessions, m.plugins.manager, m.plugins.ctx
-	mailboxName, uid, id, pluginID := mailbox.Name, msg.UID, msg.ID, p.Manifest.ID
+	sessions, mgr, parent, database := m.sessions, m.plugins.manager, m.plugins.ctx, m.db
+	mailboxName, mailboxID, uid, id, pluginID := mailbox.Name, mailbox.ID, msg.UID, msg.ID, p.Manifest.ID
 	return m, func() tea.Msg {
 		ctx, cancel := context.WithTimeout(parent, pgpTimeout)
 		defer cancel()
+		ctx = uidWriteContext(ctx, database, mailboxID, mailboxName)
 		var raw []byte
 		if err := sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
 			var ferr error

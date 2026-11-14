@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
 )
@@ -28,6 +29,16 @@ type Attachment struct {
 }
 
 func (db *DB) SaveAttachment(msgID int64, a Attachment) (int64, error) {
+	return saveAttachment(db, msgID, a)
+}
+
+// execer is satisfied by both *DB and *sql.Tx, so a write can run on its own
+// or inside a caller's transaction.
+type execer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
+func saveAttachment(x execer, msgID int64, a Attachment) (int64, error) {
 	if a.Filename == "" {
 		a.Filename = "untitled"
 	}
@@ -38,7 +49,7 @@ func (db *DB) SaveAttachment(msgID int64, a Attachment) (int64, error) {
 	if a.Inline {
 		inline = 1
 	}
-	res, err := db.Exec(`
+	res, err := x.Exec(`
 		INSERT INTO attachments
 			(message_id, filename, content_type, content_id, content_disposition, content_location, inline, data, size)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -157,7 +168,11 @@ func (a Attachment) IsInlineImage() bool {
 }
 
 func (db *DB) DeleteAttachmentsForMessage(msgID int64) error {
-	_, err := db.Exec(`DELETE FROM attachments WHERE message_id = ?`, msgID)
+	return deleteAttachmentsForMessage(db, msgID)
+}
+
+func deleteAttachmentsForMessage(x execer, msgID int64) error {
+	_, err := x.Exec(`DELETE FROM attachments WHERE message_id = ?`, msgID)
 	if err != nil {
 		return fmt.Errorf("delete attachments: %w", err)
 	}

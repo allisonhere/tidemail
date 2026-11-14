@@ -896,3 +896,42 @@ func runMoveScenario(t *testing.T, sc moveScenario) {
 		t.Fatalf("expected %d MOVE attempts, got %d", sc.wantMoves, got)
 	}
 }
+
+// TestUIDReadsRefuseAChangedUIDValidity covers the read side of the same guard:
+// fetching by a cached UID after the mailbox was renumbered would return a
+// different message.
+func TestUIDReadsRefuseAChangedUIDValidity(t *testing.T) {
+	port, cleanup := startTestServer(t)
+	defer cleanup()
+	uid := appendTestMessage(t, port, "INBOX", false)
+	appendTestMessage(t, port, "INBOX", false)
+
+	client := New(config.AccountConfig{IMAPHost: "127.0.0.1", IMAPPort: port, User: "testuser", Password: "testpass"})
+	if err := client.Connect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	_, validity, err := client.ServerState(context.Background(), "INBOX")
+	if err != nil || validity == 0 {
+		t.Fatalf("server state: %v (validity %d)", err, validity)
+	}
+
+	stale := WithUIDValidity(context.Background(), "INBOX", validity+1)
+	for name, read := range map[string]func() error{
+		"raw":   func() error { _, err := client.FetchRaw(stale, "INBOX", uid); return err },
+		"byuid": func() error { _, err := client.FetchByUID(stale, "INBOX", uid); return err },
+		"older": func() error { _, err := client.FetchOlderThan(stale, "INBOX", uid+2, 10); return err },
+	} {
+		if err := read(); !errors.Is(err, ErrUIDValidityChanged) {
+			t.Fatalf("%s with a stale UIDVALIDITY: %v", name, err)
+		}
+	}
+
+	current := WithUIDValidity(context.Background(), "INBOX", validity)
+	if _, err := client.FetchRaw(current, "INBOX", uid); err != nil {
+		t.Fatalf("matching UIDVALIDITY refused: %v", err)
+	}
+	if _, err := client.FetchByUID(context.Background(), "INBOX", uid); err != nil {
+		t.Fatalf("no expectation refused: %v", err)
+	}
+}

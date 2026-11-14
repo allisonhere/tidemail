@@ -213,10 +213,18 @@ func (db *DB) ClaimDueOutbox(id int64) (bool, error) {
 	return n == 1, err
 }
 
-// RecoverStaleOutbox leaves live workers alone. The lease exceeds SMTP's 30s
-// deadline and Sent append's 20s deadline; abandoned attempts never auto-retry.
+// OutboxSendLease is how long a row may sit in 'sending' before another process
+// treats its worker as dead. updated_at is set once, at claim time, so the lease
+// must outlast the slowest legitimate send: delivery's 10-minute SMTP deadline
+// plus the Sent-folder append's 20s, with margin. A shorter lease let a second
+// app or `tidemail outbox process` flip a live upload to 'uncertain'.
+const OutboxSendLease = 15 * time.Minute
+
+// RecoverStaleOutbox leaves live workers alone: only rows claimed longer ago
+// than OutboxSendLease are marked uncertain. Abandoned attempts never
+// auto-retry.
 func (db *DB) RecoverStaleOutbox() error {
 	now := time.Now().Unix()
-	_, err := db.Exec(`UPDATE outbox SET state='uncertain',last_error='Delivery was interrupted. Check Sent mail before retrying.',updated_at=? WHERE state='sending' AND updated_at<?`, now, now-120)
+	_, err := db.Exec(`UPDATE outbox SET state='uncertain',last_error='Delivery was interrupted. Check Sent mail before retrying.',updated_at=? WHERE state='sending' AND updated_at<?`, now, now-int64(OutboxSendLease/time.Second))
 	return err
 }

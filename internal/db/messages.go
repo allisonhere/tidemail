@@ -269,7 +269,15 @@ func (db *DB) UpsertMessage(m Message) error {
 	if m.Starred {
 		starred = 1
 	}
-	_, err := db.Exec(`
+	// One transaction: a failure part-way must not leave the row stored with
+	// its old attachments gone, because the known-UID filter would then never
+	// refetch it.
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	_, err = tx.Exec(`
 		INSERT INTO messages
 			(mailbox_id, uid, message_id, in_reply_to, references_text, subject, from_addr, to_addr, cc_addr,
 			 reply_to, date, body_text, body_html, summary, flags, read, starred, has_attachment, headers)
@@ -298,18 +306,18 @@ func (db *DB) UpsertMessage(m Message) error {
 	}
 
 	if len(mailtag.Keywords(m.Flags)) > 0 {
-		if err := db.ApplyServerFlags(m.MailboxID, map[uint32][]string{m.UID: m.Flags}); err != nil {
+		if err := applyServerFlagsTx(tx, m.MailboxID, map[uint32][]string{m.UID: m.Flags}); err != nil {
 			return err
 		}
 	}
 
 	msgID := m.ID
 	if msgID == 0 {
-		if err := db.QueryRow(`SELECT id FROM messages WHERE mailbox_id = ? AND uid = ?`, m.MailboxID, m.UID).Scan(&msgID); err != nil {
+		if err := tx.QueryRow(`SELECT id FROM messages WHERE mailbox_id = ? AND uid = ?`, m.MailboxID, m.UID).Scan(&msgID); err != nil {
 			return err
 		}
 	}
-	if err := db.upsertMessageFTS(msgID); err != nil {
+	if err := upsertMessageFTS(tx, msgID); err != nil {
 		return err
 	}
 
@@ -318,18 +326,18 @@ func (db *DB) UpsertMessage(m Message) error {
 		// Get the message ID (works with INSERT or ON CONFLICT UPDATE)
 		if msgID != 0 {
 			// Delete old attachments and re-insert
-			if delErr := db.DeleteAttachmentsForMessage(msgID); delErr != nil {
+			if delErr := deleteAttachmentsForMessage(tx, msgID); delErr != nil {
 				return delErr
 			}
 			for _, a := range m.AttachmentData {
-				if _, err := db.SaveAttachment(msgID, a); err != nil {
+				if _, err := saveAttachment(tx, msgID, a); err != nil {
 					return err
 				}
 			}
 		}
 	}
 
-	return nil
+	return tx.Commit()
 }
 
 func (db *DB) MessageDeletedLocally(mailboxID int64, uid uint32, messageID string) (bool, error) {
@@ -580,11 +588,11 @@ func ftsQueryPrefix(query string, prefixLast bool) string {
 	return strings.Join(quoted, " AND ")
 }
 
-func (db *DB) upsertMessageFTS(id int64) error {
-	if _, err := db.Exec(`DELETE FROM messages_fts WHERE rowid = ?`, id); err != nil {
+func upsertMessageFTS(x execer, id int64) error {
+	if _, err := x.Exec(`DELETE FROM messages_fts WHERE rowid = ?`, id); err != nil {
 		return err
 	}
-	_, err := db.Exec(`
+	_, err := x.Exec(`
 		INSERT INTO messages_fts(rowid, subject, from_addr, to_addr, cc_addr, body_text)
 		SELECT id, subject, from_addr, to_addr, cc_addr, body_text
 		FROM messages

@@ -67,11 +67,12 @@ func (m Model) openSource(msg db.Message) (tea.Model, tea.Cmd) {
 func (m Model) messageSourceFetcher(msg db.Message) func() ([]byte, error) {
 	mailbox := m.mailboxByID(msg.MailboxID)
 	acfg, _ := m.accountCfgForMailbox(msg.MailboxID)
-	sessions := m.sessions
-	mailboxName, uid := mailbox.Name, msg.UID
+	sessions, database := m.sessions, m.db
+	mailboxName, uid, mailboxID := mailbox.Name, msg.UID, mailbox.ID
 	return func() ([]byte, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), sourceTimeout)
 		defer cancel()
+		ctx = uidWriteContext(ctx, database, mailboxID, mailboxName)
 		var raw []byte
 		err := sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
 			var ferr error

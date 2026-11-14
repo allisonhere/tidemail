@@ -139,7 +139,20 @@ func TestRecoveryDoesNotInterruptLiveWorker(t *testing.T) {
 	if item.State != db.OutboxSending {
 		t.Fatalf("live worker recovered: %s", item.State)
 	}
-	_, err = database.Exec(`UPDATE outbox SET updated_at=? WHERE id=?`, time.Now().Add(-3*time.Minute).Unix(), id)
+	// A large upload can legitimately run for minutes (the SMTP deadline is
+	// 10), so a row claimed 9 minutes ago still belongs to a live worker.
+	_, err = database.Exec(`UPDATE outbox SET updated_at=? WHERE id=?`, time.Now().Add(-9*time.Minute).Unix(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = database.RecoverStaleOutbox(); err != nil {
+		t.Fatal(err)
+	}
+	item, _ = database.GetOutbox(id)
+	if item.State != db.OutboxSending {
+		t.Fatalf("long-running worker recovered after 9 minutes: %s", item.State)
+	}
+	_, err = database.Exec(`UPDATE outbox SET updated_at=? WHERE id=?`, time.Now().Add(-db.OutboxSendLease-time.Minute).Unix(), id)
 	if err != nil {
 		t.Fatal(err)
 	}

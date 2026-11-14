@@ -685,6 +685,7 @@ func (m *Model) loadOlderMessagesCmd(mailboxID int64) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
+		ctx = uidWriteContext(ctx, database, mailboxID, mailbox.Name)
 		var result tea.Msg
 		err := sessions.Do(ctx, acfg, func(client *imapClient.Client) error {
 			msgs, fetchErr := client.FetchOlderThan(ctx, mailbox.Name, oldestUID, backfillPageSize)

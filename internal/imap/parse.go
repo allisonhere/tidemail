@@ -141,8 +141,8 @@ func (c *Client) FetchOlderThan(ctx context.Context, mailboxName string, beforeU
 	}
 	defer c.applyDeadline(ctx)()
 
-	if _, err := c.conn.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
-		return nil, fmt.Errorf("select %s: %w", mailboxName, err)
+	if err := c.selectForUIDRead(ctx, mailboxName); err != nil {
+		return nil, err
 	}
 
 	// Ask which UIDs actually exist below the cutoff rather than assuming a
@@ -174,8 +174,8 @@ func (c *Client) FetchByUID(ctx context.Context, mailboxName string, uid uint32)
 	}
 	defer c.applyDeadline(ctx)()
 
-	if _, err := c.conn.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
-		return db.Message{}, fmt.Errorf("select %s: %w", mailboxName, err)
+	if err := c.selectForUIDRead(ctx, mailboxName); err != nil {
+		return db.Message{}, err
 	}
 	msgs, err := c.fetchNumSet(imap.UIDSetNum(imap.UID(uid)))
 	if err != nil {
@@ -196,8 +196,8 @@ func (c *Client) FetchRaw(ctx context.Context, mailboxName string, uid uint32) (
 	}
 	defer c.applyDeadline(ctx)()
 
-	if _, err := c.conn.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
-		return nil, fmt.Errorf("select %s: %w", mailboxName, err)
+	if err := c.selectForUIDRead(ctx, mailboxName); err != nil {
+		return nil, err
 	}
 	section := &imap.FetchItemBodySection{Peek: true}
 	msgs, err := c.conn.Fetch(imap.UIDSetNum(imap.UID(uid)), &imap.FetchOptions{
@@ -711,8 +711,8 @@ func (c *Client) SearchText(ctx context.Context, mailboxName string, text string
 	}
 	defer c.applyDeadline(ctx)()
 
-	if _, err := c.conn.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
-		return nil, fmt.Errorf("select %s: %w", mailboxName, err)
+	if err := c.selectForUIDRead(ctx, mailboxName); err != nil {
+		return nil, err
 	}
 	data, err := c.conn.UIDSearch(&imap.SearchCriteria{Text: []string{text}}, nil).Wait()
 	if err != nil {

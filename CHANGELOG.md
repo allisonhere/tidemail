@@ -37,6 +37,15 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Opening a message's source, decoding PGP, or loading older mail no longer acts
+  on stale cached UIDs after a folder was recreated on the server; it asks you to
+  sync instead of showing the wrong message.
+- Storing a synced message is now all-or-nothing with its search entry and
+  attachments, so a failure part-way no longer leaves a message permanently
+  missing attachments.
+- A slow send, such as a large attachment, is no longer marked uncertain by
+  another TideMail instance or `tidemail outbox process` after two minutes; the
+  window is now 15 minutes.
 - Mail keeps arriving after the computer resumes from suspend. TideMail now
   detects the wake, reconnects the push (IDLE) connections, and syncs at once,
   instead of waiting for a manual sync. (#129)

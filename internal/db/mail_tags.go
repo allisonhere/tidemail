@@ -79,6 +79,13 @@ func (db *DB) ApplyServerFlags(mailboxID int64, flagsByUID map[uint32][]string) 
 		return err
 	}
 	defer tx.Rollback() //nolint:errcheck
+	if err := applyServerFlagsTx(tx, mailboxID, flagsByUID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func applyServerFlagsTx(tx *sql.Tx, mailboxID int64, flagsByUID map[uint32][]string) error {
 	var discovered []string
 	for uid, flags := range flagsByUID {
 		encoded, err := json.Marshal(flags)
@@ -90,10 +97,7 @@ func (db *DB) ApplyServerFlags(mailboxID int64, flagsByUID map[uint32][]string) 
 		}
 		discovered = append(discovered, flags...)
 	}
-	if err := discoverMailTags(tx, mailboxID, discovered); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return discoverMailTags(tx, mailboxID, discovered)
 }
 
 // DiscoverCachedMailTags also covers databases created before mail tag support.

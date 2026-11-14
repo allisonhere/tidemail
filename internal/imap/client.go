@@ -360,7 +360,7 @@ func (c *Client) AppendWithFlags(ctx context.Context, mailboxName string, raw []
 }
 
 // ErrUIDValidityChanged means the server renumbered a mailbox since its UIDs
-// were cached, so a write by cached UID would hit a different message. The next
+// were cached, so a read or write by cached UID would hit a different message. The next
 // sync notices the new UIDVALIDITY and rebuilds the cache.
 var ErrUIDValidityChanged = errors.New("mailbox changed on the server; sync before trying again")
 
@@ -372,11 +372,26 @@ type uidValidityExpectation struct {
 }
 
 // WithUIDValidity records which UIDVALIDITY the caller's cached UIDs for
-// mailbox belong to. A UID write to that mailbox under the returned context
-// refuses to run (ErrUIDValidityChanged) when the server reports a different
+// mailbox belong to. A UID read or write to that mailbox under the returned
+// context refuses to run (ErrUIDValidityChanged) when the server reports a different
 // one. Zero, or another mailbox, leaves the check off.
 func WithUIDValidity(ctx context.Context, mailbox string, uidValidity uint32) context.Context {
 	return context.WithValue(ctx, uidValidityKey{}, uidValidityExpectation{mailbox, uidValidity})
+}
+
+// selectForUIDRead selects mailbox read-only and enforces the context's
+// expected UIDVALIDITY, if any, before a cached UID is used to fetch, so a
+// renumbered mailbox is never read as if the old UIDs still applied.
+func (c *Client) selectForUIDRead(ctx context.Context, mailboxName string) error {
+	selected, err := c.conn.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait()
+	if err != nil {
+		return fmt.Errorf("select %s: %w", mailboxName, err)
+	}
+	if want, ok := ctx.Value(uidValidityKey{}).(uidValidityExpectation); ok &&
+		want.mailbox == mailboxName && want.value != 0 && selected.UIDValidity != want.value {
+		return ErrUIDValidityChanged
+	}
+	return nil
 }
 
 // selectForUIDWrite selects mailbox read-write and enforces the context's
