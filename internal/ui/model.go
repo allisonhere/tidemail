@@ -399,6 +399,8 @@ type Model struct {
 	// account ID); see startIdleWatchers. The map is shared across Model copies.
 	idleWatchers        map[int64]idleWatcherEntry
 	syncTimerGeneration map[int64]uint64
+	// lastResumeTick is the wall-clock time of the previous resume check.
+	lastResumeTick time.Time
 
 	firstLoad              bool
 	pendingSelectMailboxID int64
@@ -568,7 +570,7 @@ func (m Model) Init() tea.Cmd {
 	// The spinner tick loop is started lazily by ensureSpinner when a loading
 	// state begins — not here. Kicking it at startup would re-render the idle TUI
 	// ~10×/sec forever (the spinner self-reschedules on every tick).
-	cmds := []tea.Cmd{m.loadAccountsCmd()}
+	cmds := []tea.Cmd{m.loadAccountsCmd(), resumeTickCmd()}
 	if cmd := m.ensureSpinner(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
@@ -1361,6 +1363,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			waitIdleCmd(msg.Watcher, msg.AccountID, msg.MailboxID),
 			m.syncMailboxCmd(msg.MailboxID, false),
 		)
+
+	case resumeTickMsg:
+		return m.handleResumeTick(msg)
 
 	case AutoSyncMsg:
 		var cmds []tea.Cmd

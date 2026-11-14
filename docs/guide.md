@@ -177,6 +177,10 @@ it. If a server does not support IDLE, TideMail reports this in the status line
 and checks that account every five minutes for the rest of the session. Use `-1`
 if you want an account to refresh only when you press `s`.
 
+After your computer wakes from suspend, TideMail notices the gap, reconnects the
+push connections, and syncs every automatic account right away, so you do not
+have to press `s`.
+
 ## Reading and organizing mail
 
 Use the three panes to choose an account or folder, select a message, and read

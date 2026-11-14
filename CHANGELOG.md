@@ -37,6 +37,9 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Mail keeps arriving after the computer resumes from suspend. TideMail now
+  detects the wake, reconnects the push (IDLE) connections, and syncs at once,
+  instead of waiting for a manual sync. (#129)
 - Recipient suggestions for names containing a comma (such as "Doe, John") are
   inserted in quotes, so they no longer block sending, and a comma inside a
   quoted name no longer splits the recipient being typed.
