@@ -502,6 +502,17 @@ Each delete, archive or move also writes two lines to the Logs pane: one when it
 server and one when it finishes, with how long the server work took and how long the app took to
 see the result. If a pill ever seems stuck, those two times show which side was slow.
 
+**Settings → Advanced → View Logs** shows the same pane full-screen, scrollable with
+`j`/`k` or the arrow keys. Press `c` to copy the whole log to the clipboard, or `s` to save it
+to a file — both in chronological order (oldest first), the opposite of the pane's newest-first
+display, and errors are marked with a leading `!` so they are easy to find. `s` opens the same
+folder browser attachments save to, starting in Downloads, so you can navigate to or select any
+folder; the file is `tidemail-logs-<timestamp>.txt` and never overwrites an existing one. If
+Downloads doesn't exist, it saves straight to `~/Downloads/tidemail-logs/` instead of opening the
+browser. This log is the last 100 status-bar messages from this session, not the IMAP/IDLE sync
+diagnostics TideMail keeps on disk in `fetch.log`, next to `config.toml`
+(`~/.config/tidemail/fetch.log`; Windows: `%USERPROFILE%\.config\tidemail\fetch.log`).
+
 ### Waiting on Them
 
 **Waiting on Them**, below Needs You, lists conversations where you sent the

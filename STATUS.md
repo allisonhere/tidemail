@@ -4,7 +4,11 @@ TideMail is a keyboard-first TUI email client for the terminal, built in Go with
 Bubble Tea. It supports multiple IMAP/SMTP accounts, a unified inbox, AI summaries,
 and push or interval sync. See `docs/architecture.md` for the architecture map.
 
-Current release: **v1.9.0**.
+Current release: **v1.9.1**. `main` carries unreleased work beyond it: search
+operators and history, contact import and lookup improvements, and a 22-item
+correctness audit (UID-read validity, atomic message upsert, the outbox lease,
+suspend/resume reconnect, and smaller UI fixes) — see `CHANGELOG.md`
+Unreleased.
 
 ## Working
 
@@ -68,10 +72,16 @@ Current release: **v1.9.0**.
   connection per account — deliberately outside the pool, since IDLE monopolizes a
   connection and would otherwise serialize every other operation behind it.
   `sync_minutes = 0` selects push; a positive value polls on that interval.
-  Servers without IDLE fall back to five-minute polling for push accounts.
+  Servers without IDLE fall back to five-minute polling for push accounts, and
+  a watcher that stops for good retries once its account's config changes.
+  After a laptop suspend, a wall-clock check detects the gap and reconnects
+  IDLE and re-arms sync timers immediately rather than waiting on a stale poll.
 - **Cache correctness**: UIDVALIDITY is tracked per mailbox and invalidates the local
-  cache when a server renumbers (`internal/db/reconcile.go`). Tombstones keep deleted
-  mail from resurrecting through date-granular re-fetches.
+  cache when a server renumbers (`internal/db/reconcile.go`), enforced on reads
+  (source view, PGP decode, older-mail backfill) as well as writes. Tombstones
+  keep deleted mail from resurrecting through date-granular re-fetches. A
+  synced message's row, server flags, search entry, and attachments replace
+  atomically, so a failure part-way cannot strand it without its attachments.
 - **SMTP send**: plain, STARTTLS, and direct TLS (port 465). Auth is app-password over
   PLAIN, or XOAUTH2 for OAuth Gmail accounts. Reply/reply-all/forward threading headers; display
   name preserved in `From:`. Delivered mail is appended to the account's discovered
@@ -146,7 +156,21 @@ Current release: **v1.9.0**.
   Optional Tag icons use colored tag glyphs with an ASCII fallback. External changes refresh on sync;
   unsupported servers reject edits without claiming success. No profile import,
   offline queue, bulk tagging, or automatic AI assignment.
-- **Search**, unread-only filtering, command palette, desktop notifications.
+- **Search**: full-text with `from:`/`to:`/`cc:`/`subject:` operators (`to:` also
+  covers Cc; a complete address matches exactly, not as a substring),
+  combinable with free words and `#tags`. Remembers the last 30 kept searches
+  (empty box lists them, `↑`/`↓` filters by what's typed, `Tab` completes,
+  `Ctrl+D` forgets one). Unread-only filtering, command palette, desktop
+  notifications.
+- **Contacts**: add, edit, and delete; import and export vCards, including a
+  whole folder of `.vcf` files in one pass with a skipped-card count and a
+  hidden-file toggle in the picker. A plugin with `contacts_read` can serve as
+  an external address book, joining local suggestions via `Ctrl+T`.
+- **View Logs** (Settings → Advanced): the session's status-bar history,
+  full-screen and scrollable. `c` copies it to the clipboard, `s` saves it
+  through the same folder-browser picker attachments use; both in
+  chronological (oldest-first) order with errors marked. Separate from the
+  on-disk `fetch.log` IMAP/IDLE sync diagnostics next to `config.toml`.
 - **Experimental plugins**: manual and automatic metadata classification,
   stored tags with local corrections (`e` on a message), Needs You with immediate
   sidebar count updates for delete, archive, move and undo, result cards
@@ -250,7 +274,12 @@ deletion marker in one transaction. Needs You dismiss/restore targets the
 selected email, including a conversation parent; failures leave the database unchanged. A failed
 Ctrl+Z restore keeps undo available for retry after the write finishes.
 
-- Account deletion cleans its FTS index and cached account data atomically.
+- Account deletion cleans its FTS index and cached account data atomically, and
+  also removes the account's own drafts, their attachments, and queued outbox
+  mail; rows that can't be tied to exactly one account are kept rather than
+  risk deleting another account's data. A stale-send lease of 15 minutes,
+  longer than the 10-minute SMTP submission deadline, keeps a second worker
+  from marking a live slow send uncertain.
   SQLite replacement connections keep foreign keys, the five-second busy timeout,
   and WAL settings; punctuation in filesystem database paths is URI-escaped,
   and Windows drive-letter paths open correctly.

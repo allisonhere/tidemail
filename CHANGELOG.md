@@ -8,6 +8,10 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- **Settings → Advanced → View Logs** can copy the log to the clipboard (`c`)
+  or save it to a file (`s`) through the same folder browser attachments save
+  to, so you can pick the destination. Both are in chronological order (oldest
+  first), the reverse of the pane's own display, with errors marked.
 - Import a whole folder of contact files: in the contact import picker, the
   first row reads every `.vcf` file in the folder you are in (a vdirsyncer or
   Nextcloud address book is one folder of `.vcf` files). One unreadable file

@@ -322,6 +322,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{"CLI", "tidemail cli: quit after send, skip review, default signature (interactive use only)"},
 				{"Personal dictionary", "Editor section: a adds a spell-check word, d removes the selected one, esc goes back"},
 				{"Changelog", "read the bundled release notes; j/k or arrows scroll, PgUp/PgDn page, g/G jump to top/bottom"},
+				{"Advanced → View Logs", "j/k or arrows scroll; c copies the whole log, s opens a folder browser to save it (chronological, oldest first)"},
 				{"Support", "select Open or Copy link with arrows; Enter activates; ctrl+c copies"},
 				{"Pane header bars", "show titles and shortcuts above panes; off restores one row and moves focused-pane details to the status bar"},
 				{"Needs You / Waiting on Them in sidebar", "off hides that row from the sidebar; nothing is deleted"},

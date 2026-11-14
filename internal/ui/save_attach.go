@@ -12,6 +12,17 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// saveAttachPickerKind says what the shared folder-browser picker is for,
+// since the same overlay (m.saveAttachPicker) is reused to save different
+// things — attachments, or the in-app log — by branching Confirm on it rather
+// than duplicating the browser.
+type saveAttachPickerKind int
+
+const (
+	saveAttachKindAttachments saveAttachPickerKind = iota
+	saveAttachKindLogs
+)
+
 func (m *Model) openSaveAttachPicker(dir string) error {
 	fe, err := listDirEntries(dir, m.saveAttachPicker.showHidden)
 	if err != nil {
@@ -96,6 +107,9 @@ func (m Model) handleSaveAttachPicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// "select this folder" entry or a file — choose current directory
 		m.saveAttachPicker.active = false
 		m.overlay = overlayNone
+		if m.saveAttachPickerKind == saveAttachKindLogs {
+			return m, saveLogsCmdTo(logBufferPlainText(m.logBuffer), m.saveAttachPicker.currentDir)
+		}
 		return m, saveAttachmentsCmdTo(m.db, m.contentAttachments, m.saveAttachPicker.currentDir)
 
 	case keyMatches(msg, m.keys.Left), keyMatches(msg, m.keys.Back):

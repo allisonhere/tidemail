@@ -151,7 +151,11 @@ func (m Model) renderOverlay(base string) string {
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
 		inner := m.renderSaveAttachPicker(winW, winH, chrome)
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderSoftPanelBox(inner, winW, "tidemail", "save attachments", chrome)
+		title := "save attachments"
+		if m.saveAttachPickerKind == saveAttachKindLogs {
+			title = "save logs"
+		}
+		box = renderSoftPanelBox(inner, winW, "tidemail", title, chrome)
 
 	case overlayMoveMessage:
 		winW := min(m.width-4, 74)
@@ -651,7 +655,7 @@ func (m Model) renderLogViewer(width, height int) string {
 
 	// Viewport view
 	title := lipgloss.NewStyle().Background(bg).Foreground(t.BorderFocus).Bold(true).Width(width).Padding(0, 1).Render(fmt.Sprintf("LOGS (%d)", len(logLines)))
-	footer := lipgloss.NewStyle().Background(bg).Foreground(readableText(t.Dimmed, bg, 3.0)).Width(width).Padding(0, 1).Render("[esc] close  [↑↓/j/k] scroll")
+	footer := lipgloss.NewStyle().Background(bg).Foreground(readableText(t.Dimmed, bg, 3.0)).Width(width).Padding(0, 1).Render("[esc] close  [↑↓/j/k] scroll  [c] copy  [s] save")
 
 	return lipgloss.NewStyle().
 		Background(bg).

@@ -267,18 +267,19 @@ type Model struct {
 	contentQuotesCollapsed bool
 	contentShowHeaders     bool
 
-	saveAttachPicker  filePicker
-	movePicker        movePicker
-	filterManager     filterManager
-	outboxItems       []db.OutboxItem
-	outboxCursor      int
-	outboxStatus      string
-	outboxConfirmID   int64
-	scheduleSendInput textinput.Model
-	schedulePicker    list.Model
-	scheduleCustom    bool
-	scheduleCalendar  time.Time
-	scheduleDate      time.Time
+	saveAttachPicker     filePicker
+	saveAttachPickerKind saveAttachPickerKind
+	movePicker           movePicker
+	filterManager        filterManager
+	outboxItems          []db.OutboxItem
+	outboxCursor         int
+	outboxStatus         string
+	outboxConfirmID      int64
+	scheduleSendInput    textinput.Model
+	schedulePicker       list.Model
+	scheduleCustom       bool
+	scheduleCalendar     time.Time
+	scheduleDate         time.Time
 
 	grammarOriginal    string
 	grammarCorrected   string
@@ -1662,6 +1663,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleReportSaved(msg)
 	case reportPrintedMsg:
 		return m.handleReportPrinted(msg)
+
+	case logsSavedMsg:
+		return m.handleLogsSaved(msg)
 	case pluginReportMsg:
 		return m.handlePluginReport(msg)
 
@@ -2671,6 +2675,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case keyMatches(msg, m.keys.SaveAttach):
 		if m.focused == paneContent && m.contentMessageID != 0 && len(m.contentAttachments) > 0 {
+			m.saveAttachPickerKind = saveAttachKindAttachments
 			home, err := os.UserHomeDir()
 			if err != nil {
 				return m, saveAttachmentsCmd(m.db, m.contentAttachments)
@@ -3441,6 +3446,22 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayLogViewer:
 		if keyMatches(msg, m.keys.Cancel, m.keys.Back) {
 			m.overlay = overlaySettings
+			return m, nil
+		}
+		switch msg.String() {
+		case "c":
+			return m, clipboardWriteCmd(logBufferPlainText(m.logBuffer))
+		case "s":
+			text := logBufferPlainText(m.logBuffer)
+			m.saveAttachPickerKind = saveAttachKindLogs
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return m, saveLogsCmd(text)
+			}
+			if err := m.openSaveAttachPicker(filepath.Join(home, "Downloads")); err != nil {
+				return m, saveLogsCmd(text)
+			}
+			m.overlay = overlaySaveAttach
 			return m, nil
 		}
 		var cmd tea.Cmd

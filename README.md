@@ -296,9 +296,13 @@ for uploads, with 30-second connection/authentication setup.
 
 ## Search, links, and attachments
 
-Global search stays active while you move through results. The content pane can
-find text inside the open message, walk links, copy a visual selection, and save
-attachments to a folder you choose.
+Global search stays active while you move through results. Limit a word to one
+header with `from:`, `to:`, `cc:`, or `subject:` (`to:` covers Cc too, useful for
+a shared inbox), combine operators with free words and `#tags`, and quote a name
+with spaces. TideMail remembers your last 30 searches: an empty search box lists
+them, `↑`/`↓` opens the list filtered to what you've typed, `Tab` completes, and
+`Ctrl+D` forgets one. The content pane can find text inside the open message,
+walk links, copy a visual selection, and save attachments to a folder you choose.
 
 Receipts keep item descriptions, quantities, and amounts in aligned columns,
 including totals with merged cells. Narrow reading panes show labelled records
