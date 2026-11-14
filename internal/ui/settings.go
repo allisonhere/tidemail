@@ -3370,7 +3370,7 @@ func (s Settings) fieldHint(field settingsField) string {
 	case sfThreadedConversations:
 		return "group related replies into one optional conversation row"
 	case sfNotifications:
-		return "show a desktop notification when new mail arrives during background sync"
+		return "show new mail from background sync; one-message Linux notifications add Mark Read, Delete, and Ignore actions"
 	case sfMouseSupport:
 		return "click to select folders, messages, and links; turns off the terminal's native click-drag text selection while on"
 	case sfUpdateManualCommand:

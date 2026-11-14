@@ -21,6 +21,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	imapClient "github.com/allisonhere/tidemail/internal/imap"
+	"github.com/allisonhere/tidemail/internal/notify"
 	"github.com/allisonhere/tidemail/internal/update"
 	"github.com/allisonhere/tideui"
 )
@@ -403,6 +404,11 @@ type Model struct {
 	// account ID); see startIdleWatchers. The map is shared across Model copies.
 	idleWatchers        map[int64]idleWatcherEntry
 	syncTimerGeneration map[int64]uint64
+	// notifier is a long-lived private D-Bus connection. Notification IDs are
+	// registered on the update loop before an action can change message state.
+	notifier             notify.Conn
+	pendingNotifyActions map[uint32]int64
+	earlyNotifyActions   map[uint32]notify.Event
 	// lastResumeTick is the wall-clock time of the previous resume check.
 	lastResumeTick time.Time
 
@@ -452,6 +458,9 @@ func (m Model) CloseSessions() {
 	m.stopIdleWatchers()
 	m.closePlugins()
 	m.stopSnoozeTimer()
+	if m.notifier != nil {
+		_ = m.notifier.Close()
+	}
 	if m.sessions != nil {
 		m.sessions.Close()
 	}
@@ -537,6 +546,8 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		lastFolderRefresh:      make(map[int64]time.Time),
 		idleWatchers:           make(map[int64]idleWatcherEntry),
 		syncTimerGeneration:    make(map[int64]uint64),
+		pendingNotifyActions:   make(map[uint32]int64),
+		earlyNotifyActions:     make(map[uint32]notify.Event),
 		collapsedAccounts:      map[int64]bool{},
 		collapsedSections:      map[string]bool{},
 		firstLoad:              true,
@@ -590,6 +601,9 @@ func (m Model) Init() tea.Cmd {
 		cmds = append(cmds, tickUpdateProgress())
 	}
 	if cmd := m.pluginEventListenCmd(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	if cmd := m.openNotifierCmd(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
 	if cmd := loadNeedsYouCountCmd(m.db); cmd != nil {
@@ -1680,6 +1694,15 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pluginEventMsg:
 		m.invalidateComposePanes()
 		return m.handlePluginEvent(msg)
+
+	case notifierOpenedMsg:
+		return m.handleNotifierOpened(msg)
+
+	case notifySentMsg:
+		return m.handleNotifySent(msg)
+
+	case notifyActionEventMsg:
+		return m.handleNotifyActionEvent(msg)
 
 	case pluginAnnotationsRefreshedMsg:
 		m.invalidateComposePanes()

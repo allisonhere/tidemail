@@ -8,6 +8,9 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- On Linux, a notification for one new message offers **Mark Read**,
+  **Delete**, and **Ignore** actions. Delete keeps TideMail's normal six-second
+  undo window; batch notifications remain informational.
 - **Settings → Advanced → View Logs** can copy the log to the clipboard (`c`)
   or save it to a file (`s`) through the same folder browser attachments save
   to, so you can pick the destination. Both are in chronological order (oldest

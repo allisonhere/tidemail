@@ -8,6 +8,7 @@ import (
 	"net/mail"
 	"os"
 	"os/exec"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -16,6 +17,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	imapClient "github.com/allisonhere/tidemail/internal/imap"
+	"github.com/allisonhere/tidemail/internal/notify"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -305,22 +307,59 @@ func (m *Model) loadAddressBookCmd() tea.Cmd {
 }
 
 func (m *Model) notifyCmd(mailboxID int64, newMsgs []db.Message) tea.Cmd {
-	database := m.db
+	if useActionableNotify(runtime.GOOS, len(newMsgs), m.notifier) {
+		return m.notifyActionableCmd(mailboxID, newMsgs[0])
+	}
+	return notifySendCmd(m.db, mailboxID, newMsgs)
+}
+
+func useActionableNotify(goos string, newMsgCount int, notifier notify.Conn) bool {
+	return goos == "linux" && newMsgCount == 1 && notifier != nil
+}
+
+func (m *Model) notifyActionableCmd(mailboxID int64, message db.Message) tea.Cmd {
+	database, notifier := m.db, m.notifier
 	return func() tea.Msg {
-		// Account name gives multi-account context; best-effort, not required.
-		var acctName string
-		if mailbox, err := database.GetMailbox(mailboxID); err == nil {
-			if acc, err := database.GetAccount(mailbox.AccountID); err == nil {
-				acctName = acc.Name
-			}
+		title, body := notificationText(database, mailboxID, []db.Message{message})
+		id, err := notifier.Notify("tidemail", "mail-unread", title, body, []string{
+			"mark-read", "Mark Read",
+			"delete", "Delete",
+			"ignore", "Ignore",
+		})
+		if err != nil {
+			sendDesktopNotification(title, body)
+			return nil
 		}
-		title, body := composeNotification(acctName, newMsgs)
-		// notify-send is fire-and-forget; exec the non-interactive version.
-		// "--" terminates option parsing so a sender/subject beginning with "-"
-		// (attacker-controlled) can't be misread as a notify-send flag.
-		_ = exec.Command("notify-send", "-a", "tidemail", "-i", "mail-unread", "--", title, body).Run()
+		return notifySentMsg{notifyID: id, messageID: message.ID}
+	}
+}
+
+func notifySendCmd(database *db.DB, mailboxID int64, newMsgs []db.Message) tea.Cmd {
+	return func() tea.Msg {
+		title, body := notificationText(database, mailboxID, newMsgs)
+		sendDesktopNotification(title, body)
 		return nil
 	}
+}
+
+func notificationText(database *db.DB, mailboxID int64, messages []db.Message) (string, string) {
+	// Account name gives multi-account context; best-effort, not required.
+	var accountName string
+	if database != nil {
+		if mailbox, err := database.GetMailbox(mailboxID); err == nil {
+			if account, err := database.GetAccount(mailbox.AccountID); err == nil {
+				accountName = account.Name
+			}
+		}
+	}
+	return composeNotification(accountName, messages)
+}
+
+func sendDesktopNotification(title, body string) {
+	// notify-send is fire-and-forget; exec the non-interactive version.
+	// "--" terminates option parsing so a sender/subject beginning with "-"
+	// (attacker-controlled) can't be misread as a notify-send flag.
+	_ = exec.Command("notify-send", "-a", "tidemail", "-i", "mail-unread", "--", title, body).Run()
 }
 
 // composeNotification builds the title/body for a new-mail desktop notification:

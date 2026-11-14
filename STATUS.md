@@ -161,7 +161,8 @@ Unreleased.
   combinable with free words and `#tags`. Remembers the last 30 kept searches
   (empty box lists them, `↑`/`↓` filters by what's typed, `Tab` completes,
   `Ctrl+D` forgets one). Unread-only filtering, command palette, desktop
-  notifications.
+  notifications; on Linux, a single-message notification offers Mark Read,
+  Delete (with the normal undo window), and Ignore actions.
 - **Contacts**: add, edit, and delete; import and export vCards, including a
   whole folder of `.vcf` files in one pass with a skipped-card count and a
   hidden-file toggle in the picker. A plugin with `contacts_read` can serve as
