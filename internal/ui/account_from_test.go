@@ -112,3 +112,29 @@ func TestAccountManagerFormHintDefaultsOnEmptyLogin(t *testing.T) {
 		t.Fatalf("expected an empty form to keep the default hint, got %q", view)
 	}
 }
+
+func TestAccountManagerFieldHelpBrightensOnlyWithOwningFocus(t *testing.T) {
+	trueColor(t)
+
+	am := newFromFormAccountManager()
+	chrome := newManagerChrome(80, CatppuccinMocha, false)
+	const hint = "Blank sends as the username"
+
+	am.focusField(amFieldFrom)
+	focused := lineContaining(t, am.viewForm(80, 60, chrome), hint)
+	if !strings.Contains(focused, foreground(t, chrome.text)) {
+		t.Fatalf("expected focused account field help to use normal text, got %q", focused)
+	}
+	if textIsFaint(t, focused, hint) {
+		t.Fatalf("expected focused account field help not to be faint, got %q", focused)
+	}
+
+	am.focusField(amFieldAliases)
+	unfocused := lineContaining(t, am.viewForm(80, 60, chrome), hint)
+	if !strings.Contains(unfocused, foreground(t, chrome.muted)) {
+		t.Fatalf("expected unfocused account field help to use muted text, got %q", unfocused)
+	}
+	if !textIsFaint(t, unfocused, hint) {
+		t.Fatalf("expected unfocused account field help to be faint, got %q", unfocused)
+	}
+}

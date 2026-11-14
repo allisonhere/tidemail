@@ -39,6 +39,11 @@ All notable changes to TideMail are documented in this file.
   filtered by it, `Tab` completes from history and `Ctrl+D` forgets an entry.
   **Clear search history** is in the command palette.
 
+### Changed
+
+- Field help in Settings and the Account Manager stays muted and faint until
+  its related control receives focus, making active guidance easier to pick out.
+
 ### Fixed
 
 - The save-attachment picker no longer crashes when its starting folder cannot

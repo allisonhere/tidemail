@@ -2145,15 +2145,15 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addToggle("Filter links from articles", s.filterLinks, sfFilterLinks)
 		b.markAnchor(sfImages)
 		b.addLine(s.renderImagesSelector(b.width, b.chrome))
-		b.addHint(s.fieldHint(sfImages))
+		b.addFieldHint(sfImages, s.fieldHint(sfImages))
 		if !s.imagesSupported {
-			b.addHintMarked("Terminal: inline images unsupported; using text placeholders.",
+			b.addFieldHintMarked(sfImages, "Terminal: inline images unsupported; using text placeholders.",
 				imageSupportMarker(b.chrome.plainUI, aiConnectionError), b.chrome.errorFg)
 		} else if ThemeUsesASCII(s.themeName) {
-			b.addHintMarked("Plain theme: using text placeholders.",
+			b.addFieldHintMarked(sfImages, "Plain theme: using text placeholders.",
 				imageSupportMarker(b.chrome.plainUI, aiConnectionIdle), b.chrome.pendingFg)
 		} else {
-			b.addHintMarked("Terminal: inline images supported.",
+			b.addFieldHintMarked(sfImages, "Terminal: inline images supported.",
 				imageSupportMarker(b.chrome.plainUI, aiConnectionSuccess), b.chrome.successFg)
 		}
 		b.addBlank()
@@ -2167,9 +2167,9 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addGroup("Compose")
 		b.addToggle("Vim keys in compose", s.composeVim, sfComposeVim)
 		b.addToggle("Wrap at word boundaries", s.composeWordWrap, sfComposeWordWrap)
-		b.addHint("Wraps compose text between words instead of mid-word. Display only; your message text is not changed.")
+		b.addFieldHint(sfComposeWordWrap, "Wraps compose text between words instead of mid-word. Display only; your message text is not changed.")
 		b.addToggle("Advanced regex search", s.composeSearchRegex, sfComposeSearchRegex)
-		b.addHint("Shows an optional Regex toggle in compose Find. Searches stay literal until you enable it in the search bar.")
+		b.addFieldHint(sfComposeSearchRegex, "Shows an optional Regex toggle in compose Find. Searches stay literal until you enable it in the search bar.")
 		b.addToggle("Spell check in compose (F7)", s.composeSpell, sfComposeSpell)
 		b.addControl("Spell check language", sfSpellLang, renderSettingsPicker(min(max(12, b.contentW-b.labelW-2), 18), spellLangs[s.spellLangIdx].label, s.focusedField == sfSpellLang, b.chrome))
 		b.addAction("Personal dictionary", "view, add, or remove words you taught spell check", sfSpellDictionary)
@@ -2222,7 +2222,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 				b.addLine(line)
 			}
 			if hint := s.fieldHint(sfUpdateManualCommand); hint != "" {
-				b.addHint(hint)
+				b.addFieldHint(sfUpdateManualCommand, hint)
 			}
 			b.addBlank()
 		}
@@ -2510,15 +2510,21 @@ func (b *settingsFormBuilder) addLine(line string) {
 }
 
 func (b *settingsFormBuilder) addHint(text string) {
-	for _, line := range renderFormHintLines(b.hintIndent+text, b.contentW, b.chrome) {
+	for _, line := range renderFormHintLines(b.hintIndent+text, b.contentW, b.chrome, false) {
 		b.addLine(line)
 	}
 }
 
-// addHintMarked renders a hint whose leading marker is colored, used for
-// status lines where the marker carries the good/bad signal.
-func (b *settingsFormBuilder) addHintMarked(text, marker string, markerFg lipgloss.Color) {
-	for _, line := range renderFormHintLinesColored(b.hintIndent+text, b.contentW, b.chrome, marker, markerFg) {
+func (b *settingsFormBuilder) addFieldHint(field settingsField, text string) {
+	for _, line := range renderFormHintLines(b.hintIndent+text, b.contentW, b.chrome, b.s.focusedField == field) {
+		b.addLine(line)
+	}
+}
+
+// addFieldHintMarked renders a field hint whose leading marker carries a
+// semantic color. Focus brightens the body without changing the marker.
+func (b *settingsFormBuilder) addFieldHintMarked(field settingsField, text, marker string, markerFg lipgloss.Color) {
+	for _, line := range renderFormHintLinesColored(b.hintIndent+text, b.contentW, b.chrome, marker, markerFg, b.s.focusedField == field) {
 		b.addLine(line)
 	}
 }
@@ -2553,7 +2559,7 @@ func (b *settingsFormBuilder) addToggle(label string, on bool, field settingsFie
 	b.markAnchor(field)
 	b.addLine(b.s.renderToggle(label, on, focused, b.width, b.chrome))
 	if hint := b.s.fieldHint(field); hint != "" {
-		b.addHint(hint)
+		b.addFieldHint(field, hint)
 	}
 	b.addBlank()
 }
@@ -2567,7 +2573,7 @@ func (b *settingsFormBuilder) addInput(label string, input textinput.Model, fiel
 	b.markAnchor(field)
 	b.addLine(renderSoftRow(label, focused, control, b.contentW, b.labelW, b.chrome))
 	if hint := b.s.fieldHint(field); hint != "" {
-		b.addHint(hint)
+		b.addFieldHint(field, hint)
 	}
 	b.addBlank()
 }
@@ -2600,9 +2606,9 @@ func (b *settingsFormBuilder) addThemeSelector() {
 	b.addLine(b.s.renderThemeSelector(b.width, b.chrome))
 	if isMatchOmarchy(pickableThemeNameAt(b.s.themeIdx)) {
 		if name := currentOmarchyThemeName(); name != "" {
-			b.addHint("following Omarchy: " + name + " (updates live, contrast-corrected)")
+			b.addFieldHint(sfTheme, "following Omarchy: "+name+" (updates live, contrast-corrected)")
 		} else {
-			b.addHint("Omarchy theme not found — using " + config.DefaultConfig().Theme)
+			b.addFieldHint(sfTheme, "Omarchy theme not found — using "+config.DefaultConfig().Theme)
 		}
 	}
 	b.addBlank()
@@ -2612,7 +2618,7 @@ func (b *settingsFormBuilder) addDensitySelector() {
 	b.markAnchor(sfDisplayDensity)
 	b.addLine(b.s.renderDensitySelector(b.width, b.chrome))
 	if hint := b.s.fieldHint(sfDisplayDensity); hint != "" {
-		b.addHint(hint)
+		b.addFieldHint(sfDisplayDensity, hint)
 	}
 	b.addBlank()
 }
@@ -2621,7 +2627,7 @@ func (b *settingsFormBuilder) addPaneCornersSelector() {
 	b.markAnchor(sfPaneCorners)
 	b.addLine(b.s.renderPaneCornersSelector(b.width, b.chrome))
 	if hint := b.s.fieldHint(sfPaneCorners); hint != "" {
-		b.addHint(hint)
+		b.addFieldHint(sfPaneCorners, hint)
 	}
 	b.addBlank()
 }
@@ -2630,7 +2636,7 @@ func (b *settingsFormBuilder) addTagStyleSelector() {
 	b.markAnchor(sfTagStyle)
 	b.addLine(b.s.renderTagStyleSelector(b.width, b.chrome))
 	if hint := b.s.fieldHint(sfTagStyle); hint != "" {
-		b.addHint(hint)
+		b.addFieldHint(sfTagStyle, hint)
 	}
 	b.addBlank()
 }
@@ -2659,7 +2665,7 @@ func (b *settingsFormBuilder) addDateFormatSelector() {
 	b.markAnchor(sfDateFormat)
 	b.addLine(b.s.renderDateFormatSelector(b.width, b.chrome))
 	if hint := b.s.fieldHint(sfDateFormat); hint != "" {
-		b.addHint(hint)
+		b.addFieldHint(sfDateFormat, hint)
 	}
 	b.addBlank()
 }

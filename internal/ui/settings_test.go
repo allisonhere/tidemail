@@ -1828,11 +1828,53 @@ func TestSettingsImagesCapabilityMarker(t *testing.T) {
 	if !strings.Contains(unsupported, foreground(t, chrome.errorFg)) {
 		t.Fatalf("expected a red marker on the unsupported line, got %q", unsupported)
 	}
+	if !strings.Contains(unsupported, foreground(t, chrome.text)) {
+		t.Fatalf("expected the focused capability hint body to use normal text, got %q", unsupported)
+	}
+
+	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	s.setActiveSection(ssDisplay)
+	s.setFocusedField(sfBrowser)
+	s.imagesSupported = false
+	unfocused := lineContaining(t, strings.Join(s.viewSectionBody(80, chrome).lines, "\n"), "Terminal: inline images unsupported")
+	if !strings.Contains(unfocused, foreground(t, chrome.errorFg)) {
+		t.Fatalf("expected the unfocused capability marker to stay red, got %q", unfocused)
+	}
+	if !strings.Contains(unfocused, foreground(t, chrome.muted)) {
+		t.Fatalf("expected the unfocused capability hint body to stay muted, got %q", unfocused)
+	}
 
 	plain := newManagerChrome(80, CatppuccinMocha, true)
 	plainLine := lineContaining(t, render(true, plain), "Terminal: inline images supported.")
 	if !strings.Contains(plainLine, "OK") {
 		t.Fatalf("expected an ASCII marker in plain UI, got %q", plainLine)
+	}
+}
+
+func TestSettingsFieldHelpBrightensOnlyWithOwningFocus(t *testing.T) {
+	trueColor(t)
+
+	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	s.setActiveSection(ssEditor)
+	chrome := newManagerChrome(80, CatppuccinMocha, false)
+	const hint = "Wraps compose text between words"
+
+	s.setFocusedField(sfComposeWordWrap)
+	focused := lineContaining(t, strings.Join(s.viewSectionBody(80, chrome).lines, "\n"), hint)
+	if !strings.Contains(focused, foreground(t, chrome.text)) {
+		t.Fatalf("expected focused field help to use normal text, got %q", focused)
+	}
+	if textIsFaint(t, focused, hint) {
+		t.Fatalf("expected focused field help not to be faint, got %q", focused)
+	}
+
+	s.setFocusedField(sfComposeSearchRegex)
+	unfocused := lineContaining(t, strings.Join(s.viewSectionBody(80, chrome).lines, "\n"), hint)
+	if !strings.Contains(unfocused, foreground(t, chrome.muted)) {
+		t.Fatalf("expected unfocused field help to use muted text, got %q", unfocused)
+	}
+	if !textIsFaint(t, unfocused, hint) {
+		t.Fatalf("expected unfocused field help to be faint, got %q", unfocused)
 	}
 }
 

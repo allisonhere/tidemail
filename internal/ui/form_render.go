@@ -138,7 +138,7 @@ func renderTextInput(input textinput.Model, width int, focused, masked bool, chr
 		Render(view)
 }
 
-func renderFormHintLines(text string, width int, chrome managerChrome) []string {
+func renderFormHintLines(text string, width int, chrome managerChrome, focused bool) []string {
 	text = strings.TrimRight(text, " \t\r\n")
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {
@@ -153,9 +153,14 @@ func renderFormHintLines(text string, width int, chrome managerChrome) []string 
 	contPrefix := strings.Repeat(" ", lipgloss.Width(firstPrefix))
 	textW := max(1, width-lipgloss.Width(firstPrefix))
 	lines := wrapShellCommand(trimmed, textW)
+	hintFg := chrome.muted
+	if focused {
+		hintFg = chrome.text
+	}
 	hintStyle := lipgloss.NewStyle().
 		Background(chrome.baseBg).
-		Foreground(chrome.muted)
+		Foreground(hintFg).
+		Faint(!focused)
 	out := make([]string, 0, len(lines))
 	for i, line := range lines {
 		linePrefix := firstPrefix
@@ -170,9 +175,9 @@ func renderFormHintLines(text string, width int, chrome managerChrome) []string 
 
 // renderFormHintLinesColored renders a hint whose leading marker carries a
 // color, for status lines where the marker itself is the good/bad signal (for
-// example terminal image support). The body text stays muted; only the marker
-// is colored.
-func renderFormHintLinesColored(text string, width int, chrome managerChrome, marker string, markerFg lipgloss.Color) []string {
+// example terminal image support). The body follows field focus while the
+// marker keeps its semantic color.
+func renderFormHintLinesColored(text string, width int, chrome managerChrome, marker string, markerFg lipgloss.Color, focused bool) []string {
 	text = strings.TrimRight(text, " \t\r\n")
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {
@@ -185,20 +190,28 @@ func renderFormHintLinesColored(text string, width int, chrome managerChrome, ma
 	} else {
 		markerStyle = markerStyle.Foreground(chrome.muted)
 	}
-	firstPrefix := indent + "  " + markerStyle.Render(marker) + " "
+	plainPrefix := indent + "  "
+	firstPrefix := plainPrefix + marker + " "
 	contPrefix := strings.Repeat(" ", lipgloss.Width(firstPrefix))
 	textW := max(1, width-lipgloss.Width(firstPrefix))
 	lines := wrapShellCommand(trimmed, textW)
+	hintFg := chrome.muted
+	if focused {
+		hintFg = chrome.text
+	}
 	hintStyle := lipgloss.NewStyle().
 		Background(chrome.baseBg).
-		Foreground(chrome.muted)
+		Foreground(hintFg).
+		Faint(!focused)
+	baseStyle := lipgloss.NewStyle().Background(chrome.baseBg)
 	out := make([]string, 0, len(lines))
 	for i, line := range lines {
-		linePrefix := firstPrefix
-		if i > 0 {
-			linePrefix = contPrefix
+		var rendered string
+		if i == 0 {
+			rendered = baseStyle.Render(plainPrefix) + markerStyle.Render(marker) + hintStyle.Render(" "+line)
+		} else {
+			rendered = hintStyle.Render(contPrefix + line)
 		}
-		rendered := hintStyle.Render(linePrefix + line)
 		out = append(out, padStyled(rendered, width, chrome.baseBg))
 	}
 	return out

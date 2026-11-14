@@ -2316,10 +2316,15 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	if preset, ok := providerPresets[am.provider]; ok {
 		passInput.Placeholder = preset.PassHint
 	}
-	// A muted continuation line under a field, aligned to the field column.
-	addHint := func(hint string) {
+	// A continuation line under a field, aligned to the field column. It stays
+	// muted until its related field or control group receives focus.
+	addHint := func(hint string, focused bool) {
+		hintFg := chrome.muted
+		if focused {
+			hintFg = chrome.text
+		}
 		hintLeft := lipgloss.NewStyle().Background(chrome.baseBg).Width(max(1, labelW)).Render("")
-		hintRight := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(max(1, fieldW-2)).Padding(0, 1).Render(hint)
+		hintRight := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(hintFg).Faint(!focused).Width(max(1, fieldW-2)).Padding(0, 1).Render(hint)
 		addLine(lipgloss.JoinHorizontal(lipgloss.Left, hintLeft, hintRight))
 	}
 
@@ -2329,11 +2334,11 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 		// Providers without an OAuth path: app password only.
 		addControl(amFieldPass, row("Password", passInput, amFieldPass))
 		if am.pausedGoogleOAuthAccount() {
-			addHint("This account uses Google sign-in, which is paused.")
-			addHint("Enter a Google App Password to switch.")
+			addHint("This account uses Google sign-in, which is paused.", am.focusedField == amFieldPass)
+			addHint("Enter a Google App Password to switch.", am.focusedField == amFieldPass)
 		} else if am.googleOAuthDisabled() {
-			addHint("Google OAuth is waiting for Google's approval.")
-			addHint("Use a Google App Password instead.")
+			addHint("Google OAuth is waiting for Google's approval.", am.focusedField == amFieldPass)
+			addHint("Use a Google App Password instead.", am.focusedField == amFieldPass)
 		}
 	} else {
 		vendor := oauthVendor(am.provider) // "Google" / "Microsoft"
@@ -2360,13 +2365,13 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 			addControl(amFieldPass, row("Password", passInput, amFieldPass))
 			if authFocused {
 				if am.provider == "Outlook" {
-					addHint("Outlook.com dropped password login.")
-					addHint("Switch to OAuth with ‹ / ›.")
-					addHint("A password works only for some M365 tenants.")
+					addHint("Outlook.com dropped password login.", true)
+					addHint("Switch to OAuth with ‹ / ›.", true)
+					addHint("A password works only for some M365 tenants.", true)
 				} else {
-					addHint("Gmail: use an App Password, not your login.")
-					addHint("Create it under 2-Step Verification.")
-					addHint("‹ / › switches to OAuth sign-in.")
+					addHint("Gmail: use an App Password, not your login.", true)
+					addHint("Create it under 2-Step Verification.", true)
+					addHint("‹ / › switches to OAuth sign-in.", true)
 				}
 			}
 		} else {
@@ -2399,31 +2404,31 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 					if !am.oauthURLCopied {
 						step1 = "1. Open the sign-in URL shown below"
 					}
-					addHint("Finish signing in from your browser:")
-					addHint(step1)
-					addHint("2. Sign in and approve access")
-					addHint("3. Copy the URL it redirects you to")
-					addHint("4. Paste that here and press enter")
+					addHint("Finish signing in from your browser:", true)
+					addHint(step1, true)
+					addHint("2. Sign in and approve access", true)
+					addHint("3. Copy the URL it redirects you to", true)
+					addHint("4. Paste that here and press enter", true)
 					if am.provider == "Gmail" {
-						addHint("A connection error on the redirect is OK for manual entry.")
+						addHint("A connection error on the redirect is OK for manual entry.", true)
 					}
 					if !am.oauthURLCopied || am.provider == "Gmail" {
-						addHint("")
-						addHint("Sign-in URL:")
+						addHint("", true)
+						addHint("Sign-in URL:", true)
 						for _, ln := range hardWrapString(am.oauthFlowURL, max(8, fieldW-4)) {
-							addHint(ln)
+							addHint(ln, true)
 						}
 					}
 				case am.provider == "Outlook":
-					addHint("Enter or ctrl+o starts browser sign-in.")
-					addHint("You paste the result URL back.")
-					addHint("Set TIDEMAIL_MS_CLIENT_ID for a device code.")
-					addHint("‹ / › switches to an App Password.")
+					addHint("Enter or ctrl+o starts browser sign-in.", true)
+					addHint("You paste the result URL back.", true)
+					addHint("Set TIDEMAIL_MS_CLIENT_ID for a device code.", true)
+					addHint("‹ / › switches to an App Password.", true)
 				default:
-					addHint("Enter or ctrl+o opens Google in your browser.")
-					addHint("Approve access, then return here and save with ctrl+s.")
-					addHint("While signing in: ctrl+p for manual entry (SSH).")
-					addHint("‹ / › switches to an App Password.")
+					addHint("Enter or ctrl+o opens Google in your browser.", true)
+					addHint("Approve access, then return here and save with ctrl+s.", true)
+					addHint("While signing in: ctrl+p for manual entry (SSH).", true)
+					addHint("‹ / › switches to an App Password.", true)
 				}
 			}
 		}
@@ -2488,22 +2493,22 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	// itself an address; otherwise validation requires this field, so the hint
 	// says that instead. An untouched login stays on the default wording.
 	if user := strings.TrimSpace(am.userInput.Value()); user != "" && !isEmailAddress(user) {
-		addHint("Required: the login is not an address")
+		addHint("Required: the login is not an address", am.focusedField == amFieldFrom)
 	} else {
-		addHint("Blank sends as the username")
+		addHint("Blank sends as the username", am.focusedField == amFieldFrom)
 	}
 	addControl(amFieldAliases, row("Email Alias", am.aliasesInput, amFieldAliases))
-	addHint("Comma-separated sending addresses")
+	addHint("Comma-separated sending addresses", am.focusedField == amFieldAliases)
 	addControl(amFieldSignature, sigRow("Signature", am.sigArea, amFieldSignature))
 	for _, line := range strings.Split(ansi.Wrap("A ⁂ symbol will mark signature placement. The signature is inserted on send. Delete it to send without a signature.", max(8, fieldW-4), ""), "\n") {
-		addHint(line)
+		addHint(line, am.focusedField == amFieldSignature)
 	}
 	addControl(amFieldSignatureHTML, row("HTML Signature", am.sigHTMLInput, amFieldSignatureHTML))
-	addHint("Optional .html file for the HTML part · alt+f browses")
+	addHint("Optional .html file for the HTML part · alt+f browses", am.focusedField == amFieldSignatureHTML)
 	addSection("Sync")
 	addControl(amFieldSyncInterval, row("Refresh", am.syncInput, amFieldSyncInterval))
-	addHint("0 = push (IMAP IDLE) · -1 = manual only")
-	addHint("N = poll every N minutes")
+	addHint("0 = push (IMAP IDLE) · -1 = manual only", am.focusedField == amFieldSyncInterval)
+	addHint("N = poll every N minutes", am.focusedField == amFieldSyncInterval)
 
 	statusLine := am.renderStatusBar(width, chrome)
 	if am.busyMsg != "" {
