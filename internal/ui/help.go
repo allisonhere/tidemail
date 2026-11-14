@@ -348,7 +348,7 @@ func helpSections(keys KeyMap) []helpSection {
 			entries: []helpEntry{
 				{"enable", "Settings → Display → Mouse support (off by default; keeps native text selection while off)"},
 				{"click", "select a row or LINKS entry, or focus a pane; reader clicks never open links; click a search row to edit"},
-				{"reader drag", "select text with Focus Line on/off; ctrl+c copies displayed line breaks; drag above/below to autoscroll; next click clears"},
+				{"reader drag", "select text with Focus Line on/off; ctrl+c or y copies displayed line breaks; drag above/below to autoscroll; next click clears"},
 				{"double-click", "expand/collapse a conversation parent; open a child, single message or draft; on a sidebar row, expand/collapse or sync like enter"},
 				{"scroll wheel", "move three rows; reader clears link selection; keep pane focus"},
 				{"right-click", "select the row and open a menu of its actions (folder, account, or message); enter or click runs one, esc closes"},

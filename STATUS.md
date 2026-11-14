@@ -171,7 +171,7 @@ Current release: **v1.9.0**.
   animated "Ocean night" scene and Support an animated "Café" scene; plain
   (VT52) themes keep the original static pages.
 - **Reader text selection**: left-drag at character precision,
-  release to retain highlight, Ctrl+C to copy displayed line breaks; drag outside
+  release to retain highlight, Ctrl+C or y to copy displayed line breaks; drag outside
   vertically to autoscroll. Works with Focus Line on/off; next click clears.
 - **Mouse support** (opt-in, Settings → Display): click to select rows/focus panes or select LINKS entries (clicks never open reader links),
   double-click to open a message, scroll wheel over the sidebar, list, and reading pane,

@@ -211,7 +211,7 @@ not found.
 **Search history.** Pressing `Enter` to keep a search remembers it (the last 30,
 newest first, stored locally in TideMail's database, never sent anywhere). With
 an empty search box the message list shows your recent searches: `↓` / `↑` move
-through them and `Enter` runs the highlighted one; `↑` from the first entry goes
+through them (or click one to highlight it) and `Enter` runs the highlighted one; `↑` from the first entry goes
 back to typing. After you have typed something, `↑` or `↓` opens the list
 filtered to entries that start with your text, and `Tab` completes the box from
 the newest matching entry (or the highlighted one) so you can edit it before
@@ -1501,7 +1501,7 @@ Unified Inbox.
 
 Mouse-driven text selection and copying in the reading pane is available with
 Focus Line either enabled or disabled. With Mouse support on, left-drag over text
-and press **Ctrl+C** to copy it, preserving displayed line breaks. Release keeps
+and press **Ctrl+C** (or `y`) to copy it, preserving displayed line breaks. Release keeps
 the highlight; another click clears it. Drag above or below the reader to
 autoscroll and extend the selection. Keyboard navigation clears the mouse
 selection. Clicking or dragging hyperlinks never opens them.
