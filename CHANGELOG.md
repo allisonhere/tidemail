@@ -37,6 +37,22 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- The save-attachment picker no longer crashes when its starting folder cannot
+  be read, such as a missing `~/Downloads`; it shows an error instead.
+- Contact marks follow the contact, not its row position, so adding, editing or
+  importing no longer leaves marks on different contacts, which `d` then deleted.
+- Clicking, right-clicking or drag-selecting in the reading pane no longer leaves
+  an unread message with a spinner that never finishes and is never marked read.
+- On a server without IDLE, push accounts now fall back to checking every five
+  minutes as documented, instead of silently waiting for the 30-minute safety
+  poll.
+- Saving Settings no longer blanks an open search; it is run again.
+- Deleting or hiding a folder no longer leaves an empty message pane under the
+  newly highlighted folder; that folder now loads.
+- Deleting an account now also removes its drafts, their attachments and its
+  queued outbox mail, which used to stay behind in the local database. The
+  confirmation says what is removed. Rows that cannot be tied to exactly one
+  account are kept rather than risk deleting another account's data.
 - The recent-searches list is correct again after you clear the search box (it
   no longer shows a leftover filtered subset), closes when deleting its last
   matching entry, and clicking an entry highlights it instead of selecting a
