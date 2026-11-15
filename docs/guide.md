@@ -886,12 +886,13 @@ to clear it.
 ## Passwords and API keys
 
 TideMail stores IMAP and SMTP passwords, AI API keys, and OAuth refresh tokens
-in the system keychain. It uses `secret-tool` on Linux and Keychain on macOS.
-When TideMail starts, it loads any blank password, API key, or refresh token
-from the keychain. Saving Settings moves loaded secrets into the keychain and
-clears them from the config file.
+in the system keychain. It uses `secret-tool` on Linux and the `security`
+command (Keychain) on macOS. When TideMail starts, it loads any blank
+password, API key, or refresh token from the keychain. Saving Settings moves
+loaded secrets into the keychain and clears them from the config file.
 
-If `secret-tool` is unavailable on Linux, TideMail writes these secrets to
+If `secret-tool` is unavailable on Linux, or `security` can't reach an
+unlocked keychain on macOS, TideMail writes these secrets to
 `~/.config/tidemail/config.toml`. Keep that file private. Windows has no
 keychain support yet, so it always stores these secrets in
 `%USERPROFILE%\.config\tidemail\config.toml`.
