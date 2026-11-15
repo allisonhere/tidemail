@@ -8,6 +8,11 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- Passwords, AI API keys, and OAuth refresh tokens are now actually saved to
+  the macOS Keychain, via `security`, the same way Linux already uses
+  `secret-tool`. Previously macOS had no working backend and every secret
+  silently fell back to plaintext in `config.toml` despite the docs claiming
+  Keychain support. (#130)
 - **Settings → Advanced → View Logs** can copy the log to the clipboard (`c`)
   or save it to a file (`s`) through the same folder browser attachments save
   to, so you can pick the destination. Both are in chronological order (oldest

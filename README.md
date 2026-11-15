@@ -516,8 +516,9 @@ other IMAP/SMTP server, including an on-premises Microsoft Exchange server,
 uses **Custom** with a username and password.
 
 TideMail stores passwords, AI keys, and OAuth refresh tokens in libsecret on
-Linux or Keychain on macOS. If `secret-tool` is missing on Linux, TideMail falls
-back to `~/.config/tidemail/config.toml`, so protect that file.
+Linux or Keychain on macOS. If `secret-tool` is missing on Linux, or `security`
+can't reach an unlocked keychain on macOS, TideMail falls back to
+`~/.config/tidemail/config.toml`, so protect that file.
 
 ### Gmail with OAuth
 
