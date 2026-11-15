@@ -79,6 +79,24 @@ jobs:
           CGO_ENABLED: "0"
         run: go test ./internal/db/...
 
+  # Cross-vetting cannot catch runtime differences such as how macOS's
+  # `security` CLI actually behaves, so run the keychain tests against it on
+  # a real macOS runner too.
+  macos-keyring-test:
+    name: macOS Keychain tests
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./internal/config/... -v
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
