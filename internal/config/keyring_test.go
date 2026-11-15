@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -106,7 +107,17 @@ func resetKeyringProbe(t *testing.T) {
 // A password entered anywhere (typed or via the graphical dialog) is saved
 // through StoreAccountPassword. It must reach secret-tool on stdin, never in the
 // command line, and read back unchanged.
+//
+// This exercises the public API, which now dispatches on runtime.GOOS, so it
+// only applies on Linux: on a real Mac, StoreAccountPassword would reach the
+// actual `security` binary instead of the fake secret-tool below, writing to
+// the developer's real login keychain. TestDarwinStoreLookupRoundTrip covers
+// the equivalent round trip for darwin via the injectable goos parameter,
+// safely on any host.
 func TestStoreAccountPasswordKeepsTheSecretOutOfArguments(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("exercises the Linux secret-tool backend through the public API")
+	}
 	argLog := fakeSecretTool(t)
 	const secret = "pa55 w0rd/with spaces"
 	if !StoreAccountPassword("acct-1", secret) {
