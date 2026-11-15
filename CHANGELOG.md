@@ -62,6 +62,11 @@ All notable changes to TideMail are documented in this file.
   queued outbox mail, which used to stay behind in the local database. The
   confirmation says what is removed. Rows that cannot be tied to exactly one
   account are kept rather than risk deleting another account's data.
+- Pipe tables in a composed message, or in a `tidemail send` Markdown body, are
+  now sent as real HTML tables instead of literal `| a | b |` text, including
+  on every new message from the composer, which carries the signature marker. The fix uses goldmark's GitHub-flavored Markdown, so the
+  rest of that dialect also works in sent mail: `~~strikethrough~~`, bare web
+  addresses become links, and `- [ ]` task lists render as disabled checkboxes.
 - The recent-searches list is correct again after you clear the search box (it
   no longer shows a leftover filtered subset), closes when deleting its last
   matching entry, and clicking an entry highlights it instead of selecting a
