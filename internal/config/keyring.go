@@ -78,9 +78,7 @@ func backendFor(goos string) (b keyringBackend, ok bool) {
 	}
 }
 
-// keyringInstalled reports whether this platform's keychain CLI is on PATH.
-func keyringInstalled() bool { return keyringInstalledFor(runtime.GOOS) }
-
+// keyringInstalledFor reports whether goos's keychain CLI is on PATH.
 func keyringInstalledFor(goos string) bool {
 	b, ok := backendFor(goos)
 	if !ok {
