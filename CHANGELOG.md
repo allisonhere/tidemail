@@ -54,17 +54,14 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
-- On macOS, a secret saved to the Keychain no longer appears in `security`'s
-  command line, where any process could read it with `ps`; it is passed on
-  stdin instead. A password with non-ASCII characters or a tab now reads back
-  exactly instead of as hex.
-- A filter's **has attachment** condition now respects its own operator
-  instead of only looking at the literal value text. Previously
-  `has_attachment not_contains "true"` or `is_true` with value `"false"` (a
-  plausible way to say "no attachment") matched mail **with** an attachment
-  instead — the opposite of what the rule said, and dangerous on a rule whose
-  action deletes or spam-flags. Only `is_true`/`equals` with `true`/`false`
-  are accepted now; anything else is rejected when the rule is saved.
+- Editing an unconfirmed ("uncertain") delivery in the Outbox now asks first,
+  the same way retrying one already did — it used to silently turn into a
+  draft with no warning, which, if the first attempt actually reached the
+  server, meant a duplicate send and the loss of the only record that an
+  unconfirmed delivery existed. The transient status line after a send also
+  no longer calls an uncertain delivery "failed" (the Outbox pane itself
+  already said "unconfirmed"), which invited a needless retry and a
+  duplicate if delivery had actually succeeded.
 - The save-attachment picker no longer crashes when its starting folder cannot
   be read, such as a missing `~/Downloads`; it shows an error instead.
 - Contact marks follow the contact, not its row position, so adding, editing or

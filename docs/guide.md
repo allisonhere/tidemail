@@ -744,7 +744,9 @@ is enough — the queued message does not have to be rewritten.
 Failed deliveries retry after one minute. The maximum attempt setting includes
 the first try; it defaults to `3`, and `1` disables automatic retries. An
 interrupted delivery is marked uncertain because the server may have accepted
-it. Check Sent mail before manually retrying an uncertain message. A send that
+it. Check Sent mail before manually retrying an uncertain message, with `r`;
+editing one with `e`/`enter` asks the same way, since it gives up the record
+that an unconfirmed delivery existed. A send that
 is still running, such as a large upload, is left alone by a second TideMail or
 `tidemail outbox process` for 15 minutes before it is treated as interrupted.
 

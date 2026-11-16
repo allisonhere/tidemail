@@ -75,6 +75,7 @@ func (m Model) summarizeOutbox() outboxTrouble {
 func (m *Model) openOutbox() {
 	m.outboxStatus = ""
 	m.outboxConfirmID = 0
+	m.outboxConfirmEdit = false
 	m.refreshOutbox()
 	m.overlay = overlayOutbox
 }
@@ -174,9 +175,16 @@ func (m Model) handleOutboxSent(msg MessageSentMsg) (tea.Model, tea.Cmd) {
 	}
 	if msg.Err != nil {
 		cmd := m.scheduleOutbox(int64(msg.PendingID))
-		if item, err := m.db.GetOutbox(int64(msg.PendingID)); err == nil && item.State == db.OutboxQueued {
+		item, err := m.db.GetOutbox(int64(msg.PendingID))
+		switch {
+		case err == nil && item.State == db.OutboxQueued:
 			m.setStatus(fmt.Sprintf("send failed · retry %d/%d in 1 minute · O opens Outbox", item.Attempts+1, item.MaxAttempts), true)
-		} else {
+		case err == nil && item.State == db.OutboxUncertain:
+			// Not a confirmed failure: smtp.ErrDeliveryUncertain means the
+			// server may have taken the message. Calling this "failed" leads
+			// to a needless retry and a duplicate if it actually sent.
+			m.setStatus("delivery unconfirmed · saved in Outbox (O): "+msg.Err.Error(), true)
+		default:
 			m.setStatus("send failed · saved in Outbox (O): "+msg.Err.Error(), true)
 		}
 		return m, tea.Batch(cmd, m.clearStatusCmd())
@@ -206,12 +214,26 @@ func (m Model) outboxSending(id int64) bool {
 func (m Model) handleOutboxKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.outboxConfirmID != 0 {
 		id := m.outboxConfirmID
+		asEdit := m.outboxConfirmEdit
 		m.outboxConfirmID = 0
-		if key.String() == "y" {
-			return m.retryOutbox(id)
+		m.outboxConfirmEdit = false
+		if key.String() != "y" {
+			if asEdit {
+				m.outboxStatus = "Edit canceled."
+			} else {
+				m.outboxStatus = "Retry canceled."
+			}
+			return m, nil
 		}
-		m.outboxStatus = "Retry canceled."
-		return m, nil
+		if asEdit {
+			item, err := m.db.GetOutbox(id)
+			if err != nil {
+				m.outboxStatus = err.Error()
+				return m, nil
+			}
+			return m.editOutboxItem(item)
+		}
+		return m.retryOutbox(id)
 	}
 	switch {
 	case keyMatches(key, m.keys.Cancel), key.String() == "q":
@@ -251,19 +273,13 @@ func (m Model) handleOutboxKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.outboxStatus = "This message has already been sent."
 			return m, nil
 		}
-		if _, ok := m.outboxAccount(item); !ok {
-			m.outboxStatus = "Restore the sender account before editing."
+		if item.State == db.OutboxUncertain {
+			m.outboxConfirmID = item.ID
+			m.outboxConfirmEdit = true
+			m.outboxStatus = "Delivery may have succeeded. Editing gives up this record. Edit anyway? y / n"
 			return m, nil
 		}
-		draft, err := m.db.EditOutbox(item.ID)
-		if err != nil {
-			m.outboxStatus = err.Error()
-			return m, nil
-		}
-		m.removePendingSend(uint64(item.ID))
-		m.refreshOutbox()
-		m.compose = m.composeRestored(draft, item.MessageJSON)
-		m.overlay = overlayCompose
+		return m.editOutboxItem(item)
 	case "d":
 		if item.State != db.OutboxSent {
 			m.outboxStatus = "Use e to cancel delivery and move this message to Drafts."
@@ -275,6 +291,28 @@ func (m Model) handleOutboxKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.refreshOutbox()
 	}
+	return m, nil
+}
+
+// editOutboxItem turns a queued/failed/uncertain outbox entry back into a
+// draft for editing. Callers must gate OutboxUncertain through a y/n
+// confirmation first (handleOutboxKey's "e"/"enter" case) — EditOutbox
+// unconditionally deletes the outbox row, so for an uncertain delivery this
+// is the only record that it existed.
+func (m Model) editOutboxItem(item db.OutboxItem) (tea.Model, tea.Cmd) {
+	if _, ok := m.outboxAccount(item); !ok {
+		m.outboxStatus = "Restore the sender account before editing."
+		return m, nil
+	}
+	draft, err := m.db.EditOutbox(item.ID)
+	if err != nil {
+		m.outboxStatus = err.Error()
+		return m, nil
+	}
+	m.removePendingSend(uint64(item.ID))
+	m.refreshOutbox()
+	m.compose = m.composeRestored(draft, item.MessageJSON)
+	m.overlay = overlayCompose
 	return m, nil
 }
 
