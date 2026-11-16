@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 
@@ -102,13 +103,14 @@ type (
 
 // pluginSettingsState is the settings form's state.
 type pluginSettingsState struct {
-	pluginID  string
-	cursor    int
-	secretSet map[string]bool
-	editing   bool // entering a secret
-	input     textinput.Model
-	testing   bool
-	origin    overlayMode
+	connection string
+	pluginID   string
+	cursor     int
+	secretSet  map[string]bool
+	editing    bool // entering a secret
+	input      textinput.Model
+	testing    bool
+	origin     overlayMode
 }
 
 // settingsRowKind is one row of the form.
@@ -118,6 +120,7 @@ const (
 	rowAutoEvents settingsRowKind = iota
 	rowSetting
 	rowTest
+	rowAdvancedCRM
 )
 
 type settingsRow struct {
@@ -145,6 +148,9 @@ func (m Model) pluginSettingsRows(pluginID string) []settingsRow {
 	}
 	if p.Manifest.HasCapability(plugin.CapabilityTest) {
 		rows = append(rows, settingsRow{kind: rowTest})
+	}
+	if pluginID == "tidecontacts" {
+		rows = append(rows, settingsRow{kind: rowAdvancedCRM})
 	}
 	return rows
 }
@@ -236,6 +242,10 @@ func (m Model) handlePluginSettingsMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.clearStatusCmd()
 	case pluginTestResultMsg:
 		if msg.PluginID == st.pluginID {
+			st.connection = pluginTestSummary(msg.Response)
+			if msg.Err != nil {
+				st.connection = "Connection failed: " + sanitizePluginLine(msg.Err.Error())
+			}
 			st.testing = false
 		}
 		if msg.Err != nil {
@@ -329,6 +339,10 @@ func (m Model) handlePluginSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.confirmPluginAction(pluginConfirmAction{kind: enableAutoEvents, pluginID: st.pluginID, label: m.pluginDisplayName(st.pluginID)})
 		}
+	case rowAdvancedCRM:
+		if activate {
+			return m, m.openTideContactsAdvanced(m.tideContactsDemo())
+		}
 	case rowTest:
 		if activate && !st.testing {
 			st.testing = true
@@ -336,6 +350,13 @@ func (m Model) handlePluginSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, testPluginCmd(m.plugins.ctx, m.plugins.manager, st.pluginID)
 		}
 	case rowSetting:
+		if st.pluginID == "tidecontacts" && st.testing {
+			return m, nil
+		}
+		if st.pluginID == "tidecontacts" && row.spec.Key == "data_profile" && os.Getenv("TIDECONTACTS_DEMO") == "1" {
+			m.setStatus("Demo launcher keeps fictional data isolated", false)
+			return m, m.clearStatusCmd()
+		}
 		s := row.spec
 		switch s.Type {
 		case plugin.SettingBool:
@@ -393,6 +414,9 @@ func (m *Model) savePluginSetting(pluginID, key string, value any) {
 		return
 	}
 	m.plugins.settingsSrc.update(m.cfg)
+	if pluginID == "tidecontacts" && key == "data_profile" {
+		m.plugins.settings.connection = ""
+	}
 }
 
 func (m Model) renderPluginSettings() string {
@@ -422,6 +446,24 @@ func (m Model) pluginSettingsContent(bodyW int, chrome managerChrome) ([]string,
 		lines = append(lines, softRail(chrome, i == st.cursor, chrome.baseBg)+text.Render(line))
 	}
 	lines = append(lines, "")
+	if st.pluginID == "tidecontacts" {
+		profile := "Real contacts"
+		if m.tideContactsDemo() {
+			profile = "Demo contacts"
+		}
+		if os.Getenv("TIDECONTACTS_DEMO") == "1" {
+			profile += " (forced by demo launcher)"
+		}
+		lines = append(lines, muted.Render(truncate("TideContacts data: "+profile, bodyW)))
+		status := st.connection
+		if status == "" {
+			status = "Not checked · choose Check connection"
+		}
+		for _, line := range strings.Split(ansi.Wrap(status, bodyW, ""), "\n") {
+			lines = append(lines, muted.Render(sanitizePluginLine(line)))
+		}
+		lines = append(lines, "")
+	}
 	if st.editing {
 		in := st.input
 		in.Width = max(1, bodyW-4)
@@ -458,6 +500,8 @@ func (m Model) settingsRowText(pluginID string, row settingsRow) (string, string
 		return "[off]"
 	}
 	switch row.kind {
+	case rowAdvancedCRM:
+		return "Open Advanced CRM", "enter to open"
 	case rowAutoEvents:
 		v := onOff(m.cfg.PluginAutoEvents(pluginID))
 		if m.plugins.eventStatus[pluginID].Paused {
@@ -466,12 +510,21 @@ func (m Model) settingsRowText(pluginID string, row settingsRow) (string, string
 		return "Auto-process new mail", v
 	case rowTest:
 		if m.plugins.settings.testing {
+			if m.plugins.settings.pluginID == "tidecontacts" {
+				return "Check connection", "checking…"
+			}
 			return "Test plugin configuration", "testing…"
+		}
+		if m.plugins.settings.pluginID == "tidecontacts" {
+			return "Check connection", "enter to run"
 		}
 		return "Test plugin configuration", "enter to run"
 	}
 	s := row.spec
 	label := sanitizePluginLine(s.Label)
+	if pluginID == "tidecontacts" && s.Key == "data_profile" && os.Getenv("TIDECONTACTS_DEMO") == "1" {
+		return label, "Demo contacts (forced)"
+	}
 	switch s.Type {
 	case plugin.SettingBool:
 		b, _ := m.pluginSettingValue(pluginID, s).(bool)

@@ -609,6 +609,17 @@ func (m Model) Init() tea.Cmd {
 // ── Update ───────────────────────────────────────────────────────────────────
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if closed, ok := msg.(advancedCRMClosedMsg); ok {
+		if closed.err != nil {
+			m.setStatus(closed.err.Error(), true)
+			return m, m.clearStatusCmd()
+		}
+		if m.simpleContacts != nil {
+			return m, m.simpleContactsLoad(false)
+		}
+		return m, nil
+	}
+
 	next, cmd := m.handleUpdate(msg)
 	if nm, ok := next.(Model); ok && nm.heldReadID != 0 && !nm.readingHeldMessage() {
 		releaseCmd := nm.releaseHeldRead()
@@ -2151,7 +2162,7 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.ContactManager):
-		if m.cfg.Contacts.Provider == "tidecontacts" || m.cfg.Contacts.Provider == "" {
+		if (m.cfg.Contacts.Provider == "tidecontacts" || m.cfg.Contacts.Provider == "") && m.tideContactsViewEnabled() {
 			if p, ok := m.plugins.manager.Plugin("tidecontacts"); ok && p.Manifest.Permissions.ContactsRead {
 				return m.openSimpleContacts()
 			}

@@ -119,6 +119,7 @@ func TestContactBookSourceLabels(t *testing.T) {
 		t.Fatal(view)
 	}
 	t.Setenv("TIDECONTACTS_DEMO", "1")
+	m.simpleContacts.demo = true
 	view = m.simpleContacts.View(74, 36, m.styles)
 	if !strings.Contains(view, "TideContacts DEMO") || !strings.Contains(view, "real contacts are separate") {
 		t.Fatal(view)

@@ -32,8 +32,9 @@ func helpSections(keys KeyMap) []helpSection {
 			},
 		},
 		{
-			name:    "TideContacts",
-			entries: []helpEntry{{"C", "open the configured TideContacts address book"}, {"n / e", "add or edit a person"}, {"/ then Enter", "search people"}, {"c / Enter", "write email to the selected person"}, {"A", "open Advanced CRM"}, {"L", "open TideMail local contacts"}},
+			name: "TideContacts",
+			entries: []helpEntry{{"C", "open the configured TideContacts address book"}, {"n / e", "add or edit a person"}, {"/ then Enter", "search people"}, {"c / Enter", "write email to the selected person"}, {"A", "open Advanced CRM"},
+				{"Settings → Plugins", "select TideContacts then Enter or s: default view, real/demo data, connection and Advanced CRM"}, {"L", "open TideMail local contacts"}},
 		},
 		{
 			name: "Global",

@@ -18,6 +18,7 @@ import (
 )
 
 type simpleContacts struct {
+	demo                     bool
 	want                     string
 	noteInitial              string
 	provider                 string
@@ -54,7 +55,7 @@ func (m Model) openSimpleContacts() (tea.Model, tea.Cmd) {
 	if !ok || !p.Manifest.Permissions.ContactsRead {
 		return m, nil
 	}
-	s := &simpleContacts{provider: id, query: newAMInput("Search people", false)}
+	s := &simpleContacts{provider: id, query: newAMInput("Search people", false), demo: m.tideContactsDemo()}
 	m.simpleContacts = s
 	m.overlay = overlayContactManager
 	return m, m.simpleContactsLoad(false)
@@ -72,6 +73,7 @@ func (m Model) simpleContactsLoad(recent bool) tea.Cmd {
 	provider := s.provider
 	database := m.db
 	query := s.query.Value()
+	demoOnly := s.demo && os.Getenv("TIDECONTACTS_DEMO") != "1"
 	var selected plugin.BookContact
 	if len(s.contacts) > 0 {
 		selected = s.contacts[min(s.cursor, len(s.contacts)-1)]
@@ -81,7 +83,11 @@ func (m Model) simpleContactsLoad(recent bool) tea.Cmd {
 		defer cancel()
 		msg := simpleContactsMsg{owner: s, seq: seq}
 		if recent {
-			msg.recent, msg.err = recentContactMail(ctx, database, selected.Addr)
+			if demoOnly {
+				msg.recent = []string{}
+			} else {
+				msg.recent, msg.err = recentContactMail(ctx, database, selected.Addr)
+			}
 		} else {
 			msg.contacts, msg.err = manager.ListBookContacts(ctx, provider, query)
 		}
@@ -288,27 +294,8 @@ func (m Model) handleSimpleContacts(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.overlay = overlayCompose
 		return m, nil
 	case "A":
-		path, err := exec.LookPath("tidecontacts")
-		if p, ok := m.plugins.manager.Plugin(s.provider); ok {
-			candidate := filepath.Join(p.Dir, "tidecontacts")
-			if info, e := os.Stat(candidate); e == nil && info.Mode().IsRegular() {
-				path = candidate
-				err = nil
-			}
-		}
-		if err != nil {
-			s.status = "Install tidecontacts on PATH to open Advanced CRM"
-			return m, nil
-		}
-		seq := s.seq
-		contacts := append([]plugin.BookContact{}, s.contacts...)
-		args := []string{}
-		if os.Getenv("TIDECONTACTS_DEMO") == "1" {
-			args = append(args, "--demo")
-		}
-		return m, tea.ExecProcess(exec.Command(path, args...), func(err error) tea.Msg {
-			return simpleContactsMsg{owner: s, seq: seq, err: err, contacts: contacts}
-		})
+		return m, m.openTideContactsAdvanced(s.demo)
+
 	}
 	return m, nil
 }
@@ -328,7 +315,7 @@ func (s *simpleContacts) View(width, height int, styles Styles) string {
 		lines = append(lines, "", "tab next field · enter save · esc cancel")
 	} else {
 		title := "People"
-		if os.Getenv("TIDECONTACTS_DEMO") == "1" {
+		if s.demo {
 			title = "People · DEMO"
 		}
 		lines = append(lines, title+" · "+s.query.Value(), "")
@@ -374,7 +361,7 @@ func (s *simpleContacts) View(width, height int, styles Styles) string {
 	}
 	source := "Address book: TideContacts"
 	shared := "Shared with standalone TideContacts (same profile)."
-	if os.Getenv("TIDECONTACTS_DEMO") == "1" {
+	if s.demo {
 		source = "Address book: TideContacts DEMO"
 		shared = "Shared with Advanced CRM demo only; real contacts are separate."
 	}
@@ -388,4 +375,57 @@ func sanitizeSimpleText(s string) string {
 		}
 		return r
 	}, s)
+}
+
+type advancedCRMClosedMsg struct{ err error }
+
+func (m Model) tideContactsSetting(key, fallback string) string {
+	p, ok := m.plugins.manager.Plugin("tidecontacts")
+	if !ok {
+		return fallback
+	}
+	values := plugin.ResolveSettings(p.Manifest.Settings, m.cfg.PluginStoredSettings("tidecontacts"))
+	if value, ok := values[key].(string); ok {
+		return value
+	}
+	return fallback
+}
+func (m Model) tideContactsDemo() bool {
+	return os.Getenv("TIDECONTACTS_DEMO") == "1" || m.tideContactsSetting("data_profile", "Real contacts") == "Demo contacts"
+}
+func (m Model) tideContactsViewEnabled() bool {
+	return m.tideContactsSetting("default_view", "TideContacts") == "TideContacts"
+}
+func (m Model) openTideContactsAdvanced(useDemo bool) tea.Cmd {
+	path, err := exec.LookPath("tidecontacts")
+	if p, ok := m.plugins.manager.Plugin("tidecontacts"); ok {
+		candidate := filepath.Join(p.Dir, "tidecontacts")
+		if info, e := os.Stat(candidate); e == nil && info.Mode().IsRegular() {
+			path = candidate
+			err = nil
+		}
+	}
+	if err != nil {
+		return func() tea.Msg {
+			return advancedCRMClosedMsg{fmt.Errorf("advanced CRM is not installed; reinstall the TideContacts plugin")}
+		}
+	}
+	args := []string{}
+	if useDemo || os.Getenv("TIDECONTACTS_DEMO") == "1" {
+		args = append(args, "--demo")
+	}
+	cmd := advancedCRMCommand(path, args)
+	return tea.ExecProcess(cmd, func(err error) tea.Msg { return advancedCRMClosedMsg{err} })
+}
+
+// TideMail's renderer uses SerializedStdout, an io.Writer wrapper. Letting
+// Bubble Tea forward that wrapper makes os/exec create a pipe, hiding the TTY
+// from interactive children. ExecProcess releases the parent terminal before
+// Run; bind the child's streams directly to the terminal for that interval.
+func advancedCRMCommand(path string, args []string) *exec.Cmd {
+	cmd := exec.Command(path, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd
 }
