@@ -19,6 +19,13 @@ All notable changes to TideMail are documented in this file.
 - On Linux, a notification for new mail offers **Mark Read**, **Delete**, and
   **Ignore** actions, covering every message in the batch when more than one
   arrives at once. Delete keeps TideMail's normal six-second undo window.
+
+- Always load remote images from a sender you trust: press `I` in the reading
+  pane to load this message's images and add the sender to
+  `[display] trusted_image_senders`; later messages from them load images on
+  open, and `Ctrl+B` opens them with images straight away. Press `I` again to
+  stop. Entries starting with `@` trust a whole domain. Untrusted senders keep
+  the blocked-by-default behaviour.
 - Passwords, AI API keys, and OAuth refresh tokens are now actually saved to
   the macOS Keychain, via `security`, the same way Linux already uses
   `secret-tool`. Previously macOS had no working backend and every secret

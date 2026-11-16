@@ -611,6 +611,23 @@ text placeholder such as `[image: Fall sale]`, and the message stays readable.
 Set `[display] images = "off"` to use placeholders everywhere, including on a
 graphics-capable terminal.
 
+To always load remote images from a sender you trust (a newsletter, say),
+press `I` (Shift+I) in the content pane. TideMail loads this message's images
+and adds the sender's address to `[display] trusted_image_senders` in
+`config.toml`, so later messages from that address load remote images when
+opened, and `Ctrl+B` opens them in the browser with images on the first press.
+Press `I` again on a message from that sender to remove it; the status line says
+which happened. Matching is on the exact address, ignoring case. You can also
+add a whole domain by hand with an entry that starts with `@`:
+
+```toml
+[display]
+trusted_image_senders = ["news@example.com", "@shop.example"]
+```
+
+Senders not on the list are unaffected: their remote images stay blocked until
+you press `i`.
+
 Images supplied as MIME parts stay local even when their Content-Location is
 an HTTPS URL. If a previously loaded remote image has left the image cache,
 press `i` again when prompted to reload it.
