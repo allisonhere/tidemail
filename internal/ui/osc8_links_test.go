@@ -359,3 +359,130 @@ func TestRedditDigestEmitsNoEscapesForPlainUI(t *testing.T) {
 		t.Fatalf("plainUI output must contain no OSC 8 sequence, got %q", got)
 	}
 }
+
+// Button-style anchors render as "[label]" with their href dropped by the
+// markdown stage. The destination is re-attached as a terminal hyperlink so
+// Ctrl+click works like it does for bare body URLs, pointing at the same
+// normalized destination as the LINKS list.
+func TestHTMLButtonLinksBecomeHyperlinks(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+
+	const dest = "https://example.com/confirm?token=abc"
+	cases := []struct {
+		name   string
+		html   string
+		plain  bool
+		labels []string // visible button labels, in order
+		want   []string // expected hyperlink targets, in order ("" = none)
+	}{
+		{
+			name:   "button anchor",
+			html:   `<p>Welcome.</p><p><a class="button" href="` + dest + `">Confirm your email</a></p>`,
+			labels: []string{"[Confirm your email]"},
+			want:   []string{dest},
+		},
+		{
+			name:   "redirect normalized like LINKS",
+			html:   `<p><a role="button" href="https://tracker.example/click?url=` + url.QueryEscape(dest) + `">Confirm</a></p>`,
+			labels: []string{"[Confirm]"},
+			want:   []string{dest},
+		},
+		{
+			name:   "repeated labels keep document order",
+			html:   `<p><a class="btn" href="https://example.com/a">Open</a> and <a class="btn" href="https://example.com/b">Open</a></p>`,
+			labels: []string{"[Open]", "[Open]"},
+			want:   []string{"https://example.com/a", "https://example.com/b"},
+		},
+		{
+			name:   "unsafe scheme stays plain",
+			html:   `<p><a class="button" href="javascript:alert(1)">Click me</a></p>`,
+			labels: []string{"[Click me]"},
+			want:   []string{""},
+		},
+		{
+			name:   "mailto stays plain",
+			html:   `<p><a class="button" href="mailto:a@example.com">Reply</a></p>`,
+			labels: []string{"[Reply]"},
+			want:   []string{""},
+		},
+		{
+			name:   "plainUI emits no escapes",
+			html:   `<p><a class="button" href="` + dest + `">Confirm your email</a></p>`,
+			plain:  true,
+			labels: []string{"[Confirm your email]"},
+			want:   []string{""},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := renderHTMLBodyOpts(tc.html, 60, CatppuccinMocha, tc.plain, false)
+			stripped := ansi.Strip(got)
+			for _, label := range tc.labels {
+				if !strings.Contains(stripped, label) {
+					t.Fatalf("button label %q missing from %q", label, stripped)
+				}
+			}
+			if strings.Contains(stripped, "]8;;") {
+				t.Fatalf("OSC 8 leaked into visible text: %q", stripped)
+			}
+			var targets []string
+			rest := got
+			for {
+				i := strings.Index(rest, osc8Open)
+				if i < 0 {
+					break
+				}
+				rest = rest[i+len(osc8Open):]
+				uri, after, ok := strings.Cut(rest, "\x1b\\")
+				if !ok {
+					t.Fatalf("unterminated OSC 8 in %q", got)
+				}
+				rest = after
+				if uri != "" {
+					targets = append(targets, uri)
+				}
+			}
+			var want []string
+			for _, w := range tc.want {
+				if w != "" {
+					want = append(want, w)
+				}
+			}
+			if strings.Join(targets, " ") != strings.Join(want, " ") {
+				t.Fatalf("hyperlink targets = %q, want %q in %q", targets, want, got)
+			}
+			if strings.Count(got, osc8Open) != 2*len(want) {
+				t.Fatalf("expected %d balanced OSC 8 pairs, got %q", len(want), got)
+			}
+			// Hyperlinks are zero-width: the layout must match the plain render.
+			base := renderHTMLBodyOpts(tc.html, 60, CatppuccinMocha, tc.plain, true)
+			if !tc.plain && len(want) > 0 {
+				for i, line := range strings.Split(got, "\n") {
+					if w := ansi.StringWidth(line); w > 60 {
+						t.Fatalf("line %d is %d columns wide, want <= 60: %q", i, w, line)
+					}
+				}
+				if strings.Count(got, "\n") != strings.Count(base, "\n") {
+					t.Fatalf("hyperlinks changed the line count: %q vs %q", got, base)
+				}
+			}
+		})
+	}
+}
+
+// filter_links strips link targets from the body, so it must not add them back
+// as hyperlinks either.
+func TestFilterLinksSkipsButtonHyperlinks(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+
+	html := `<p><a class="button" href="https://example.com/confirm">Confirm</a></p>`
+	got := renderHTMLBodyOpts(html, 60, CatppuccinMocha, false, true)
+	if strings.Contains(got, "\x1b]8") {
+		t.Fatalf("filter_links body emitted OSC 8: %q", got)
+	}
+	if !strings.Contains(ansi.Strip(got), "[Confirm]") {
+		t.Fatalf("button label lost: %q", ansi.Strip(got))
+	}
+}

@@ -531,7 +531,8 @@ func renderHTMLBodyWithImages(html string, width int, th Theme, plainUI, filterL
 
 	converter := md.NewConverter("", true, nil)
 	converter.AddRules(spanStyleRule())
-	converter.AddRules(buttonLinkRuleWithPlans(plans))
+	var buttons []buttonLink
+	converter.AddRules(buttonLinkRuleWithPlans(plans, &buttons))
 	converter.AddRules(imagePlaceholderRuleWithPlans(plans))
 	converter.AddRules(preformattedRule(width))
 	converter.AddRules(tableTextRule(width))
@@ -553,6 +554,9 @@ func renderHTMLBodyWithImages(html string, width int, th Theme, plainUI, filterL
 	rendered = styleImagePlaceholders(rendered, th, plainUI)
 	if width > 0 {
 		rendered = ansi.Hardwrap(rendered, width, false)
+	}
+	if !filterLinks {
+		rendered = hyperlinkButtonLabels(rendered, buttons, plainUI)
 	}
 	if len(images) > 0 {
 		return rendered, images
@@ -1172,7 +1176,15 @@ func isDecorativeImageLabel(label string) bool {
 	return false
 }
 
-func buttonLinkRuleWithPlans(plans map[int]imagePlan) md.Rule {
+// buttonLink is a button-style anchor rendered as "[label]". The markdown stage
+// keeps only the label, so the destination is carried alongside it and
+// re-attached as an OSC 8 hyperlink once the body is fully rendered.
+type buttonLink struct {
+	label string // "[text]" exactly as emitted into the markdown
+	href  string // normalized like the LINKS list; "" when not linkable
+}
+
+func buttonLinkRuleWithPlans(plans map[int]imagePlan, buttons *[]buttonLink) md.Rule {
 	return md.Rule{
 		Filter: []string{"a"},
 		Replacement: func(content string, selec *goquery.Selection, _ *md.Options) *string {
@@ -1217,9 +1229,86 @@ func buttonLinkRuleWithPlans(plans map[int]imagePlan) md.Rule {
 			if isVisualOnlyLinkText(text, selec) {
 				return md.String(" ")
 			}
-			return md.String("[" + text + "]")
+			label := "[" + text + "]"
+			if buttons != nil {
+				*buttons = append(*buttons, buttonLink{
+					label: stripEmailInvisibles(label),
+					href:  cleanDetectedURL(href),
+				})
+			}
+			return md.String(label)
 		},
 	}
+}
+
+// hyperlinkButtonLabels wraps each rendered "[label]" button in an OSC 8
+// hyperlink to its destination, matching buttons in document order so repeated
+// labels pair with the right target. Like body URLs, this only gives the
+// terminal a Ctrl+click target; TideMail itself never opens links from body
+// clicks. Buttons that wrapped across lines, have no safe http(s) target, or
+// sit on an image placeholder row stay plain text. OSC 8 is zero-width, so
+// display width and wrapping are unchanged.
+func hyperlinkButtonLabels(rendered string, buttons []buttonLink, plainUI bool) string {
+	if plainUI || len(buttons) == 0 || rendered == "" {
+		return rendered
+	}
+	lines := strings.Split(rendered, "\n")
+	row, col := 0, 0 // search cursor: first unmatched visible column
+	for _, btn := range buttons {
+		for r := row; r < len(lines); r++ {
+			start := 0
+			if r == row {
+				start = col
+			}
+			line := lines[r]
+			if lineHasImagePlaceholder(line) {
+				continue
+			}
+			plain := ansi.Strip(line)
+			prefix := ansi.Cut(plain, 0, start)
+			idx := strings.Index(plain[len(prefix):], btn.label)
+			if idx < 0 {
+				continue
+			}
+			lo := start + ansi.StringWidth(plain[len(prefix):len(prefix)+idx])
+			hi := lo + ansi.StringWidth(btn.label)
+			if safeOSC8URI(btn.href) {
+				if a, b, ok := columnByteRange(line, lo, hi); ok {
+					lines[r] = line[:a] + osc8Link(btn.href, line[a:b], false) + line[b:]
+				}
+			}
+			row, col = r, hi
+			break
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// columnByteRange maps the visible columns [lo,hi) of an ANSI-styled line to
+// byte offsets, so a span can be wrapped in place. ansi.Cut is unsuitable: it
+// replays earlier escape sequences, which would duplicate open hyperlinks.
+func columnByteRange(line string, lo, hi int) (int, int, bool) {
+	start, end, col := -1, -1, 0
+	var state byte
+	for i := 0; i < len(line); {
+		_, width, n, newState := ansi.DecodeSequence(line[i:], state, nil)
+		state = newState
+		if n <= 0 {
+			break
+		}
+		if width > 0 {
+			if col == lo && start < 0 {
+				start = i
+			}
+			col += width
+			if col == hi && start >= 0 {
+				end = i + n
+				break
+			}
+		}
+		i += n
+	}
+	return start, end, start >= 0 && end > start
 }
 
 // anchorImageMarker returns a block marker for a purely visual anchor (an
