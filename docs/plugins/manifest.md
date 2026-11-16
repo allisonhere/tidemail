@@ -54,6 +54,7 @@ network = false
 message_body = false
 message_raw = false                  # decrypt/verify received mail (message.decode)
 message_compose = false              # sign/encrypt outgoing mail (message.prepare)
+contacts_write = false               # explicit address-book saves (contacts.save)
 contacts_read = false                # look up recipients (contacts.search)
 messages_query = false               # read-only queries (report.run)
 threads_query = false

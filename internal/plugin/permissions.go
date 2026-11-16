@@ -36,6 +36,8 @@ type Permissions struct {
 	// to contacts.search and show the matches as suggestions. Nothing the
 	// plugin returns is stored.
 	ContactsRead bool `toml:"contacts_read" json:"contacts_read,omitempty"`
+	// ContactsWrite allows explicit user saves to a plugin address book.
+	ContactsWrite bool `toml:"contacts_write" json:"contacts_write,omitempty"`
 
 	// The read-only query permissions below let TideMail disclose selected
 	// structured data to a plugin during a report (see query.go). They never
@@ -70,6 +72,7 @@ func (p Permissions) Names() []string {
 		{p.MessageRaw, "raw message"},
 		{p.MessageCompose, "compose"},
 		{p.ContactsRead, "contacts"},
+		{p.ContactsWrite, "edit contacts"},
 		{p.MessagesQuery, "messages query"},
 		{p.ThreadsQuery, "threads query"},
 		{p.AnnotationsQuery, "annotations query"},
