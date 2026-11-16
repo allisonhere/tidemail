@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -141,27 +142,30 @@ func TestStoreAccountPasswordKeepsTheSecretOutOfArguments(t *testing.T) {
 	}
 }
 
-// TestBackendForArgv pins the exact argv each platform's backend builds, so
-// an accidental argument-order change is caught immediately.
+// TestBackendForArgv pins the exact argv (and store stdin) each platform's
+// backend builds, so an accidental argument-order change is caught immediately.
 func TestBackendForArgv(t *testing.T) {
-	const key = "account:abc"
+	const key, value = "account:abc", "pa55"
 	tests := []struct {
 		goos       string
 		wantOK     bool
 		wantTool   string
 		wantStore  []string
+		wantStdin  string
 		wantLookup []string
 		wantClear  []string
 	}{
 		{
 			goos: "linux", wantOK: true, wantTool: "secret-tool",
 			wantStore:  []string{"store", "--label=tidemail", "application", "tidemail", "key", key},
+			wantStdin:  value + "\n",
 			wantLookup: []string{"lookup", "application", "tidemail", "key", key},
 			wantClear:  []string{"clear", "application", "tidemail", "key", key},
 		},
 		{
 			goos: "darwin", wantOK: true, wantTool: "security",
-			wantStore:  []string{"add-generic-password", "-U", "-a", key, "-s", "tidemail", "-w"},
+			wantStore:  []string{"-i"},
+			wantStdin:  `add-generic-password -U -a "account:abc" -s "tidemail" -w "tidemail-base64:cGE1NQ=="` + "\n",
 			wantLookup: []string{"find-generic-password", "-a", key, "-s", "tidemail", "-w"},
 			wantClear:  []string{"delete-generic-password", "-a", key, "-s", "tidemail"},
 		},
@@ -179,8 +183,15 @@ func TestBackendForArgv(t *testing.T) {
 			if b.tool != tt.wantTool {
 				t.Errorf("tool = %q, want %q", b.tool, tt.wantTool)
 			}
-			if got := b.storeArgs(key); !reflect.DeepEqual(got, tt.wantStore) {
-				t.Errorf("storeArgs = %v, want %v", got, tt.wantStore)
+			args, stdin, err := b.store(key, value)
+			if err != nil {
+				t.Fatalf("store: %v", err)
+			}
+			if !reflect.DeepEqual(args, tt.wantStore) {
+				t.Errorf("store args = %v, want %v", args, tt.wantStore)
+			}
+			if stdin != tt.wantStdin {
+				t.Errorf("store stdin = %q, want %q", stdin, tt.wantStdin)
 			}
 			if got := b.lookupArgs(key); !reflect.DeepEqual(got, tt.wantLookup) {
 				t.Errorf("lookupArgs = %v, want %v", got, tt.wantLookup)
@@ -194,27 +205,33 @@ func TestBackendForArgv(t *testing.T) {
 
 // fakeSecurity installs a fake `security` binary on PATH that mimics macOS's
 // add-generic-password/find-generic-password/delete-generic-password well
-// enough to exercise the darwin backend: items are kept in files, every
-// invocation's arguments are logged, and a lookup or delete miss exits 44
-// (errSecItemNotFound), matching the real tool's exit code rather than just
-// "any nonzero".
-func fakeSecurity(t *testing.T) (argLog string) {
+// enough to exercise the darwin backend: items are kept in files under store,
+// every invocation's arguments are logged, `-i` reads one command line from
+// stdin, and a lookup or delete miss exits 44 (errSecItemNotFound), matching
+// the real tool's exit code rather than just "any nonzero".
+func fakeSecurity(t *testing.T) (argLog, store string) {
 	t.Helper()
 	dir := t.TempDir()
-	store := filepath.Join(dir, "items")
+	store = filepath.Join(dir, "items")
 	if err := os.MkdirAll(store, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	argLog = filepath.Join(dir, "args.log")
 	// Argument positions are fixed because this double only needs to handle
-	// the exact argv shapes keyring.go's darwin backend builds:
-	//   add-generic-password -U -a <key> -s <service> -w <value>  ($3=key $7=value)
-	//   find-generic-password -a <key> -s <service> -w             ($2=key)
-	//   delete-generic-password -a <key> -s <service>              ($2=key)
+	// the exact shapes keyring.go's darwin backend builds (the -i line's
+	// double-quoted words are split by the shell, as security splits them):
+	//   -i, then on stdin:
+	//   add-generic-password -U -a "<key>" -s "<service>" -w "<value>"  ($3=key $7=value)
+	//   find-generic-password -a <key> -s <service> -w                 ($2=key)
+	//   delete-generic-password -a <key> -s <service>                  ($2=key)
 	script := `#!/bin/sh
+printf '%s\n' "$*" >> ` + argLog + `
+if [ "$1" = -i ]; then
+  IFS= read -r line
+  eval "set -- $line"
+fi
 cmd=$1
 shift
-printf '%s %s\n' "$cmd" "$*" >> ` + argLog + `
 case "$cmd" in
   add-generic-password)
     printf '%s' "$7" > "` + store + `/$3"
@@ -234,7 +251,7 @@ esac
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("TIDEMAIL_DISABLE_KEYRING", "")
 	resetKeyringProbe(t)
-	return argLog
+	return argLog, store
 }
 
 // The darwin backend is reached through an injectable goos parameter, not
@@ -250,6 +267,106 @@ func TestDarwinStoreLookupRoundTrip(t *testing.T) {
 	}
 	if got := lookupSecretFor("darwin", key); got != secret {
 		t.Errorf("lookupSecretFor(darwin) = %q, want %q", got, secret)
+	}
+}
+
+// A secret must never reach security's argv, which any process can read
+// (ps), and must read back exactly: quotes and backslashes have to survive the
+// -i command line, and a tab or non-ASCII text has to survive
+// find-generic-password -w, which prints such a value as bare hex. So the
+// keychain only ever holds the printable encoded form.
+func TestDarwinStoreKeepsTheSecretOutOfArguments(t *testing.T) {
+	argLog, store := fakeSecurity(t)
+	const key, secret = "account:acct-1", "pa55 \"w0rd\" \\ päss✓\ttab"
+	if err := storeSecretFor("darwin", key, secret); err != nil {
+		t.Fatalf("storeSecretFor(darwin) failed: %v", err)
+	}
+	if got := lookupSecretFor("darwin", key); got != secret {
+		t.Errorf("round trip = %q, want %q", got, secret)
+	}
+	logged, err := os.ReadFile(argLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, leak := range []string{"pa55", base64.StdEncoding.EncodeToString([]byte(secret))} {
+		if strings.Contains(string(logged), leak) {
+			t.Errorf("the secret appeared in security arguments:\n%s", logged)
+		}
+	}
+	stored, err := os.ReadFile(filepath.Join(store, key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(stored), securityValuePrefix) {
+		t.Errorf("the keychain holds %q, want the %q-prefixed encoding", stored, securityValuePrefix)
+	}
+}
+
+// `security -i` parses its own command line, so a line it splits or misreads
+// can store something other than the value. A store that doesn't read back
+// must fail, or stripSecrets drops the config file's copy of a secret the
+// keychain never got.
+func TestDarwinStoreFailsWhenTheValueDoesNotReadBack(t *testing.T) {
+	dir := t.TempDir()
+	// Succeeds at everything and stores nothing.
+	if err := os.WriteFile(filepath.Join(dir, "security"), []byte("#!/bin/sh\ncat >/dev/null\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if err := storeSecretFor("darwin", "account:acct-1", "pa55"); err == nil {
+		t.Fatal("storeSecretFor(darwin) reported success for a value that never reached the keychain")
+	}
+}
+
+// Items an earlier build stored raw (the value as add-generic-password's
+// argument) still read back unchanged.
+func TestDarwinLookupReadsAValueStoredRaw(t *testing.T) {
+	_, store := fakeSecurity(t)
+	if err := os.WriteFile(filepath.Join(store, "account:acct-1"), []byte("pa55 w0rd"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := lookupSecretFor("darwin", "account:acct-1"); got != "pa55 w0rd" {
+		t.Errorf("lookup of a raw item = %q, want %q", got, "pa55 w0rd")
+	}
+}
+
+// `security -i` splits a command line over securityLineMax bytes and stores
+// its first part truncated. An OAuth refresh token far past Microsoft's
+// guidance (plan for at least 1000 characters) still fits; one that can't is
+// refused before security runs.
+func TestDarwinStoreLength(t *testing.T) {
+	argLog, _ := fakeSecurity(t)
+	key := oauth2RefreshKey(strings.Repeat("a", 32))
+	if err := storeSecretFor("darwin", key, strings.Repeat("x", 2900)); err != nil {
+		t.Fatalf("a 2900-byte secret was refused: %v", err)
+	}
+	before, err := os.ReadFile(argLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := storeSecretFor("darwin", key, strings.Repeat("x", 3000)); err == nil {
+		t.Fatal("a 3000-byte secret was accepted past security's line limit")
+	}
+	if after, _ := os.ReadFile(argLog); string(after) != string(before) {
+		t.Error("security ran for a secret too long to store")
+	}
+}
+
+// securityQuote follows the quoting `security -i` was measured to parse:
+// double quotes, with backslash escapes. Shell-style single-quote escaping
+// reaches the keychain mangled.
+func TestSecurityQuote(t *testing.T) {
+	for in, want := range map[string]string{
+		"account:abc": `"account:abc"`,
+		"it's":        `"it's"`,
+		`a "b" \c`:    `"a \"b\" \\c"`,
+	} {
+		if got, err := securityQuote(in); err != nil || got != want {
+			t.Errorf("securityQuote(%q) = %q, %v; want %q", in, got, err, want)
+		}
+	}
+	if _, err := securityQuote("a\nb"); err == nil {
+		t.Error("a newline would end the -i command line; securityQuote must refuse it")
 	}
 }
 
