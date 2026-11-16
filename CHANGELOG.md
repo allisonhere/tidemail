@@ -54,6 +54,14 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Editing an unconfirmed ("uncertain") delivery in the Outbox now asks first,
+  the same way retrying one already did — it used to silently turn into a
+  draft with no warning, which, if the first attempt actually reached the
+  server, meant a duplicate send and the loss of the only record that an
+  unconfirmed delivery existed. The transient status line after a send also
+  no longer calls an uncertain delivery "failed" (the Outbox pane itself
+  already said "unconfirmed"), which invited a needless retry and a
+  duplicate if delivery had actually succeeded.
 - The save-attachment picker no longer crashes when its starting folder cannot
   be read, such as a missing `~/Downloads`; it shows an error instead.
 - Contact marks follow the contact, not its row position, so adding, editing or

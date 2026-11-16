@@ -276,11 +276,16 @@ type Model struct {
 	outboxCursor         int
 	outboxStatus         string
 	outboxConfirmID      int64
-	scheduleSendInput    textinput.Model
-	schedulePicker       list.Model
-	scheduleCustom       bool
-	scheduleCalendar     time.Time
-	scheduleDate         time.Time
+	// outboxConfirmEdit distinguishes what y/n on outboxConfirmID resumes:
+	// retrying delivery (false) or editing an uncertain send back to a draft,
+	// which gives up the only record that an unconfirmed delivery existed
+	// (true, see handleOutboxKey's "e"/"enter" case).
+	outboxConfirmEdit bool
+	scheduleSendInput textinput.Model
+	schedulePicker    list.Model
+	scheduleCustom    bool
+	scheduleCalendar  time.Time
+	scheduleDate      time.Time
 
 	grammarOriginal    string
 	grammarCorrected   string
