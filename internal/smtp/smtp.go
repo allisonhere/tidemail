@@ -25,6 +25,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/auth"
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
 )
 
 var (
@@ -492,10 +493,22 @@ func quotedPrintable(s string) string {
 	return buf.String()
 }
 
+// NewMarkdown builds the Markdown converter for outgoing mail: goldmark with
+// the GitHub-flavored extensions (pipe tables, strikethrough, autolinks, task
+// lists). Plain goldmark is CommonMark only, so a pipe table would be sent as
+// literal text. Every converter for compose must come from here, with callers
+// adding only their own options: a second hand-built converter is how GFM went
+// missing on the signature-marker path.
+func NewMarkdown(opts ...goldmark.Option) goldmark.Markdown {
+	return goldmark.New(append([]goldmark.Option{goldmark.WithExtensions(extension.GFM)}, opts...)...)
+}
+
+var markdownConverter = NewMarkdown()
+
 // MarkdownToHTML converts Markdown text to HTML using goldmark.
 func MarkdownToHTML(md string) string {
 	var buf bytes.Buffer
-	if err := goldmark.Convert([]byte(md), &buf); err != nil {
+	if err := markdownConverter.Convert([]byte(md), &buf); err != nil {
 		return ""
 	}
 	return buf.String()

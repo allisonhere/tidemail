@@ -1023,6 +1023,11 @@ its own is not enough: the account form refuses to save one, because SMTP has
 no address to send from and would only fail once the message was already
 queued.
 
+The compose body is Markdown. It is sent as HTML, with the text you typed as the
+plain-text part. The GitHub-flavored extensions work: pipe tables, `~~strikethrough~~`,
+bare web addresses that become links, and `- [ ]` task lists (shown as checkboxes,
+which some mail programs hide).
+
 A standalone `⁂` in the compose body marks where your signature will be inserted
 when sending. New messages, replies, forwards, and email-link compositions include
 it automatically; in replies and forwards it appears before quoted correspondence.
