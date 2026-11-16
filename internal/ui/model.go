@@ -407,7 +407,7 @@ type Model struct {
 	// notifier is a long-lived private D-Bus connection. Notification IDs are
 	// registered on the update loop before an action can change message state.
 	notifier             notify.Conn
-	pendingNotifyActions map[uint32]int64
+	pendingNotifyActions map[uint32][]int64
 	earlyNotifyActions   map[uint32]notify.Event
 	// lastResumeTick is the wall-clock time of the previous resume check.
 	lastResumeTick time.Time
@@ -546,7 +546,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		lastFolderRefresh:      make(map[int64]time.Time),
 		idleWatchers:           make(map[int64]idleWatcherEntry),
 		syncTimerGeneration:    make(map[int64]uint64),
-		pendingNotifyActions:   make(map[uint32]int64),
+		pendingNotifyActions:   make(map[uint32][]int64),
 		earlyNotifyActions:     make(map[uint32]notify.Event),
 		collapsedAccounts:      map[int64]bool{},
 		collapsedSections:      map[string]bool{},

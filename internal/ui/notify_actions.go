@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"log"
 	"runtime"
 
 	"github.com/allisonhere/tidemail/internal/db"
@@ -15,8 +16,8 @@ type notifierOpenedMsg struct {
 }
 
 type notifySentMsg struct {
-	notifyID  uint32
-	messageID int64
+	notifyID   uint32
+	messageIDs []int64
 }
 
 type notifyActionEventMsg struct {
@@ -30,9 +31,29 @@ func (m Model) openNotifierCmd() tea.Cmd {
 		return nil
 	}
 	return func() tea.Msg {
-		conn, _ := notify.Open("tidemail")
+		conn, err := notify.Open("tidemail")
+		if err != nil {
+			// Not fatal — notifyCmd falls back to plain notify-send — but
+			// this is only tried once at startup, so a daemon that doesn't
+			// advertise actions (or any other D-Bus hiccup) would otherwise
+			// silently disable actionable notifications for the whole
+			// session with no way to tell why.
+			logNotify("notify\terror=%q", err)
+			return notifierOpenedMsg{conn: nil}
+		}
 		return notifierOpenedMsg{conn: conn}
 	}
+}
+
+// logNotify appends notifier diagnostics to the fetch log (same file syncs
+// log to, viewable via Settings → Advanced → View Logs).
+func logNotify(format string, args ...any) {
+	f, openErr := openFetchLog()
+	if openErr != nil {
+		return
+	}
+	defer f.Close()
+	log.New(f, "", log.LstdFlags).Printf(format, args...)
 }
 
 func (m Model) handleNotifierOpened(msg notifierOpenedMsg) (tea.Model, tea.Cmd) {
@@ -58,13 +79,13 @@ func (m Model) listenNotifyEventsCmd() tea.Cmd {
 }
 
 func (m Model) handleNotifySent(msg notifySentMsg) (tea.Model, tea.Cmd) {
-	if msg.notifyID == 0 || msg.messageID == 0 {
+	if msg.notifyID == 0 || len(msg.messageIDs) == 0 {
 		return m, nil
 	}
 	if m.pendingNotifyActions == nil {
-		m.pendingNotifyActions = make(map[uint32]int64)
+		m.pendingNotifyActions = make(map[uint32][]int64)
 	}
-	m.pendingNotifyActions[msg.notifyID] = msg.messageID
+	m.pendingNotifyActions[msg.notifyID] = msg.messageIDs
 	if event, ok := m.earlyNotifyActions[msg.notifyID]; ok {
 		delete(m.earlyNotifyActions, msg.notifyID)
 		return m.handleNotifyActionEvent(notifyActionEventMsg{event: event})
@@ -75,7 +96,7 @@ func (m Model) handleNotifySent(msg notifySentMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleNotifyActionEvent(msg notifyActionEventMsg) (tea.Model, tea.Cmd) {
 	if msg.closed {
 		m.notifier = nil
-		m.pendingNotifyActions = make(map[uint32]int64)
+		m.pendingNotifyActions = make(map[uint32][]int64)
 		m.earlyNotifyActions = make(map[uint32]notify.Event)
 		return m, nil
 	}
@@ -87,7 +108,7 @@ func (m Model) handleNotifyActionEvent(msg notifyActionEventMsg) (tea.Model, tea
 	if event.ID == 0 {
 		return m, tea.Batch(cmds...)
 	}
-	messageID, ok := m.pendingNotifyActions[event.ID]
+	ids, ok := m.pendingNotifyActions[event.ID]
 	if !ok {
 		// Notify and the signal listener are concurrent Bubble Tea commands. A
 		// very fast click can arrive before notifySentMsg registers the ID.
@@ -108,15 +129,21 @@ func (m Model) handleNotifyActionEvent(msg notifyActionEventMsg) (tea.Model, tea
 	if event.Closed || event.ActionKey == "ignore" {
 		return m, tea.Batch(cmds...)
 	}
-	message, err := m.db.GetMessage(messageID)
-	if err != nil {
+	var messages []db.Message
+	for _, id := range ids {
+		if message, err := m.db.GetMessage(id); err == nil {
+			messages = append(messages, message)
+		}
+	}
+	if len(messages) == 0 {
 		return m, tea.Batch(cmds...)
 	}
 	switch event.ActionKey {
 	case "mark-read":
-		cmds = append(cmds, m.setMessageReadCmd(message, true, false))
+		read := true
+		cmds = append(cmds, m.acceptReadChanges(messages, &read, false))
 	case "delete":
-		cmds = append(cmds, m.scheduleDelete([]db.Message{message}))
+		cmds = append(cmds, m.scheduleDelete(messages))
 	}
 	return m, tea.Batch(cmds...)
 }

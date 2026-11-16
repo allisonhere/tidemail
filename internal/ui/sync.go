@@ -308,19 +308,23 @@ func (m *Model) loadAddressBookCmd() tea.Cmd {
 
 func (m *Model) notifyCmd(mailboxID int64, newMsgs []db.Message) tea.Cmd {
 	if useActionableNotify(runtime.GOOS, len(newMsgs), m.notifier) {
-		return m.notifyActionableCmd(mailboxID, newMsgs[0])
+		return m.notifyActionableCmd(mailboxID, newMsgs)
 	}
 	return notifySendCmd(m.db, mailboxID, newMsgs)
 }
 
 func useActionableNotify(goos string, newMsgCount int, notifier notify.Conn) bool {
-	return goos == "linux" && newMsgCount == 1 && notifier != nil
+	return goos == "linux" && newMsgCount > 0 && notifier != nil
 }
 
-func (m *Model) notifyActionableCmd(mailboxID int64, message db.Message) tea.Cmd {
+// notifyActionableCmd shows one actionable notification covering the whole
+// batch of new messages (not just the first), so Mark Read/Delete apply to
+// all of them — otherwise a sync that pulls in more than one new message
+// would silently fall back to a plain, button-less notification every time.
+func (m *Model) notifyActionableCmd(mailboxID int64, messages []db.Message) tea.Cmd {
 	database, notifier := m.db, m.notifier
 	return func() tea.Msg {
-		title, body := notificationText(database, mailboxID, []db.Message{message})
+		title, body := notificationText(database, mailboxID, messages)
 		id, err := notifier.Notify("tidemail", "mail-unread", title, body, []string{
 			"mark-read", "Mark Read",
 			"delete", "Delete",
@@ -330,7 +334,7 @@ func (m *Model) notifyActionableCmd(mailboxID int64, message db.Message) tea.Cmd
 			sendDesktopNotification(title, body)
 			return nil
 		}
-		return notifySentMsg{notifyID: id, messageID: message.ID}
+		return notifySentMsg{notifyID: id, messageIDs: messageIDs(messages)}
 	}
 }
 
