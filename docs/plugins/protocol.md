@@ -293,7 +293,11 @@ stores none of them. An error is shown in compose and changes nothing.
 
 `contacts.list` accepts `{ "query": "", "limit": 200 }` and returns
 `{ "contacts": [...] }`. Each contact has `id`, `revision`, `name`, `addr`,
-`phone`, `organization`, and `note`. IDs and revisions must be present; email
+`phone`, `organization`, and `note`. Optional `read_only` and `source` fields
+identify records owned by an external folder; the simple manager does not open
+these records for editing. A top-level `warning` string can explain a failed
+refresh while the returned contacts remain usable. Warnings/source labels are
+validated as display text. IDs and revisions must be present; email
 addresses must be valid. At most 200 contacts are accepted. This method requires
 `contacts_read`; an empty query browses the book.
 
