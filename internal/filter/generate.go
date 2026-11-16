@@ -25,7 +25,11 @@ Return ONLY a JSON object (no prose, no code fences) with this exact shape:
 
 Allowed field: from, to, cc, subject, body, has_attachment
 Allowed op: contains, not_contains, equals, starts_with, ends_with, is_true
-  (use is_true only with field "has_attachment")
+"has_attachment" is a boolean field: op must be "is_true" or "equals", and
+value must be "true" or "false" ("is_true" with no value also means "true").
+No other op works on "has_attachment" — e.g. for "no attachment", use
+{"field": "has_attachment", "op": "is_true", "value": "false"}, not
+"not_contains".
 Allowed action.type: move, mark_read, archive, delete, spam
 Existing folders: %s
 For action "move", use the destination folder named by the user exactly. The

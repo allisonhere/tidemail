@@ -75,6 +75,10 @@ func Validate(r Rule, _ []string) error {
 			return fmt.Errorf("unknown operator %q", c.Op)
 		}
 		if c.Field == FieldHasAttachment {
+			if _, ok := attachmentWant(c.Op, c.Value); !ok {
+				return fmt.Errorf("has_attachment only accepts op %q or %q, with value %q, %q, or empty (meaning %q)",
+					OpIsTrue, OpEquals, "true", "false", "true")
+			}
 			continue
 		}
 		if strings.TrimSpace(c.Value) == "" {
@@ -97,7 +101,15 @@ func (r Rule) Summary() string {
 	parts := make([]string, 0, len(r.Conditions))
 	for _, c := range r.Conditions {
 		if c.Field == FieldHasAttachment {
-			parts = append(parts, "has attachment")
+			// want, ok default to false if somehow invalid (shouldn't happen
+			// post-Validate); say so plainly rather than print the wrong polarity.
+			if want, ok := attachmentWant(c.Op, c.Value); ok && want {
+				parts = append(parts, "has attachment")
+			} else if ok {
+				parts = append(parts, "has no attachment")
+			} else {
+				parts = append(parts, "has attachment (invalid condition)")
+			}
 			continue
 		}
 		parts = append(parts, fmt.Sprintf("%s %s %q", c.Field, strings.ReplaceAll(c.Op, "_", " "), c.Value))

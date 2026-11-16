@@ -88,9 +88,10 @@ func (r Rule) Matches(m db.Message) bool {
 
 func (c Condition) matches(m db.Message) bool {
 	if c.Field == FieldHasAttachment {
-		// has_attachment is a boolean field; is_true (or contains/equals "true").
-		want := c.Op == OpIsTrue || strings.EqualFold(strings.TrimSpace(c.Value), "true")
-		return m.HasAttachment == want
+		want, ok := attachmentWant(c.Op, c.Value)
+		// Validate rejects any rule reaching this, so ok=false here is inert
+		// rather than a silent inversion of what the rule's author meant.
+		return ok && m.HasAttachment == want
 	}
 	hay := strings.ToLower(fieldValue(m, c.Field))
 	needle := strings.ToLower(strings.TrimSpace(c.Value))
@@ -107,6 +108,31 @@ func (c Condition) matches(m db.Message) bool {
 		return strings.HasSuffix(hay, needle)
 	default:
 		return false
+	}
+}
+
+// attachmentWant decodes a has_attachment condition's operator/value into the
+// boolean it actually tests for. Only is_true and equals are meaningful on a
+// boolean field; every other operator (contains, not_contains, starts_with,
+// ends_with) previously fell through to treating the literal value text as
+// the answer, which inverted the rule's own stated operator — "not_contains
+// true" matched mail WITH an attachment. Validate rejects any other operator
+// before a rule can be saved, so ok=false here should be unreachable for a
+// validated rule.
+func attachmentWant(op, value string) (want bool, ok bool) {
+	v := strings.TrimSpace(value)
+	switch {
+	case op != OpIsTrue && op != OpEquals:
+		return false, false
+	case v == "" && op == OpIsTrue:
+		// is_true with no value is the common shorthand for "has an attachment".
+		return true, true
+	case strings.EqualFold(v, "true"):
+		return true, true
+	case strings.EqualFold(v, "false"):
+		return false, true
+	default:
+		return false, false
 	}
 }
 

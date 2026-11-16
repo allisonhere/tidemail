@@ -58,6 +58,13 @@ All notable changes to TideMail are documented in this file.
   command line, where any process could read it with `ps`; it is passed on
   stdin instead. A password with non-ASCII characters or a tab now reads back
   exactly instead of as hex.
+- A filter's **has attachment** condition now respects its own operator
+  instead of only looking at the literal value text. Previously
+  `has_attachment not_contains "true"` or `is_true` with value `"false"` (a
+  plausible way to say "no attachment") matched mail **with** an attachment
+  instead — the opposite of what the rule said, and dangerous on a rule whose
+  action deletes or spam-flags. Only `is_true`/`equals` with `true`/`false`
+  are accepted now; anything else is rejected when the rule is saved.
 - The save-attachment picker no longer crashes when its starting folder cannot
   be read, such as a missing `~/Downloads`; it shows an error instead.
 - Contact marks follow the contact, not its row position, so adding, editing or
