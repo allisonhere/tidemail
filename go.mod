@@ -17,6 +17,7 @@ require (
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
 	github.com/emersion/go-vcard v0.0.0-20241024213814-c9703dde27ff
+	github.com/godbus/dbus/v5 v5.2.2
 	github.com/muesli/termenv v0.16.0
 	github.com/rivo/uniseg v0.4.7
 	github.com/yuin/goldmark v1.7.17

@@ -8,6 +8,9 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- On Linux, a notification for new mail offers **Mark Read**, **Delete**, and
+  **Ignore** actions, covering every message in the batch when more than one
+  arrives at once. Delete keeps TideMail's normal six-second undo window.
 - Passwords, AI API keys, and OAuth refresh tokens are now actually saved to
   the macOS Keychain, via `security`, the same way Linux already uses
   `secret-tool`. Previously macOS had no working backend and every secret
@@ -43,6 +46,11 @@ All notable changes to TideMail are documented in this file.
   box lists them (`↑`/`↓`, `Enter` to run), `↑`/`↓` on typed text opens the list
   filtered by it, `Tab` completes from history and `Ctrl+D` forgets an entry.
   **Clear search history** is in the command palette.
+
+### Changed
+
+- Field help in Settings and the Account Manager stays muted and faint until
+  its related control receives focus, making active guidance easier to pick out.
 
 ### Fixed
 
