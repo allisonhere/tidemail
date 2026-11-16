@@ -309,3 +309,32 @@ func TestProbeEligible(t *testing.T) {
 		})
 	}
 }
+
+func TestTmuxPassthroughWrapsEachChunk(t *testing.T) {
+	in := []byte("\x1b_Gm=1;AAAA\x1b\\\x1b_Gm=0;BBBB\x1b\\")
+	want := "\x1bPtmux;\x1b\x1b_Gm=1;AAAA\x1b\x1b\\\x1b\\" +
+		"\x1bPtmux;\x1b\x1b_Gm=0;BBBB\x1b\x1b\\\x1b\\"
+	if got := string(tmuxPassthrough(in)); got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestKittyBackendWrapsOnlyInTmux(t *testing.T) {
+	plain := NewKittyBackend(Capabilities{Protocol: ProtocolKitty})
+	if got := plain.Delete(5); !bytes.HasPrefix(got, []byte("\x1b_G")) {
+		t.Fatalf("outside tmux must be raw: %q", got)
+	}
+	tm := NewKittyBackend(Capabilities{Protocol: ProtocolKitty, InTmux: true})
+	if got := tm.Delete(5); !bytes.HasPrefix(got, []byte("\x1bPtmux;")) {
+		t.Fatalf("inside tmux must be wrapped: %q", got)
+	}
+	caps := Detect(func(k string) string {
+		if k == "TMUX" {
+			return "/tmp/tmux-1000/default,1,0"
+		}
+		return ""
+	}, richmail.CellGeometry{})
+	if !caps.InTmux {
+		t.Fatal("Detect must set InTmux from $TMUX")
+	}
+}

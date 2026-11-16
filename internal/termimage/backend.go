@@ -41,6 +41,9 @@ type Capabilities struct {
 	Protocol  Protocol
 	TrueColor bool
 	Cell      richmail.CellGeometry
+	// InTmux is true when running inside tmux, which swallows graphics
+	// escapes unless they are wrapped in its DCS passthrough.
+	InTmux bool
 }
 
 // GraphicsEnabled reports whether real raster images can be placed inline.

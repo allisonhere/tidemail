@@ -33,6 +33,7 @@ func Detect(getenv func(string) string, geom richmail.CellGeometry) Capabilities
 		Protocol:  DetectProtocol(getenv),
 		TrueColor: detectTrueColor(getenv),
 		Cell:      geom,
+		InTmux:    strings.TrimSpace(getenv("TMUX")) != "",
 	}
 }
 
