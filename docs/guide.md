@@ -390,7 +390,7 @@ link to another domain) is marked with `!`.
 Button-style links in HTML bodies, such as `[Confirm your email]`, are terminal
 hyperlinks (OSC 8), like URLs in plain-text bodies, so a terminal that supports
 them can open the destination with its own Ctrl+click. A button points at the same
-destination as its LINKS entry. TideMail itself still never opens a link from a body click, and
+destination as its LINKS entry; a label that wraps onto a second line is linked on both. Text that merely looks like a button, such as `[Open]` typed in a sentence, is never linked. TideMail itself still never opens a link from a body click, and
 the plain UI and `filter_links` emit no body hyperlinks.
 
 ### Managing folders

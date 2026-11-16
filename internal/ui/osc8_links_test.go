@@ -426,6 +426,9 @@ func TestHTMLButtonLinksBecomeHyperlinks(t *testing.T) {
 			if strings.Contains(stripped, "]8;;") {
 				t.Fatalf("OSC 8 leaked into visible text: %q", stripped)
 			}
+			if strings.ContainsAny(got, string(buttonStartMarker)+string(buttonEndMarker)) {
+				t.Fatalf("button marker leaked into output: %q", got)
+			}
 			var targets []string
 			rest := got
 			for {
@@ -484,5 +487,143 @@ func TestFilterLinksSkipsButtonHyperlinks(t *testing.T) {
 	}
 	if !strings.Contains(ansi.Strip(got), "[Confirm]") {
 		t.Fatalf("button label lost: %q", ansi.Strip(got))
+	}
+}
+
+// osc8Span is one hyperlinked run of a rendered body: its target and the
+// visible text it covers.
+type osc8Span struct {
+	uri, text string
+}
+
+// osc8Spans lists every hyperlinked run in document order, and returns the
+// visible text outside any hyperlink.
+func osc8Spans(t *testing.T, rendered string) (spans []osc8Span, outside string) {
+	t.Helper()
+	var out strings.Builder
+	rest := rendered
+	for {
+		i := strings.Index(rest, osc8Open)
+		if i < 0 {
+			out.WriteString(ansi.Strip(rest))
+			break
+		}
+		out.WriteString(ansi.Strip(rest[:i]))
+		rest = rest[i+len(osc8Open):]
+		uri, after, ok := strings.Cut(rest, "\x1b\\")
+		if !ok {
+			t.Fatalf("unterminated OSC 8 in %q", rendered)
+		}
+		if uri == "" {
+			t.Fatalf("closing OSC 8 without an opening one in %q", rendered)
+		}
+		text, after2, ok := strings.Cut(after, osc8Close)
+		if !ok {
+			t.Fatalf("OSC 8 %q never closed in %q", uri, rendered)
+		}
+		spans = append(spans, osc8Span{uri: uri, text: ansi.Strip(text)})
+		out.WriteString("\x00") // a link's position in the outside text
+		rest = after2
+	}
+	return spans, out.String()
+}
+
+// Regression: buttons used to be found by searching the rendered text for
+// their label, so "[Open]" written in ordinary text before an Open button got
+// the button's link and the button itself stayed plain.
+func TestButtonHyperlinkIgnoresSameLabelInText(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+
+	html := `<p>Click [Open] below to see your order.</p>` +
+		`<p>Or type [Open] in the app.</p>` +
+		`<p><a class="button" href="https://example.com/order">Open</a></p>`
+	got := renderHTMLBodyOpts(html, 60, CatppuccinMocha, false, false)
+	spans, outside := osc8Spans(t, got)
+	if len(spans) != 1 || spans[0].uri != "https://example.com/order" || spans[0].text != "[Open]" {
+		t.Fatalf("want only the button linked, got %+v in %q", spans, got)
+	}
+	// Both prose occurrences come before the link and stay unlinked.
+	before, _, _ := strings.Cut(outside, "\x00")
+	if n := strings.Count(before, "[Open]"); n != 2 {
+		t.Fatalf("want both prose [Open] before the button and unlinked, got %d in %q", n, outside)
+	}
+}
+
+// Regression: with repeated labels, a button that wrapped across lines used to
+// be skipped while the search cursor still advanced, so the next "[Open ...]"
+// could pick up the wrong destination. Each button must keep its own target,
+// and a wrapped label is linked on every line it occupies.
+func TestWrappedRepeatedButtonsKeepTheirOwnTargets(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+
+	const label = "Read the full story on our website"
+	html := `<p>Intro text. <a class="button" href="https://example.com/a">` + label + `</a></p>` +
+		`<p><a class="button" href="https://example.com/b">` + label + `</a></p>` +
+		`<p><a class="button" href="https://example.com/c">` + label + `</a></p>`
+	const width = 30
+	got := renderHTMLBodyOpts(html, width, CatppuccinMocha, false, false)
+	for i, line := range strings.Split(got, "\n") {
+		if w := ansi.StringWidth(line); w > width {
+			t.Fatalf("line %d is %d columns wide, want <= %d: %q", i, w, width, line)
+		}
+	}
+	base := renderHTMLBodyOpts(html, width, CatppuccinMocha, false, true)
+	if strings.Count(got, "\n") != strings.Count(base, "\n") {
+		t.Fatalf("hyperlinks changed the line count: %q vs %q", got, base)
+	}
+
+	spans, _ := osc8Spans(t, got)
+	text := map[string]string{}
+	var order []string
+	for _, s := range spans {
+		if _, seen := text[s.uri]; !seen {
+			order = append(order, s.uri)
+		}
+		text[s.uri] += s.text + " "
+	}
+	want := []string{"https://example.com/a", "https://example.com/b", "https://example.com/c"}
+	if strings.Join(order, " ") != strings.Join(want, " ") {
+		t.Fatalf("targets in order = %q, want %q (spans %+v)", order, want, spans)
+	}
+	wrapped := false
+	for _, uri := range want {
+		if got := strings.Join(strings.Fields(text[uri]), " "); got != "["+label+"]" {
+			t.Fatalf("%s covers %q, want the whole label %q", uri, got, "["+label+"]")
+		}
+		if strings.Count(text[uri], " ") > 1 {
+			wrapped = true
+		}
+	}
+	if !wrapped {
+		t.Fatalf("test needs at least one label wrapped across lines; spans %+v", spans)
+	}
+}
+
+// The button boundaries are invisible characters. A message that contains
+// them (raw or entity-encoded, even double-encoded inside a label) must not
+// be able to shift links onto other text, and they never reach the screen.
+func TestButtonMarkersInMessageCannotForgeLinks(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+
+	html := `<p>Fake \u2063[Pay now]\u2064 and &#x2063;[Pay now]&#x2064; text.</p>` +
+		`<p title="\u2063x\u2064"><a class="button" href="https://example.com/real">Real &amp;#x2063;button&amp;#x2064;</a></p>` +
+		`<p><a class="button" href="https://example.com/pay">Pay now</a></p>`
+	got := renderHTMLBodyOpts(html, 60, CatppuccinMocha, false, false)
+	if strings.ContainsAny(got, string(buttonStartMarker)+string(buttonEndMarker)) {
+		t.Fatalf("marker reached the output: %q", got)
+	}
+	spans, _ := osc8Spans(t, got)
+	for _, s := range spans {
+		ok := (s.uri == "https://example.com/pay" && s.text == "[Pay now]") ||
+			(s.uri == "https://example.com/real" && strings.HasPrefix(s.text, "[Real"))
+		if !ok {
+			t.Fatalf("link on the wrong text: %+v in %q", s, got)
+		}
+	}
+	if len(spans) == 0 {
+		t.Fatalf("real buttons lost their links: %q", got)
 	}
 }

@@ -22,8 +22,9 @@ All notable changes to TideMail are documented in this file.
 
 - Button-style links in HTML bodies (rendered as `[Confirm your email]`) are
   now OSC 8 terminal hyperlinks to the same destination as their LINKS entry,
-  so terminals can open them with Ctrl+click. TideMail's own click handling is
-  unchanged.
+  so terminals can open them with Ctrl+click. A label that wraps is linked on
+  every line, and prose that only looks like a button is never linked.
+  TideMail's own click handling is unchanged.
 - Passwords, AI API keys, and OAuth refresh tokens are now actually saved to
   the macOS Keychain, via `security`, the same way Linux already uses
   `secret-tool`. Previously macOS had no working backend and every secret

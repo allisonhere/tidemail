@@ -530,6 +530,7 @@ func renderHTMLBodyWithImages(html string, width int, th Theme, plainUI, filterL
 	}
 
 	converter := md.NewConverter("", true, nil)
+	converter.Before(stripButtonMarkersFromDocument)
 	converter.AddRules(spanStyleRule())
 	var buttons []buttonLink
 	converter.AddRules(buttonLinkRuleWithPlans(plans, &buttons))
@@ -555,9 +556,7 @@ func renderHTMLBodyWithImages(html string, width int, th Theme, plainUI, filterL
 	if width > 0 {
 		rendered = ansi.Hardwrap(rendered, width, false)
 	}
-	if !filterLinks {
-		rendered = hyperlinkButtonLabels(rendered, buttons, plainUI)
-	}
+	rendered = hyperlinkButtonLabels(rendered, buttons, plainUI || filterLinks)
 	if len(images) > 0 {
 		return rendered, images
 	}
@@ -1180,9 +1179,19 @@ func isDecorativeImageLabel(label string) bool {
 // keeps only the label, so the destination is carried alongside it and
 // re-attached as an OSC 8 hyperlink once the body is fully rendered.
 type buttonLink struct {
-	label string // "[text]" exactly as emitted into the markdown
-	href  string // normalized like the LINKS list; "" when not linkable
+	href string // normalized like the LINKS list; "" when not linkable
 }
+
+// Each button label is bracketed by these two invisible, zero-width characters
+// in the markdown, so the rendered output says exactly where every button
+// starts and ends. Matching by label text instead would attach a link to an
+// identical label in ordinary text (e.g. "[Open]" in a sentence before an Open
+// button). Message content can never contain them: they are removed from the
+// document before conversion, and the renderer removes every marker it emits.
+const (
+	buttonStartMarker = '\u2063' // INVISIBLE SEPARATOR
+	buttonEndMarker   = '\u2064' // INVISIBLE PLUS
+)
 
 func buttonLinkRuleWithPlans(plans map[int]imagePlan, buttons *[]buttonLink) md.Rule {
 	return md.Rule{
@@ -1229,86 +1238,156 @@ func buttonLinkRuleWithPlans(plans map[int]imagePlan, buttons *[]buttonLink) md.
 			if isVisualOnlyLinkText(text, selec) {
 				return md.String(" ")
 			}
-			label := "[" + text + "]"
-			if buttons != nil {
-				*buttons = append(*buttons, buttonLink{
-					label: stripEmailInvisibles(label),
-					href:  cleanDetectedURL(href),
-				})
+			label := "[" + removeButtonMarkers(text) + "]"
+			if buttons == nil {
+				return md.String(label)
 			}
-			return md.String(label)
+			*buttons = append(*buttons, buttonLink{href: cleanDetectedURL(href)})
+			return md.String(string(buttonStartMarker) + label + string(buttonEndMarker))
 		},
 	}
 }
 
-// hyperlinkButtonLabels wraps each rendered "[label]" button in an OSC 8
-// hyperlink to its destination, matching buttons in document order so repeated
-// labels pair with the right target. Like body URLs, this only gives the
+// hyperlinkButtonLabels removes the button markers from rendered and, unless
+// links are disabled, wraps the text between each pair in an OSC 8 hyperlink to
+// that button's destination. The n-th start marker is the n-th button, so
+// repeated labels always pair with their own target. A label that wrapped across
+// lines is linked on every line it occupies. Like body URLs, this only gives the
 // terminal a Ctrl+click target; TideMail itself never opens links from body
-// clicks. Buttons that wrapped across lines, have no safe http(s) target, or
-// sit on an image placeholder row stay plain text. OSC 8 is zero-width, so
-// display width and wrapping are unchanged.
-func hyperlinkButtonLabels(rendered string, buttons []buttonLink, plainUI bool) string {
-	if plainUI || len(buttons) == 0 || rendered == "" {
+// clicks. Buttons without a safe http(s) target, or on an image placeholder row,
+// stay plain text. OSC 8 and the markers are zero-width, so display width and
+// wrapping are unchanged.
+func hyperlinkButtonLabels(rendered string, buttons []buttonLink, noLinks bool) string {
+	if !strings.ContainsRune(rendered, buttonStartMarker) && !strings.ContainsRune(rendered, buttonEndMarker) {
 		return rendered
 	}
+	// Every marker comes from the button rule, one pair per recorded button.
+	// Any other count means message text smuggled one in past the document
+	// cleanup (e.g. a double-encoded entity); don't trust the boundaries then.
+	if strings.Count(rendered, string(buttonStartMarker)) != len(buttons) ||
+		strings.Count(rendered, string(buttonEndMarker)) != len(buttons) {
+		noLinks = true
+	}
 	lines := strings.Split(rendered, "\n")
-	row, col := 0, 0 // search cursor: first unmatched visible column
-	for _, btn := range buttons {
-		for r := row; r < len(lines); r++ {
-			start := 0
-			if r == row {
-				start = col
+	next := 0     // index of the next button start marker
+	current := -1 // button whose label is open across lines, or -1
+	for r, line := range lines {
+		var b strings.Builder
+		b.Grow(len(line))
+		segStart := -1 // byte offset in line where the open label's text began
+		href := func() string {
+			if noLinks || current < 0 || current >= len(buttons) || lineHasImagePlaceholder(line) {
+				return ""
 			}
-			line := lines[r]
-			if lineHasImagePlaceholder(line) {
-				continue
-			}
-			plain := ansi.Strip(line)
-			prefix := ansi.Cut(plain, 0, start)
-			idx := strings.Index(plain[len(prefix):], btn.label)
-			if idx < 0 {
-				continue
-			}
-			lo := start + ansi.StringWidth(plain[len(prefix):len(prefix)+idx])
-			hi := lo + ansi.StringWidth(btn.label)
-			if safeOSC8URI(btn.href) {
-				if a, b, ok := columnByteRange(line, lo, hi); ok {
-					lines[r] = line[:a] + osc8Link(btn.href, line[a:b], false) + line[b:]
-				}
-			}
-			row, col = r, hi
-			break
+			return buttons[current].href
 		}
+		flush := func(end int) {
+			if segStart < 0 {
+				return
+			}
+			seg := line[segStart:end]
+			if u := href(); safeOSC8URI(u) && strings.TrimSpace(ansi.Strip(seg)) != "" {
+				lead, body, trail := splitOuterSpace(seg)
+				b.WriteString(lead + osc8Link(u, body, false) + trail)
+			} else {
+				b.WriteString(seg)
+			}
+			segStart = -1
+		}
+		if current >= 0 {
+			segStart = 0
+		}
+		last := 0
+		for i, ch := range line {
+			switch ch {
+			case buttonStartMarker:
+				if segStart >= 0 {
+					flush(i)
+				} else {
+					b.WriteString(line[last:i])
+				}
+				current = next
+				next++
+				segStart = i + len(string(ch))
+				last = segStart
+			case buttonEndMarker:
+				if segStart >= 0 {
+					flush(i)
+				} else {
+					b.WriteString(line[last:i])
+				}
+				current = -1
+				last = i + len(string(ch))
+			}
+		}
+		if segStart >= 0 {
+			flush(len(line))
+		} else {
+			b.WriteString(line[last:])
+		}
+		lines[r] = b.String()
 	}
 	return strings.Join(lines, "\n")
 }
 
-// columnByteRange maps the visible columns [lo,hi) of an ANSI-styled line to
-// byte offsets, so a span can be wrapped in place. ansi.Cut is unsuitable: it
-// replays earlier escape sequences, which would duplicate open hyperlinks.
-func columnByteRange(line string, lo, hi int) (int, int, bool) {
-	start, end, col := -1, -1, 0
+// splitOuterSpace separates leading and trailing blank cells (and the escape
+// codes around them) from a styled segment, so a hyperlink covers only the
+// visible label, not indentation or line padding.
+func splitOuterSpace(seg string) (lead, body, trail string) {
+	start, end := -1, -1
 	var state byte
-	for i := 0; i < len(line); {
-		_, width, n, newState := ansi.DecodeSequence(line[i:], state, nil)
+	for i := 0; i < len(seg); {
+		_, width, n, newState := ansi.DecodeSequence(seg[i:], state, nil)
 		state = newState
 		if n <= 0 {
 			break
 		}
-		if width > 0 {
-			if col == lo && start < 0 {
+		if width > 0 && strings.TrimSpace(seg[i:i+n]) != "" {
+			if start < 0 {
 				start = i
 			}
-			col += width
-			if col == hi && start >= 0 {
-				end = i + n
-				break
-			}
+			end = i + n
 		}
 		i += n
 	}
-	return start, end, start >= 0 && end > start
+	if start < 0 {
+		return seg, "", ""
+	}
+	return seg[:start], seg[start:end], seg[end:]
+}
+
+func removeButtonMarkers(s string) string {
+	if !strings.ContainsRune(s, buttonStartMarker) && !strings.ContainsRune(s, buttonEndMarker) {
+		return s
+	}
+	return strings.Map(func(r rune) rune {
+		if r == buttonStartMarker || r == buttonEndMarker {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// stripButtonMarkersFromDocument removes the button marker characters from all
+// message text and attribute values before conversion, so a message cannot
+// forge or shift button boundaries.
+func stripButtonMarkersFromDocument(selec *goquery.Selection) {
+	strip := removeButtonMarkers
+	var walk func(*xhtml.Node)
+	walk = func(n *xhtml.Node) {
+		if n.Type == xhtml.TextNode {
+			n.Data = strip(n.Data)
+		}
+		for i := range n.Attr {
+			n.Attr[i].Val = strip(n.Attr[i].Val)
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	for _, n := range selec.Nodes {
+		walk(n)
+	}
 }
 
 // anchorImageMarker returns a block marker for a purely visual anchor (an
