@@ -108,3 +108,10 @@ ComposeFindClose,esc,esc,close search without closing compose,compose-find
 MaximizeCompose,alt+m,alt+m,maximize/restore compose (session only),compose
 GrammarQuit,"ctrl+c,ctrl+q",ctrl+c/ctrl+q,cancel grammar check and follow normal quit flow,compose grammar check
 ReaderMouseCopy,"ctrl+c,y",ctrl+c/y,copy reader mouse selection preserving displayed line breaks,content
+
+TideContactsAdd,n,n,Add person,TideContacts
+TideContactsEdit,e,e,Edit person,TideContacts
+TideContactsSearch,/,/,Search people,TideContacts
+TideContactsCompose,c,c,Compose to person,TideContacts
+TideContactsAdvanced,A,A,Open Advanced CRM,TideContacts
+TideContactsLocal,L,L,Open TideMail local contacts,TideContacts

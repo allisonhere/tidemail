@@ -295,10 +295,11 @@ type Model struct {
 	mailTags       mailTagUI
 	classification classificationEditor
 
-	plugins pluginUI    // experimental; see plugins.go
-	pgp     pgpState    // decrypted messages, memory only; see pgp.go
-	catalog catalogUI   // available plugins; see plugin_catalog.go
-	source  sourceState // raw message source, memory only; see source.go
+	simpleContacts *simpleContacts
+	plugins        pluginUI    // experimental; see plugins.go
+	pgp            pgpState    // decrypted messages, memory only; see pgp.go
+	catalog        catalogUI   // available plugins; see plugin_catalog.go
+	source         sourceState // raw message source, memory only; see source.go
 
 	helpVP                viewport.Model
 	helpCat               int  // selected category in the two-pane help
@@ -2150,6 +2151,12 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.ContactManager):
+		if m.cfg.Contacts.Provider == "tidecontacts" || m.cfg.Contacts.Provider == "" {
+			if p, ok := m.plugins.manager.Plugin("tidecontacts"); ok && p.Manifest.Permissions.ContactsRead {
+				return m.openSimpleContacts()
+			}
+		}
+		m.simpleContacts = nil
 		m.overlay = overlayContactManager
 		m.contactManager = NewContactManager(m.db)
 		return m, nil
@@ -3804,6 +3811,9 @@ func (m Model) handleAccountManager(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleContactManager(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.simpleContacts != nil {
+		return m.handleSimpleContacts(msg)
+	}
 	newCM, cmd, exit := m.contactManager.Update(msg, m.keys)
 	m.contactManager = newCM
 	if len(m.contactManager.composeTo) > 0 {

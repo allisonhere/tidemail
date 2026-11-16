@@ -33,6 +33,11 @@ type ContactsFoundMsg struct {
 func (m Model) contactsProvider() (plugin.Plugin, string) {
 	id := strings.TrimSpace(m.cfg.Contacts.Provider)
 	if id == "" {
+		if _, ok := m.plugins.manager.Plugin("tidecontacts"); ok {
+			id = "tidecontacts"
+		}
+	}
+	if id == "" {
 		return plugin.Plugin{}, "No contacts provider set (add [contacts] provider to config.toml)"
 	}
 	p, ok := m.plugins.manager.Plugin(id)

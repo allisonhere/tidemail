@@ -1628,3 +1628,7 @@ Message-list focus stays visible after resizing, including after navigating on a
 very short terminal. Full-width plain-text mail reserves its left inset before
 wrapping, preserving the final character on each line. Legacy MIME-encoded
 subjects and address display names are decoded in the message list and reader.
+
+TideContacts integration: install the `tidecontacts` plugin. It becomes the default when no other contacts provider is configured; an explicit `[contacts] provider` still wins. Press C for People: n adds, e edits, / searches (Enter applies), c composes, A opens the standalone advanced CRM, and L opens TideMail local contacts. Recent correspondence comes from the local mail cache; no message bodies leave TideMail. Saves update TideContacts directly and preserve its CRM fields. External address-book sync is not included.
+
+Contacts source labels: TideContacts identifies its shared address book (or isolated DEMO book) on both list and edit screens. TideMail local contacts are explicitly labeled as separate and stored only in TideMail; no automatic migration or sharing is implied.

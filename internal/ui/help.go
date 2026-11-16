@@ -32,6 +32,10 @@ func helpSections(keys KeyMap) []helpSection {
 			},
 		},
 		{
+			name:    "TideContacts",
+			entries: []helpEntry{{"C", "open the configured TideContacts address book"}, {"n / e", "add or edit a person"}, {"/ then Enter", "search people"}, {"c / Enter", "write email to the selected person"}, {"A", "open Advanced CRM"}, {"L", "open TideMail local contacts"}},
+		},
+		{
 			name: "Global",
 			entries: []helpEntry{
 				bind(keys.Help),
