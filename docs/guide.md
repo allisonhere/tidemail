@@ -625,8 +625,19 @@ add a whole domain by hand with an entry that starts with `@`:
 trusted_image_senders = ["news@example.com", "@shop.example"]
 ```
 
-Senders not on the list are unaffected: their remote images stay blocked until
-you press `i`.
+When a whole domain is trusted, pressing `I` on one of its senders excludes just
+that address: TideMail adds an entry starting with `!` and the status line says
+the rest of the domain stays trusted. Press `I` again on that sender to lift the
+exclusion. An exclusion always wins over a domain entry:
+
+```toml
+[display]
+trusted_image_senders = ["@shop.example", "!marketing@shop.example"]
+```
+
+Trust is checked for each message on its own sender, so in a conversation with
+several senders only the trusted ones load automatically. Senders not on the
+list are unaffected: their remote images stay blocked until you press `i`.
 
 Images supplied as MIME parts stay local even when their Content-Location is
 an HTTPS URL. If a previously loaded remote image has left the image cache,

@@ -2,10 +2,12 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/allisonhere/tidemail/internal/config"
+	"github.com/allisonhere/tidemail/internal/db"
 )
 
 // loadRemoteImagesForCurrent grants remote-image consent for the email shown
@@ -24,21 +26,50 @@ func (m *Model) loadRemoteImagesForCurrent() (tea.Cmd, int) {
 	return fetch, len(urls)
 }
 
-// autoLoadTrustedImages loads remote images for the message in the reader
-// when its sender is on [display] trusted_image_senders. It does nothing for
-// untrusted senders, when images are off, or once consent is already given.
-func (m *Model) autoLoadTrustedImages() tea.Cmd {
-	if len(m.cfg.Display.TrustedImageSenders) == 0 || m.contentMessageID == 0 ||
-		m.images == nil || !m.images.enabled || !m.images.graphics() ||
-		m.images.isAllowed(m.contentMessageID) {
+// trustedMessagesInView returns the displayed messages whose own sender is on
+// [display] trusted_image_senders and whose images are not loaded yet. Trust is
+// decided per message: in a view with several senders, an untrusted message
+// never inherits consent from a trusted one.
+func (m *Model) trustedMessagesInView() []db.Message {
+	trusted := m.cfg.Display.TrustedImageSenders
+	if len(trusted) == 0 || m.images == nil {
 		return nil
 	}
-	cur := m.currentContentMessage()
-	if cur == nil || !config.IsTrustedImageSender(m.cfg.Display.TrustedImageSenders, cur.From) {
+	var out []db.Message
+	for _, msg := range m.currentViewMessages() {
+		if msg.ID != 0 && !m.images.isAllowed(msg.ID) && config.IsTrustedImageSender(trusted, msg.From) {
+			out = append(out, msg)
+		}
+	}
+	return out
+}
+
+// loadTrustedImagesInView grants remote-image consent to the trusted messages
+// in view only, re-renders, and returns the fetch command (nil if none).
+func (m *Model) loadTrustedImagesInView() tea.Cmd {
+	if m.contentMessageID == 0 || m.images == nil || !m.images.enabled || !m.images.graphics() {
 		return nil
 	}
-	fetch, _ := m.loadRemoteImagesForCurrent()
+	msgs := m.trustedMessagesInView()
+	if len(msgs) == 0 {
+		return nil
+	}
+	for _, msg := range msgs {
+		m.images.allow(msg.ID)
+	}
+	m.bodyCache.clear()
+	m.viewportCache.clear()
+	urls := m.remoteImageURLsFor(msgs)
+	fetch := fetchRemoteImagesCmd(m.images, m.contentMessageID, urls)
+	m.setViewportForCurrentRow()
 	return fetch
+}
+
+// autoLoadTrustedImages loads remote images for the displayed messages whose
+// sender is on [display] trusted_image_senders. It does nothing for untrusted
+// senders, when images are off, or once consent is already given.
+func (m *Model) autoLoadTrustedImages() tea.Cmd {
+	return m.loadTrustedImagesInView()
 }
 
 // toggleTrustedImageSender adds the current sender to the trusted list (and
@@ -49,8 +80,8 @@ func (m Model) toggleTrustedImageSender() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	prev := m.cfg.Display.TrustedImageSenders
-	next, added, addr := config.ToggleTrustedImageSender(append([]string(nil), prev...), cur.From)
-	if addr == "" {
+	next, change, addr := config.ToggleTrustedImageSender(append([]string(nil), prev...), cur.From)
+	if change == config.TrustUnchanged {
 		m.setStatus("no sender address to trust", true)
 		return m, m.clearStatusCmd()
 	}
@@ -59,14 +90,26 @@ func (m Model) toggleTrustedImageSender() (tea.Model, tea.Cmd) {
 		m.cfg.Display.TrustedImageSenders = prev
 		return m, m.clearStatusCmd()
 	}
-	if !added {
+	switch change {
+	case config.TrustRemoved:
 		m.setStatus(fmt.Sprintf("%s removed from trusted image senders", addr), false)
 		return m, m.clearStatusCmd()
+	case config.TrustExcluded:
+		m.setStatus(fmt.Sprintf("%s excluded; the rest of @%s stays trusted", addr, domainOf(addr)), false)
+		return m, m.clearStatusCmd()
 	}
-	var fetch tea.Cmd
-	if m.images != nil && m.images.enabled && m.images.graphics() {
-		fetch, _ = m.loadRemoteImagesForCurrent()
+	fetch := m.loadTrustedImagesInView()
+	if change == config.TrustExclusionDrop {
+		m.setStatus(fmt.Sprintf("%s trusted again through @%s", addr, domainOf(addr)), false)
+	} else {
+		m.setStatus(fmt.Sprintf("remote images will always load from %s", addr), false)
 	}
-	m.setStatus(fmt.Sprintf("remote images will always load from %s", addr), false)
 	return m, tea.Batch(m.clearStatusCmd(), fetch)
+}
+
+func domainOf(addr string) string {
+	if i := strings.LastIndex(addr, "@"); i >= 0 {
+		return addr[i+1:]
+	}
+	return addr
 }

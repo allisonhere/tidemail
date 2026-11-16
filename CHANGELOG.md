@@ -24,8 +24,10 @@ All notable changes to TideMail are documented in this file.
   pane to load this message's images and add the sender to
   `[display] trusted_image_senders`; later messages from them load images on
   open, and `Ctrl+B` opens them with images straight away. Press `I` again to
-  stop. Entries starting with `@` trust a whole domain. Untrusted senders keep
-  the blocked-by-default behaviour.
+  stop. Entries starting with `@` trust a whole domain; `I` on one sender of a
+  trusted domain excludes just that address (a `!` entry). Trust is checked per
+  message, so untrusted senders in the same view keep the blocked-by-default
+  behaviour.
 - Passwords, AI API keys, and OAuth refresh tokens are now actually saved to
   the macOS Keychain, via `security`, the same way Linux already uses
   `secret-tool`. Previously macOS had no working backend and every secret

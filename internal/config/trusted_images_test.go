@@ -31,26 +31,59 @@ func TestIsTrustedImageSender(t *testing.T) {
 
 func TestToggleTrustedImageSender(t *testing.T) {
 	tests := []struct {
-		name      string
-		in        []string
-		from      string
-		want      []string
-		wantAdded bool
-		wantAddr  string
+		name       string
+		in         []string
+		from       string
+		want       []string
+		wantChange TrustChange
+		wantAddr   string
 	}{
-		{"add", nil, "News <News@Example.com>", []string{"news@example.com"}, true, "news@example.com"},
-		{"remove", []string{"a@x.io", "news@example.com"}, "NEWS@example.com", []string{"a@x.io"}, false, "news@example.com"},
-		{"remove mixed-case entry", []string{"News@Example.com"}, "news@example.com", []string{}, false, "news@example.com"},
-		{"domain entry kept on add", []string{"@example.com"}, "news@example.com", []string{"@example.com", "news@example.com"}, true, "news@example.com"},
-		{"no address", []string{"a@x.io"}, "nobody", []string{"a@x.io"}, false, ""},
+		{"add", nil, "News <News@Example.com>", []string{"news@example.com"}, TrustAdded, "news@example.com"},
+		{"remove", []string{"a@x.io", "news@example.com"}, "NEWS@example.com", []string{"a@x.io"}, TrustRemoved, "news@example.com"},
+		{"remove mixed-case entry", []string{"News@Example.com"}, "news@example.com", []string{}, TrustRemoved, "news@example.com"},
+		{"no address", []string{"a@x.io"}, "nobody", []string{"a@x.io"}, TrustUnchanged, ""},
+
+		// Regression: removing a sender of a trusted domain used to drop only
+		// an exact entry, so the sender stayed trusted through "@domain".
+		{"exclude from trusted domain", []string{"@example.com"}, "news@example.com",
+			[]string{"@example.com", "!news@example.com"}, TrustExcluded, "news@example.com"},
+		{"remove exact entry still covered by domain excludes it", []string{"@example.com", "news@example.com"}, "news@example.com",
+			[]string{"@example.com", "!news@example.com"}, TrustExcluded, "news@example.com"},
+		{"drop exclusion re-trusts via domain", []string{"@example.com", "!News@example.com"}, "news@example.com",
+			[]string{"@example.com"}, TrustExclusionDrop, "news@example.com"},
+		{"stale exclusion without domain adds exact", []string{"!news@example.com"}, "news@example.com",
+			[]string{"news@example.com"}, TrustAdded, "news@example.com"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, added, addr := ToggleTrustedImageSender(tt.in, tt.from)
-			if !reflect.DeepEqual(got, tt.want) || added != tt.wantAdded || addr != tt.wantAddr {
-				t.Fatalf("got (%v, %v, %q), want (%v, %v, %q)", got, added, addr, tt.want, tt.wantAdded, tt.wantAddr)
+			in := append([]string(nil), tt.in...)
+			got, change, addr := ToggleTrustedImageSender(in, tt.from)
+			if !reflect.DeepEqual(got, tt.want) || change != tt.wantChange || addr != tt.wantAddr {
+				t.Fatalf("got (%v, %v, %q), want (%v, %v, %q)", got, change, addr, tt.want, tt.wantChange, tt.wantAddr)
+			}
+			if !reflect.DeepEqual(in, tt.in) {
+				t.Fatalf("input list was modified: %v", in)
+			}
+			trusted := IsTrustedImageSender(got, tt.from)
+			wantTrusted := tt.wantChange == TrustAdded || tt.wantChange == TrustExclusionDrop
+			if tt.wantChange != TrustUnchanged && trusted != wantTrusted {
+				t.Fatalf("after %v, trusted = %v", change, trusted)
 			}
 		})
+	}
+}
+
+func TestExclusionBeatsDomainTrust(t *testing.T) {
+	trusted := []string{"@example.com", "!news@example.com"}
+	if IsTrustedImageSender(trusted, "News <NEWS@example.com>") {
+		t.Fatal("excluded sender is still trusted through its domain")
+	}
+	if !IsTrustedImageSender(trusted, "deals@example.com") {
+		t.Fatal("exclusion of one sender untrusted the whole domain")
+	}
+	// An exclusion alone never trusts anyone.
+	if IsTrustedImageSender([]string{"!news@example.com"}, "news@example.com") {
+		t.Fatal("exclusion entry trusted its own address")
 	}
 }
 
@@ -61,6 +94,7 @@ func TestTrustedImageSendersRoundTrip(t *testing.T) {
 	}{
 		{"empty", nil},
 		{"addresses and domain", []string{"news@example.com", "@shop.example"}},
+		{"with exclusion", []string{"@shop.example", "!spam@shop.example"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
