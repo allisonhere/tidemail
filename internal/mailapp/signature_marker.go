@@ -59,7 +59,9 @@ func composeBody(body, signature, signatureHTML string) (string, string, error) 
 			return "", "", fmt.Errorf("place ⁂ alone on a line, or delete it to omit the signature")
 		}
 		source := []byte(body)
-		md := goldmark.New(goldmark.WithRendererOptions(renderer.WithNodeRenderers(util.Prioritized(signatureRenderer{}, 100))))
+		// Same converter as MarkdownToHTML plus the signature renderer: every new
+		// message carries the marker, so it must not get a different dialect.
+		md := smtp.NewMarkdown(goldmark.WithRendererOptions(renderer.WithNodeRenderers(util.Prioritized(signatureRenderer{}, 100))))
 		doc := md.Parser().Parse(text.NewReader(source))
 		var marker ast.Node
 		for node := doc.FirstChild(); node != nil; node = node.NextSibling() {

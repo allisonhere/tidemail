@@ -11,6 +11,11 @@ All notable changes to TideMail are documented in this file.
 - On Linux, a notification for new mail offers **Mark Read**, **Delete**, and
   **Ignore** actions, covering every message in the batch when more than one
   arrives at once. Delete keeps TideMail's normal six-second undo window.
+- Passwords, AI API keys, and OAuth refresh tokens are now actually saved to
+  the macOS Keychain, via `security`, the same way Linux already uses
+  `secret-tool`. Previously macOS had no working backend and every secret
+  silently fell back to plaintext in `config.toml` despite the docs claiming
+  Keychain support. (#130)
 - **Settings → Advanced → View Logs** can copy the log to the clipboard (`c`)
   or save it to a file (`s`) through the same folder browser attachments save
   to, so you can pick the destination. Both are in chronological order (oldest
@@ -65,6 +70,9 @@ All notable changes to TideMail are documented in this file.
   queued outbox mail, which used to stay behind in the local database. The
   confirmation says what is removed. Rows that cannot be tied to exactly one
   account are kept rather than risk deleting another account's data.
+- Inline images were blank inside tmux: the Kitty graphics escapes were sent
+  raw and tmux dropped them. They are now wrapped in tmux's DCS passthrough
+  (needs `allow-passthrough on`).
 - The recent-searches list is correct again after you clear the search box (it
   no longer shows a leftover filtered subset), closes when deleting its last
   matching entry, and clicking an entry highlights it instead of selecting a

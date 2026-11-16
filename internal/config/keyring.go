@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -13,14 +14,77 @@ import (
 
 const keyringApp = "tidemail"
 
-// keyringOpTimeout bounds every secret-tool invocation. A locked collection with
-// an activatable-but-headless prompter (e.g. org.kde.secretprompter over SSH)
-// can otherwise hang the call — and startup with it.
+// keyringOpTimeout bounds every keychain CLI invocation. A locked collection
+// with an activatable-but-headless prompter (e.g. org.kde.secretprompter over
+// SSH) can otherwise hang the call — and startup with it.
 const keyringOpTimeout = 3 * time.Second
 
-// keyringInstalled reports whether the secret-tool binary is on PATH.
-func keyringInstalled() bool {
-	_, err := exec.LookPath("secret-tool")
+// keyringBackend names the CLI tool a platform uses to store secrets in its
+// system keychain, and how to build that tool's argv for each operation.
+type keyringBackend struct {
+	tool string
+
+	storeArgs func(key string) []string
+	// stdin is true when the value is written to the store command's stdin
+	// (secret-tool) rather than appended to storeArgs (security, which has
+	// no stdin form for add-generic-password — the secret is briefly visible
+	// in the process's argv/ps output on macOS, a limitation of the tool
+	// with no CLI workaround).
+	stdin bool
+
+	lookupArgs func(key string) []string
+	clearArgs  func(key string) []string
+}
+
+// backendFor returns the keychain backend for goos, or ok=false if the
+// platform has none (e.g. Windows, which always uses the plaintext fallback).
+func backendFor(goos string) (b keyringBackend, ok bool) {
+	switch goos {
+	case "linux":
+		return keyringBackend{
+			tool: "secret-tool",
+			storeArgs: func(key string) []string {
+				return []string{"store", "--label=" + keyringApp, "application", keyringApp, "key", key}
+			},
+			stdin: true,
+			lookupArgs: func(key string) []string {
+				return []string{"lookup", "application", keyringApp, "key", key}
+			},
+			clearArgs: func(key string) []string {
+				return []string{"clear", "application", keyringApp, "key", key}
+			},
+		}, true
+	case "darwin":
+		return keyringBackend{
+			tool: "security",
+			// -U updates the item in place if one already exists, so store
+			// stays idempotent like secret-tool's. Targets the user's
+			// default (login) keychain, like secret-tool's default
+			// collection; the same binary stores and looks up, so no -T
+			// trusted-application flag is needed to avoid an ACL prompt.
+			storeArgs: func(key string) []string {
+				return []string{"add-generic-password", "-U", "-a", key, "-s", keyringApp, "-w"}
+			},
+			stdin: false,
+			lookupArgs: func(key string) []string {
+				return []string{"find-generic-password", "-a", key, "-s", keyringApp, "-w"}
+			},
+			clearArgs: func(key string) []string {
+				return []string{"delete-generic-password", "-a", key, "-s", keyringApp}
+			},
+		}, true
+	default:
+		return keyringBackend{}, false
+	}
+}
+
+// keyringInstalledFor reports whether goos's keychain CLI is on PATH.
+func keyringInstalledFor(goos string) bool {
+	b, ok := backendFor(goos)
+	if !ok {
+		return false
+	}
+	_, err := exec.LookPath(b.tool)
 	return err == nil
 }
 
@@ -30,11 +94,6 @@ var (
 	keyringProbeReason string
 )
 
-// keyringUsable reports whether the system keychain can actually store and
-// retrieve a secret right now — not merely whether secret-tool is installed. It
-// probes once per process with a sentinel round-trip; a locked login collection,
-// a missing session bus, or a hung prompter all fail the probe, and the caller
-// then falls back to the plaintext config file.
 // keyringDisabled reports the TIDEMAIL_DISABLE_KEYRING opt-out. It is read on
 // every call rather than cached with the probe below, so a test can scope it to
 // itself. Tests must set it: the keychain is per-user and global, so a test that
@@ -45,23 +104,30 @@ func keyringDisabled() bool {
 	return v != "" && v != "0" && !strings.EqualFold(v, "false")
 }
 
-func keyringUsable() bool {
+// keyringUsable reports whether the system keychain can actually store and
+// retrieve a secret right now — not merely whether the backend tool is
+// installed. It probes once per process with a sentinel round-trip; a locked
+// login collection/keychain, a missing session bus, or a hung prompter all
+// fail the probe, and the caller then falls back to the plaintext config file.
+func keyringUsable() bool { return keyringUsableFor(runtime.GOOS) }
+
+func keyringUsableFor(goos string) bool {
 	if keyringDisabled() {
 		return false
 	}
 	keyringProbeOnce.Do(func() {
-		if !keyringInstalled() {
-			keyringProbeReason = "secret-tool is not installed"
+		if !keyringInstalledFor(goos) {
+			keyringProbeReason = "the system keychain tool is not installed"
 			return
 		}
 		const k = "selftest"
 		want := "ok-" + time.Now().Format("150405.000")
-		if err := storeSecret(k, want); err != nil {
+		if err := storeSecretFor(goos, k, want); err != nil {
 			keyringProbeReason = "keychain is locked or unreachable (store failed)"
 			return
 		}
-		got := lookupSecret(k)
-		_ = clearSecret(k)
+		got := lookupSecretFor(goos, k)
+		_ = clearSecretFor(goos, k)
 		if got != want {
 			keyringProbeReason = "keychain is locked or unreachable (readback failed)"
 			return
@@ -84,35 +150,52 @@ func KeyringStatus() (usable bool, reason string) {
 // "usable", so a locked keychain no longer looks writable.
 func keyringAvailable() bool { return keyringUsable() }
 
-// secretTool runs `secret-tool` with the given arguments and returns stdout,
-// bounded by keyringOpTimeout.
-func secretTool(args ...string) (string, error) {
+// runBackendTool runs a keychain CLI tool with the given arguments and
+// returns stdout, bounded by keyringOpTimeout.
+func runBackendTool(tool string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), keyringOpTimeout)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "secret-tool", args...).Output()
+	out, err := exec.CommandContext(ctx, tool, args...).Output()
 	if err != nil {
-		return "", fmt.Errorf("secret-tool %s: %w", strings.Join(args, " "), err)
+		return "", fmt.Errorf("%s %s: %w", tool, strings.Join(args, " "), err)
 	}
 	return strings.TrimRight(string(out), "\n"), nil
 }
 
 // storeSecret stores a secret in the system keychain.
-// secret-tool store reads the value from stdin.
-func storeSecret(key, value string) error {
+func storeSecret(key, value string) error { return storeSecretFor(runtime.GOOS, key, value) }
+
+func storeSecretFor(goos, key, value string) error {
 	if value == "" {
 		return nil
 	}
+	b, ok := backendFor(goos)
+	if !ok {
+		return fmt.Errorf("no keychain backend for %s", goos)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), keyringOpTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "secret-tool", "store", "--label="+keyringApp, "application", keyringApp, "key", key)
-	cmd.Stdin = strings.NewReader(value + "\n")
+	args := b.storeArgs(key)
+	if !b.stdin {
+		args = append(args, value)
+	}
+	cmd := exec.CommandContext(ctx, b.tool, args...)
+	if b.stdin {
+		cmd.Stdin = strings.NewReader(value + "\n")
+	}
 	return cmd.Run()
 }
 
 // lookupSecret retrieves a secret from the system keychain.
-// Returns empty string if the key doesn't exist.
-func lookupSecret(key string) string {
-	out, err := secretTool("lookup", "application", keyringApp, "key", key)
+// Returns empty string if the key doesn't exist or the lookup fails.
+func lookupSecret(key string) string { return lookupSecretFor(runtime.GOOS, key) }
+
+func lookupSecretFor(goos, key string) string {
+	b, ok := backendFor(goos)
+	if !ok {
+		return ""
+	}
+	out, err := runBackendTool(b.tool, b.lookupArgs(key)...)
 	if err != nil {
 		return ""
 	}
@@ -120,8 +203,14 @@ func lookupSecret(key string) string {
 }
 
 // clearSecret removes a secret from the system keychain.
-func clearSecret(key string) error {
-	_, err := secretTool("clear", "application", keyringApp, "key", key)
+func clearSecret(key string) error { return clearSecretFor(runtime.GOOS, key) }
+
+func clearSecretFor(goos, key string) error {
+	b, ok := backendFor(goos)
+	if !ok {
+		return fmt.Errorf("no keychain backend for %s", goos)
+	}
+	_, err := runBackendTool(b.tool, b.clearArgs(key)...)
 	return err
 }
 

@@ -619,6 +619,12 @@ Choose **Settings → Display → Reading → Images** (`Auto` or `Off`) and pre
 `Ctrl+S` to save. The change takes effect immediately; remote images still require
 `i` to load. The setting also shows whether inline images are supported.
 
+Inside tmux, TideMail wraps its graphics escapes in tmux's passthrough, which needs
+`set -g allow-passthrough on` in `tmux.conf` (tmux 3.3+). Without it the images stay blank.
+TideMail's startup probe is not sent through passthrough, so inside tmux the terminal is
+recognised from the variables tmux inherited (for example `KITTY_WINDOW_ID`). If images stay
+blank even with passthrough on, set `TIDEMAIL_IMAGE_PROTOCOL=kitty` as described below.
+
 TideMail picks the graphics mode from your terminal's environment, and
 recognises Herdr automatically. If that finds nothing (for example inside another
 terminal multiplexer), it asks the terminal at startup whether it supports Kitty
@@ -886,12 +892,13 @@ to clear it.
 ## Passwords and API keys
 
 TideMail stores IMAP and SMTP passwords, AI API keys, and OAuth refresh tokens
-in the system keychain. It uses `secret-tool` on Linux and Keychain on macOS.
-When TideMail starts, it loads any blank password, API key, or refresh token
-from the keychain. Saving Settings moves loaded secrets into the keychain and
-clears them from the config file.
+in the system keychain. It uses `secret-tool` on Linux and the `security`
+command (Keychain) on macOS. When TideMail starts, it loads any blank
+password, API key, or refresh token from the keychain. Saving Settings moves
+loaded secrets into the keychain and clears them from the config file.
 
-If `secret-tool` is unavailable on Linux, TideMail writes these secrets to
+If `secret-tool` is unavailable on Linux, or `security` can't reach an
+unlocked keychain on macOS, TideMail writes these secrets to
 `~/.config/tidemail/config.toml`. Keep that file private. Windows has no
 keychain support yet, so it always stores these secrets in
 `%USERPROFILE%\.config\tidemail\config.toml`.
@@ -1021,6 +1028,11 @@ as `user`, which works only when `user` is itself an address. A display name on
 its own is not enough: the account form refuses to save one, because SMTP has
 no address to send from and would only fail once the message was already
 queued.
+
+The compose body is Markdown. It is sent as HTML, with the text you typed as the
+plain-text part. The GitHub-flavored extensions work: pipe tables, `~~strikethrough~~`,
+bare web addresses that become links, and `- [ ]` task lists (shown as checkboxes,
+which some mail programs hide).
 
 A standalone `⁂` in the compose body marks where your signature will be inserted
 when sending. New messages, replies, forwards, and email-link compositions include
