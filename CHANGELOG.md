@@ -62,6 +62,9 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Attachment filenames decode MIME encoded words, including in cached mail, and
+  preserve Unicode when saved without splitting UTF-8 characters during truncation.
+
 - Editing an unconfirmed ("uncertain") delivery in the Outbox now asks first,
   the same way retrying one already did — it used to silently turn into a
   draft with no warning, which, if the first attempt actually reached the
