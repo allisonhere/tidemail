@@ -654,6 +654,11 @@ target. Mail text drops bare carriage returns while retaining CRLF line breaks.
 
 ## Writing mail
 
+Attachment filenames encoded as MIME words are decoded for display, including
+names in older cached mail. Saving attachments with `Ctrl+D` keeps Chinese and
+other Unicode letters, digits, and combining marks. Long filenames are shortened
+at a valid UTF-8 boundary, retaining short extensions.
+
 Press `c` to compose a message, or `r` to reply and `Ctrl+R` to reply all (from the
 message list or content pane). Reply all puts the sender (or Reply-To) in To and the
 other recipients in Cc, leaving out your own addresses. Recipient names, including
