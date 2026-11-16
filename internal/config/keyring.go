@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 const keyringApp = "tidemail"
@@ -20,20 +22,22 @@ const keyringApp = "tidemail"
 const keyringOpTimeout = 3 * time.Second
 
 // keyringBackend names the CLI tool a platform uses to store secrets in its
-// system keychain, and how to build that tool's argv for each operation.
+// system keychain, and how to build that tool's input for each operation.
 type keyringBackend struct {
 	tool string
 
-	storeArgs func(key string) []string
-	// stdin is true when the value is written to the store command's stdin
-	// (secret-tool) rather than appended to storeArgs (security, which has
-	// no stdin form for add-generic-password — the secret is briefly visible
-	// in the process's argv/ps output on macOS, a limitation of the tool
-	// with no CLI workaround).
-	stdin bool
+	// store builds the store command's argv and the stdin that carries the
+	// value. The value never goes in argv, where any process can read it
+	// (ps); err rejects a key or value the tool can't take.
+	store func(key, value string) (args []string, stdin string, err error)
+	// verifyStore re-reads every store before reporting success, for a tool
+	// whose exit status can't be trusted.
+	verifyStore bool
 
 	lookupArgs func(key string) []string
-	clearArgs  func(key string) []string
+	// decode, if set, recovers the stored value from what lookup printed.
+	decode    func(out string) (string, error)
+	clearArgs func(key string) []string
 }
 
 // backendFor returns the keychain backend for goos, or ok=false if the
@@ -43,10 +47,9 @@ func backendFor(goos string) (b keyringBackend, ok bool) {
 	case "linux":
 		return keyringBackend{
 			tool: "secret-tool",
-			storeArgs: func(key string) []string {
-				return []string{"store", "--label=" + keyringApp, "application", keyringApp, "key", key}
+			store: func(key, value string) ([]string, string, error) {
+				return []string{"store", "--label=" + keyringApp, "application", keyringApp, "key", key}, value + "\n", nil
 			},
-			stdin: true,
 			lookupArgs: func(key string) []string {
 				return []string{"lookup", "application", keyringApp, "key", key}
 			},
@@ -57,18 +60,20 @@ func backendFor(goos string) (b keyringBackend, ok bool) {
 	case "darwin":
 		return keyringBackend{
 			tool: "security",
-			// -U updates the item in place if one already exists, so store
-			// stays idempotent like secret-tool's. Targets the user's
-			// default (login) keychain, like secret-tool's default
-			// collection; the same binary stores and looks up, so no -T
-			// trusted-application flag is needed to avoid an ACL prompt.
-			storeArgs: func(key string) []string {
-				return []string{"add-generic-password", "-U", "-a", key, "-s", keyringApp, "-w"}
-			},
-			stdin: false,
+			// add-generic-password takes the value only as an argument, so the
+			// whole command goes to `security -i` on stdin instead (see
+			// securityStoreCommand). Targets the user's default (login)
+			// keychain, like secret-tool's default collection; the same binary
+			// stores and looks up, so no -T trusted-application flag is needed
+			// to avoid an ACL prompt.
+			store: securityStoreCommand,
+			// `security -i` parses the command line itself, so a line it
+			// splits or misreads can store something other than the value.
+			verifyStore: true,
 			lookupArgs: func(key string) []string {
 				return []string{"find-generic-password", "-a", key, "-s", keyringApp, "-w"}
 			},
+			decode: decodeSecurityValue,
 			clearArgs: func(key string) []string {
 				return []string{"delete-generic-password", "-a", key, "-s", keyringApp}
 			},
@@ -76,6 +81,67 @@ func backendFor(goos string) (b keyringBackend, ok bool) {
 	default:
 		return keyringBackend{}, false
 	}
+}
+
+// securityLineMax is the longest command line `security -i` reads whole,
+// newline excluded. It splits a longer one and runs the first part as its own
+// command, which stores a truncated value. Once encoded, the limit caps a
+// stored secret at just under 3,000 bytes.
+const securityLineMax = 4096
+
+// securityValuePrefix marks a value securityStoreCommand stored as base64.
+// find-generic-password -w prints a value that isn't printable ASCII as bare
+// hex, which can't be told apart from a password made of hex digits, so the
+// value is stored as printable base64 and decoded on lookup.
+const securityValuePrefix = "tidemail-base64:"
+
+// securityStoreCommand builds the `security -i` call that stores value under
+// key: the add-generic-password command line goes on stdin, so neither the
+// value nor its encoding appears in argv. -U updates the item in place if one
+// already exists, so store stays idempotent like secret-tool's.
+func securityStoreCommand(key, value string) (args []string, stdin string, err error) {
+	k, err := securityQuote(key)
+	if err != nil {
+		return nil, "", err
+	}
+	s, err := securityQuote(keyringApp)
+	if err != nil {
+		return nil, "", err
+	}
+	v, err := securityQuote(securityValuePrefix + base64.StdEncoding.EncodeToString([]byte(value)))
+	if err != nil {
+		return nil, "", err
+	}
+	line := "add-generic-password -U -a " + k + " -s " + s + " -w " + v
+	if len(line) > securityLineMax {
+		return nil, "", fmt.Errorf("secret too long for the macOS keychain: %d-byte command, %d allowed", len(line), securityLineMax)
+	}
+	return []string{"-i"}, line + "\n", nil
+}
+
+// securityQuote quotes s as one word of a `security -i` command line: in
+// double quotes, with a backslash before each backslash and double quote. A
+// control character can't be carried; a newline would end the command.
+func securityQuote(s string) (string, error) {
+	if strings.IndexFunc(s, unicode.IsControl) >= 0 {
+		return "", errors.New("keychain item name contains a control character")
+	}
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`, nil
+}
+
+// decodeSecurityValue reverses securityStoreCommand's encoding. A value
+// without the prefix was stored raw by an earlier build and is returned as
+// printed.
+func decodeSecurityValue(out string) (string, error) {
+	enc, ok := strings.CutPrefix(out, securityValuePrefix)
+	if !ok {
+		return out, nil
+	}
+	b, err := base64.StdEncoding.DecodeString(enc)
+	if err != nil {
+		return "", fmt.Errorf("keychain value is not valid base64: %w", err)
+	}
+	return string(b), nil
 }
 
 // keyringInstalledFor reports whether goos's keychain CLI is on PATH.
@@ -173,17 +239,23 @@ func storeSecretFor(goos, key, value string) error {
 	if !ok {
 		return fmt.Errorf("no keychain backend for %s", goos)
 	}
+	args, stdin, err := b.store(key, value)
+	if err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), keyringOpTimeout)
 	defer cancel()
-	args := b.storeArgs(key)
-	if !b.stdin {
-		args = append(args, value)
-	}
 	cmd := exec.CommandContext(ctx, b.tool, args...)
-	if b.stdin {
-		cmd.Stdin = strings.NewReader(value + "\n")
+	cmd.Stdin = strings.NewReader(stdin)
+	if err := cmd.Run(); err != nil {
+		return err
 	}
-	return cmd.Run()
+	// A caller that's told a secret was stored drops its plaintext copy, so a
+	// store the tool may have failed silently only counts once it reads back.
+	if b.verifyStore && lookupSecretFor(goos, key) != value {
+		return errors.New("keychain store did not read back")
+	}
+	return nil
 }
 
 // lookupSecret retrieves a secret from the system keychain.
@@ -198,6 +270,11 @@ func lookupSecretFor(goos, key string) string {
 	out, err := runBackendTool(b.tool, b.lookupArgs(key)...)
 	if err != nil {
 		return ""
+	}
+	if b.decode != nil {
+		if out, err = b.decode(out); err != nil {
+			return ""
+		}
 	}
 	return out
 }

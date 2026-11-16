@@ -54,6 +54,10 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- On macOS, a secret saved to the Keychain no longer appears in `security`'s
+  command line, where any process could read it with `ps`; it is passed on
+  stdin instead. A password with non-ASCII characters or a tab now reads back
+  exactly instead of as hex.
 - The save-attachment picker no longer crashes when its starting folder cannot
   be read, such as a missing `~/Downloads`; it shows an error instead.
 - Contact marks follow the contact, not its row position, so adding, editing or

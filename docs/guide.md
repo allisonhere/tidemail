@@ -899,9 +899,10 @@ loaded secrets into the keychain and clears them from the config file.
 
 If `secret-tool` is unavailable on Linux, or `security` can't reach an
 unlocked keychain on macOS, TideMail writes these secrets to
-`~/.config/tidemail/config.toml`. Keep that file private. Windows has no
-keychain support yet, so it always stores these secrets in
-`%USERPROFILE%\.config\tidemail\config.toml`.
+`~/.config/tidemail/config.toml`. Keep that file private. On macOS, a password
+or API key longer than about 3,000 bytes can't be handed to `security` and
+stays in that file too. Windows has no keychain support yet, so it always stores these
+secrets in `%USERPROFILE%\.config\tidemail\config.toml`.
 
 - Gmail: Google Account → Security → App passwords (requires 2-Step Verification),
   or sign in with OAuth (below)
