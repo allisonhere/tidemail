@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"net/mail"
 	"regexp"
 	"strings"
 	"testing"
@@ -1166,7 +1167,7 @@ func TestNewReplyAllBuildsCcWithoutMyAddresses(t *testing.T) {
 	if got := c.toInput.Value(); got != `"Alice" <alice@example.com>` && got != "Alice <alice@example.com>" {
 		t.Fatalf("To = %q", got)
 	}
-	if got := c.ccInput.Value(); got != `"Bob" <bob@example.com>, carol@example.com` {
+	if got := c.ccInput.Value(); got != `Bob <bob@example.com>, carol@example.com` {
 		t.Fatalf("Cc = %q, want Bob and Carol only", got)
 	}
 	if got := c.subjectInput.Value(); got != "Re: Plans" {
@@ -1174,6 +1175,37 @@ func TestNewReplyAllBuildsCcWithoutMyAddresses(t *testing.T) {
 	}
 	if c.inReplyTo != "<2@x>" || c.references != "<1@x> <2@x>" {
 		t.Fatalf("threading = %q / %q", c.inReplyTo, c.references)
+	}
+}
+
+func TestReplyRecipientNamesRemainReadable(t *testing.T) {
+	me := config.AccountConfig{User: "me@example.com"}
+	for _, name := range []string{"张三", "王小明", `张三, 李四`, `张 "小明"`, "Élodie"} {
+		for _, encoded := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/encoded=%v", name, encoded), func(t *testing.T) {
+				header := db.FormatMailbox(name, "person@example.com")
+				if encoded {
+					header = (&mail.Address{Name: name, Address: "person@example.com"}).String()
+				}
+				original := db.Message{From: header, To: me.User}
+				reply := NewReply(original, me, []config.AccountConfig{me}, nil)
+				all := NewReplyAll(original, me, []config.AccountConfig{me}, nil)
+				original.From = "sender@example.com"
+				original.CC = header
+				cc := NewReplyAll(original, me, []config.AccountConfig{me}, nil)
+				original.ReplyTo = header
+				replyTo := NewReply(original, me, []config.AccountConfig{me}, nil)
+				for _, value := range []string{reply.toInput.Value(), all.toInput.Value(), cc.ccInput.Value(), replyTo.toInput.Value()} {
+					if value != db.FormatMailbox(name, "person@example.com") {
+						t.Fatalf("recipient = %q, want readable name %q", value, name)
+					}
+					parsed, err := mail.ParseAddressList(value)
+					if err != nil || len(parsed) != 1 || parsed[0].Name != name || parsed[0].Address != "person@example.com" {
+						t.Fatalf("recipient did not round-trip: %q, %v", value, err)
+					}
+				}
+			})
+		}
 	}
 }
 

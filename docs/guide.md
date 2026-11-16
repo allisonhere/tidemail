@@ -661,7 +661,9 @@ at a valid UTF-8 boundary, retaining short extensions.
 
 Press `c` to compose a message, or `r` to reply and `Ctrl+R` to reply all (from the
 message list or content pane). Reply all puts the sender (or Reply-To) in To and the
-other recipients in Cc, leaving out your own addresses. Recipient lines too long for
+other recipients in Cc, leaving out your own addresses. Recipient names, including
+Chinese and other non-ASCII names, stay readable in replies; names containing
+commas are quoted to keep the address valid. Recipient lines too long for
 the field scroll sideways as you type or move the cursor. TideMail
 saves your work to the sending account's Drafts folder as you type. Open Drafts
 and press `Enter` to continue writing, or `d` to delete a draft. The preview pane
