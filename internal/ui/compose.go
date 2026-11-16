@@ -348,10 +348,9 @@ func NewReplyAll(original db.Message, acfg config.AccountConfig, accounts []conf
 }
 
 func formatParticipant(p conversation.Participant) string {
-	if p.Name == "" {
-		return p.Addr
-	}
-	return (&mail.Address{Name: p.Name, Address: p.Addr}).String()
+	// Address.String encodes non-ASCII names for transport. Recipient fields
+	// need readable Unicode, with quoting retained for names containing commas.
+	return db.FormatMailbox(p.Name, p.Addr)
 }
 
 // newReplyBase fills everything reply and reply all share: subject, threading
