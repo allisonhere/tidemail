@@ -62,6 +62,9 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Reply and reply-all keep Unicode recipient display names readable instead of
+  showing MIME encoded words, while quoting punctuation correctly.
+
 - Editing an unconfirmed ("uncertain") delivery in the Outbox now asks first,
   the same way retrying one already did — it used to silently turn into a
   draft with no warning, which, if the first attempt actually reached the
