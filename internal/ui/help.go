@@ -363,6 +363,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{"config", "~/.config/tidemail/config.toml (no plain-text secrets after save)"},
 				{"secrets", "passwords, API keys, and OAuth tokens are redacted from errors/status"},
 				{"Settings", "display, AI, updates, the changelog, optional support, and desktop notifications live in settings"},
+				{"Notifications", "Linux: Read or click opens the first message; dismiss to ignore. Hyprland raises TideMail; dialogs wait"},
 			},
 		},
 	}

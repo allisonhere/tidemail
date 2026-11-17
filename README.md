@@ -68,6 +68,11 @@ One inbox, 51 built-in themes in 23 families — Catppuccin, Tokyo Night, Rosé 
 - **Send from the right address.** Pick an account or an additional From address
   from the compose From row. Additional addresses share their account's SMTP
   settings, Drafts folder, and signature.
+- **Open mail from a notification.** On Linux, use **Read** or click a new-mail notification to
+  open its message in the reader (the first message for a batch). On Hyprland,
+  TideMail also brings its terminal window forward. An open composer or dialog
+  stays intact; the message opens after you close it. Dismiss the notification
+  to ignore it.
 - **Mail state stays in sync.** Read state, stars, archive, move, and delete use
   IMAP. Changes made in Gmail or another client return to TideMail on sync.
 - **A few seconds to change your mind.** Press `Ctrl+Z` to stop a queued send or

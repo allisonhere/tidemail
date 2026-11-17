@@ -8,9 +8,13 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- Use Read or click a Linux new-mail notification to open its first message in the reader.
+  On Hyprland, the identified TideMail terminal comes forward across workspaces.
+  Composers and dialogs remain intact; navigation waits until they close.
 - On Linux, a notification for new mail offers **Mark Read**, **Delete**, and
-  **Ignore** actions, covering every message in the batch when more than one
-  arrives at once. Delete keeps TideMail's normal six-second undo window.
+  **Read** actions. Mark Read and Delete cover the whole batch; Read opens the
+  first message, and dismissing ignores the notification. Delete keeps
+  TideMail's normal six-second undo window.
 - Passwords, AI API keys, and OAuth refresh tokens are now actually saved to
   the macOS Keychain, via `security`, the same way Linux already uses
   `secret-tool`. Previously macOS had no working backend and every secret
