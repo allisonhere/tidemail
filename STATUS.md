@@ -142,6 +142,8 @@ Unreleased.
   The body uses upstream word-aware soft wrapping with character fallback for
   long tokens (switchable in Settings → Editor); resizing and maximizing preserve
   message and draft text.
+- **Headless OAuth token rotation**: CLI mail commands persist replacement refresh
+  tokens to the keychain and report unavailable credential storage.
 - **Gmail & Outlook OAuth** (optional): the account form's **Auth** row is a
   `‹ ›` selector (App password ⇄ OAuth) for both providers; the OAuth guidance
   shows only while that cluster is focused. Gmail uses bundled Desktop app

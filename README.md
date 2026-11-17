@@ -525,6 +525,9 @@ Linux or Keychain on macOS. If `secret-tool` is missing on Linux, or `security`
 can't reach an unlocked keychain on macOS, TideMail falls back to
 `~/.config/tidemail/config.toml`, so protect that file.
 
+Headless mail commands also save rotated OAuth refresh tokens to the keychain;
+if storage fails, authentication reports an error.
+
 ### Gmail with OAuth
 
 Google OAuth is temporarily unavailable while TideMail's Google app awaits
