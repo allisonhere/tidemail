@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/allisonhere/tidemail/internal/auth"
 	"github.com/allisonhere/tidemail/internal/cliform"
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
@@ -36,6 +37,14 @@ func IsMailCommand(s string) bool {
 func RunHeadless(args []string, in io.Reader, out, errOut io.Writer) int {
 	if len(args) == 0 {
 		return 2
+	}
+	// Install before dispatch, including interactive routes: SMTP and IMAP may
+	// rotate OAuth tokens without ever constructing a TUI model.
+	auth.PersistRefreshToken = func(accountKey, refreshToken string) error {
+		if !config.StoreOAuth2RefreshToken(accountKey, refreshToken) {
+			return fmt.Errorf("credential storage unavailable")
+		}
+		return nil
 	}
 	if handled, code := interactiveRoute(args, in, out, errOut); handled {
 		return code

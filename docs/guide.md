@@ -897,6 +897,11 @@ command (Keychain) on macOS. When TideMail starts, it loads any blank
 password, API key, or refresh token from the keychain. Saving Settings moves
 loaded secrets into the keychain and clears them from the config file.
 
+Headless commands, including `tidemail send` and `tidemail outbox process`,
+also save rotated OAuth refresh tokens to the keychain. If a replacement token
+cannot be saved, authentication reports an error instead of continuing silently.
+Keep credential storage available when running these commands unattended.
+
 If `secret-tool` is unavailable on Linux, or `security` can't reach an
 unlocked keychain on macOS, TideMail writes these secrets to
 `~/.config/tidemail/config.toml`. Keep that file private. Windows has no

@@ -58,6 +58,9 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Headless mail commands now save rotated OAuth refresh tokens to the keychain,
+  preventing later sign-in failures after `send` or `outbox process` refreshes
+  credentials. Unavailable credential storage reports an authentication error.
 - The save-attachment picker no longer crashes when its starting folder cannot
   be read, such as a missing `~/Downloads`; it shows an error instead.
 - Contact marks follow the contact, not its row position, so adding, editing or
