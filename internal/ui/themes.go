@@ -5,6 +5,8 @@ import (
 
 	"github.com/allisonhere/tideui"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/allisonhere/tidemail/internal/omarchy"
 )
 
 // Theme is an alias for tideui.Theme. TideMail's UI is a fork of the shared
@@ -39,6 +41,48 @@ var (
 	VT52 = retroAccent(tideui.VT52, "#664400")
 )
 
+// ThemeNameOmarchy is the built-in theme that looks like Omarchy's own apps:
+// its default Tokyo Night colors, sharp corners (Omarchy's window rounding is
+// 0 by default), no overlay shadow and flat square tags. Unlike match-omarchy
+// it does not follow the desktop palette; the look is fixed.
+const ThemeNameOmarchy = "omarchy"
+
+// Omarchy is the Omarchy theme's palette: Omarchy's own black-and-white
+// "vantablack" theme (pure black, white text, gray accent), taken from its
+// colors.toml, so TideMail looks like the rest of the desktop's UI. It goes
+// through the same mapping and contrast correction as match-omarchy. Like the
+// VT52 and VT100 themes it has no color at all: every role is a shade of gray,
+// white or black, errors included.
+var Omarchy = func() Theme {
+	t := contrastCorrectTheme(omarchyTheme(omarchy.Palette{
+		Name:       "vantablack",
+		Mode:       "dark",
+		Background: "#000000",
+		Foreground: "#ffffff",
+		Accent:     "#8d8d8d",
+		Selection:  "#1a1a1a",
+		Muted:      "#7a7a7a",
+		StatusBg:   "#1a1a1a", // lighter_background
+		Error:      "#d35f5f",
+		Ok:         "#b6b6b6",
+	}))
+	// Omarchy's popups use the plain background with an accent border, not a
+	// raised surface.
+	t.Overlay = t.Bg
+	t.StatusBar = t.Bg
+	t.Name = ThemeNameOmarchy
+	t.Family, t.Variant = "Omarchy", "Default"
+	t.Error = lipgloss.Color("#ffffff")
+	t.Success = lipgloss.Color("#b6b6b6")
+	t.Warning = lipgloss.Color("#cecece")
+	t.Link = lipgloss.Color("#ececec")
+	t.Quote = lipgloss.Color("#8d8d8d")
+	t.Match = lipgloss.Color("#cecece")
+	t.Tag = lipgloss.Color("#9b9b9b")
+	t.Cursor = lipgloss.Color("#ffffff")
+	return withAlertColors(t)
+}()
+
 // BuiltinThemes is tideui's collection, grouped by family, with TideMail's
 // VT100 and VT52 in place of tideui's.
 var BuiltinThemes = func() []Theme {
@@ -53,7 +97,7 @@ var BuiltinThemes = func() []Theme {
 			themes[i] = withAlertColors(t)
 		}
 	}
-	return themes
+	return append(themes, Omarchy)
 }()
 
 func ThemeByName(name string) (Theme, int) {

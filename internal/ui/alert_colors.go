@@ -38,9 +38,9 @@ var (
 // by TideMail's fixed alert palette. These roles color bare text on the theme
 // background (error lines, badges, form messages), so dark themes get the
 // bright value and light themes the deep one; the pills use both as a pair. The VT52 and VT100 retro themes are single-hue by
-// design and keep their own colors.
+// design and keep their own colors, as does the black-and-white Omarchy theme.
 func withAlertColors(t Theme) Theme {
-	if t.Name == ThemeNameVT52 || t.Name == ThemeNameVT100 {
+	if t.Name == ThemeNameVT52 || t.Name == ThemeNameVT100 || t.Name == ThemeNameOmarchy {
 		return t
 	}
 	if isDark(t.Bg) {
@@ -55,4 +55,23 @@ func withAlertColors(t Theme) Theme {
 // already green and must not be hue-shifted.
 func isAlertGreen(c lipgloss.Color) bool {
 	return c == alertGreenDark || c == alertGreenLight
+}
+
+// pillColors maps a status pill's fixed alert colors to the theme's own. Every
+// theme but Omarchy uses them as given; the black-and-white Omarchy theme draws
+// the three pills in shades of gray, lightest for errors.
+func (m Model) pillColors(p alertPill) alertPill {
+	if m.styles.Theme.Name != ThemeNameOmarchy {
+		return p
+	}
+	const black = lipgloss.Color("#000000")
+	switch p {
+	case alertPillRed:
+		return alertPill{fill: "#ffffff", text: black}
+	case alertPillYellow:
+		return alertPill{fill: "#cecece", text: black}
+	case alertPillGreen:
+		return alertPill{fill: "#b6b6b6", text: black}
+	}
+	return p
 }

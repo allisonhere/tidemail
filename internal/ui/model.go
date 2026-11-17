@@ -4662,7 +4662,7 @@ func (m Model) pillTextWith(text string, p alertPill) string {
 		return style.Render("[" + text + "]")
 	}
 	barBg, _ := m.styles.StatusBar.GetBackground().(lipgloss.Color)
-	p = m.fadedPill(p, time.Now())
+	p = m.fadedPill(m.pillColors(p), time.Now())
 	chip := tagChip{text: text, filled: true, ends: config.TagEndsRound}
 	return renderChipsWith([]tagChip{chip}, func(string) tagColor { return tagColor{bg: p.fill, fg: p.text} }, barBg, style)
 }
@@ -4713,9 +4713,10 @@ func (m Model) fadedPill(p alertPill, now time.Time) alertPill {
 		return p
 	}
 	t = max(0, t)
+	from := m.pillColors(m.pillFadeFrom)
 	return alertPill{
-		fill: mixColors(m.pillFadeFrom.fill, p.fill, t),
-		text: mixColors(m.pillFadeFrom.text, p.text, t),
+		fill: mixColors(from.fill, p.fill, t),
+		text: mixColors(from.text, p.text, t),
 	}
 }
 
@@ -4733,7 +4734,7 @@ func (m Model) gaugePillText(text string, remaining time.Duration) string {
 		secs := int((remaining + time.Second - 1) / time.Second)
 		return style.Render(fmt.Sprintf("[%s %ds]", text, secs))
 	}
-	full := alertPillYellow
+	full := m.pillColors(alertPillYellow)
 	drained := alertPill{fill: full.text, text: full.fill}
 	runes := []rune(text)
 	filled := int(math.Round(float64(remaining) / float64(destructiveUndoWindow) * float64(len(runes))))

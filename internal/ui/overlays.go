@@ -321,7 +321,7 @@ func (m Model) renderOverlay(base string) string {
 	if m.overlay == overlayCompose && m.compose.maximized {
 		return clampView(box, m.width, m.height, m.styles.Theme.Bg)
 	}
-	return overlayOnBase(base, box, m.width, m.height, m.styles.Theme.Bg, m.cfg.Display.Shadow)
+	return overlayOnBase(base, box, m.width, m.height, m.styles.Theme.Bg, m.overlayShadow())
 }
 
 func (m Model) updateOverlayTitle() string {

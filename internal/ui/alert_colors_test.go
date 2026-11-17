@@ -11,7 +11,7 @@ import (
 // variant that matches its background.
 func TestBuiltinThemesUseFixedAlertColors(t *testing.T) {
 	for _, th := range BuiltinThemes {
-		if th.Name == ThemeNameVT52 || th.Name == ThemeNameVT100 {
+		if th.Name == ThemeNameVT52 || th.Name == ThemeNameVT100 || th.Name == ThemeNameOmarchy {
 			continue
 		}
 		wantErr, wantWarn, wantOK := alertRedLight, alertYellowLight, alertGreenLight

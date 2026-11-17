@@ -1,7 +1,8 @@
 # Themes
 
-TideMail ships 51 themes in 23 families, plus `match-omarchy`, which follows the
-current [Omarchy](https://omarchy.org) desktop theme. Press `T` to open the
+TideMail ships 52 themes in 24 families, plus `match-omarchy`, which follows the
+current [Omarchy](https://omarchy.org) desktop theme. The `omarchy` theme is the
+other Omarchy option: it changes how the app is drawn, not only its colors. Press `T` to open the
 picker, or choose one under **Settings → Display → Theme**.
 
 ## Using themes
@@ -108,6 +109,31 @@ terminal escape tricks. TideMail dims their focus and selection accent a step
 below the library's full-bright value (`#116611` for `vt100`, `#664400` for
 `vt52`) so the focused-pane border clears its 7:1 contrast floor. The `[display.vt100]` and
 `[display.vt52]` config tables can still override their colors.
+
+## The Omarchy theme
+
+Like `vt100` and `vt52`, `omarchy` is a theme that sets the whole look of the
+interface. It draws TideMail the way Omarchy's own apps look: the colors of Omarchy's
+own black-and-white `vantablack` theme (pure black, white text, gray accent), sharp pane corners (Omarchy's window rounding is 0
+by default), no drop shadow behind overlays, and flat square tag ends. Overlays
+look like Omarchy's bar popups: the plain background with an accent border, and
+the selected row is a soft accent tint (18% accent over the background) with
+accent-colored text and a thin accent bar at its left edge, as in Omarchy's
+Flea file manager. That tint is deliberately subtler than the selected-row
+contrast other themes keep, but the text on it still meets 4.5:1. While it
+is active the **Pane corners** setting, the **Modal drop shadow** setting and
+`tag_ends` have no effect; other themes use them as before. It does not follow
+the desktop palette; use `match-omarchy` for that.
+
+Like `vt100` and `vt52`, it has no color at all: every color is a shade of gray,
+white or black. Errors are the brightest white, the status bar pills are light
+gray with black text (errors white, warnings lighter gray, confirmations mid
+gray), every tag is the same gray, and the per-account colors are ignored (as they
+are on `vt100` and `vt52`), so message rows and folders stay black and white.
+
+The background is one solid black everywhere: unread rows, pane headers and the
+status bar have no lighter bands (unread mail is bold instead), and only the
+selected row and the reader's focus line are tinted.
 
 ## Themes and variants
 

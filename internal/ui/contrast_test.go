@@ -235,6 +235,14 @@ func TestAllThemesSelectedRowBackgroundStandsOut(t *testing.T) {
 			if selectedBg == "" {
 				t.Fatal("selected row background is unset")
 			}
+			if theme.Name == ThemeNameOmarchy {
+				// Omarchy draws a selected row as a soft 18% accent tint, below
+				// the usual floor by design; the text on it must stay readable.
+				if ratio := contrastRatio(theme.Fg, selectedBg); ratio < 4.5 {
+					t.Errorf("text on the Omarchy selected row %.2f:1 < 4.5:1", ratio)
+				}
+				return
+			}
 			if ratio := contrastRatio(selectedBg, theme.Bg); ratio < selectedBgMinContrast {
 				t.Errorf("selected row background contrast %.2f:1 < %.1f:1 (selected=%s bg=%s)", ratio, selectedBgMinContrast, selectedBg, theme.Bg)
 			}

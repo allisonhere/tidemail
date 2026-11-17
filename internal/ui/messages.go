@@ -126,6 +126,10 @@ func (m *Model) renderMessagesPane() string {
 			}
 			if cursor {
 				dot = "→ "
+				if m.styles.Theme.Name == ThemeNameOmarchy {
+					// Omarchy's file manager marks the cursor row with a thin accent bar.
+					dot = "▌ "
+				}
 			}
 			// Pending feedback replaces the unread/cursor marker in place so the
 			// prefix keeps its two-cell width; the row highlight marks the cursor.

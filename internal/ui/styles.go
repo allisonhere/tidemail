@@ -119,7 +119,7 @@ func (s Styles) PaneFrame(focused bool) lipgloss.Style {
 func BuildStyles(t Theme, density string, paneCorners string) Styles {
 	plainUI := t.Name == ThemeNameVT52
 	d := config.NormalizeDisplayDensity(density)
-	roundedCorners := config.NormalizePaneCorners(paneCorners) == "round"
+	roundedCorners := config.NormalizePaneCorners(paneCorners) == "round" && t.Name != ThemeNameOmarchy
 	listPad := func(s lipgloss.Style) lipgloss.Style {
 		if d == "compact" {
 			return s
@@ -159,6 +159,12 @@ func BuildStyles(t Theme, density string, paneCorners string) Styles {
 
 	selectedBg := selectionBgForRatio(t.Bg, selectedBgMinContrast)
 	selectedBgSoft := selectionBgForRatio(t.Bg, selectedBgSoftMinContrast)
+	if t.Name == ThemeNameOmarchy {
+		// Omarchy's shell draws a selected row as the accent at 18% over the
+		// background and a hovered or soft one as the text color at 8%.
+		selectedBg = mixColors(t.Bg, t.BorderFocus, 0.18)
+		selectedBgSoft = mixColors(t.Bg, t.Fg, 0.08)
+	}
 	contentFocusBg := focusLineBg(t)
 
 	unreadBg := func() lipgloss.Color {
@@ -168,6 +174,14 @@ func BuildStyles(t Theme, density string, paneCorners string) Styles {
 		return adjustLightness(t.Bg, -selectionSoftDelta(t.Bg))
 	}()
 
+	paneHeaderActiveBg, paneHeaderInactiveBg := t.BorderFocus, t.Border
+	if t.Name == ThemeNameOmarchy {
+		// One solid background: unread rows and pane headers are told apart by
+		// text, not by lighter bands. The reader's focus line keeps its tint,
+		// since it marks where the keyboard is.
+		unreadBg = t.Bg
+		paneHeaderActiveBg, paneHeaderInactiveBg = t.Bg, t.Bg
+	}
 	return Styles{
 		Theme:          t,
 		PlainUI:        plainUI,
@@ -175,13 +189,13 @@ func BuildStyles(t Theme, density string, paneCorners string) Styles {
 		RoundedCorners: roundedCorners,
 
 		PaneHeaderActive: lipgloss.NewStyle().
-			Background(t.BorderFocus).
-			Foreground(accentReadableOn(t.Fg, t.BorderFocus, 4.5)).
+			Background(paneHeaderActiveBg).
+			Foreground(accentReadableOn(t.Fg, paneHeaderActiveBg, 4.5)).
 			Bold(true).
 			AlignHorizontal(lipgloss.Left),
 		PaneHeaderInactive: lipgloss.NewStyle().
-			Background(t.Border).
-			Foreground(accentReadableOn(t.Fg, t.Border, 4.5)).
+			Background(paneHeaderInactiveBg).
+			Foreground(accentReadableOn(t.Fg, paneHeaderInactiveBg, 4.5)).
 			AlignHorizontal(lipgloss.Left),
 
 		FeedItem: listPad(lipgloss.NewStyle().
@@ -329,4 +343,10 @@ func BuildStyles(t Theme, density string, paneCorners string) Styles {
 		Spinner: lipgloss.NewStyle().
 			Foreground(t.Unread),
 	}
+}
+
+// overlayShadow reports whether overlays draw a drop shadow. The Omarchy theme
+// never does; other themes follow the setting.
+func (m Model) overlayShadow() bool {
+	return m.cfg.Display.Shadow && m.styles.Theme.Name != ThemeNameOmarchy
 }

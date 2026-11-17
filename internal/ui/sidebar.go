@@ -584,7 +584,8 @@ func (m *Model) accountColor(accountID int64) lipgloss.Color {
 	if accountID == 0 {
 		return ""
 	}
-	if config.IsRetroTerminalTheme(string(m.styles.Theme.Name)) {
+	// Black-and-white themes (the retro ones and Omarchy) ignore account colors.
+	if config.IsRetroTerminalTheme(string(m.styles.Theme.Name)) || m.styles.Theme.Name == ThemeNameOmarchy {
 		return ""
 	}
 	if acc := m.accountByID(accountID); acc != nil && acc.Color != "" {

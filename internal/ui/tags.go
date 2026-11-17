@@ -156,6 +156,8 @@ var tagFallbacks = map[string]string{
 var themeTagPalettes = map[string]map[string]config.TagColor{
 	ThemeNameVT100: monochromeTagPalette("#33ff33", "#000000"),
 	ThemeNameVT52:  monochromeTagPalette("#ffcc66", "#000000"),
+	// Black and white, like the phosphor themes: every tag is the same gray.
+	ThemeNameOmarchy: monochromeTagPalette("#cecece", "#000000"),
 }
 
 // monochromeTagPalette gives every tag the same inverse-video look, for the
@@ -429,6 +431,9 @@ func (m Model) tagStyle() string {
 
 // tagEnds is the effective pill end style.
 func (m Model) tagEnds() string {
+	if m.styles.Theme.Name == ThemeNameOmarchy {
+		return config.TagEndsSquare
+	}
 	return config.NormalizeTagEnds(m.cfg.Display.TagEnds)
 }
 

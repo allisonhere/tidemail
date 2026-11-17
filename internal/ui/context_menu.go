@@ -202,5 +202,5 @@ func (m Model) renderContextMenu(base string) string {
 		BorderForeground(chrome.border).
 		BorderBackground(chrome.baseBg).
 		Render(strings.Join(rows, "\n"))
-	return overlayAt(base, box, cm.x, cm.y, m.width, m.height, m.styles.Theme.Bg, m.cfg.Display.Shadow)
+	return overlayAt(base, box, cm.x, cm.y, m.width, m.height, m.styles.Theme.Bg, m.overlayShadow())
 }
