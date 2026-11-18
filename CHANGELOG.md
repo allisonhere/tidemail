@@ -8,6 +8,14 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- A plugin can provide a shared, editable local address book through the new
+  `contacts_write` permission and `contacts.list` / `contacts.save` methods.
+  TideContacts supplies a simple People view (`C`) with add/edit/search,
+  compose, recent correspondence, profile settings and bundled Advanced CRM.
+  Folder-owned records stay read-only; `r` refreshes connected address books
+  and reports when cached contacts are kept after a failed scan. TideMail's
+  original local contacts remain a separate address book (`L`).
+
 - Use Read or click a Linux new-mail notification to open its first message in the reader.
   On Hyprland, the identified TideMail terminal comes forward across workspaces.
   Composers and dialogs remain intact; navigation waits until they close.
@@ -15,6 +23,21 @@ All notable changes to TideMail are documented in this file.
   **Read** actions. Mark Read and Delete cover the whole batch; Read opens the
   first message, and dismissing ignores the notification. Delete keeps
   TideMail's normal six-second undo window.
+
+- Always load remote images from a sender you trust: press `I` in the reading
+  pane to load this message's images and add the sender to
+  `[display] trusted_image_senders`; later messages from them load images on
+  open, and `Ctrl+B` opens them with images straight away. Press `I` again to
+  stop. Entries starting with `@` trust a whole domain; `I` on one sender of a
+  trusted domain excludes just that address (a `!` entry). Trust is checked per
+  message, so untrusted senders in the same view keep the blocked-by-default
+  behaviour.
+
+- Button-style links in HTML bodies (rendered as `[Confirm your email]`) are
+  now OSC 8 terminal hyperlinks to the same destination as their LINKS entry,
+  so terminals can open them with Ctrl+click. A label that wraps is linked on
+  every line, and prose that only looks like a button is never linked.
+  TideMail's own click handling is unchanged.
 - Passwords, AI API keys, and OAuth refresh tokens are now actually saved to
   the macOS Keychain, via `security`, the same way Linux already uses
   `secret-tool`. Previously macOS had no working backend and every secret
@@ -61,6 +84,17 @@ All notable changes to TideMail are documented in this file.
 - Headless mail commands now save rotated OAuth refresh tokens to the keychain,
   preventing later sign-in failures after `send` or `outbox process` refreshes
   credentials. Unavailable credential storage reports an authentication error.
+- Attachment filenames decode MIME encoded words, including in cached mail, and
+  preserve Unicode when saved without splitting UTF-8 characters during truncation.
+
+- Editing an unconfirmed ("uncertain") delivery in the Outbox now asks first,
+  the same way retrying one already did — it used to silently turn into a
+  draft with no warning, which, if the first attempt actually reached the
+  server, meant a duplicate send and the loss of the only record that an
+  unconfirmed delivery existed. The transient status line after a send also
+  no longer calls an uncertain delivery "failed" (the Outbox pane itself
+  already said "unconfirmed"), which invited a needless retry and a
+  duplicate if delivery had actually succeeded.
 - The save-attachment picker no longer crashes when its starting folder cannot
   be read, such as a missing `~/Downloads`; it shows an error instead.
 - Contact marks follow the contact, not its row position, so adding, editing or

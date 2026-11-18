@@ -387,6 +387,12 @@ sender, each entry also shows its real destination host in parentheses, and a la
 that names a different site than the link goes to (for example "paypal.com" over a
 link to another domain) is marked with `!`.
 
+Button-style links in HTML bodies, such as `[Confirm your email]`, are terminal
+hyperlinks (OSC 8), like URLs in plain-text bodies, so a terminal that supports
+them can open the destination with its own Ctrl+click. A button points at the same
+destination as its LINKS entry; a label that wraps onto a second line is linked on both. Text that merely looks like a button, such as `[Open]` typed in a sentence, is never linked. TideMail itself still never opens a link from a body click, and
+the plain UI and `filter_links` emit no body hyperlinks.
+
 ### Managing folders
 
 Gmail's standard folders appear in the System section: Sent Mail, Drafts, All
@@ -611,6 +617,34 @@ text placeholder such as `[image: Fall sale]`, and the message stays readable.
 Set `[display] images = "off"` to use placeholders everywhere, including on a
 graphics-capable terminal.
 
+To always load remote images from a sender you trust (a newsletter, say),
+press `I` (Shift+I) in the content pane. TideMail loads this message's images
+and adds the sender's address to `[display] trusted_image_senders` in
+`config.toml`, so later messages from that address load remote images when
+opened, and `Ctrl+B` opens them in the browser with images on the first press.
+Press `I` again on a message from that sender to remove it; the status line says
+which happened. Matching is on the exact address, ignoring case. You can also
+add a whole domain by hand with an entry that starts with `@`:
+
+```toml
+[display]
+trusted_image_senders = ["news@example.com", "@shop.example"]
+```
+
+When a whole domain is trusted, pressing `I` on one of its senders excludes just
+that address: TideMail adds an entry starting with `!` and the status line says
+the rest of the domain stays trusted. Press `I` again on that sender to lift the
+exclusion. An exclusion always wins over a domain entry:
+
+```toml
+[display]
+trusted_image_senders = ["@shop.example", "!marketing@shop.example"]
+```
+
+Trust is checked for each message on its own sender, so in a conversation with
+several senders only the trusted ones load automatically. Senders not on the
+list are unaffected: their remote images stay blocked until you press `i`.
+
 Images supplied as MIME parts stay local even when their Content-Location is
 an HTTPS URL. If a previously loaded remote image has left the image cache,
 press `i` again when prompted to reload it.
@@ -654,9 +688,16 @@ target. Mail text drops bare carriage returns while retaining CRLF line breaks.
 
 ## Writing mail
 
+Attachment filenames encoded as MIME words are decoded for display, including
+names in older cached mail. Saving attachments with `Ctrl+D` keeps Chinese and
+other Unicode letters, digits, and combining marks. Long filenames are shortened
+at a valid UTF-8 boundary, retaining short extensions.
+
 Press `c` to compose a message, or `r` to reply and `Ctrl+R` to reply all (from the
 message list or content pane). Reply all puts the sender (or Reply-To) in To and the
-other recipients in Cc, leaving out your own addresses. Recipient lines too long for
+other recipients in Cc, leaving out your own addresses. Recipient names, including
+Chinese and other non-ASCII names, stay readable in replies; names containing
+commas are quoted to keep the address valid. Recipient lines too long for
 the field scroll sideways as you type or move the cursor. TideMail
 saves your work to the sending account's Drafts folder as you type. Open Drafts
 and press `Enter` to continue writing, or `d` to delete a draft. The preview pane
@@ -744,7 +785,9 @@ is enough — the queued message does not have to be rewritten.
 Failed deliveries retry after one minute. The maximum attempt setting includes
 the first try; it defaults to `3`, and `1` disables automatic retries. An
 interrupted delivery is marked uncertain because the server may have accepted
-it. Check Sent mail before manually retrying an uncertain message. A send that
+it. Check Sent mail before manually retrying an uncertain message, with `r`;
+editing one with `e`/`enter` asks the same way, since it gives up the record
+that an unconfirmed delivery existed. A send that
 is still running, such as a large upload, is left alone by a second TideMail or
 `tidemail outbox process` for 15 minutes before it is treated as interrupted.
 
@@ -904,9 +947,10 @@ Keep credential storage available when running these commands unattended.
 
 If `secret-tool` is unavailable on Linux, or `security` can't reach an
 unlocked keychain on macOS, TideMail writes these secrets to
-`~/.config/tidemail/config.toml`. Keep that file private. Windows has no
-keychain support yet, so it always stores these secrets in
-`%USERPROFILE%\.config\tidemail\config.toml`.
+`~/.config/tidemail/config.toml`. Keep that file private. On macOS, a password
+or API key longer than about 3,000 bytes can't be handed to `security` and
+stays in that file too. Windows has no keychain support yet, so it always stores these
+secrets in `%USERPROFILE%\.config\tidemail\config.toml`.
 
 - Gmail: Google Account → Security → App passwords (requires 2-Step Verification),
   or sign in with OAuth (below)
@@ -1655,3 +1699,13 @@ Message-list focus stays visible after resizing, including after navigating on a
 very short terminal. Full-width plain-text mail reserves its left inset before
 wrapping, preserving the final character on each line. Legacy MIME-encoded
 subjects and address display names are decoded in the message list and reader.
+
+TideContacts integration: install the `tidecontacts` plugin. It becomes the default when no other contacts provider is configured; an explicit `[contacts] provider` still wins. Press C for People: n adds, e edits, / searches (Enter applies), c composes, A opens the standalone advanced CRM, and L opens TideMail local contacts. Recent correspondence comes from the local mail cache; no message bodies leave TideMail. Saves update TideContacts directly and preserve its CRM fields. External address-book sync is not included.
+
+Contacts source labels: TideContacts identifies its shared address book (or isolated DEMO book) on both list and edit screens. TideMail local contacts are explicitly labeled as separate and stored only in TideMail; no automatic migration or sharing is implied.
+
+TideContacts settings: Settings → Plugins → TideContacts → Enter (or s) offers Default contacts view, Contact data (real/demo TideContacts only), Check connection (read-only), and Open Advanced CRM. Choices save immediately. The isolated demo launcher forces demo data. Local TideMail contacts remain a separate book.
+
+### TideContacts connected vCard folders
+
+In TideContacts, open **Import data… → khard / vdirsyncer**. Press `n` to browse, navigate to a folder, then `s` to select the current folder. Preview and confirm the connection. These folders refresh when TideContacts starts and when TideMail loads or refreshes its TideContacts People view or performs Ctrl+T lookup. TideContacts need not be running. Press `r` in People to refresh. Folder contacts are marked read-only; edit the original cards using your existing address-book tool. Successful refreshes update changes and hide removed cards; a missing, unreadable or malformed source retains the last good contacts and displays a warning. Local contacts stay separate. This reads local vCards; vdirsyncer continues to own CardDAV synchronization.

@@ -276,11 +276,16 @@ type Model struct {
 	outboxCursor         int
 	outboxStatus         string
 	outboxConfirmID      int64
-	scheduleSendInput    textinput.Model
-	schedulePicker       list.Model
-	scheduleCustom       bool
-	scheduleCalendar     time.Time
-	scheduleDate         time.Time
+	// outboxConfirmEdit distinguishes what y/n on outboxConfirmID resumes:
+	// retrying delivery (false) or editing an uncertain send back to a draft,
+	// which gives up the only record that an unconfirmed delivery existed
+	// (true, see handleOutboxKey's "e"/"enter" case).
+	outboxConfirmEdit bool
+	scheduleSendInput textinput.Model
+	schedulePicker    list.Model
+	scheduleCustom    bool
+	scheduleCalendar  time.Time
+	scheduleDate      time.Time
 
 	grammarOriginal    string
 	grammarCorrected   string
@@ -296,10 +301,11 @@ type Model struct {
 	mailTags       mailTagUI
 	classification classificationEditor
 
-	plugins pluginUI    // experimental; see plugins.go
-	pgp     pgpState    // decrypted messages, memory only; see pgp.go
-	catalog catalogUI   // available plugins; see plugin_catalog.go
-	source  sourceState // raw message source, memory only; see source.go
+	simpleContacts *simpleContacts
+	plugins        pluginUI    // experimental; see plugins.go
+	pgp            pgpState    // decrypted messages, memory only; see pgp.go
+	catalog        catalogUI   // available plugins; see plugin_catalog.go
+	source         sourceState // raw message source, memory only; see source.go
 
 	helpVP                viewport.Model
 	helpCat               int  // selected category in the two-pane help
@@ -624,7 +630,23 @@ func (m Model) Init() tea.Cmd {
 // ── Update ───────────────────────────────────────────────────────────────────
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if closed, ok := msg.(advancedCRMClosedMsg); ok {
+		if closed.err != nil {
+			m.setStatus(closed.err.Error(), true)
+			return m, m.clearStatusCmd()
+		}
+		if m.simpleContacts != nil {
+			return m, m.simpleContactsLoad(false)
+		}
+		return m, nil
+	}
+
 	next, cmd := m.handleUpdate(msg)
+	if nm, ok := next.(Model); ok {
+		if fetch := nm.autoLoadTrustedImages(); fetch != nil {
+			next, cmd = nm, tea.Batch(cmd, fetch)
+		}
+	}
 	if nm, ok := next.(Model); ok && nm.heldReadID != 0 && !nm.readingHeldMessage() {
 		releaseCmd := nm.releaseHeldRead()
 		return nm, tea.Batch(cmd, releaseCmd)
@@ -2185,6 +2207,12 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case keyMatches(msg, m.keys.ContactManager):
+		if (m.cfg.Contacts.Provider == "tidecontacts" || m.cfg.Contacts.Provider == "") && m.tideContactsViewEnabled() {
+			if p, ok := m.plugins.manager.Plugin("tidecontacts"); ok && p.Manifest.Permissions.ContactsRead {
+				return m.openSimpleContacts()
+			}
+		}
+		m.simpleContacts = nil
 		m.overlay = overlayContactManager
 		m.contactManager = NewContactManager(m.db)
 		return m, nil
@@ -2747,7 +2775,9 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.OpenInBrowser):
 		if m.focused != paneAccounts && !m.selectedDraftsMailbox() {
 			if cur := m.commandMessage(); cur != nil {
-				allowImages := m.browserReopen == cur.ID
+				// Trusted senders get images straight away; everyone else
+				// needs the explicit second press.
+				allowImages := m.browserReopen == cur.ID || config.IsTrustedImageSender(m.cfg.Display.TrustedImageSenders, cur.From)
 				m.browserReopen = 0
 				return m.openEmailInBrowser(*cur, allowImages)
 			}
@@ -2794,21 +2824,19 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.setStatus("image display is off in config ([display] images = \"auto\")", true)
 				return m, m.clearStatusCmd()
 			}
-			// Consent covers only the selected email displayed in the reader.
-			for _, id := range m.imageConsentMessageIDs() {
-				m.images.allow(id)
-			}
-			m.bodyCache.clear()
-			m.viewportCache.clear()
-			urls := m.remoteImageURLsForCurrent()
-			fetch := fetchRemoteImagesCmd(m.images, m.contentMessageID, urls)
-			m.setViewportForCurrentRow()
-			if len(urls) > 0 {
-				m.setStatus(fmt.Sprintf("loading %d remote image(s)…", len(urls)), false)
+			fetch, n := m.loadRemoteImagesForCurrent()
+			if n > 0 {
+				m.setStatus(fmt.Sprintf("loading %d remote image(s)…", n), false)
 				return m, tea.Batch(m.clearStatusCmd(), fetch)
 			}
 			m.setStatus("remote images loaded", false)
 			return m, m.clearStatusCmd()
+		}
+		return m, nil
+
+	case keyMatches(msg, m.keys.TrustImages):
+		if m.focused == paneContent && m.contentMessageID != 0 {
+			return m.toggleTrustedImageSender()
 		}
 		return m, nil
 
@@ -3839,6 +3867,9 @@ func (m Model) handleAccountManager(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleContactManager(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.simpleContacts != nil {
+		return m.handleSimpleContacts(msg)
+	}
 	newCM, cmd, exit := m.contactManager.Update(msg, m.keys)
 	m.contactManager = newCM
 	if len(m.contactManager.composeTo) > 0 {

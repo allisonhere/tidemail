@@ -674,6 +674,11 @@ func dirExists(path string) bool {
 
 func (cm ContactManager) View(width, height int, styles Styles) string {
 	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
+	label := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(width).Render(truncate("Stored only in TideMail; separate from TideContacts.", width))
+	return lipgloss.JoinVertical(lipgloss.Left, label, cm.viewBook(width, max(1, height-1), styles))
+}
+func (cm ContactManager) viewBook(width, height int, styles Styles) string {
+	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
 	switch cm.mode {
 	case cmAdd:
 		return cm.viewForm(width, height, chrome)
