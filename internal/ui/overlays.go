@@ -128,9 +128,18 @@ func (m Model) renderOverlay(base string) string {
 		winW := min(m.width-4, 74)
 		winH := min(m.height-4, 40)
 		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
-		inner := m.contactManager.View(winW, winH, m.styles)
+		var inner string
+		if m.simpleContacts != nil {
+			inner = m.simpleContacts.View(winW, winH, m.styles)
+		} else {
+			inner = m.contactManager.View(winW, winH, m.styles)
+		}
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
-		box = renderSoftPanelBox(inner, winW, "tidemail", m.contactManager.softTitle(), chrome)
+		title := "TideMail local · " + m.contactManager.softTitle()
+		if m.simpleContacts != nil {
+			title = "TideContacts · shared address book"
+		}
+		box = renderSoftPanelBox(inner, winW, "tidemail", title, chrome)
 
 	case overlayCompose:
 		winW, winH := m.compose.overlayDimensions(m.width, m.height)

@@ -32,6 +32,11 @@ func helpSections(keys KeyMap) []helpSection {
 			},
 		},
 		{
+			name: "TideContacts",
+			entries: []helpEntry{{"C", "open the configured TideContacts address book"}, {"n / e", "add or edit a local person (folder contacts are read-only)"}, {"r", "refresh connected TideContacts address-book folders"}, {"/ then Enter", "search people"}, {"c / Enter", "write email to the selected person"}, {"A", "open Advanced CRM"},
+				{"Settings → Plugins", "select TideContacts then Enter or s: default view, real/demo data, connection and Advanced CRM"}, {"L", "open TideMail local contacts"}},
+		},
+		{
 			name: "Global",
 			entries: []helpEntry{
 				bind(keys.Help),
@@ -144,6 +149,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{keys.EditTags.Help().Key, "correct this message's classification and manage its tags"},
 				{keys.SaveAttach.Help().Key, "save all attachments to folder"},
 				{keys.ToggleImages.Help().Key, "load remote images (unsupported in foot/WezTerm)"},
+				{keys.TrustImages.Help().Key, "always load remote images from this sender (press again to stop)"},
 				{keys.ToggleQuote.Help().Key, "toggle quoted text collapse"},
 				{keys.Summary.Help().Key, "open AI summary overlay"},
 				bind(keys.Reply),

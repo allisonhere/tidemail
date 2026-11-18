@@ -53,7 +53,7 @@ compromised plugins repository. Details: [distribution.md](distribution.md).
 | No `$PATH` lookup | `command = "python3"` means the file in the plugin directory. |
 | No arguments | Input arrives only on stdin. |
 | Working directory | The plugin directory. |
-| Trimmed environment | Only `PATH`, `HOME`, `USER`, `LANG`, `LC_ALL`, `LC_CTYPE`, `LC_MESSAGES`, `TMPDIR`, `TZ`, the non-secret `GNUPGHOME`, `DISPLAY`, `WAYLAND_DISPLAY`, and `XDG_RUNTIME_DIR` (so a GnuPG plugin finds your keyring and can open a passphrase prompt), plus the plugin's own secrets. TideMail's own environment (client secrets, provider keys) is not passed on. |
+| Trimmed environment | Only `PATH`, `HOME`, `USER`, `LANG`, `LC_ALL`, `LC_CTYPE`, `LC_MESSAGES`, `TMPDIR`, `TZ`, the non-secret `GNUPGHOME`, `DISPLAY`, `WAYLAND_DISPLAY`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, and `XDG_RUNTIME_DIR` (so a GnuPG plugin finds your keyring and can open a passphrase prompt), plus the plugin's own secrets. TideMail's own environment (client secrets, provider keys) is not passed on. |
 | Timeout | 5 seconds per call, from start to exit. A report (several rounds) must finish within 30 seconds. |
 | Process-tree kill | On timeout, cancellation, or quit, the whole process group is killed (Unix), so child processes do not linger. |
 | Output limit | stdout above 1 MiB fails the call. |
@@ -102,3 +102,5 @@ redacted from surfaced process diagnostics and JSON reports.
 - Fail closed: on unexpected input, answer with an error or exit non-zero;
   a failure never damages stored annotations.
 - Keep calls fast. Five seconds covers a network round trip, not a batch job.
+
+The TideContacts plugin additionally receives `TIDECONTACTS_DEMO=1` only when the host demo launcher sets it. This keeps the contacts bridge on its isolated demo database.

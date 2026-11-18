@@ -226,14 +226,18 @@ type DisplayConfig struct {
 	ComposeSpell            bool   `toml:"compose_spell"`        // offline spell check in compose (off by default)
 	ComposeSpellLang        string `toml:"compose_spell_lang"`   // spell check language code; empty means English
 	// Interactive CLI only; scripted commands ignore these.
-	CLIQuitAfterSend bool               `toml:"cli_quit_after_send"` // leave `tidemail cli` after a successful send or draft
-	CLISkipReview    bool               `toml:"cli_skip_review"`     // skip the wizard's review step when undo or a draft makes it safe
-	CLISignature     bool               `toml:"cli_signature"`       // wizard default for the account signature
-	SendMaxAttempts  int                `toml:"send_max_attempts"`   // total tries, including the first
-	SendDelaySeconds int                `toml:"send_delay_seconds"`  // undo grace period; 0 = send immediately
-	Images           string             `toml:"images"`
-	VT52             RetroTerminalTweak `toml:"vt52"`
-	VT100            RetroTerminalTweak `toml:"vt100"`
+	CLIQuitAfterSend bool   `toml:"cli_quit_after_send"` // leave `tidemail cli` after a successful send or draft
+	CLISkipReview    bool   `toml:"cli_skip_review"`     // skip the wizard's review step when undo or a draft makes it safe
+	CLISignature     bool   `toml:"cli_signature"`       // wizard default for the account signature
+	SendMaxAttempts  int    `toml:"send_max_attempts"`   // total tries, including the first
+	SendDelaySeconds int    `toml:"send_delay_seconds"`  // undo grace period; 0 = send immediately
+	Images           string `toml:"images"`
+	// TrustedImageSenders lists sender addresses (lowercased, exact match) or
+	// "@domain" entries whose remote images load automatically. Empty keeps
+	// the privacy default of blocking remote images for everyone.
+	TrustedImageSenders []string           `toml:"trusted_image_senders,omitempty"`
+	VT52                RetroTerminalTweak `toml:"vt52"`
+	VT100               RetroTerminalTweak `toml:"vt100"`
 	// TagStyle is how classification and IMAP tags look in message rows and headers: "pills"
 	// (default), "glyph-pills", "compact", "plain", or "tag-icons".
 	TagStyle string `toml:"tag_style"`

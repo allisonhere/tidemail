@@ -587,12 +587,12 @@ func filenameFromPart(part *mail.Part, ctParams map[string]string, ct string) st
 	if fn := part.Header.Get("Content-Disposition"); fn != "" {
 		if _, dispParams, err := mime.ParseMediaType(fn); err == nil {
 			if name := dispParams["filename"]; name != "" {
-				return name
+				return db.DecodeFilename(name)
 			}
 		}
 	}
 	if name := ctParams["name"]; name != "" {
-		return name
+		return db.DecodeFilename(name)
 	}
 	// Fallback based on Content-Type
 	ext := ".bin"
