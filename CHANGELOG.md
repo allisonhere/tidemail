@@ -81,6 +81,9 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Headless mail commands now save rotated OAuth refresh tokens to the keychain,
+  preventing later sign-in failures after `send` or `outbox process` refreshes
+  credentials. Unavailable credential storage reports an authentication error.
 - Attachment filenames decode MIME encoded words, including in cached mail, and
   preserve Unicode when saved without splitting UTF-8 characters during truncation.
 
