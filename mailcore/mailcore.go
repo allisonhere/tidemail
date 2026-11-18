@@ -200,6 +200,7 @@ func (c *Client) FetchMessage(ctx context.Context, uid uint32) (Message, error) 
 }
 
 // FetchMessageFrom fetches one message by UID from any mailbox. UIDs are per mailbox.
+// All message operations reject UID zero; it never means the newest message.
 func (c *Client) FetchMessageFrom(ctx context.Context, mailbox string, uid uint32) (Message, error) {
 	message, err := c.inner.FetchByUID(ctx, mailbox, uid)
 	if err != nil {

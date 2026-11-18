@@ -1655,3 +1655,9 @@ Message-list focus stays visible after resizing, including after navigating on a
 very short terminal. Full-width plain-text mail reserves its left inset before
 wrapping, preserving the final character on each line. Legacy MIME-encoded
 subjects and address display names are decoded in the message list and reader.
+
+### Message UID safety for integrations
+
+Message UIDs must be greater than zero. The mailcore API rejects UID zero for
+fetching, read/star changes, moving, and deleting, rather than treating it as the
+newest message. Batch operations reject the entire batch if it contains zero.

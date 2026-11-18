@@ -415,6 +415,9 @@ func (c *Client) MarkSeen(ctx context.Context, mailboxName string, uid uint32, s
 
 // MarkSeenUIDs updates the \Seen flag for a set of UIDs with one IMAP STORE.
 func (c *Client) MarkSeenUIDs(ctx context.Context, mailboxName string, uids []uint32, seen bool) error {
+	if err := validateUIDs(uids); err != nil {
+		return err
+	}
 	if len(uids) == 0 {
 		return nil
 	}
@@ -435,15 +438,15 @@ func (c *Client) MarkSeenUIDs(ctx context.Context, mailboxName string, uids []ui
 		Silent: true,
 		Flags:  []imap.Flag{imap.FlagSeen},
 	}
-	uidSet := imap.UIDSetNum()
-	for _, uid := range uids {
-		uidSet.AddNum(imap.UID(uid))
-	}
+	uidSet := uidSetOf(uids)
 	return c.conn.Store(uidSet, flags, nil).Close()
 }
 
 // MarkFlagged adds or removes the \Flagged keyword (the "star") on a message.
 func (c *Client) MarkFlagged(ctx context.Context, mailboxName string, uid uint32, flagged bool) error {
+	if err := validateUIDs([]uint32{uid}); err != nil {
+		return err
+	}
 	if c.conn == nil {
 		return fmt.Errorf("not connected")
 	}
@@ -522,6 +525,9 @@ func (c *Client) MoveMessage(ctx context.Context, mailboxName string, uid uint32
 // trips per-user connection caps (Gmail: 15, Dovecot default: 10) and the
 // overflow silently fails.
 func (c *Client) MoveMessages(ctx context.Context, mailboxName string, uids []uint32, targetMailbox string) error {
+	if err := validateUIDs(uids); err != nil {
+		return err
+	}
 	if c.conn == nil {
 		return fmt.Errorf("not connected")
 	}
@@ -703,6 +709,9 @@ func (c *Client) DeleteMessage(ctx context.Context, mailboxName string, uid uint
 // DeleteMessages expunges a batch of messages in one SELECT/STORE/EXPUNGE round
 // trip on this connection (see MoveMessages for why batching matters).
 func (c *Client) DeleteMessages(ctx context.Context, mailboxName string, uids []uint32) error {
+	if err := validateUIDs(uids); err != nil {
+		return err
+	}
 	if c.conn == nil {
 		return fmt.Errorf("not connected")
 	}
@@ -716,10 +725,23 @@ func (c *Client) DeleteMessages(ctx context.Context, mailboxName string, uids []
 	return c.markDeletedAndExpunge(uidSetOf(uids))
 }
 
+// validateUIDs rejects IMAP's wildcard representation before any command can
+// select or mutate a mailbox. Reject the whole batch to avoid partial actions.
+func validateUIDs(uids []uint32) error {
+	for _, uid := range uids {
+		if uid == 0 {
+			return fmt.Errorf("message UID must be greater than zero")
+		}
+	}
+	return nil
+}
+
 func uidSetOf(uids []uint32) imap.UIDSet {
 	var set imap.UIDSet
 	for _, uid := range uids {
-		set.AddNum(imap.UID(uid))
+		if uid != 0 {
+			set.AddNum(imap.UID(uid))
+		}
 	}
 	return set
 }

@@ -58,6 +58,9 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Reject message UID zero in IMAP fetch, read/star, move, and delete operations;
+  an unknown UID can no longer target the newest message. Invalid batches are
+  rejected without modifying any messages.
 - Headless mail commands now save rotated OAuth refresh tokens to the keychain,
   preventing later sign-in failures after `send` or `outbox process` refreshes
   credentials. Unavailable credential storage reports an authentication error.
