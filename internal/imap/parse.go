@@ -169,6 +169,9 @@ func (c *Client) FetchOlderThan(ctx context.Context, mailboxName string, beforeU
 // FetchByUID fetches one message for a detail view without downloading a
 // whole page of the mailbox. The UID, not a sequence number, identifies it.
 func (c *Client) FetchByUID(ctx context.Context, mailboxName string, uid uint32) (db.Message, error) {
+	if err := validateUIDs([]uint32{uid}); err != nil {
+		return db.Message{}, err
+	}
 	if c.conn == nil {
 		return db.Message{}, fmt.Errorf("not connected")
 	}
@@ -191,6 +194,9 @@ func (c *Client) FetchByUID(ctx context.Context, mailboxName string, uid uint32)
 // read. It is for features that need the exact bytes, such as verifying a
 // signature; the caller must not store the result.
 func (c *Client) FetchRaw(ctx context.Context, mailboxName string, uid uint32) ([]byte, error) {
+	if err := validateUIDs([]uint32{uid}); err != nil {
+		return nil, err
+	}
 	if c.conn == nil {
 		return nil, fmt.Errorf("not connected")
 	}

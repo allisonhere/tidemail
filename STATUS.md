@@ -10,6 +10,9 @@ correctness audit (UID-read validity, atomic message upsert, the outbox lease,
 suspend/resume reconnect, and smaller UI fixes) — see `CHANGELOG.md`
 Unreleased.
 
+- **IMAP UID safety**: message fetches and read/star/move/delete actions reject
+  UID zero. A batch containing zero fails before modifying any messages.
+
 ## Working
 
 - **HTML signature file**: an account can point at an `.html` file used as the
