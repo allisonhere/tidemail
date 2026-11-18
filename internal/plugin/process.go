@@ -35,6 +35,9 @@ const (
 // TideMail's process.
 var envAllowlist = []string{
 	"PATH", "HOME", "USER", "LANG", "LC_ALL", "LC_CTYPE", "LC_MESSAGES", "TMPDIR", "TZ",
+	// Preserve non-secret application profile paths; otherwise plugins can fall
+	// back to the live profile while the host is running in an isolated profile.
+	"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
 	// Where the user's GnuPG keyring is, and the display a graphical
 	// passphrase prompt (pinentry) opens on. None of these is a secret.
 	"GNUPGHOME", "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR",
@@ -81,6 +84,9 @@ func invoke(ctx context.Context, p Plugin, req Request, timeout time.Duration, s
 	cmd := exec.CommandContext(ctx, p.Executable)
 	cmd.Dir = p.Dir
 	cmd.Env = pluginEnv()
+	if p.Manifest.ID == "tidecontacts" && os.Getenv("TIDECONTACTS_DEMO") == "1" {
+		cmd.Env = append(cmd.Env, "TIDECONTACTS_DEMO=1")
+	}
 	for key, value := range secrets {
 		cmd.Env = append(cmd.Env, SecretEnvVar(key)+"="+value)
 	}

@@ -32,6 +32,11 @@ type ContactsFoundMsg struct {
 // reason when there is none usable.
 func (m Model) contactsProvider() (plugin.Plugin, string) {
 	id := strings.TrimSpace(m.cfg.Contacts.Provider)
+	if id == "" && m.tideContactsViewEnabled() {
+		if _, ok := m.plugins.manager.Plugin("tidecontacts"); ok {
+			id = "tidecontacts"
+		}
+	}
 	if id == "" {
 		return plugin.Plugin{}, "No contacts provider set (add [contacts] provider to config.toml)"
 	}

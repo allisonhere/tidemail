@@ -265,6 +265,8 @@ func (m Model) handlePluginListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case msg.Type == tea.KeyEnter && len(entries) > 0:
 		if e := entries[clamp(m.plugins.listCursor, 0, len(entries)-1)]; e.installed && m.pluginHasReport(e.pluginID) {
 			return m.startPluginReport(e.pluginID)
+		} else if e.installed && e.pluginID == "tidecontacts" {
+			return m.openPluginSettings(e.pluginID)
 		}
 	case keyMatches(msg, m.keys.Up):
 		if m.plugins.listCursor > 0 {

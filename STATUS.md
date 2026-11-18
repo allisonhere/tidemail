@@ -311,3 +311,11 @@ Mailbox/account mark-all-read (server-side) reserves its targets and rejects con
 pending operations. Delete completions reconcile unread counts from the cache,
 keep the highlighted message visible, and suppress remote successes whose local
 cleanup failed until a later list reload can reconcile them.
+
+TideContacts integration: install the `tidecontacts` plugin. It becomes the default when no other contacts provider is configured; an explicit `[contacts] provider` still wins. Press C for People: n adds, e edits, / searches (Enter applies), c composes, A opens the standalone advanced CRM, and L opens TideMail local contacts. Recent correspondence comes from the local mail cache; no message bodies leave TideMail. Saves update TideContacts directly and preserve its CRM fields. External address-book sync is not included.
+
+Contacts source labels: TideContacts identifies its shared address book (or isolated DEMO book) on both list and edit screens. TideMail local contacts are explicitly labeled as separate and stored only in TideMail; no automatic migration or sharing is implied.
+
+TideContacts settings: Settings → Plugins → TideContacts → Enter (or s) offers Default contacts view, Contact data (real/demo TideContacts only), Check connection (read-only), and Open Advanced CRM. Choices save immediately. The isolated demo launcher forces demo data. Local TideMail contacts remain a separate book.
+
+- TideContacts People supports read-only vCard-folder records, refresh via r, and warnings when the plugin retains its last good folder snapshot. All email addresses are available through Ctrl+T lookup.

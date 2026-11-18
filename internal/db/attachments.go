@@ -3,7 +3,10 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"mime"
 	"strings"
+
+	"github.com/emersion/go-message/charset"
 )
 
 type Attachment struct {
@@ -82,6 +85,7 @@ func (db *DB) GetAttachmentsMeta(msgID int64) ([]Attachment, error) {
 			&a.ContentID, &a.Disposition, &a.ContentLocation, &inline, &a.Size); err != nil {
 			return nil, fmt.Errorf("scan attachment metadata: %w", err)
 		}
+		a.Filename = DecodeFilename(a.Filename)
 		a.Inline = inline != 0
 		atts = append(atts, a)
 	}
@@ -116,6 +120,7 @@ func (db *DB) GetAttachments(msgID int64) ([]Attachment, error) {
 			&a.ContentID, &a.Disposition, &a.ContentLocation, &inline, &a.Data, &a.Size); err != nil {
 			return nil, fmt.Errorf("scan attachment: %w", err)
 		}
+		a.Filename = DecodeFilename(a.Filename)
 		a.Inline = inline != 0
 		atts = append(atts, a)
 	}
@@ -147,6 +152,7 @@ func (db *DB) GetImageParts(msgID int64) ([]Attachment, error) {
 			&a.ContentID, &a.Disposition, &a.ContentLocation, &inline, &a.Data, &a.Size); err != nil {
 			return nil, fmt.Errorf("scan image part: %w", err)
 		}
+		a.Filename = DecodeFilename(a.Filename)
 		a.Inline = inline != 0
 		atts = append(atts, a)
 	}
@@ -177,4 +183,21 @@ func deleteAttachmentsForMessage(x execer, msgID int64) error {
 		return fmt.Errorf("delete attachments: %w", err)
 	}
 	return nil
+}
+
+// filenameDecoder decodes RFC 2047 encoded words in any charset. RFC 2231
+// parameters are decoded by mime.ParseMediaType, but many senders put an
+// encoded word inside a plain filename="..." instead. Names cached before the
+// parser decoded them are fixed here, when read.
+var filenameDecoder = &mime.WordDecoder{CharsetReader: charset.Reader}
+
+// DecodeFilename returns name with any RFC 2047 encoded words decoded.
+func DecodeFilename(name string) string {
+	if !strings.Contains(name, "=?") {
+		return name
+	}
+	if decoded, err := filenameDecoder.DecodeHeader(name); err == nil {
+		return decoded
+	}
+	return name
 }
