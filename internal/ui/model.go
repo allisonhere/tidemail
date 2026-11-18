@@ -412,9 +412,11 @@ type Model struct {
 	syncTimerGeneration map[int64]uint64
 	// notifier is a long-lived private D-Bus connection. Notification IDs are
 	// registered on the update loop before an action can change message state.
-	notifier             notify.Conn
-	pendingNotifyActions map[uint32][]int64
-	earlyNotifyActions   map[uint32]notify.Event
+	notifier                   notify.Conn
+	pendingNotifyActions       map[uint32][]int64
+	notificationWindow         string
+	pendingNotificationMessage int64
+	earlyNotifyActions         map[uint32]notify.Event
 	// lastResumeTick is the wall-clock time of the previous resume check.
 	lastResumeTick time.Time
 
@@ -677,6 +679,9 @@ func (m Model) handleUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	next, cmd := m.update(msg)
 	if updated, ok := next.(Model); ok {
+		if updated.overlay == overlayNone && updated.pendingNotificationMessage != 0 {
+			cmd = tea.Batch(cmd, updated.openPendingNotification())
+		}
 		if updated.overlay != overlayNone || !updated.cfg.Display.MouseSupport {
 			updated.clearReaderMouseSelection()
 		}
@@ -1719,6 +1724,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case notifierOpenedMsg:
 		return m.handleNotifierOpened(msg)
+
+	case notificationFocusMsg:
+		if msg.err != nil {
+			m.setStatus("Could not raise TideMail: "+msg.err.Error(), true)
+			return m, m.clearStatusCmd()
+		}
+		return m, nil
 
 	case notifySentMsg:
 		return m.handleNotifySent(msg)

@@ -1600,7 +1600,18 @@ Clicks and the wheel do nothing while Settings, the Account Manager, Compose, or
 any other overlay is open. Turning mouse support on trades away your terminal's
 native click-drag text selection while it's enabled.
 
-- Display: theme, icons, support reminder, tag style and colors, message tags (header row, tag names and colors), Needs You and Waiting on Them sidebar rows, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, mouse support, and quit confirmation. On Linux, a notification for new mail includes **Mark Read**, **Delete**, and **Ignore** actions, covering every message when more than one arrives at once; Delete uses the normal six-second undo window.
+- Display: theme, icons, support reminder, tag style and colors, message tags (header row, tag names and colors), Needs You and Waiting on Them sidebar rows, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, mouse support, and quit confirmation. On Linux, a notification for new mail includes **Mark Read**, **Delete**, and **Read** actions. Mark Read and Delete cover every message when more than one arrives at once; Delete uses the normal six-second undo window. Read opens the first message in TideMail. Dismiss the notification to ignore it.
+
+  The Read button or clicking the notification body opens the first notified message in the reader,
+  clears search and unread-only filters, and follows **Mark read on open**. On
+  Hyprland, TideMail also brings its terminal window forward, including from
+  another workspace. Window activation requires a local terminal window that
+  TideMail can identify at startup; other desktops still load the message but may
+  require you to switch to TideMail yourself. If a composer or dialog is open, it
+  stays intact and the message opens after you close it. If the message has moved,
+  TideMail opens its current folder; if it is gone, TideMail reports that it is no
+  longer available.
+
 - Editor: compose keys, vim keys, advanced regex search, spell check and its language, send delay, and maximum delivery attempts
 - CLI: quit after send or draft, skip the review step, and the default signature for the interactive `tidemail cli` wizard
 - Accounts: connection details, From address, signature, color, and sync interval.

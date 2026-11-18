@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"log"
 	"runtime"
 
@@ -12,7 +13,8 @@ import (
 const maxEarlyNotifyActions = 16
 
 type notifierOpenedMsg struct {
-	conn notify.Conn
+	conn   notify.Conn
+	window string
 }
 
 type notifySentMsg struct {
@@ -41,7 +43,7 @@ func (m Model) openNotifierCmd() tea.Cmd {
 			logNotify("notify\terror=%q", err)
 			return notifierOpenedMsg{conn: nil}
 		}
-		return notifierOpenedMsg{conn: conn}
+		return notifierOpenedMsg{conn: conn, window: notificationWindow()}
 	}
 }
 
@@ -64,6 +66,7 @@ func (m Model) handleNotifierOpened(msg notifierOpenedMsg) (tea.Model, tea.Cmd) 
 		_ = m.notifier.Close()
 	}
 	m.notifier = msg.conn
+	m.notificationWindow = msg.window
 	return m, m.listenNotifyEventsCmd()
 }
 
@@ -129,6 +132,16 @@ func (m Model) handleNotifyActionEvent(msg notifyActionEventMsg) (tea.Model, tea
 	if event.Closed || event.ActionKey == "ignore" {
 		return m, tea.Batch(cmds...)
 	}
+	if (event.ActionKey == "default" || event.ActionKey == "read") && len(ids) > 0 {
+		m.pendingNotificationMessage = ids[0]
+		cmds = append(cmds, raiseNotificationWindowCmd(m.notificationWindow))
+		if m.overlay == overlayNone {
+			cmds = append(cmds, m.openPendingNotification())
+		} else {
+			m.setStatus("Close the current dialog to read the notified message", false)
+		}
+		return m, tea.Batch(cmds...)
+	}
 	var messages []db.Message
 	for _, id := range ids {
 		if message, err := m.db.GetMessage(id); err == nil {
@@ -150,9 +163,85 @@ func (m Model) handleNotifyActionEvent(msg notifyActionEventMsg) (tea.Model, tea
 
 func knownNotifyAction(action string) bool {
 	switch action {
-	case "mark-read", "delete", "ignore":
+	case "default", "read", "mark-read", "delete", "ignore":
 		return true
 	default:
 		return false
 	}
+}
+
+// openPendingNotification runs on the update loop, after any modal has closed.
+// Resolve the ID again: mail may have moved or disappeared since notification.
+func (m *Model) openPendingNotification() tea.Cmd {
+	id := m.pendingNotificationMessage
+	m.pendingNotificationMessage = 0
+	msg, err := m.db.GetMessage(id)
+	if err != nil || m.messageHiddenDestructive(id) {
+		m.setStatus("Notified message is no longer available", true)
+		return m.clearStatusCmd()
+	}
+	mailbox := m.mailboxByID(msg.MailboxID)
+	if mailbox == nil {
+		m.setStatus("Notified message's folder is no longer available", true)
+		return m.clearStatusCmd()
+	}
+	var messages []db.Message
+	if m.cfg.Display.UnreadFirst {
+		messages, err = m.db.ListMessagesUnreadFirst(mailbox.ID)
+	} else {
+		messages, err = m.db.ListMessages(mailbox.ID)
+	}
+	if err != nil {
+		m.setStatus("Could not open notified message: "+err.Error(), true)
+		return m.clearStatusCmd()
+	}
+	// Reveal the destination without persisting changes to collapsed/hidden folders.
+	delete(m.collapsedAccounts, mailbox.AccountID)
+	delete(m.collapsedSections, fmt.Sprintf("system:%d", mailbox.AccountID))
+	delete(m.collapsedSections, fmt.Sprintf("personal:%d", mailbox.AccountID))
+	for _, parent := range m.mailboxes {
+		if mailboxIsDescendant(parent, *mailbox) {
+			delete(m.collapsedSections, folderCollapseKey(parent))
+		}
+	}
+	if (folderView{prefs: m.mailboxPrefs}).pref(*mailbox).Hidden {
+		m.showHiddenFolders = true
+	}
+	m.rebuildSidebar()
+	found := false
+	for i, row := range m.sidebarRows {
+		if row.kind == rowKindMailbox && row.mailboxID == mailbox.ID {
+			m.sidebarCursor = i
+			found = true
+			break
+		}
+	}
+	if !found {
+		m.setStatus("Notified message's folder is no longer available", true)
+		return m.clearStatusCmd()
+	}
+	m.cancelFolderSettle()
+	m.pendingSelectMessageID = 0
+	m.heldReadID = 0
+	m.searchMode, m.searchEditing, m.showUnreadOnly = false, false, false
+	m.searchQuery = ""
+	m.searchInput.Reset()
+	m.closeSearchHistory()
+	m.clearMessages()
+	m.messages = messages
+	m.plugins.annotations, m.plugins.overrides = loadMessageClassification(m.db, messages)
+	m.applyFilter()
+	idx := m.indexOfFilteredMessage(id)
+	if idx < 0 {
+		m.setStatus("Notified message is no longer available", true)
+		return m.clearStatusCmd()
+	}
+	m.messageCursor = idx
+	m.keepMessageCursorVisible()
+	m.clampSidebarOffset()
+	m.setStatus("", false)
+	m.focused = paneContent
+	m.setViewportForCurrentRow()
+	m.setStatus("", false)
+	return m.openedMessageCmd(msg)
 }

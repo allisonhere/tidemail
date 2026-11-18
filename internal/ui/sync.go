@@ -326,9 +326,10 @@ func (m *Model) notifyActionableCmd(mailboxID int64, messages []db.Message) tea.
 	return func() tea.Msg {
 		title, body := notificationText(database, mailboxID, messages)
 		id, err := notifier.Notify("tidemail", "mail-unread", title, body, []string{
+			"default", "Open",
 			"mark-read", "Mark Read",
 			"delete", "Delete",
-			"ignore", "Ignore",
+			"read", "Read",
 		})
 		if err != nil {
 			sendDesktopNotification(title, body)

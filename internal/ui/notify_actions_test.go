@@ -2,11 +2,13 @@ package ui
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
@@ -84,7 +86,7 @@ func TestActionableNotificationRegistersMessageAndActions(t *testing.T) {
 	if sent.notifyID != conn.notifyID || !reflect.DeepEqual(sent.messageIDs, []int64{f.messages[0].ID}) {
 		t.Fatalf("sent = %#v", sent)
 	}
-	wantActions := []string{"mark-read", "Mark Read", "delete", "Delete", "ignore", "Ignore"}
+	wantActions := []string{"default", "Open", "mark-read", "Mark Read", "delete", "Delete", "read", "Read"}
 	if !reflect.DeepEqual(conn.actions, wantActions) {
 		t.Fatalf("actions = %#v, want %#v", conn.actions, wantActions)
 	}
@@ -257,5 +259,137 @@ func TestCloseSessionsClosesNotifier(t *testing.T) {
 	m.CloseSessions()
 	if !conn.closed {
 		t.Fatal("CloseSessions left notifier open")
+	}
+}
+
+func TestNotificationClickOpensExactMessage(t *testing.T) {
+	for _, action := range []string{"default", "read"} {
+		t.Run(action, func(t *testing.T) { testNotificationOpensExactMessage(t, action) })
+	}
+}
+
+func testNotificationOpensExactMessage(t *testing.T, action string) {
+	t.Helper()
+	for _, markRead := range []bool{false, true} {
+		t.Run(fmt.Sprint(markRead), func(t *testing.T) {
+			f := newUndoTestFixture(t, 3)
+			m := f.model
+			target := f.messages[1]
+			if err := f.database.MarkRead(target.ID, false); err != nil {
+				t.Fatal(err)
+			}
+			m.cfg.Display.MarkReadOnOpen = markRead
+			m.searchMode = true
+			m.searchQuery = "does not match"
+			m.showUnreadOnly = true
+			m.collapsedAccounts[f.source.AccountID] = true
+			m.rebuildSidebar()
+			m.pendingNotifyActions[7] = []int64{target.ID, f.messages[0].ID}
+			next, _ := m.handleNotifyActionEvent(notifyActionEventMsg{event: notify.Event{ID: 7, ActionKey: action}})
+			m = next.(Model)
+			if m.contentMessageID != target.ID || m.focused != paneContent {
+				t.Fatalf("reader = %d focus = %v, want %d in reader", m.contentMessageID, m.focused, target.ID)
+			}
+			if cur := m.currentRowMessage(); cur == nil || cur.ID != target.ID {
+				t.Fatalf("selected = %+v", cur)
+			}
+			if selected := m.selectedMailbox(); selected == nil || selected.ID != target.MailboxID {
+				t.Fatalf("mailbox = %+v", selected)
+			}
+			if m.searchActive() || m.showUnreadOnly {
+				t.Fatal("old filters retained")
+			}
+			_, pending := m.pendingReads[target.ID]
+			if pending != markRead {
+				t.Fatalf("mark-read pending = %v, want %v", pending, markRead)
+			}
+			if len(m.pendingReads) > 1 {
+				t.Fatal("opening batch marked other messages read")
+			}
+		})
+	}
+}
+
+func TestNotificationClickWaitsForCompose(t *testing.T) {
+	f := newUndoTestFixture(t, 1)
+	m := f.model
+	m.compose = NewComposeFromDraft(db.Draft{BodyText: "keep this draft"}, m.cfg.Accounts, nil)
+	m.overlay = overlayCompose
+	m.pendingNotifyActions[7] = []int64{f.messages[0].ID}
+	next, _ := m.Update(notifyActionEventMsg{event: notify.Event{ID: 7, ActionKey: "default"}})
+	m = next.(Model)
+	if m.overlay != overlayCompose || m.compose.bodyInput.Value() != "keep this draft" || m.pendingNotificationMessage != f.messages[0].ID {
+		t.Fatal("notification disrupted compose or lost pending message")
+	}
+	m.overlay = overlayNone
+	next, _ = m.Update(struct{}{})
+	m = next.(Model)
+	if m.contentMessageID != f.messages[0].ID || m.focused != paneContent || m.pendingNotificationMessage != 0 {
+		t.Fatal("message did not open after dialog closed")
+	}
+	if strings.Contains(m.statusMsg, "Close the current dialog") {
+		t.Fatal("stale dialog instruction remained after opening")
+	}
+}
+
+func TestNotificationClickEarlyAndMissing(t *testing.T) {
+	f := newUndoTestFixture(t, 1)
+	m := f.model
+	next, _ := m.handleNotifyActionEvent(notifyActionEventMsg{event: notify.Event{ID: 7, ActionKey: "default"}})
+	m = next.(Model)
+	next, _ = m.handleNotifySent(notifySentMsg{notifyID: 7, messageIDs: []int64{f.messages[0].ID}})
+	m = next.(Model)
+	if m.contentMessageID != f.messages[0].ID {
+		t.Fatal("early click lost")
+	}
+	m.pendingNotifyActions[8] = []int64{999999, f.messages[0].ID}
+	next, _ = m.handleNotifyActionEvent(notifyActionEventMsg{event: notify.Event{ID: 8, ActionKey: "default"}})
+	m = next.(Model)
+	if !strings.Contains(m.statusMsg, "no longer available") {
+		t.Fatalf("missing message status = %q", m.statusMsg)
+	}
+}
+
+func TestNotificationClickFollowsMovedMessage(t *testing.T) {
+	f := newUndoTestFixture(t, 1)
+	m := f.model
+	id := f.messages[0].ID
+	if err := f.database.MoveMessage(id, f.target.ID); err != nil {
+		t.Fatal(err)
+	}
+	m.collapsedSections[fmt.Sprintf("personal:%d", f.target.AccountID)] = true
+	m.pendingNotifyActions[7] = []int64{id}
+	next, _ := m.Update(notifyActionEventMsg{event: notify.Event{ID: 7, ActionKey: "default"}})
+	m = next.(Model)
+	if mailbox := m.selectedMailbox(); mailbox == nil || mailbox.ID != f.target.ID {
+		t.Fatalf("wrong destination: %+v", mailbox)
+	}
+	if m.contentMessageID != id || m.focused != paneContent {
+		t.Fatal("moved message not opened")
+	}
+}
+
+func TestNotificationClickRevealsThreadChild(t *testing.T) {
+	f := newUndoTestFixture(t, 2)
+	m := f.model
+	m.cfg.Display.ThreadedConversations = true
+	root, reply := f.messages[0], f.messages[1]
+	root.MessageID = "<notification-root@example.com>"
+	reply.MessageID = "<notification-reply@example.com>"
+	reply.InReplyTo = root.MessageID
+	root.Date, reply.Date = time.Unix(100, 0), time.Unix(200, 0)
+	for _, msg := range []db.Message{root, reply} {
+		if err := f.database.UpsertMessage(msg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m.pendingNotifyActions[7] = []int64{root.ID}
+	next, _ := m.Update(notifyActionEventMsg{event: notify.Event{ID: 7, ActionKey: "default"}})
+	m = next.(Model)
+	if m.contentMessageID != root.ID {
+		t.Fatalf("opened %d instead of notified child %d", m.contentMessageID, root.ID)
+	}
+	if current := m.currentRowMessage(); current == nil || current.ID != root.ID {
+		t.Fatalf("wrong row: %+v", current)
 	}
 }

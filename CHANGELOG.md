@@ -16,9 +16,13 @@ All notable changes to TideMail are documented in this file.
   and reports when cached contacts are kept after a failed scan. TideMail's
   original local contacts remain a separate address book (`L`).
 
+- Use Read or click a Linux new-mail notification to open its first message in the reader.
+  On Hyprland, the identified TideMail terminal comes forward across workspaces.
+  Composers and dialogs remain intact; navigation waits until they close.
 - On Linux, a notification for new mail offers **Mark Read**, **Delete**, and
-  **Ignore** actions, covering every message in the batch when more than one
-  arrives at once. Delete keeps TideMail's normal six-second undo window.
+  **Read** actions. Mark Read and Delete cover the whole batch; Read opens the
+  first message, and dismissing ignores the notification. Delete keeps
+  TideMail's normal six-second undo window.
 
 - Always load remote images from a sender you trust: press `I` in the reading
   pane to load this message's images and add the sender to

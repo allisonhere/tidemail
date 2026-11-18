@@ -162,8 +162,11 @@ Unreleased.
   (empty box lists them, `↑`/`↓` filters by what's typed, `Tab` completes,
   `Ctrl+D` forgets one). Unread-only filtering, command palette, desktop
   notifications; on Linux, a new-mail notification offers Mark Read,
-  Delete (with the normal undo window), and Ignore actions, covering
-  every message when more than one arrives at once.
+  Delete (with the normal undo window), and Read actions. Mark Read and Delete
+  cover every message in a batch; dismissing ignores it. Read or clicking the notification
+  opens the first message in the reader, following Mark read on open; Hyprland
+  also raises the identified terminal window across workspaces. Open dialogs
+  and composers defer navigation until closed.
 - **Contacts**: add, edit, and delete; import and export vCards, including a
   whole folder of `.vcf` files in one pass with a skipped-card count and a
   hidden-file toggle in the picker. A plugin with `contacts_read` can serve as
