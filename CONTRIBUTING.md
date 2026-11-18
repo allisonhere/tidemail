@@ -21,3 +21,12 @@ Thanks for helping out! A few quick notes:
 - **UI preview flags**: see [`docs/flags.md`](docs/flags.md), including the
   App Password-only Gmail preview.
 - **Commits/releases**: releases are cut from `v*` tags via `deploy.sh`.
+- **Nix flake**: no Nix knowledge is needed day to day. After a `go.mod` or
+  `go.sum` change lands on `main`, the Nix workflow
+  (`.github/workflows/nix.yml`) opens a `build(nix): update vendorHash` PR, and
+  once a month it opens a `build(nix): update flake.lock` PR; merge them when
+  they appear. Those PRs don't trigger CI on their own; close and reopen one to
+  run it. Releases need no flake changes. To fix the hash locally instead, run
+  `bash scripts/update-nix-vendor-hash.sh` (requires Nix). The one manual edit:
+  when `go.mod` moves to a new Go minor version (e.g. 1.27), change both
+  `go_1_26` references in `flake.nix` to match.

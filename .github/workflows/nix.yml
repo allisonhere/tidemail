@@ -1,0 +1,111 @@
+name: Nix
+
+# Keeps the flake building without anyone needing to know Nix:
+# - Pull requests: build the flake. A stale vendorHash (after a go.mod/go.sum
+#   change) only warns, because the update job fixes it after merge; anything
+#   else that breaks the Nix build fails the check.
+# - Pushes to main: refresh vendorHash and open a PR if it changed.
+# - Monthly (or by hand from the Actions tab): update flake.lock so nixpkgs
+#   keeps up with the Go version in go.mod, and open a PR.
+# PRs opened by this workflow use GITHUB_TOKEN, so other workflows do not run
+# on them automatically; close and reopen the PR to run CI if needed.
+
+on:
+  pull_request:
+    paths:
+      - go.mod
+      - go.sum
+      - flake.nix
+      - flake.lock
+      - man/tidemail.1
+      - packaging/linux/tidemail.desktop
+      - images/tidemail-icon.png
+      - scripts/update-nix-vendor-hash.sh
+      - .github/workflows/nix.yml
+  push:
+    branches: [main]
+    paths:
+      - go.mod
+      - go.sum
+      - flake.nix
+      - flake.lock
+      - man/tidemail.1
+      - packaging/linux/tidemail.desktop
+      - images/tidemail-icon.png
+      - scripts/update-nix-vendor-hash.sh
+      - .github/workflows/nix.yml
+  schedule:
+    - cron: "17 6 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build flake
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+
+      - name: Build
+        run: bash scripts/update-nix-vendor-hash.sh
+
+      - name: Report a stale vendorHash
+        run: |
+          if ! git diff --quiet -- flake.nix; then
+            echo "::warning file=flake.nix::vendorHash is out of date after this go.mod/go.sum change. No action needed: a bot PR will update it after merge (or run scripts/update-nix-vendor-hash.sh)."
+          fi
+
+  update:
+    name: Update flake hashes
+    if: github.event_name != 'pull_request' && github.repository == 'allisonhere/tidemail'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+
+      - name: Update flake.lock
+        if: github.event_name != 'push'
+        run: nix flake update
+
+      - name: Update vendorHash and build
+        run: bash scripts/update-nix-vendor-hash.sh
+
+      - name: Name the pull request
+        id: pr
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = push ]; then
+            echo "branch=nix/vendor-hash" >> "$GITHUB_OUTPUT"
+            echo "title=build(nix): update vendorHash" >> "$GITHUB_OUTPUT"
+          else
+            echo "branch=nix/flake-update" >> "$GITHUB_OUTPUT"
+            echo "title=build(nix): update flake.lock" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: ${{ steps.pr.outputs.branch }}
+          delete-branch: true
+          add-paths: |
+            flake.nix
+            flake.lock
+          commit-message: ${{ steps.pr.outputs.title }}
+          title: ${{ steps.pr.outputs.title }}
+          body: |
+            Automated update from the Nix workflow. The flake was rebuilt with
+            these changes before this PR was opened, so it is safe to merge.
