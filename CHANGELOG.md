@@ -20,6 +20,15 @@ All notable changes to TideMail are documented in this file.
   **Ignore** actions, covering every message in the batch when more than one
   arrives at once. Delete keeps TideMail's normal six-second undo window.
 
+- Always load remote images from a sender you trust: press `I` in the reading
+  pane to load this message's images and add the sender to
+  `[display] trusted_image_senders`; later messages from them load images on
+  open, and `Ctrl+B` opens them with images straight away. Press `I` again to
+  stop. Entries starting with `@` trust a whole domain; `I` on one sender of a
+  trusted domain excludes just that address (a `!` entry). Trust is checked per
+  message, so untrusted senders in the same view keep the blocked-by-default
+  behaviour.
+
 - Button-style links in HTML bodies (rendered as `[Confirm your email]`) are
   now OSC 8 terminal hyperlinks to the same destination as their LINKS entry,
   so terminals can open them with Ctrl+click. A label that wraps is linked on

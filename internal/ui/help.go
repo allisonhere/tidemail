@@ -149,6 +149,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{keys.EditTags.Help().Key, "correct this message's classification and manage its tags"},
 				{keys.SaveAttach.Help().Key, "save all attachments to folder"},
 				{keys.ToggleImages.Help().Key, "load remote images (unsupported in foot/WezTerm)"},
+				{keys.TrustImages.Help().Key, "always load remote images from this sender (press again to stop)"},
 				{keys.ToggleQuote.Help().Key, "toggle quoted text collapse"},
 				{keys.Summary.Help().Key, "open AI summary overlay"},
 				bind(keys.Reply),

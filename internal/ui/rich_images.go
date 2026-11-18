@@ -1147,8 +1147,13 @@ func (m Model) imageConsentMessageIDs() []int64 {
 // remoteImageURLsForCurrent collects the remote image URLs of whatever the
 // reading pane is showing, for the i key.
 func (m Model) remoteImageURLsForCurrent() []string {
+	return m.remoteImageURLsFor(m.currentViewMessages())
+}
+
+// remoteImageURLsFor collects the remote image URLs of the given messages.
+func (m Model) remoteImageURLsFor(msgs []db.Message) []string {
 	var urls []string
-	for _, msg := range m.currentViewMessages() {
+	for _, msg := range msgs {
 		var parts *richmail.PartStore
 		if ctx := m.imageContext(msg, m.contentBodyWidth()); ctx != nil {
 			parts = ctx.parts

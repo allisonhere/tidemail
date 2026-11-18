@@ -68,6 +68,7 @@ ToggleHeaders,ctrl+e,ctrl+e,toggle full headers,content
 OpenInBrowser,ctrl+b,ctrl+b,view message in browser,message list+content
 ViewSource,ctrl+o,ctrl+o,view message source (c copies),message list+content
 ToggleImages,i,i,load remote images (unsupported in foot/WezTerm),content
+TrustImages,I,I,always load remote images from this sender; press again to stop,content
 SaveAttach,ctrl+d,ctrl+d,save attachments,content
 Add,a,a,add account,account_manager
 Edit,e,e,edit account,account_manager

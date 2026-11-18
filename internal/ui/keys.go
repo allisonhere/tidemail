@@ -73,6 +73,7 @@ type KeyMap struct {
 	ViewSource    key.Binding
 	OpenInBrowser key.Binding
 	ToggleImages  key.Binding
+	TrustImages   key.Binding
 	SaveAttach    key.Binding
 
 	// Account manager specific
@@ -185,6 +186,7 @@ var DefaultKeys = KeyMap{
 	OpenInBrowser: key.NewBinding(key.WithKeys("ctrl+b"), key.WithHelp("ctrl+b", "view message in browser")),
 	ViewSource:    key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "source")),
 	ToggleImages:  key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "load images")),
+	TrustImages:   key.NewBinding(key.WithKeys("I"), key.WithHelp("I", "always load images from sender")),
 
 	Add:         key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
 	Edit:        key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),

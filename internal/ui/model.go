@@ -640,6 +640,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	next, cmd := m.handleUpdate(msg)
+	if nm, ok := next.(Model); ok {
+		if fetch := nm.autoLoadTrustedImages(); fetch != nil {
+			next, cmd = nm, tea.Batch(cmd, fetch)
+		}
+	}
 	if nm, ok := next.(Model); ok && nm.heldReadID != 0 && !nm.readingHeldMessage() {
 		releaseCmd := nm.releaseHeldRead()
 		return nm, tea.Batch(cmd, releaseCmd)
@@ -2758,7 +2763,9 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.OpenInBrowser):
 		if m.focused != paneAccounts && !m.selectedDraftsMailbox() {
 			if cur := m.commandMessage(); cur != nil {
-				allowImages := m.browserReopen == cur.ID
+				// Trusted senders get images straight away; everyone else
+				// needs the explicit second press.
+				allowImages := m.browserReopen == cur.ID || config.IsTrustedImageSender(m.cfg.Display.TrustedImageSenders, cur.From)
 				m.browserReopen = 0
 				return m.openEmailInBrowser(*cur, allowImages)
 			}
@@ -2805,21 +2812,19 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.setStatus("image display is off in config ([display] images = \"auto\")", true)
 				return m, m.clearStatusCmd()
 			}
-			// Consent covers only the selected email displayed in the reader.
-			for _, id := range m.imageConsentMessageIDs() {
-				m.images.allow(id)
-			}
-			m.bodyCache.clear()
-			m.viewportCache.clear()
-			urls := m.remoteImageURLsForCurrent()
-			fetch := fetchRemoteImagesCmd(m.images, m.contentMessageID, urls)
-			m.setViewportForCurrentRow()
-			if len(urls) > 0 {
-				m.setStatus(fmt.Sprintf("loading %d remote image(s)…", len(urls)), false)
+			fetch, n := m.loadRemoteImagesForCurrent()
+			if n > 0 {
+				m.setStatus(fmt.Sprintf("loading %d remote image(s)…", n), false)
 				return m, tea.Batch(m.clearStatusCmd(), fetch)
 			}
 			m.setStatus("remote images loaded", false)
 			return m, m.clearStatusCmd()
+		}
+		return m, nil
+
+	case keyMatches(msg, m.keys.TrustImages):
+		if m.focused == paneContent && m.contentMessageID != 0 {
+			return m.toggleTrustedImageSender()
 		}
 		return m, nil
 
