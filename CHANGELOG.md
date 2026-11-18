@@ -28,6 +28,12 @@ All notable changes to TideMail are documented in this file.
   trusted domain excludes just that address (a `!` entry). Trust is checked per
   message, so untrusted senders in the same view keep the blocked-by-default
   behaviour.
+
+- Button-style links in HTML bodies (rendered as `[Confirm your email]`) are
+  now OSC 8 terminal hyperlinks to the same destination as their LINKS entry,
+  so terminals can open them with Ctrl+click. A label that wraps is linked on
+  every line, and prose that only looks like a button is never linked.
+  TideMail's own click handling is unchanged.
 - Passwords, AI API keys, and OAuth refresh tokens are now actually saved to
   the macOS Keychain, via `security`, the same way Linux already uses
   `secret-tool`. Previously macOS had no working backend and every secret
@@ -70,6 +76,9 @@ All notable changes to TideMail are documented in this file.
   its related control receives focus, making active guidance easier to pick out.
 
 ### Fixed
+
+- Attachment filenames decode MIME encoded words, including in cached mail, and
+  preserve Unicode when saved without splitting UTF-8 characters during truncation.
 
 - Editing an unconfirmed ("uncertain") delivery in the Outbox now asks first,
   the same way retrying one already did — it used to silently turn into a

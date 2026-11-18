@@ -387,6 +387,12 @@ sender, each entry also shows its real destination host in parentheses, and a la
 that names a different site than the link goes to (for example "paypal.com" over a
 link to another domain) is marked with `!`.
 
+Button-style links in HTML bodies, such as `[Confirm your email]`, are terminal
+hyperlinks (OSC 8), like URLs in plain-text bodies, so a terminal that supports
+them can open the destination with its own Ctrl+click. A button points at the same
+destination as its LINKS entry; a label that wraps onto a second line is linked on both. Text that merely looks like a button, such as `[Open]` typed in a sentence, is never linked. TideMail itself still never opens a link from a body click, and
+the plain UI and `filter_links` emit no body hyperlinks.
+
 ### Managing folders
 
 Gmail's standard folders appear in the System section: Sent Mail, Drafts, All
@@ -682,9 +688,16 @@ target. Mail text drops bare carriage returns while retaining CRLF line breaks.
 
 ## Writing mail
 
+Attachment filenames encoded as MIME words are decoded for display, including
+names in older cached mail. Saving attachments with `Ctrl+D` keeps Chinese and
+other Unicode letters, digits, and combining marks. Long filenames are shortened
+at a valid UTF-8 boundary, retaining short extensions.
+
 Press `c` to compose a message, or `r` to reply and `Ctrl+R` to reply all (from the
 message list or content pane). Reply all puts the sender (or Reply-To) in To and the
-other recipients in Cc, leaving out your own addresses. Recipient lines too long for
+other recipients in Cc, leaving out your own addresses. Recipient names, including
+Chinese and other non-ASCII names, stay readable in replies; names containing
+commas are quoted to keep the address valid. Recipient lines too long for
 the field scroll sideways as you type or move the cursor. TideMail
 saves your work to the sending account's Drafts folder as you type. Open Drafts
 and press `Enter` to continue writing, or `d` to delete a draft. The preview pane
