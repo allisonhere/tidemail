@@ -449,6 +449,7 @@ func TestAccountManagerBareTTypesIntoFocusedField(t *testing.T) {
 		{"smtp host", amFieldSMTPHost, func(am AccountManager) string { return am.smtpHostInput.Value() }},
 		{"smtp port", amFieldSMTPPort, func(am AccountManager) string { return am.smtpPortInput.Value() }},
 		{"username", amFieldUser, func(am AccountManager) string { return am.userInput.Value() }},
+		{"smtp user", amFieldSMTPUser, func(am AccountManager) string { return am.smtpUserInput.Value() }},
 		{"password", amFieldPass, func(am AccountManager) string { return am.passInput.Value() }},
 		{"from", amFieldFrom, func(am AccountManager) string { return am.fromInput.Value() }},
 	}

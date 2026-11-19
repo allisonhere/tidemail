@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"mime"
 	"mime/multipart"
@@ -231,6 +232,74 @@ func TestSendSTARTTLS_NoTLS(t *testing.T) {
 		t.Fatalf("setup/upload deadlines: %v", recording.deadlines)
 	}
 	<-done
+}
+
+// TestSendSTARTTLS_AuthUsesSMTPUserOverride guards the shared-mailbox case from
+// issue #151: IMAP logs in as User (the delegated shared address), but SMTP
+// must authenticate as SMTPUser (the account the credentials actually belong
+// to) when it is set.
+func TestSendSTARTTLS_AuthUsesSMTPUserOverride(t *testing.T) {
+	server, clientConn := net.Pipe()
+
+	var authPayload string
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		server.Write([]byte("220 localhost ESMTP\r\n")) //nolint:errcheck
+		buf := make([]byte, 1024)
+
+		server.Read(buf)
+		server.Write([]byte("250-Hello\r\n250 AUTH PLAIN\r\n")) //nolint:errcheck
+
+		// AUTH PLAIN <base64>; decode to check which username was sent.
+		n, _ := server.Read(buf)
+		line := strings.TrimSpace(string(buf[:n]))
+		fields := strings.Fields(line)
+		if len(fields) == 3 {
+			if decoded, err := base64.StdEncoding.DecodeString(fields[2]); err == nil {
+				authPayload = string(decoded)
+			}
+		}
+		server.Write([]byte("235 Authentication successful\r\n")) //nolint:errcheck
+
+		server.Read(buf)
+		server.Write([]byte("250 OK\r\n")) //nolint:errcheck
+		server.Read(buf)
+		server.Write([]byte("250 OK\r\n")) //nolint:errcheck
+		server.Read(buf)
+		server.Write([]byte("354 Start mail input\r\n")) //nolint:errcheck
+		server.Read(buf)
+		server.Write([]byte("250 OK\r\n")) //nolint:errcheck
+
+		server.Close()
+	}()
+
+	oldDial := smtpDial
+	oldClient := smtpNewClient
+	defer func() {
+		smtpDial = oldDial
+		smtpNewClient = oldClient
+	}()
+	smtpDial = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		return clientConn, nil
+	}
+	smtpNewClient = func(conn net.Conn, host string) (*smtp.Client, error) {
+		return smtp.NewClient(conn, host)
+	}
+
+	err := sendSTARTTLS(context.Background(), "localhost:587", config.AccountConfig{
+		User:     "shared@example.com",
+		SMTPUser: "me@example.com",
+		Password: "pass",
+	}, "shared@example.com", []string{"bob@x"}, []byte("Subject: Hello\r\n\r\nBody"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-done
+
+	if !strings.Contains(authPayload, "me@example.com") || strings.Contains(authPayload, "shared@example.com") {
+		t.Fatalf("expected AUTH PLAIN to use smtp_user override, got payload %q", authPayload)
+	}
 }
 
 // TestSendSTARTTLS_StaleConnectionTimesOut guards against a regression where a

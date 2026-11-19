@@ -272,6 +272,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{keys.OAuthSignIn.Help().Key, "sign in (Gmail / Outlook provider with Auth: OAuth)"},
 				{"From", "blank sends as the username; a display name needs an address: Name <you@example.com>"},
 				{"Email Alias", "comma-separated extra sending addresses"},
+				{"SMTP User", "overrides the login for SMTP only (IMAP unaffected); blank falls back to Email / login — for a delegated/shared mailbox"},
 				{"Signature", "enter starts a new line in the account form; tab moves on"},
 				{"HTML Signature", "optional .html file for the HTML part; " + keys.AttachFile.Help().Key + " browses"},
 				{"Auth row", "when available, Gmail/Outlook: ‹ / › picks App password or OAuth sign-in"},

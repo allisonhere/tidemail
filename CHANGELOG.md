@@ -16,6 +16,11 @@ All notable changes to TideMail are documented in this file.
   and reports when cached contacts are kept after a failed scan. TideMail's
   original local contacts remain a separate address book (`L`).
 
+- An account can set an **SMTP User** (`smtp_user`) that overrides its login for
+  SMTP only, falling back to the account's login when blank. This lets a
+  Microsoft 365 shared mailbox accessed by delegation keep its shared address
+  for IMAP while authenticating SMTP as the account the credentials actually
+  belong to. (#151)
 - Use Read or click a Linux new-mail notification to open its first message in the reader.
   On Hyprland, the identified TideMail terminal comes forward across workspaces.
   Composers and dialogs remain intact; navigation waits until they close.

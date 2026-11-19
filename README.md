@@ -556,6 +556,15 @@ server's IMAP/SMTP hostname and your normal username and password; on-prem
 Exchange still accepts basic auth over TLS. TideMail cannot connect to an on-prem
 server that has disabled basic auth and requires NTLM or Kerberos (GSSAPI).
 
+### Shared mailboxes (delegated access)
+
+A Microsoft 365 shared mailbox you access by delegation (no login of its own)
+can accept its own address for IMAP while requiring your own account's login
+for SMTP. Set **SMTP User** in the account form (or `smtp_user` in
+`config.toml`) to your login; it overrides `user` for SMTP only, so IMAP keeps
+using the shared address. Leave it blank for ordinary accounts — it falls back
+to `user`.
+
 ```toml
 theme = "lavender-fields-forever"
 # The account new messages are sent from, and the one focused at startup.

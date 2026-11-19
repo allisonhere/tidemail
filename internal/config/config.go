@@ -375,7 +375,12 @@ type AccountConfig struct {
 	SMTPTLS    bool   `toml:"smtp_tls"`
 	User       string `toml:"user"`
 	Password   string `toml:"password"`
-	From       string `toml:"from"`
+	// SMTPUser overrides User as the SMTP login only; IMAP always logs in as
+	// User. Some providers (e.g. Microsoft 365 shared mailboxes accessed by
+	// delegation) accept the shared address for IMAP but require the SMTP
+	// login of the account the credentials actually belong to.
+	SMTPUser string `toml:"smtp_user,omitempty"`
+	From     string `toml:"from"`
 	// Aliases are additional sending identities on this account's SMTP connection.
 	Aliases string `toml:"aliases,omitempty"`
 	// SyncMinutes selects how the account refreshes in the background:
@@ -407,6 +412,15 @@ type AccountConfig struct {
 // UsesOAuth2 returns true if this account opted into OAuth2 auth.
 func (a AccountConfig) UsesOAuth2() bool {
 	return a.AuthMethod == AuthOAuth2
+}
+
+// SMTPLoginUser returns the login name to authenticate SMTP with: SMTPUser
+// when set, otherwise User. IMAP always uses User directly.
+func (a AccountConfig) SMTPLoginUser() string {
+	if a.SMTPUser != "" {
+		return a.SMTPUser
+	}
+	return a.User
 }
 
 // UsesGoogleOAuth2 reports whether the account authenticates with Gmail XOAUTH2.
