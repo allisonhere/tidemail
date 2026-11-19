@@ -52,6 +52,18 @@ func TestUsesOAuth2ProviderGates(t *testing.T) {
 	}
 }
 
+func TestSMTPLoginUserFallsBackToUser(t *testing.T) {
+	shared := AccountConfig{User: "shared@example.com"}
+	if got := shared.SMTPLoginUser(); got != "shared@example.com" {
+		t.Fatalf("SMTPLoginUser() = %q, want fallback to User", got)
+	}
+
+	delegated := AccountConfig{User: "shared@example.com", SMTPUser: "me@example.com"}
+	if got := delegated.SMTPLoginUser(); got != "me@example.com" {
+		t.Fatalf("SMTPLoginUser() = %q, want SMTPUser override", got)
+	}
+}
+
 func TestMigrateAuthMethod(t *testing.T) {
 	none := func(id, legacyName string) string { return "" }
 	pw := func(id, legacyName string) string { return "pw" }

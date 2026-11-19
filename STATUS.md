@@ -15,6 +15,11 @@ Unreleased.
 
 ## Working
 
+- **SMTP User override**: an account can set `smtp_user` (**SMTP User** in the
+  account form, under Advanced) to authenticate SMTP as a different login than
+  IMAP, falling back to the account's login when blank — for shared mailboxes
+  accessed by delegation.
+
 - **HTML signature file**: an account can point at an `.html` file used as the
   signature in the HTML part (text signature stays the plain part), with a
   file-browser key (`Alt+F`) in the account form. The file is vetted (HTML only,

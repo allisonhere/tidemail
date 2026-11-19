@@ -263,6 +263,7 @@ const (
 	amFieldSignature
 	amFieldSignatureHTML
 	amFieldSyncInterval
+	amFieldSMTPUser
 	amFieldCount
 )
 
@@ -318,6 +319,7 @@ type AccountManager struct {
 	smtpPortInput textinput.Model
 	smtpTLS       bool
 	userInput     textinput.Model
+	smtpUserInput textinput.Model
 	passInput     textinput.Model
 	fromInput     textinput.Model
 	aliasesInput  textinput.Model
@@ -391,6 +393,7 @@ func NewAccountManager(database *db.DB) AccountManager {
 	am.smtpHostInput = newAMInput("smtp.example.com", false)
 	am.smtpPortInput = newAMInput("587", false)
 	am.userInput = newAMInput("you@example.com", false)
+	am.smtpUserInput = newAMInput("same as email / login", false)
 	am.passInput = newAMInput("password", true)
 	am.fromInput = newAMInput("Your Name <you@example.com>", false)
 	am.aliasesInput = newAMInput("Name <alias@example.com>,", false)
@@ -448,6 +451,7 @@ func (am *AccountManager) focusField(f amField) {
 	am.smtpHostInput.Blur()
 	am.smtpPortInput.Blur()
 	am.userInput.Blur()
+	am.smtpUserInput.Blur()
 	am.passInput.Blur()
 	am.fromInput.Blur()
 	am.syncInput.Blur()
@@ -470,6 +474,8 @@ func (am *AccountManager) focusField(f amField) {
 		am.smtpPortInput.Focus()
 	case amFieldUser:
 		am.userInput.Focus()
+	case amFieldSMTPUser:
+		am.smtpUserInput.Focus()
 	case amFieldPass:
 		am.passInput.Focus()
 	case amFieldOAuthCode:
@@ -503,6 +509,7 @@ func (am *AccountManager) populateFormFrom(acfg config.AccountConfig) {
 	am.smtpPortInput.SetValue(portFieldValue(acfg.SMTPPort))
 	am.smtpTLS = acfg.SMTPTLS
 	am.userInput.SetValue(acfg.User)
+	am.smtpUserInput.SetValue(acfg.SMTPUser)
 	am.passInput.SetValue(acfg.Password)
 	am.fromInput.SetValue(acfg.From)
 	am.aliasesInput.SetValue(acfg.Aliases)
@@ -536,6 +543,7 @@ func (am AccountManager) buildCfg() config.AccountConfig {
 		SMTPPort:          smtpPort,
 		SMTPTLS:           am.smtpTLS,
 		User:              strings.TrimSpace(am.userInput.Value()),
+		SMTPUser:          strings.TrimSpace(am.smtpUserInput.Value()),
 		Password:          am.passInput.Value(),
 		From:              strings.TrimSpace(am.fromInput.Value()),
 		Aliases:           strings.Join(splitAccountAddresses(am.aliasesInput.Value()), ", "),
@@ -929,6 +937,8 @@ func (am *AccountManager) updateFocusedInput(msg tea.Msg) tea.Cmd {
 		if am.userInput.Value() != before && strings.TrimSpace(am.userInput.Value()) != am.discoveredFor {
 			am.clearDiscoveredSettings()
 		}
+	case amFieldSMTPUser:
+		am.smtpUserInput, cmd = am.smtpUserInput.Update(msg)
 	case amFieldPass:
 		am.passInput, cmd = am.passInput.Update(msg)
 	case amFieldOAuthCode:
@@ -1115,8 +1125,8 @@ func (am AccountManager) updateForm(msg tea.Msg, keys KeyMap) (AccountManager, t
 			if am.focusedField == amFieldOAuthCode {
 				return am.submitOAuthCode()
 			}
-			if am.focusedField == amFieldSyncInterval {
-				// submit
+			if am.focusedField == amFieldSyncInterval || am.focusedField == amFieldSMTPUser {
+				// submit — SMTP User is the last row; Sync kept its own submit-on-enter too.
 				return am.submitForm()
 			}
 			am.advanceField(1)
@@ -1970,6 +1980,7 @@ func (am *AccountManager) resetForm() {
 	am.smtpPortInput.SetValue("587")
 	am.smtpTLS = true
 	am.userInput.Reset()
+	am.smtpUserInput.Reset()
 	am.passInput.Reset()
 	am.fromInput.Reset()
 	am.aliasesInput.Reset()
@@ -2509,6 +2520,11 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	addControl(amFieldSyncInterval, row("Refresh", am.syncInput, amFieldSyncInterval))
 	addHint("0 = push (IMAP IDLE) · -1 = manual only", am.focusedField == amFieldSyncInterval)
 	addHint("N = poll every N minutes", am.focusedField == amFieldSyncInterval)
+
+	addSection("Advanced")
+	addControl(amFieldSMTPUser, row("SMTP User", am.smtpUserInput, amFieldSMTPUser))
+	addHint("Overrides the account's login for SMTP only; IMAP is unaffected", am.focusedField == amFieldSMTPUser)
+	addHint("e.g. a delegated/shared mailbox where IMAP and SMTP logins differ", am.focusedField == amFieldSMTPUser)
 
 	statusLine := am.renderStatusBar(width, chrome)
 	if am.busyMsg != "" {

@@ -1071,6 +1071,15 @@ signature = "Alice\nSent with TideMail"
 sync_minutes = 0  # 0 = push (IDLE), N = poll every N min, -1 = manual only
 ```
 
+`smtp_user`, set from the **SMTP User** row under Advanced in the account
+form, overrides `user` for SMTP authentication only — IMAP always logs in as
+`user`. Leave it blank and TideMail reuses `user` for both. This is for the
+rare account where the two differ, such as a Microsoft 365 shared mailbox
+accessed by delegation: IMAP accepts the shared address, but SMTP must
+authenticate as the delegate's own account (`user = "shared@example.com"`,
+`smtp_user = "me@example.com"`), the same split Thunderbird and Outlook expose
+as a separate outgoing-server login.
+
 `from` is the **From** row in the account form. Give it an address —
 `alice@example.com` or `Alice <alice@example.com>` — or leave it blank to send
 as `user`, which works only when `user` is itself an address. A display name on

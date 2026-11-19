@@ -199,12 +199,12 @@ func smtpAuth(ctx context.Context, cfg config.AccountConfig, host string) (smtp.
 	case cfg.UsesMicrosoftOAuth2():
 		tok, err = auth.MSAccessToken(ctx, cfg.ClientID, cfg.SessionKey(), cfg.RefreshToken)
 	default:
-		return smtp.PlainAuth("", cfg.User, cfg.Password, host), nil
+		return smtp.PlainAuth("", cfg.SMTPLoginUser(), cfg.Password, host), nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("oauth2: %w", err)
 	}
-	return &xoauth2Auth{user: cfg.User, token: tok}, nil
+	return &xoauth2Auth{user: cfg.SMTPLoginUser(), token: tok}, nil
 }
 
 func sendSTARTTLS(ctx context.Context, addr string, cfg config.AccountConfig, from string, to []string, raw []byte) error {
