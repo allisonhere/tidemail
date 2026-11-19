@@ -330,6 +330,25 @@ func TestDarwinLookupReadsAValueStoredRaw(t *testing.T) {
 	}
 }
 
+// A secret that itself starts with the encoding prefix is encoded whole like
+// any other, so lookup strips only the prefix store added and returns the
+// secret unchanged, whether or not what follows its own prefix is valid base64.
+func TestDarwinStoreLookupRoundTripsASecretWithTheEncodingPrefix(t *testing.T) {
+	fakeSecurity(t)
+	for _, secret := range []string{
+		securityValuePrefix + "cGE1NQ==",
+		securityValuePrefix + "not base64!",
+		securityValuePrefix,
+	} {
+		if err := storeSecretFor("darwin", "account:acct-1", secret); err != nil {
+			t.Fatalf("storeSecretFor(darwin, %q) failed: %v", secret, err)
+		}
+		if got := lookupSecretFor("darwin", "account:acct-1"); got != secret {
+			t.Errorf("round trip = %q, want %q", got, secret)
+		}
+	}
+}
+
 // `security -i` splits a command line over securityLineMax bytes and stores
 // its first part truncated. An OAuth refresh token far past Microsoft's
 // guidance (plan for at least 1000 characters) still fits; one that can't is
