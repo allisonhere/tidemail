@@ -8,14 +8,6 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
-- A plugin can provide a shared, editable local address book through the new
-  `contacts_write` permission and `contacts.list` / `contacts.save` methods.
-  TideContacts supplies a simple People view (`C`) with add/edit/search,
-  compose, recent correspondence, profile settings and bundled Advanced CRM.
-  Folder-owned records stay read-only; `r` refreshes connected address books
-  and reports when cached contacts are kept after a failed scan. TideMail's
-  original local contacts remain a separate address book (`L`).
-
 - An account can set an **SMTP User** (`smtp_user`) that overrides its login for
   SMTP only, falling back to the account's login when blank. This lets a
   Microsoft 365 shared mailbox accessed by delegation keep its shared address

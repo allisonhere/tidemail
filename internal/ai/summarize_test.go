@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -166,8 +167,11 @@ func TestGeminiSummarize_OK(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("expected POST, got %s", r.Method)
 		}
-		if !strings.HasPrefix(r.URL.RawQuery, "key=AIza") {
-			t.Fatalf("missing key in query: %s", r.URL.RawQuery)
+		if r.URL.RawQuery != "" {
+			t.Fatalf("key leaked into query string: %s", r.URL.RawQuery)
+		}
+		if got := r.Header.Get("x-goog-api-key"); got != "AIzatest" {
+			t.Fatalf("missing/wrong key header: %q", got)
 		}
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]any{
@@ -180,7 +184,7 @@ func TestGeminiSummarize_OK(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	g := &gemini{key: "AIzatest", apiURL: srv.URL + "?key="}
+	g := &gemini{key: "AIzatest", apiURL: srv.URL}
 	got, err := g.Summarize(context.Background(), "Test Title", "Test content")
 	if err != nil {
 		t.Fatal(err)
@@ -199,7 +203,7 @@ func TestGeminiSummarize_APIError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	g := &gemini{key: "AIzabad", apiURL: srv.URL + "?key="}
+	g := &gemini{key: "AIzabad", apiURL: srv.URL}
 	_, err := g.Summarize(context.Background(), "T", "C")
 	if err == nil || !strings.Contains(err.Error(), "API key not valid") {
 		t.Fatalf("expected API error, got %v", err)
@@ -215,10 +219,33 @@ func TestGeminiSummarize_EmptyResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	g := &gemini{key: "AIzatest", apiURL: srv.URL + "?key="}
+	g := &gemini{key: "AIzatest", apiURL: srv.URL}
 	_, err := g.Summarize(context.Background(), "T", "C")
 	if err == nil || !strings.Contains(err.Error(), "empty response") {
 		t.Fatalf("expected empty response error, got %v", err)
+	}
+}
+
+func TestGeminiSummarize_NetworkErrorRedactsKey(t *testing.T) {
+	// An unreachable server triggers a *url.Error, which normally stringifies
+	// with the full request URL. The key must never appear in that text.
+	g := &gemini{key: "AIzaSECRET", apiURL: "http://127.0.0.1:1"}
+	_, err := g.Summarize(context.Background(), "T", "C")
+	if err == nil {
+		t.Fatal("expected a network error")
+	}
+	if strings.Contains(err.Error(), "AIzaSECRET") {
+		t.Fatalf("API key leaked into error: %v", err)
+	}
+}
+
+func TestRedactKey(t *testing.T) {
+	err := redactKey(fmt.Errorf(`Post "http://x?key=AIzaSECRET": dial tcp: refused`), "AIzaSECRET")
+	if strings.Contains(err.Error(), "AIzaSECRET") {
+		t.Fatalf("key not redacted: %v", err)
+	}
+	if redactKey(nil, "AIzaSECRET") != nil {
+		t.Fatal("expected nil error to stay nil")
 	}
 }
 

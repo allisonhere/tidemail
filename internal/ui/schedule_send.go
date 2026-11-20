@@ -12,6 +12,15 @@ import (
 
 const scheduledSendTimeLayout = "3:04 PM"
 
+// localMidnightTomorrow returns midnight, local time, on the day after now.
+// now.AddDate(0, 0, 1).Truncate(24*time.Hour) would round by absolute
+// duration since the Go zero time — a UTC-aligned boundary — not the local
+// calendar day, so it can land on the wrong local date.
+func localMidnightTomorrow(now time.Time) time.Time {
+	next := now.AddDate(0, 0, 1)
+	return time.Date(next.Year(), next.Month(), next.Day(), 0, 0, 0, 0, time.Local)
+}
+
 type scheduleChoice struct{ title string }
 
 func (c scheduleChoice) Title() string       { return c.title }
@@ -64,7 +73,7 @@ func (m Model) handleScheduleSend(msg tea.Msg) (tea.Model, tea.Cmd) {
 			choice, _ := m.schedulePicker.SelectedItem().(scheduleChoice)
 			if choice.title == "Custom date and time" {
 				m.scheduleCustom = true
-				m.scheduleCalendar = time.Now().AddDate(0, 0, 1).Truncate(24 * time.Hour)
+				m.scheduleCalendar = localMidnightTomorrow(time.Now())
 				m.scheduleDate = time.Time{}
 				m.scheduleSendInput.SetValue("9:00 AM")
 				return m, nil
