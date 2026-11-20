@@ -15,7 +15,7 @@
 # redraw, not exit mid-frame. Every step reports its own status instead.
 set -uo pipefail
 
-DEPLOY_SCRIPT_VERSION="2.2.0"
+DEPLOY_SCRIPT_VERSION="2.3.0"
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SELF="$PROJECT_DIR/$(basename "${BASH_SOURCE[0]}")"
@@ -54,6 +54,15 @@ ACCENT_RGB="94;196;215"   # the banner's gradient runs from ACCENT_RGB…
 ACCENT2_RGB="137;180;250" # …to ACCENT2_RGB
 AUR_HOST="aur.archlinux.org"
 GITHUB_FILE_LIMIT_BYTES=$((100 * 1024 * 1024))
+# Untracked top-level directories that never belong in a release commit, even
+# when .gitignore forgot them: build caches and scratch space. Any other
+# untracked group is also held back when it is big (see below).
+COMMIT_REFUSE_DIRS=(.test-tmp node_modules .gocache .gomodcache .cache tmp)
+COMMIT_SOFT_LIMIT_MB=10   # an untracked group over this size is held back
+COMMIT_SOFT_LIMIT_FILES=200   # …or one with more files than this
+# Untracked files whose name matches are held back too: working notes and
+# editor or merge leftovers, not part of a release.
+COMMIT_REFUSE_FILES=('HANDOFF*.md' 'BUG-REVIEW*.md' '*.orig' '*.rej' '*.log' '*.swp')
 # How long to wait for the release workflow to publish its assets.
 ASSET_WAIT_SECONDS=900
 
@@ -497,6 +506,38 @@ remote_latest_tag() {
     grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
 }
 
+# suggest_action names the menu item that comes next, shown with a ★. It reads
+# local state only — it runs on every refresh, so it must never touch the
+# network. Once a version has been tagged the later steps (assets, AUR) are
+# followed through what this session has already done.
+ST_SUGGEST=""
+suggest_action() {
+  ST_SUGGEST=""
+  if [ -z "$VERSION" ] || [ "$VERSION_SOURCE" = "latest tag" ]; then
+    ST_SUGGEST="act_full_release"
+    return 0
+  fi
+  if notes_from_changelog && ! changelog_has_section "$VERSION"; then
+    ST_SUGGEST="act_notes"
+    return 0
+  fi
+  local tracked_dirty
+  tracked_dirty=$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=no 2>/dev/null | wc -l | tr -d ' ')
+  if [ "${tracked_dirty:-0}" -gt 0 ]; then
+    ST_SUGGEST="act_commit"
+  elif [ "${ST_AHEAD:-0}" -gt 0 ] 2>/dev/null; then
+    ST_SUGGEST="act_push"
+  elif ! git -C "$PROJECT_DIR" rev-parse -q --verify "refs/tags/$VERSION" >/dev/null 2>&1; then
+    ST_SUGGEST="act_release"
+  elif [ "${RESULT[act_aur_publish]:-}" = "ok" ]; then
+    ST_SUGGEST=""
+  elif [ "${RESULT[act_wait_assets]:-}" = "ok" ]; then
+    ST_SUGGEST="act_aur_publish"
+  else
+    ST_SUGGEST="act_wait_assets"
+  fi
+}
+
 refresh_status() {
   read_current_tag
   suggest_next_patch
@@ -506,6 +547,7 @@ refresh_status() {
   ST_BRANCH=$(git -C "$PROJECT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
   ST_DIRTY=$(git -C "$PROJECT_DIR" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
   ST_AHEAD=$(ahead_of_origin)
+  suggest_action
   if command -v go >/dev/null 2>&1; then
     ST_GO=$(go version 2>/dev/null | awk '{print $3}' | sed 's/^go//')
   else
@@ -692,8 +734,26 @@ read_key() {
   [ "$rc" -gt 128 ] && return 2
   [ "$rc" -ne 0 ] && return 1
   if [ "$k" = $'\033' ]; then
-    if IFS= read -rsn2 -t 0.05 rest 2>/dev/null; then
-      k+="$rest"
+    # An escape sequence arrives in one burst. Take all of it — a CSI or SS3
+    # sequence ends at a byte in @–~ — so none is left behind to be read as
+    # stray keypresses by the next prompt. (Reading a fixed two bytes did that
+    # for the longer sequences some terminals send, and a prompt that only
+    # accepts a few letters then seemed to loop forever.)
+    local c ord n=0 esc=$'\033'
+    if IFS= read -rsn1 -t 0.05 c 2>/dev/null; then
+      k+="$c"
+      if [ "$c" = "[" ] || [ "$c" = "O" ]; then
+        while [ "$n" -lt 24 ] && IFS= read -rsn1 -t 0.05 c 2>/dev/null; do
+          k+="$c"
+          n=$((n + 1))
+          printf -v ord '%d' "'$c" 2>/dev/null || ord=0
+          [ "$ord" -ge 64 ] && [ "$ord" -le 126 ] && break
+        done
+      fi
+    fi
+    # A modified arrow (ESC [ 1 ; 5 A) is still an arrow.
+    if [[ $k =~ ^${esc}\[1\;[0-9]+([ABCD])$ ]]; then
+      k="${esc}[${BASH_REMATCH[1]}"
     fi
   fi
   READ_KEY_VALUE="$k"
@@ -959,12 +1019,18 @@ draw_menu() {
       ok)   badge=" ${GREEN}✓${NC}" ;;
       fail) badge=" ${RED}✗${NC}" ;;
     esac
+    # ★ marks the step that comes next, so a release can be followed by
+    # pressing enter until the stars run out.
+    local star=""
+    if [ -n "$ST_SUGGEST" ] && [ "${MENU_ACTION[$i]}" = "$ST_SUGGEST" ]; then
+      star=" ${ACCENT}★${NC}"
+    fi
     if [ "$i" -eq "$CURSOR" ]; then
       local hint=""
       [ -n "${MENU_HINT[$i]}" ] && hint="  ${DIM}${MENU_HINT[$i]}${NC}"
-      frame_line "${marker}${ACCENT}▸${NC} ${BOLD}${MENU_LABEL[$i]}${NC}${badge}${hint}"
+      frame_line "${marker}${ACCENT}▸${NC} ${BOLD}${MENU_LABEL[$i]}${NC}${badge}${star}${hint}"
     else
-      frame_line "${marker}  ${MENU_LABEL[$i]}${badge}"
+      frame_line "${marker}  ${MENU_LABEL[$i]}${badge}${star}"
     fi
   done
 }
@@ -1016,7 +1082,7 @@ draw_footer() {
     frame_line " ${DIM}${PROMPT_KEYS}${NC}"
     return 0
   fi
-  local hint=" ↑↓/jk move · enter run · d dry-run · r refresh · c clear · q quit"
+  local hint=" ↑↓/jk move · enter run · ★ next step · d dry-run · r refresh · c clear · q quit"
   if [ "${#hint}" -gt "$COLS" ]; then
     hint=" ↑↓ move · enter run · q quit"
   fi
@@ -1138,6 +1204,15 @@ readiness_checks() {
   else
     check_line ok "the working tree is clean"
   fi
+  untracked_scan
+  if [ "${#UNTRACKED_HELD[@]}" -gt 0 ]; then
+    local held_names="" held_line held_label held_bytes
+    for held_line in "${UNTRACKED_HELD[@]}"; do
+      IFS=$'\t' read -r held_label _ held_bytes _ <<<"$held_line"
+      held_names+="${held_names:+, }${held_label} ($(human_size "$held_bytes"))"
+    done
+    check_line warn "untracked scratch the release commit will leave out: ${held_names}"
+  fi
   if [ -z "$ST_AHEAD" ]; then
     check_line warn "$ST_BRANCH has no upstream to push to"
   elif [ "$ST_AHEAD" -gt 0 ]; then
@@ -1209,6 +1284,30 @@ act_bump() {
   fetch_tags
   read_current_tag
   log_info "latest release: ${GREEN}${CURRENT_TAG}${NC}"
+
+  # Retrying after a later step failed: the version chosen earlier this session
+  # is still the release in progress. Asking again made every retry a fresh
+  # bump — and each one promoted the changelog under yet another heading.
+  if [ "$VERSION_SOURCE" = "bumped" ] && [ -n "$VERSION" ] &&
+      ! git -C "$PROJECT_DIR" rev-parse -q --verify "refs/tags/$VERSION" >/dev/null &&
+      semver_gt "$VERSION" "$CURRENT_TAG"; then
+    if tui_confirm "Keep releasing $VERSION?" y; then
+      log_ok "version stays ${GREEN}${VERSION}${NC}"
+      return 0
+    fi
+  fi
+
+  # What a release would carry, so the choice below is an informed one.
+  if [ "$CURRENT_TAG" != "v0.0.0" ]; then
+    local since
+    since=$(git -C "$PROJECT_DIR" rev-list --count "${CURRENT_TAG}..HEAD" 2>/dev/null)
+    [ -n "$since" ] && log_info "${since} commit(s) since ${CURRENT_TAG}"
+  fi
+  if notes_from_changelog; then
+    local entries
+    entries=$(changelog_section "Unreleased" | grep -cE '^- ')
+    log_info "${entries} unreleased changelog entr$([ "$entries" = 1 ] && echo y || echo ies)"
+  fi
 
   # A version given with --release is the choice already; check it like any
   # other instead of asking again and quietly replacing it.
@@ -1332,6 +1431,48 @@ changelog_promote() {
   rm -f "$tmp"
 }
 
+# changelog_pending_section prints the newest "## vX.Y.Z" heading that names a
+# release which does not exist yet: a section promoted by an earlier attempt
+# that never got as far as the tag.
+changelog_pending_section() {
+  read_current_tag
+  local h v
+  while IFS= read -r h; do
+    v=${h#\#\# }
+    git -C "$PROJECT_DIR" rev-parse -q --verify "refs/tags/$v" >/dev/null && continue
+    if semver_gt "$v" "$CURRENT_TAG"; then
+      printf '%s' "$v"
+      return 0
+    fi
+  done < <(grep -E '^## v[0-9]+\.[0-9]+\.[0-9]+$' "$PROJECT_DIR/CHANGELOG.md" 2>/dev/null)
+  return 1
+}
+
+# changelog_fold_back drops the "## VERSION" heading of a section that was never
+# released, so its entries sit under Unreleased again, ready to be promoted
+# under whichever version is chosen now.
+changelog_fold_back() {
+  local version=$1 tmp
+  if dry_run_blocks "fold '## $version' back into Unreleased in CHANGELOG.md"; then
+    return 0
+  fi
+  tmp=$(mktemp "${TMPDIR:-/tmp}/${BINARY_NAME}-changelog-XXXXXX")
+  # Drop the heading and the blank line under it, so the entries it held join
+  # Unreleased without leaving a double gap.
+  awk -v h="## $version" '
+    $0 == h { skip = 1; next }
+    skip && $0 == "" { skip = 0; next }
+    { skip = 0; print }
+  ' "$PROJECT_DIR/CHANGELOG.md" > "$tmp" || { rm -f "$tmp"; return 1; }
+  if grep -qx "## $version" "$tmp"; then
+    log_err "could not remove '## $version' — changelog left alone"
+    rm -f "$tmp"
+    return 1
+  fi
+  cat "$tmp" > "$PROJECT_DIR/CHANGELOG.md" || { rm -f "$tmp"; return 1; }
+  rm -f "$tmp"
+}
+
 changelog_preview() {
   local body count
   body=$(changelog_section "$1")
@@ -1358,6 +1499,18 @@ act_notes() {
     log_ok "CHANGELOG.md already documents $VERSION"
     changelog_preview "$VERSION"
     return 0
+  fi
+
+  local stale
+  if stale=$(changelog_pending_section) && [ "$stale" != "$VERSION" ]; then
+    log_warn "CHANGELOG.md already has an unreleased '## $stale' section from an earlier attempt"
+    if tui_confirm "Fold it back into Unreleased and release it all as $VERSION?" y; then
+      changelog_fold_back "$stale" || return 1
+      log_result "CHANGELOG.md: $stale folded back into Unreleased"
+    else
+      log_err "two unreleased sections would be published — sort the changelog out first"
+      return 1
+    fi
   fi
 
   local pending
@@ -1487,32 +1640,142 @@ act_build() {
 
 # ── Actions: git ─────────────────────────────────────────────────────────────
 
+human_size() {
+  awk -v b="${1:-0}" 'BEGIN {
+    if (b >= 1073741824) printf "%.1f GB", b / 1073741824
+    else if (b >= 1048576) printf "%.0f MB", b / 1048576
+    else if (b >= 1024) printf "%.0f KB", b / 1024
+    else printf "%d B", b }'
+}
+
+# untracked_scan sorts the untracked files into the ones a release commit may
+# take and the ones to hold back. `git add -A` took everything, which once put
+# 315 files of build scratch (124 MB) into a release commit. Files are judged
+# by their top-level directory: a known scratch directory, or a big one, is
+# held back whole; a working-notes file or a merge leftover is held back alone.
+UNTRACKED_INCLUDE=()      # files to add
+UNTRACKED_HELD_FILES=()   # files held back
+UNTRACKED_HELD=()         # "label<TAB>count<TAB>bytes<TAB>why", for display
+untracked_scan() {
+  UNTRACKED_INCLUDE=() UNTRACKED_HELD_FILES=() UNTRACKED_HELD=()
+  local -A cnt=() bytes=() why=()
+  local -a order=()
+  local f g sz d pat base
+  while IFS= read -r -d '' f; do
+    g=${f%%/*}
+    [ "$g" = "$f" ] || g="$g/"
+    [ -n "${cnt[$g]:-}" ] || order+=("$g")
+    sz=$(wc -c <"$PROJECT_DIR/$f" 2>/dev/null | tr -d ' ')
+    cnt[$g]=$((${cnt[$g]:-0} + 1))
+    bytes[$g]=$((${bytes[$g]:-0} + ${sz:-0}))
+  done < <(git -C "$PROJECT_DIR" ls-files --others --exclude-standard -z)
+
+  for g in "${order[@]}"; do
+    why[$g]=""
+    if [ "${g%/}" != "$g" ]; then
+      for d in "${COMMIT_REFUSE_DIRS[@]}"; do
+        [ "${g%/}" = "$d" ] && why[$g]="scratch or cache directory"
+      done
+    else
+      for pat in "${COMMIT_REFUSE_FILES[@]}"; do
+        # shellcheck disable=SC2254
+        case "$g" in $pat) why[$g]="looks like a working note or leftover" ;; esac
+      done
+    fi
+    if [ -z "${why[$g]}" ] && [ "${bytes[$g]}" -gt $((COMMIT_SOFT_LIMIT_MB * 1024 * 1024)) ]; then
+      why[$g]="over ${COMMIT_SOFT_LIMIT_MB} MB"
+    fi
+    if [ -z "${why[$g]}" ] && [ "${cnt[$g]}" -gt "$COMMIT_SOFT_LIMIT_FILES" ]; then
+      why[$g]="${cnt[$g]} files in one place"
+    fi
+    [ -z "${why[$g]}" ] ||
+      UNTRACKED_HELD+=("$(printf '%s\t%s\t%s\t%s' "$g" "${cnt[$g]}" "${bytes[$g]}" "${why[$g]}")")
+  done
+
+  while IFS= read -r -d '' f; do
+    g=${f%%/*}
+    [ "$g" = "$f" ] || g="$g/"
+    if [ -n "${why[$g]:-}" ]; then UNTRACKED_HELD_FILES+=("$f"); else UNTRACKED_INCLUDE+=("$f"); fi
+  done < <(git -C "$PROJECT_DIR" ls-files --others --exclude-standard -z)
+}
+
+# commit_message is what the release commit says. Only a version bumped in this
+# session may name a release: a version taken from the latest tag is the one
+# that already shipped, and "chore: release v1.9.1" on a commit made after
+# v1.9.1 is exactly the wrong thing to write.
+commit_message() {
+  if [ "$VERSION_SOURCE" = "bumped" ] || [ "$VERSION_SOURCE" = "--release" ]; then
+    COMMIT_MSG="chore: release $VERSION"
+    return 0
+  fi
+  tui_input "Commit message (no version bumped yet)" "chore: update"
+  COMMIT_MSG=$TUI_INPUT_VALUE
+}
+
+# show_held_untracked lists what untracked_scan held back, under a heading.
+show_held_untracked() {
+  log_warn "$1"
+  local line label n bytes why
+  for line in "${UNTRACKED_HELD[@]}"; do
+    IFS=$'\t' read -r label n bytes why <<<"$line"
+    log_detail "$(printf '%-22s %6s file(s)  %8s   %s' "$label" "$n" "$(human_size "$bytes")" "$why")"
+  done
+}
+
 act_commit() {
   log_step "Commit changes"
-  local changes
-  changes=$(git -C "$PROJECT_DIR" status --porcelain)
-  if [ -z "$changes" ]; then
+  local tracked
+  tracked=$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=no)
+  untracked_scan
+  local new_n=${#UNTRACKED_INCLUDE[@]} held_n=${#UNTRACKED_HELD[@]}
+  if [ -z "$tracked" ] && [ "$new_n" -eq 0 ]; then
+    log_info "nothing to commit"
+    # Scratch alone is not a reason to ask for a message and then do nothing.
+    [ "$held_n" -gt 0 ] && show_held_untracked "the only untracked files look like scratch, so they stay out:"
+    return 0
+  fi
+  commit_message
+  local msg=$COMMIT_MSG count=0
+  [ -n "$tracked" ] && count=$(printf '%s\n' "$tracked" | wc -l | tr -d ' ')
+
+  # What goes into the commit is shown first, in three parts: changes to files
+  # git already tracks, new files, and anything held back.
+  local line shown=0
+  if [ "$count" -gt 0 ]; then
+    log_info "$count change(s) to tracked files:"
+    while IFS= read -r line; do
+      [ "$shown" -ge 12 ] && { log_detail "… and $((count - shown)) more"; break; }
+      log_detail "$line"
+      shown=$((shown + 1))
+    done <<<"$tracked"
+  fi
+  if [ "$new_n" -gt 0 ]; then
+    log_info "$new_n new file(s) to add:"
+    shown=0
+    for line in "${UNTRACKED_INCLUDE[@]}"; do
+      [ "$shown" -ge 8 ] && { log_detail "… and $((new_n - shown)) more"; break; }
+      log_detail "?? $line"
+      shown=$((shown + 1))
+    done
+  fi
+  [ "$held_n" -gt 0 ] && show_held_untracked "held back — these look like scratch, not part of a release:"
+
+  if dry_run_blocks "stage and commit $((count + new_n)) change(s) as \"$msg\""; then
+    return 0
+  fi
+  if [ "$held_n" -gt 0 ] && tui_confirm "Include the ${#UNTRACKED_HELD_FILES[@]} held-back file(s) too?" n; then
+    UNTRACKED_INCLUDE+=("${UNTRACKED_HELD_FILES[@]}")
+  fi
+  local total=$((count + ${#UNTRACKED_INCLUDE[@]}))
+  if [ "$total" -eq 0 ]; then
     log_info "nothing to commit"
     return 0
   fi
-  ensure_version
-  local count
-  count=$(printf '%s\n' "$changes" | wc -l | tr -d ' ')
-  # Everything in the tree goes into one release commit, so it is shown first:
-  # an unrelated half-finished change should be noticed here, not in the tag.
-  log_info "$count change(s) would go into \"chore: release $VERSION\":"
-  local line shown=0
-  while IFS= read -r line; do
-    [ "$shown" -ge 12 ] && { log_detail "… and $((count - shown)) more"; break; }
-    log_detail "$line"
-    shown=$((shown + 1))
-  done <<<"$changes"
-
-  if dry_run_blocks "stage and commit $count change(s) as \"chore: release $VERSION\""; then
-    return 0
+  tui_confirm "Commit $total change(s) as \"$msg\"?" y || { log_info "nothing committed"; return 1; }
+  [ "$count" -gt 0 ] && git -C "$PROJECT_DIR" add -u
+  if [ "${#UNTRACKED_INCLUDE[@]}" -gt 0 ]; then
+    printf '%s\0' "${UNTRACKED_INCLUDE[@]}" | xargs -0 git -C "$PROJECT_DIR" add --
   fi
-  tui_confirm "Commit these $count change(s)?" y || { log_info "nothing committed"; return 1; }
-  git -C "$PROJECT_DIR" add -A
   local skipped=0 path size
   while IFS= read -r path; do
     [ -f "$PROJECT_DIR/$path" ] || continue
@@ -1530,8 +1793,8 @@ act_commit() {
     return 0
   fi
 
-  if mutate "commit \"chore: release $VERSION\"" git -C "$PROJECT_DIR" commit -m "chore: release $VERSION"; then
-    log_result "committed: chore: release $VERSION"
+  if mutate "commit \"$msg\"" git -C "$PROJECT_DIR" commit -m "$msg"; then
+    log_result "committed: $msg"
     [ "$skipped" -eq 1 ] && log_info "oversized files remain in your working tree"
     refresh_status
     return 0
@@ -1633,6 +1896,21 @@ act_release() {
     fi
     recreate=1
   fi
+
+  # One last look at what is about to leave the machine.
+  local sum_head sum_since sum_lines=()
+  sum_head=$(git -C "$PROJECT_DIR" rev-parse --short HEAD 2>/dev/null)
+  sum_since=$(git -C "$PROJECT_DIR" rev-list --count "${CURRENT_TAG}..HEAD" 2>/dev/null)
+  sum_lines+=("${DIM}repo${NC}     ${REPO}")
+  sum_lines+=("${DIM}version${NC}  ${CURRENT_TAG} → ${BOLD}${VERSION}${NC}")
+  sum_lines+=("${DIM}commit${NC}   ${sum_head} on $(git -C "$PROJECT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)${sum_since:+ · ${sum_since} since ${CURRENT_TAG}}")
+  if notes_from_changelog && changelog_has_section "$VERSION"; then
+    local sum_n
+    sum_n=$(changelog_section "$VERSION" | grep -cE '^- ')
+    sum_lines+=("${DIM}notes${NC}    ${sum_n} entr$([ "$sum_n" = 1 ] && echo y || echo ies) from CHANGELOG.md")
+  fi
+  sum_lines+=("${DIM}assets${NC}   built by CI once the tag is pushed")
+  log_box " about to publish ${VERSION} " "$YELLOW" "${sum_lines[@]}"
 
   # Point of no return: pushing the tag is what makes the release public and
   # starts the build. Nothing before this leaves the machine irreversibly.
@@ -2197,7 +2475,7 @@ main() {
   build_menu
   tui_enter
 
-  log_raw "  ${DIM}${APP_NAME} release console — select an action and press enter.${NC}"
+  log_raw "  ${DIM}${APP_NAME} release console — press enter on ${NC}${ACCENT}★${NC}${DIM} for the next step, or pick any action.${NC}"
   [ "$DRY_RUN" -eq 1 ] && log_warn "dry run ${BOLD}on${NC} — nothing will be committed, pushed, or published"
   draw_frame
   # Read-only, so it runs in a dry run too: the status line and every version
@@ -2264,4 +2542,7 @@ main() {
 }
 
 RESIZE_PENDING=0
-main "$@"
+# Only run when executed, so the functions can be sourced and tested.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi
