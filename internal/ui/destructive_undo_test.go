@@ -206,6 +206,25 @@ func TestUndoneTimerMessageIsHarmless(t *testing.T) {
 	}
 }
 
+func TestArchiveFromArchiveIsNoOp(t *testing.T) {
+	f := newUndoTestFixture(t, 1)
+	m := f.model
+	// Give the fixture's message the Archive mailbox's own ID, so archiving
+	// it again means source == the resolved Archive target.
+	already := f.messages[0]
+	already.MailboxID = f.target.ID
+	m.messages = []db.Message{already}
+	m.applyFilter()
+
+	m.scheduleArchive([]db.Message{already})
+	if len(m.pendingDestructiveActions) != 0 {
+		t.Fatalf("expected no pending action when already in Archive, got %+v", m.pendingDestructiveActions)
+	}
+	if !strings.Contains(m.statusMsg, "already in Archive") {
+		t.Fatalf("expected an 'already in Archive' status, got %q", m.statusMsg)
+	}
+}
+
 func TestFlushWaitsForCommittingAction(t *testing.T) {
 	runtime := &destructiveActionRuntime{done: make(chan struct{})}
 	m := Model{pendingDestructiveActions: []pendingDestructiveAction{{ID: 1, Committing: true, Runtime: runtime}}}
