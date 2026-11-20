@@ -8,6 +8,11 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- `send` and `draft create` take `--in-reply-to cache:ID` to thread a message
+  as a reply to a cached message (an ID from `messages list`). It sets
+  In-Reply-To and References, so CLI and agent replies group under the original
+  in TideMail and in the recipient's mail client. Under `--agent` it needs the
+  `messages.metadata` capability.
 - A plugin can provide a shared, editable local address book through the new
   `contacts_write` permission and `contacts.list` / `contacts.save` methods.
   TideContacts supplies a simple People view (`C`) with add/edit/search,

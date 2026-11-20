@@ -111,6 +111,14 @@ Piped standard input is the body when none of these is given.
 .BI \-\-attach " PATH"
 Attach a file; may be repeated.
 .TP
+.BI \-\-in\-reply\-to " cache:ID"
+Thread the message as a reply to a cached message, by the ID that
+.B messages list
+prints. Sets In\-Reply\-To and References from that message; the recipients and
+subject are still yours to give. Under
+.BR \-\-agent ,
+this needs the messages.metadata capability.
+.TP
 .B \-\-signature\fR, \fB\-\-no\-signature
 Append, or omit, the account signature (on by default).
 .TP

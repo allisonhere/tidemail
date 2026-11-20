@@ -6,8 +6,10 @@ import (
 	"github.com/allisonhere/tidemail/internal/db"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func mailFixture(t *testing.T) {
@@ -236,5 +238,59 @@ func TestCLISettingsDoNotAffectScriptedSend(t *testing.T) {
 	item, e := database.GetOutbox(items[0].ID)
 	if e != nil || !strings.Contains(string(item.MessageJSON), "Sig line") {
 		t.Fatal("scripted send must keep the signature despite cli_signature=false", item, e)
+	}
+}
+
+func TestDraftInReplyToThreadsUnderCachedMessage(t *testing.T) {
+	mailFixture(t)
+	database, e := db.Open()
+	if e != nil {
+		t.Fatal(e)
+	}
+	account, e := database.AddAccount("stable", "Work", "me@example.com")
+	if e != nil {
+		t.Fatal(e)
+	}
+	mailbox, e := database.UpsertMailbox(db.Mailbox{AccountID: account, Name: "INBOX"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = database.UpsertMessage(db.Message{MailboxID: mailbox, UID: 7, MessageID: "<orig@example.com>", References: "<root@example.com>", Subject: "Question", From: "student@example.com", Date: time.Unix(100, 0)}); e != nil {
+		t.Fatal(e)
+	}
+	if e = database.UpsertMessage(db.Message{MailboxID: mailbox, UID: 8, Subject: "No identity", From: "student@example.com", Date: time.Unix(200, 0)}); e != nil {
+		t.Fatal(e)
+	}
+	id, e := database.MessageIDByUID(mailbox, 7)
+	if e != nil {
+		t.Fatal(e)
+	}
+	noID, e := database.MessageIDByUID(mailbox, 8)
+	if e != nil {
+		t.Fatal(e)
+	}
+	database.Close()
+
+	run := func(ref string) (int, string) {
+		var out, errs bytes.Buffer
+		code := RunHeadless([]string{"draft", "create", "--to", "student@example.com", "--subject", "Re: Question", "--body", "Comments", "--in-reply-to", ref, "--agent", "--json"}, strings.NewReader(""), &out, &errs)
+		return code, out.String()
+	}
+	for _, ref := range []string{"bogus", "cache:99999", "cache:" + strconv.FormatInt(noID, 10)} {
+		if code, out := run(ref); code == 0 || strings.Contains(out, `"ok":true`) {
+			t.Fatalf("%s accepted: %d %s", ref, code, out)
+		}
+	}
+	if code, out := run("cache:" + strconv.FormatInt(id, 10)); code != 0 {
+		t.Fatalf("%d %s", code, out)
+	}
+	database, e = db.Open()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer database.Close()
+	drafts, e := database.ListDrafts("stable", "Work", "me@example.com")
+	if e != nil || len(drafts) != 1 || drafts[0].InReplyTo != "<orig@example.com>" || drafts[0].References != "<root@example.com> <orig@example.com>" {
+		t.Fatalf("%+v %v", drafts, e)
 	}
 }

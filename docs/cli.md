@@ -64,6 +64,7 @@ nonempty body or an attachment. Incomplete messages cannot authorize delivery.
 | `--markdown PATH` | Read Markdown through TideMail's existing renderer |
 | `--template NAME` | Fill the body from a template (case-insensitive name; see below). One body source only; `--subject` overrides the template's subject |
 | `--attach PATH` | Add a file, repeatable |
+| `--in-reply-to cache:ID` | Thread the message as a reply to a cached message, using the ID from `messages list`. Sets In-Reply-To and References; recipients and subject are still yours to give |
 | `--signature` | Append the configured account signature, enabled by default |
 | `--no-signature` | Omit the configured signature |
 | `--dry-run` | Validate and build MIME without saving, queueing, or delivering |
@@ -121,6 +122,11 @@ apply to draft creation.
 tidemail draft create --account ACCOUNT_ID --to user@example.com \
 	--subject "Follow-up" --body-file response.md --attach notes.pdf --json
 ```
+
+`--in-reply-to cache:ID` makes a draft or send a reply in the recipient's thread
+and in TideMail's conversation grouping, which uses the In-Reply-To and
+References headers and ignores the subject. Without it a message is new, even
+when its subject starts with `Re:`. With `--agent` it needs `messages.metadata`.
 
 The result contains `state: drafted` and the draft ID. Open the client to edit or
 send the draft. A dedicated CLI draft-edit command is not available.
