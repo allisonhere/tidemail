@@ -615,13 +615,22 @@ func listDirEntries(dir string, showHidden bool) ([]fileEntry, error) {
 		if err != nil {
 			continue
 		}
+		// A symlink reports its own type; follow it so a link to a folder can
+		// be entered and a link to a file shows the target's size. A broken
+		// link stays a plain entry.
+		isDir := e.IsDir()
+		if e.Type()&os.ModeSymlink != 0 {
+			if target, err := os.Stat(filepath.Join(dir, e.Name())); err == nil {
+				info, isDir = target, target.IsDir()
+			}
+		}
 		// Skip hidden files unless the user has toggled them on
 		if !showHidden && strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
 		fe = append(fe, fileEntry{
 			name:  e.Name(),
-			isDir: e.IsDir(),
+			isDir: isDir,
 			size:  info.Size(),
 		})
 	}
