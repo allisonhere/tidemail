@@ -536,7 +536,7 @@ func renderHTMLBodyWithImages(html string, width int, th Theme, plainUI, filterL
 	converter.AddRules(buttonLinkRuleWithPlans(plans, &buttons))
 	converter.AddRules(imagePlaceholderRuleWithPlans(plans))
 	converter.AddRules(preformattedRule(width))
-	converter.AddRules(tableTextRule(width))
+	converter.AddRules(tableTextRule(width, plans))
 	markdown, err := converter.ConvertString(html)
 	if err != nil || strings.TrimSpace(markdown) == "" {
 		return "", nil
@@ -887,11 +887,20 @@ func selectionBelongsToTable(selec, table *goquery.Selection) bool {
 	return owner.Length() > 0 && table.Length() > 0 && owner.Get(0) == table.Get(0)
 }
 
-func tableTextRule(width int) md.Rule {
+func tableTextRule(width int, plans map[int]imagePlan) md.Rule {
 	return md.Rule{
 		Filter: []string{"table"},
 		Replacement: func(content string, selec *goquery.Selection, _ *md.Options) *string {
 			if selec.Find("table").Length() > 0 || !isDataTable(selec) {
+				return &content
+			}
+			// A table with a real resolved image (a marketing "card" or hero
+			// banner laid out as a table, not genuine tabular data) keeps
+			// normal recursive rendering, which already shows the image
+			// correctly; the compact text-table layout has no way to place a
+			// raster image and would otherwise silently collapse it to
+			// "[image: alt text]".
+			if tableHasEmittableImage(selec, plans) {
 				return &content
 			}
 
@@ -921,6 +930,32 @@ func tableTextRule(width int) md.Rule {
 			return md.String("\n\n" + strings.Join(lines, "\n") + "\n\n")
 		},
 	}
+}
+
+// tableHasEmittableImage reports whether a table contains an image whose
+// plan resolved to a real picture, keyed by the data-tidemail-image index
+// richmail.ExtractImages stamped on it.
+func tableHasEmittableImage(table *goquery.Selection, plans map[int]imagePlan) bool {
+	if len(plans) == 0 {
+		return false
+	}
+	found := false
+	table.Find("img").EachWithBreak(func(_ int, img *goquery.Selection) bool {
+		idxStr, ok := img.Attr("data-tidemail-image")
+		if !ok {
+			return true
+		}
+		idx, err := strconv.Atoi(idxStr)
+		if err != nil {
+			return true
+		}
+		if plan, ok := plans[idx]; ok && plan.emit {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
 }
 
 // Keep block boundaries and image descriptions in their original cell order.
@@ -1390,15 +1425,13 @@ func stripButtonMarkersFromDocument(selec *goquery.Selection) {
 	}
 }
 
-// anchorImageMarker returns a block marker for a purely visual anchor (an
-// image link with no text of its own) so a hero banner stays a real image
-// rather than collapsing to alt text. An anchor that also carries prose keeps
-// normal link rendering, with any image marker inline.
+// anchorImageMarker returns a block marker for a linked image whose plan
+// resolved, so a hero banner (or a banner-with-caption "card", common in
+// marketing mail) stays a real image rather than collapsing to alt text or
+// to the caption alone. A caption alongside the image is kept, appended after
+// the marker, instead of replacing it.
 func anchorImageMarker(selec *goquery.Selection, plans map[int]imagePlan) (string, bool) {
 	if len(plans) == 0 {
-		return "", false
-	}
-	if strings.TrimSpace(htmlstd.UnescapeString(selec.Text())) != "" {
 		return "", false
 	}
 	var marker string
@@ -1410,7 +1443,14 @@ func anchorImageMarker(selec *goquery.Selection, plans map[int]imagePlan) (strin
 		marker = m
 		return false
 	})
-	return marker, marker != ""
+	if marker == "" {
+		return "", false
+	}
+	caption := normalizeInlineSpacing(strings.TrimSpace(htmlstd.UnescapeString(selec.Text())))
+	if caption == "" {
+		return marker, true
+	}
+	return marker + "\n\n" + caption, true
 }
 
 func firstUsefulImageLabel(selec *goquery.Selection) string {

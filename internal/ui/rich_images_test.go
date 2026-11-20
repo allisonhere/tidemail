@@ -113,6 +113,36 @@ func TestGraphicsRendersRasterPlaceholders(t *testing.T) {
 	}
 }
 
+// Marketing newsletters commonly wrap a hero banner (a linked image plus its
+// caption) in a <table>. If that table also happens to have role="table" (or
+// any other isDataTable signal), tableTextRule used to claim it and flatten
+// it to a compact text table via tableCellText, which only ever knows how to
+// show "[image: alt text]" — silently losing an image that had already
+// fetched, decoded, and resolved successfully. This reproduces that exact
+// shape (seen in a real Philips Hue promotional email) and checks the real
+// image wins over the text-table collapse.
+func TestGraphicsImageInsideDataLikeTableStillRenders(t *testing.T) {
+	m, sink := graphicsModel(t)
+	html := `<table role="table"><tr><td>` +
+		`<a href="https://shop.example/sale"><img src="` + pngDataURI(t, 240, 120) + `" width="600" style="width:100%;height:auto" alt="Change the mood"></a>` +
+		`<h1>Change the mood</h1><p>Connect your smart lights.</p>` +
+		`</td></tr></table>`
+
+	res := m.renderMessageForDisplay(db.Message{ID: 1, BodyHTML: html}, 70)
+	if len(res.images) != 1 {
+		t.Fatalf("expected 1 rendered image even though its table looks like a data table, got %d (body=%q)", len(res.images), ansi.Strip(res.body))
+	}
+	if strings.Contains(ansi.Strip(res.body), "[image:") {
+		t.Fatalf("should render the real image, not collapse to a text placeholder: %q", ansi.Strip(res.body))
+	}
+
+	m.applyViewportImages(res.images)
+	flushImageUploads(t, &m)
+	if !bytes.Contains(sink.Bytes(), []byte("\x1b_Ga=T,f=100,i=")) {
+		t.Fatalf("expected a kitty upload, got %q", sink.String())
+	}
+}
+
 func TestNoGraphicsFallsBackToTextPlaceholder(t *testing.T) {
 	m := NewModel(nil, config.DefaultConfig(), "dev", false)
 	// TestMain pins TIDEMAIL_IMAGE_PROTOCOL=none.
