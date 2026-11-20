@@ -6,6 +6,13 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.10.1
+
+### Fixed
+
+- The contact manager no longer shows a note about a separate address book to
+  people who are not using one.
+
 ## v1.10.0
 
 ### Added
