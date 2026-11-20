@@ -81,7 +81,7 @@ func TestNotifyPreservesActionPairs(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 
-	want := []string{"mark-read", "Mark Read", "delete", "Delete", "ignore", "Ignore"}
+	want := []string{"default", "Open", "mark-read", "Mark Read", "delete", "Delete", "read", "Read"}
 	id, err := conn.Notify("tidemail", "mail-unread", "Sender", "Subject", want)
 	if err != nil || id != fake.notifyID {
 		t.Fatalf("Notify() = (%d, %v), want (%d, nil)", id, err, fake.notifyID)

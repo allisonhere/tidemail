@@ -99,7 +99,7 @@ func TestActionableNotificationRegistersMessageAndActions(t *testing.T) {
 }
 
 func TestNotificationActionsDispatch(t *testing.T) {
-	for _, action := range []string{"mark-read", "delete", "ignore", "unknown"} {
+	for _, action := range []string{"mark-read", "delete", "unknown"} {
 		t.Run(action, func(t *testing.T) {
 			f := newUndoTestFixture(t, 1)
 			m := f.model
@@ -128,7 +128,7 @@ func TestNotificationActionsDispatch(t *testing.T) {
 				if len(m.pendingDestructiveActions) != 1 || m.pendingDestructiveActions[0].Kind != destructiveDelete {
 					t.Fatalf("delete action = %#v", m.pendingDestructiveActions)
 				}
-			case "ignore", "unknown":
+			case "unknown":
 				if len(m.pendingReads) != 0 || len(m.pendingDestructiveActions) != 0 {
 					t.Fatalf("%s changed message state", action)
 				}
@@ -215,6 +215,9 @@ func TestEarlyNotificationActionRunsAfterIDRegistration(t *testing.T) {
 }
 
 func TestActionableNotificationFailureReturnsNoTrackingMessage(t *testing.T) {
+	// The failure path falls back to notify-send. Keep this test from
+	// launching the real desktop notifier on the developer's machine.
+	t.Setenv("PATH", t.TempDir())
 	f := newUndoTestFixture(t, 1)
 	m := f.model
 	conn := newFakeNotifyConn()
