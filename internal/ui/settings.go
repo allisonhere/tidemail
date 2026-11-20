@@ -59,6 +59,7 @@ const (
 	sfMailTags
 	sfTagColors // opens the tag color editor
 	sfBrowser
+	sfDownloadDir
 	sfFeedMaxBody
 	sfUpdateCheckOnStartup
 	sfUpdateCheckNow
@@ -375,6 +376,7 @@ type Settings struct {
 	sendMaxAttemptsInput    textinput.Model
 	sendDelayInput          textinput.Model
 	browserInput            textinput.Model
+	downloadDirInput        textinput.Model
 	feedMaxBodyInput        textinput.Model
 	updateCheckOnStartup    bool
 	update                  settingsUpdateState
@@ -503,6 +505,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		sendMaxAttemptsInput:    mkInput(strconv.Itoa(config.NormalizeSendMaxAttempts(cfg.Display.SendMaxAttempts)), "3 (1 = no retries)", false),
 		sendDelayInput:          mkInput(strconv.Itoa(cfg.Display.SendDelaySeconds), "5 (0 = immediate)", false),
 		browserInput:            mkInput(cfg.Display.Browser, "xdg-open", false),
+		downloadDirInput:        mkInput(cfg.Display.DownloadDir, config.ResolveDownloadDir(""), false),
 		feedMaxBodyInput:        mkInput(strconv.Itoa(cfg.Feed.MaxBodyMiB), "10", false),
 		updateCheckOnStartup:    cfg.Updates.CheckOnStartup,
 		update:                  updateState,
@@ -614,6 +617,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 		cfg.Display.PaneCorners = "square"
 	}
 	cfg.Display.Browser = strings.TrimSpace(s.browserInput.Value())
+	cfg.Display.DownloadDir = strings.TrimSpace(s.downloadDirInput.Value())
 	bg := strings.TrimSpace(s.retroBgInput.Value())
 	fg := strings.TrimSpace(s.retroFgInput.Value())
 	ac := strings.TrimSpace(s.retroAccentInput.Value())
@@ -757,6 +761,7 @@ func (s *Settings) ensureSectionFieldVisible(section settingsSection) {
 
 func (s *Settings) applyFocus() {
 	s.browserInput.Blur()
+	s.downloadDirInput.Blur()
 	s.retroBgInput.Blur()
 	s.retroFgInput.Blur()
 	s.retroAccentInput.Blur()
@@ -781,6 +786,8 @@ func (s *Settings) applyFocus() {
 	switch s.focusedField {
 	case sfBrowser:
 		s.browserInput.Focus()
+	case sfDownloadDir:
+		s.downloadDirInput.Focus()
 	case sfReadingWidth:
 		s.readingWidthInput.Focus()
 	case sfSendMaxAttempts:
@@ -840,7 +847,7 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 		}
 		fields = append(fields, sfShowSender, sfThreadedConversations, sfDefaultUnreadOnly, sfUnreadFirst, sfStarredFirst)
 		fields = append(fields, sfReadingWidth, sfShowHeaders, sfMarkReadOnOpen, sfMarkReadOnFocus, sfActionableLinks, sfFilterLinks, sfImages)
-		return append(fields, sfBrowser, sfConfirmQuit, sfNotifications, sfMouseSupport)
+		return append(fields, sfBrowser, sfDownloadDir, sfConfirmQuit, sfNotifications, sfMouseSupport)
 	case ssEditor:
 		return []settingsField{sfBackToSections, sfComposeVim, sfComposeWordWrap, sfComposeSearchRegex, sfComposeSpell, sfSpellLang, sfSpellDictionary, sfSendDelay, sfSendMaxAttempts}
 	case ssCLI:
@@ -996,7 +1003,7 @@ func (s Settings) isTextInput() bool {
 		return false
 	}
 	switch s.focusedField {
-	case sfBrowser, sfFeedMaxBody, sfReadingWidth, sfSendDelay, sfSendMaxAttempts, sfAPIKey, sfOllamaURL, sfSavePath,
+	case sfBrowser, sfDownloadDir, sfFeedMaxBody, sfReadingWidth, sfSendDelay, sfSendMaxAttempts, sfAPIKey, sfOllamaURL, sfSavePath,
 		sfRetroBg, sfRetroFg, sfRetroAccent:
 		return true
 	}
@@ -1009,6 +1016,8 @@ func (s Settings) updateFocusedTextInput(msg tea.Msg) (Settings, tea.Cmd, bool) 
 	switch s.focusedField {
 	case sfBrowser:
 		s.browserInput, cmd = s.browserInput.Update(msg)
+	case sfDownloadDir:
+		s.downloadDirInput, cmd = s.downloadDirInput.Update(msg)
 	case sfReadingWidth:
 		s.readingWidthInput, cmd = s.readingWidthInput.Update(msg)
 	case sfSendMaxAttempts:
@@ -1105,6 +1114,8 @@ func (s Settings) focusedTextInputCursorPosition() int {
 	switch s.focusedField {
 	case sfBrowser:
 		return s.browserInput.Position()
+	case sfDownloadDir:
+		return s.downloadDirInput.Position()
 	case sfReadingWidth:
 		return s.readingWidthInput.Position()
 	case sfSendMaxAttempts:
@@ -1929,7 +1940,7 @@ func (s Settings) Update(msg tea.Msg, keys KeyMap) (Settings, tea.Cmd, bool) {
 		}
 		return s, nil, false
 
-	case sfBrowser, sfFeedMaxBody, sfReadingWidth, sfSendDelay, sfSendMaxAttempts, sfAPIKey, sfOllamaURL, sfSavePath,
+	case sfBrowser, sfDownloadDir, sfFeedMaxBody, sfReadingWidth, sfSendDelay, sfSendMaxAttempts, sfAPIKey, sfOllamaURL, sfSavePath,
 		sfRetroBg, sfRetroFg, sfRetroAccent:
 		// Enter advances to next field; everything else goes to the text input.
 		if keyMatches(key, keys.Enter) {
@@ -2159,6 +2170,7 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 		b.addBlank()
 		b.addGroup("Behavior")
 		b.addInput("Browser command", s.browserInput, sfBrowser)
+		b.addInput("Downloads folder", s.downloadDirInput, sfDownloadDir)
 		b.addToggle("Confirm before quitting", s.confirmQuit, sfConfirmQuit)
 		b.addToggle("Desktop notifications", s.notifications, sfNotifications)
 		b.addToggle("Mouse support", s.mouseSupport, sfMouseSupport)
@@ -2757,6 +2769,8 @@ func (s Settings) inputWidth(field settingsField, maxWidth int) int {
 		return min(maxWidth, 44)
 	case sfBrowser, sfSavePath:
 		return min(maxWidth, 36)
+	case sfDownloadDir:
+		return min(maxWidth, 44)
 	case sfOllamaURL:
 		return min(maxWidth, 44)
 	default:
@@ -3295,6 +3309,8 @@ func (s Settings) fieldHint(field settingsField) string {
 
 	case sfBrowser:
 		return "leave blank to use the system default browser"
+	case sfDownloadDir:
+		return "where saving attachments and logs starts; blank = your system Downloads folder"
 	case sfFeedMaxBody:
 		return "larger bodies need more memory; default is 10 MiB"
 	case sfReadingWidth:

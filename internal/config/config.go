@@ -216,6 +216,7 @@ type DisplayConfig struct {
 	StarredFirst            bool   `toml:"starred_first"`
 	Notifications           bool   `toml:"notifications"`
 	Browser                 string `toml:"browser"`
+	DownloadDir             string `toml:"download_dir,omitempty"` // where saves start; blank follows the system Downloads folder (ResolveDownloadDir)
 	Density                 string `toml:"density"`
 	PaneCorners             string `toml:"pane_corners"` // "square" or "round"
 	Shadow                  bool   `toml:"shadow"`       // drop shadow behind modal overlays

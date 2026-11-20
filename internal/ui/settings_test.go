@@ -3,6 +3,7 @@ package ui
 import (
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -1908,5 +1909,53 @@ func TestSettingsCLISwitchesToggleAndApply(t *testing.T) {
 	got := s.ApplyTo(cfg).Display
 	if !got.CLIQuitAfterSend || !got.CLISkipReview || got.CLISignature {
 		t.Fatalf("toggles not applied: %+v", got)
+	}
+}
+
+func TestSettingsDownloadDirIsTypedAndSaved(t *testing.T) {
+	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	s.setFocusedPane(settingsPaneDetail)
+	s.focusedField = sfDownloadDir
+	s.downloadDirInput.SetValue("")
+	s.applyFocus()
+
+	for _, r := range "~/mail" {
+		s, _, _ = s.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}, DefaultKeys)
+	}
+	if s.focusedField != sfDownloadDir {
+		t.Fatalf("the Downloads folder field should keep focus while typing, got %v", s.focusedField)
+	}
+	if got := s.ApplyTo(config.DefaultConfig()).Display.DownloadDir; got != "~/mail" {
+		t.Fatalf("saved download_dir = %q, want %q", got, "~/mail")
+	}
+}
+
+func TestSettingsDownloadDirLoadsAndBlankMeansAutomatic(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Display.DownloadDir = "/data/incoming"
+	s := newSettings(cfg, settingsUpdateState{})
+	if got := s.downloadDirInput.Value(); got != "/data/incoming" {
+		t.Fatalf("field should show the saved folder, got %q", got)
+	}
+
+	// Clearing the field returns to following the system folder, and the
+	// placeholder shows what that is.
+	s.downloadDirInput.SetValue("   ")
+	if got := s.ApplyTo(cfg).Display.DownloadDir; got != "" {
+		t.Fatalf("a blank field should clear download_dir, got %q", got)
+	}
+	blank := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	if want := config.ResolveDownloadDir(""); blank.downloadDirInput.Placeholder != want {
+		t.Fatalf("placeholder = %q, want the automatic folder %q", blank.downloadDirInput.Placeholder, want)
+	}
+}
+
+func TestSettingsDisplayListsDownloadDirAfterBrowser(t *testing.T) {
+	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
+	fields := s.sectionFields(ssDisplay)
+	b := slices.Index(fields, sfBrowser)
+	d := slices.Index(fields, sfDownloadDir)
+	if b < 0 || d != b+1 {
+		t.Fatalf("Downloads folder should follow Browser command in Display, got browser=%d downloads=%d", b, d)
 	}
 }

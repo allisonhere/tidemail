@@ -532,10 +532,10 @@ see the result. If a pill ever seems stuck, those two times show which side was 
 `j`/`k` or the arrow keys. Press `c` to copy the whole log to the clipboard, or `s` to save it
 to a file — both in chronological order (oldest first), the opposite of the pane's newest-first
 display, and errors are marked with a leading `!` so they are easy to find. `s` opens the same
-folder browser attachments save to, starting in Downloads, so you can navigate to or select any
-folder; the file is `tidemail-logs-<timestamp>.txt` and never overwrites an existing one. If
-Downloads doesn't exist, it saves straight to `~/Downloads/tidemail-logs/` instead of opening the
-browser. This log is the last 100 status-bar messages from this session, not the IMAP/IDLE sync
+folder browser attachments save to, starting in your downloads folder (see **Downloads folder**
+in Settings → Display), so you can navigate to or select any folder; the file is
+`tidemail-logs-<timestamp>.txt` and never overwrites an existing one. If that folder doesn't
+exist, it saves straight to `tidemail-logs/` inside it instead of opening the browser. This log is the last 100 status-bar messages from this session, not the IMAP/IDLE sync
 diagnostics TideMail keeps on disk in `fetch.log`, next to `config.toml`
 (`~/.config/tidemail/fetch.log`; Windows: `%USERPROFILE%\.config\tidemail\fetch.log`).
 
@@ -712,6 +712,16 @@ Attachment filenames encoded as MIME words are decoded for display, including
 names in older cached mail. Saving attachments with `Ctrl+D` keeps Chinese and
 other Unicode letters, digits, and combining marks. Long filenames are shortened
 at a valid UTF-8 boundary, retaining short extensions.
+
+`Ctrl+D` opens a folder browser for the open message's attachments, starting in your
+downloads folder: the one set in **Settings → Display → Behavior → Downloads folder**,
+otherwise `XDG_DOWNLOAD_DIR` (the environment variable, or the line in
+`~/.config/user-dirs.dirs` that desktops keep it in), otherwise `~/Downloads`. Browse to
+any folder and choose **✓ select this folder**. In the setting, a leading `~` and
+`$VARIABLES` are expanded and a relative path is taken from your home directory; leave it
+blank to follow the system folder. If the browser can't open the folder, for example
+because it doesn't exist yet, attachments save to `tidemail-attachments/` inside it,
+creating it. Saved logs and plugin reports use the same downloads folder.
 
 Press `c` to compose a message, or `r` to reply and `Ctrl+R` to reply all (from the
 message list or content pane). Reply all puts the sender (or Reply-To) in To and the

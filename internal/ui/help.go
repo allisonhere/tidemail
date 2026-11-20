@@ -109,7 +109,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{keys.Snooze.Help().Key, "snooze message(s) or a waiting conversation from Needs You / Waiting on Them; in Snoozed: unsnooze"},
 				{keys.RunPlugin.Help().Key, "run a plugin on the current message or selection (when plugins are installed)"},
 				{"b (plugin list)", "browse the official plugins: i installs, u updates, x removes; also in the palette as Browse available plugins"},
-				{"c / s / p (report result)", "copy a plugin report as text, save it to ~/Downloads/tidemail-reports/, or print it with lp/lpr"},
+				{"c / s / p (report result)", "copy a plugin report as text, save it to tidemail-reports/ in your downloads folder, or print it with lp/lpr"},
 				{keys.EditTags.Help().Key, "correct classification; compatible categories also save their server tags"},
 				{"space (Category)", "toggle the selected server tag; other tags stay saved. Settings → Display → Tag names and colors edits local labels"},
 				{keys.PGPDecode.Help().Key, "decrypt and verify the current PGP message through a PGP plugin (shown when one is installed)"},

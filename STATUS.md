@@ -118,6 +118,9 @@ Unreleased.
 - **Newsletter cards**: layout cells holding an image, heading, description, or
   button stay together and are separated by a thin rule. Side-by-side cards
   stack in reading order; quoted mail is not grouped.
+- **Downloads folder**: Settings → Display → Behavior → Downloads folder sets where
+  saving attachments (`Ctrl+D`), the log and plugin reports starts. Blank follows
+  `XDG_DOWNLOAD_DIR` (the variable, or `user-dirs.dirs`), then `~/Downloads`.
 - **Image settings**: Settings → Display → Reading → Images offers Auto/Off,
   terminal capability information, and immediate application on save.
 - **foot/WezTerm limitation**: inline images are currently unsupported. foot

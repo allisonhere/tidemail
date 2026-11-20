@@ -511,7 +511,7 @@ A plugin with the `contacts_read` permission can serve as an external address bo
 | `O` | Open the Outbox |
 | `Ctrl+U` | Unsubscribe while reading; cycle sender while composing |
 | `Alt+F` / `Ctrl+R` | Attach a file while composing; remove the last attachment |
-| `Ctrl+D` | Save attachments from the open message |
+| `Ctrl+D` | Save attachments from the open message (starts in your downloads folder; set it in Settings → Display) |
 | `Ctrl+E` | Show or hide full headers |
 | `Ctrl+O` | View the message source (`c` copies it) |
 | `Ctrl+B` | View the whole message in your browser (remote content blocked) |

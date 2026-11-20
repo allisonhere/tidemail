@@ -29,6 +29,8 @@ func TestMain(m *testing.M) {
 	os.Setenv("XDG_CONFIG_HOME", cfgDir)
 	os.Setenv("XDG_DATA_HOME", dataDir)
 	os.Setenv("HOME", homeDir)
+	// The downloads folder follows XDG_DOWNLOAD_DIR when it is set.
+	os.Unsetenv("XDG_DOWNLOAD_DIR")
 	os.Setenv("TIDEMAIL_DISABLE_KEYRING", "1")
 	// Force the text-placeholder path for the whole UI suite. Terminal graphics
 	// detection is deliberately environment-driven, and the CI/dev terminal may

@@ -55,3 +55,56 @@ func TestSaveAttachPickerFailedNavigationRetainsListingAndInvalidCursorDoesNotPa
 	}
 	m.saveAttachPickerEnterDir()
 }
+
+func TestSaveAttachPickerStartsInConfiguredDownloadDir(t *testing.T) {
+	chosen := filepath.Join(t.TempDir(), "mail-in")
+	if err := os.MkdirAll(chosen, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.DefaultConfig()
+	cfg.Display.DownloadDir = chosen
+	m := NewModel(nil, cfg, "dev", false)
+	t.Cleanup(m.CloseSessions)
+	m.focused = paneContent
+	m.contentMessageID = 1
+	m.contentAttachments = []db.Attachment{{Filename: "report.txt", Data: []byte("report")}}
+
+	next, _ := m.handleMainKey(tea.KeyMsg{Type: tea.KeyCtrlD})
+	m = next.(Model)
+	if m.overlay != overlaySaveAttach || m.saveAttachPicker.currentDir != chosen {
+		t.Fatalf("picker should open in %q, overlay=%v dir=%q", chosen, m.overlay, m.saveAttachPicker.currentDir)
+	}
+}
+
+func TestSaveAttachFallbackFollowsConfiguredDownloadDir(t *testing.T) {
+	chosen := filepath.Join(t.TempDir(), "not-created-yet")
+	cfg := config.DefaultConfig()
+	cfg.Display.DownloadDir = chosen
+	m := NewModel(nil, cfg, "dev", false)
+	t.Cleanup(m.CloseSessions)
+	m.focused = paneContent
+	m.contentMessageID = 1
+	m.contentAttachments = []db.Attachment{{Filename: "report.txt", Data: []byte("report")}}
+
+	// The folder does not exist, so the picker cannot open and the fixed
+	// fallback saves under the configured folder instead of ~/Downloads.
+	next, cmd := m.handleMainKey(tea.KeyMsg{Type: tea.KeyCtrlD})
+	m = next.(Model)
+	if m.overlay == overlaySaveAttach || cmd == nil {
+		t.Fatalf("a missing folder should start the fallback save, overlay=%v cmd=%v", m.overlay, cmd != nil)
+	}
+	result := cmd().(AttachmentsSavedMsg)
+	if result.Err != nil || result.Path != filepath.Join(chosen, "tidemail-attachments") {
+		t.Fatalf("fallback save: %+v, want it under %q", result, chosen)
+	}
+}
+
+func TestSaveAttachDefaultsToXDGDownloadDir(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_DOWNLOAD_DIR", xdg)
+	m := NewModel(nil, config.DefaultConfig(), "dev", false)
+	t.Cleanup(m.CloseSessions)
+	if got := m.downloadDir(); got != xdg {
+		t.Fatalf("downloadDir = %q, want %q", got, xdg)
+	}
+}

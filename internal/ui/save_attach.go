@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -239,14 +240,22 @@ func (m Model) renderSaveAttachPicker(width, height int, chrome managerChrome) s
 	return lipgloss.JoinVertical(lipgloss.Left, dirLine, body, hints)
 }
 
-func saveAttachmentsCmd(database *db.DB, atts []db.Attachment) tea.Cmd {
+// downloadDir is where the save pickers start and the fixed fallbacks write:
+// the folder chosen in Settings, else the system's Downloads folder. Empty
+// only when there is no home directory to fall back on.
+func (m Model) downloadDir() string {
+	return config.ResolveDownloadDir(m.cfg.Display.DownloadDir)
+}
+
+// saveAttachmentsCmd is the fallback used when the folder picker can't open:
+// a tidemail-attachments folder inside downloads, so a save still succeeds
+// without asking anything.
+func saveAttachmentsCmd(database *db.DB, atts []db.Attachment, downloads string) tea.Cmd {
 	return func() tea.Msg {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return AttachmentsSavedMsg{Err: fmt.Errorf("home dir: %w", err)}
+		if downloads == "" {
+			return AttachmentsSavedMsg{Err: errors.New("no downloads folder: home directory not found")}
 		}
-		dir := filepath.Join(home, "Downloads", "tidemail-attachments")
-		return saveAttachmentsCmdTo(database, atts, dir)()
+		return saveAttachmentsCmdTo(database, atts, filepath.Join(downloads, "tidemail-attachments"))()
 	}
 }
 

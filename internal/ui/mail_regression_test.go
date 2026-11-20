@@ -45,12 +45,13 @@ func TestSaveAttachmentsPreservesExistingFiles(t *testing.T) {
 func TestSaveAttachmentsDefaultDirectoryAvoidsOverwrite(t *testing.T) {
 	name := fmt.Sprintf("review-%d.txt", time.Now().UnixNano())
 	atts := []db.Attachment{{Filename: name, Data: []byte("original")}}
-	result := saveAttachmentsCmd(nil, atts)().(AttachmentsSavedMsg)
+	downloads := t.TempDir()
+	result := saveAttachmentsCmd(nil, atts, downloads)().(AttachmentsSavedMsg)
 	if result.Err != nil {
 		t.Fatal(result.Err)
 	}
 	atts[0].Data = []byte("second")
-	if got := saveAttachmentsCmd(nil, atts)().(AttachmentsSavedMsg); got.Err != nil {
+	if got := saveAttachmentsCmd(nil, atts, downloads)().(AttachmentsSavedMsg); got.Err != nil {
 		t.Fatal(got.Err)
 	}
 	original, err := os.ReadFile(filepath.Join(result.Path, name))

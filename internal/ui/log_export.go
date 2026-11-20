@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -45,7 +46,7 @@ func logFilename(now time.Time) string {
 }
 
 // saveLogsCmdTo writes text into dir, which the save picker already
-// confirmed exists (or the ~/Downloads/tidemail-logs fallback below creates).
+// confirmed exists (or the tidemail-logs fallback below creates).
 func saveLogsCmdTo(text, dir string) tea.Cmd {
 	return func() tea.Msg {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -66,15 +67,15 @@ func saveLogsCmdTo(text, dir string) tea.Cmd {
 }
 
 // saveLogsCmd is the fallback used when the folder picker can't be opened
-// (home directory unresolvable, or its starting folder unreadable): a fixed
-// destination so a save still succeeds without asking the user anything.
-func saveLogsCmd(text string) tea.Cmd {
+// (no downloads folder resolvable, or its starting folder unreadable): a
+// tidemail-logs folder inside downloads, so a save still succeeds without
+// asking the user anything.
+func saveLogsCmd(text, downloads string) tea.Cmd {
 	return func() tea.Msg {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return logsSavedMsg{Err: err}
+		if downloads == "" {
+			return logsSavedMsg{Err: errors.New("no downloads folder: home directory not found")}
 		}
-		return saveLogsCmdTo(text, filepath.Join(home, "Downloads", "tidemail-logs"))()
+		return saveLogsCmdTo(text, filepath.Join(downloads, "tidemail-logs"))()
 	}
 }
 

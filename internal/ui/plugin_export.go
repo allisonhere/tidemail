@@ -3,6 +3,7 @@ package ui
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -71,13 +72,12 @@ func reportFilename(pluginID string, now time.Time) string {
 	return id + "-" + now.Format("20060102-150405") + ".txt"
 }
 
-func saveReportCmd(pluginID, text string) tea.Cmd {
+func saveReportCmd(pluginID, text, downloads string) tea.Cmd {
 	return func() tea.Msg {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return reportSavedMsg{Err: err}
+		if downloads == "" {
+			return reportSavedMsg{Err: errors.New("no downloads folder: home directory not found")}
 		}
-		dir := filepath.Join(home, "Downloads", "tidemail-reports")
+		dir := filepath.Join(downloads, "tidemail-reports")
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return reportSavedMsg{Err: err}
 		}
@@ -140,7 +140,7 @@ func (m Model) handleReportExportKey(key string) (Model, tea.Cmd, bool) {
 	case "c":
 		return m, clipboardWriteCmd(m.pluginResultPlainText(r)), true
 	case "s":
-		return m, saveReportCmd(r.pluginID, m.pluginResultPlainText(r)), true
+		return m, saveReportCmd(r.pluginID, m.pluginResultPlainText(r), m.downloadDir()), true
 	case "p":
 		m.setStatus("printing…", false)
 		return m, printReportCmd(m.pluginResultPlainText(r)), true

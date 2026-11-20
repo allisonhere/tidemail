@@ -6,6 +6,12 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- **Settings → Display → Downloads folder** sets where saving attachments (`Ctrl+D`),
+  the log and plugin reports starts. Left blank it follows `XDG_DOWNLOAD_DIR` (the
+  variable, or `user-dirs.dirs`) and then `~/Downloads`. (#162, thanks @firecat53.)
+
 ## v1.10.1
 
 ### Fixed

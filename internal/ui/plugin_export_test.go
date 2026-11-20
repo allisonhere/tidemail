@@ -66,7 +66,7 @@ func TestReportSaveWritesSafeFile(t *testing.T) {
 	if err != nil || info.Mode().Perm() != 0o600 {
 		t.Errorf("stat = %v, %v", info, err)
 	}
-	if again := saveReportCmd("x", "t"); again == nil {
+	if again := saveReportCmd("x", "t", t.TempDir()); again == nil {
 		t.Fatal("nil cmd")
 	}
 }
