@@ -49,8 +49,8 @@ type pendingDestructiveAction struct {
 }
 
 type destructiveActionRuntime struct {
-	done chan struct{}
-	err  error
+	done   chan struct{}
+	result DestructiveActionResultMsg
 }
 
 type CommitDestructiveActionMsg struct{ ID uint64 }
@@ -250,7 +250,7 @@ func (m Model) commitDestructiveActionCmd(action pendingDestructiveAction) tea.C
 		started := time.Now()
 		result := executeDestructiveAction(action, database, sessions)
 		result.Elapsed = time.Since(started)
-		action.Runtime.err = result.Err
+		action.Runtime.result = result
 		return result
 	}
 }
@@ -664,23 +664,20 @@ func (m *Model) focusRestoredMessage(entries []pendingDestructiveEntry) {
 // FlushPendingDestructiveActions commits all cleanly pending actions before
 // sessions close. It is used after Bubble Tea restores the terminal on exit.
 func (m Model) FlushPendingDestructiveActions() error {
-	var firstErr error
+	var report quitFailures
 	for _, action := range m.pendingDestructiveActions {
+		report.total += len(action.Entries)
 		if action.Committing {
 			if action.Runtime != nil {
 				<-action.Runtime.done
-				if action.Runtime.err != nil && firstErr == nil {
-					firstErr = action.Runtime.err
-				}
+				report.collect(action.Runtime.result)
 			}
 			continue
 		}
 		result := executeDestructiveAction(action, m.db, m.sessions)
-		if result.Err != nil && firstErr == nil {
-			firstErr = result.Err
-		}
+		report.collect(result)
 	}
-	return firstErr
+	return report.error("message(s), left unchanged in their folders")
 }
 
 func (m Model) HasPendingDestructiveActions() bool {

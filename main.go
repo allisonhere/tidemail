@@ -191,6 +191,12 @@ func run() (code int, restartExec string) {
 	finalModel, err := p.Run()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", config.RedactSecrets(err.Error(), cfg))
+		// The flush below is skipped on this path; say what became of pending work.
+		if um, ok := finalModel.(ui.Model); ok {
+			if summary := um.PendingSummary(); summary != "" {
+				fmt.Fprintln(os.Stderr, "pending work:", summary)
+			}
+		}
 		return 1, ""
 	}
 	// A finished session may ask to re-exec the freshly installed binary (in-app
