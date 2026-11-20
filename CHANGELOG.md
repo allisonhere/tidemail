@@ -6,6 +6,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.10.0
+
 ### Added
 
 - An account can set an **SMTP User** (`smtp_user`) that overrides its login for
