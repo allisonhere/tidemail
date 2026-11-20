@@ -139,8 +139,6 @@ message.prepare
 | `report.run` | the user, with `enter` in the plugin list; once per round | `capabilities = ["report.run"]` | the round, context, your state, and query results | `{"queries": …, "state": …}`, `{"report": …}`, or `{"view": …}`; see [queries.md](queries.md) and [views.md](views.md) |
 | `message.decode` | the user opening a received message that is encrypted or signed; once per protected part | `message_raw` | one [decode request](#messagedecode) | the plaintext and a signature verdict |
 | `message.prepare` | the user sending a message with Sign or Encrypt on | `message_compose` | one [prepare request](#messageprepare) | an armored signature or an armored encrypted message |
-| `contacts.list` | opening or searching the configured TideContacts manager | `contacts_read` | query and limit | basic contacts with IDs and revisions |
-| `contacts.save` | saving an add/edit form | `contacts_write` | basic contact fields, ID and revision | saved contact |
 | `contacts.search` | the user pressing `ctrl+t` in a recipient field | `contacts_read`, and the user naming the plugin in `[contacts] provider` | one [search request](#contactssearch) | a list of matching contacts |
 
 `message.metadata` and `message.received` go through the same permission
@@ -288,28 +286,3 @@ Answer with:
 with an invalid address, a control character or an escape sequence is dropped,
 and the list is cut to the limit. TideMail shows at most five matches and
 stores none of them. An error is shown in compose and changes nothing.
-
-### Basic address-book management
-
-`contacts.list` accepts `{ "query": "", "limit": 200 }` and returns
-`{ "contacts": [...] }`. Each contact has `id`, `revision`, `name`, `addr`,
-`phone`, `organization`, and `note`. Optional `read_only` and `source` fields
-identify records owned by an external folder; the simple manager does not open
-these records for editing. A top-level `warning` string can explain a failed
-refresh while the returned contacts remain usable. Warnings/source labels are
-validated as display text. IDs and revisions must be present; email
-addresses must be valid. At most 200 contacts are accepted. This method requires
-`contacts_read`; an empty query browses the book.
-
-`contacts.save` accepts those same basic fields. Omit `id` for a new contact;
-existing records must send their current `id` and `revision`. It returns
-`{ "contact": {...} }` after saving. It requires `contacts_write` independently
-of read access and is called only from the explicit add/edit form. Contact
-providers must reject stale revisions and preserve unrelated contact fields.
-TideContacts rejects duplicate active email addresses. Provider failures stay
-visible in the form; they never cause fallback writes into TideMail local contacts.
-
-Both methods run in background commands with bounded output and timeouts. They
-are available in the paired TideContacts development integration; older TideMail
-versions do not support them. `contacts.search` continues to return only recipient
-names and email addresses.

@@ -52,6 +52,11 @@ type ContactManager struct {
 	composeTo  []string
 	statusMsg  string
 	isErr      bool
+
+	// separateFrom names another address book this one is kept apart from. It
+	// is set only when this manager is reached from that book, so a user who
+	// has never used it sees no mention of it.
+	separateFrom string
 }
 
 func NewContactManager(database *db.DB) ContactManager {
@@ -673,8 +678,11 @@ func dirExists(path string) bool {
 }
 
 func (cm ContactManager) View(width, height int, styles Styles) string {
+	if cm.separateFrom == "" {
+		return cm.viewBook(width, height, styles)
+	}
 	chrome := newManagerChrome(width, styles.Theme, styles.PlainUI)
-	label := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(width).Render(truncate("Stored only in TideMail; separate from TideContacts.", width))
+	label := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Width(width).Render(truncate("Stored only in TideMail; separate from "+cm.separateFrom+".", width))
 	return lipgloss.JoinVertical(lipgloss.Left, label, cm.viewBook(width, max(1, height-1), styles))
 }
 func (cm ContactManager) viewBook(width, height int, styles Styles) string {

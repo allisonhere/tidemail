@@ -102,5 +102,3 @@ redacted from surfaced process diagnostics and JSON reports.
 - Fail closed: on unexpected input, answer with an error or exit non-zero;
   a failure never damages stored annotations.
 - Keep calls fast. Five seconds covers a network round trip, not a batch job.
-
-The TideContacts plugin additionally receives `TIDECONTACTS_DEMO=1` only when the host demo launcher sets it. This keeps the contacts bridge on its isolated demo database.

@@ -132,6 +132,11 @@ func TestContactBookSourceLabels(t *testing.T) {
 	}
 	native := NewContactManager(m.db)
 	view = native.View(74, 36, m.styles)
+	if strings.Contains(view, "TideContacts") {
+		t.Fatalf("the plain contact manager must not mention TideContacts unless reached from it: %s", view)
+	}
+	native.separateFrom = "TideContacts"
+	view = native.View(74, 36, m.styles)
 	if !strings.Contains(view, "Stored only in TideMail; separate from TideContacts.") {
 		t.Fatal(view)
 	}

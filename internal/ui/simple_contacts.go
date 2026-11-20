@@ -249,6 +249,7 @@ func (m Model) handleSimpleContacts(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "L":
 		m.simpleContacts = nil
 		m.contactManager = NewContactManager(m.db)
+		m.contactManager.separateFrom = "TideContacts"
 		return m, nil
 	case "/":
 		s.searching = true
