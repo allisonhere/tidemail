@@ -1,5 +1,12 @@
 # Contributor guidance
 
+## Preserve the installed binary for update testing
+
+Do not update, replace, or reinstall the user's installed TideMail binary unless
+they explicitly request it. They keep an older installed version to test the
+update flow. Build and test repository changes using a separate output path;
+release work does not authorize updating the installed binary.
+
 ## Keep documentation current
 
 When changing user-facing TideMail behavior, update the relevant help text and
