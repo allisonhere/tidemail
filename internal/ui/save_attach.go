@@ -244,7 +244,7 @@ func (m Model) renderSaveAttachPicker(width, height int, chrome managerChrome) s
 // the folder chosen in Settings, else the system's Downloads folder. Empty
 // only when there is no home directory to fall back on.
 func (m Model) downloadDir() string {
-	return config.ResolveDownloadDir(m.cfg.Display.DownloadDir)
+	return config.ResolveDownloadDir(m.cfg.DownloadDir)
 }
 
 // saveAttachmentsCmd is the fallback used when the folder picker can't open:

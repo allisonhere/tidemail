@@ -62,7 +62,7 @@ func TestSaveAttachPickerStartsInConfiguredDownloadDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.DefaultConfig()
-	cfg.Display.DownloadDir = chosen
+	cfg.DownloadDir = chosen
 	m := NewModel(nil, cfg, "dev", false)
 	t.Cleanup(m.CloseSessions)
 	m.focused = paneContent
@@ -79,7 +79,7 @@ func TestSaveAttachPickerStartsInConfiguredDownloadDir(t *testing.T) {
 func TestSaveAttachFallbackFollowsConfiguredDownloadDir(t *testing.T) {
 	chosen := filepath.Join(t.TempDir(), "not-created-yet")
 	cfg := config.DefaultConfig()
-	cfg.Display.DownloadDir = chosen
+	cfg.DownloadDir = chosen
 	m := NewModel(nil, cfg, "dev", false)
 	t.Cleanup(m.CloseSessions)
 	m.focused = paneContent

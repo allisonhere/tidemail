@@ -363,11 +363,11 @@ keep their highlight and chevron in both modes.
 with the keyboard. New messages start with no link selected. Clicking a LINKS
 entry selects it without opening it; ordinary body clicks and scrolling never
 open links. `Ctrl+B` views the whole message in your browser. These actions use
-**Browser command** from Settings → Display when one is set.
+**Browser command** from Settings → General when one is set.
 
 View in Browser (`Ctrl+B`) works from the message list or reading pane. It fetches
 the original message without marking it read and opens its HTML as a private local
-`.html` file in your browser: the **Browser command** from Settings → Display when
+`.html` file in your browser: the **Browser command** from Settings → General when
 one is set, otherwise the system default (`xdg-open` on Linux). Messages without
 HTML show a status message. Links are preserved. Remote content is blocked so
 opening a message does not load tracking pixels: remote images, scripts, frames,
@@ -533,7 +533,7 @@ see the result. If a pill ever seems stuck, those two times show which side was 
 to a file — both in chronological order (oldest first), the opposite of the pane's newest-first
 display, and errors are marked with a leading `!` so they are easy to find. `s` opens the same
 folder browser attachments save to, starting in your downloads folder (see **Downloads folder**
-in Settings → Display), so you can navigate to or select any folder; the file is
+in Settings → General), so you can navigate to or select any folder; the file is
 `tidemail-logs-<timestamp>.txt` and never overwrites an existing one. If that folder doesn't
 exist, it saves straight to `tidemail-logs/` inside it instead of opening the browser. This log is the last 100 status-bar messages from this session, not the IMAP/IDLE sync
 diagnostics TideMail keeps on disk in `fetch.log`, next to `config.toml`
@@ -714,7 +714,7 @@ other Unicode letters, digits, and combining marks. Long filenames are shortened
 at a valid UTF-8 boundary, retaining short extensions.
 
 `Ctrl+D` opens a folder browser for the open message's attachments, starting in your
-downloads folder: the one set in **Settings → Display → Behavior → Downloads folder**,
+downloads folder: the one set in **Settings → General → Downloads folder**,
 otherwise `XDG_DOWNLOAD_DIR` (the environment variable, or the line in
 `~/.config/user-dirs.dirs` that desktops keep it in), otherwise `~/Downloads`. Browse to
 any folder and choose **✓ select this folder**. In the setting, a leading `~` and

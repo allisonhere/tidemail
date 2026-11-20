@@ -112,6 +112,7 @@ type settingsSection int
 
 const (
 	ssDisplay settingsSection = iota
+	ssGeneral
 	ssEditor
 	ssCLI
 	ssUpdates
@@ -203,6 +204,7 @@ var (
 	ollamaModelLabels     = []string{"llama3.2", "llama3.1", "mistral", "gemma3", "phi4"}
 	settingsSectionLabels = [settingsSectionCount]string{
 		"DISPLAY",
+		"GENERAL",
 		"EDITOR",
 		"CLI",
 		"UPDATES",
@@ -505,7 +507,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		sendMaxAttemptsInput:    mkInput(strconv.Itoa(config.NormalizeSendMaxAttempts(cfg.Display.SendMaxAttempts)), "3 (1 = no retries)", false),
 		sendDelayInput:          mkInput(strconv.Itoa(cfg.Display.SendDelaySeconds), "5 (0 = immediate)", false),
 		browserInput:            mkInput(cfg.Display.Browser, "xdg-open", false),
-		downloadDirInput:        mkInput(cfg.Display.DownloadDir, config.ResolveDownloadDir(""), false),
+		downloadDirInput:        mkInput(cfg.DownloadDir, config.ResolveDownloadDir(""), false),
 		feedMaxBodyInput:        mkInput(strconv.Itoa(cfg.Feed.MaxBodyMiB), "10", false),
 		updateCheckOnStartup:    cfg.Updates.CheckOnStartup,
 		update:                  updateState,
@@ -528,6 +530,7 @@ func newSettings(cfg config.Config, updateState settingsUpdateState) Settings {
 		focusedPane:             settingsPaneSidebar,
 		sectionField: [settingsSectionCount]settingsField{
 			ssDisplay:   sfBackToSections,
+			ssGeneral:   sfBackToSections,
 			ssEditor:    sfBackToSections,
 			ssCLI:       sfBackToSections,
 			ssUpdates:   sfBackToSections,
@@ -617,7 +620,7 @@ func (s Settings) ApplyTo(cfg config.Config) config.Config {
 		cfg.Display.PaneCorners = "square"
 	}
 	cfg.Display.Browser = strings.TrimSpace(s.browserInput.Value())
-	cfg.Display.DownloadDir = strings.TrimSpace(s.downloadDirInput.Value())
+	cfg.DownloadDir = strings.TrimSpace(s.downloadDirInput.Value())
 	bg := strings.TrimSpace(s.retroBgInput.Value())
 	fg := strings.TrimSpace(s.retroFgInput.Value())
 	ac := strings.TrimSpace(s.retroAccentInput.Value())
@@ -840,14 +843,17 @@ func (s Settings) sectionFields(section settingsSection) []settingsField {
 	switch section {
 	case ssDisplay:
 		// Keep this order in lockstep with the ssDisplay case in viewSectionBody:
-		// Appearance, Terminal colors (retro themes), Message list, Reading, Behavior.
+		// Appearance, Terminal colors (retro themes), Message list, Reading.
 		fields := []settingsField{sfBackToSections, sfTheme, sfDisplayDensity, sfPaneCorners, sfIcons, sfShowPaneHeaders, sfShowNeedsYou, sfShowWaiting, sfDateFormat, sfFocusLine, sfShadow, sfTransparent, sfSupportReminder, sfTagStyle, sfShowMessageTagsInHeader, sfTagColors, sfMailTags}
 		if config.IsRetroTerminalTheme(s.themeName) {
 			fields = append(fields, sfRetroBg, sfRetroFg, sfRetroAccent)
 		}
 		fields = append(fields, sfShowSender, sfThreadedConversations, sfDefaultUnreadOnly, sfUnreadFirst, sfStarredFirst)
 		fields = append(fields, sfReadingWidth, sfShowHeaders, sfMarkReadOnOpen, sfMarkReadOnFocus, sfActionableLinks, sfFilterLinks, sfImages)
-		return append(fields, sfBrowser, sfDownloadDir, sfConfirmQuit, sfNotifications, sfMouseSupport)
+		return fields
+	case ssGeneral:
+		// Keep this order in lockstep with the ssGeneral case in viewSectionBody.
+		return []settingsField{sfBackToSections, sfBrowser, sfDownloadDir, sfConfirmQuit, sfNotifications, sfMouseSupport}
 	case ssEditor:
 		return []settingsField{sfBackToSections, sfComposeVim, sfComposeWordWrap, sfComposeSearchRegex, sfComposeSpell, sfSpellLang, sfSpellDictionary, sfSendDelay, sfSendMaxAttempts}
 	case ssCLI:
@@ -2167,10 +2173,14 @@ func (s Settings) viewSectionBody(width int, chrome managerChrome) settingsSecti
 			b.addFieldHintMarked(sfImages, "Terminal: inline images supported.",
 				imageSupportMarker(b.chrome.plainUI, aiConnectionSuccess), b.chrome.successFg)
 		}
-		b.addBlank()
-		b.addGroup("Behavior")
+
+	case ssGeneral:
+		// Keep this order in lockstep with the ssGeneral case in sectionFields.
+		b.addGroup("Files and links")
 		b.addInput("Browser command", s.browserInput, sfBrowser)
 		b.addInput("Downloads folder", s.downloadDirInput, sfDownloadDir)
+		b.addBlank()
+		b.addGroup("Behavior")
 		b.addToggle("Confirm before quitting", s.confirmQuit, sfConfirmQuit)
 		b.addToggle("Desktop notifications", s.notifications, sfNotifications)
 		b.addToggle("Mouse support", s.mouseSupport, sfMouseSupport)

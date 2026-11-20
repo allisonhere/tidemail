@@ -120,7 +120,7 @@ One inbox, 51 built-in themes in 23 families — Catppuccin, Tokyo Night, Rosé 
   and undo. Portable skills for Codex, Claude, Pi, and Hermes let an agent send
   mail within capabilities and approval you configure. See the
   [CLI reference](docs/cli.md).
-- **Prefer the mouse?**   Turn on **Settings → Display → Mouse support** (off by default, so your
+- **Prefer the mouse?**   Turn on **Settings → General → Mouse support** (off by default, so your
   terminal's native text selection keeps working). Then click rows and panes,
   double-click a message to open it, use the scroll wheel over any pane, and
   right-click a folder, account, or message for a menu of just its actions.
@@ -408,11 +408,11 @@ keep their highlight and chevron in both modes.
 with the keyboard. New messages start with no link selected. Clicking a LINKS
 entry selects it without opening it; ordinary body clicks and scrolling never
 open links. `Ctrl+B` views the whole message in your browser. These actions use
-**Browser command** from Settings → Display when one is set.
+**Browser command** from Settings → General when one is set.
 
 View in Browser (`Ctrl+B`) works from the message list or reading pane. It fetches
 the original message without marking it read and opens its HTML as a private local
-`.html` file in your browser: the **Browser command** from Settings → Display when
+`.html` file in your browser: the **Browser command** from Settings → General when
 one is set, otherwise the system default (`xdg-open` on Linux). Messages without
 HTML show a status message. Links are preserved. Remote content is blocked so
 opening a message does not load tracking pixels: remote images, scripts, frames,
@@ -511,7 +511,7 @@ A plugin with the `contacts_read` permission can serve as an external address bo
 | `O` | Open the Outbox |
 | `Ctrl+U` | Unsubscribe while reading; cycle sender while composing |
 | `Alt+F` / `Ctrl+R` | Attach a file while composing; remove the last attachment |
-| `Ctrl+D` | Save attachments from the open message (starts in your downloads folder; set it in Settings → Display) |
+| `Ctrl+D` | Save attachments from the open message (starts in your downloads folder; set it in Settings → General) |
 | `Ctrl+E` | Show or hide full headers |
 | `Ctrl+O` | View the message source (`c` copies it) |
 | `Ctrl+B` | View the whole message in your browser (remote content blocked) |

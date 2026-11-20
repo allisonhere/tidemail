@@ -320,6 +320,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{keys.Space.Help().Key + "/" + keys.Enter.Help().Key, "toggle or activate focused setting"},
 				{keys.Left.Help().Key + "/" + keys.Right.Help().Key, "change picker fields"},
 				{keys.Save.Help().Key, "save settings"},
+				{"General", "browser command, downloads folder (where saving attachments and logs starts), quit confirmation, notifications, mouse"},
 				{"Editor", "set compose keys and the ctrl+z send delay"},
 				{"CLI", "tidemail cli: quit after send, skip review, default signature (interactive use only)"},
 				{"Personal dictionary", "Editor section: a adds a spell-check word, d removes the selected one, esc goes back"},
@@ -349,7 +350,7 @@ func helpSections(keys KeyMap) []helpSection {
 		{
 			name: "Mouse",
 			entries: []helpEntry{
-				{"enable", "Settings → Display → Mouse support (off by default; keeps native text selection while off)"},
+				{"enable", "Settings → General → Mouse support (off by default; keeps native text selection while off)"},
 				{"click", "select a row or LINKS entry, or focus a pane; reader clicks never open links; click a search row to edit"},
 				{"reader drag", "select text with Focus Line on/off; ctrl+c or y copies displayed line breaks; drag above/below to autoscroll; next click clears"},
 				{"double-click", "expand/collapse a conversation parent; open a child, single message or draft; on a sidebar row, expand/collapse or sync like enter"},

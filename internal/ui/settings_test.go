@@ -17,7 +17,7 @@ import (
 
 func TestSettingsFieldNavigationClampsAtEnds(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
-	s.setActiveSection(ssDisplay)
+	s.setActiveSection(ssGeneral)
 	s.setFocusedPane(settingsPaneDetail)
 	s.setFocusedField(sfMouseSupport)
 	if got := s.nextField(); got != sfMouseSupport {
@@ -362,8 +362,8 @@ func TestSettingsSidebarDownChangesSection(t *testing.T) {
 
 	next, _, _ := s.Update(tea.KeyMsg{Type: tea.KeyDown}, DefaultKeys)
 
-	if next.activeSection != ssEditor {
-		t.Fatalf("expected active section to move to EDITOR, got %v", next.activeSection)
+	if next.activeSection != ssGeneral {
+		t.Fatalf("expected active section to move to GENERAL, got %v", next.activeSection)
 	}
 	if next.focusedField != sfBackToSections {
 		t.Fatalf("expected sidebar navigation to keep back-link focus within detail pane, got %v", next.focusedField)
@@ -433,14 +433,14 @@ func TestSettingsEscMovesToSidebarThenCancelsFromSidebar(t *testing.T) {
 
 func TestSettingsRestoresLastFocusedFieldPerSection(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
-	s.setActiveSection(ssDisplay)
+	s.setActiveSection(ssGeneral)
 	s.setFocusedField(sfBrowser)
 	s.setActiveSection(ssAI)
 	s.setFocusedField(sfSavePath)
 
-	s.setActiveSection(ssDisplay)
+	s.setActiveSection(ssGeneral)
 	if s.focusedField != sfBrowser {
-		t.Fatalf("expected DISPLAY section to restore browser focus, got %v", s.focusedField)
+		t.Fatalf("expected GENERAL section to restore browser focus, got %v", s.focusedField)
 	}
 
 	s.setActiveSection(ssAI)
@@ -1267,7 +1267,8 @@ func TestSettingsSectionsUseSharedRightPaneGroupHeaders(t *testing.T) {
 		{section: ssDisplay, want: "  Appearance"},
 		{section: ssDisplay, want: "  Message list"},
 		{section: ssDisplay, want: "  Reading"},
-		{section: ssDisplay, want: "  Behavior"},
+		{section: ssGeneral, want: "  Files and links"},
+		{section: ssGeneral, want: "  Behavior"},
 		{section: ssEditor, want: "  Compose"},
 		{section: ssUpdates, want: "  Updates"},
 		{section: ssAI, want: "  Provider credentials"},
@@ -1925,14 +1926,14 @@ func TestSettingsDownloadDirIsTypedAndSaved(t *testing.T) {
 	if s.focusedField != sfDownloadDir {
 		t.Fatalf("the Downloads folder field should keep focus while typing, got %v", s.focusedField)
 	}
-	if got := s.ApplyTo(config.DefaultConfig()).Display.DownloadDir; got != "~/mail" {
+	if got := s.ApplyTo(config.DefaultConfig()).DownloadDir; got != "~/mail" {
 		t.Fatalf("saved download_dir = %q, want %q", got, "~/mail")
 	}
 }
 
 func TestSettingsDownloadDirLoadsAndBlankMeansAutomatic(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Display.DownloadDir = "/data/incoming"
+	cfg.DownloadDir = "/data/incoming"
 	s := newSettings(cfg, settingsUpdateState{})
 	if got := s.downloadDirInput.Value(); got != "/data/incoming" {
 		t.Fatalf("field should show the saved folder, got %q", got)
@@ -1941,7 +1942,7 @@ func TestSettingsDownloadDirLoadsAndBlankMeansAutomatic(t *testing.T) {
 	// Clearing the field returns to following the system folder, and the
 	// placeholder shows what that is.
 	s.downloadDirInput.SetValue("   ")
-	if got := s.ApplyTo(cfg).Display.DownloadDir; got != "" {
+	if got := s.ApplyTo(cfg).DownloadDir; got != "" {
 		t.Fatalf("a blank field should clear download_dir, got %q", got)
 	}
 	blank := newSettings(config.DefaultConfig(), settingsUpdateState{})
@@ -1950,12 +1951,24 @@ func TestSettingsDownloadDirLoadsAndBlankMeansAutomatic(t *testing.T) {
 	}
 }
 
-func TestSettingsDisplayListsDownloadDirAfterBrowser(t *testing.T) {
+func TestSettingsGeneralHoldsDownloadDirAndTheBehaviorRows(t *testing.T) {
 	s := newSettings(config.DefaultConfig(), settingsUpdateState{})
-	fields := s.sectionFields(ssDisplay)
-	b := slices.Index(fields, sfBrowser)
-	d := slices.Index(fields, sfDownloadDir)
+	general := s.sectionFields(ssGeneral)
+	b := slices.Index(general, sfBrowser)
+	d := slices.Index(general, sfDownloadDir)
 	if b < 0 || d != b+1 {
-		t.Fatalf("Downloads folder should follow Browser command in Display, got browser=%d downloads=%d", b, d)
+		t.Fatalf("Downloads folder should follow Browser command in General, got browser=%d downloads=%d", b, d)
+	}
+	for _, f := range []settingsField{sfConfirmQuit, sfNotifications, sfMouseSupport} {
+		if !slices.Contains(general, f) {
+			t.Errorf("General should hold field %v", f)
+		}
+	}
+	// These are not about how things look, so Display no longer lists them.
+	display := s.sectionFields(ssDisplay)
+	for _, f := range []settingsField{sfBrowser, sfDownloadDir, sfConfirmQuit, sfNotifications, sfMouseSupport} {
+		if slices.Contains(display, f) {
+			t.Errorf("Display should no longer hold field %v", f)
+		}
 	}
 }

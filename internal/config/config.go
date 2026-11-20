@@ -23,6 +23,9 @@ type Config struct {
 	// tidemail did before the setting existed, and startup keeps landing on
 	// the unified inbox.
 	DefaultAccountID string `toml:"default_account"`
+	// DownloadDir is where saving attachments, logs and plugin reports starts.
+	// Blank follows the system's Downloads folder; see ResolveDownloadDir.
+	DownloadDir string `toml:"download_dir,omitempty"`
 
 	Display  DisplayConfig   `toml:"display"`
 	Contacts ContactsConfig  `toml:"contacts"`
@@ -216,7 +219,6 @@ type DisplayConfig struct {
 	StarredFirst            bool   `toml:"starred_first"`
 	Notifications           bool   `toml:"notifications"`
 	Browser                 string `toml:"browser"`
-	DownloadDir             string `toml:"download_dir,omitempty"` // where saves start; blank follows the system Downloads folder (ResolveDownloadDir)
 	Density                 string `toml:"density"`
 	PaneCorners             string `toml:"pane_corners"` // "square" or "round"
 	Shadow                  bool   `toml:"shadow"`       // drop shadow behind modal overlays
