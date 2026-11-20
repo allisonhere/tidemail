@@ -96,6 +96,10 @@ func (m *Model) scheduleArchive(msgs []db.Message) tea.Cmd {
 			m.setStatus("archive failed: "+err.Error(), true)
 			continue
 		}
+		if target.ID == source.ID {
+			m.setStatus("already in Archive", false)
+			continue
+		}
 		acfg, err := m.accountCfgForMailbox(msg.MailboxID)
 		if err != nil {
 			m.setStatus("archive failed: "+err.Error(), true)
