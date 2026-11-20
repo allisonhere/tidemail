@@ -1,0 +1,11 @@
+# import config
+packagefile errors=/home/allie/.cache/go-build/88/88ae01cc344ac2482c9bb27a8af09ce653946ecd10c87ddfcc9150c9b6b2f77a-d
+packagefile github.com/godbus/dbus/v5=/home/allie/.cache/go-build/04/040279b58941935966d55a9980331a11ed0d78b174f184900d87bd7220cc55f4-d
+packagefile reflect=/home/allie/.cache/go-build/6b/6b60c615a5c30998f4416f3b52b2a1de910692d340fdd5f738b5de629620b7f9-d
+packagefile testing=/home/allie/.cache/go-build/0c/0cb8ce2d4b6b15f2340473fa3816e0a887e9020c230525939a2be897ea881ea7-d
+packagefile time=/home/allie/.cache/go-build/09/0921bcefe2a65c8bd250c78da13888e634d7d4a1bc0472fd559382c2965aa66f-d
+packagefile errors=/home/allie/.cache/go-build/88/88ae01cc344ac2482c9bb27a8af09ce653946ecd10c87ddfcc9150c9b6b2f77a-d
+packagefile fmt=/home/allie/.cache/go-build/6e/6e3624c6459e969f6d39fd7b902a10d14fc938e65ecf73f0db2f26eeccfc5a9a-d
+packagefile github.com/godbus/dbus/v5=/home/allie/.cache/go-build/04/040279b58941935966d55a9980331a11ed0d78b174f184900d87bd7220cc55f4-d
+packagefile sync=/home/allie/.cache/go-build/37/37994cb9c479aa577e54821916aeabdbe12617f5a7833f4710ef0c49e52d7857-d
+packagefile github.com/allisonhere/tidemail/internal/notify=/home/allie/Projects/tidemail/.test-tmp/oauth-checks/go-build658546364/b374/_pkg_.a

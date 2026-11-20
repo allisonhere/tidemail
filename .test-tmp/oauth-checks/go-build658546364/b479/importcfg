@@ -1,0 +1,13 @@
+# import config
+packagefile bytes=/home/allie/.cache/go-build/62/62cbd6564ad558de14c680b385bc84208a23496eb042d93d17dd7c1230774bdf-d
+packagefile context=/home/allie/.cache/go-build/cb/cb333fbe9b1ef49654b20d0376cb2ddb6784049e1ccd32b9c7da42da513d1f35-d
+packagefile github.com/allisonhere/tidemail/internal/config=/home/allie/.cache/go-build/de/de3eb97b955560641f7cb8e28e9526d82fcab2ef570cd8faab936028fbe53933-d
+packagefile github.com/allisonhere/tidemail/internal/mailapp=/home/allie/Projects/tidemail/.test-tmp/oauth-checks/go-build658546364/b323/_pkg_.a
+packagefile github.com/allisonhere/tidemail/internal/plugin=/home/allie/Projects/tidemail/.test-tmp/oauth-checks/go-build658546364/b324/_pkg_.a
+packagefile github.com/allisonhere/tidemail/internal/smtp=/home/allie/.cache/go-build/27/2792ff85311263291290928a471066bc825450d6df63582ba9293ac2eb120a2e-d
+packagefile os=/home/allie/.cache/go-build/44/448f1e0aea22096b1c10b9f4822b1143ec81d20eaa0a9a0bf0482f6cf605f3f7-d
+packagefile os/exec=/home/allie/.cache/go-build/bc/bc40ec18e1cdda312488c6fa1817d173024f68b919cb402fe3441588aa9c5ca0-d
+packagefile path/filepath=/home/allie/.cache/go-build/63/63c477459805f18fe1cbd85209faf27cdf6337c0ffc0c66c3257a9fdf9c9ccf7-d
+packagefile strings=/home/allie/.cache/go-build/f8/f844fae58f696cb90ce62c1617c50a76684a9df24b825bc25d3d2449f20c073b-d
+packagefile testing=/home/allie/.cache/go-build/0c/0cb8ce2d4b6b15f2340473fa3816e0a887e9020c230525939a2be897ea881ea7-d
+packagefile github.com/allisonhere/tidemail/internal/pgpmail=/home/allie/Projects/tidemail/.test-tmp/oauth-checks/go-build658546364/b477/_pkg_.a

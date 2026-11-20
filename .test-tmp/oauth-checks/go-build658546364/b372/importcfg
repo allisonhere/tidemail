@@ -1,0 +1,6 @@
+# import config
+packagefile fmt=/home/allie/.cache/go-build/6e/6e3624c6459e969f6d39fd7b902a10d14fc938e65ecf73f0db2f26eeccfc5a9a-d
+packagefile os/exec=/home/allie/.cache/go-build/bc/bc40ec18e1cdda312488c6fa1817d173024f68b919cb402fe3441588aa9c5ca0-d
+packagefile runtime=/home/allie/.cache/go-build/2d/2db555d515f568cef22c1c01d1be02a001a8b6ebfa74cf442d5470ad7ce732b0-d
+packagefile strings=/home/allie/.cache/go-build/f8/f844fae58f696cb90ce62c1617c50a76684a9df24b825bc25d3d2449f20c073b-d
+packagefile time=/home/allie/.cache/go-build/09/0921bcefe2a65c8bd250c78da13888e634d7d4a1bc0472fd559382c2965aa66f-d

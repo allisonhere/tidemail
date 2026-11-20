@@ -1,0 +1,5 @@
+# import config
+packagefile encoding/json=/home/allie/.cache/go-build/36/369ba869b8f58738b3fe74735d60c8bfb381337a7543db98401edc16f50f6507-d
+packagefile fmt=/home/allie/.cache/go-build/6e/6e3624c6459e969f6d39fd7b902a10d14fc938e65ecf73f0db2f26eeccfc5a9a-d
+packagefile github.com/allisonhere/tidemail/internal/db=/home/allie/.cache/go-build/b0/b0a3fe0efc827dbe7cf8ff9cdb34fbec39c43dd7e1abe6003ebe99975746a7b8-d
+packagefile strings=/home/allie/.cache/go-build/f8/f844fae58f696cb90ce62c1617c50a76684a9df24b825bc25d3d2449f20c073b-d

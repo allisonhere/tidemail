@@ -1,0 +1,9 @@
+# import config
+packagefile fmt=/home/allie/.cache/go-build/6e/6e3624c6459e969f6d39fd7b902a10d14fc938e65ecf73f0db2f26eeccfc5a9a-d
+packagefile github.com/allisonhere/ripple=/home/allie/.cache/go-build/70/70542b691957587d4dc73dcaad1ee64294ae6530756834691219376ca67dad5e-d
+packagefile github.com/allisonhere/tidemail/internal/clipboard=/home/allie/Projects/tidemail/.test-tmp/oauth-checks/go-build658546364/b277/_pkg_.a
+packagefile github.com/charmbracelet/bubbletea=/home/allie/.cache/go-build/5d/5db91408a14cf705412d3a3e77937477075a80f8d4f9975f3bf82df4502b3ed1-d
+packagefile github.com/charmbracelet/lipgloss=/home/allie/.cache/go-build/2d/2d33f6e1f5cd764007ce1ac22636a2017e8e99f9ab2c5d401c3e7c83cfcc43ac-d
+packagefile os=/home/allie/.cache/go-build/44/448f1e0aea22096b1c10b9f4822b1143ec81d20eaa0a9a0bf0482f6cf605f3f7-d
+packagefile runtime=/home/allie/.cache/go-build/2d/2db555d515f568cef22c1c01d1be02a001a8b6ebfa74cf442d5470ad7ce732b0-d
+packagefile runtime/race=/home/allie/.cache/go-build/60/600f9b717c349cb43f51189cbc9d66bcd8892d558fc30e41f0c33370fa601c53-d

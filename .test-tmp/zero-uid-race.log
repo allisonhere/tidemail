@@ -1,0 +1,33 @@
+ok  	github.com/allisonhere/tidemail	2.589s
+ok  	github.com/allisonhere/tidemail/cmd/aboutpreview	7.883s
+ok  	github.com/allisonhere/tidemail/cmd/demoseed	1.732s
+?   	github.com/allisonhere/tidemail/cmd/editortest	[no test files]
+?   	github.com/allisonhere/tidemail/cmd/kittytest	[no test files]
+ok  	github.com/allisonhere/tidemail/examples/plugins/analytics	3.347s
+ok  	github.com/allisonhere/tidemail/examples/plugins/example	4.031s
+ok  	github.com/allisonhere/tidemail/internal/ai	1.024s
+ok  	github.com/allisonhere/tidemail/internal/attention	1.007s
+ok  	github.com/allisonhere/tidemail/internal/auth	3.138s
+ok  	github.com/allisonhere/tidemail/internal/autodiscover	1.031s
+ok  	github.com/allisonhere/tidemail/internal/browser	3.008s
+ok  	github.com/allisonhere/tidemail/internal/cli	9.098s
+ok  	github.com/allisonhere/tidemail/internal/cliform	1.022s
+ok  	github.com/allisonhere/tidemail/internal/clipboard	1.005s
+ok  	github.com/allisonhere/tidemail/internal/config	1.237s
+ok  	github.com/allisonhere/tidemail/internal/conversation	1.008s
+ok  	github.com/allisonhere/tidemail/internal/db	31.969s
+ok  	github.com/allisonhere/tidemail/internal/filter	1.007s
+ok  	github.com/allisonhere/tidemail/internal/imap	(cached)
+ok  	github.com/allisonhere/tidemail/internal/mailapp	2.687s
+ok  	github.com/allisonhere/tidemail/internal/mailtag	1.006s
+ok  	github.com/allisonhere/tidemail/internal/mailtemplate	1.008s
+ok  	github.com/allisonhere/tidemail/internal/notify	1.006s
+ok  	github.com/allisonhere/tidemail/internal/omarchy	1.006s
+ok  	github.com/allisonhere/tidemail/internal/passprompt	1.014s
+ok  	github.com/allisonhere/tidemail/internal/pgpmail	1.013s
+ok  	github.com/allisonhere/tidemail/internal/plugin	3.418s
+ok  	github.com/allisonhere/tidemail/internal/plugincatalog	1.063s
+ok  	github.com/allisonhere/tidemail/internal/pluginquery	5.309s
+ok  	github.com/allisonhere/tidemail/internal/richmail	1.010s
+ok  	github.com/allisonhere/tidemail/internal/smtp	1.115s
+ok  	github.com/allisonhere/tidemail/internal/termimage	1.073s

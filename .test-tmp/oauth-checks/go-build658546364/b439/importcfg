@@ -1,0 +1,6 @@
+# import config
+packagefile github.com/allisonhere/tidemail/internal/db=/home/allie/.cache/go-build/b0/b0a3fe0efc827dbe7cf8ff9cdb34fbec39c43dd7e1abe6003ebe99975746a7b8-d
+packagefile testing=/home/allie/.cache/go-build/0c/0cb8ce2d4b6b15f2340473fa3816e0a887e9020c230525939a2be897ea881ea7-d
+packagefile github.com/allisonhere/tidemail/internal/db=/home/allie/.cache/go-build/b0/b0a3fe0efc827dbe7cf8ff9cdb34fbec39c43dd7e1abe6003ebe99975746a7b8-d
+packagefile strings=/home/allie/.cache/go-build/f8/f844fae58f696cb90ce62c1617c50a76684a9df24b825bc25d3d2449f20c073b-d
+packagefile github.com/allisonhere/tidemail/internal/attention=/home/allie/Projects/tidemail/.test-tmp/oauth-checks/go-build658546364/b351/_pkg_.a
