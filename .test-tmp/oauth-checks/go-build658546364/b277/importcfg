@@ -1,7 +1,0 @@
-# import config
-packagefile fmt=/home/allie/.cache/go-build/6e/6e3624c6459e969f6d39fd7b902a10d14fc938e65ecf73f0db2f26eeccfc5a9a-d
-packagefile github.com/aymanbagabas/go-osc52/v2=/home/allie/.cache/go-build/cc/cc4ccad03a33f061d6e95c65f738a0b49a3770b8dcd3c86cd9aec9c9a4a2ead1-d
-packagefile io=/home/allie/.cache/go-build/f4/f4e4dceed275b584d850ea49b81553bfbcf5cc6d9f980f3573a3b5ad6fde87a6-d
-packagefile os=/home/allie/.cache/go-build/44/448f1e0aea22096b1c10b9f4822b1143ec81d20eaa0a9a0bf0482f6cf605f3f7-d
-packagefile os/exec=/home/allie/.cache/go-build/bc/bc40ec18e1cdda312488c6fa1817d173024f68b919cb402fe3441588aa9c5ca0-d
-packagefile strings=/home/allie/.cache/go-build/f8/f844fae58f696cb90ce62c1617c50a76684a9df24b825bc25d3d2449f20c073b-d

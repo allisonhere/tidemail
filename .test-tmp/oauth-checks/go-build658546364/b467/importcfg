@@ -1,9 +1,0 @@
-# import config
-packagefile reflect=/home/allie/.cache/go-build/6b/6b60c615a5c30998f4416f3b52b2a1de910692d340fdd5f738b5de629620b7f9-d
-packagefile testing=/home/allie/.cache/go-build/0c/0cb8ce2d4b6b15f2340473fa3816e0a887e9020c230525939a2be897ea881ea7-d
-packagefile fmt=/home/allie/.cache/go-build/6e/6e3624c6459e969f6d39fd7b902a10d14fc938e65ecf73f0db2f26eeccfc5a9a-d
-packagefile slices=/home/allie/.cache/go-build/2e/2e26ca49c55310914187c9d437f90610af40cf4f6b933c7c4a009d1249dcd89f-d
-packagefile strings=/home/allie/.cache/go-build/f8/f844fae58f696cb90ce62c1617c50a76684a9df24b825bc25d3d2449f20c073b-d
-packagefile unicode=/home/allie/.cache/go-build/41/41dbd895645435f5780e5217aa5087569a40fe9488ad778bc0ec43ff7388a137-d
-packagefile unicode/utf8=/home/allie/.cache/go-build/3c/3c848b2cf2ae78816079313bb084150899c73de18684fdb3f2573e14e53fa273-d
-packagefile github.com/allisonhere/tidemail/internal/mailtag=/home/allie/.cache/go-build/86/86d33eac52c84bd1f6577d34525af02e7cb5b74e267dbc664e2436faf9f03a57-d
