@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 var geminiModelDefault = "gemini-1.5-flash"
@@ -38,19 +39,18 @@ func (g *gemini) Summarize(ctx context.Context, title, content string) (string, 
 
 	url := g.apiURL
 	if url == "" {
-		url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + g.key
-	} else {
-		url = url + g.key
+		url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent"
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", g.key)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", err
+		return "", redactKey(err, g.key)
 	}
 	defer resp.Body.Close()
 
@@ -86,6 +86,20 @@ func (g *gemini) CheckGrammar(ctx context.Context, text string) (string, error) 
 	return g.generate(ctx, fmt.Sprintf(grammarPrompt, truncateContent(text, 4000)), 2000)
 }
 
+// redactKey strips the API key from an error's text before it can reach the
+// UI. The key no longer travels in the request URL, but a transport error
+// (proxy, redirect) could still echo it back from elsewhere.
+func redactKey(err error, key string) error {
+	if err == nil || key == "" {
+		return err
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, key) {
+		return err
+	}
+	return fmt.Errorf("%s", strings.ReplaceAll(msg, key, "***"))
+}
+
 func (g *gemini) generate(ctx context.Context, prompt string, maxOutputTokens int) (string, error) {
 	model := g.model
 	if model == "" {
@@ -99,18 +113,17 @@ func (g *gemini) generate(ctx context.Context, prompt string, maxOutputTokens in
 	})
 	url := g.apiURL
 	if url == "" {
-		url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + g.key
-	} else {
-		url = url + g.key
+		url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent"
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", g.key)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", err
+		return "", redactKey(err, g.key)
 	}
 	defer resp.Body.Close()
 	var result struct {
