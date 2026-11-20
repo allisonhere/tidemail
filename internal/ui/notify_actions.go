@@ -129,7 +129,7 @@ func (m Model) handleNotifyActionEvent(msg notifyActionEventMsg) (tea.Model, tea
 	if m.notifier != nil {
 		_ = m.notifier.CloseNotification(event.ID)
 	}
-	if event.Closed || event.ActionKey == "ignore" {
+	if event.Closed {
 		return m, tea.Batch(cmds...)
 	}
 	if (event.ActionKey == "default" || event.ActionKey == "read") && len(ids) > 0 {
@@ -163,7 +163,7 @@ func (m Model) handleNotifyActionEvent(msg notifyActionEventMsg) (tea.Model, tea
 
 func knownNotifyAction(action string) bool {
 	switch action {
-	case "default", "read", "mark-read", "delete", "ignore":
+	case "default", "read", "mark-read", "delete":
 		return true
 	default:
 		return false
