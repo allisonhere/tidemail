@@ -29,3 +29,5 @@ cmd/editortest/editortest
 dist/
 # Example plugin build output.
 examples/plugins/example/tidemail-plugin-example
+# Local test/scratch workspace (oauth checks, build caches, logs). -allie
+.test-tmp/
