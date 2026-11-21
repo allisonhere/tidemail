@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -2739,12 +2738,12 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyMatches(msg, m.keys.SaveAttach):
 		if m.focused == paneContent && m.contentMessageID != 0 && len(m.contentAttachments) > 0 {
 			m.saveAttachPickerKind = saveAttachKindAttachments
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return m, saveAttachmentsCmd(m.db, m.contentAttachments)
+			downloads := m.downloadDir()
+			if downloads == "" {
+				return m, saveAttachmentsCmd(m.db, m.contentAttachments, "")
 			}
-			if err := m.openSaveAttachPicker(filepath.Join(home, "Downloads")); err != nil {
-				return m, saveAttachmentsCmd(m.db, m.contentAttachments)
+			if err := m.openSaveAttachPicker(downloads); err != nil {
+				return m, saveAttachmentsCmd(m.db, m.contentAttachments, downloads)
 			}
 			m.overlay = overlaySaveAttach
 			return m, nil
@@ -3517,12 +3516,12 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "s":
 			text := logBufferPlainText(m.logBuffer)
 			m.saveAttachPickerKind = saveAttachKindLogs
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return m, saveLogsCmd(text)
+			downloads := m.downloadDir()
+			if downloads == "" {
+				return m, saveLogsCmd(text, "")
 			}
-			if err := m.openSaveAttachPicker(filepath.Join(home, "Downloads")); err != nil {
-				return m, saveLogsCmd(text)
+			if err := m.openSaveAttachPicker(downloads); err != nil {
+				return m, saveLogsCmd(text, downloads)
 			}
 			m.overlay = overlaySaveAttach
 			return m, nil

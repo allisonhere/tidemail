@@ -6,6 +6,20 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- **Settings → General → Downloads folder** sets where saving attachments (`Ctrl+D`),
+  the log and plugin reports starts. Left blank it follows `XDG_DOWNLOAD_DIR` (the
+  variable, or `user-dirs.dirs`) and then `~/Downloads`. It is saved as `download_dir`
+  at the top of `config.toml`. (#162, thanks @firecat53.)
+
+### Changed
+
+- Settings has a new **General** section. **Browser command**, **Confirm before
+  quitting**, **Desktop notifications** and **Mouse support** moved there from
+  Display, which is now only about how things look. Their settings in `config.toml`
+  are unchanged.
+
 ## v1.10.1
 
 ### Fixed

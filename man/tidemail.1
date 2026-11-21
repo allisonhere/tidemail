@@ -221,8 +221,14 @@ Template files.
 .I ~/.local/share/tidemail/
 The mail cache and database.
 .TP
-.I ~/Downloads/tidemail-reports/
-Plugin reports saved from the client.
+.I tidemail-reports/
+Plugin reports saved from the client, inside your downloads folder:
+.I ~/Downloads
+unless Settings,
+.B XDG_DOWNLOAD_DIR
+or
+.I user-dirs.dirs
+say otherwise.
 .PP
 The locations follow
 .B XDG_CONFIG_HOME

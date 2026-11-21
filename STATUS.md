@@ -118,6 +118,9 @@ Unreleased.
 - **Newsletter cards**: layout cells holding an image, heading, description, or
   button stay together and are separated by a thin rule. Side-by-side cards
   stack in reading order; quoted mail is not grouped.
+- **Downloads folder**: Settings → General → Downloads folder sets where
+  saving attachments (`Ctrl+D`), the log and plugin reports starts. Blank follows
+  `XDG_DOWNLOAD_DIR` (the variable, or `user-dirs.dirs`), then `~/Downloads`.
 - **Image settings**: Settings → Display → Reading → Images offers Auto/Off,
   terminal capability information, and immediate application on save.
 - **foot/WezTerm limitation**: inline images are currently unsupported. foot
@@ -212,7 +215,7 @@ Unreleased.
 - **Reader text selection**: left-drag at character precision,
   release to retain highlight, Ctrl+C or y to copy displayed line breaks; drag outside
   vertically to autoscroll. Works with Focus Line on/off; next click clears.
-- **Mouse support** (opt-in, Settings → Display): click to select rows/focus panes or select LINKS entries (clicks never open reader links),
+- **Mouse support** (opt-in, Settings → General): click to select rows/focus panes or select LINKS entries (clicks never open reader links),
   double-click to open a message, scroll wheel over the sidebar, list, and reading pane,
   right-click for a context menu of that row's actions (folder, account, or message), and click the search row to resume
   editing. Overlays and the status line are not yet clickable; no drag support.
