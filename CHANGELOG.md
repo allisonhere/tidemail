@@ -25,6 +25,12 @@ All notable changes to TideMail are documented in this file.
   Display, which is now only about how things look. Their settings in `config.toml`
   are unchanged.
 
+### Fixed
+
+- Deleting a message that another TideMail instance (or a sync) had already
+  removed from the local cache no longer reports a failed cache update. The
+  server delete succeeded, so there is nothing left to do.
+
 ## v1.10.1
 
 ### Fixed

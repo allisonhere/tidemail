@@ -246,3 +246,15 @@ func TestFlushWaitsForCommittingAction(t *testing.T) {
 		t.Fatal("flush did not return after the committing action finished")
 	}
 }
+
+func TestDeleteAlreadyRemovedFromCacheIsNotAnError(t *testing.T) {
+	f := newUndoTestFixture(t, 1)
+	// Another TideMail instance (or a sync) removed the row first.
+	if err := f.database.DeleteMessage(f.messages[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	result := executeDestructiveAction(pendingDestructiveAction{Kind: destructiveDelete, Entries: []pendingDestructiveEntry{{Message: f.messages[0], Source: f.source, Target: f.target, Account: config.AccountConfig{}}}}, f.database, f.model.sessions)
+	if result.Err != nil || len(result.Failed) != 0 || len(result.CacheFailed) != 0 || len(result.Succeeded) != 1 {
+		t.Fatalf("already-deleted message reported as a failure: %+v", result)
+	}
+}

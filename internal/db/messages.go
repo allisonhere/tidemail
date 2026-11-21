@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -461,6 +462,10 @@ func (db *DB) SaveSummary(id int64, summary string) error {
 	return err
 }
 
+// ErrMessageNotFound is returned when a cached message row no longer exists,
+// for example because another TideMail instance already removed it.
+var ErrMessageNotFound = errors.New("message not found")
+
 func (db *DB) DeleteMessage(id int64) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -472,7 +477,7 @@ func (db *DB) DeleteMessage(id int64) error {
 	var messageID string
 	if err := tx.QueryRow(`SELECT mailbox_id, uid, message_id FROM messages WHERE id = ?`, id).Scan(&mailboxID, &uid, &messageID); err != nil {
 		if err == sql.ErrNoRows {
-			return fmt.Errorf("delete message: message %d not found", id)
+			return fmt.Errorf("delete message: message %d: %w", id, ErrMessageNotFound)
 		}
 		return fmt.Errorf("delete message lookup: %w", err)
 	}
