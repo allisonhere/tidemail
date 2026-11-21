@@ -110,6 +110,9 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- The attachment file picker now follows symlinks: a link to a folder can be
+  entered, and a link to a file shows its real size. Before, such links were
+  listed as files and Enter tried to attach them.
 - Reject message UID zero in IMAP fetch, read/star, move, and delete operations;
   an unknown UID can no longer target the newest message. Invalid batches are
   rejected without modifying any messages.

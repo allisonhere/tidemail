@@ -101,3 +101,63 @@ func names(entries []fileEntry) []string {
 	}
 	return out
 }
+
+func TestComposePickerEntersSymlinkedDirectory(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real")
+	if err := os.Mkdir(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "inner.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("12345678"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for link, target := range map[string]string{
+		"dirlink":    real,
+		"filelink":   filepath.Join(dir, "file.txt"),
+		"brokenlink": filepath.Join(dir, "missing"),
+	} {
+		if err := os.Symlink(target, filepath.Join(dir, link)); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+	}
+
+	entries, err := listDirEntries(dir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]fileEntry{}
+	for _, e := range entries {
+		got[e.name] = e
+	}
+	if !got["dirlink"].isDir {
+		t.Error("symlink to a directory should be listed as a directory")
+	}
+	if got["filelink"].isDir || got["filelink"].size != 8 {
+		t.Errorf("symlink to a file = %+v, want a file of size 8", got["filelink"])
+	}
+	if got["brokenlink"].isDir {
+		t.Error("broken symlink should not be a directory")
+	}
+
+	c := NewCompose(config.AccountConfig{}, nil, nil)
+	c.openPicker(dir)
+	for i, e := range c.picker.entries {
+		if e.name == "dirlink" {
+			c.picker.cursor = i
+		}
+	}
+	c.pickerEnter()
+	if want := filepath.Join(dir, "dirlink"); c.picker.currentDir != want {
+		t.Fatalf("currentDir = %q, want %q", c.picker.currentDir, want)
+	}
+	found := false
+	for _, e := range c.picker.entries {
+		found = found || e.name == "inner.txt"
+	}
+	if !found {
+		t.Error("entering the symlinked directory should list its contents")
+	}
+}
