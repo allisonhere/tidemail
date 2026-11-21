@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -654,14 +655,14 @@ func TestDBMoveAndDeleteMessageUpdateLocalState(t *testing.T) {
 
 func TestDBDeleteMessageMissingReturnsError(t *testing.T) {
 	tmp := t.TempDir()
-	database, err := openSQLite(filepath.Join(tmp, "mail.db"))
+	database, err := OpenPath(filepath.Join(tmp, "mail.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
 
-	if err := database.DeleteMessage(999); err == nil {
-		t.Fatal("expected missing message delete to fail")
+	if err := database.DeleteMessage(999); !errors.Is(err, ErrMessageNotFound) {
+		t.Fatalf("expected ErrMessageNotFound, got %v", err)
 	}
 }
 

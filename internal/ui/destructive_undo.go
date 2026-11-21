@@ -300,6 +300,11 @@ func executeDestructiveBatches(action pendingDestructiveAction, database *db.DB,
 			var err error
 			if action.Kind == destructiveDelete {
 				err = database.DeleteMessage(entry.Message.ID)
+				// Already gone from the cache (another instance, or a sync, removed
+				// it first): the server delete succeeded, so nothing is left to do.
+				if errors.Is(err, db.ErrMessageNotFound) {
+					err = nil
+				}
 				if err == nil && gmailAccount(entry.Account) {
 					// Gmail trashed every copy; the other folders' caches would show
 					// theirs until synced. A failure here only delays that cleanup.
