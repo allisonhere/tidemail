@@ -103,7 +103,7 @@ All notable changes to TideMail are documented in this file.
   failed actions leave the messages unchanged in their folders. A message that
   was sent but whose cleanup failed is labelled as sent, so it is not retried.
   If the UI itself exits with an error, TideMail also prints what was still
-  pending and what became of it.
+  pending and what became of it. Thanks to @kgemici.
 
 - Field help in Settings and the Account Manager stays muted and faint until
   its related control receives focus, making active guidance easier to pick out.
