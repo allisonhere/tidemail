@@ -171,20 +171,16 @@ func appendToSentFolder(database *db.DB, sessions *imapClient.SessionPool, accou
 // Complete first sends and in-flight deliveries on quit. Scheduled retries are
 // already durable and wait until the next session instead of delaying shutdown.
 func (m Model) FlushPendingSends() error {
-	var firstErr error
+	var report quitFailures
 	for _, p := range m.pendingSends {
 		if (p.Scheduled && !p.Committing && p.DueAt > time.Now().Unix()) || (p.Attempts > 0 && !p.Committing) {
 			continue
 		}
+		report.total++
 		result := p.Runtime.run().(MessageSentMsg)
-		if result.Err != nil && firstErr == nil {
-			firstErr = result.Err
-		}
-		if result.CleanupErr != nil && firstErr == nil {
-			firstErr = fmt.Errorf("message sent, but draft cleanup failed: %w", result.CleanupErr)
-		}
+		report.collectSend(p.Msg.Subject, result)
 	}
-	return firstErr
+	return report.error("message(s); unsent ones stay in the Outbox (O), check Sent before retrying one marked unconfirmed")
 }
 
 func (m Model) HasPendingSends() bool { return len(m.pendingSends) > 0 }

@@ -92,6 +92,14 @@ All notable changes to TideMail are documented in this file.
 
 ### Changed
 
+- When pending sends or archive/move/delete actions fail while quitting, the
+  error now counts the failures, names up to three subjects, gives the first
+  cause and says where they stand: unsent messages stay in the Outbox, and
+  failed actions leave the messages unchanged in their folders. A message that
+  was sent but whose cleanup failed is labelled as sent, so it is not retried.
+  If the UI itself exits with an error, TideMail also prints what was still
+  pending and what became of it.
+
 - Field help in Settings and the Account Manager stays muted and faint until
   its related control receives focus, making active guidance easier to pick out.
 
