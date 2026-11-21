@@ -12,6 +12,11 @@ All notable changes to TideMail are documented in this file.
   the log and plugin reports starts. Left blank it follows `XDG_DOWNLOAD_DIR` (the
   variable, or `user-dirs.dirs`) and then `~/Downloads`. It is saved as `download_dir`
   at the top of `config.toml`. (#162, thanks @firecat53.)
+- `send` and `draft create` take `--in-reply-to cache:ID` to thread a message
+  as a reply to a cached message (an ID from `messages list`). It sets
+  In-Reply-To and References, so CLI and agent replies group under the original
+  in TideMail and in the recipient's mail client. Under `--agent` it needs the
+  `messages.metadata` capability. Thanks to @kgemici.
 
 ### Changed
 

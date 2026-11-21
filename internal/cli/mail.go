@@ -143,7 +143,7 @@ func mailResult(out, errOut io.Writer, j bool, data any, code int, id, message s
 func runComposeCLI(draftOnly bool, args []string, in io.Reader, out, errOut io.Writer) int {
 	fs := flag.NewFlagSet("send", flag.ContinueOnError)
 	fs.SetOutput(errOut)
-	var account, to, cc, bcc, subject, body, file, markdown, templateName string
+	var account, to, cc, bcc, subject, body, file, markdown, templateName, replyTo string
 	var attachments []string
 	var yes, now, j, dry, preview, noSignature, signature, agent, interactive, noInteractive bool
 	fs.StringVar(&account, "account", "", "stable account ID or unambiguous name")
@@ -156,6 +156,7 @@ func runComposeCLI(draftOnly bool, args []string, in io.Reader, out, errOut io.W
 	fs.StringVar(&file, "body-file", "", "body file")
 	fs.StringVar(&markdown, "markdown", "", "Markdown body file")
 	fs.StringVar(&templateName, "template", "", "fill the body from a template (see: tidemail templates list)")
+	fs.StringVar(&replyTo, "in-reply-to", "", "thread as a reply to a cached message, for example cache:123 (see messages list)")
 	fs.Var(stringList(&attachments), "attach", "attachment path, repeatable")
 	fs.BoolVar(&signature, "signature", true, "append configured signature")
 	fs.BoolVar(&noSignature, "no-signature", false, "omit signature")
@@ -261,7 +262,18 @@ func runComposeCLI(draftOnly bool, args []string, in io.Reader, out, errOut io.W
 			subject = mailtemplate.Fill(t.Subject, vars)
 		}
 	}
-	d := db.Draft{To: to, CC: cc, BCC: bcc, Subject: subject, BodyText: body}
+	var inReplyTo, references string
+	if replyTo != "" {
+		if agent && !mailapp.Allowed(cfg, "messages.metadata") {
+			return fail(3, "permission_denied", "agent capability denied: messages.metadata")
+		}
+		var code int
+		var id, msg string
+		if inReplyTo, references, code, id, msg = replyHeaders(replyTo); code != 0 {
+			return fail(code, id, msg)
+		}
+	}
+	d := db.Draft{To: to, CC: cc, BCC: bcc, Subject: subject, BodyText: body, InReplyTo: inReplyTo, References: references}
 	for _, p := range attachments {
 		att, e := cliform.LoadAttachment(p)
 		if e != nil {
