@@ -297,3 +297,11 @@ the tidemail project
 Report problems at
 .UR https://github.com/allisonhere/tidemail/issues
 .UE .
+
+.SH CACHED READ OPTIONS
+List and message search commands accept --limit (1 to 1000, default 50) and
+--offset (nonnegative, default 0). Message list and search accept --unread.
+Read and outbox status reject pagination flags. Accounts and outbox reject
+--unread. Options may precede or follow an ID or query.
+A standalone -- makes all following arguments literal; use it before a
+search query beginning with a hyphen.
