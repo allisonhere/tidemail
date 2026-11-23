@@ -327,3 +327,7 @@ pending operations. Delete completions reconcile unread counts from the cache,
 keep the highlighted message visible, and suppress remote successes whose local
 cleanup failed until a later list reload can reconcile them.
 
+HTML-only cached bodies are searchable through plain-first HTML text extraction,
+using link labels only and no remote fetching. A versioned index rebuild applies
+this to existing mail. CLI reads expose derived `text`/`text_source` alongside
+unchanged original bodies.

@@ -306,3 +306,11 @@ the tidemail project
 Report problems at
 .UR https://github.com/allisonhere/tidemail/issues
 .UE .
+
+.SH SEARCH TEXT
+Message read includes text and text_source (plain, html, none), in addition
+to unchanged body_text and body_html. Nonblank plain text is preferred;
+otherwise HTML text is extracted using link labels only, without fetching
+resources. Search uses the same fallback, including for existing cached mail
+after a one-time index rebuild. HTML alternatives are not indexed when
+nonblank plain text exists.

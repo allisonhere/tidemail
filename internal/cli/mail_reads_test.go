@@ -152,3 +152,27 @@ func TestMailReadPagesKeepAccountIdentity(t *testing.T) {
 		t.Fatalf("bounded page %d %s", code, out.String())
 	}
 }
+
+func TestReadHTMLFallbackPreservesOriginalBodies(t *testing.T) {
+	id := mailReadFixture(t)
+	d, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = d.Exec("UPDATE messages SET body_text='', body_html=? WHERE id=?", "<p>Read <a href='https://hidden.invalid'>this label</a></p>", id)
+	d.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out, diag bytes.Buffer
+	if code := RunMailRead("messages", []string{"read", fmt.Sprint(id), "--json"}, &out, &diag); code != 0 {
+		t.Fatalf("%d %s", code, diag.String())
+	}
+	var envelope struct{ Data map[string]any }
+	if err = json.Unmarshal(out.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Data["text"] != "Read this label" || envelope.Data["text_source"] != "html" || envelope.Data["body_text"] != "" {
+		t.Fatal(out.String())
+	}
+}

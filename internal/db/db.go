@@ -1,11 +1,13 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	_ "modernc.org/sqlite"
@@ -13,6 +15,8 @@ import (
 
 type DB struct {
 	*sql.DB
+	stopFTS context.CancelFunc
+	ftsDone chan struct{}
 }
 
 func Open() (*DB, error) {
@@ -40,11 +44,12 @@ func OpenPath(path string) (*DB, error) {
 
 	conn.SetMaxOpenConns(1)
 
-	db := &DB{conn}
+	db := &DB{DB: conn}
 	if err := db.init(); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("init db: %w", err)
 	}
+	db.startFTSRebuild()
 	return db, nil
 }
 
@@ -509,49 +514,147 @@ func (db *DB) migrateDraftsBCC() error {
 }
 
 // ftsSchemaVersion is bumped whenever the messages_fts schema or the columns it
-// indexes change, to force a one-time rebuild on the next launch.
-const ftsSchemaVersion = "1"
+// indexes change, to force a one-time rebuild.
+const ftsSchemaVersion = "2"
 
-// migrateMessageFTS rebuilds the full-text index only when necessary, rather than
-// on every launch. A full rebuild over a large mailbox costs ~1s+ and is wasted
-// work: the index is kept current incrementally by upsertMessageFTS/deleteMessageFTS.
-// It rebuilds when the stored schema token is stale (first run after this change,
-// or a future schema bump) or when the row counts drift out of sync (self-heal).
-func (db *DB) migrateMessageFTS() error {
+const (
+	// ftsSyncLimit is the largest cache rebuilt inline while opening. Bigger
+	// caches are rebuilt in the background so opening stays fast.
+	ftsSyncLimit = 2000
+	ftsBatchSize = 500
+	ftsCursorKey = "fts_rebuild_cursor"
+)
+
+// ftsRebuildNeeded reports whether the index is stale: the stored schema token
+// is old, or the row counts drifted out of sync (self-heal).
+func (db *DB) ftsRebuildNeeded() (bool, error) {
 	stored, err := db.GetSetting("fts_schema_version")
 	if err != nil {
+		return false, err
+	}
+	if stored != ftsSchemaVersion {
+		return true, nil
+	}
+	var msgCount, ftsCount int64
+	if err := db.QueryRow(`SELECT COUNT(*) FROM messages`).Scan(&msgCount); err != nil {
+		return false, err
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM messages_fts`).Scan(&ftsCount); err != nil {
+		return false, err
+	}
+	return msgCount != ftsCount, nil
+}
+
+// migrateMessageFTS rebuilds the full-text index only when necessary. The index
+// is kept current incrementally by upsertMessageFTS/deleteMessageFTS. Small
+// caches are rebuilt here; a large cache is left for startFTSRebuild, because a
+// full rebuild over a big mailbox takes seconds.
+func (db *DB) migrateMessageFTS() error {
+	need, err := db.ftsRebuildNeeded()
+	if err != nil || !need {
 		return err
 	}
-	needRebuild := stored != ftsSchemaVersion
-	if !needRebuild {
-		var msgCount, ftsCount int64
-		if err := db.QueryRow(`SELECT COUNT(*) FROM messages`).Scan(&msgCount); err != nil {
-			return err
-		}
-		if err := db.QueryRow(`SELECT COUNT(*) FROM messages_fts`).Scan(&ftsCount); err != nil {
-			return err
-		}
-		needRebuild = msgCount != ftsCount
+	var n int64
+	if err := db.QueryRow(`SELECT COUNT(*) FROM messages`).Scan(&n); err != nil {
+		return err
 	}
-	if !needRebuild {
+	if n > ftsSyncLimit {
 		return nil
 	}
-	if err := db.rebuildMessageFTS(); err != nil {
+	return db.rebuildMessageFTS(context.Background())
+}
+
+// startFTSRebuild rebuilds a stale index of a large cache in the background.
+// Until it finishes, searches see the old index plus the rows already rebuilt.
+// Progress is stored after every batch, so a short-lived command that exits
+// early does not lose the work: the next open resumes where it stopped.
+func (db *DB) startFTSRebuild() {
+	need, err := db.ftsRebuildNeeded()
+	if err != nil || !need {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	db.stopFTS, db.ftsDone = cancel, done
+	go func() {
+		defer close(done)
+		_ = db.rebuildMessageFTS(ctx) // retried on the next open
+	}()
+}
+
+// Close stops a running background index rebuild, then closes the database.
+func (db *DB) Close() error {
+	if db.stopFTS != nil {
+		db.stopFTS()
+		<-db.ftsDone
+	}
+	return db.DB.Close()
+}
+
+// rebuildMessageFTS re-indexes every message in batches, each in its own
+// transaction so searches and writes are not blocked for the whole rebuild.
+// Rows are replaced in place rather than the index being emptied first.
+func (db *DB) rebuildMessageFTS(ctx context.Context) error {
+	var cursor int64
+	if v, err := db.GetSetting(ftsCursorKey); err == nil && v != "" {
+		cursor, _ = strconv.ParseInt(v, 10, 64)
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		last, n, err := db.rebuildFTSBatch(cursor)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			break
+		}
+		cursor = last
+		if err := db.SetSetting(ftsCursorKey, strconv.FormatInt(cursor, 10)); err != nil {
+			return err
+		}
+	}
+	if _, err := db.Exec(`DELETE FROM messages_fts WHERE rowid NOT IN (SELECT id FROM messages)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`DELETE FROM settings WHERE key = ?`, ftsCursorKey); err != nil {
 		return err
 	}
 	return db.SetSetting("fts_schema_version", ftsSchemaVersion)
 }
 
-func (db *DB) rebuildMessageFTS() error {
-	if _, err := db.Exec(`DELETE FROM messages_fts`); err != nil {
-		return err
+func (db *DB) rebuildFTSBatch(after int64) (last int64, n int, err error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, 0, err
 	}
-	_, err := db.Exec(`
-		INSERT INTO messages_fts(rowid, subject, from_addr, to_addr, cc_addr, body_text)
-		SELECT id, subject, from_addr, to_addr, cc_addr, body_text
-		FROM messages
-	`)
-	return err
+	defer tx.Rollback() //nolint:errcheck
+	rows, err := tx.Query(`SELECT id FROM messages WHERE id > ? ORDER BY id LIMIT ?`, after, ftsBatchSize)
+	if err != nil {
+		return 0, 0, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, 0, err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, id := range ids {
+		if err = upsertMessageFTS(tx, id); err != nil {
+			return 0, 0, err
+		}
+		last = id
+	}
+	return last, len(ids), tx.Commit()
 }
 
 // GetSetting retrieves a UI setting value by key.

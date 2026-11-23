@@ -1745,3 +1745,9 @@ subjects and address display names are decoded in the message list and reader.
 Message UIDs must be greater than zero. The mailcore API rejects UID zero for
 fetching, read/star changes, moving, and deleting, rather than treating it as the
 newest message. Batch operations reject the entire batch if it contains zero.
+Cached body search prefers nonblank plain text and otherwise indexes text
+extracted from HTML. HTML fallback includes link labels, excludes link URLs,
+scripts/styles and document metadata, and fetches no remote resources. Existing
+caches receive a one-time search-index rebuild. CLI `messages read` additionally
+returns `text` and `text_source` (`plain`, `html`, `none`), preserving the
+original `body_text` and `body_html`.

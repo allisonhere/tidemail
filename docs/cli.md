@@ -151,7 +151,16 @@ tidemail messages read cache:123 --json
 List and search results contain metadata, including subject, sender, recipients,
 account, mailbox, read state, and attachment presence. They do not contain full
 message bodies. `messages read` explicitly returns the cached plain-text and HTML
-bodies. A body that has not been cached can be empty.
+bodies. A body that has not been cached can be empty. Read results also include
+`text` and `text_source` (`plain`, `html`, or `none`). Nonblank plain text is
+preferred verbatim; otherwise `text` is extracted from HTML. Extraction uses
+link labels only, decodes entities, separates paragraphs/lists/table rows,
+and skips scripts, styles and document metadata without fetching resources.
+The original `body_text` and `body_html` fields remain unchanged.
+
+Search uses the same plain-first HTML fallback. A one-time local index rebuild
+makes existing HTML-only cached bodies searchable, in both CLI and TUI searches.
+HTML alternatives are not indexed when a nonblank plain body exists.
 
 Use message IDs returned by list or search, such as `cache:123`. A cache ID
 identifies one local database row across accounts and mailboxes. It is not an

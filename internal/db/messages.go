@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/allisonhere/tidemail/internal/bodytext"
 	"github.com/allisonhere/tidemail/internal/mailtag"
 )
 
@@ -632,16 +633,25 @@ func ftsQueryPrefix(query string, prefixLast bool) string {
 	return strings.Join(quoted, " AND ")
 }
 
-func upsertMessageFTS(x execer, id int64) error {
+func upsertMessageFTS(x interface {
+	execer
+	QueryRow(string, ...any) *sql.Row
+}, id int64) error {
+	var plain, markup string
+	if err := x.QueryRow("SELECT body_text, body_html FROM messages WHERE id=?", id).Scan(&plain, &markup); err != nil {
+		return err
+	}
+	text, _ := bodytext.Resolve(plain, markup)
+
 	if _, err := x.Exec(`DELETE FROM messages_fts WHERE rowid = ?`, id); err != nil {
 		return err
 	}
 	_, err := x.Exec(`
 		INSERT INTO messages_fts(rowid, subject, from_addr, to_addr, cc_addr, body_text)
-		SELECT id, subject, from_addr, to_addr, cc_addr, body_text
+		SELECT id, subject, from_addr, to_addr, cc_addr, ?
 		FROM messages
 		WHERE id = ?
-	`, id)
+	`, text, id)
 	return err
 }
 

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/allisonhere/tidemail/internal/bodytext"
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidemail/internal/mailapp"
@@ -48,6 +49,9 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		_, _ = fmt.Fprintf(usageOut, "Usage: tidemail %s %s [ID or query] [--json] [--agent] [--limit N] [--offset N]\nCached reads do not synchronize with the server.\nUse --interactive for guided input, or --no-interactive to suppress prompts.\n", command, action)
 		if command == "outbox" {
 			_, _ = fmt.Fprintln(usageOut, "Use outbox process to deliver queued messages while the TUI is closed.")
+		}
+		if command == "messages" && action == "read" {
+			fmt.Fprintln(usageOut, "Read returns original bodies plus text/text_source (plain, html, none); HTML fallback uses link labels only.")
 		}
 		fs.SetOutput(usageOut)
 		fs.PrintDefaults()
@@ -195,6 +199,7 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		}
 		data["body_text"] = m.BodyText
 		data["body_html"] = m.BodyHTML
+		data["text"], data["text_source"] = bodytext.Resolve(m.BodyText, m.BodyHTML)
 		return readSuccess(out, jsonMode, data)
 	}
 	var messages []db.Message
