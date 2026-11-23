@@ -278,3 +278,77 @@ func TestReadHTMLFallbackPreservesOriginalBodies(t *testing.T) {
 		t.Fatal(out.String())
 	}
 }
+
+func TestReadThreadAndDedupe(t *testing.T) {
+	root := mailReadFixture(t)
+	d, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mb int64
+	if err = d.QueryRow("SELECT mailbox_id FROM messages WHERE id=?", root).Scan(&mb); err != nil {
+		t.Fatal(err)
+	}
+	var account int64
+	if err = d.QueryRow("SELECT account_id FROM mailboxes WHERE id=?", mb).Scan(&account); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := d.UpsertMailbox(db.Mailbox{AccountID: account, Name: "Archive"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []db.Message{
+		{MailboxID: mb, UID: 42, MessageID: "<root@test>", Subject: "Invoice", ReplyTo: "reply@test", RawHeaders: "Received: example\r\n", BodyText: "private body", Date: time.Unix(100, 0)},
+		{MailboxID: archive, UID: 1, MessageID: "<ROOT@test>", Subject: "Invoice", Date: time.Unix(100, 0)},
+		{MailboxID: archive, UID: 2, MessageID: "<reply@test>", InReplyTo: "<root@test>", References: "<root@test>", Subject: "Invoice reply", Date: time.Unix(200, 0)},
+		{MailboxID: archive, UID: 3, Subject: "Invoice no id", Date: time.Unix(300, 0)},
+		{MailboxID: archive, UID: 4, Subject: "Invoice no id", Date: time.Unix(400, 0)},
+	} {
+		if err = d.UpsertMessage(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = d.SaveAttachment(root, db.Attachment{Filename: "report.txt", ContentType: "text/plain", Data: []byte("secret attachment"), Size: 17}); err != nil {
+		t.Fatal(err)
+	}
+	d.Close()
+	run := func(command string, args ...string) map[string]any {
+		t.Helper()
+		var out, diag bytes.Buffer
+		if code := RunMailRead(command, args, &out, &diag); code != 0 {
+			t.Fatalf("%v: %d %s %s", args, code, out.String(), diag.String())
+		}
+		var envelope struct{ Data map[string]any }
+		if err = json.Unmarshal(out.Bytes(), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out.String(), "secret attachment") {
+			t.Fatal("attachment contents leaked")
+		}
+		return envelope.Data
+	}
+	read := run("messages", "read", fmt.Sprint(root), "--headers", "--json")
+	if read["reply_to"] != "reply@test" || read["raw_headers"] != "Received: example\r\n" {
+		t.Fatal(read)
+	}
+	atts := read["attachments"].([]any)
+	if len(atts) != 1 || atts[0].(map[string]any)["cached"] != true {
+		t.Fatal(atts)
+	}
+	if _, ok := run("messages", "read", fmt.Sprint(root), "--json")["raw_headers"]; ok {
+		t.Fatal("headers returned without flag")
+	}
+	thread := run("messages", "thread", fmt.Sprint(root), "--agent", "--json")
+	if thread["total"] != float64(2) || strings.Contains(fmt.Sprint(thread), "private body") {
+		t.Fatal(thread)
+	}
+	page := run("messages", "search", "invoice", "--dedupe", "--limit", "1", "--offset", "1", "--json")
+	if page["total"] != float64(4) || len(page["items"].([]any)) != 1 {
+		t.Fatal(page)
+	}
+	// Metadata thread access is distinct from read access.
+	var out, diag bytes.Buffer
+	if code := RunMailRead("messages", []string{"read", fmt.Sprint(root), "--headers", "--agent", "--json"}, &out, &diag); code != 3 {
+		t.Fatalf("read capability bypass: %d", code)
+	}
+}

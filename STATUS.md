@@ -333,3 +333,8 @@ using link labels only and no remote fetching. A versioned index rebuild applies
 this to existing mail. CLI reads expose derived `text`/`text_source` alongside
 unchanged original bodies. CLI search also takes quoted phrases and explicit `*` prefixes,
 and `--exact` for whole-word and whole-value matching (`#tags` stay prefix matches).
+
+Cached CLI reads return reply headers and attachment metadata with cached
+availability; `--headers` adds the raw header block kept for newly cached mail.
+`messages thread` reuses the TUI header graph across all cached folders and
+returns deduplicated metadata, and list/search accept `--dedupe`.

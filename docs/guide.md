@@ -1755,3 +1755,12 @@ original `body_text` and `body_html`.
 CLI `messages search` also takes quoted phrases and `*` prefixes, which the
 interactive search does not, and `--exact` to match whole words and field values
 only (`#tags` still match by prefix).
+
+CLI `messages read` includes reply headers and attachment names, types, sizes,
+and whether the contents are cached, without the contents; `--headers` adds the
+cached raw header block (up to 64 KiB, possibly absent on older mail).
+`messages thread cache:ID` returns metadata for the same header-based
+conversation the interface builds, across all cached folders, oldest first and
+deduplicated by Message-ID. It requires `messages.metadata` under `--agent`;
+full reads require `messages.read`. `messages list` and `messages search` accept
+`--dedupe`, applied before pagination.
