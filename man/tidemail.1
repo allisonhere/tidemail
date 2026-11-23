@@ -36,7 +36,7 @@ Validate a message and save it as a draft, or queue it with
 .B draft create
 Save a draft; it never authorizes delivery.
 .TP
-.B messages list | search | read
+.B messages list | search | read | thread
 Read the cached mail.
 .B list
 and
@@ -326,3 +326,17 @@ Trash/Junk/Spam/Deleted folders are excluded unless explicitly selected by
 --mailbox or included with --include-trash. Special-use flags take priority
 over common folder names. Text rows show dates and display mailbox names;
 JSON includes mailbox_display in addition to the raw mailbox name.
+
+.SH THREADS AND CACHE COVERAGE
+messages read returns reply_to, in_reply_to, references, and attachment metadata
+(name, size, type, inline and cached availability), without attachment contents.
+--headers includes the cached raw header block (up to 64 KiB, control characters
+sanitized by the parser); older messages may have none.
+.PP
+messages thread cache:ID returns conversation metadata, oldest first, across all
+cached accounts/folders including Trash/Junk. It uses the TUI header graph and
+then deduplicates Message-IDs. Under --agent it requires messages.metadata;
+read and read --headers require messages.read.
+.PP
+List/search --dedupe collapses normalized Message-IDs among matching rows before
+pagination and totals, keeping the smallest cache ID. Blank IDs remain separate.

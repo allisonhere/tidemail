@@ -203,6 +203,29 @@ in the interactive client before querying data that must be current. Incoming
 attachment download and independent attachment-read permissions are not exposed
 through the CLI.
 
+## Threads and read metadata
+
+`messages read cache:ID` also returns `reply_to`, `in_reply_to`, `references`,
+and an `attachments` array with `id`, `name`, `size`, `type`, `inline`, and
+`cached`. Availability checks do not return attachment contents. Add `--headers` to include
+`raw_headers`: the cached header block, capped at 64 KiB by the incoming parser
+and stripped of unsafe control characters. Older cached messages may have no
+raw headers; these are not reconstructed or fetched from the server.
+
+`messages thread cache:ID --json` returns metadata for the cached conversation,
+oldest first, across all accounts and folders (including Trash/Junk). It uses
+the TUI's Message-ID/In-Reply-To/References engine and deduplicates by normalized
+Message-ID after grouping, so copies can contribute references. Messages without
+IDs remain separate. Thread reads include reply references but no bodies or
+attachments; under `--agent` they require `messages.metadata`. Explicit reads
+(including `--headers`) still require `messages.read`.
+
+Use `--dedupe` on message list/search to collapse matching copies before
+pagination and totals. The smallest cache ID represents each normalized
+Message-ID among matching rows; blank IDs remain separate. Filters apply first,
+so a copy outside the selected scope cannot suppress one inside it. Results
+retain their requested sort order.
+
 ## Queue processing
 
 TideMail persists outgoing mail before attempting SMTP delivery. Queue entries

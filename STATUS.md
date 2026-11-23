@@ -327,3 +327,7 @@ pending operations. Delete completions reconcile unread counts from the cache,
 keep the highlighted message visible, and suppress remote successes whose local
 cleanup failed until a later list reload can reconcile them.
 
+Cached CLI reads return reply headers and attachment metadata with cached
+availability; `--headers` adds the raw header block kept for newly cached mail.
+`messages thread` reuses the TUI header graph across all cached folders and
+returns deduplicated metadata, and list/search accept `--dedupe`.

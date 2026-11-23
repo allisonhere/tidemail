@@ -20,6 +20,16 @@ All notable changes to TideMail are documented in this file.
 - Cached read commands accept options before or after an ID or query, `--`
   makes the remaining arguments literal, and flags that do not apply to a
   command are rejected.
+- `messages read` also returns `reply_to`, `in_reply_to`, `references` and the
+  message's attachments (id, name, size, type, inline, and whether the contents
+  are cached), never the contents. `--headers` adds the raw header block; it is
+  kept for mail cached from now on, so older messages may have none.
+- `messages thread cache:ID` returns a conversation's metadata, oldest first,
+  across every cached account and folder, using the same threading as the
+  client. It needs `messages.metadata` under `--agent`.
+- `messages list` and `messages search` accept `--dedupe`, which collapses
+  copies of one Message-ID (a message in both Inbox and Archive) before the
+  total and the page are counted.
 
 ### Changed
 

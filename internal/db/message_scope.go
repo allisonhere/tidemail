@@ -10,6 +10,7 @@ import (
 type MessageScope struct {
 	AccountID     string
 	Mailboxes     []string
+	Dedupe        bool
 	Unread        bool
 	Starred       bool
 	Since, Before time.Time

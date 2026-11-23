@@ -51,12 +51,17 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 	}
 	scope := db.MessageScope{}
 	var since, before string
+	headers := false
+	if command == "messages" && action == "read" {
+		fs.BoolVar(&headers, "headers", false, "Include cached raw headers (older messages may have none)")
+	}
 	if (command == "messages" && (action == "list" || action == "search")) || command == "mailboxes" {
 		fs.StringVar(&scope.AccountID, "account", "", "Stable account ID from accounts list")
 	}
 	if command == "messages" && (action == "list" || action == "search") {
 		fs.StringVar(&since, "since", "", "Include dates on/after YYYY-MM-DD (local time)")
 		fs.StringVar(&before, "before", "", "Include dates before YYYY-MM-DD (local time)")
+		fs.BoolVar(&scope.Dedupe, "dedupe", false, "Deduplicate matching Message-IDs before pagination")
 		fs.BoolVar(&scope.Starred, "starred", false, "Only starred messages")
 		fs.BoolVar(&scope.IncludeTrash, "include-trash", false, "Include Trash, Junk and Deleted folders")
 		fs.StringVar(&scope.Sort, "sort", "", "Sort by date or relevance (scoped searches default to date)")
@@ -76,6 +81,12 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		_, _ = fmt.Fprintf(usageOut, "Usage: tidemail %s %s [ID or query] [options]\nOptions may precede or follow an ID/query; -- makes remaining arguments literal.\nCached reads do not synchronize with the server.\nUse --interactive for guided input, or --no-interactive to suppress prompts.\n", command, action)
 		if command == "outbox" {
 			_, _ = fmt.Fprintln(usageOut, "Use outbox process to deliver queued messages while the TUI is closed.")
+		}
+		if command == "messages" && action == "read" {
+			_, _ = fmt.Fprintln(usageOut, "Read returns original bodies, reply headers and attachment metadata; --headers includes cached raw headers.")
+		}
+		if command == "messages" && action == "thread" {
+			_, _ = fmt.Fprintln(usageOut, "Thread returns deduplicated metadata oldest first across all cached folders, using messages.metadata under --agent.")
 		}
 		fs.SetOutput(usageOut)
 		fs.PrintDefaults()
@@ -108,15 +119,15 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 	if *limit < 1 || *limit > 1000 || *offset < 0 {
 		return fail("invalid_arguments", "--limit must be 1–1000 and --offset must be nonnegative.", 2)
 	}
-	if ((command == "accounts" || command == "mailboxes") && action != "list") || (command == "messages" && action != "list" && action != "search" && action != "read") || (command == "outbox" && action != "list" && action != "status") {
-		hint := map[string]string{"mailboxes": "list", "accounts": "list", "messages": "list, search, or read", "outbox": "list or status"}[command]
+	if ((command == "accounts" || command == "mailboxes") && action != "list") || (command == "messages" && action != "list" && action != "search" && action != "read" && action != "thread") || (command == "outbox" && action != "list" && action != "status") {
+		hint := map[string]string{"mailboxes": "list", "accounts": "list", "messages": "list, search, read, or thread", "outbox": "list or status"}[command]
 		message := fmt.Sprintf("Unknown subcommand %q; %s supports %s.", action, command, hint)
 		if command == "messages" {
 			message += ` Search with: tidemail messages search "query".`
 		}
 		return fail("invalid_arguments", message, 2)
 	}
-	needsArgument := action == "read" || action == "status" || action == "search"
+	needsArgument := action == "thread" || action == "read" || action == "status" || action == "search"
 	if (needsArgument && len(positionals) != 1) || (!needsArgument && len(positionals) != 0) {
 		return fail("invalid_arguments", "Provide exactly one ID or quoted search query for read, status, or search; lists take no positional arguments.", 2)
 	}
@@ -222,7 +233,7 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		}
 		return map[string]any{"id": fmt.Sprintf("cache:%d", m.ID), "cache_id": m.ID, "account_id": accountID, "account_name": accountName, "mailbox_id": m.MailboxID, "mailbox": mailboxName, "mailbox_display": display, "uid": m.UID, "message_id": m.MessageID, "subject": m.Subject, "from": m.From, "to": m.To, "cc": m.CC, "date": m.Date.Format(time.RFC3339), "read": m.Read, "starred": m.Starred, "has_attachment": m.HasAttachment}, err
 	}
-	if action == "read" {
+	if action == "read" || action == "thread" {
 		id, e := readID(positionals[0])
 		if e != nil {
 			return fail("invalid_arguments", "Invalid message ID; use an ID from messages list.", 2)
@@ -234,10 +245,37 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		if e != nil {
 			return fail("database_error", "Cannot read cached message.", 1)
 		}
+		if action == "thread" {
+			data, e := cachedThread(database, id, metadata)
+			if e != nil {
+				return fail("database_error", "Cannot read cached thread.", 1)
+			}
+			return readSuccess(out, jsonMode, data)
+		}
 		data, e := metadata(m)
 		if e != nil {
 			return fail("database_error", "Cannot resolve message identity.", 1)
 		}
+		data["reply_to"] = m.ReplyTo
+		data["in_reply_to"] = m.InReplyTo
+		data["references"] = m.References
+		attachments, e := database.GetAttachmentsMeta(m.ID)
+		if e != nil {
+			return fail("database_error", "Cannot read attachment metadata.", 1)
+		}
+		list := []map[string]any{}
+		for _, a := range attachments {
+			cached, e := database.AttachmentCached(a.ID)
+			if e != nil {
+				return fail("database_error", "Cannot check attachment availability.", 1)
+			}
+			list = append(list, map[string]any{"id": a.ID, "name": a.Filename, "size": a.Size, "type": a.ContentType, "inline": a.Inline, "cached": cached})
+		}
+		data["attachments"] = list
+		if headers {
+			data["raw_headers"] = m.RawHeaders
+		}
+
 		data["body_text"] = m.BodyText
 		data["body_html"] = m.BodyHTML
 		return readSuccess(out, jsonMode, data)

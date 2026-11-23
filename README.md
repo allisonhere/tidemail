@@ -29,6 +29,7 @@ process the outbox:
 
 ```bash
 tidemail messages list --unread --json
+tidemail messages thread cache:123 --json
 tidemail draft create --to me@example.com --subject "Draft" --body-file message.md
 tidemail send --to me@example.com --subject "Hello" --body "Hello" --yes
 tidemail outbox process --json

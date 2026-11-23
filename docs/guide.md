@@ -1745,3 +1745,12 @@ subjects and address display names are decoded in the message list and reader.
 Message UIDs must be greater than zero. The mailcore API rejects UID zero for
 fetching, read/star changes, moving, and deleting, rather than treating it as the
 newest message. Batch operations reject the entire batch if it contains zero.
+
+CLI `messages read` includes reply headers and attachment names, types, sizes,
+and whether the contents are cached, without the contents; `--headers` adds the
+cached raw header block (up to 64 KiB, possibly absent on older mail).
+`messages thread cache:ID` returns metadata for the same header-based
+conversation the interface builds, across all cached folders, oldest first and
+deduplicated by Message-ID. It requires `messages.metadata` under `--agent`;
+full reads require `messages.read`. `messages list` and `messages search` accept
+`--dedupe`, applied before pagination.

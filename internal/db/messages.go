@@ -34,7 +34,7 @@ type Message struct {
 	Starred         bool
 	HasAttachment   bool
 	Headers         string       // auth-related headers parsed from MIME
-	RawHeaders      string       // transient, not stored: the full header block as received (Received trail and all)
+	RawHeaders      string       // cached header block, when available
 	AttachmentData  []Attachment // transient, not stored in messages table
 	AccountName     string       // transient, populated for cross-mailbox search results
 	AccountConfigID string
@@ -228,6 +228,11 @@ func (db *DB) searchScopedMessages(query string, unreadFirst, unreadOnly bool, l
 		orderBy = "messages.read ASC, " + orderBy
 	}
 	clause := from + joins + ` WHERE ` + strings.Join(where, " AND ")
+	if scope != nil && scope.Dedupe {
+		original := clause
+		clause += " AND messages.id IN (SELECT MIN(messages.id) FROM " + original + " GROUP BY CASE WHEN trim(messages.message_id)='' THEN 'row:'||messages.id ELSE 'mid:'||lower(trim(messages.message_id,'<> ')) END)"
+		args = append(args, append([]any(nil), args...)...)
+	}
 	total := 0
 	if limit >= 0 {
 		if err := db.QueryRow("SELECT COUNT(*) FROM "+clause, args...).Scan(&total); err != nil {
@@ -255,12 +260,12 @@ func (db *DB) GetMessage(id int64) (Message, error) {
 	var read, starred, att int
 	err := db.QueryRow(`
 		SELECT id, mailbox_id, uid, message_id, in_reply_to, references_text, subject, from_addr, to_addr, cc_addr,
-		       reply_to, date, body_text, body_html, summary,		flags, read, starred, has_attachment, headers
+		       reply_to, date, body_text, body_html, summary,		flags, read, starred, has_attachment, headers, raw_headers
 		FROM messages WHERE id = ?`, id).
 		Scan(&m.ID, &m.MailboxID, &m.UID, &m.MessageID, &m.InReplyTo, &m.References, &m.Subject,
 			&m.From, &m.To, &m.CC, &m.ReplyTo, &dateUnix,
 			&m.BodyText, &m.BodyHTML, &m.Summary, &flagsJSON, &read, &starred, &att,
-			&m.Headers)
+			&m.Headers, &m.RawHeaders)
 	if err != nil {
 		return Message{}, err
 	}
@@ -337,6 +342,11 @@ func (db *DB) UpsertMessage(m Message) error {
 	msgID := m.ID
 	if msgID == 0 {
 		if err := tx.QueryRow(`SELECT id FROM messages WHERE mailbox_id = ? AND uid = ?`, m.MailboxID, m.UID).Scan(&msgID); err != nil {
+			return err
+		}
+	}
+	if m.RawHeaders != "" {
+		if _, err := tx.Exec("UPDATE messages SET raw_headers=? WHERE id=?", m.RawHeaders, msgID); err != nil {
 			return err
 		}
 	}
