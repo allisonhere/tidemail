@@ -165,7 +165,7 @@ func runComposeCLI(draftOnly bool, args []string, in io.Reader, out, errOut io.W
 	fs.BoolVar(&j, "json", false, "versioned JSON result")
 	fs.BoolVar(&dry, "dry-run", false, "validate and build without saving")
 	fs.BoolVar(&preview, "preview", false, "open the editable review wizard through /dev/tty")
-	fs.BoolVar(&agent, "agent", false, "enforce configured agent permissions")
+	fs.BoolVar(&agent, "agent", false, "enforce configured agent permissions (also forced by "+agentEnv+"=1)")
 	fs.BoolVar(&interactive, "interactive", false, "open the compose wizard through the controlling terminal")
 	fs.BoolVar(&noInteractive, "no-interactive", false, "never open automatic prompts")
 	for _, arg := range args {
@@ -188,6 +188,7 @@ func runComposeCLI(draftOnly bool, args []string, in io.Reader, out, errOut io.W
 		}
 		return mailResult(out, errOut, j, nil, 2, "invalid_arguments", "invalid command options; use --help")
 	}
+	agent = agentMode(agent)
 	fail := func(code int, id, msg string) int { return mailResult(out, errOut, j, nil, code, id, msg) }
 	if fs.NArg() != 0 {
 		return fail(2, "invalid_arguments", "unexpected positional arguments")
@@ -378,13 +379,13 @@ func runOutboxAction(args []string, out, errOut io.Writer) int {
 	}
 	j := fs.Bool("json", jsonDefault, "versioned JSON")
 	yes := fs.Bool("yes", false, "authorize explicit retry or processing")
-	agent := fs.Bool("agent", false, "enforce agent permissions")
+	agent := fs.Bool("agent", false, "enforce agent permissions (also forced by "+agentEnv+"=1)")
 	usageOut := errOut
 	if hasHelpFlag(rest) {
 		usageOut = out
 	}
 	fs.Usage = func() {
-		_, _ = fmt.Fprintf(usageOut, "Usage: tidemail outbox %s [ID] [--yes] [--json] [--agent]\nprocess sends due queue entries and exits; run periodically.\nretry requires --yes; inspect Sent before retrying uncertain delivery.\n", action)
+		_, _ = fmt.Fprintf(usageOut, "Usage: tidemail outbox %s [ID] [--yes] [--json] [--agent]\nprocess sends due queue entries and exits; run periodically.\nretry requires --yes; inspect Sent before retrying uncertain delivery.\n%s=1 forces agent permissions even with --agent=false.\n", action, agentEnv)
 	}
 	if e := fs.Parse(rest); e != nil {
 		if errors.Is(e, flag.ErrHelp) {
@@ -392,6 +393,7 @@ func runOutboxAction(args []string, out, errOut io.Writer) int {
 		}
 		return mailResult(out, errOut, *j, nil, 2, "invalid_arguments", "invalid command options; use --help")
 	}
+	*agent = agentMode(*agent)
 	fail := func(code int, id, msg string) int { return mailResult(out, errOut, *j, nil, code, id, msg) }
 	if fs.NArg() > 0 {
 		return fail(2, "invalid_arguments", "unexpected arguments")

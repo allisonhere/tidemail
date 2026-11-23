@@ -121,7 +121,7 @@ func interactiveRoute(args []string, in io.Reader, out, errOut io.Writer) (bool,
 			return true, RunSkill(clean[1:], out, errOut)
 		}
 	}
-	automatic := terminalIO(in, out) && !containsFlag(clean, "--json") && !containsFlag(clean, "--agent") && !containsFlag(clean, "--yes") && !containsFlag(clean, "--dry-run")
+	automatic := terminalIO(in, out) && !containsFlag(clean, "--json") && !containsFlag(clean, "--agent") && !agentForced() && !containsFlag(clean, "--yes") && !containsFlag(clean, "--dry-run")
 	missing := len(clean) == 1 && (command == "draft" || command == "messages" || command == "accounts" || command == "outbox" || command == "install-skill")
 	if len(clean) == 2 && command == "messages" && (clean[1] == "search" || clean[1] == "read") {
 		missing = true

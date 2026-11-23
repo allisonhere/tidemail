@@ -140,7 +140,11 @@ Open the editable review wizard on the controlling terminal.
 Force, or suppress, the compose wizard.
 .TP
 .B \-\-agent
-Enforce the configured agent permissions.
+Enforce the configured agent permissions. Also forced by the environment
+variable
+.BR TIDEMAIL_AGENT=1 ;
+see
+.BR ENVIRONMENT .
 .TP
 .B \-\-json
 Print a versioned JSON result.
@@ -258,6 +262,11 @@ Choose the terminal image protocol.
 .TP
 .B TIDEMAIL_DISABLE_KEYRING
 Do not use the system keychain.
+.TP
+.B TIDEMAIL_AGENT
+When set to 1, enforce the configured agent permissions on every mail command
+as if \fB\-\-agent\fR were given, even with \fB\-\-agent=false\fR. It grants no
+capability and does not replace send approval.
 .TP
 .B TIDEMAIL_MS_CLIENT_ID
 Microsoft OAuth client ID for device-code sign-in.

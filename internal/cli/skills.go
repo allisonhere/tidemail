@@ -16,7 +16,7 @@ description: Search configured TideMail mail accounts, read authorized email, pr
 
 # TideMail
 
-Use the installed tidemail CLI and the user's existing accounts. Run tidemail --help and command --help to discover the available options. Use --agent and --json for mail commands so configured capability checks and machine-readable results apply.
+Use the installed tidemail CLI and the user's existing accounts. Run tidemail --help and command --help to discover the available options. Set TIDEMAIL_AGENT=1 in the agent session environment (export TIDEMAIL_AGENT=1), or prefix each invocation with TIDEMAIL_AGENT=1, to force agent capability checks even if --agent is omitted or --agent=false is passed. Do not unset or override this setting. Continue to use --agent and --json for mail commands so configured capability checks and machine-readable results apply.
 
 ## Read and draft
 
