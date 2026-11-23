@@ -159,6 +159,11 @@ IMAP UID, a portable ID for another computer, or an ID to reuse after rebuilding
 the cache. The result also includes account, mailbox, UID, and Message-ID metadata.
 
 List commands accept `--limit` from 1 to 1000 and a nonnegative `--offset`.
+Search also accepts these pagination flags. Read and outbox status commands
+reject pagination flags; only message list and search accept `--unread`. Options
+may appear before or after an ID or query. Use `--` before a query beginning
+with a hyphen; all following arguments are literal.
+
 The default limit is 50. Pages report `items`, `limit`, `offset`, `total`, and
 `next_offset`. A null `next_offset` marks the last page.
 

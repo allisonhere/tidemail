@@ -22,6 +22,9 @@ import (
 func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 	jsonMode := false
 	for _, arg := range args {
+		if arg == "--" {
+			break
+		}
 		if arg == "--json" || arg == "--json=true" {
 			jsonMode = true
 		}
@@ -37,40 +40,33 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 	fs.SetOutput(errOut)
 	fs.BoolVar(&jsonMode, "json", jsonMode, "Print a versioned JSON envelope")
 	agent := fs.Bool("agent", false, "Enforce configured agent capabilities (also forced by "+agentEnv+"=1)")
-	limit := fs.Int("limit", 50, "Maximum results (1–1000)")
-	offset := fs.Int("offset", 0, "Results to skip")
-	unread := fs.Bool("unread", false, "Only unread messages")
+	limit, offset, unread := new(int), new(int), new(bool)
+	*limit = 50
+	if action == "list" || action == "search" {
+		fs.IntVar(limit, "limit", 50, "Maximum results (1–1000)")
+		fs.IntVar(offset, "offset", 0, "Results to skip")
+	}
+	if command == "messages" && (action == "list" || action == "search") {
+		fs.BoolVar(unread, "unread", false, "Only unread messages")
+	}
 	usageOut := errOut
 	if hasHelpFlag(args) {
 		usageOut = out
 	}
 	fs.Usage = func() {
-		_, _ = fmt.Fprintf(usageOut, "Usage: tidemail %s %s [ID or query] [--json] [--agent] [--limit N] [--offset N]\nCached reads do not synchronize with the server.\nUse --interactive for guided input, or --no-interactive to suppress prompts.\n", command, action)
+		_, _ = fmt.Fprintf(usageOut, "Usage: tidemail %s %s [ID or query] [options]\nOptions may precede or follow an ID/query; -- makes remaining arguments literal.\nCached reads do not synchronize with the server.\nUse --interactive for guided input, or --no-interactive to suppress prompts.\n", command, action)
 		if command == "outbox" {
 			_, _ = fmt.Fprintln(usageOut, "Use outbox process to deliver queued messages while the TUI is closed.")
 		}
 		fs.SetOutput(usageOut)
 		fs.PrintDefaults()
 	}
-	// Go's flag parser stops at positionals; permit flags after an ID/query.
-	var options, positionals []string
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if strings.HasPrefix(a, "-") {
-			options = append(options, a)
-			if (a == "--limit" || a == "--offset") && i+1 < len(args) {
-				i++
-				options = append(options, args[i])
-			}
-		} else {
-			positionals = append(positionals, a)
-		}
-	}
-	if err := fs.Parse(options); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
+	positionals, parseErr := parseReadFlags(fs, args)
+	if parseErr != nil {
+		if errors.Is(parseErr, flag.ErrHelp) {
 			return 0
 		}
-		return fail("invalid_arguments", "Invalid command options; use --help.", 2)
+		return fail("invalid_arguments", parseErr.Error()+"; use --help.", 2)
 	}
 	*agent = agentMode(*agent)
 	if *limit < 1 || *limit > 1000 || *offset < 0 {
