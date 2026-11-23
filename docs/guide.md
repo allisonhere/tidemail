@@ -1338,6 +1338,7 @@ turn it on: in **Plugins (experimental)**, select it and press `a`, then
 confirm. It then receives the same metadata (never message bodies) for each
 newly arrived unread message, and its tags appear as mail comes in. Old mail,
 first-time setup of an account, and loading older messages are never sent.
+Background fetching and automatic classification preserve each message's read status.
 The plugin list shows its current queue, running state, dropped events,
 failures, last success, last failure, and a sanitized last error when those
 values exist. Three consecutive automatic failures pause that plugin; press

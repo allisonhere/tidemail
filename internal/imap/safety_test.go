@@ -2,11 +2,50 @@ package imap
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/allisonhere/tidemail/internal/config"
 )
+
+func TestFetchSincePagePreservesReadState(t *testing.T) {
+	port, cleanup := startTestServer(t)
+	defer cleanup()
+	unread := appendTestMessage(t, port, "INBOX", false)
+	read := appendTestMessage(t, port, "INBOX", true)
+	want := map[uint32]bool{unread: false, read: true}
+
+	c := New(config.AccountConfig{IMAPHost: "127.0.0.1", IMAPPort: port, User: "testuser", Password: "testpass"})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := c.Connect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	msgs, more, err := c.FetchSincePage(ctx, "INBOX", time.Now().Add(-24*time.Hour), 10, nil)
+	if err != nil || more || len(msgs) != len(want) {
+		t.Fatalf("fetch got %d messages, more=%v, err=%v", len(msgs), more, err)
+	}
+	for _, msg := range msgs {
+		if seen, ok := want[msg.UID]; !ok || msg.Read != seen {
+			t.Errorf("fetched UID %d has read=%v, want %v", msg.UID, msg.Read, seen)
+		}
+		if !strings.Contains(msg.BodyText, "Hello world") || !strings.Contains(msg.RawHeaders, "Subject: Test") {
+			t.Errorf("fetched UID %d is missing its body or headers", msg.UID)
+		}
+	}
+	state, _, err := c.ServerState(ctx, "INBOX")
+	if err != nil || len(state) != len(want) {
+		t.Fatalf("server state got %d messages, err=%v", len(state), err)
+	}
+	for _, msg := range state {
+		if seen, ok := want[msg.UID]; !ok || msg.Seen != seen {
+			t.Errorf("server UID %d has seen=%v, want %v", msg.UID, msg.Seen, seen)
+		}
+	}
+}
 
 func TestIncrementalPagesBoundBodiesAndCoverBacklog(t *testing.T) {
 	port, cleanup := startTestServer(t)

@@ -227,8 +227,8 @@ func (c *Client) FetchRaw(ctx context.Context, mailboxName string, uid uint32) (
 // individual message rather than failing the batch — one malformed message
 // must not cost the user the whole page.
 func (c *Client) fetchNumSet(numSet imap.NumSet) ([]db.Message, error) {
-	bodySection := &imap.FetchItemBodySection{}
-	headerSection := &imap.FetchItemBodySection{Specifier: imap.PartSpecifierHeader}
+	bodySection := &imap.FetchItemBodySection{Peek: true}
+	headerSection := &imap.FetchItemBodySection{Specifier: imap.PartSpecifierHeader, Peek: true}
 	// No BODYSTRUCTURE: the body is parsed from BodySection, and iCloud sends
 	// multipart structures go-imap can't parse, failing the whole fetch (#62).
 	fetchOptions := &imap.FetchOptions{

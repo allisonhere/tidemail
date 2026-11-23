@@ -193,7 +193,8 @@ Unreleased.
   stored tags with local corrections (`e` on a message), Needs You with immediate
   sidebar count updates for delete, archive, move and undo, result cards
   with technical Details, and a host-owned `u` unsubscribe action that uses TideMail's existing confirmed flow without
-  exposing unsubscribe links to plugins.
+  exposing unsubscribe links to plugins. Background fetching and automatic
+  classification preserve read status.
 - **Plugin catalog**: Settings → Plugins → `b` (and the palette) lists the
   official plugins from the plugins repository's release `catalog.json` and
   installs, updates and removes them (HTTPS GitHub only, SHA-256 checked, plain
