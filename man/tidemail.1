@@ -316,3 +316,13 @@ cached messages in scope.
 mailboxes list [--account ID] lists cached folders with raw/display names,
 stored special-use flags and local cached/unread counts. Under --agent it
 requires messages.metadata. Counts do not indicate server coverage.
+
+.PP
+Message list/search accept --starred, --since YYYY-MM-DD (inclusive local
+midnight), --before YYYY-MM-DD (exclusive local midnight), and --sort
+date|relevance. Scoped searches default to date; unscoped text searches to
+relevance. Date order is newest first; relevance without text falls back to date.
+Trash/Junk/Spam/Deleted folders are excluded unless explicitly selected by
+--mailbox or included with --include-trash. Special-use flags take priority
+over common folder names. Text rows show dates and display mailbox names;
+JSON includes mailbox_display in addition to the raw mailbox name.

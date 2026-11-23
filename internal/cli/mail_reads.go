@@ -50,10 +50,16 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		fs.BoolVar(unread, "unread", false, "Only unread messages")
 	}
 	scope := db.MessageScope{}
+	var since, before string
 	if (command == "messages" && (action == "list" || action == "search")) || command == "mailboxes" {
 		fs.StringVar(&scope.AccountID, "account", "", "Stable account ID from accounts list")
 	}
 	if command == "messages" && (action == "list" || action == "search") {
+		fs.StringVar(&since, "since", "", "Include dates on/after YYYY-MM-DD (local time)")
+		fs.StringVar(&before, "before", "", "Include dates before YYYY-MM-DD (local time)")
+		fs.BoolVar(&scope.Starred, "starred", false, "Only starred messages")
+		fs.BoolVar(&scope.IncludeTrash, "include-trash", false, "Include Trash, Junk and Deleted folders")
+		fs.StringVar(&scope.Sort, "sort", "", "Sort by date or relevance (scoped searches default to date)")
 		fs.Func("mailbox", "Mailbox raw or display name (repeatable)", func(value string) error {
 			if strings.TrimSpace(value) == "" {
 				return fmt.Errorf("mailbox name must not be empty")
@@ -80,6 +86,24 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 			return 0
 		}
 		return fail("invalid_arguments", parseErr.Error()+"; use --help.", 2)
+	}
+	if scope.Sort != "" && scope.Sort != "date" && scope.Sort != "relevance" {
+		return fail("invalid_arguments", "--sort must be date or relevance.", 2)
+	}
+	for _, date := range []struct {
+		value  string
+		target *time.Time
+	}{{since, &scope.Since}, {before, &scope.Before}} {
+		if date.value != "" {
+			parsed, e := time.ParseInLocation("2006-01-02", date.value, time.Local)
+			if e != nil {
+				return fail("invalid_arguments", "Dates must use YYYY-MM-DD.", 2)
+			}
+			*date.target = parsed
+		}
+	}
+	if !scope.Since.IsZero() && !scope.Before.IsZero() && !scope.Since.Before(scope.Before) {
+		return fail("invalid_arguments", "--since must precede --before.", 2)
 	}
 	if *limit < 1 || *limit > 1000 || *offset < 0 {
 		return fail("invalid_arguments", "--limit must be 1–1000 and --offset must be nonnegative.", 2)
@@ -191,9 +215,12 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		return readSuccess(out, jsonMode, readBoundedPage(safe, total, *limit, *offset))
 	}
 	metadata := func(m db.Message) (map[string]any, error) {
-		var accountID, accountName, mailboxName string
-		err := database.QueryRow(`SELECT accounts.config_id, accounts.name, mailboxes.name FROM mailboxes JOIN accounts ON accounts.id=mailboxes.account_id WHERE mailboxes.id=?`, m.MailboxID).Scan(&accountID, &accountName, &mailboxName)
-		return map[string]any{"id": fmt.Sprintf("cache:%d", m.ID), "cache_id": m.ID, "account_id": accountID, "account_name": accountName, "mailbox_id": m.MailboxID, "mailbox": mailboxName, "uid": m.UID, "message_id": m.MessageID, "subject": m.Subject, "from": m.From, "to": m.To, "cc": m.CC, "date": m.Date.Format(time.RFC3339), "read": m.Read, "starred": m.Starred, "has_attachment": m.HasAttachment}, err
+		accountID, accountName, mailboxName, display := m.AccountConfigID, m.AccountName, m.MailboxRawName, m.MailboxName
+		var err error
+		if accountID == "" {
+			err = database.QueryRow(`SELECT accounts.config_id, accounts.name, mailboxes.name, CASE WHEN mailboxes.delimiter = '' THEN mailboxes.name ELSE COALESCE(NULLIF(mailboxes.display_name, ''), mailboxes.name) END FROM mailboxes JOIN accounts ON accounts.id=mailboxes.account_id WHERE mailboxes.id=?`, m.MailboxID).Scan(&accountID, &accountName, &mailboxName, &display)
+		}
+		return map[string]any{"id": fmt.Sprintf("cache:%d", m.ID), "cache_id": m.ID, "account_id": accountID, "account_name": accountName, "mailbox_id": m.MailboxID, "mailbox": mailboxName, "mailbox_display": display, "uid": m.UID, "message_id": m.MessageID, "subject": m.Subject, "from": m.From, "to": m.To, "cc": m.CC, "date": m.Date.Format(time.RFC3339), "read": m.Read, "starred": m.Starred, "has_attachment": m.HasAttachment}, err
 	}
 	if action == "read" {
 		id, e := readID(positionals[0])
@@ -285,6 +312,9 @@ func readSuccess(out io.Writer, jsonMode bool, data any) int {
 			}
 			if state, exists := item["state"]; exists {
 				detail = fmt.Sprint(state)
+			}
+			if date, ok := item["date"]; ok {
+				detail = fmt.Sprintf("%s  %v  %v", detail, date, item["mailbox_display"])
 			}
 			line := func(s string) string { return strings.Join(strings.Fields(safeTerminal(s)), " ") }
 			if _, err := fmt.Fprintf(out, "%s  %s  %s\n", paint(out, line(id), 124, 58, 237), line(label), paint(out, line(detail), 6, 182, 212)); err != nil {

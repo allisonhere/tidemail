@@ -6,6 +6,30 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- `messages list` and `messages search` take `--account ID`, repeatable
+  `--mailbox NAME`, `--since` / `--before` (`YYYY-MM-DD`), `--starred` and
+  `--sort date|relevance`. Filters run before pagination, so totals and pages
+  describe the selected scope. Scoped searches sort newest first, an empty
+  search query matches everything in scope, and an unscoped list still opens on
+  the unified inbox.
+- `mailboxes list [--account ID]` lists cached folders with raw and display
+  names, special-use flags and local cached/unread counts. In agent mode it
+  needs `messages.metadata`.
+- Cached read commands accept options before or after an ID or query, `--`
+  makes the remaining arguments literal, and flags that do not apply to a
+  command are rejected.
+
+### Changed
+
+- **`messages list` and `messages search` now leave out Trash, Junk, Spam and
+  Deleted folders by default** (detected by the `\Trash` / `\Junk` flags, then
+  by name). Pass `--include-trash`, or name the folder with `--mailbox`, to get
+  them back. Scripts that relied on results from those folders will see fewer
+  messages.
+- Text output of message lists shows the date and the folder name.
+
 ## v1.10.2
 
 ### Added

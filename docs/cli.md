@@ -154,7 +154,18 @@ case-insensitive). Filters apply before pagination and totals. Mailbox names
 are matched exactly; use `--account` to distinguish identical names in different
 accounts. An unscoped list remains the unified inbox; supplying an account or
 mailbox lists all cached messages in that scope. An empty search query (`""`)
-matches everything in scope. Search retains relevance ordering for text queries.
+matches everything in scope. Scoped searches default to newest first; unscoped text searches default to relevance.
+
+Message list and search also accept `--starred`, `--since YYYY-MM-DD`
+(inclusive local midnight), `--before YYYY-MM-DD` (exclusive local midnight),
+and `--sort date|relevance`. Date order is newest first with a stable cache-ID
+tie breaker. Relevance falls back to date order when there is no text match.
+
+Trash, Junk, Spam and Deleted folders are excluded by default. Special-use
+flags take priority over common folder names. Use `--include-trash` to include
+them, or select the folder explicitly with `--mailbox`.
+JSON message metadata includes both raw `mailbox` and `mailbox_display`;
+plain-text message rows show date and display mailbox.
 
 Discover cached folders with `tidemail mailboxes list [--account ID] --json`.
 Each result includes account identity, raw `name`, `mailbox_display`, stored

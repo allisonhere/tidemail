@@ -54,3 +54,17 @@ func TestMailReadFlagsLiteralQuery(t *testing.T) {
 		t.Fatalf("%d %s %s", code, out.String(), diagnostics.String())
 	}
 }
+
+func TestMailReadFilterValidation(t *testing.T) {
+	for _, args := range [][]string{
+		{"list", "--since", "2026-99-01", "--json"},
+		{"list", "--since", "2026-11-20", "--before", "2026-11-19", "--json"},
+		{"search", "invoice", "--sort", "random", "--json"},
+		{"read", "1", "--starred", "--json"},
+	} {
+		var out, diag bytes.Buffer
+		if code := RunMailRead("messages", args, &out, &diag); code != 2 || !strings.Contains(out.String(), "invalid_arguments") {
+			t.Fatalf("%v: %d %s %s", args, code, out.String(), diag.String())
+		}
+	}
+}
