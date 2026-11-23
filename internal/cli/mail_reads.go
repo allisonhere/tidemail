@@ -41,6 +41,7 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 	limit := fs.Int("limit", 50, "Maximum results (1–1000)")
 	offset := fs.Int("offset", 0, "Results to skip")
 	unread := fs.Bool("unread", false, "Only unread messages")
+	exact := fs.Bool("exact", false, "Search: match whole words only, no implicit prefix on the last word")
 	usageOut := errOut
 	if hasHelpFlag(args) {
 		usageOut = out
@@ -49,6 +50,9 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		_, _ = fmt.Fprintf(usageOut, "Usage: tidemail %s %s [ID or query] [--json] [--agent] [--limit N] [--offset N]\nCached reads do not synchronize with the server.\nUse --interactive for guided input, or --no-interactive to suppress prompts.\n", command, action)
 		if command == "outbox" {
 			_, _ = fmt.Fprintln(usageOut, "Use outbox process to deliver queued messages while the TUI is closed.")
+		}
+		if command == "messages" && action == "search" {
+			fmt.Fprintln(usageOut, `The last word also matches as a prefix. Use "double quotes" for a phrase, or --exact to match whole words only (a trailing * still asks for a prefix). Pass the query as one argument.`)
 		}
 		if command == "messages" && action == "read" {
 			fmt.Fprintln(usageOut, "Read returns original bodies plus text/text_source (plain, html, none); HTML fallback uses link labels only.")
@@ -77,6 +81,9 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		return fail("invalid_arguments", "Invalid command options; use --help.", 2)
 	}
 	*agent = agentMode(*agent)
+	if *exact && (command != "messages" || action != "search") {
+		return fail("invalid_arguments", "--exact applies only to messages search.", 2)
+	}
 	if *limit < 1 || *limit > 1000 || *offset < 0 {
 		return fail("invalid_arguments", "--limit must be 1–1000 and --offset must be nonnegative.", 2)
 	}
@@ -205,7 +212,7 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 	var messages []db.Message
 	var total int
 	if action == "search" {
-		messages, total, err = database.SearchAllMessagesPage(positionals[0], *unread, *limit, *offset)
+		messages, total, err = database.SearchCachedMessagesPage(positionals[0], *unread, *exact, *limit, *offset)
 	} else {
 		messages, total, err = database.ListUnifiedInboxPage(*unread, *limit, *offset)
 	}

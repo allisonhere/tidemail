@@ -162,18 +162,35 @@ func (db *DB) ListUnifiedInboxUnreadFirst(unreadOnly bool) ([]Message, error) {
 // "#tag" terms match the tags shown on rows (see search_tags.go). Both kinds
 // may be combined.
 func (db *DB) SearchAllMessages(query string, unreadFirst bool) ([]Message, error) {
-	messages, _, err := db.searchAllMessages(query, unreadFirst, false, -1, 0)
+	messages, _, err := db.searchAllMessages(query, unreadFirst, false, -1, 0, nil)
 	return messages, err
 }
 
 // SearchAllMessagesPage preserves the TUI's full-text and tag search semantics.
 func (db *DB) SearchAllMessagesPage(query string, unreadOnly bool, limit, offset int) ([]Message, int, error) {
-	return db.searchAllMessages(query, false, unreadOnly, limit, offset)
+	return db.searchAllMessages(query, false, unreadOnly, limit, offset, nil)
 }
 
-func (db *DB) searchAllMessages(query string, unreadFirst, unreadOnly bool, limit, offset int) ([]Message, int, error) {
-	terms := ParseSearch(query)
-	match := searchMatch(terms)
+// SearchCachedMessagesPage is the search the CLI runs. It reads like the
+// interactive search, with the last word matching as a prefix, and also accepts
+// "double quoted" phrases (adjacent words in order) and an explicit trailing *.
+// With exact, nothing is a prefix unless it ends in *.
+func (db *DB) SearchCachedMessagesPage(query string, unreadOnly, exact bool, limit, offset int) ([]Message, int, error) {
+	return db.searchAllMessages(query, false, unreadOnly, limit, offset, &exact)
+}
+
+func (db *DB) searchAllMessages(query string, unreadFirst, unreadOnly bool, limit, offset int, cli *bool) ([]Message, int, error) {
+	var terms SearchTerms
+	var textMatch string
+	if cli != nil {
+		var words []string
+		terms, words = parseSearch(query, cliSearchTokenPattern)
+		textMatch = cliFTSQuery(words, !*cli && !terms.LastIsField)
+	} else {
+		terms = ParseSearch(query)
+		textMatch = ftsQueryPrefix(terms.Text, !terms.LastIsField)
+	}
+	match := searchMatch(terms, textMatch)
 	if match == "" && len(terms.Tags) == 0 {
 		return nil, 0, nil
 	}
@@ -549,21 +566,11 @@ func scanMessagesWithContext(rows interface {
 	return msgs, rows.Err()
 }
 
-// ftsQuery turns what the user typed into an FTS5 MATCH expression. Terms are
-// quoted (so punctuation in an address can't be read as FTS operators) and
-// ANDed together.
-//
-// The final term also gets the prefix operator, because search runs on every
-// keystroke: without it a half-typed word matches no token at all, so results
-// vanish mid-word and only reappear once the word is finished. Only the last
-// term is treated this way — earlier terms are complete words the user has
-// already moved past.
-// searchMatch is the full-text MATCH expression for free words and field
-// operators, ANDed together; "" when there is nothing to match. The last thing
-// typed is matched as a prefix, so results follow the user while they type.
-func searchMatch(terms SearchTerms) string {
+// searchMatch combines the free-text match expression and field operators,
+// ANDed together; "" when there is nothing to match.
+func searchMatch(terms SearchTerms, text string) string {
 	var parts []string
-	if text := ftsQueryPrefix(terms.Text, !terms.LastIsField); text != "" {
+	if text != "" {
 		parts = append(parts, text)
 	}
 	for _, f := range terms.Fields {
@@ -610,7 +617,11 @@ func exactAddressWhere(f FieldTerm) (string, []any) {
 	return "(" + strings.Join(exprs, " OR ") + ")", args
 }
 
-// ftsQueryPrefix is ftsQuery with the prefix match on the last word optional.
+// ftsQueryPrefix turns typed words into an FTS5 MATCH expression. Terms are
+// quoted, so punctuation in an address can't be read as FTS operators, and
+// ANDed together. Interactive search runs on every keystroke, so the last word
+// may also get the prefix operator: otherwise a half-typed word matches no token
+// and results vanish until the word is finished.
 func ftsQueryPrefix(query string, prefixLast bool) string {
 	parts := strings.Fields(strings.TrimSpace(query))
 	if len(parts) == 0 {
@@ -631,6 +642,28 @@ func ftsQueryPrefix(query string, prefixLast bool) string {
 		quoted[len(quoted)-1] += "*"
 	}
 	return strings.Join(quoted, " AND ")
+}
+
+// cliFTSQuery quotes user terms as FTS literals. A quoted phrase stays one
+// unit. A trailing * makes a prefix, and prefixLast does the same for a final
+// plain word.
+func cliFTSQuery(words []string, prefixLast bool) string {
+	var parts []string
+	for i, token := range words {
+		value, prefix := strings.CutSuffix(token, "*")
+		phrase := len(value) >= 2 && strings.HasPrefix(value, `"`) && strings.HasSuffix(value, `"`)
+		if phrase {
+			value = strings.NewReplacer(`\"`, `"`, `\\`, `\`).Replace(value[1 : len(value)-1])
+		} else if prefixLast && i == len(words)-1 {
+			prefix = true
+		}
+		part := `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
+		if prefix && value != "" {
+			part += "*"
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, " AND ")
 }
 
 func upsertMessageFTS(x interface {

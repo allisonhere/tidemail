@@ -158,6 +158,13 @@ link labels only, decodes entities, separates paragraphs/lists/table rows,
 and skips scripts, styles and document metadata without fetching resources.
 The original `body_text` and `body_html` fields remain unchanged.
 
+`messages search` matches the last word as a prefix, as the interactive search
+does, so `invo` finds `invoice`. Put double quotes inside the query for
+adjacent words in order; a phrase is not a prefix unless it ends in `*`. End
+any word with `*` to match its beginning. `--exact` turns off the implicit
+prefix, so every word must match whole. Pass the query as one shell argument,
+for example `tidemail messages search '"annual report" financ*'`.
+
 Search uses the same plain-first HTML fallback. A one-time local index rebuild
 makes existing HTML-only cached bodies searchable, in both CLI and TUI searches.
 HTML alternatives are not indexed when a nonblank plain body exists.

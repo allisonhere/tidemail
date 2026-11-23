@@ -82,6 +82,61 @@ func TestMailReadsSearchAndPagination(t *testing.T) {
 		t.Fatalf("invalid pagination: %d %s", code, out.String())
 	}
 }
+func TestMailSearchPhrasesPrefixesAndExact(t *testing.T) {
+	mailReadFixture(t)
+	for _, tc := range []struct {
+		query string
+		exact bool
+		total int
+	}{
+		{"invo", false, 1}, // the last word is still a prefix
+		{"invo", true, 0},  // --exact: whole words only
+		{"invo*", true, 1}, // an explicit * is a prefix either way
+		{"invo private", false, 0},
+		{"private invo", false, 1},
+		{"private details", false, 1},
+		{"private details", true, 1},
+		{`"private details"`, false, 0}, // words are not adjacent
+		{`"private invoice" details`, false, 1},
+		{`"private invo"`, false, 0}, // a phrase is not a prefix
+		{`"private invo"*`, false, 1},
+		{`subject:invoice "invoice details"`, false, 1},
+		{`""`, false, 0},
+	} {
+		name := tc.query
+		if tc.exact {
+			name += " --exact"
+		}
+		t.Run(name, func(t *testing.T) {
+			args := []string{"search", tc.query, "--json"}
+			if tc.exact {
+				args = append(args, "--exact")
+			}
+			var out, diagnostics bytes.Buffer
+			code := RunMailRead("messages", args, &out, &diagnostics)
+			var result struct {
+				Data struct{ Total int }
+			}
+			if code != 0 || json.Unmarshal(out.Bytes(), &result) != nil || result.Data.Total != tc.total {
+				t.Fatalf("want %d matches, got exit %d: %s %s", tc.total, code, out.String(), diagnostics.String())
+			}
+		})
+	}
+	var out, diagnostics bytes.Buffer
+	if code := RunMailRead("messages", []string{"list", "--exact"}, &out, &diagnostics); code != 2 {
+		t.Fatalf("--exact must be rejected outside search, got %d", code)
+	}
+	database, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	messages, err := database.SearchAllMessages("invo", false)
+	if err != nil || len(messages) != 1 {
+		t.Fatalf("interactive search should still match the prefix: got %d messages, err %v", len(messages), err)
+	}
+}
+
 func TestOutboxReadsHidePayloadAndBCC(t *testing.T) {
 	mailReadFixture(t)
 	database, err := db.Open()

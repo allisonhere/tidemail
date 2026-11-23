@@ -73,9 +73,17 @@ func parseFieldOperator(token string) (columns []string, value string, known boo
 // #tag names. A lone "#" or a tag with no usable characters is ignored, and so
 // is an operator that has no value yet.
 func ParseSearch(query string) SearchTerms {
+	terms, words := parseSearch(query, searchTokenPattern)
+	terms.Text = strings.Join(words, " ")
+	return terms
+}
+
+// parseSearch is ParseSearch with the tokenizer chosen by the caller; the free
+// words are returned one per token instead of joined.
+func parseSearch(query string, pattern *regexp.Regexp) (SearchTerms, []string) {
 	var words []string
 	var terms SearchTerms
-	tokens := searchTokenPattern.FindAllString(query, -1)
+	tokens := pattern.FindAllString(query, -1)
 	for i, f := range tokens {
 		if !strings.HasPrefix(f, "#") {
 			if columns, value, known := parseFieldOperator(f); known {
@@ -110,11 +118,17 @@ func ParseSearch(query string) SearchTerms {
 			terms.Tags = append(terms.Tags, tag)
 		}
 	}
-	terms.Text = strings.Join(words, " ")
-	return terms
+	return terms, words
 }
 
-var searchTokenPattern = regexp.MustCompile(`#+"(?:[^"\\\n]|\\.)*(?:"|$)|(?i:from|to|cc|subject):"(?:[^"\\\n]|\\.)*(?:"|$)|\S+`)
+const searchOperatorTokens = `#+"(?:[^"\\\n]|\\.)*(?:"|$)|(?i:from|to|cc|subject):"(?:[^"\\\n]|\\.)*(?:"|$)`
+
+var (
+	searchTokenPattern = regexp.MustCompile(searchOperatorTokens + `|\S+`)
+	// cliSearchTokenPattern also keeps a double-quoted phrase, with an optional
+	// trailing *, as one token.
+	cliSearchTokenPattern = regexp.MustCompile(searchOperatorTokens + `|"(?:[^"\\\n]|\\.)*"\*?|\S+`)
+)
 
 // Attention tags as they appear on rows, with accepted spellings.
 var attentionTagNames = []struct {

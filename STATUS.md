@@ -330,4 +330,5 @@ cleanup failed until a later list reload can reconcile them.
 HTML-only cached bodies are searchable through plain-first HTML text extraction,
 using link labels only and no remote fetching. A versioned index rebuild applies
 this to existing mail. CLI reads expose derived `text`/`text_source` alongside
-unchanged original bodies.
+unchanged original bodies. CLI search also takes quoted phrases and explicit `*` prefixes,
+and `--exact` for whole-word matching.
