@@ -49,6 +49,19 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 	if command == "messages" && (action == "list" || action == "search") {
 		fs.BoolVar(unread, "unread", false, "Only unread messages")
 	}
+	scope := db.MessageScope{}
+	if (command == "messages" && (action == "list" || action == "search")) || command == "mailboxes" {
+		fs.StringVar(&scope.AccountID, "account", "", "Stable account ID from accounts list")
+	}
+	if command == "messages" && (action == "list" || action == "search") {
+		fs.Func("mailbox", "Mailbox raw or display name (repeatable)", func(value string) error {
+			if strings.TrimSpace(value) == "" {
+				return fmt.Errorf("mailbox name must not be empty")
+			}
+			scope.Mailboxes = append(scope.Mailboxes, value)
+			return nil
+		})
+	}
 	usageOut := errOut
 	if hasHelpFlag(args) {
 		usageOut = out
@@ -72,8 +85,8 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 	if *limit < 1 || *limit > 1000 || *offset < 0 {
 		return fail("invalid_arguments", "--limit must be 1–1000 and --offset must be nonnegative.", 2)
 	}
-	if (command == "accounts" && action != "list") || (command == "messages" && action != "list" && action != "search" && action != "read") || (command == "outbox" && action != "list" && action != "status") {
-		hint := map[string]string{"accounts": "list", "messages": "list, search, or read", "outbox": "list or status"}[command]
+	if ((command == "accounts" || command == "mailboxes") && action != "list") || (command == "messages" && action != "list" && action != "search" && action != "read") || (command == "outbox" && action != "list" && action != "status") {
+		hint := map[string]string{"mailboxes": "list", "accounts": "list", "messages": "list, search, or read", "outbox": "list or status"}[command]
 		message := fmt.Sprintf("Unknown subcommand %q; %s supports %s.", action, command, hint)
 		if command == "messages" {
 			message += ` Search with: tidemail messages search "query".`
@@ -89,6 +102,9 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		return fail("config_error", "Cannot load configuration; check config.toml.", 1)
 	}
 	capability := command + ".read"
+	if command == "mailboxes" {
+		capability = "messages.metadata"
+	}
 	if command == "messages" {
 		capability = "messages.metadata"
 		if action == "read" {
@@ -121,6 +137,13 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		return fail("database_error", "Cannot open the mail cache.", 1)
 	}
 	defer database.Close() //nolint:errcheck
+	if command == "mailboxes" {
+		data, e := cachedMailboxPage(database, scope.AccountID, *limit, *offset)
+		if e != nil {
+			return fail("database_error", "Cannot list cached mailboxes.", 1)
+		}
+		return readSuccess(out, jsonMode, data)
+	}
 	if command == "outbox" {
 		if action == "status" {
 			id, e := strconv.ParseInt(positionals[0], 10, 64)
@@ -196,9 +219,11 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 	var messages []db.Message
 	var total int
 	if action == "search" {
-		messages, total, err = database.SearchAllMessagesPage(positionals[0], *unread, *limit, *offset)
+		scope.Unread = *unread
+		messages, total, err = database.ScopedMessagesPage(positionals[0], scope, false, *limit, *offset)
 	} else {
-		messages, total, err = database.ListUnifiedInboxPage(*unread, *limit, *offset)
+		scope.Unread = *unread
+		messages, total, err = database.ScopedMessagesPage("", scope, true, *limit, *offset)
 	}
 	if err != nil {
 		return fail("database_error", "Cannot query cached messages.", 1)
@@ -255,6 +280,9 @@ func readSuccess(out io.Writer, jsonMode bool, data any) int {
 			if name, exists := item["name"]; exists {
 				label = fmt.Sprint(name)
 				detail = fmt.Sprint(item["email"])
+				if display, ok := item["mailbox_display"]; ok {
+					detail = fmt.Sprintf("%s  cached:%v unread:%v", display, item["cached"], item["unread"])
+				}
 			}
 			if state, exists := item["state"]; exists {
 				detail = fmt.Sprint(state)

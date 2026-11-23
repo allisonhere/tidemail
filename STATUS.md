@@ -46,7 +46,8 @@ Unreleased.
   Settings → CLI adds switches for quitting after a send, skipping review, and the
   default signature (interactive use only).
 - **Headless mail CLI**: configured-account sends and drafts, Markdown and
-  attachments, cached inbox list/search/read, account and outbox metadata,
+  attachments, cached inbox list/search/read (scoped by account and folder, with
+  `mailboxes list` for folder discovery), account and outbox metadata,
   explicit queue processing, and portable agent skills for Codex, Claude, Pi,
   and Hermes. Agent capabilities and invocation approval separate reading,
   drafting, and sending; `TIDEMAIL_AGENT=1` forces those checks for a whole

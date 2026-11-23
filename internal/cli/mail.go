@@ -28,7 +28,7 @@ var ManPage string
 
 func IsMailCommand(s string) bool {
 	switch s {
-	case "cli", "send", "draft", "messages", "accounts", "outbox", "templates", "man", "skill", "install-skill", "--help", "-h", "help":
+	case "cli", "send", "draft", "messages", "mailboxes", "accounts", "outbox", "templates", "man", "skill", "install-skill", "--help", "-h", "help":
 		return true
 	}
 	return false
@@ -51,13 +51,13 @@ func RunHeadless(args []string, in io.Reader, out, errOut io.Writer) int {
 	}
 	switch args[0] {
 	case "help", "--help", "-h":
-		_, _ = fmt.Fprintln(out, paint(out, "TideMail", 124, 58, 237)+" — terminal email\n\nUsage: tidemail [command]\n\nNo arguments opens the three-pane client.\nCommands: cli (interactive menu), send, draft create, messages list|search|read, accounts list,\n          outbox list|status|process|retry|cancel, templates list, man, skill, install-skill, plugin\nRun tidemail COMMAND --help for options.\nExit codes: 0 success, 1 operation failed, 2 invalid usage, 3 permission denied.")
+		_, _ = fmt.Fprintln(out, paint(out, "TideMail", 124, 58, 237)+" — terminal email\n\nUsage: tidemail [command]\n\nNo arguments opens the three-pane client.\nCommands: cli (interactive menu), send, draft create, messages list|search|read, mailboxes list, accounts list,\n          outbox list|status|process|retry|cancel, templates list, man, skill, install-skill, plugin\nRun tidemail COMMAND --help for options.\nExit codes: 0 success, 1 operation failed, 2 invalid usage, 3 permission denied.")
 		return 0
 	case "skill":
 		return RunSkill(args[1:], out, errOut)
 	case "install-skill":
 		return RunInstallSkill(args[1:], out, errOut)
-	case "accounts", "messages":
+	case "accounts", "messages", "mailboxes":
 		return RunMailRead(args[0], args[1:], out, errOut)
 	case "outbox":
 		if len(args) > 1 && (args[1] == "process" || args[1] == "retry" || args[1] == "cancel") {

@@ -314,3 +314,14 @@ Read and outbox status reject pagination flags. Accounts and outbox reject
 --unread. Options may precede or follow an ID or query.
 A standalone -- makes all following arguments literal; use it before a
 search query beginning with a hyphen.
+
+.PP
+Message list and search accept --account ID and repeatable --mailbox NAME.
+Mailbox names match raw or display names case-insensitively.
+Filters apply before pagination; a scoped list includes all folders selected,
+while an unscoped list is the unified inbox. An empty search query matches all
+cached messages in scope.
+.PP
+mailboxes list [--account ID] lists cached folders with raw/display names,
+stored special-use flags and local cached/unread counts. Under --agent it
+requires messages.metadata. Counts do not indicate server coverage.
