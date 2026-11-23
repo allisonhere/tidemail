@@ -6,6 +6,8 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+## v1.10.2
+
 ### Added
 
 - **Settings → General → Downloads folder** sets where saving attachments (`Ctrl+D`),
