@@ -70,7 +70,7 @@ nonempty body or an attachment. Incomplete messages cannot authorize delivery.
 | `--dry-run` | Validate and build MIME without saving, queueing, or delivering |
 | `--preview` | Open the editable compose wizard for review and explicit authorization |
 | `--json` | Return the versioned JSON envelope |
-| `--agent` | Enforce configured agent capabilities |
+| `--agent` | Enforce configured agent capabilities (also forced by `TIDEMAIL_AGENT=1`) |
 | `--interactive` | Open the guided composer through the controlling terminal |
 | `--no-interactive` | Disable automatic prompts |
 
@@ -240,6 +240,19 @@ Agent guidance uses `--agent` on mail commands. This flag checks the top-level
 separate from the experimental classification-plugin protocol. They are a CLI
 policy, not an operating-system sandbox for an agent that has unrestricted shell
 or file access.
+
+Set `TIDEMAIL_AGENT=1` in an agent session to force the same checks for every
+mail command, even when `--agent` is omitted or `--agent=false` is passed. Only the
+exact value `1` enables this; unset or other values leave `--agent` behavior
+unchanged. It covers cached reads, drafts, sending, interactive compose actions,
+and outbox actions, and it stops commands from opening automatic prompts. It
+grants no capability and does not authorize a send: capabilities and approval
+work as described below.
+
+```bash
+export TIDEMAIL_AGENT=1
+tidemail messages list --json   # checked as if --agent were given
+```
 
 When `agent_permissions` is absent, the default capabilities are
 `accounts.read`, `messages.metadata`, `messages.search`, `drafts.create`, and

@@ -49,7 +49,8 @@ Unreleased.
   attachments, cached inbox list/search/read, account and outbox metadata,
   explicit queue processing, and portable agent skills for Codex, Claude, Pi,
   and Hermes. Agent capabilities and invocation approval separate reading,
-  drafting, and sending. See the [CLI reference](docs/cli.md) for queue scheduling,
+  drafting, and sending; `TIDEMAIL_AGENT=1` forces those checks for a whole
+  session, even with `--agent=false`. See the [CLI reference](docs/cli.md) for queue scheduling,
   JSON output, installation, and current limits.
 
 - **Standard folders**: Gmail's Sent Mail, Drafts, All Mail, Trash, Spam,

@@ -6,6 +6,14 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Set `TIDEMAIL_AGENT=1` to enforce configured agent capability checks on every
+  mail command in a session (cached reads, drafts, sends, interactive compose
+  actions and outbox actions), even when a command omits `--agent` or passes
+  `--agent=false`. It grants no capability, send approval still applies, and the
+  generated agent skill now tells agents to set it.
+
 ## v1.10.2
 
 ### Added

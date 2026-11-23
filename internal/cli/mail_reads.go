@@ -36,7 +36,7 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 	fs := flag.NewFlagSet(command+" "+action, flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	fs.BoolVar(&jsonMode, "json", jsonMode, "Print a versioned JSON envelope")
-	agent := fs.Bool("agent", false, "Enforce configured agent capabilities")
+	agent := fs.Bool("agent", false, "Enforce configured agent capabilities (also forced by "+agentEnv+"=1)")
 	limit := fs.Int("limit", 50, "Maximum results (1–1000)")
 	offset := fs.Int("offset", 0, "Results to skip")
 	unread := fs.Bool("unread", false, "Only unread messages")
@@ -72,6 +72,7 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		}
 		return fail("invalid_arguments", "Invalid command options; use --help.", 2)
 	}
+	*agent = agentMode(*agent)
 	if *limit < 1 || *limit > 1000 || *offset < 0 {
 		return fail("invalid_arguments", "--limit must be 1–1000 and --offset must be nonnegative.", 2)
 	}

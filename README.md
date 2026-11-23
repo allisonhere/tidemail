@@ -39,7 +39,8 @@ tidemail install-skill codex
 Hermes, so an AI agent can read, draft, and send through TideMail without
 touching your IMAP/SMTP credentials directly. Agent capabilities and an
 invocation-approval step separate reading, drafting, and sending, so a script
-or agent only gets as much access as you grant it.
+or agent only gets as much access as you grant it. Setting `TIDEMAIL_AGENT=1`
+in an agent's session enforces those checks even if a command omits `--agent`.
 
 For guided CLI workflows, run `tidemail cli` for the command menu or
 `tidemail send` for the step-by-step composer and attachment browser, with
