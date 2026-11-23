@@ -171,9 +171,13 @@ func (db *DB) SearchAllMessagesPage(query string, unreadOnly bool, limit, offset
 }
 
 func (db *DB) searchAllMessages(query string, unreadFirst, unreadOnly bool, limit, offset int) ([]Message, int, error) {
+	return db.searchScopedMessages(query, unreadFirst, unreadOnly, limit, offset, nil, false)
+}
+
+func (db *DB) searchScopedMessages(query string, unreadFirst, unreadOnly bool, limit, offset int, scope *MessageScope, inbox bool) ([]Message, int, error) {
 	terms := ParseSearch(query)
 	match := searchMatch(terms)
-	if match == "" && len(terms.Tags) == 0 {
+	if scope == nil && match == "" && len(terms.Tags) == 0 {
 		return nil, 0, nil
 	}
 	const columns = `messages.id, messages.mailbox_id, messages.uid, messages.message_id,
@@ -209,6 +213,11 @@ func (db *DB) searchAllMessages(query string, unreadFirst, unreadOnly bool, limi
 	}
 	if unreadOnly {
 		where = append(where, "messages.read = 0")
+	}
+	if scope != nil {
+		expr, scopeArgs := scope.where(inbox)
+		where = append(where, expr)
+		args = append(args, scopeArgs...)
 	}
 	if unreadFirst {
 		orderBy = "messages.read ASC, " + orderBy

@@ -148,6 +148,26 @@ tidemail messages search "invoice" --limit 25 --json
 tidemail messages read cache:123 --json
 ```
 
+Scope message list or search with `--account ID` (the stable ID from
+`accounts list`) and repeatable `--mailbox NAME` (raw or display name,
+case-insensitive). Filters apply before pagination and totals. Mailbox names
+are matched exactly; use `--account` to distinguish identical names in different
+accounts. An unscoped list remains the unified inbox; supplying an account or
+mailbox lists all cached messages in that scope. An empty search query (`""`)
+matches everything in scope. Search retains relevance ordering for text queries.
+
+Discover cached folders with `tidemail mailboxes list [--account ID] --json`.
+Each result includes account identity, raw `name`, `mailbox_display`, stored
+special-use flags, `cached` message count and cached `unread` count. These
+counts describe the local cache, not server coverage. Pagination and `--agent`
+are supported; agent access requires `messages.metadata`.
+
+```bash
+tidemail messages list --mailbox "Course" --account work --limit 1000 --json
+tidemail messages search "" --mailbox "Course" --json
+tidemail mailboxes list --account work --json
+```
+
 List and search results contain metadata, including subject, sender, recipients,
 account, mailbox, read state, and attachment presence. They do not contain full
 message bodies. `messages read` explicitly returns the cached plain-text and HTML
