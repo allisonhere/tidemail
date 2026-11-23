@@ -51,7 +51,7 @@ func RunHeadless(args []string, in io.Reader, out, errOut io.Writer) int {
 	}
 	switch args[0] {
 	case "help", "--help", "-h":
-		_, _ = fmt.Fprintln(out, paint(out, "TideMail", 124, 58, 237)+" — terminal email\n\nUsage: tidemail [command]\n\nNo arguments opens the three-pane client.\nCommands: cli (interactive menu), send, draft create, messages list|search|read|thread, mailboxes list, accounts list,\n          outbox list|status|process|retry|cancel, templates list, man, skill, install-skill, plugin\nRun tidemail COMMAND --help for options.\nExit codes: 0 success, 1 operation failed, 2 invalid usage, 3 permission denied.")
+		_, _ = fmt.Fprintln(out, paint(out, "TideMail", 124, 58, 237)+" — terminal email\n\nUsage: tidemail [command]\n\nNo arguments opens the three-pane client.\nCommands: cli (interactive menu), send, draft create, messages list|search|read|thread|attachments, mailboxes list, accounts list,\n          outbox list|status|process|retry|cancel, templates list, man, skill, install-skill, plugin\nRun tidemail COMMAND --help for options.\nExit codes: 0 success, 1 operation failed, 2 invalid usage, 3 permission denied.")
 		return 0
 	case "skill":
 		return RunSkill(args[1:], out, errOut)

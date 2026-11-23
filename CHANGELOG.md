@@ -30,6 +30,13 @@ All notable changes to TideMail are documented in this file.
 - `messages list` and `messages search` accept `--dedupe`, which collapses
   copies of one Message-ID (a message in both Inbox and Archive) before the
   total and the page are counted.
+- `messages attachments cache:ID --out DIR` saves a message's attachments,
+  inline parts included, using cached contents or fetching them over IMAP
+  without marking the mail read. Under `--agent` it needs the new
+  `attachments.read` capability, which is denied by default and not implied by
+  `messages.read`. Files are never overwritten (`name-1.ext`), names are
+  reduced to a safe basename, and the fetch is refused unless the stored
+  mailbox UIDVALIDITY matches the server's.
 
 ### Changed
 

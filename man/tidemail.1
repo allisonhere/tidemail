@@ -36,7 +36,7 @@ Validate a message and save it as a draft, or queue it with
 .B draft create
 Save a draft; it never authorizes delivery.
 .TP
-.B messages list | search | read | thread
+.B messages list | search | read | thread | attachments
 Read the cached mail.
 .B list
 and
@@ -340,3 +340,18 @@ read and read --headers require messages.read.
 .PP
 List/search --dedupe collapses normalized Message-IDs among matching rows before
 pagination and totals, keeping the smallest cache ID. Blank IDs remain separate.
+
+.SH ATTACHMENT EXPORT
+.B messages attachments cache:ID --out DIR [--agent] [--json]
+.PP
+Export all attachments, including inline parts, from one chosen cached message.
+Agent mode requires attachments.read, denied by default and independent of
+messages.read. Uses cached contents first; missing bytes are fetched from IMAP
+without marking mail read or caching fetched bytes. IMAP fallback requires a
+configured account and known matching mailbox UIDVALIDITY; sync first if needed.
+.PP
+The required --out directory is created if absent. Files use private permissions
+(0600), safe basenames and numeric suffixes to preserve existing files and symlinks.
+JSON data contains id and items with name, absolute path, size, type and inline.
+No attachments yields an empty items array. Fetch failure writes no files; an
+output error may leave earlier files saved. Repeating export creates more files.

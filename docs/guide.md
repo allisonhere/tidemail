@@ -1754,3 +1754,14 @@ conversation the interface builds, across all cached folders, oldest first and
 deduplicated by Message-ID. It requires `messages.metadata` under `--agent`;
 full reads require `messages.read`. `messages list` and `messages search` accept
 `--dedupe`, applied before pagination.
+
+Export a chosen message's attachments with
+`tidemail messages attachments cache:ID --out DIR --agent --json`. This includes
+inline parts and requires the separate `attachments.read` capability, denied by
+default; `messages.read` does not grant it. Cached contents are used when
+present; missing contents come from IMAP without marking mail read or syncing
+the inbox. The IMAP fallback requires a known matching mailbox UIDVALIDITY and
+the configured account; sync in the interface first if needed. Safe basenames
+and numeric suffixes preserve existing files. JSON lists absolute saved paths
+and attachment metadata. Files use mode 0600; a write error may leave earlier
+exports saved. See [CLI reference](cli.md#export-attachments).
