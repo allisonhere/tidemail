@@ -36,7 +36,7 @@ func runMessageAttachments(args []string, out, errOut io.Writer, jsonMode bool) 
 		if hasHelpFlag(args) {
 			w = out
 		}
-		fmt.Fprint(w, "Usage: tidemail messages attachments cache:ID --out DIR [--agent] [--json]\nExport all attachments, including inline parts. Uses cached bytes, otherwise IMAP.\nExisting files are preserved; duplicate names receive numeric suffixes.\nOptions may precede or follow the ID.\n")
+		_, _ = fmt.Fprint(w, "Usage: tidemail messages attachments cache:ID --out DIR [--agent] [--json]\nExport all attachments, including inline parts. Uses cached bytes, otherwise IMAP.\nExisting files are preserved; duplicate names receive numeric suffixes.\nOptions may precede or follow the ID.\n")
 		fs.SetOutput(w)
 		fs.PrintDefaults()
 	}
