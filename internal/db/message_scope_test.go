@@ -23,7 +23,7 @@ func TestScopedFiltersBeforePagination(t *testing.T) {
 		name  string
 		flags []string
 	}{
-		{"INBOX", nil}, {"INBOX.Deleted Messages", nil}, {"Localized", []string{"\\Trash"}}, {"Junk", nil}, {"Trash", []string{"\\Archive"}},
+		{"INBOX", nil}, {"INBOX.Deleted Messages", nil}, {"Localized", []string{"\\Trash"}}, {"Junk", nil}, {"INBOX/Junk E-mail", nil}, {"Trash", []string{"\\Archive"}},
 	} {
 		mb, e := d.UpsertMailbox(Mailbox{AccountID: a, Name: tc.name, Flags: tc.flags})
 		if e != nil {
@@ -41,7 +41,7 @@ func TestScopedFiltersBeforePagination(t *testing.T) {
 		total int
 	}{
 		{"exclude", MessageScope{}, 6},
-		{"include", MessageScope{IncludeTrash: true}, 15},
+		{"include", MessageScope{IncludeTrash: true}, 18},
 		{"explicit", MessageScope{Mailboxes: []string{"INBOX.Deleted Messages", "Localized"}}, 6},
 		{"date and star", MessageScope{Starred: true, Since: time.Unix(200, 0), Before: time.Unix(300, 0)}, 2},
 		{"before exclusive", MessageScope{Before: time.Unix(200, 0)}, 2},

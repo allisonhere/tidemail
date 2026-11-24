@@ -73,17 +73,46 @@ func parseFieldOperator(token string) (columns []string, value string, known boo
 // #tag names. A lone "#" or a tag with no usable characters is ignored, and so
 // is an operator that has no value yet.
 func ParseSearch(query string) SearchTerms {
+	terms, words := parseSearch(query, searchInteractive)
+	terms.Text = strings.Join(words, " ")
+	return terms
+}
+
+// searchMode selects the search grammar. The interactive search matches the
+// last thing typed as a prefix. The CLI grammar also keeps "double quoted"
+// phrases as one word and reads a trailing * on a word or an operator value as
+// a prefix; its exact form drops the implicit prefix on the last term.
+type searchMode int
+
+const (
+	searchInteractive searchMode = iota
+	searchCLI
+	searchCLIExact
+)
+
+// parseSearch is ParseSearch in the given grammar; the free words are returned
+// one per token instead of joined.
+func parseSearch(query string, mode searchMode) (SearchTerms, []string) {
 	var words []string
 	var terms SearchTerms
-	tokens := searchTokenPattern.FindAllString(query, -1)
+	pattern := searchTokenPattern
+	if mode != searchInteractive {
+		pattern = cliSearchTokenPattern
+	}
+	tokens := pattern.FindAllString(query, -1)
 	for i, f := range tokens {
 		if !strings.HasPrefix(f, "#") {
-			if columns, value, known := parseFieldOperator(f); known {
+			token, star := f, false
+			if mode != searchInteractive {
+				token, star = strings.CutSuffix(f, "*")
+			}
+			if columns, value, known := parseFieldOperator(token); known {
 				if value == "" {
 					continue // "to:" with nothing after it yet
 				}
 				last := i == len(tokens)-1
-				terms.Fields = append(terms.Fields, FieldTerm{Columns: columns, Value: value, Prefix: last && !completeAddress(value)})
+				prefix := star || (mode != searchCLIExact && last && !completeAddress(value))
+				terms.Fields = append(terms.Fields, FieldTerm{Columns: columns, Value: value, Prefix: prefix})
 				terms.LastIsField = last
 				continue
 			}
@@ -110,11 +139,20 @@ func ParseSearch(query string) SearchTerms {
 			terms.Tags = append(terms.Tags, tag)
 		}
 	}
-	terms.Text = strings.Join(words, " ")
-	return terms
+	return terms, words
 }
 
-var searchTokenPattern = regexp.MustCompile(`#+"(?:[^"\\\n]|\\.)*(?:"|$)|(?i:from|to|cc|subject):"(?:[^"\\\n]|\\.)*(?:"|$)|\S+`)
+const (
+	searchTagToken   = `#+"(?:[^"\\\n]|\\.)*(?:"|$)`
+	searchFieldToken = `(?i:from|to|cc|subject):"(?:[^"\\\n]|\\.)*(?:"|$)`
+)
+
+var (
+	searchTokenPattern = regexp.MustCompile(searchTagToken + `|` + searchFieldToken + `|\S+`)
+	// cliSearchTokenPattern also keeps a double-quoted phrase as one token, and
+	// lets a quoted phrase or operator value end in a prefix *.
+	cliSearchTokenPattern = regexp.MustCompile(searchTagToken + `|` + searchFieldToken + `\*?|"(?:[^"\\\n]|\\.)*"\*?|\S+`)
+)
 
 // Attention tags as they appear on rows, with accepted spellings.
 var attentionTagNames = []struct {

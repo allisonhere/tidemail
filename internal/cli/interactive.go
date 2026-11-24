@@ -106,7 +106,7 @@ func interactiveRoute(args []string, in io.Reader, out, errOut io.Writer) (bool,
 	if disabled {
 		// Dispatch stripped flags directly rather than prompting.
 		switch command {
-		case "accounts", "messages":
+		case "accounts", "messages", "mailboxes":
 			return true, RunMailRead(command, clean[1:], out, errOut)
 		case "outbox":
 			if len(clean) > 1 && (clean[1] == "process" || clean[1] == "retry" || clean[1] == "cancel") {
@@ -121,7 +121,7 @@ func interactiveRoute(args []string, in io.Reader, out, errOut io.Writer) (bool,
 			return true, RunSkill(clean[1:], out, errOut)
 		}
 	}
-	automatic := terminalIO(in, out) && !containsFlag(clean, "--json") && !containsFlag(clean, "--agent") && !containsFlag(clean, "--yes") && !containsFlag(clean, "--dry-run")
+	automatic := terminalIO(in, out) && !containsFlag(clean, "--json") && !containsFlag(clean, "--agent") && !agentForced() && !containsFlag(clean, "--yes") && !containsFlag(clean, "--dry-run")
 	missing := len(clean) == 1 && (command == "draft" || command == "messages" || command == "accounts" || command == "outbox" || command == "install-skill")
 	if len(clean) == 2 && command == "messages" && (clean[1] == "search" || clean[1] == "read") {
 		missing = true
@@ -334,7 +334,7 @@ func messagesInteractive(tty *os.File, args []string, out, errOut io.Writer) int
 			offset = max(0, offset-20)
 			continue
 		}
-		code := showCommand(tty, "Message", append([]string{"messages", "read", id}, flags...), out, errOut)
+		code := showCommand(tty, "Message", append([]string{"messages", "read", id}, readFlags(flags)...), out, errOut)
 		if code != 0 {
 			return code
 		}
@@ -463,4 +463,18 @@ func installSkillInteractive(tty *os.File, args []string, out, errOut io.Writer)
 	_, _ = io.Copy(out, &result)
 	_, _ = io.Copy(errOut, &diagnostics)
 	return code
+}
+
+// readFlags keeps the options that messages read accepts from a list or
+// search browser's options; filters such as --unread or --mailbox apply only
+// to the list and would make the read fail.
+func readFlags(flags []string) []string {
+	kept := []string{}
+	for _, f := range flags {
+		name, _, _ := strings.Cut(strings.TrimLeft(f, "-"), "=")
+		if strings.HasPrefix(f, "-") && (name == "agent" || name == "json") {
+			kept = append(kept, f)
+		}
+	}
+	return kept
 }

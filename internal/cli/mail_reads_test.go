@@ -82,6 +82,72 @@ func TestMailReadsSearchAndPagination(t *testing.T) {
 		t.Fatalf("invalid pagination: %d %s", code, out.String())
 	}
 }
+func TestMailSearchPhrasesPrefixesAndExact(t *testing.T) {
+	mailReadFixture(t)
+	for _, tc := range []struct {
+		query string
+		exact bool
+		total int
+	}{
+		{"invo", false, 1}, // the last word is still a prefix
+		{"invo", true, 0},  // --exact: whole words only
+		{"invo*", true, 1}, // an explicit * is a prefix either way
+		{"invo private", false, 0},
+		{"private invo", false, 1},
+		{"private details", false, 1},
+		{"private details", true, 1},
+		{`"private details"`, false, 0}, // words are not adjacent
+		{`"private invoice" details`, false, 1},
+		{`"private invo"`, false, 0}, // a phrase is not a prefix
+		{`"private invo"*`, false, 1},
+		{`subject:invoice "invoice details"`, false, 1},
+		{`""`, false, 1}, // an empty query matches everything in scope
+		// Punctuation-only terms index nothing and must not empty the search.
+		{"invoice - details", false, 1},
+		{"invoice * details", false, 1},
+		{`invoice "" details`, false, 1},
+		// Field values follow the same prefix rules as words.
+		{"subject:invo", false, 1},
+		{"subject:invo", true, 0},
+		{"subject:invo*", true, 1},
+		{"subject:invo* details", false, 1},
+		{"from:send", true, 0},
+		{"from:send*", true, 1},
+	} {
+		name := tc.query
+		if tc.exact {
+			name += " --exact"
+		}
+		t.Run(name, func(t *testing.T) {
+			args := []string{"search", tc.query, "--json"}
+			if tc.exact {
+				args = append(args, "--exact")
+			}
+			var out, diagnostics bytes.Buffer
+			code := RunMailRead("messages", args, &out, &diagnostics)
+			var result struct {
+				Data struct{ Total int }
+			}
+			if code != 0 || json.Unmarshal(out.Bytes(), &result) != nil || result.Data.Total != tc.total {
+				t.Fatalf("want %d matches, got exit %d: %s %s", tc.total, code, out.String(), diagnostics.String())
+			}
+		})
+	}
+	var out, diagnostics bytes.Buffer
+	if code := RunMailRead("messages", []string{"list", "--exact"}, &out, &diagnostics); code != 2 {
+		t.Fatalf("--exact must be rejected outside search, got %d", code)
+	}
+	database, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	messages, err := database.SearchAllMessages("invo", false)
+	if err != nil || len(messages) != 1 {
+		t.Fatalf("interactive search should still match the prefix: got %d messages, err %v", len(messages), err)
+	}
+}
+
 func TestOutboxReadsHidePayloadAndBCC(t *testing.T) {
 	mailReadFixture(t)
 	database, err := db.Open()
@@ -186,6 +252,30 @@ func TestScopedReadsAndMailboxDiscovery(t *testing.T) {
 	var out, diagnostics bytes.Buffer
 	if code := RunMailRead("mailboxes", []string{"list", "--account", "work", "--agent", "--json"}, &out, &diagnostics); code != 0 || !strings.Contains(out.String(), `"cached":3`) || !strings.Contains(out.String(), `"mailbox_display":"Course"`) || strings.Contains(out.String(), "account-stable") {
 		t.Fatalf("mailboxes: %d %s %s", code, out.String(), diagnostics.String())
+	}
+}
+
+func TestReadHTMLFallbackPreservesOriginalBodies(t *testing.T) {
+	id := mailReadFixture(t)
+	d, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = d.Exec("UPDATE messages SET body_text='', body_html=? WHERE id=?", "<p>Read <a href='https://hidden.invalid'>this label</a></p>", id)
+	d.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out, diag bytes.Buffer
+	if code := RunMailRead("messages", []string{"read", fmt.Sprint(id), "--json"}, &out, &diag); code != 0 {
+		t.Fatalf("%d %s", code, diag.String())
+	}
+	var envelope struct{ Data map[string]any }
+	if err = json.Unmarshal(out.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Data["text"] != "Read this label" || envelope.Data["text_source"] != "html" || envelope.Data["body_text"] != "" {
+		t.Fatal(out.String())
 	}
 }
 

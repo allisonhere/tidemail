@@ -142,7 +142,7 @@ func TestHeadlessMarkdownAttachmentAndCancellation(t *testing.T) {
 
 func TestInteractiveFlagsPreserveHeadlessUsage(t *testing.T) {
 	mailFixture(t)
-	for _, args := range [][]string{{"send", "--to", "you@example.com", "--subject", "Hi", "--body", "Hello", "--no-interactive", "--json"}, {"accounts", "list", "--no-interactive", "--json"}, {"messages", "list", "--no-interactive", "--json"}, {"outbox", "list", "--no-interactive", "--json"}} {
+	for _, args := range [][]string{{"send", "--to", "you@example.com", "--subject", "Hi", "--body", "Hello", "--no-interactive", "--json"}, {"accounts", "list", "--no-interactive", "--json"}, {"messages", "list", "--no-interactive", "--json"}, {"outbox", "list", "--no-interactive", "--json"}, {"mailboxes", "list", "--no-interactive", "--json"}} {
 		var out, errs bytes.Buffer
 		if code := RunHeadless(args, strings.NewReader(""), &out, &errs); code != 0 {
 			t.Fatal(args, code, out.String(), errs.String())

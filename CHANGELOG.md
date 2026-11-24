@@ -8,6 +8,11 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- Set `TIDEMAIL_AGENT=1` to enforce configured agent capability checks on every
+  mail command in a session (cached reads, drafts, sends, interactive compose
+  actions and outbox actions), even when a command omits `--agent` or passes
+  `--agent=false`. It grants no capability, send approval still applies, and the
+  generated agent skill now tells agents to set it.
 - `messages list` and `messages search` take `--account ID`, repeatable
   `--mailbox NAME`, `--since` / `--before` (`YYYY-MM-DD`), `--starred` and
   `--sort date|relevance`. Filters run before pagination, so totals and pages
@@ -20,6 +25,15 @@ All notable changes to TideMail are documented in this file.
 - Cached read commands accept options before or after an ID or query, `--`
   makes the remaining arguments literal, and flags that do not apply to a
   command are rejected.
+- Search now finds words in HTML-only messages. When a message has no plain
+  text, the index holds text extracted from the HTML: link labels are kept;
+  link URLs, scripts, styles and document metadata are not, and nothing is
+  fetched. Stored bodies are unchanged.
+- `messages search` accepts "quoted phrases" for adjacent words, a trailing `*`
+  for a prefix on any word, and `--exact` to match whole words only (the last
+  word is otherwise still a prefix, as before).
+- `messages read` also returns `text` and `text_source` (`plain`, `html` or
+  `none`) beside `body_text` and `body_html`.
 - `messages read` also returns `reply_to`, `in_reply_to`, `references` and the
   message's attachments (id, name, size, type, inline, and whether the contents
   are cached), never the contents. `--headers` adds the raw header block; it is
@@ -46,6 +60,10 @@ All notable changes to TideMail are documented in this file.
   them back. Scripts that relied on results from those folders will see fewer
   messages.
 - Text output of message lists shows the date and the folder name.
+- The search index is rebuilt once after upgrading, to cover HTML-only mail. A
+  cache of more than 2000 messages is rebuilt in the background in batches, so
+  start-up is not delayed; search results fill in as it proceeds, and a command
+  that exits early resumes the work on the next run.
 
 ## v1.10.2
 

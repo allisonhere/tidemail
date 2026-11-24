@@ -140,7 +140,11 @@ Open the editable review wizard on the controlling terminal.
 Force, or suppress, the compose wizard.
 .TP
 .B \-\-agent
-Enforce the configured agent permissions.
+Enforce the configured agent permissions. Also forced by the environment
+variable
+.BR TIDEMAIL_AGENT=1 ;
+see
+.BR ENVIRONMENT .
 .TP
 .B \-\-json
 Print a versioned JSON result.
@@ -259,6 +263,11 @@ Choose the terminal image protocol.
 .B TIDEMAIL_DISABLE_KEYRING
 Do not use the system keychain.
 .TP
+.B TIDEMAIL_AGENT
+When set to 1, enforce the configured agent permissions on every mail command
+as if \fB\-\-agent\fR were given, even with \fB\-\-agent=false\fR. It grants no
+capability and does not replace send approval.
+.TP
 .B TIDEMAIL_MS_CLIENT_ID
 Microsoft OAuth client ID for device-code sign-in.
 .TP
@@ -327,6 +336,21 @@ Trash/Junk/Spam/Deleted folders are excluded unless explicitly selected by
 over common folder names. Text rows show dates and display mailbox names;
 JSON includes mailbox_display in addition to the raw mailbox name.
 
+.SH SEARCH TEXT
+Message read includes text and text_source (plain, html, none), in addition
+to unchanged body_text and body_html. Nonblank plain text is preferred;
+otherwise HTML text is extracted using link labels only, without fetching
+resources. Search uses the same fallback, including for existing cached mail
+after a one-time index rebuild. HTML alternatives are not indexed when
+nonblank plain text exists.
+.PP
+Search matches the last word or field value as a prefix.
+Use double quotes for adjacent words in order, or a trailing * for a prefix on
+any word or field value; the interactive search has no such syntax.
+.B \-\-exact
+turns off the implicit prefix so every word and field value must match whole;
+#tags still match by prefix.
+Pass the query as one argument.
 .SH THREADS AND CACHE COVERAGE
 messages read returns reply_to, in_reply_to, references, and attachment metadata
 (name, size, type, inline and cached availability), without attachment contents.

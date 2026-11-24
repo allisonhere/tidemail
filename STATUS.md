@@ -50,7 +50,8 @@ Unreleased.
   `mailboxes list` for folder discovery), account and outbox metadata,
   explicit queue processing, and portable agent skills for Codex, Claude, Pi,
   and Hermes. Agent capabilities and invocation approval separate reading,
-  drafting, and sending. See the [CLI reference](docs/cli.md) for queue scheduling,
+  drafting, and sending; `TIDEMAIL_AGENT=1` forces those checks for a whole
+  session, even with `--agent=false`. See the [CLI reference](docs/cli.md) for queue scheduling,
   JSON output, installation, and current limits.
 
 - **Standard folders**: Gmail's Sent Mail, Drafts, All Mail, Trash, Spam,
@@ -326,6 +327,12 @@ Mailbox/account mark-all-read (server-side) reserves its targets and rejects con
 pending operations. Delete completions reconcile unread counts from the cache,
 keep the highlighted message visible, and suppress remote successes whose local
 cleanup failed until a later list reload can reconcile them.
+
+HTML-only cached bodies are searchable through plain-first HTML text extraction,
+using link labels only and no remote fetching. A versioned index rebuild applies
+this to existing mail. CLI reads expose derived `text`/`text_source` alongside
+unchanged original bodies. CLI search also takes quoted phrases and explicit `*` prefixes,
+and `--exact` for whole-word and whole-value matching (`#tags` stay prefix matches).
 
 Cached CLI reads return reply headers and attachment metadata with cached
 availability; `--headers` adds the raw header block kept for newly cached mail.

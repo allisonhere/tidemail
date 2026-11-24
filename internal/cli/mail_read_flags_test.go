@@ -68,3 +68,10 @@ func TestMailReadFilterValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestBrowserPassesOnlyReadFlags(t *testing.T) {
+	got := readFlags([]string{"--unread", "--mailbox", "INBOX", "--agent", "--since=2026-01-01", "-agent=false", "--limit", "5"})
+	if strings.Join(got, " ") != "--agent -agent=false" {
+		t.Fatalf("readFlags = %q", got)
+	}
+}

@@ -16,6 +16,7 @@ type MessageScope struct {
 	Since, Before time.Time
 	IncludeTrash  bool
 	Sort          string
+	Exact         bool // CLI search: no implicit prefix on the last word
 }
 
 func (s MessageScope) where(inbox bool) (string, []any) {
@@ -61,7 +62,11 @@ func (s MessageScope) where(inbox bool) (string, []any) {
 
 // ScopedMessagesPage applies a scope to both the count and the bounded page.
 func (db *DB) ScopedMessagesPage(query string, scope MessageScope, inbox bool, limit, offset int) ([]Message, int, error) {
-	return db.searchScopedMessages(query, false, scope.Unread, limit, offset, &scope, inbox)
+	mode := searchCLI
+	if scope.Exact {
+		mode = searchCLIExact
+	}
+	return db.searchScopedMessages(query, false, scope.Unread, limit, offset, &scope, inbox, mode)
 }
 
 // Special-use flags take priority over folder names. Fallbacks cover common
@@ -70,10 +75,12 @@ const excludedMailboxesPredicate = `NOT (
  EXISTS (SELECT 1 FROM json_each(mailboxes.flags) f WHERE lower(f.value) IN ('\trash','\junk'))
  OR ((NOT EXISTS (SELECT 1 FROM json_each(mailboxes.flags) f WHERE substr(f.value,1,1)='\' AND lower(f.value) NOT IN ('\haschildren','\hasnochildren','\noselect','\marked','\unmarked','\noinferiors','\subscribed')))
  AND (
- lower(mailboxes.display_name) IN ('trash','junk','spam','deleted','deleted messages','deleted items')
- OR lower(mailboxes.name) IN ('trash','junk','spam','deleted','deleted messages','deleted items')
+ lower(mailboxes.display_name) IN ('trash','junk','junk email','junk e-mail','spam','deleted','deleted messages','deleted items')
+ OR lower(mailboxes.name) IN ('trash','junk','junk email','junk e-mail','spam','deleted','deleted messages','deleted items')
  OR lower(mailboxes.name) GLOB '*.trash' OR lower(mailboxes.name) GLOB '*/trash'
  OR lower(mailboxes.name) GLOB '*.junk' OR lower(mailboxes.name) GLOB '*/junk'
+ OR lower(mailboxes.name) GLOB '*.junk email' OR lower(mailboxes.name) GLOB '*/junk email'
+ OR lower(mailboxes.name) GLOB '*.junk e-mail' OR lower(mailboxes.name) GLOB '*/junk e-mail'
  OR lower(mailboxes.name) GLOB '*.spam' OR lower(mailboxes.name) GLOB '*/spam'
  OR lower(mailboxes.name) GLOB '*.deleted' OR lower(mailboxes.name) GLOB '*/deleted'
  OR lower(mailboxes.name) GLOB '*.deleted messages' OR lower(mailboxes.name) GLOB '*/deleted messages'

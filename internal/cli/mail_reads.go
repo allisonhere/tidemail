@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/allisonhere/tidemail/internal/bodytext"
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
 	"github.com/allisonhere/tidemail/internal/mailapp"
@@ -42,7 +43,7 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 	fs := flag.NewFlagSet(command+" "+action, flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	fs.BoolVar(&jsonMode, "json", jsonMode, "Print a versioned JSON envelope")
-	agent := fs.Bool("agent", false, "Enforce configured agent capabilities")
+	agent := fs.Bool("agent", false, "Enforce configured agent capabilities (also forced by "+agentEnv+"=1)")
 	limit, offset, unread := new(int), new(int), new(bool)
 	*limit = 50
 	if action == "list" || action == "search" {
@@ -76,6 +77,7 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 			return nil
 		})
 	}
+	exact := fs.Bool("exact", false, "Search: match whole words and field values only, no implicit prefix on the last word (#tags still match by prefix)")
 	usageOut := errOut
 	if hasHelpFlag(args) {
 		usageOut = out
@@ -85,8 +87,11 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		if command == "outbox" {
 			_, _ = fmt.Fprintln(usageOut, "Use outbox process to deliver queued messages while the TUI is closed.")
 		}
+		if command == "messages" && action == "search" {
+			_, _ = fmt.Fprintln(usageOut, `The last word or field value also matches as a prefix. Use "double quotes" for a phrase, a trailing * for a prefix on any word or field value, or --exact to match whole words and field values only (a trailing * still asks for a prefix; #tags always match by prefix). Pass the query as one argument.`)
+		}
 		if command == "messages" && action == "read" {
-			_, _ = fmt.Fprintln(usageOut, "Read returns original bodies, reply headers and attachment metadata; --headers includes cached raw headers.")
+			_, _ = fmt.Fprintln(usageOut, "Read returns original bodies plus text/text_source (plain, html, none; HTML fallback uses link labels only), reply headers and attachment metadata; --headers includes cached raw headers.")
 		}
 		if command == "messages" && action == "thread" {
 			_, _ = fmt.Fprintln(usageOut, "Thread returns deduplicated metadata oldest first across all cached folders, using messages.metadata under --agent.")
@@ -101,6 +106,7 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		}
 		return fail("invalid_arguments", parseErr.Error()+"; use --help.", 2)
 	}
+	*agent = agentMode(*agent)
 	if scope.Sort != "" && scope.Sort != "date" && scope.Sort != "relevance" {
 		return fail("invalid_arguments", "--sort must be date or relevance.", 2)
 	}
@@ -118,6 +124,9 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 	}
 	if !scope.Since.IsZero() && !scope.Before.IsZero() && !scope.Since.Before(scope.Before) {
 		return fail("invalid_arguments", "--since must precede --before.", 2)
+	}
+	if *exact && (command != "messages" || action != "search") {
+		return fail("invalid_arguments", "--exact applies only to messages search.", 2)
 	}
 	if *limit < 1 || *limit > 1000 || *offset < 0 {
 		return fail("invalid_arguments", "--limit must be 1–1000 and --offset must be nonnegative.", 2)
@@ -281,12 +290,14 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 
 		data["body_text"] = m.BodyText
 		data["body_html"] = m.BodyHTML
+		data["text"], data["text_source"] = bodytext.Resolve(m.BodyText, m.BodyHTML)
 		return readSuccess(out, jsonMode, data)
 	}
 	var messages []db.Message
 	var total int
 	if action == "search" {
 		scope.Unread = *unread
+		scope.Exact = *exact
 		messages, total, err = database.ScopedMessagesPage(positionals[0], scope, false, *limit, *offset)
 	} else {
 		scope.Unread = *unread

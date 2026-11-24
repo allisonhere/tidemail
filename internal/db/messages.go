@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/allisonhere/tidemail/internal/bodytext"
 	"github.com/allisonhere/tidemail/internal/mailtag"
 )
 
@@ -163,22 +164,32 @@ func (db *DB) ListUnifiedInboxUnreadFirst(unreadOnly bool) ([]Message, error) {
 // "#tag" terms match the tags shown on rows (see search_tags.go). Both kinds
 // may be combined.
 func (db *DB) SearchAllMessages(query string, unreadFirst bool) ([]Message, error) {
-	messages, _, err := db.searchAllMessages(query, unreadFirst, false, -1, 0)
+	messages, _, err := db.searchAllMessages(query, unreadFirst, false, -1, 0, searchInteractive)
 	return messages, err
 }
 
-// SearchAllMessagesPage preserves the TUI's full-text and tag search semantics.
+// SearchAllMessagesPage is a page of SearchAllMessages, in the interactive
+// search grammar.
 func (db *DB) SearchAllMessagesPage(query string, unreadOnly bool, limit, offset int) ([]Message, int, error) {
-	return db.searchAllMessages(query, false, unreadOnly, limit, offset)
+	return db.searchAllMessages(query, false, unreadOnly, limit, offset, searchInteractive)
 }
 
-func (db *DB) searchAllMessages(query string, unreadFirst, unreadOnly bool, limit, offset int) ([]Message, int, error) {
-	return db.searchScopedMessages(query, unreadFirst, unreadOnly, limit, offset, nil, false)
+func (db *DB) searchAllMessages(query string, unreadFirst, unreadOnly bool, limit, offset int, mode searchMode) ([]Message, int, error) {
+	return db.searchScopedMessages(query, unreadFirst, unreadOnly, limit, offset, nil, false, mode)
 }
 
-func (db *DB) searchScopedMessages(query string, unreadFirst, unreadOnly bool, limit, offset int, scope *MessageScope, inbox bool) ([]Message, int, error) {
-	terms := ParseSearch(query)
-	match := searchMatch(terms)
+func (db *DB) searchScopedMessages(query string, unreadFirst, unreadOnly bool, limit, offset int, scope *MessageScope, inbox bool, mode searchMode) ([]Message, int, error) {
+	var terms SearchTerms
+	var textMatch string
+	if mode != searchInteractive {
+		var words []string
+		terms, words = parseSearch(query, mode)
+		textMatch = cliFTSQuery(words, mode == searchCLI && !terms.LastIsField)
+	} else {
+		terms = ParseSearch(query)
+		textMatch = ftsQueryPrefix(terms.Text, !terms.LastIsField)
+	}
+	match := searchMatch(terms, textMatch)
 	if scope == nil && match == "" && len(terms.Tags) == 0 {
 		return nil, 0, nil
 	}
@@ -572,25 +583,15 @@ func scanMessagesWithContext(rows interface {
 	return msgs, rows.Err()
 }
 
-// ftsQuery turns what the user typed into an FTS5 MATCH expression. Terms are
-// quoted (so punctuation in an address can't be read as FTS operators) and
-// ANDed together.
-//
-// The final term also gets the prefix operator, because search runs on every
-// keystroke: without it a half-typed word matches no token at all, so results
-// vanish mid-word and only reappear once the word is finished. Only the last
-// term is treated this way — earlier terms are complete words the user has
-// already moved past.
-// searchMatch is the full-text MATCH expression for free words and field
-// operators, ANDed together; "" when there is nothing to match. The last thing
-// typed is matched as a prefix, so results follow the user while they type.
-func searchMatch(terms SearchTerms) string {
+// searchMatch combines the free-text match expression and field operators,
+// ANDed together; "" when there is nothing to match.
+func searchMatch(terms SearchTerms, text string) string {
 	var parts []string
-	if text := ftsQueryPrefix(terms.Text, !terms.LastIsField); text != "" {
+	if text != "" {
 		parts = append(parts, text)
 	}
 	for _, f := range terms.Fields {
-		if !strings.ContainsFunc(f.Value, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) {
+		if !ftsIndexable(f.Value) {
 			continue // nothing the tokenizer would index, e.g. "to:@"
 		}
 		phrase := `"` + strings.ReplaceAll(f.Value, `"`, `""`) + `"`
@@ -633,7 +634,11 @@ func exactAddressWhere(f FieldTerm) (string, []any) {
 	return "(" + strings.Join(exprs, " OR ") + ")", args
 }
 
-// ftsQueryPrefix is ftsQuery with the prefix match on the last word optional.
+// ftsQueryPrefix turns typed words into an FTS5 MATCH expression. Terms are
+// quoted, so punctuation in an address can't be read as FTS operators, and
+// ANDed together. Interactive search runs on every keystroke, so the last word
+// may also get the prefix operator: otherwise a half-typed word matches no token
+// and results vanish until the word is finished.
 func ftsQueryPrefix(query string, prefixLast bool) string {
 	parts := strings.Fields(strings.TrimSpace(query))
 	if len(parts) == 0 {
@@ -656,16 +661,61 @@ func ftsQueryPrefix(query string, prefixLast bool) string {
 	return strings.Join(quoted, " AND ")
 }
 
-func upsertMessageFTS(x execer, id int64) error {
+// ftsIndexable reports whether the FTS tokenizer would index anything in s.
+func ftsIndexable(s string) bool {
+	return strings.ContainsFunc(s, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) })
+}
+
+// cliFTSQuery quotes user terms as FTS literals. A quoted phrase stays one
+// unit. A trailing * makes a prefix, and prefixLast does the same for a final
+// plain word. A term with nothing the tokenizer indexes, such as "-" or a lone
+// "*", is left out: as an FTS phrase it would match no row and empty the
+// whole search.
+func cliFTSQuery(words []string, prefixLast bool) string {
+	var parts []string
+	for i, token := range words {
+		value, prefix := strings.CutSuffix(token, "*")
+		phrase := len(value) >= 2 && strings.HasPrefix(value, `"`) && strings.HasSuffix(value, `"`)
+		if phrase {
+			value = strings.NewReplacer(`\"`, `"`, `\\`, `\`).Replace(value[1 : len(value)-1])
+		} else if prefixLast && i == len(words)-1 {
+			prefix = true
+		}
+		if !ftsIndexable(value) {
+			continue
+		}
+		part := `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
+		if prefix {
+			part += "*"
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, " AND ")
+}
+
+func upsertMessageFTS(x interface {
+	execer
+	QueryRow(string, ...any) *sql.Row
+}, id int64) error {
+	var plain, markup string
+	if err := x.QueryRow("SELECT body_text, body_html FROM messages WHERE id=?", id).Scan(&plain, &markup); err != nil {
+		return err
+	}
+	text, _ := bodytext.Resolve(plain, markup)
+	return writeMessageFTS(x, id, text)
+}
+
+// writeMessageFTS replaces a message's index row, indexing text as its body.
+func writeMessageFTS(x execer, id int64, text string) error {
 	if _, err := x.Exec(`DELETE FROM messages_fts WHERE rowid = ?`, id); err != nil {
 		return err
 	}
 	_, err := x.Exec(`
 		INSERT INTO messages_fts(rowid, subject, from_addr, to_addr, cc_addr, body_text)
-		SELECT id, subject, from_addr, to_addr, cc_addr, body_text
+		SELECT id, subject, from_addr, to_addr, cc_addr, ?
 		FROM messages
 		WHERE id = ?
-	`, id)
+	`, text, id)
 	return err
 }
 
