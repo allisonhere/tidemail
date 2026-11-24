@@ -55,8 +55,9 @@ All notable changes to TideMail are documented in this file.
   without marking the mail read. Under `--agent` it needs the new
   `attachments.read` capability, which is denied by default and not implied by
   `messages.read`. Files are never overwritten (`name-1.ext`), names are
-  reduced to a safe basename, and the fetch is refused unless the stored
-  mailbox UIDVALIDITY matches the server's.
+  cleaned as `Ctrl+D` saves them (`Report Q3.PDF` → `report-q3.pdf`, at most
+  100 bytes), and the fetch is refused unless the stored mailbox UIDVALIDITY
+  matches the server's.
 
 ### Changed
 

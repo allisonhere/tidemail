@@ -13,11 +13,11 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/conversation"
 	"github.com/allisonhere/tidemail/internal/db"
+	"github.com/allisonhere/tidemail/internal/filename"
 	"github.com/allisonhere/tidemail/internal/imap"
 	"github.com/allisonhere/tidemail/internal/mailapp"
 )
@@ -177,17 +177,9 @@ func fetchMessageAttachments(database *db.DB, cfg config.Config, m db.Message) (
 }
 
 func writeExportAttachment(dir, name string, data []byte) (string, error) {
-	// Treat both slash conventions as separators, even on Unix.
-	name = filepath.Base(strings.ReplaceAll(name, "\\", "/"))
-	name = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return '_'
-		}
-		return r
-	}, name)
-	if name == "" || name == "." || name == ".." || name == "/" {
-		name = "attachment"
-	}
+	// Keep the last path element under either slash convention, even on Unix,
+	// then clean it the way the TUI's Ctrl+D save does (which caps the length).
+	name = filename.Safe(filepath.Base(strings.ReplaceAll(name, "\\", "/")))
 	for n := 0; ; n++ {
 		candidate := name
 		if n > 0 {

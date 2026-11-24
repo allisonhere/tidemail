@@ -242,9 +242,11 @@ Options can appear before or after the message ID. JSON uses the standard versio
 envelope with `data.id` and `data.items` containing `name`, absolute `path`, actual
 byte `size`, `type`, and `inline`. Plain output lists saved paths.
 
-Attachment names are reduced to safe basenames. Existing files and symlinks are
-preserved; collisions receive numeric suffixes before the extension. Files are
-created with mode 0600. A fetch failure writes no files; an output error can leave
+Attachment names are reduced to safe basenames, cleaned as `Ctrl+D` saves them in
+the TUI: lowercase, spaces become `-`, punctuation other than `.`, `_` and `-` is
+dropped, Unicode letters are kept, and long names are shortened to 100 bytes with
+the extension kept. Existing files and symlinks are preserved; collisions receive
+numeric suffixes before the extension. Files are created with mode 0600. A fetch failure writes no files; an output error can leave
 earlier files saved. Repeating an export creates additional files.
 
 ## Threads and read metadata
