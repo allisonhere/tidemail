@@ -218,9 +218,34 @@ The default limit is 50. Pages report `items`, `limit`, `offset`, `total`, and
 `next_offset`. A null `next_offset` marks the last page.
 
 There is no headless inbox synchronization command in this version. Refresh mail
-in the interactive client before querying data that must be current. Incoming
-attachment download and independent attachment-read permissions are not exposed
-through the CLI.
+in the interactive client before querying data that must be current. Attachment
+export can contact IMAP for missing contents, as described below.
+
+## Export attachments
+
+```bash
+tidemail messages attachments cache:123 --out ./attachments --agent --json
+```
+
+Exports all attachments from the chosen cached message, including inline parts.
+`--out DIR` is required; missing directories are created with private permissions.
+Cached contents are used when present; unavailable contents are fetched
+from IMAP without marking the message read. This is not an inbox sync and does not
+cache newly fetched bytes. IMAP fallback requires the original account and known,
+matching mailbox UIDVALIDITY; sync in the TUI first if identity is unknown or stale.
+An attachment-free message succeeds with an empty `items` array.
+
+Agent mode requires the separate `attachments.read` capability, denied by default.
+Neither `messages.metadata` nor `messages.read` grants attachment contents;
+`attachments.read` does not grant body reads. Only export user-authorized messages.
+Options can appear before or after the message ID. JSON uses the standard versioned
+envelope with `data.id` and `data.items` containing `name`, absolute `path`, actual
+byte `size`, `type`, and `inline`. Plain output lists saved paths.
+
+Attachment names are reduced to safe basenames. Existing files and symlinks are
+preserved; collisions receive numeric suffixes before the extension. Files are
+created with mode 0600. A fetch failure writes no files; an output error can leave
+earlier files saved. Repeating an export creates additional files.
 
 ## Threads and read metadata
 
@@ -347,6 +372,7 @@ agent_permissions = [
 ]
 ```
 
+`attachments.read` grants attachment export through `messages attachments`.
 `messages.read` grants full cached body retrieval. `mail.send` grants the ability
 to send in agent mode, but the command still needs invocation approval through
 `--yes` or approved interactive preview. Agent queue processing and retry require

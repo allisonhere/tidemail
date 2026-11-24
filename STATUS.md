@@ -338,3 +338,9 @@ Cached CLI reads return reply headers and attachment metadata with cached
 availability; `--headers` adds the raw header block kept for newly cached mail.
 `messages thread` reuses the TUI header graph across all cached folders and
 returns deduplicated metadata, and list/search accept `--dedupe`.
+
+Attachment export: `tidemail messages attachments cache:ID --out DIR` saves all
+parts (including inline files), using cached contents or IMAP when unavailable.
+Agent mode requires the separate, default-denied `attachments.read` capability.
+Safe filenames and numeric suffixes preserve existing files; JSON reports saved
+paths.

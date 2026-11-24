@@ -121,7 +121,9 @@ One inbox, 51 built-in themes in 23 families — Catppuccin, Tokyo Night, Rosé 
   `tidemail cli` for a guided compose wizard with attachment browsing, review,
   and undo. Portable skills for Codex, Claude, Pi, and Hermes let an agent send
   mail within capabilities and approval you configure. See the
-  [CLI reference](docs/cli.md).
+  [CLI reference](docs/cli.md). Export a chosen message's attachments with
+  `tidemail messages attachments cache:ID --out DIR --agent --json`; the separate
+  `attachments.read` capability is denied by default.
 - **Prefer the mouse?**   Turn on **Settings → General → Mouse support** (off by default, so your
   terminal's native text selection keeps working). Then click rows and panes,
   double-click a message to open it, use the scroll wheel over any pane, and

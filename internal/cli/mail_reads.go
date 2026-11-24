@@ -19,7 +19,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/mailapp"
 )
 
-// RunMailRead exposes cached mail without starting the UI or contacting servers.
+// RunMailRead exposes mail without starting the UI. Only attachment export may contact IMAP.
 func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 	jsonMode := false
 	for _, arg := range args {
@@ -36,6 +36,9 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 	action := "list"
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		action, args = args[0], args[1:]
+	}
+	if command == "messages" && action == "attachments" {
+		return runMessageAttachments(args, out, errOut, jsonMode)
 	}
 	fs := flag.NewFlagSet(command+" "+action, flag.ContinueOnError)
 	fs.SetOutput(errOut)
@@ -129,7 +132,7 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		return fail("invalid_arguments", "--limit must be 1–1000 and --offset must be nonnegative.", 2)
 	}
 	if ((command == "accounts" || command == "mailboxes") && action != "list") || (command == "messages" && action != "list" && action != "search" && action != "read" && action != "thread") || (command == "outbox" && action != "list" && action != "status") {
-		hint := map[string]string{"mailboxes": "list", "accounts": "list", "messages": "list, search, read, or thread", "outbox": "list or status"}[command]
+		hint := map[string]string{"mailboxes": "list", "accounts": "list", "messages": "list, search, read, thread, or attachments", "outbox": "list or status"}[command]
 		message := fmt.Sprintf("Unknown subcommand %q; %s supports %s.", action, command, hint)
 		if command == "messages" {
 			message += ` Search with: tidemail messages search "query".`
@@ -358,6 +361,10 @@ func readSuccess(out io.Writer, jsonMode bool, data any) int {
 				if display, ok := item["mailbox_display"]; ok {
 					detail = fmt.Sprintf("%s  cached:%v unread:%v", display, item["cached"], item["unread"])
 				}
+			}
+			if path, exists := item["path"]; exists {
+				id = fmt.Sprint(path)
+				detail = fmt.Sprintf("%v bytes", item["size"])
 			}
 			if state, exists := item["state"]; exists {
 				detail = fmt.Sprint(state)
