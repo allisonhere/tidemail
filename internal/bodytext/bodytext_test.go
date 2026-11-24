@@ -9,6 +9,7 @@ func TestResolve(t *testing.T) {
 		{"", "<table><tr><td>one</td><td>two</td></tr><tr><td>three</td></tr></table>", "one two\nthree", "html"},
 		{"", "<p>Before <b>bold</b></p><div hidden>secret</div><template>secret</template><p>After", "Before bold\nAfter", "html"},
 		{"", "<img src='https://tracking.invalid/image'>", "", "none"},
+		{"", "<dl><dt>Order</dt><dd>12345</dd></dl><hr><footer>Footer</footer>", "Order\n12345\nFooter", "html"},
 	} {
 		got, source := Resolve(tc.plain, tc.html)
 		if got != tc.want || source != tc.source {

@@ -41,7 +41,7 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 	limit := fs.Int("limit", 50, "Maximum results (1–1000)")
 	offset := fs.Int("offset", 0, "Results to skip")
 	unread := fs.Bool("unread", false, "Only unread messages")
-	exact := fs.Bool("exact", false, "Search: match whole words only, no implicit prefix on the last word")
+	exact := fs.Bool("exact", false, "Search: match whole words and field values only, no implicit prefix on the last word (#tags still match by prefix)")
 	usageOut := errOut
 	if hasHelpFlag(args) {
 		usageOut = out
@@ -52,10 +52,10 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 			_, _ = fmt.Fprintln(usageOut, "Use outbox process to deliver queued messages while the TUI is closed.")
 		}
 		if command == "messages" && action == "search" {
-			fmt.Fprintln(usageOut, `The last word also matches as a prefix. Use "double quotes" for a phrase, or --exact to match whole words only (a trailing * still asks for a prefix). Pass the query as one argument.`)
+			_, _ = fmt.Fprintln(usageOut, `The last word or field value also matches as a prefix. Use "double quotes" for a phrase, a trailing * for a prefix on any word or field value, or --exact to match whole words and field values only (a trailing * still asks for a prefix; #tags always match by prefix). Pass the query as one argument.`)
 		}
 		if command == "messages" && action == "read" {
-			fmt.Fprintln(usageOut, "Read returns original bodies plus text/text_source (plain, html, none); HTML fallback uses link labels only.")
+			_, _ = fmt.Fprintln(usageOut, "Read returns original bodies plus text/text_source (plain, html, none); HTML fallback uses link labels only.")
 		}
 		fs.SetOutput(usageOut)
 		fs.PrintDefaults()

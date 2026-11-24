@@ -1752,5 +1752,6 @@ caches receive a one-time search-index rebuild. CLI `messages read` additionally
 returns `text` and `text_source` (`plain`, `html`, `none`), preserving the
 original `body_text` and `body_html`.
 
-CLI `messages search` takes quoted phrases and `*` prefixes like the interactive
-search, and `--exact` to match whole words only.
+CLI `messages search` also takes quoted phrases and `*` prefixes, which the
+interactive search does not, and `--exact` to match whole words and field values
+only (`#tags` still match by prefix).

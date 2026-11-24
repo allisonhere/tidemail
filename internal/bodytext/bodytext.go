@@ -7,6 +7,18 @@ import (
 )
 
 // Resolve preserves a nonblank plain body verbatim. HTML is only a fallback.
+// blockElements end a line before and after their content.
+var blockElements = map[string]bool{
+	"address": true, "article": true, "aside": true, "blockquote": true, "br": true,
+	"caption": true, "center": true, "dd": true, "details": true, "div": true,
+	"dl": true, "dt": true, "fieldset": true, "figcaption": true, "figure": true,
+	"footer": true, "form": true, "h1": true, "h2": true, "h3": true, "h4": true,
+	"h5": true, "h6": true, "header": true, "hgroup": true, "hr": true,
+	"legend": true, "li": true, "main": true, "nav": true, "ol": true, "p": true,
+	"pre": true, "section": true, "summary": true, "table": true, "tr": true,
+	"ul": true,
+}
+
 func Resolve(plain, markup string) (string, string) {
 	if strings.TrimSpace(plain) != "" {
 		return plain, "plain"
@@ -38,7 +50,7 @@ func FromHTML(markup string) string {
 				}
 			}
 		}
-		block := n.Type == html.ElementNode && strings.Contains("|p|div|br|tr|li|ul|ol|table|section|article|blockquote|pre|h1|h2|h3|h4|h5|h6|", "|"+n.Data+"|")
+		block := n.Type == html.ElementNode && blockElements[n.Data]
 		if block {
 			b.WriteByte('\n')
 		}

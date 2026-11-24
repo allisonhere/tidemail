@@ -315,9 +315,10 @@ resources. Search uses the same fallback, including for existing cached mail
 after a one-time index rebuild. HTML alternatives are not indexed when
 nonblank plain text exists.
 .PP
-Search matches the last word as a prefix, like the interactive search.
+Search matches the last word or field value as a prefix.
 Use double quotes for adjacent words in order, or a trailing * for a prefix on
-any word.
+any word or field value; the interactive search has no such syntax.
 .B \-\-exact
-turns off the implicit prefix so every word must match whole.
+turns off the implicit prefix so every word and field value must match whole;
+#tags still match by prefix.
 Pass the query as one argument.

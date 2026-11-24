@@ -102,6 +102,17 @@ func TestMailSearchPhrasesPrefixesAndExact(t *testing.T) {
 		{`"private invo"*`, false, 1},
 		{`subject:invoice "invoice details"`, false, 1},
 		{`""`, false, 0},
+		// Punctuation-only terms index nothing and must not empty the search.
+		{"invoice - details", false, 1},
+		{"invoice * details", false, 1},
+		{`invoice "" details`, false, 1},
+		// Field values follow the same prefix rules as words.
+		{"subject:invo", false, 1},
+		{"subject:invo", true, 0},
+		{"subject:invo*", true, 1},
+		{"subject:invo* details", false, 1},
+		{"from:send", true, 0},
+		{"from:send*", true, 1},
 	} {
 		name := tc.query
 		if tc.exact {

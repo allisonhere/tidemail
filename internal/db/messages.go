@@ -162,30 +162,36 @@ func (db *DB) ListUnifiedInboxUnreadFirst(unreadOnly bool) ([]Message, error) {
 // "#tag" terms match the tags shown on rows (see search_tags.go). Both kinds
 // may be combined.
 func (db *DB) SearchAllMessages(query string, unreadFirst bool) ([]Message, error) {
-	messages, _, err := db.searchAllMessages(query, unreadFirst, false, -1, 0, nil)
+	messages, _, err := db.searchAllMessages(query, unreadFirst, false, -1, 0, searchInteractive)
 	return messages, err
 }
 
-// SearchAllMessagesPage preserves the TUI's full-text and tag search semantics.
+// SearchAllMessagesPage is a page of SearchAllMessages, in the interactive
+// search grammar.
 func (db *DB) SearchAllMessagesPage(query string, unreadOnly bool, limit, offset int) ([]Message, int, error) {
-	return db.searchAllMessages(query, false, unreadOnly, limit, offset, nil)
+	return db.searchAllMessages(query, false, unreadOnly, limit, offset, searchInteractive)
 }
 
 // SearchCachedMessagesPage is the search the CLI runs. It reads like the
 // interactive search, with the last word matching as a prefix, and also accepts
 // "double quoted" phrases (adjacent words in order) and an explicit trailing *.
-// With exact, nothing is a prefix unless it ends in *.
+// With exact, no word or operator value is a prefix unless it ends in *; #tags
+// still match by prefix.
 func (db *DB) SearchCachedMessagesPage(query string, unreadOnly, exact bool, limit, offset int) ([]Message, int, error) {
-	return db.searchAllMessages(query, false, unreadOnly, limit, offset, &exact)
+	mode := searchCLI
+	if exact {
+		mode = searchCLIExact
+	}
+	return db.searchAllMessages(query, false, unreadOnly, limit, offset, mode)
 }
 
-func (db *DB) searchAllMessages(query string, unreadFirst, unreadOnly bool, limit, offset int, cli *bool) ([]Message, int, error) {
+func (db *DB) searchAllMessages(query string, unreadFirst, unreadOnly bool, limit, offset int, mode searchMode) ([]Message, int, error) {
 	var terms SearchTerms
 	var textMatch string
-	if cli != nil {
+	if mode != searchInteractive {
 		var words []string
-		terms, words = parseSearch(query, cliSearchTokenPattern)
-		textMatch = cliFTSQuery(words, !*cli && !terms.LastIsField)
+		terms, words = parseSearch(query, mode)
+		textMatch = cliFTSQuery(words, mode == searchCLI && !terms.LastIsField)
 	} else {
 		terms = ParseSearch(query)
 		textMatch = ftsQueryPrefix(terms.Text, !terms.LastIsField)
@@ -574,7 +580,7 @@ func searchMatch(terms SearchTerms, text string) string {
 		parts = append(parts, text)
 	}
 	for _, f := range terms.Fields {
-		if !strings.ContainsFunc(f.Value, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) {
+		if !ftsIndexable(f.Value) {
 			continue // nothing the tokenizer would index, e.g. "to:@"
 		}
 		phrase := `"` + strings.ReplaceAll(f.Value, `"`, `""`) + `"`
@@ -644,9 +650,16 @@ func ftsQueryPrefix(query string, prefixLast bool) string {
 	return strings.Join(quoted, " AND ")
 }
 
+// ftsIndexable reports whether the FTS tokenizer would index anything in s.
+func ftsIndexable(s string) bool {
+	return strings.ContainsFunc(s, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) })
+}
+
 // cliFTSQuery quotes user terms as FTS literals. A quoted phrase stays one
 // unit. A trailing * makes a prefix, and prefixLast does the same for a final
-// plain word.
+// plain word. A term with nothing the tokenizer indexes, such as "-" or a lone
+// "*", is left out: as an FTS phrase it would match no row and empty the
+// whole search.
 func cliFTSQuery(words []string, prefixLast bool) string {
 	var parts []string
 	for i, token := range words {
@@ -657,8 +670,11 @@ func cliFTSQuery(words []string, prefixLast bool) string {
 		} else if prefixLast && i == len(words)-1 {
 			prefix = true
 		}
+		if !ftsIndexable(value) {
+			continue
+		}
 		part := `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
-		if prefix && value != "" {
+		if prefix {
 			part += "*"
 		}
 		parts = append(parts, part)
@@ -675,7 +691,11 @@ func upsertMessageFTS(x interface {
 		return err
 	}
 	text, _ := bodytext.Resolve(plain, markup)
+	return writeMessageFTS(x, id, text)
+}
 
+// writeMessageFTS replaces a message's index row, indexing text as its body.
+func writeMessageFTS(x execer, id int64, text string) error {
 	if _, err := x.Exec(`DELETE FROM messages_fts WHERE rowid = ?`, id); err != nil {
 		return err
 	}

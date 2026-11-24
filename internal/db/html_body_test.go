@@ -114,3 +114,52 @@ func TestLargeCacheIndexRebuildRunsInBackgroundAndResumes(t *testing.T) {
 		t.Fatalf("cursor left behind: %q", v)
 	}
 }
+
+// A cursor left by a rebuild for another schema version, or by one that is no
+// longer needed, must not make a later rebuild skip messages.
+func TestFTSRebuildIgnoresStaleCursor(t *testing.T) {
+	d, err := openSQLite(filepath.Join(t.TempDir(), "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if err = d.init(); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := d.AddAccount("test", "Test", "")
+	mb, _ := d.UpsertMailbox(Mailbox{AccountID: a, Name: "INBOX"})
+	for i := 1; i <= 3; i++ {
+		if err = d.UpsertMessage(Message{MailboxID: mb, UID: uint32(i), BodyHTML: "<p>cursorneedle</p>"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A finished index with a leftover cursor: opening clears the cursor.
+	if err = d.SetSetting(ftsCursorKey, "1:999"); err != nil {
+		t.Fatal(err)
+	}
+	if err = d.migrateMessageFTS(); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := d.GetSetting(ftsCursorKey); v != "" {
+		t.Fatalf("stale cursor kept: %q", v)
+	}
+	// A stale index with a cursor from an older schema (old "<id>" form and a
+	// different version) is rebuilt from the start.
+	for _, cursor := range []string{"999", "1:999"} {
+		if _, err = d.Exec("DELETE FROM messages_fts"); err != nil {
+			t.Fatal(err)
+		}
+		if err = d.SetSetting("fts_schema_version", "1"); err != nil {
+			t.Fatal(err)
+		}
+		if err = d.SetSetting(ftsCursorKey, cursor); err != nil {
+			t.Fatal(err)
+		}
+		if err = d.migrateMessageFTS(); err != nil {
+			t.Fatal(err)
+		}
+		if _, n, err := d.SearchAllMessagesPage("cursorneedle", false, 10, 0); err != nil || n != 3 {
+			t.Fatalf("cursor %q: total %d err %v", cursor, n, err)
+		}
+	}
+}
