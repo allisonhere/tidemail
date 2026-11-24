@@ -152,3 +152,39 @@ func TestMailReadPagesKeepAccountIdentity(t *testing.T) {
 		t.Fatalf("bounded page %d %s", code, out.String())
 	}
 }
+
+func TestScopedReadsAndMailboxDiscovery(t *testing.T) {
+	mailReadFixture(t)
+	database, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	account, err := database.AddAccount("work", "Work", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	folder, err := database.UpsertMailbox(db.Mailbox{AccountID: account, Name: "INBOX.Course", DisplayName: "Course", Delimiter: "."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 3; i++ {
+		if err := database.UpsertMessage(db.Message{MailboxID: folder, UID: uint32(i), Subject: "Lecture", Date: time.Unix(int64(200+i), 0)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	database.Close()
+	for _, args := range [][]string{
+		{"list", "--mailbox", "Course", "--account", "work", "--limit", "1", "--offset", "1", "--json"},
+		{"search", "", "--mailbox", "INBOX.Course", "--limit=1", "--offset=1", "--json"},
+		{"list", "--account", "work", "--limit=1", "--offset=1", "--json"},
+	} {
+		var out, diagnostics bytes.Buffer
+		if code := RunMailRead("messages", args, &out, &diagnostics); code != 0 || !strings.Contains(out.String(), `"total":3`) || strings.Contains(out.String(), "Invoice") {
+			t.Fatalf("%v: %d %s %s", args, code, out.String(), diagnostics.String())
+		}
+	}
+	var out, diagnostics bytes.Buffer
+	if code := RunMailRead("mailboxes", []string{"list", "--account", "work", "--agent", "--json"}, &out, &diagnostics); code != 0 || !strings.Contains(out.String(), `"cached":3`) || !strings.Contains(out.String(), `"mailbox_display":"Course"`) || strings.Contains(out.String(), "account-stable") {
+		t.Fatalf("mailboxes: %d %s %s", code, out.String(), diagnostics.String())
+	}
+}

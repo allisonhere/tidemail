@@ -22,6 +22,9 @@ import (
 func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 	jsonMode := false
 	for _, arg := range args {
+		if arg == "--" {
+			break
+		}
 		if arg == "--json" || arg == "--json=true" {
 			jsonMode = true
 		}
@@ -37,47 +40,77 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 	fs.SetOutput(errOut)
 	fs.BoolVar(&jsonMode, "json", jsonMode, "Print a versioned JSON envelope")
 	agent := fs.Bool("agent", false, "Enforce configured agent capabilities (also forced by "+agentEnv+"=1)")
-	limit := fs.Int("limit", 50, "Maximum results (1–1000)")
-	offset := fs.Int("offset", 0, "Results to skip")
-	unread := fs.Bool("unread", false, "Only unread messages")
+	limit, offset, unread := new(int), new(int), new(bool)
+	*limit = 50
+	if action == "list" || action == "search" {
+		fs.IntVar(limit, "limit", 50, "Maximum results (1–1000)")
+		fs.IntVar(offset, "offset", 0, "Results to skip")
+	}
+	if command == "messages" && (action == "list" || action == "search") {
+		fs.BoolVar(unread, "unread", false, "Only unread messages")
+	}
+	scope := db.MessageScope{}
+	var since, before string
+	if (command == "messages" && (action == "list" || action == "search")) || command == "mailboxes" {
+		fs.StringVar(&scope.AccountID, "account", "", "Stable account ID from accounts list")
+	}
+	if command == "messages" && (action == "list" || action == "search") {
+		fs.StringVar(&since, "since", "", "Include dates on/after YYYY-MM-DD (local time)")
+		fs.StringVar(&before, "before", "", "Include dates before YYYY-MM-DD (local time)")
+		fs.BoolVar(&scope.Starred, "starred", false, "Only starred messages")
+		fs.BoolVar(&scope.IncludeTrash, "include-trash", false, "Include Trash, Junk and Deleted folders")
+		fs.StringVar(&scope.Sort, "sort", "", "Sort by date or relevance (scoped searches default to date)")
+		fs.Func("mailbox", "Mailbox raw or display name (repeatable)", func(value string) error {
+			if strings.TrimSpace(value) == "" {
+				return fmt.Errorf("mailbox name must not be empty")
+			}
+			scope.Mailboxes = append(scope.Mailboxes, value)
+			return nil
+		})
+	}
 	usageOut := errOut
 	if hasHelpFlag(args) {
 		usageOut = out
 	}
 	fs.Usage = func() {
-		_, _ = fmt.Fprintf(usageOut, "Usage: tidemail %s %s [ID or query] [--json] [--agent] [--limit N] [--offset N]\nCached reads do not synchronize with the server.\nUse --interactive for guided input, or --no-interactive to suppress prompts.\n", command, action)
+		_, _ = fmt.Fprintf(usageOut, "Usage: tidemail %s %s [ID or query] [options]\nOptions may precede or follow an ID/query; -- makes remaining arguments literal.\nCached reads do not synchronize with the server.\nUse --interactive for guided input, or --no-interactive to suppress prompts.\n", command, action)
 		if command == "outbox" {
 			_, _ = fmt.Fprintln(usageOut, "Use outbox process to deliver queued messages while the TUI is closed.")
 		}
 		fs.SetOutput(usageOut)
 		fs.PrintDefaults()
 	}
-	// Go's flag parser stops at positionals; permit flags after an ID/query.
-	var options, positionals []string
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if strings.HasPrefix(a, "-") {
-			options = append(options, a)
-			if (a == "--limit" || a == "--offset") && i+1 < len(args) {
-				i++
-				options = append(options, args[i])
-			}
-		} else {
-			positionals = append(positionals, a)
-		}
-	}
-	if err := fs.Parse(options); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
+	positionals, parseErr := parseReadFlags(fs, args)
+	if parseErr != nil {
+		if errors.Is(parseErr, flag.ErrHelp) {
 			return 0
 		}
-		return fail("invalid_arguments", "Invalid command options; use --help.", 2)
+		return fail("invalid_arguments", parseErr.Error()+"; use --help.", 2)
 	}
 	*agent = agentMode(*agent)
+	if scope.Sort != "" && scope.Sort != "date" && scope.Sort != "relevance" {
+		return fail("invalid_arguments", "--sort must be date or relevance.", 2)
+	}
+	for _, date := range []struct {
+		value  string
+		target *time.Time
+	}{{since, &scope.Since}, {before, &scope.Before}} {
+		if date.value != "" {
+			parsed, e := time.ParseInLocation("2006-01-02", date.value, time.Local)
+			if e != nil {
+				return fail("invalid_arguments", "Dates must use YYYY-MM-DD.", 2)
+			}
+			*date.target = parsed
+		}
+	}
+	if !scope.Since.IsZero() && !scope.Before.IsZero() && !scope.Since.Before(scope.Before) {
+		return fail("invalid_arguments", "--since must precede --before.", 2)
+	}
 	if *limit < 1 || *limit > 1000 || *offset < 0 {
 		return fail("invalid_arguments", "--limit must be 1–1000 and --offset must be nonnegative.", 2)
 	}
-	if (command == "accounts" && action != "list") || (command == "messages" && action != "list" && action != "search" && action != "read") || (command == "outbox" && action != "list" && action != "status") {
-		hint := map[string]string{"accounts": "list", "messages": "list, search, or read", "outbox": "list or status"}[command]
+	if ((command == "accounts" || command == "mailboxes") && action != "list") || (command == "messages" && action != "list" && action != "search" && action != "read") || (command == "outbox" && action != "list" && action != "status") {
+		hint := map[string]string{"mailboxes": "list", "accounts": "list", "messages": "list, search, or read", "outbox": "list or status"}[command]
 		message := fmt.Sprintf("Unknown subcommand %q; %s supports %s.", action, command, hint)
 		if command == "messages" {
 			message += ` Search with: tidemail messages search "query".`
@@ -93,6 +126,9 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		return fail("config_error", "Cannot load configuration; check config.toml.", 1)
 	}
 	capability := command + ".read"
+	if command == "mailboxes" {
+		capability = "messages.metadata"
+	}
 	if command == "messages" {
 		capability = "messages.metadata"
 		if action == "read" {
@@ -125,6 +161,13 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		return fail("database_error", "Cannot open the mail cache.", 1)
 	}
 	defer database.Close() //nolint:errcheck
+	if command == "mailboxes" {
+		data, e := cachedMailboxPage(database, scope.AccountID, *limit, *offset)
+		if e != nil {
+			return fail("database_error", "Cannot list cached mailboxes.", 1)
+		}
+		return readSuccess(out, jsonMode, data)
+	}
 	if command == "outbox" {
 		if action == "status" {
 			id, e := strconv.ParseInt(positionals[0], 10, 64)
@@ -173,9 +216,12 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 		return readSuccess(out, jsonMode, readBoundedPage(safe, total, *limit, *offset))
 	}
 	metadata := func(m db.Message) (map[string]any, error) {
-		var accountID, accountName, mailboxName string
-		err := database.QueryRow(`SELECT accounts.config_id, accounts.name, mailboxes.name FROM mailboxes JOIN accounts ON accounts.id=mailboxes.account_id WHERE mailboxes.id=?`, m.MailboxID).Scan(&accountID, &accountName, &mailboxName)
-		return map[string]any{"id": fmt.Sprintf("cache:%d", m.ID), "cache_id": m.ID, "account_id": accountID, "account_name": accountName, "mailbox_id": m.MailboxID, "mailbox": mailboxName, "uid": m.UID, "message_id": m.MessageID, "subject": m.Subject, "from": m.From, "to": m.To, "cc": m.CC, "date": m.Date.Format(time.RFC3339), "read": m.Read, "starred": m.Starred, "has_attachment": m.HasAttachment}, err
+		accountID, accountName, mailboxName, display := m.AccountConfigID, m.AccountName, m.MailboxRawName, m.MailboxName
+		var err error
+		if accountID == "" {
+			err = database.QueryRow(`SELECT accounts.config_id, accounts.name, mailboxes.name, CASE WHEN mailboxes.delimiter = '' THEN mailboxes.name ELSE COALESCE(NULLIF(mailboxes.display_name, ''), mailboxes.name) END FROM mailboxes JOIN accounts ON accounts.id=mailboxes.account_id WHERE mailboxes.id=?`, m.MailboxID).Scan(&accountID, &accountName, &mailboxName, &display)
+		}
+		return map[string]any{"id": fmt.Sprintf("cache:%d", m.ID), "cache_id": m.ID, "account_id": accountID, "account_name": accountName, "mailbox_id": m.MailboxID, "mailbox": mailboxName, "mailbox_display": display, "uid": m.UID, "message_id": m.MessageID, "subject": m.Subject, "from": m.From, "to": m.To, "cc": m.CC, "date": m.Date.Format(time.RFC3339), "read": m.Read, "starred": m.Starred, "has_attachment": m.HasAttachment}, err
 	}
 	if action == "read" {
 		id, e := readID(positionals[0])
@@ -200,9 +246,11 @@ func RunMailRead(command string, args []string, out, errOut io.Writer) int {
 	var messages []db.Message
 	var total int
 	if action == "search" {
-		messages, total, err = database.SearchAllMessagesPage(positionals[0], *unread, *limit, *offset)
+		scope.Unread = *unread
+		messages, total, err = database.ScopedMessagesPage(positionals[0], scope, false, *limit, *offset)
 	} else {
-		messages, total, err = database.ListUnifiedInboxPage(*unread, *limit, *offset)
+		scope.Unread = *unread
+		messages, total, err = database.ScopedMessagesPage("", scope, true, *limit, *offset)
 	}
 	if err != nil {
 		return fail("database_error", "Cannot query cached messages.", 1)
@@ -259,9 +307,15 @@ func readSuccess(out io.Writer, jsonMode bool, data any) int {
 			if name, exists := item["name"]; exists {
 				label = fmt.Sprint(name)
 				detail = fmt.Sprint(item["email"])
+				if display, ok := item["mailbox_display"]; ok {
+					detail = fmt.Sprintf("%s  cached:%v unread:%v", display, item["cached"], item["unread"])
+				}
 			}
 			if state, exists := item["state"]; exists {
 				detail = fmt.Sprint(state)
+			}
+			if date, ok := item["date"]; ok {
+				detail = fmt.Sprintf("%s  %v  %v", detail, date, item["mailbox_display"])
 			}
 			line := func(s string) string { return strings.Join(strings.Fields(safeTerminal(s)), " ") }
 			if _, err := fmt.Fprintf(out, "%s  %s  %s\n", paint(out, line(id), 124, 58, 237), line(label), paint(out, line(detail), 6, 182, 212)); err != nil {

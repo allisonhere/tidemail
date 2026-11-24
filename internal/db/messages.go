@@ -14,30 +14,32 @@ import (
 )
 
 type Message struct {
-	ID             int64
-	MailboxID      int64
-	UID            uint32
-	MessageID      string
-	InReplyTo      string
-	References     string
-	Subject        string
-	From           string
-	To             string
-	CC             string
-	ReplyTo        string
-	Date           time.Time
-	BodyText       string
-	BodyHTML       string
-	Summary        string
-	Flags          []string
-	Read           bool
-	Starred        bool
-	HasAttachment  bool
-	Headers        string       // auth-related headers parsed from MIME
-	RawHeaders     string       // transient, not stored: the full header block as received (Received trail and all)
-	AttachmentData []Attachment // transient, not stored in messages table
-	AccountName    string       // transient, populated for cross-mailbox search results
-	MailboxName    string       // transient, populated for cross-mailbox search results
+	ID              int64
+	MailboxID       int64
+	UID             uint32
+	MessageID       string
+	InReplyTo       string
+	References      string
+	Subject         string
+	From            string
+	To              string
+	CC              string
+	ReplyTo         string
+	Date            time.Time
+	BodyText        string
+	BodyHTML        string
+	Summary         string
+	Flags           []string
+	Read            bool
+	Starred         bool
+	HasAttachment   bool
+	Headers         string       // auth-related headers parsed from MIME
+	RawHeaders      string       // transient, not stored: the full header block as received (Received trail and all)
+	AttachmentData  []Attachment // transient, not stored in messages table
+	AccountName     string       // transient, populated for cross-mailbox search results
+	AccountConfigID string
+	MailboxRawName  string
+	MailboxName     string // transient, populated for cross-mailbox search results
 }
 
 func (db *DB) ListMessages(mailboxID int64) ([]Message, error) {
@@ -171,16 +173,20 @@ func (db *DB) SearchAllMessagesPage(query string, unreadOnly bool, limit, offset
 }
 
 func (db *DB) searchAllMessages(query string, unreadFirst, unreadOnly bool, limit, offset int) ([]Message, int, error) {
+	return db.searchScopedMessages(query, unreadFirst, unreadOnly, limit, offset, nil, false)
+}
+
+func (db *DB) searchScopedMessages(query string, unreadFirst, unreadOnly bool, limit, offset int, scope *MessageScope, inbox bool) ([]Message, int, error) {
 	terms := ParseSearch(query)
 	match := searchMatch(terms)
-	if match == "" && len(terms.Tags) == 0 {
+	if scope == nil && match == "" && len(terms.Tags) == 0 {
 		return nil, 0, nil
 	}
 	const columns = `messages.id, messages.mailbox_id, messages.uid, messages.message_id,
 		       messages.in_reply_to, messages.references_text, messages.subject, messages.from_addr, messages.to_addr, messages.cc_addr,
 		       messages.reply_to, messages.date, messages.body_text, messages.body_html, messages.summary,
 		       messages.flags, messages.read, messages.starred, messages.has_attachment, messages.headers,
-		       accounts.name, CASE WHEN mailboxes.delimiter = '' THEN mailboxes.name ELSE COALESCE(NULLIF(mailboxes.display_name, ''), mailboxes.name) END`
+		       accounts.config_id, mailboxes.name, accounts.name, CASE WHEN mailboxes.delimiter = '' THEN mailboxes.name ELSE COALESCE(NULLIF(mailboxes.display_name, ''), mailboxes.name) END`
 	const joins = `
 		JOIN mailboxes ON mailboxes.id = messages.mailbox_id
 		JOIN accounts ON accounts.id = mailboxes.account_id`
@@ -209,6 +215,14 @@ func (db *DB) searchAllMessages(query string, unreadFirst, unreadOnly bool, limi
 	}
 	if unreadOnly {
 		where = append(where, "messages.read = 0")
+	}
+	if scope != nil {
+		if scope.Sort == "date" || (scope.Sort == "" && (inbox || scope.AccountID != "" || len(scope.Mailboxes) > 0)) {
+			orderBy = "messages.date DESC, messages.id DESC"
+		}
+		expr, scopeArgs := scope.where(inbox)
+		where = append(where, expr)
+		args = append(args, scopeArgs...)
 	}
 	if unreadFirst {
 		orderBy = "messages.read ASC, " + orderBy
@@ -532,7 +546,7 @@ func scanMessagesWithContext(rows interface {
 			&m.ID, &m.MailboxID, &m.UID, &m.MessageID, &m.InReplyTo, &m.References, &m.Subject,
 			&m.From, &m.To, &m.CC, &m.ReplyTo, &dateUnix,
 			&m.BodyText, &m.BodyHTML, &m.Summary, &flagsJSON, &read, &starred, &att,
-			&m.Headers, &m.AccountName, &m.MailboxName,
+			&m.Headers, &m.AccountConfigID, &m.MailboxRawName, &m.AccountName, &m.MailboxName,
 		); err != nil {
 			return nil, err
 		}
