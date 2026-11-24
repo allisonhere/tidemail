@@ -15,6 +15,7 @@ type MessageScope struct {
 	Since, Before time.Time
 	IncludeTrash  bool
 	Sort          string
+	Exact         bool // CLI search: no implicit prefix on the last word
 }
 
 func (s MessageScope) where(inbox bool) (string, []any) {
@@ -60,7 +61,11 @@ func (s MessageScope) where(inbox bool) (string, []any) {
 
 // ScopedMessagesPage applies a scope to both the count and the bounded page.
 func (db *DB) ScopedMessagesPage(query string, scope MessageScope, inbox bool, limit, offset int) ([]Message, int, error) {
-	return db.searchScopedMessages(query, false, scope.Unread, limit, offset, &scope, inbox)
+	mode := searchCLI
+	if scope.Exact {
+		mode = searchCLIExact
+	}
+	return db.searchScopedMessages(query, false, scope.Unread, limit, offset, &scope, inbox, mode)
 }
 
 // Special-use flags take priority over folder names. Fallbacks cover common
