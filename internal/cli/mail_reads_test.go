@@ -301,8 +301,13 @@ func TestReadThreadAndDedupe(t *testing.T) {
 		{MailboxID: mb, UID: 42, MessageID: "<root@test>", Subject: "Invoice", ReplyTo: "reply@test", RawHeaders: "Received: example\r\n", BodyText: "private body", Date: time.Unix(100, 0)},
 		{MailboxID: archive, UID: 1, MessageID: "<ROOT@test>", Subject: "Invoice", Date: time.Unix(100, 0)},
 		{MailboxID: archive, UID: 2, MessageID: "<reply@test>", InReplyTo: "<root@test>", References: "<root@test>", Subject: "Invoice reply", Date: time.Unix(200, 0)},
-		{MailboxID: archive, UID: 3, Subject: "Invoice no id", Date: time.Unix(300, 0)},
-		{MailboxID: archive, UID: 4, Subject: "Invoice no id", Date: time.Unix(400, 0)},
+		// Empty Message-IDs, with or without brackets, are distinct messages.
+		{MailboxID: archive, UID: 3, MessageID: "<>", Subject: "Invoice no id", Date: time.Unix(300, 0)},
+		{MailboxID: archive, UID: 4, MessageID: " <> ", Subject: "Invoice no id", Date: time.Unix(400, 0)},
+		// Linked to the root only through the reply.
+		{MailboxID: archive, UID: 5, MessageID: "<later@test>", References: "<reply@test>", Subject: "Follow-up", Date: time.Unix(500, 0)},
+		// Contains "root@test" but is not part of the thread.
+		{MailboxID: archive, UID: 6, MessageID: "<xroot@test>", Subject: "Other", Date: time.Unix(600, 0)},
 	} {
 		if err = d.UpsertMessage(m); err != nil {
 			t.Fatal(err)
@@ -339,7 +344,7 @@ func TestReadThreadAndDedupe(t *testing.T) {
 		t.Fatal("headers returned without flag")
 	}
 	thread := run("messages", "thread", fmt.Sprint(root), "--agent", "--json")
-	if thread["total"] != float64(2) || strings.Contains(fmt.Sprint(thread), "private body") {
+	if thread["total"] != float64(3) || strings.Contains(fmt.Sprint(thread), "private body") || strings.Contains(fmt.Sprint(thread), "xroot") {
 		t.Fatal(thread)
 	}
 	page := run("messages", "search", "invoice", "--dedupe", "--limit", "1", "--offset", "1", "--json")
