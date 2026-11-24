@@ -90,6 +90,7 @@ const (
 	overlayCommandPalette
 	overlaySaveAttach
 	overlayMoveMessage
+	overlayGotoFolder
 	overlayGrammarPreview
 	overlayLogViewer
 	overlayFilterManager
@@ -270,6 +271,7 @@ type Model struct {
 	saveAttachPicker     filePicker
 	saveAttachPickerKind saveAttachPickerKind
 	movePicker           movePicker
+	gotoFolder           gotoFolder
 	filterManager        filterManager
 	outboxItems          []db.OutboxItem
 	outboxCursor         int
@@ -2596,6 +2598,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case keyMatches(msg, m.keys.GoFolder):
+		m.openGotoFolder()
+		return m, nil
+
 	case keyMatches(msg, m.keys.Move):
 		if m.focused != paneAccounts && m.selectedDraftsMailbox() {
 			m.setStatus("this action is unavailable for drafts", false)
@@ -3468,6 +3474,9 @@ func (m Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case overlayMoveMessage:
 		return m.handleMovePicker(msg)
+
+	case overlayGotoFolder:
+		return m.handleGotoFolder(msg)
 
 	case overlayContextMenu:
 		return m.handleContextMenuKey(msg)

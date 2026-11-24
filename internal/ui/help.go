@@ -101,7 +101,8 @@ func helpSections(keys KeyMap) []helpSection {
 				{keys.MarkRead.Help().Key, "collapsed: toggle all members; expanded/single: toggle this email; marking read advances; marking unread stays; explicit selections toggle individually without advancing"},
 				{keys.ToggleStar.Help().Key, "toggle star on selected message(s)"},
 				{keys.Archive.Help().Key, "archive selected message(s)"},
-				{keys.Move.Help().Key, "move selected message(s) to folder/label"},
+				{keys.Move.Help().Key, "move selected message(s) to folder/label; / in the picker filters every folder by fuzzy match"},
+				{keys.GoFolder.Help().Key, "go to folder: type part of a name (fuzzy match on the full path), enter jumps there"},
 				{keys.Delete.Help().Key, "delete selected message(s): hidden at once, 6s undo window (ctrl+z), then server confirmation; on failure the message returns with the cursor on it; in Drafts, delete draft"},
 				{"Drafts", "enter edits; d deletes; selection, archive, move and read/star actions are unavailable"},
 				{"R / ctrl+x (sidebar)", "mark all read on the server, including uncached mail; update badges after confirmation"},
@@ -338,7 +339,7 @@ func helpSections(keys KeyMap) []helpSection {
 			entries: []helpEntry{
 				{"Command palette", ": or ctrl+p opens it (contextual commands in compose, summary, save attachments); in a vim compose body : is the editor's command line, so use ctrl+p there"},
 				{"Theme picker", "up/down previews; / searches; enter saves; esc cancels"},
-				{"Move picker", "enter opens/moves; n creates folder; h/left parent; letters jump"},
+				{"Move picker", "enter opens/moves; / filters all folders by fuzzy match (up/down, enter moves, esc back); n creates folder; h/left parent; letters jump"},
 				{"Attach file", "enter opens dir/attaches file; h/left parent; . toggles hidden files; letters jump"},
 				{"Save attachments", "enter opens/selects folder; h/left parent; . toggles hidden files; letters jump"},
 				{"Summary overlay", "C copies; M saves .md; z toggles quoted text; esc closes"},

@@ -44,7 +44,8 @@ MoveAccountDown,J,shift+j,"move account down (account manager); folder down the 
 IndentFolder,>,>,nest folder under the one above (hierarchical accounts),sidebar
 OutdentFolder,<,<,move folder out of its parent (hierarchical accounts),sidebar
 Archive,a,a,archive (unavailable in Drafts),main
-Move,m,m,move to folder/label (unavailable in Drafts),main
+Move,m,m,move to folder/label; / in the picker fuzzy-filters all folders (unavailable in Drafts),main
+GoFolder,G,G,go to folder: fuzzy filter on the full folder path; enter jumps there,main
 Command,":,ctrl+p",":/ctrl+p",command palette,global
 AccountManager,M,M,accounts,global
 ThemePicker,T,T,theme picker,global

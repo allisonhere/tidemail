@@ -96,6 +96,7 @@ func (m Model) mainCommandItems() []commandItem {
 		{id: "forward", label: "Forward current message", enabled: hasContent || hasMessage},
 		{id: "archive", label: "Archive current message", enabled: hasMessage},
 		{id: "move", label: "Move current message", enabled: hasMessage},
+		{id: "goto-folder", label: "Go to folder (fuzzy filter)", enabled: len(m.mailboxes) > 0},
 		{id: "delete", label: "Delete current message", enabled: hasMessage},
 		{id: "toggle-read", label: "Toggle read/unread", enabled: hasMessage},
 		{id: "new-folder", label: "New folder (select a folder or account first)", enabled: len(m.accounts) > 0},
@@ -248,6 +249,9 @@ func (m Model) executeCommand(id string) (tea.Model, tea.Cmd) {
 		}
 	case "move":
 		m.openMovePicker(m.movePickerMessages())
+		return m, nil
+	case "goto-folder":
+		m.openGotoFolder()
 		return m, nil
 	case "delete":
 		if msg := m.commandMessage(); msg != nil {
