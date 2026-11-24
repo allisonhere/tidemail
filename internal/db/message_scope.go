@@ -69,10 +69,12 @@ const excludedMailboxesPredicate = `NOT (
  EXISTS (SELECT 1 FROM json_each(mailboxes.flags) f WHERE lower(f.value) IN ('\trash','\junk'))
  OR ((NOT EXISTS (SELECT 1 FROM json_each(mailboxes.flags) f WHERE substr(f.value,1,1)='\' AND lower(f.value) NOT IN ('\haschildren','\hasnochildren','\noselect','\marked','\unmarked','\noinferiors','\subscribed')))
  AND (
- lower(mailboxes.display_name) IN ('trash','junk','spam','deleted','deleted messages','deleted items')
- OR lower(mailboxes.name) IN ('trash','junk','spam','deleted','deleted messages','deleted items')
+ lower(mailboxes.display_name) IN ('trash','junk','junk email','junk e-mail','spam','deleted','deleted messages','deleted items')
+ OR lower(mailboxes.name) IN ('trash','junk','junk email','junk e-mail','spam','deleted','deleted messages','deleted items')
  OR lower(mailboxes.name) GLOB '*.trash' OR lower(mailboxes.name) GLOB '*/trash'
  OR lower(mailboxes.name) GLOB '*.junk' OR lower(mailboxes.name) GLOB '*/junk'
+ OR lower(mailboxes.name) GLOB '*.junk email' OR lower(mailboxes.name) GLOB '*/junk email'
+ OR lower(mailboxes.name) GLOB '*.junk e-mail' OR lower(mailboxes.name) GLOB '*/junk e-mail'
  OR lower(mailboxes.name) GLOB '*.spam' OR lower(mailboxes.name) GLOB '*/spam'
  OR lower(mailboxes.name) GLOB '*.deleted' OR lower(mailboxes.name) GLOB '*/deleted'
  OR lower(mailboxes.name) GLOB '*.deleted messages' OR lower(mailboxes.name) GLOB '*/deleted messages'

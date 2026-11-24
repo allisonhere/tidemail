@@ -33,7 +33,7 @@ func parseReadFlags(fs *flag.FlagSet, args []string) ([]string, error) {
 		}
 		options = append(options, arg)
 		boolean, ok := f.Value.(interface{ IsBoolFlag() bool })
-		if !inline && !(ok && boolean.IsBoolFlag()) {
+		if !inline && (!ok || !boolean.IsBoolFlag()) {
 			if i+1 == len(args) {
 				return nil, fmt.Errorf("option %s requires a value", arg)
 			}
