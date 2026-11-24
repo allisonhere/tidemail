@@ -20,6 +20,10 @@ type movePicker struct {
 	sources     map[int64]bool
 	creating    bool
 	nameInput   textinput.Model
+	// filtering replaces the folder tree with a flat, fuzzy-filtered list of
+	// every folder in the account, matched against the full folder path.
+	filtering   bool
+	filterInput textinput.Model
 }
 
 type moveEntry struct {
@@ -28,6 +32,7 @@ type moveEntry struct {
 	mailboxID int64
 	isDir     bool
 	isConfirm bool
+	filtered  bool // a fuzzy-filter result: label is the full folder path
 }
 
 func (m *Model) openMovePicker(messages []db.Message) {
@@ -202,6 +207,67 @@ func moveParentPath(path, delimiter string) string {
 	return strings.Join(parts[:len(parts)-1], delimiter)
 }
 
+// moveFilterCandidates lists every folder in the account that a message can be
+// moved into, in name order.
+func moveFilterCandidates(mailboxes []db.Mailbox, accountID int64, sources map[int64]bool) []folderCandidate {
+	var out []folderCandidate
+	for _, mb := range mailboxes {
+		if mb.AccountID != accountID || mb.Name == "" || sources[mb.ID] || hasFlag(mb.Flags, "\\Noselect") {
+			continue
+		}
+		out = append(out, folderCandidate{mailboxID: mb.ID, label: mb.Name})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return strings.ToLower(out[i].label) < strings.ToLower(out[j].label)
+	})
+	return out
+}
+
+// refreshMoveFilterEntries rebuilds the flat result list from the filter text.
+func (m *Model) refreshMoveFilterEntries() {
+	ranked := rankFolders(m.movePicker.filterInput.Value(), moveFilterCandidates(m.mailboxes, m.movePicker.accountID, m.movePicker.sources))
+	entries := make([]moveEntry, len(ranked))
+	for i, c := range ranked {
+		entries[i] = moveEntry{label: c.label, mailboxID: c.mailboxID, isConfirm: true, filtered: true}
+	}
+	m.movePicker.entries = entries
+	m.movePicker.cursor = clamp(m.movePicker.cursor, 0, max(0, len(entries)-1))
+}
+
+func (m Model) handleMoveFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case keyMatches(msg, m.keys.Cancel):
+		m.movePicker.filtering = false
+		m.movePicker.filterInput.Blur()
+		m.movePicker.cursor = 0
+		m.refreshMovePickerEntries()
+		return m, nil
+	case keyMatches(msg, m.keys.Confirm):
+		if len(m.movePicker.entries) == 0 {
+			return m, nil
+		}
+		return m.confirmMovePicker(m.movePicker.entries[m.movePicker.cursor].mailboxID)
+	case msg.Type == tea.KeyUp, msg.String() == "ctrl+p":
+		if m.movePicker.cursor > 0 {
+			m.movePicker.cursor--
+		}
+		return m, nil
+	case msg.Type == tea.KeyDown, msg.String() == "ctrl+n":
+		if m.movePicker.cursor < len(m.movePicker.entries)-1 {
+			m.movePicker.cursor++
+		}
+		return m, nil
+	}
+	var cmd tea.Cmd
+	before := m.movePicker.filterInput.Value()
+	m.movePicker.filterInput, cmd = m.movePicker.filterInput.Update(msg)
+	if m.movePicker.filterInput.Value() != before {
+		m.movePicker.cursor = 0
+	}
+	m.refreshMoveFilterEntries()
+	return m, cmd
+}
+
 func (m Model) handleMovePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.movePicker.creating {
 		switch {
@@ -226,6 +292,9 @@ func (m Model) handleMovePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.movePicker.nameInput, cmd = m.movePicker.nameInput.Update(msg)
 			return m, cmd
 		}
+	}
+	if m.movePicker.filtering {
+		return m.handleMoveFilter(msg)
 	}
 	switch {
 	case keyMatches(msg, m.keys.Cancel):
@@ -266,6 +335,15 @@ func (m Model) handleMovePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.movePicker.cursor = 0
 		m.refreshMovePickerEntries()
 		return m, nil
+	case msg.String() == "/":
+		input := textinput.New()
+		input.Placeholder = "type part of a folder name"
+		input.Focus()
+		m.movePicker.filterInput = input
+		m.movePicker.filtering = true
+		m.movePicker.cursor = 0
+		m.refreshMoveFilterEntries()
+		return m, textinput.Blink
 	case msg.String() == "n":
 		input := textinput.New()
 		input.Placeholder = "folder name"
@@ -305,6 +383,13 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 	path := m.movePicker.accountName
 	if m.movePicker.currentPath != "" {
 		path += " / " + m.movePicker.currentPath
+	}
+	if m.movePicker.filtering {
+		in := m.movePicker.filterInput
+		in.PromptStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.accent)
+		in.TextStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text)
+		in.PlaceholderStyle = lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted)
+		path = m.movePicker.accountName + " / filter: " + in.View()
 	}
 	pathLine := lipgloss.NewStyle().
 		Background(chrome.baseBg).
@@ -348,6 +433,8 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 		selected := idx == m.movePicker.cursor
 		label := e.label
 		switch {
+		case e.filtered:
+			label = e.label
 		case e.isConfirm:
 			label = "move here"
 		case e.label == "..":
@@ -364,10 +451,19 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 
 	hints := renderSoftHints(width, chrome,
 		"enter", "open/move",
+		"/", "filter",
 		"n", "new folder",
 		"h", "parent",
 		"esc", "cancel",
 	)
+	if m.movePicker.filtering {
+		hints = renderSoftHints(width, chrome,
+			"type", "filter",
+			"↑/↓", "choose",
+			"enter", "move",
+			"esc", "back",
+		)
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, pathLine, lipgloss.JoinVertical(lipgloss.Left, rows...), hints)
 }
 

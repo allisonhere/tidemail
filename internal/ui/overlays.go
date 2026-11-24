@@ -166,6 +166,14 @@ func (m Model) renderOverlay(base string) string {
 		}
 		box = renderSoftPanelBox(inner, winW, "tidemail", title, chrome)
 
+	case overlayGotoFolder:
+		winW := min(m.width-4, 74)
+		winH := min(m.height-4, 36)
+		chrome := newManagerChrome(winW, m.styles.Theme, m.styles.PlainUI)
+		inner := m.renderGotoFolder(winW, winH, chrome)
+		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
+		box = renderSoftPanelBox(inner, winW, "tidemail", "go to folder", chrome)
+
 	case overlayMoveMessage:
 		winW := min(m.width-4, 74)
 		winH := min(m.height-4, 36)

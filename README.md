@@ -507,7 +507,8 @@ A plugin with the `contacts_read` permission can serve as an external address bo
 | `c` | Compose |
 | `r` / `f` | Reply or forward from the reading pane |
 | `Space` | Select a message for a bulk action |
-| `a` / `m` / `d` | Archive, move, or delete |
+| `a` / `m` / `d` | Archive, move, or delete (`/` in the move picker fuzzy-filters folders) |
+| `G` | Go to folder: fuzzy-filter all folders and jump to one |
 | `x` | Collapsed: toggle conversation; expanded/single: toggle email. Mark-read advances; explicit selections toggle individually without advancing |
 | `*` | Toggle the IMAP star |
 | `/` | Search messages |

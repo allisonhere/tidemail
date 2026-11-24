@@ -467,6 +467,24 @@ The command palette has matching entries: New folder, Rename selected folder,
 Delete selected folder, Hide or unhide selected folder, and Show hidden folders.
 Creating a folder is also possible from the move picker with `n`.
 
+#### Finding a folder by typing
+
+With many folders, walking the tree is slow. Two prompts filter by typing
+instead. The filter is fuzzy: the letters you type must appear in the folder's
+full path in order, and spaces are ignored, so `acin` finds
+`Projects/Acme/Invoices`. Better matches (letters together, at the start of a
+word or path segment, or an exact piece of the name) come first.
+
+- `G` opens **Go to folder**. It searches every account (with more than one
+  account each result is prefixed with the account name) and skips hidden
+  folders unless hidden folders are shown. `Up`/`Down` (or `Ctrl+P`/`Ctrl+N`)
+  choose, `Enter` jumps to the folder in the sidebar, opening any collapsed
+  account or parent folders on the way, and `Esc` cancels. The command palette
+  has the same action, "Go to folder".
+- In the move picker (`m`), `/` switches from the tree to a flat, filtered list
+  of every folder in that account that the message(s) can move to. `Enter` moves
+  straight to the highlighted folder, and `Esc` returns to the tree.
+
 ### Needs You
 
 **Needs You**, just below Unified Inbox in the sidebar, gathers the inbox
@@ -1393,7 +1411,8 @@ plugin, see [`plugins.md`](plugins.md) and the Plugin API v1 docs in
 | Key | Action |
 |-----|--------|
 | `:` or `Ctrl+P` | Open the command palette. In a Vim compose body, `:` belongs to the editor, so use `Ctrl+P` for the palette. |
-| `m` | Move selected message(s) to folder/label |
+| `m` | Move selected message(s) to folder/label (press `/` in the picker to fuzzy-filter every folder) |
+| `G` | Go to folder: fuzzy-filter all folders and jump to one |
 | `c` | Compose (autosaves to Drafts as you type) |
 | `C` | Contacts manager |
 | `c` in Contacts | Compose to selected contact(s) |

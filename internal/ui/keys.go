@@ -47,6 +47,7 @@ type KeyMap struct {
 	Forward         key.Binding
 	Archive         key.Binding
 	Move            key.Binding
+	GoFolder        key.Binding
 	Command         key.Binding
 
 	AccountManager key.Binding
@@ -160,6 +161,7 @@ var DefaultKeys = KeyMap{
 	Forward:       key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "forward")),
 	Archive:       key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),
 	Move:          key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move")),
+	GoFolder:      key.NewBinding(key.WithKeys("G"), key.WithHelp("G", "go to folder")),
 	Command:       key.NewBinding(key.WithKeys(":", "ctrl+p"), key.WithHelp(":/ctrl+p", "command")),
 
 	AccountManager: key.NewBinding(key.WithKeys("M"), key.WithHelp("M", "accounts")),

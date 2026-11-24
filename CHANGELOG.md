@@ -8,6 +8,12 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- Fuzzy folder filter, suggested by @drjackyl. `G` opens **Go to folder**: type
+  part of a folder's path (`acin` finds `Projects/Acme/Invoices`) and press
+  Enter to jump to it, across all accounts, opening collapsed parents on the
+  way. In the move picker (`m`), `/` filters every folder in the account the
+  same way and Enter moves straight there. The command palette has a "Go to
+  folder" entry.
 - Set `TIDEMAIL_AGENT=1` to enforce configured agent capability checks on every
   mail command in a session (cached reads, drafts, sends, interactive compose
   actions and outbox actions), even when a command omits `--agent` or passes
