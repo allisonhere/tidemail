@@ -1,18 +1,28 @@
 package db
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/allisonhere/tidemail/internal/bodytext"
 )
 
 type DB struct {
 	*sql.DB
+	stopFTS context.CancelFunc
+	ftsDone chan struct{}
+	// ftsPending is set by migrateMessageFTS when a stale index is too big to
+	// rebuild while opening, so startFTSRebuild need not check again.
+	ftsPending bool
 }
 
 func Open() (*DB, error) {
@@ -40,11 +50,12 @@ func OpenPath(path string) (*DB, error) {
 
 	conn.SetMaxOpenConns(1)
 
-	db := &DB{conn}
+	db := &DB{DB: conn}
 	if err := db.init(); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("init db: %w", err)
 	}
+	db.startFTSRebuild()
 	return db, nil
 }
 
@@ -509,49 +520,184 @@ func (db *DB) migrateDraftsBCC() error {
 }
 
 // ftsSchemaVersion is bumped whenever the messages_fts schema or the columns it
-// indexes change, to force a one-time rebuild on the next launch.
-const ftsSchemaVersion = "1"
+// indexes change, to force a one-time rebuild.
+const ftsSchemaVersion = "2"
 
-// migrateMessageFTS rebuilds the full-text index only when necessary, rather than
-// on every launch. A full rebuild over a large mailbox costs ~1s+ and is wasted
-// work: the index is kept current incrementally by upsertMessageFTS/deleteMessageFTS.
-// It rebuilds when the stored schema token is stale (first run after this change,
-// or a future schema bump) or when the row counts drift out of sync (self-heal).
-func (db *DB) migrateMessageFTS() error {
+const (
+	// ftsSyncLimit is the largest cache rebuilt inline while opening. Bigger
+	// caches are rebuilt in the background so opening stays fast.
+	ftsSyncLimit = 2000
+	ftsBatchSize = 500
+	ftsCursorKey = "fts_rebuild_cursor"
+)
+
+// ftsRebuildNeeded reports whether the index is stale: the stored schema token
+// is old, or the row counts drifted out of sync (self-heal). It also returns
+// the number of messages.
+func (db *DB) ftsRebuildNeeded() (bool, int64, error) {
 	stored, err := db.GetSetting("fts_schema_version")
+	if err != nil {
+		return false, 0, err
+	}
+	var msgCount, ftsCount int64
+	if err := db.QueryRow(`SELECT COUNT(*) FROM messages`).Scan(&msgCount); err != nil {
+		return false, 0, err
+	}
+	if stored != ftsSchemaVersion {
+		return true, msgCount, nil
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM messages_fts`).Scan(&ftsCount); err != nil {
+		return false, 0, err
+	}
+	return msgCount != ftsCount, msgCount, nil
+}
+
+// migrateMessageFTS rebuilds the full-text index only when necessary. The index
+// is kept current incrementally by upsertMessageFTS/deleteMessageFTS. Small
+// caches are rebuilt here; a large cache is left for startFTSRebuild, because a
+// full rebuild over a big mailbox takes seconds.
+func (db *DB) migrateMessageFTS() error {
+	need, n, err := db.ftsRebuildNeeded()
 	if err != nil {
 		return err
 	}
-	needRebuild := stored != ftsSchemaVersion
-	if !needRebuild {
-		var msgCount, ftsCount int64
-		if err := db.QueryRow(`SELECT COUNT(*) FROM messages`).Scan(&msgCount); err != nil {
+	if !need {
+		// A rebuild that stopped early and is no longer needed must not leave
+		// its cursor for a later rebuild to resume from.
+		if v, err := db.GetSetting(ftsCursorKey); err != nil || v == "" {
 			return err
 		}
-		if err := db.QueryRow(`SELECT COUNT(*) FROM messages_fts`).Scan(&ftsCount); err != nil {
-			return err
-		}
-		needRebuild = msgCount != ftsCount
+		_, err := db.Exec(`DELETE FROM settings WHERE key = ?`, ftsCursorKey)
+		return err
 	}
-	if !needRebuild {
+	if n > ftsSyncLimit {
+		db.ftsPending = true
 		return nil
 	}
-	if err := db.rebuildMessageFTS(); err != nil {
+	return db.rebuildMessageFTS(context.Background())
+}
+
+// startFTSRebuild rebuilds a stale index of a large cache in the background.
+// Until it finishes, searches see the old index plus the rows already rebuilt.
+// Progress is stored after every batch, so a short-lived command that exits
+// early does not lose the work: the next open resumes where it stopped.
+func (db *DB) startFTSRebuild() {
+	if !db.ftsPending {
+		return
+	}
+	db.ftsPending = false
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	db.stopFTS, db.ftsDone = cancel, done
+	go func() {
+		defer close(done)
+		_ = db.rebuildMessageFTS(ctx) // retried on the next open
+	}()
+}
+
+// Close stops a running background index rebuild, then closes the database.
+func (db *DB) Close() error {
+	if db.stopFTS != nil {
+		db.stopFTS()
+		<-db.ftsDone
+	}
+	return db.DB.Close()
+}
+
+// rebuildMessageFTS re-indexes every message in batches, each in its own
+// transaction so searches and writes are not blocked for the whole rebuild.
+// Rows are replaced in place rather than the index being emptied first.
+//
+// The stored cursor is "<schema version>:<last id>", so a rebuild for a newer
+// schema never resumes from a cursor left by an older one.
+func (db *DB) rebuildMessageFTS(ctx context.Context) error {
+	var cursor int64
+	if v, err := db.GetSetting(ftsCursorKey); err == nil {
+		if version, id, ok := strings.Cut(v, ":"); ok && version == ftsSchemaVersion {
+			cursor, _ = strconv.ParseInt(id, 10, 64)
+		}
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		last, n, err := db.rebuildFTSBatch(ctx, cursor)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			break
+		}
+		cursor = last
+		if err := db.SetSetting(ftsCursorKey, ftsSchemaVersion+":"+strconv.FormatInt(cursor, 10)); err != nil {
+			return err
+		}
+	}
+	if _, err := db.Exec(`DELETE FROM messages_fts WHERE rowid NOT IN (SELECT id FROM messages)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`DELETE FROM settings WHERE key = ?`, ftsCursorKey); err != nil {
 		return err
 	}
 	return db.SetSetting("fts_schema_version", ftsSchemaVersion)
 }
 
-func (db *DB) rebuildMessageFTS() error {
-	if _, err := db.Exec(`DELETE FROM messages_fts`); err != nil {
-		return err
+// rebuildFTSBatch re-indexes the next batch of messages after the given id.
+// Bodies are read and their text extracted before the write transaction, so the
+// single database connection is held only for the index writes. A message whose
+// body changed in between is re-read inside the transaction.
+func (db *DB) rebuildFTSBatch(ctx context.Context, after int64) (last int64, n int, err error) {
+	type item struct {
+		id                  int64
+		plain, markup, text string
 	}
-	_, err := db.Exec(`
-		INSERT INTO messages_fts(rowid, subject, from_addr, to_addr, cc_addr, body_text)
-		SELECT id, subject, from_addr, to_addr, cc_addr, body_text
-		FROM messages
-	`)
-	return err
+	rows, err := db.QueryContext(ctx, `SELECT id, body_text, body_html FROM messages WHERE id > ? ORDER BY id LIMIT ?`, after, ftsBatchSize)
+	if err != nil {
+		return 0, 0, err
+	}
+	var items []item
+	for rows.Next() {
+		var it item
+		if err = rows.Scan(&it.id, &it.plain, &it.markup); err != nil {
+			rows.Close()
+			return 0, 0, err
+		}
+		items = append(items, it)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil || len(items) == 0 {
+		return 0, 0, err
+	}
+	for i := range items {
+		if err = ctx.Err(); err != nil {
+			return 0, 0, err
+		}
+		items[i].text, _ = bodytext.Resolve(items[i].plain, items[i].markup)
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	for _, it := range items {
+		var current bool
+		err = tx.QueryRowContext(ctx, `SELECT body_text = ? AND body_html = ? FROM messages WHERE id = ?`, it.plain, it.markup, it.id).Scan(&current)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			err = nil // deleted since the read; its index row is cleaned up at the end
+		case err != nil:
+		case current:
+			err = writeMessageFTS(tx, it.id, it.text)
+		default:
+			err = upsertMessageFTS(tx, it.id)
+		}
+		if err != nil {
+			return 0, 0, err
+		}
+	}
+	return items[len(items)-1].id, len(items), tx.Commit()
 }
 
 // GetSetting retrieves a UI setting value by key.

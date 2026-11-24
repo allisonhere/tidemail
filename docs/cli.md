@@ -182,7 +182,26 @@ tidemail mailboxes list --account work --json
 List and search results contain metadata, including subject, sender, recipients,
 account, mailbox, read state, and attachment presence. They do not contain full
 message bodies. `messages read` explicitly returns the cached plain-text and HTML
-bodies. A body that has not been cached can be empty.
+bodies. A body that has not been cached can be empty. Read results also include
+`text` and `text_source` (`plain`, `html`, or `none`). Nonblank plain text is
+preferred verbatim; otherwise `text` is extracted from HTML. Extraction uses
+link labels only, decodes entities, separates paragraphs/lists/table rows,
+and skips scripts, styles and document metadata without fetching resources.
+The original `body_text` and `body_html` fields remain unchanged.
+
+`messages search` matches the last word, or the value of a last `from:`, `to:`,
+`cc:` or `subject:` operator, as a prefix, so `invo` finds `invoice`. Put
+double quotes inside the query for adjacent words in order; a phrase is not a
+prefix unless it ends in `*`. End any word or field value with `*` to match its
+beginning. These quotes and `*` are CLI search syntax; the interactive search
+does not use them. `--exact` turns off the implicit prefix, so every word and
+field value must match whole; `#tags` still match by prefix. Pass the query as
+one shell argument, for example
+`tidemail messages search '"annual report" financ*'`.
+
+Search uses the same plain-first HTML fallback. A one-time local index rebuild
+makes existing HTML-only cached bodies searchable, in both CLI and TUI searches.
+HTML alternatives are not indexed when a nonblank plain body exists.
 
 Use message IDs returned by list or search, such as `cache:123`. A cache ID
 identifies one local database row across accounts and mailboxes. It is not an

@@ -1067,7 +1067,7 @@ func openSQLite(path string) (*DB, error) {
 		return nil, err
 	}
 	conn.SetMaxOpenConns(1)
-	return &DB{conn}, nil
+	return &DB{DB: conn}, nil
 }
 
 func TestAttachmentImageMetadataRoundTrip(t *testing.T) {

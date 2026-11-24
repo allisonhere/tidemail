@@ -25,6 +25,15 @@ All notable changes to TideMail are documented in this file.
 - Cached read commands accept options before or after an ID or query, `--`
   makes the remaining arguments literal, and flags that do not apply to a
   command are rejected.
+- Search now finds words in HTML-only messages. When a message has no plain
+  text, the index holds text extracted from the HTML: link labels are kept;
+  link URLs, scripts, styles and document metadata are not, and nothing is
+  fetched. Stored bodies are unchanged.
+- `messages search` accepts "quoted phrases" for adjacent words, a trailing `*`
+  for a prefix on any word, and `--exact` to match whole words only (the last
+  word is otherwise still a prefix, as before).
+- `messages read` also returns `text` and `text_source` (`plain`, `html` or
+  `none`) beside `body_text` and `body_html`.
 
 ### Changed
 
@@ -34,6 +43,10 @@ All notable changes to TideMail are documented in this file.
   them back. Scripts that relied on results from those folders will see fewer
   messages.
 - Text output of message lists shows the date and the folder name.
+- The search index is rebuilt once after upgrading, to cover HTML-only mail. A
+  cache of more than 2000 messages is rebuilt in the background in batches, so
+  start-up is not delayed; search results fill in as it proceeds, and a command
+  that exits early resumes the work on the next run.
 
 ## v1.10.2
 
