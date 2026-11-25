@@ -963,13 +963,26 @@ func (m *Model) syncMailboxCmdWithMode(mailboxID int64, manual, passive bool) te
 			// removed server-side, and adopting read/unread changes made elsewhere.
 			// A failure here is non-fatal — sync proceeds without it rather than
 			// aborting.
+			snapshotAt := time.Now()
 			serverMsgs, uidValidity, uidErr := client.ServerState(ctx, mailbox.Name)
+			// The snapshot's size is recorded as the server count only if the
+			// cache was emptied when needed and its removed messages dropped
+			// without errors; each step below that fails clears this.
+			keepCount := uidErr == nil
 			if uidErr == nil && uidValidity != 0 {
+				resetOK := true
 				if stored, e := database.MailboxUIDValidity(mailboxID); e == nil && stored != 0 && stored != uidValidity {
-					_ = database.ResetMailboxCache(mailboxID) //nolint:errcheck
+					if e := database.ResetMailboxCache(mailboxID); e != nil {
+						resetOK = false
+						keepCount = false
+					}
 					since = time.Time{}
 				}
-				_ = database.SetMailboxUIDValidity(mailboxID, uidValidity) //nolint:errcheck
+				// After a failed reset the old UIDVALIDITY stays, so the next
+				// sync sees the change again and retries the reset.
+				if resetOK {
+					_ = database.SetMailboxUIDValidity(mailboxID, uidValidity) //nolint:errcheck
+				}
 			}
 
 			// A cold mailbox has no floor to fetch from, so take the most
@@ -1022,7 +1035,9 @@ func (m *Model) syncMailboxCmdWithMode(mailboxID int64, manual, passive bool) te
 					reconcileSet = append(reconcileSet, fm.UID)
 					flagsByUID[fm.UID] = fm.Flags
 				}
-				_, _ = database.ReconcileMailboxUIDs(mailboxID, reconcileSet) //nolint:errcheck
+				if _, err := database.ReconcileMailboxUIDs(mailboxID, reconcileSet); err != nil {
+					keepCount = false
+				}
 				if err := database.ApplyServerFlags(mailboxID, flagsByUID); err != nil {
 					result = MailboxSyncedMsg{MailboxID: mailboxID, Err: err, Manual: manual, Passive: passive}
 					return nil
@@ -1042,7 +1057,10 @@ func (m *Model) syncMailboxCmdWithMode(mailboxID int64, manual, passive bool) te
 			if len(newMsgs) > 0 {
 				newMsgs, ruleErr = applyRulesOnArrival(ctx, database, client, mailbox, newMsgs)
 			}
-			unread, _ := database.CountUnread(mailboxID)
+			unread, unreadErr := database.CountUnread(mailboxID)
+			if unreadErr != nil {
+				keepCount = false
+			}
 			// A failed bookkeeping write (e.g. last-synced) can cause endless re-syncs, so
 			// don't drop it silently — fold it into the fetch log.
 			var writeErr error
@@ -1056,7 +1074,17 @@ func (m *Model) syncMailboxCmdWithMode(mailboxID int64, manual, passive bool) te
 			if e := database.SetMailboxUnreadCount(mailboxID, unread); e != nil {
 				writeErr = e
 			}
-			logFetch(acc.Name, mailbox.Name, len(msgs), connectDur, fetchDur, time.Since(t0), writeErr)
+			// `mailboxes list` reports the snapshot's size beside the cached
+			// count. It is skipped when the sync is reported as failed, and
+			// since it is informational, its own failed write is logged
+			// without failing the sync.
+			logErr := writeErr
+			if keepCount && writeErr == nil {
+				if e := database.SetMailboxServerCount(mailboxID, len(serverMsgs), snapshotAt); e != nil {
+					logErr = fmt.Errorf("server count: %w", e)
+				}
+			}
+			logFetch(acc.Name, mailbox.Name, len(msgs), connectDur, fetchDur, time.Since(t0), logErr)
 			result = MailboxSyncedMsg{More: more, Warning: ruleErr, Err: writeErr, MailboxID: mailboxID, NewCount: len(newMsgs), NewMessages: newMsgs, Manual: manual, Passive: passive, Cold: cold, SyncedAt: syncedAt, Total: time.Since(t0)}
 			return nil
 		})

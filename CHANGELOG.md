@@ -18,6 +18,11 @@ All notable changes to TideMail are documented in this file.
 
 ### Added
 
+- `mailboxes list` reports `server_count`, the number of messages the server
+  held when a TUI sync last listed that folder, and `server_count_at`, when it
+  did. Both are null until then. Comparing
+  `server_count` with `cached` shows how much of a folder is in the cache; the
+  CLI itself never syncs, so the count can be out of date.
 - Fuzzy folder filter, suggested by @drjackyl. `G` opens **Go to folder**: type
   part of a folder's path (`acin` finds `Projects/Acme/Invoices`) and press
   Enter to jump to it, across all accounts, opening collapsed parents on the

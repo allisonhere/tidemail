@@ -255,6 +255,61 @@ func TestScopedReadsAndMailboxDiscovery(t *testing.T) {
 	}
 }
 
+func TestMailboxDiscoveryReportsServerCount(t *testing.T) {
+	mailReadFixture(t)
+	at := time.Unix(1_700_000_000, 0)
+	func() {
+		database, err := db.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Closed before the CLI opens the database, and also on t.Fatal.
+		defer database.Close()
+		account, err := database.AddAccount("work", "Work", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		observed, err := database.UpsertMailbox(db.Mailbox{AccountID: account, Name: "Observed"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := database.UpsertMailbox(db.Mailbox{AccountID: account, Name: "Unseen"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := database.SetMailboxServerCount(observed, 5, at); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// UTC whatever the machine's time zone.
+	want := "2023-11-14T22:13:20Z"
+	var out, diagnostics bytes.Buffer
+	if code := RunMailRead("mailboxes", []string{"list", "--account", "work", "--json"}, &out, &diagnostics); code != 0 {
+		t.Fatalf("mailboxes: %d %s", code, diagnostics.String())
+	}
+	var page struct {
+		Data struct {
+			Items []map[string]any `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &page); err != nil {
+		t.Fatalf("%v: %s", err, out.String())
+	}
+	got := map[string]map[string]any{}
+	for _, item := range page.Data.Items {
+		got[item["name"].(string)] = item
+	}
+	if o := got["Observed"]; o["server_count"] != float64(5) || o["server_count_at"] != want || o["cached"] != float64(0) {
+		t.Fatalf("observed mailbox: %v", o)
+	}
+	if u, ok := got["Unseen"]; !ok || u["server_count"] != nil || u["server_count_at"] != nil {
+		t.Fatalf("unobserved mailbox needs null server fields: %v", u)
+	}
+	out.Reset()
+	if code := RunMailRead("mailboxes", []string{"list", "--account", "work"}, &out, &diagnostics); code != 0 || !strings.Contains(out.String(), "cached:0 unread:0 server:5 as_of:"+want) {
+		t.Fatalf("plain output: %d %s", code, out.String())
+	}
+}
+
 func TestReadHTMLFallbackPreservesOriginalBodies(t *testing.T) {
 	id := mailReadFixture(t)
 	d, err := db.Open()

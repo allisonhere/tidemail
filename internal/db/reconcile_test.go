@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -269,4 +270,48 @@ func messageIDForUID(t *testing.T, database *DB, mailboxID int64, uid uint32) in
 		t.Fatal(err)
 	}
 	return id
+}
+
+func TestSetMailboxServerCount(t *testing.T) {
+	database := openReconcileTestDB(t)
+	accountID, err := database.AddAccount("", "Acct", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailboxID, err := database.UpsertMailbox(Mailbox{AccountID: accountID, Name: "INBOX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func() (sql.NullInt64, sql.NullInt64) {
+		t.Helper()
+		var n, at sql.NullInt64
+		if err := database.QueryRow(`SELECT server_count, server_count_at FROM mailboxes WHERE id = ?`, mailboxID).Scan(&n, &at); err != nil {
+			t.Fatal(err)
+		}
+		return n, at
+	}
+	if n, at := read(); n.Valid || at.Valid {
+		t.Fatalf("fresh mailbox has a server count: %v %v", n, at)
+	}
+	at := time.Unix(1_700_000_000, 0)
+	if err := database.SetMailboxServerCount(mailboxID, 0, at); err != nil {
+		t.Fatal(err)
+	}
+	// An empty mailbox is an observation, not an unknown count.
+	if n, got := read(); !n.Valid || n.Int64 != 0 || got.Int64 != at.Unix() {
+		t.Fatalf("empty observation = %v %v", n, got)
+	}
+	if err := database.SetMailboxServerCount(mailboxID, 42, at.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if n, got := read(); n.Int64 != 42 || got.Int64 != at.Add(time.Hour).Unix() {
+		t.Fatalf("updated observation = %v %v", n, got)
+	}
+	// A new UIDVALIDITY empties the cache; the old count no longer applies.
+	if err := database.ResetMailboxCache(mailboxID); err != nil {
+		t.Fatal(err)
+	}
+	if n, got := read(); n.Valid || got.Valid {
+		t.Fatalf("reset kept the server count: %v %v", n, got)
+	}
 }
