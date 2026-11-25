@@ -416,12 +416,16 @@ func (m Model) tideContactsViewEnabled() bool {
 	return m.tideContactsSetting("default_view", "TideContacts") == "TideContacts"
 }
 func (m Model) openTideContactsAdvanced(useDemo bool) tea.Cmd {
+	// Prefer the installed binary on $PATH so the user's current version
+	// launches; fall back to the copy bundled in the plugin directory.
 	path, err := exec.LookPath("tidecontacts")
-	if p, ok := m.plugins.manager.Plugin("tidecontacts"); ok {
-		candidate := filepath.Join(p.Dir, "tidecontacts")
-		if info, e := os.Stat(candidate); e == nil && info.Mode().IsRegular() {
-			path = candidate
-			err = nil
+	if err != nil {
+		if p, ok := m.plugins.manager.Plugin("tidecontacts"); ok {
+			candidate := filepath.Join(p.Dir, "tidecontacts")
+			if info, e := os.Stat(candidate); e == nil && info.Mode().IsRegular() {
+				path = candidate
+				err = nil
+			}
 		}
 	}
 	if err != nil {
