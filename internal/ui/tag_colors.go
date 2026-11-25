@@ -144,7 +144,7 @@ func (m Model) renderTagColors() string {
 		detail := "bg " + string(resolved.bg) + "  fg " + string(resolved.fg) + "  " + source
 		row := text.Render(label) + base.Render(" ") + preview + base.Render(" ")
 		row += muted.Render(truncate(detail, max(1, bodyW-2-lipgloss.Width(row))))
-		lines = append(lines, softRail(chrome, i == e.cursor, chrome.baseBg)+row)
+		lines = append(lines, listRowHit(i, e.cursor, softRail(chrome, i == e.cursor, chrome.baseBg)+row))
 	}
 	pairs := []string{"↑↓", "choose", "b", "background", "f", "foreground", "r", "reset", "esc", "back"}
 	body := lipgloss.NewStyle().Background(chrome.baseBg).Width(winW).Padding(1, 2).Render(strings.Join(lines, "\n"))

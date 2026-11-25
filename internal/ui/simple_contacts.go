@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -326,7 +327,7 @@ func (s *simpleContacts) View(width, height int, styles Styles) string {
 			if i == s.field {
 				rail = "> "
 			}
-			lines = append(lines, rail+fmt.Sprintf("%-14s", labels[i])+in.View())
+			lines = append(lines, markHit(simpleContactFieldHit+strconv.Itoa(i), rail+fmt.Sprintf("%-14s", labels[i])+in.View()))
 		}
 		lines = append(lines, "", "tab next field · enter save · esc cancel")
 	} else {
@@ -355,7 +356,7 @@ func (s *simpleContacts) View(width, height int, styles Styles) string {
 			if c.ReadOnly {
 				label += " [folder · read-only]"
 			}
-			lines = append(lines, truncate(prefix+label+" · "+c.Addr, width))
+			lines = append(lines, listRowHit(i, s.cursor, truncate(prefix+label+" · "+c.Addr, width)))
 		}
 		if len(s.contacts) == 0 {
 			lines = append(lines, "No people yet. Press n to add a person.")

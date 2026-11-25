@@ -658,7 +658,7 @@ func (m Model) renderRGBSliders(cp colorPicker, chrome managerChrome, width int)
 			lipgloss.NewStyle().Foreground(chrome.muted).Render(strings.Repeat("░", barW-filled))
 		label := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Bold(focused).Render(labels[i])
 		value := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Render(padLeft(strconv.Itoa(int(cp.rgb[i])), 3))
-		lines[i] = rail + label + " " + lipgloss.NewStyle().Background(chrome.baseBg).Render(bar) + " " + value
+		lines[i] = markColorFocus(colorPickerFocus{kind: cpFocusRGBSlider, idx: i}, rail+label+" "+lipgloss.NewStyle().Background(chrome.baseBg).Render(bar)+" "+value)
 	}
 	return lines
 }
@@ -730,7 +730,7 @@ func (m Model) renderColorPickerFields(cp colorPicker, chrome managerChrome) []s
 		if focused {
 			lbl = base.Foreground(chrome.text)
 		}
-		return lbl.Render(label+" ") + box
+		return markColorFocus(f, lbl.Render(label+" ")+box)
 	}
 
 	hexRow := field("hex", colorPickerFocus{kind: cpFocusHex}, cpHexW)
@@ -743,3 +743,10 @@ func (m Model) renderColorPickerFields(cp colorPicker, chrome managerChrome) []s
 
 	return []string{hexRow, rgbRow, hslRow}
 }
+
+// markColorFocus marks a color picker control so a click focuses it.
+func markColorFocus(f colorPickerFocus, s string) string {
+	return markHit(colorHitFocus+strconv.Itoa(int(f.kind))+":"+strconv.Itoa(f.idx), s)
+}
+
+const colorHitFocus = "cpfocus:"

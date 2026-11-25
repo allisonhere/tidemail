@@ -1662,9 +1662,24 @@ click-drag text selection and copy keep working untouched. Turn it on to use:
   it, or use `j`/`k` (or the arrows) and `Enter`; `Esc` or a click elsewhere
   closes it. The full command palette is still on `:` / `Ctrl+P`.
 
-Clicks and the wheel do nothing while Settings, the Account Manager, Compose, or
-any other overlay is open. Turning mouse support on trades away your terminal's
-native click-drag text selection while it's enabled.
+Dialogs take mouse input too:
+
+- Click a footer hint such as `y/enter sync` or `esc cancel` to press its key.
+  Click a list row to select it; click it again quickly to choose it. The wheel
+  moves three rows in most lists, including Go to folder, Move to, Schedule send, Outbox,
+  plugin lists, and TideContacts. Help categories are clickable, and the wheel
+  scrolls whichever Help pane is under the pointer.
+- In Settings, click a section or field to focus it. Toggles flip on the first
+  click. Pickers cycle and actions run on a further click. Account and contact
+  form fields, classification fields and choices, and Compose header fields can
+  also be selected by clicking. A second click on a schedule calendar day
+  chooses it. The Compose body still supports caret placement and drag selection.
+- Clicking outside a dialog never closes it or discards work. Use `Esc` or a
+  clickable cancel hint. The theme picker's rows still use the keyboard;
+  its wheel works.
+
+Turning mouse support on trades away your terminal's native click-drag text
+selection while it's enabled.
 
 - Display: theme, icons, support reminder, tag style and colors, message tags (header row, tag names and colors), Needs You and Waiting on Them sidebar rows, date format, mark-read behavior, focus line, show sender, unread-first ordering, actionable links, reading width, browser command, density, show email headers, desktop notifications, mouse support, and quit confirmation. On Linux, a notification for new mail includes **Mark Read**, **Delete**, and **Read** actions. Mark Read and Delete cover every message when more than one arrives at once; Delete uses the normal six-second undo window. Read opens the first message in TideMail. Dismiss the notification to ignore it.
 

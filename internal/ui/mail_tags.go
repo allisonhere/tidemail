@@ -350,7 +350,7 @@ func (m Model) renderMailTagsOverlay() string {
 			chip := chipFor(annotationTag{kind: tagMail, category: label, color: d.Color}, style, tagWide, m.iconsEnabled())
 			chip.ends = m.tagEnds()
 			chip.text = truncate(chip.text, max(1, width-12))
-			lines = append(lines, marker+m.renderChips([]tagChip{chip}, base))
+			lines = append(lines, listRowHit(i, e.cursor, marker+m.renderChips([]tagChip{chip}, base)))
 		}
 		if end < len(definitions) {
 			lines = append(lines, fmt.Sprintf("%d more below", len(definitions)-end))

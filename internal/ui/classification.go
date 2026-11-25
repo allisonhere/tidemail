@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/allisonhere/tidemail/internal/attention"
@@ -263,7 +264,7 @@ func (m Model) renderClassificationOverlay() string {
 		if classificationField(i) == e.field {
 			marker = "› "
 		}
-		lines = append(lines, base.Render(marker+name))
+		lines = append(lines, markHit(classificationFieldHit+strconv.Itoa(i), base.Render(marker+name)))
 	}
 	lines = append(lines, "", base.Bold(true).Render(nameForClassificationField(e.field)+":"))
 	visible := max(1, m.height-23)
@@ -286,7 +287,7 @@ func (m Model) renderClassificationOverlay() string {
 			}
 			label = checked + label
 		}
-		lines = append(lines, base.Render(truncate(marker+label, max(1, width-4))))
+		lines = append(lines, markHit(classificationChoiceHit+strconv.Itoa(i), base.Render(truncate(marker+label, max(1, width-4)))))
 	}
 	if end < len(e.choices) {
 		lines = append(lines, base.Render("… more below"))

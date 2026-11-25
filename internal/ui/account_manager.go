@@ -2051,7 +2051,7 @@ func (am AccountManager) viewList(width, height int, chrome managerChrome, style
 		// the other's servers.
 		acfg, _ := am.configForAccount(acc)
 		isDefault := acfg.ID != "" && acfg.ID == am.defaultConfigID
-		rows = append(rows, am.renderAccountCard(width, acc, selected, chrome, styles, mailboxCounts[acc.ID], acfg, isDefault), blank)
+		rows = append(rows, listRowHit(i, am.cursor, am.renderAccountCard(width, acc, selected, chrome, styles, mailboxCounts[acc.ID], acfg, isDefault)), blank)
 	}
 
 	if len(am.accounts) == 0 {
@@ -2292,7 +2292,7 @@ func (am AccountManager) viewForm(width, height int, chrome managerChrome) strin
 	}
 	addControl := func(field amField, line string) {
 		anchors[field] = viewLineCount(rows)
-		addLine(line)
+		addLine(markHit(accountHitField+strconv.Itoa(int(field)), line))
 	}
 	addSection := func(title string) {
 		if len(rows) > 1 {

@@ -213,7 +213,7 @@ func TestMouseWheelMovesSidebarSelection(t *testing.T) {
 	}
 }
 
-func TestMouseWheelIgnoredWhenOverlayOpen(t *testing.T) {
+func TestMouseWheelOverOverlayLeavesPanes(t *testing.T) {
 	m := messageListTestModel(t, 10)
 	m.overlay = overlaySettings
 	wheel := tea.MouseMsg{X: m.feedsPaneWidth() + 5, Y: messageRowY(m, 0), Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown}

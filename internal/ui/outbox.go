@@ -359,7 +359,7 @@ func (m Model) renderOutbox(width, height int, chrome managerChrome) string {
 			prefix = "> "
 			rowStyle = rowStyle.Background(chrome.highlight).Foreground(chrome.highlightFg)
 		}
-		rows = append(rows, rowStyle.Render(clampView(prefix+unescapeDisplayText(text), width, 1, chrome.baseBg)))
+		rows = append(rows, listRowHit(i, m.outboxCursor, rowStyle.Render(clampView(prefix+unescapeDisplayText(text), width, 1, chrome.baseBg))))
 	}
 	if len(m.outboxItems) == 0 {
 		rows = append(rows, line("No queued or sent messages yet."))

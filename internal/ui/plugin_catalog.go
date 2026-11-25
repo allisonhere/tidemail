@@ -307,7 +307,7 @@ func (m Model) renderPluginCatalog(width int, chrome managerChrome) string {
 		start := clamp(c.cursor-limit/2, 0, len(list)-limit)
 		labelW := max(1, width-4-2)
 		for i := start; i < start+limit; i++ {
-			rows = append(rows, m.catalogRowLine(list[i], i == c.cursor, labelW, chrome))
+			rows = append(rows, listRowHit(i, c.cursor, m.catalogRowLine(list[i], i == c.cursor, labelW, chrome)))
 		}
 		sel := list[clamp(c.cursor, 0, len(list)-1)]
 		rows = append(rows, "")

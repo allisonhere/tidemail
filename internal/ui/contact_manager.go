@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/allisonhere/tidemail/internal/db"
@@ -736,7 +737,7 @@ func (cm ContactManager) viewList(width, height int, chrome managerChrome, style
 			if selected {
 				anchor = i
 			}
-			lines = append(lines, cm.renderContactRow(width, chrome, styles, c, i, selected))
+			lines = append(lines, listRowHit(i, cm.cursor, cm.renderContactRow(width, chrome, styles, c, i, selected)))
 		}
 	}
 	bodyH := max(1, height-4)
@@ -788,24 +789,25 @@ func (cm ContactManager) statusLine(width int, chrome managerChrome) string {
 
 func (cm ContactManager) viewForm(width, height int, chrome managerChrome) string {
 	labelW := clamp(width/5, 8, 14)
-	field := func(lbl string, in textinput.Model, focused bool) string {
+	field := func(lbl string, in textinput.Model, idx int) string {
+		focused := cm.formFocus == idx
 		rowFieldW := max(1, width-2-labelW)
 		control := renderInsetControl(renderTextInput(in, max(1, rowFieldW-4), focused, false, chrome), rowFieldW, 2, chrome)
-		return renderSoftRow(lbl, focused, control, width, labelW, chrome)
+		return markHit(contactHitField+strconv.Itoa(idx), renderSoftRow(lbl, focused, control, width, labelW, chrome))
 	}
 	blank := lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render("")
 	rows := []string{
-		field("Name", cm.nameInput, cm.formFocus == 0),
+		field("Name", cm.nameInput, 0),
 		blank,
-		field("Email", cm.emailInput, cm.formFocus == 1),
+		field("Email", cm.emailInput, 1),
 		blank,
-		field("Phone", cm.phoneInput, cm.formFocus == 2),
+		field("Phone", cm.phoneInput, 2),
 		blank,
-		field("Org", cm.organizationInput, cm.formFocus == 3),
+		field("Org", cm.organizationInput, 3),
 		blank,
-		field("Title", cm.titleInput, cm.formFocus == 4),
+		field("Title", cm.titleInput, 4),
 		blank,
-		field("Note", cm.noteInput, cm.formFocus == 5),
+		field("Note", cm.noteInput, 5),
 	}
 	bodyH := max(1, height-5)
 	anchor := clamp(cm.formFocus*2, 0, max(0, len(rows)-1))

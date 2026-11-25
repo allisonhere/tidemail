@@ -2032,7 +2032,7 @@ func (s Settings) viewSectionsPane(width, height int, chrome managerChrome) stri
 		if i > 0 {
 			rows = append(rows, blank)
 		}
-		rows = append(rows, s.renderSectionNavRow(width, label, subtitle, selected, s.focusedPane == settingsPaneSidebar, chrome))
+		rows = append(rows, markHit(settingsHitSection+strconv.Itoa(i), s.renderSectionNavRow(width, label, subtitle, selected, s.focusedPane == settingsPaneSidebar, chrome)))
 	}
 	body := lipgloss.JoinVertical(lipgloss.Left, rows...)
 	section := clampView(body, width, height, chrome.baseBg)
@@ -2509,6 +2509,9 @@ type settingsFormBuilder struct {
 	ind        lipgloss.Style
 	blank      string
 	body       settingsSectionBody
+	// nextHit marks the next line added (the anchored field's row) for
+	// mouse clicks; see markAnchor.
+	nextHit string
 }
 
 func newSettingsFormBuilder(s Settings, width int, chrome managerChrome) settingsFormBuilder {
@@ -2528,7 +2531,12 @@ func newSettingsFormBuilder(s Settings, width int, chrome managerChrome) setting
 }
 
 func (b *settingsFormBuilder) addLine(line string) {
-	b.body.lines = append(b.body.lines, b.ind.Render(line))
+	line = b.ind.Render(line)
+	if b.nextHit != "" {
+		line = markHit(b.nextHit, line)
+		b.nextHit = ""
+	}
+	b.body.lines = append(b.body.lines, line)
 }
 
 func (b *settingsFormBuilder) addHint(text string) {
@@ -2552,11 +2560,21 @@ func (b *settingsFormBuilder) addFieldHintMarked(field settingsField, text, mark
 }
 
 func (b *settingsFormBuilder) addBlank() {
+	b.nextHit = ""
 	b.body.lines = append(b.body.lines, b.blank)
 }
 
+// markAnchor records where field's row starts and marks that row so a click
+// focuses the field.
 func (b *settingsFormBuilder) markAnchor(field settingsField) {
+	b.markAnchorKind(field, settingsHitField)
+}
+
+// markAnchorKind is markAnchor for a row whose click also acts: a toggle row
+// flips on the first click.
+func (b *settingsFormBuilder) markAnchorKind(field settingsField, kind string) {
 	b.body.anchors[field] = len(b.body.lines)
+	b.nextHit = kind + strconv.Itoa(int(field))
 }
 
 func (b *settingsFormBuilder) addBackLink() {
@@ -2578,7 +2596,7 @@ func (b *settingsFormBuilder) addControl(label string, field settingsField, cont
 
 func (b *settingsFormBuilder) addToggle(label string, on bool, field settingsField) {
 	focused := b.s.focusedField == field
-	b.markAnchor(field)
+	b.markAnchorKind(field, settingsHitToggle)
 	b.addLine(b.s.renderToggle(label, on, focused, b.width, b.chrome))
 	if hint := b.s.fieldHint(field); hint != "" {
 		b.addFieldHint(field, hint)

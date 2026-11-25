@@ -326,7 +326,12 @@ type Model struct {
 	themePicker    tideui.ThemePicker
 	// composeBackdrop owns display-keyed render stages behind compact compose.
 	// Pointer-owned so the render-time cache survives Model's value receivers.
-	composeBackdrop         *composeBackdropCache
+	composeBackdrop *composeBackdropCache
+	// overlayHits maps clickable pieces of the open overlay to screen cells;
+	// refreshed by every renderOverlay (see overlay_hits.go).
+	overlayHits *overlayHitMap
+	// overlayClick is the last click on an overlay list row (double-click).
+	overlayClick            overlayClickState
 	composeDisplayRevision  uint64
 	readerPanes             *readerPaneCache
 	pendingReads            map[int64]pendingRead
@@ -539,6 +544,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		omarchyWatchGeneration: 1,
 		styles:                 BuildStyles(merged, cfg.Display.Density, cfg.Display.PaneCorners),
 		composeBackdrop:        &composeBackdropCache{},
+		overlayHits:            &overlayHitMap{},
 		readerPanes:            &readerPaneCache{},
 		bodyCache:              newBoundedCache[bodyCacheKey, messageRenderResult](defaultBodyCacheLimit),
 		viewportCache:          newBoundedCache[viewportCacheKey, viewportContent](defaultViewportCacheLimit),
@@ -746,6 +752,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Defense in depth: the mouse ProgramOption isn't registered at
 			// all when this is off, so no tea.MouseMsg should normally arrive.
 			return m, nil
+		}
+		if m.overlay != overlayNone && m.overlay != overlayContextMenu {
+			if next, cmd, handled := m.handleOverlayMouse(msg, time.Now()); handled {
+				return next, cmd
+			}
 		}
 		if m.overlay == overlayCompose {
 			return m.handleComposeMouse(msg, time.Now())

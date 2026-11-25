@@ -144,7 +144,7 @@ func renderScheduleCalendar(selected time.Time, width int, chrome managerChrome)
 			if sameDay(date, selected) {
 				style = lipgloss.NewStyle().Background(chrome.highlight).Foreground(chrome.highlightFg).Bold(true)
 			}
-			cells.WriteString(style.Render(label))
+			cells.WriteString(markHit(scheduleHitDay+date.Format(time.DateOnly), style.Render(label)))
 			if day < 6 {
 				cells.WriteString(lipgloss.NewStyle().Background(chrome.baseBg).Render("  "))
 			}

@@ -443,7 +443,7 @@ func (m Model) renderMovePicker(width, height int, chrome managerChrome) string 
 			label = e.label + "/"
 		}
 		cell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Render(" " + truncate(label, max(1, labelW-1)))
-		rows = append(rows, softRail(chrome, selected, chrome.baseBg)+padStyled(cell, labelW, chrome.baseBg))
+		rows = append(rows, listRowHit(idx, m.movePicker.cursor, softRail(chrome, selected, chrome.baseBg)+padStyled(cell, labelW, chrome.baseBg)))
 	}
 	for len(rows) < listH {
 		rows = append(rows, lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(""))

@@ -149,7 +149,7 @@ func (m Model) renderSpellDictionary(width int, chrome managerChrome) string {
 		for i := start; i < start+limit; i++ {
 			selected := i == d.cursor && !d.adding
 			label := base.Foreground(chrome.text).Render(" " + truncate(d.words[i], max(1, labelW-1)))
-			rows = append(rows, softRail(chrome, selected, chrome.baseBg)+padStyled(label, labelW, chrome.baseBg))
+			rows = append(rows, listRowHit(i, d.cursor, softRail(chrome, selected, chrome.baseBg)+padStyled(label, labelW, chrome.baseBg)))
 		}
 	}
 	if d.message != "" {

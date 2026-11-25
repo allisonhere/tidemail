@@ -559,7 +559,7 @@ func (m Model) filterListRows(width int, chrome managerChrome) []string {
 			fg = chrome.muted // dim disabled rules; the ○ glyph also signals off
 		}
 		cell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(fg).Render(" " + truncate(mark+scope+" "+ruleLabel(rec), max(1, labelW-1)))
-		rows = append(rows, softRail(chrome, selected, chrome.baseBg)+padStyled(cell, labelW, chrome.baseBg))
+		rows = append(rows, listRowHit(i, m.filterManager.cursor, softRail(chrome, selected, chrome.baseBg)+padStyled(cell, labelW, chrome.baseBg)))
 	}
 	return rows
 }
@@ -575,7 +575,7 @@ func (m Model) filterAccountRows(width int, chrome managerChrome) []string {
 	for i, label := range labels {
 		selected := i == m.filterManager.acctCursor
 		cell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Render(" " + truncate("Apply to: "+label, max(1, labelW-1)))
-		rows = append(rows, softRail(chrome, selected, chrome.baseBg)+padStyled(cell, labelW, chrome.baseBg))
+		rows = append(rows, listRowHit(i, m.filterManager.acctCursor, softRail(chrome, selected, chrome.baseBg)+padStyled(cell, labelW, chrome.baseBg)))
 	}
 	return rows
 }

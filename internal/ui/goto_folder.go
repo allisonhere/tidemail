@@ -152,7 +152,7 @@ func (m Model) renderGotoFolder(width, height int, chrome managerChrome) string 
 	rows := make([]string, 0, listH)
 	for i := start; i < end; i++ {
 		cell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.text).Render(" " + truncate(m.gotoFolder.matches[i].label, max(1, labelW-1)))
-		rows = append(rows, softRail(chrome, i == m.gotoFolder.cursor, chrome.baseBg)+padStyled(cell, labelW, chrome.baseBg))
+		rows = append(rows, listRowHit(i, m.gotoFolder.cursor, softRail(chrome, i == m.gotoFolder.cursor, chrome.baseBg)+padStyled(cell, labelW, chrome.baseBg)))
 	}
 	if len(m.gotoFolder.matches) == 0 {
 		note := "no folder matches"

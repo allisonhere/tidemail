@@ -515,9 +515,9 @@ func (m Model) renderSnoozePicker() string {
 	labelW := 18
 	for i, preset := range p.presets {
 		row := padRight(preset.label, labelW) + "  " + wakeLabel(preset.at, now)
-		lines = append(lines, softRail(chrome, i == p.cursor, chrome.baseBg)+text.Render(truncate(row, bodyW-2)))
+		lines = append(lines, listRowHit(i, p.cursor, softRail(chrome, i == p.cursor, chrome.baseBg)+text.Render(truncate(row, bodyW-2))))
 	}
-	lines = append(lines, softRail(chrome, p.cursor == len(p.presets), chrome.baseBg)+text.Render("Pick date/time"))
+	lines = append(lines, listRowHit(len(p.presets), p.cursor, softRail(chrome, p.cursor == len(p.presets), chrome.baseBg)+text.Render("Pick date/time")))
 	pairs := []string{"↑↓", "choose", "enter", "snooze", "esc", "cancel"}
 	if p.custom {
 		in := p.input

@@ -30,6 +30,9 @@ func (m Model) composeBodyRect() (x, y, w, h int, ok bool) {
 	if c.picker.active || c.tmplOpen {
 		return 0, 0, 0, 0, false
 	}
+	if x, y, w, h, ok := m.composeBodyRectFromHits(); ok {
+		return x, y, w, h, true
+	}
 	winW, winH := c.overlayDimensions(m.width, m.height)
 	_, bodyW, bodyH, _ := c.composeLayout(winW, winH, m.styles)
 	_, bodyTop := c.viewWithBodyTop(winW, winH, m.styles)
@@ -45,6 +48,33 @@ func (m Model) composeBodyRect() (x, y, w, h int, ok bool) {
 	}
 	// The body is inset 2 cells from the panel edge (bodyRow's padding).
 	return boxX + 1 + 2, boxY + 1 + bodyTop, bodyW, bodyH, true
+}
+
+// composeHitBody marks each line of the compose body editor.
+const composeHitBody = "cbody"
+
+// composeBodyRectFromHits reads the body editor's rectangle from the hit map
+// the last View recorded, so a mouse event (a drag sends many) costs a scan of
+// a few dozen hits instead of rendering the whole compose view again.
+func (m Model) composeBodyRectFromHits() (x, y, w, h int, ok bool) {
+	hm := m.overlayHits
+	if hm == nil || hm.overlay != overlayCompose || hm.width != m.width || hm.height != m.height {
+		return 0, 0, 0, 0, false
+	}
+	top, bottom := -1, -1
+	for _, hit := range hm.hits {
+		if hit.id != composeHitBody {
+			continue
+		}
+		if top < 0 {
+			top, x, w = hit.row, hit.x0, hit.x1-hit.x0
+		}
+		bottom = hit.row
+	}
+	if top < 0 {
+		return 0, 0, 0, 0, false
+	}
+	return hm.originX + x, hm.originY + top, w, bottom - top + 1, true
 }
 
 // focusBodyField moves compose focus to the message body, as Tab would.

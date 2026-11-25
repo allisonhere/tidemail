@@ -218,7 +218,7 @@ func (m Model) renderSaveAttachPicker(width, height int, chrome managerChrome) s
 		}
 		cell := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(fg).Render(" " + text)
 		cell = truncateStyled(cell, labelW, chrome.baseBg)
-		rows = append(rows, softRail(chrome, selected, chrome.baseBg)+padStyled(cell, labelW, chrome.baseBg))
+		rows = append(rows, listRowHit(idx, m.saveAttachPicker.cursor, softRail(chrome, selected, chrome.baseBg)+padStyled(cell, labelW, chrome.baseBg)))
 	}
 
 	// Fill remaining rows to maintain consistent height

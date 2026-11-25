@@ -727,7 +727,7 @@ func (m Model) renderPluginPicker(width, height int, chrome managerChrome) strin
 		if desc := sanitizePluginLine(p.Manifest.Description); desc != "" {
 			cell += lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render("  " + truncate(desc, max(1, labelW-nameW-3)))
 		}
-		rows = append(rows, softRail(chrome, i == m.plugins.pickerCursor, chrome.baseBg)+padStyled(cell, labelW, chrome.baseBg))
+		rows = append(rows, listRowHit(i, m.plugins.pickerCursor, softRail(chrome, i == m.plugins.pickerCursor, chrome.baseBg)+padStyled(cell, labelW, chrome.baseBg)))
 	}
 	for len(rows) < height-1 {
 		rows = append(rows, lipgloss.NewStyle().Background(chrome.baseBg).Width(width).Render(""))
@@ -752,6 +752,9 @@ func (m Model) pluginListLines(width int, chrome managerChrome) ([]string, []int
 	blankRail := softRail(chrome, false, chrome.baseBg)
 
 	var lines []string
+	// railEntry is the plugin entry index the next railed add draws, so its
+	// first line can be marked for clicks.
+	railEntry := -1
 	add := func(style lipgloss.Style, s string, indent bool, rail string) {
 		prefix := ""
 		w := width
@@ -764,7 +767,11 @@ func (m Model) pluginListLines(width int, chrome managerChrome) ([]string, []int
 			if i == 0 && rail != "" {
 				r = rail
 			}
-			lines = append(lines, r+style.Render(prefix+part))
+			line := r + style.Render(prefix+part)
+			if i == 0 && rail != "" && railEntry >= 0 {
+				line = listRowHit(railEntry, m.plugins.listCursor, line)
+			}
+			lines = append(lines, line)
 		}
 	}
 	blank := func() { lines = append(lines, "") }
@@ -778,7 +785,10 @@ func (m Model) pluginListLines(width int, chrome managerChrome) ([]string, []int
 
 	entries := m.pluginListEntries()
 	starts := make([]int, len(entries))
-	railFor := func(i int) string { return softRail(chrome, i == m.plugins.listCursor, chrome.baseBg) }
+	railFor := func(i int) string {
+		railEntry = i
+		return softRail(chrome, i == m.plugins.listCursor, chrome.baseBg)
+	}
 	countLine := func(n int64) {
 		if m.plugins.countsLoaded {
 			add(muted, fmt.Sprintf("Stored tags  %d", n), true, "")

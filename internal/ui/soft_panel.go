@@ -201,7 +201,11 @@ func renderSoftHints(width int, chrome managerChrome, pairs ...string) string {
 	gap := lipgloss.NewStyle().Background(chrome.baseBg).Render("   ")
 	parts := make([]string, 0, len(pairs)/2)
 	for i := 0; i+1 < len(pairs); i += 2 {
-		parts = append(parts, key.Render(strings.ToLower(pairs[i]))+label.Render(" "+strings.ToLower(pairs[i+1])))
+		part := key.Render(strings.ToLower(pairs[i])) + label.Render(" "+strings.ToLower(pairs[i+1]))
+		if token, ok := hintClickKey(pairs[i]); ok {
+			part = markHit("hint:"+token, part)
+		}
+		parts = append(parts, part)
 	}
 	line := lipgloss.NewStyle().Background(chrome.baseBg).Render("  ") + strings.Join(parts, gap)
 	return padStyled(line, width, chrome.baseBg)

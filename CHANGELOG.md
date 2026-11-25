@@ -6,6 +6,13 @@ All notable changes to TideMail are documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- Opt-in mouse support now works in dialogs: click footer actions, select and
+  open list rows, scroll lists and Help, and focus Settings, account, contact,
+  classification, schedule, and Compose controls. Clicks outside a dialog do
+  not dismiss it.
+
 ### Added
 
 - Fuzzy folder filter, suggested by @drjackyl. `G` opens **Go to folder**: type

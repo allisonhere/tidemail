@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -357,7 +358,10 @@ func helpSections(keys KeyMap) []helpSection {
 				{"double-click", "expand/collapse a conversation parent; open a child, single message or draft; on a sidebar row, expand/collapse or sync like enter"},
 				{"scroll wheel", "move three rows; reader clears link selection; keep pane focus"},
 				{"right-click", "select the row and open a menu of its actions (folder, account, or message); enter or click runs one, esc closes"},
-				{"overlays", "mouse input is ignored while Settings, Accounts, Compose, or any other overlay is open"},
+				{"modal hints", "click a footer hint (y confirm, esc cancel, ^s save) to press its key"},
+				{"modal lists", "click a row to select it, click again to choose it; the wheel moves three rows"},
+				{"settings", "click a section or field; toggles flip at once, pickers cycle and actions run on a second click"},
+				{"modals", "clicks outside a modal never close it; esc does"},
 			},
 		},
 		{
@@ -482,6 +486,7 @@ func renderHelpCategories(sections []helpSection, cat int, focused bool, width, 
 	rows := make([]string, 0, height)
 	for i := start; i < len(sections) && len(rows) < height; i++ {
 		label := truncate(sections[i].name, max(1, width-4))
+		n := len(rows)
 		switch {
 		case i == cat && focused:
 			rows = append(rows, padStyled(base.Foreground(chrome.accent).Bold(true).Render(" ▸ "+label), width, chrome.baseBg))
@@ -490,6 +495,7 @@ func renderHelpCategories(sections []helpSection, cat int, focused bool, width, 
 		default:
 			rows = append(rows, padStyled(base.Foreground(chrome.muted).Render("   "+label), width, chrome.baseBg))
 		}
+		rows[n] = markHit("helpcat:"+strconv.Itoa(i), rows[n])
 	}
 	for len(rows) < height {
 		rows = append(rows, padStyled(base.Render(""), width, chrome.baseBg))

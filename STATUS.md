@@ -221,7 +221,10 @@ Unreleased.
 - **Mouse support** (opt-in, Settings → General): click to select rows/focus panes or select LINKS entries (clicks never open reader links),
   double-click to open a message, scroll wheel over the sidebar, list, and reading pane,
   right-click for a context menu of that row's actions (folder, account, or message), and click the search row to resume
-  editing. Overlays and the status line are not yet clickable; no drag support.
+  editing. Dialog footer hints, list rows, Help categories, Settings controls,
+  account and contact fields, the schedule calendar, classification choices,
+  and Compose fields are clickable. The wheel scrolls most dialog lists. A
+  click outside a dialog does not dismiss it. The status line is not clickable.
 - **Update checker**: GitHub-releases check with checksum-verified self-update,
   user-local install fallback, and an in-app progress popup. `U` offers an
   update whatever way TideMail was installed: it installs in place where it can,

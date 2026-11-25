@@ -19,6 +19,8 @@ func (m Model) renderOverlay(base string) string {
 		return m.renderContextMenu(base)
 	}
 	var box string
+	hitMarking = m.cfg.Display.MouseSupport
+	defer func() { hitMarking = false }()
 
 	switch m.overlay {
 	case overlayQuitConfirm:
@@ -266,7 +268,7 @@ func (m Model) renderOverlay(base string) string {
 		}
 		left := renderHelpCategories(m.helpSectionsFiltered(), m.helpCat, !m.helpRight, leftW, paneH, chrome)
 		divider := strings.TrimSuffix(strings.Repeat(lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render("│")+"\n", paneH), "\n")
-		panes := lipgloss.JoinHorizontal(lipgloss.Top, left, divider, m.helpVP.View())
+		panes := lipgloss.JoinHorizontal(lipgloss.Top, left, divider, markHit("helppane", m.helpVP.View()))
 		inner := panes + "\n\n" + footer
 		inner = clampView(inner, winW, strings.Count(inner, "\n")+1, chrome.baseBg)
 		box = renderSoftPanelBox(inner, winW, "tidemail", "help", chrome)
@@ -331,7 +333,13 @@ func (m Model) renderOverlay(base string) string {
 		} else {
 			picker := m.schedulePicker
 			picker.SetSize(max(1, winW-4), 4)
-			body = lipgloss.NewStyle().Background(chrome.baseBg).Width(winW).Padding(1, 2).Render(picker.View())
+			rows := strings.Split(strings.TrimSuffix(picker.View(), "\n"), "\n")
+			for i := range rows {
+				if i < len(picker.Items()) {
+					rows[i] = listRowHit(i, picker.Index(), rows[i])
+				}
+			}
+			body = lipgloss.NewStyle().Background(chrome.baseBg).Width(winW).Padding(1, 2).Render(strings.Join(rows, "\n"))
 			hints = renderSoftHints(winW, chrome, "↑↓", "choose time", "enter", "continue", "esc", "cancel")
 		}
 		inner := lipgloss.JoinVertical(lipgloss.Left, body, hints)
@@ -339,9 +347,14 @@ func (m Model) renderOverlay(base string) string {
 		box = renderSoftPanelBox(inner, winW, "tidemail", "schedule send", chrome)
 	}
 
+	box, hits := extractHits(box)
+	boxW, boxH := boxSize(box)
 	if m.overlay == overlayCompose && m.compose.maximized {
+		m.overlayHits.record(m.overlay, m.width, m.height, hits, 0, 0, boxW, boxH)
 		return clampView(box, m.width, m.height, m.styles.Theme.Bg)
 	}
+	// Same centering as overlayOnBase and the compose composite.
+	m.overlayHits.record(m.overlay, m.width, m.height, hits, max(0, (m.width-boxW)/2), max(0, (m.height-boxH)/2), boxW, boxH)
 	if m.overlay == overlayCompose && m.composeBackdrop != nil {
 		return m.composeBackdrop.composite.View(base, box, m.width, m.height, m.styles.Theme.Bg, m.cfg.Display.Shadow)
 	}
@@ -398,7 +411,7 @@ func (m Model) renderCommandPalette(width int, chrome managerChrome) string {
 			}
 			labelW := max(1, width-4-2) // minus the 2-cell rail
 			label := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(fg).Render(" " + truncate(item.label, max(1, labelW-1)))
-			rows = append(rows, softRail(chrome, selected, chrome.baseBg)+padStyled(label, labelW, chrome.baseBg))
+			rows = append(rows, listRowHit(i, m.commandCursor, softRail(chrome, selected, chrome.baseBg)+padStyled(label, labelW, chrome.baseBg)))
 		}
 	}
 	body := lipgloss.NewStyle().

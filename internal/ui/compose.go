@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1391,7 +1392,7 @@ func (c ComposeModel) renderSuggestionRows(width, labelW int, chrome managerChro
 		}
 		label := lipgloss.NewStyle().Background(bg).Foreground(fg).
 			Render(indent + " " + truncate(s, max(1, rowW-labelW-2)))
-		rows = append(rows, softRail(chrome, selected, bg)+padStyled(label, rowW, bg))
+		rows = append(rows, listRowHit(i, c.suggestCursor, softRail(chrome, selected, bg)+padStyled(label, rowW, bg)))
 	}
 	return rows
 }
@@ -1442,7 +1443,7 @@ func (c ComposeModel) renderSenderRows(width, labelW int, chrome managerChrome) 
 		}
 		label := lipgloss.NewStyle().Background(bg).Foreground(fg).
 			Render(indent + "  " + truncate(senderOptionLabel(account), max(1, rowW-labelW-4)))
-		rows = append(rows, softRail(chrome, selected, bg)+padStyled(label, rowW, bg))
+		rows = append(rows, listRowHit(i, c.senderCursor, softRail(chrome, selected, bg)+padStyled(label, rowW, bg)))
 	}
 	return rows
 }
@@ -1586,7 +1587,7 @@ func (c ComposeModel) viewWithBodyTop(width, height int, styles Styles) (string,
 		focused := c.focusedField == field
 		rowFieldW, textW := composeFieldWidths(width)
 		control := renderInsetControl(renderTextInput(ti, textW, focused, false, chrome), rowFieldW, 2, chrome)
-		return renderSoftRow(label, focused, control, width, labelW, chrome)
+		return markHit(composeHitField+strconv.Itoa(int(field)), renderSoftRow(label, focused, control, width, labelW, chrome))
 	}
 
 	c.bodyInput.SetSize(bodyInputW, bodyH)
@@ -1639,7 +1640,7 @@ func (c ComposeModel) viewWithBodyTop(width, height int, styles Styles) (string,
 	for _, line := range strings.Split(raw, "\n") {
 		// fillLineBg re-applies bodyBg after every reset so the cursor/selection
 		// styles (whose trailing \033[0m clears the background) don't punch holes.
-		lines = append(lines, pad+fillLineBg(line, bodyInputW, bgWrap)+pad)
+		lines = append(lines, pad+markHit(composeHitBody, fillLineBg(line, bodyInputW, bgWrap))+pad)
 	}
 	bodyRow := strings.Join(lines, "\n")
 
@@ -1660,7 +1661,11 @@ func (c ComposeModel) viewWithBodyTop(width, height int, styles Styles) (string,
 		fromText := lipgloss.NewStyle().Background(chrome.baseBg).Foreground(chrome.muted).Render(fromLabel)
 		fromControl = renderInsetControl(fromText, fromW, 2, chrome)
 	}
-	rows = append(rows, renderSoftRow("From", fromFocused, fromControl, width, labelW, chrome))
+	fromRow := renderSoftRow("From", fromFocused, fromControl, width, labelW, chrome)
+	if len(c.accounts) > 1 {
+		fromRow = markHit(composeHitField+strconv.Itoa(int(composeFieldFrom)), fromRow)
+	}
+	rows = append(rows, fromRow)
 	if c.senderPickerOpen {
 		rows = append(rows, c.renderSenderRows(width, labelW, chrome)...)
 	}
@@ -1788,7 +1793,7 @@ func (c ComposeModel) pickerView(width, height int, chrome managerChrome) string
 		} else {
 			content = labelStyle.Render(" " + truncate(label, max(1, contentW-1)))
 		}
-		lines = append(lines, softRail(chrome, focused, chrome.baseBg)+padStyled(content, contentW, chrome.baseBg))
+		lines = append(lines, listRowHit(idx, c.picker.cursor, softRail(chrome, focused, chrome.baseBg)+padStyled(content, contentW, chrome.baseBg)))
 	}
 
 	// Fill remaining space
