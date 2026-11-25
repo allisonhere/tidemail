@@ -224,7 +224,8 @@ Unreleased.
   editing. Dialog footer hints, list rows, Help categories, Settings controls,
   account and contact fields, the schedule calendar, classification choices,
   and Compose fields are clickable. The wheel scrolls most dialog lists. A
-  click outside a dialog does not dismiss it. The status line is not clickable.
+  click outside a dialog does not dismiss it. Action hints on the bottom status
+  bar are clickable; navigation hints and plain status text are not.
 - **Update checker**: GitHub-releases check with checksum-verified self-update,
   user-local install fallback, and an in-app progress popup. `U` offers an
   update whatever way TideMail was installed: it installs in place where it can,

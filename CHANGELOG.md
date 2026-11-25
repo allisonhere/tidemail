@@ -8,6 +8,9 @@ All notable changes to TideMail are documented in this file.
 
 ### Changed
 
+- The bottom status bar's action hints are clickable when Mouse support is on.
+  Clicking a hint presses its displayed shortcut, including uppercase keys;
+  plain status text and navigation hints remain inert.
 - Opt-in mouse support now works in dialogs: click footer actions, select and
   open list rows, scroll lists and Help, and focus Settings, account, contact,
   classification, schedule, and Compose controls. Clicks outside a dialog do

@@ -1678,6 +1678,12 @@ Dialogs take mouse input too:
   clickable cancel hint. The theme picker's rows still use the keyboard;
   its wheel works.
 
+The bottom **status bar** accepts clicks on action hints such as `? help`,
+`S settings`, `U update`, and `ctrl+z undo`. Clicking one presses its displayed
+key, including uppercase letters. The focused pane's action hints work the
+same way. Navigation hints such as `↑/↓ move` and ordinary status text do not
+act on clicks.
+
 Turning mouse support on trades away your terminal's native click-drag text
 selection while it's enabled.
 

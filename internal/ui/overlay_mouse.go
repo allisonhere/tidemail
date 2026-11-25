@@ -16,7 +16,7 @@ import (
 // the hint's alternatives ("y/enter" -> "y", "esc/?/q" -> "esc"). Hints that
 // only describe navigation (arrows, ranges) are not clickable.
 func hintClickKey(keys string) (string, bool) {
-	token := strings.ToLower(strings.TrimSpace(keys))
+	token := strings.TrimSpace(keys)
 	if i := strings.Index(token, "/"); i > 0 {
 		token = token[:i]
 	}
@@ -31,7 +31,8 @@ func keyMsgForHint(token string) (tea.KeyMsg, bool) {
 	if strings.ContainsAny(token, "↑↓←→‹›") || token == "" {
 		return tea.KeyMsg{}, false
 	}
-	switch token {
+	lower := strings.ToLower(token)
+	switch lower {
 	case "esc":
 		return tea.KeyMsg{Type: tea.KeyEsc}, true
 	case "enter", "⏎", "return":
@@ -49,10 +50,10 @@ func keyMsgForHint(token string) (tea.KeyMsg, bool) {
 	case "pgup", "pgdown", "home", "end", "j", "k", "h", "l":
 		return tea.KeyMsg{}, false // navigation, not an action
 	}
-	if rest, ok := strings.CutPrefix(token, "^"); ok {
-		token = "ctrl+" + rest
+	if rest, ok := strings.CutPrefix(lower, "^"); ok {
+		lower = "ctrl+" + rest
 	}
-	if rest, ok := strings.CutPrefix(token, "ctrl+"); ok && len([]rune(rest)) == 1 {
+	if rest, ok := strings.CutPrefix(lower, "ctrl+"); ok && len([]rune(rest)) == 1 {
 		r := []rune(rest)[0]
 		if r >= 'a' && r <= 'z' {
 			return tea.KeyMsg{Type: tea.KeyCtrlA + tea.KeyType(r-'a')}, true

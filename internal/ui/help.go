@@ -362,6 +362,7 @@ func helpSections(keys KeyMap) []helpSection {
 				{"modal lists", "click a row to select it, click again to choose it; the wheel moves three rows"},
 				{"settings", "click a section or field; toggles flip at once, pickers cycle and actions run on a second click"},
 				{"modals", "clicks outside a modal never close it; esc does"},
+				{"status bar", "click a bottom-bar action hint (? help, S settings, U update, ctrl+z undo) to press its key"},
 			},
 		},
 		{

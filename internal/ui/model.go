@@ -331,7 +331,9 @@ type Model struct {
 	// refreshed by every renderOverlay (see overlay_hits.go).
 	overlayHits *overlayHitMap
 	// overlayClick is the last click on an overlay list row (double-click).
-	overlayClick            overlayClickState
+	overlayClick overlayClickState
+	// statusHits maps rendered action hints on the bottom bar to screen cells.
+	statusHits              *overlayHitMap
 	composeDisplayRevision  uint64
 	readerPanes             *readerPaneCache
 	pendingReads            map[int64]pendingRead
@@ -545,6 +547,7 @@ func NewModel(database *db.DB, cfg config.Config, currentVersion string, preview
 		styles:                 BuildStyles(merged, cfg.Display.Density, cfg.Display.PaneCorners),
 		composeBackdrop:        &composeBackdropCache{},
 		overlayHits:            &overlayHitMap{},
+		statusHits:             &overlayHitMap{},
 		readerPanes:            &readerPaneCache{},
 		bodyCache:              newBoundedCache[bodyCacheKey, messageRenderResult](defaultBodyCacheLimit),
 		viewportCache:          newBoundedCache[viewportCacheKey, viewportContent](defaultViewportCacheLimit),
@@ -3102,27 +3105,21 @@ func (m Model) handlePage(dir int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleMouseClick resolves a left-click's absolute terminal coordinates to
-// whichever pane, row, or link they land on. It recomputes the same layout
-// View() computes on every render — there is no stored per-pane origin
-// anywhere — so this must be kept in sync with View()'s composition by hand.
-// It is reached only when Display.MouseSupport is on and the event is a
-// left-button press (see the tea.MouseMsg case in update).
+// handleMouseClick resolves a left-click to the status bar or main panes.
+// Modal controls are handled earlier using the rendered overlay hit map.
 func (m Model) handleMouseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.overlay == overlayContextMenu {
 		return m.handleContextMenuClick(msg)
 	}
 	if m.overlay != overlayNone {
-		// Phase 1 scope: a click while any overlay (Settings, Account
-		// Manager, confirm dialogs, etc.) is open is a no-op. Clicking
-		// controls inside an overlay is a separate follow-up.
+		// An unhandled click cannot activate the panes or status bar beneath
+		// an overlay.
 		return m, nil
 	}
 
 	target, y, paneTop, ok := m.paneAt(msg.X, msg.Y)
 	if !ok {
-		// The status bar row.
-		return m, nil
+		return m.handleStatusBarClick(msg)
 	}
 	switch target {
 	case paneAccounts:
@@ -4200,7 +4197,7 @@ func (m Model) statusBarKeyHintStrip() string {
 		if keyStr == "" {
 			keyStr = "?"
 		}
-		return m.styles.StatusHint.Render(keyStr + " " + desc)
+		return markHintPairs(m.styles.StatusHint.Render(keyStr+" "+desc), keyStr)
 	}
 	parts := []string{seg(k.Command), seg(k.AccountManager), seg(k.Settings), seg(k.Search), seg(k.Help)}
 	if m.pgpHintApplies() {
@@ -4216,12 +4213,12 @@ func (m Model) statusBarContextHintStrip() string {
 	if m.searchMode && m.searchEditing {
 		return m.statusBarJoin(
 			m.statusBarInlineText(m.styles.StatusBar, "Search"),
-			m.styles.StatusHint.Render("type search  ↑↓ history  tab complete  enter finish  esc exit"),
+			m.styles.StatusHint.Render(markHintText("type search  ↑↓ history  tab complete  enter finish  esc exit")),
 		)
 	}
 	parts := []string{
 		m.statusBarInlineText(m.styles.StatusBar, m.focusedPaneTitle()),
-		m.styles.StatusHint.Render(m.renderPaneHint(m.focused)),
+		m.styles.StatusHint.Render(markHintText(m.renderPaneHint(m.focused))),
 	}
 	if m.focused == paneAccounts {
 		parts = append(parts, m.statusBarKeyHintStrip())
@@ -4299,7 +4296,7 @@ func (m Model) currentContentLink() (string, bool) {
 	return m.contentLinks[m.contentLinkIdx], true
 }
 
-func (m *Model) renderStatusBar() string {
+func (m *Model) renderStatusBarMarked() string {
 	w := m.width
 	updateInfoPart := m.statusUpdateInfoPart()
 	updateActionPart := m.statusUpdateActionPart()
@@ -4317,7 +4314,7 @@ func (m *Model) renderStatusBar() string {
 	}
 	if prompt := m.destructiveUndoPrompt(); prompt != "" {
 		style := m.styles.StatusBar
-		parts := []string{m.gaugePillText(prompt, time.Until(m.latestUndoableDestructive().Deadline))}
+		parts := []string{markHintPairs(m.gaugePillText(prompt, time.Until(m.latestUndoableDestructive().Deadline)), m.keyHint(m.keys.Undo))}
 		if updateInfoPart != "" {
 			parts = append(parts, updateInfoPart)
 		}
@@ -4446,7 +4443,7 @@ func (m Model) outboxTroublePart() string {
 	case t.retrying > 0:
 		// Still in flight and handled automatically: worth saying, not worth
 		// alarming about, and its age is not news.
-		return m.statusBarInlineText(m.styles.StatusBar, fmt.Sprintf("retrying %d in Outbox  %s", t.retrying, key))
+		return markHintPairs(m.statusBarInlineText(m.styles.StatusBar, fmt.Sprintf("retrying %d in Outbox  %s", t.retrying, key)), key)
 	default:
 		return ""
 	}
@@ -4458,7 +4455,7 @@ func (m Model) outboxTroublePart() string {
 			text += " (" + age + ")"
 		}
 	}
-	return m.statusBarInlineText(m.styles.StatusError, text+"  "+key)
+	return markHintPairs(m.statusBarInlineText(m.styles.StatusError, text+"  "+key), key)
 }
 
 // countOf renders "1 failed send" / "2 failed sends".
@@ -4499,7 +4496,7 @@ func (m Model) statusUpdateActionPart() string {
 	// to be applied by hand, which left package-managed users with no signal
 	// that a path existed at all. "update" rather than "install" because the
 	// packaged path hands over a command instead of installing anything.
-	return m.styles.StatusNotice.Render("App update available  U update  i ignore")
+	return m.styles.StatusNotice.Render(markHintText("App update available  U update  i ignore"))
 }
 
 func (m Model) statusMsgCoversUpdateState() bool {

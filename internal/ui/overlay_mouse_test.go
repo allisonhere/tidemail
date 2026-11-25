@@ -93,11 +93,14 @@ func TestOverlayHitsNotRecordedWithMouseOff(t *testing.T) {
 }
 
 func TestHintClickKey(t *testing.T) {
-	cases := map[string]string{"y/enter": "y", "esc/?/q": "esc", "^s": "^s", "enter": "enter", "d": "d"}
+	cases := map[string]string{"y/enter": "y", "esc/?/q": "esc", "^s": "^s", "enter": "enter", "d": "d", "U": "U"}
 	for in, want := range cases {
 		if got, ok := hintClickKey(in); !ok || got != want {
 			t.Errorf("hintClickKey(%q) = %q, %v; want %q", in, got, ok, want)
 		}
+	}
+	if key, ok := keyMsgForHint("U"); !ok || key.String() != "U" {
+		t.Fatalf("uppercase status hint must press U, got %q (ok=%v)", key.String(), ok)
 	}
 	for _, in := range []string{"↑↓", "←→/↑↓", "pgup/pgdown", "j/k"} {
 		if _, ok := hintClickKey(in); ok {

@@ -133,7 +133,8 @@ One inbox, 51 built-in themes in 23 families — Catppuccin, Tokyo Night, Rosé 
   above or below the reader to autoscroll; release retains the highlight and
   another click clears it. In dialogs, click footer hints to run their keys,
   click list rows to select them (click again to choose), scroll lists with the
-  wheel, and click fields in Settings, Accounts, Contacts, and Compose.
+  wheel, and click fields in Settings, Accounts, Contacts, and Compose. Action
+  hints on the bottom status bar are clickable too.
 - **Optional support, kept out of your way.** Open **Settings → Support** to
   visit or copy Tidemail's GitHub Sponsors link; **About** and **Support** are small
   animated scenes. No donation prompts appear during normal email use.
