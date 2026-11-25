@@ -728,8 +728,10 @@ target. Mail text drops bare carriage returns while retaining CRLF line breaks.
 
 Attachment filenames encoded as MIME words are decoded for display, including
 names in older cached mail. Saving attachments with `Ctrl+D` keeps Chinese and
-other Unicode letters, digits, and combining marks. Long filenames are shortened
-at a valid UTF-8 boundary, retaining short extensions.
+other Unicode letters, digits, and combining marks. Only the last part of a name
+that contains a path is used, and leading dots are removed so an attachment
+cannot create a hidden file. Long filenames are shortened at a valid UTF-8
+boundary, retaining short extensions.
 
 `Ctrl+D` opens a folder browser for the open message's attachments, starting in your
 downloads folder: the one set in **Settings → General → Downloads folder**,

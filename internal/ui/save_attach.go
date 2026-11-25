@@ -9,6 +9,7 @@ import (
 
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/db"
+	"github.com/allisonhere/tidemail/internal/filename"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -262,10 +263,7 @@ func saveAttachmentsCmd(database *db.DB, atts []db.Attachment, downloads string)
 // Reserve the destination atomically so existing files and symlinks are never
 // overwritten, including when two saves run concurrently.
 func saveAttachmentFile(dir string, a db.Attachment) error {
-	name := safeFilename(a.Filename)
-	if name == "." || name == ".." {
-		name = "attachment"
-	}
+	name := filename.Safe(a.Filename)
 	ext := filepath.Ext(name)
 	stem := strings.TrimSuffix(name, ext)
 	for n := 0; ; n++ {

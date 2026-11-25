@@ -35,7 +35,9 @@ func TestMessageAttachmentsPermissionsAndCachedExport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"../../report.txt", "report.txt", `C:\private\report.txt`, "empty.txt"} {
+	// A name longer than a filesystem allows (255 bytes) must still export.
+	long := strings.Repeat("a", 300) + ".txt"
+	for _, name := range []string{"../../report.txt", "report.txt", `C:\private\report.txt`, "empty.txt", long} {
 		data := []byte("private attachment")
 		if name == "empty.txt" {
 			data = []byte{}
@@ -86,7 +88,7 @@ func TestMessageAttachmentsPermissionsAndCachedExport(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
 		t.Fatal(err)
 	}
-	if len(envelope.Data.Items) != 4 || strings.Contains(out.String(), "private attachment") || strings.Contains(out.String(), "body_text") {
+	if len(envelope.Data.Items) != 5 || strings.Contains(out.String(), "private attachment") || strings.Contains(out.String(), "body_text") {
 		t.Fatal(out.String())
 	}
 	for _, item := range envelope.Data.Items {
@@ -94,7 +96,7 @@ func TestMessageAttachmentsPermissionsAndCachedExport(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if filepath.Dir(item.Path) != target || len(data) != item.Size {
+		if filepath.Dir(item.Path) != target || len(data) != item.Size || len(filepath.Base(item.Path)) > 100 || !strings.HasSuffix(item.Path, ".txt") {
 			t.Fatal(item)
 		}
 		info, err := os.Stat(item.Path)
@@ -108,6 +110,13 @@ func TestMessageAttachmentsPermissionsAndCachedExport(t *testing.T) {
 	out.Reset()
 	if code := RunMailRead("messages", []string{"read", fmt.Sprint(id), "--agent", "--json"}, &out, &diag); code != 3 {
 		t.Fatalf("attachment permission allowed body read: %d", code)
+	}
+	// Forced agent mode cannot be disabled by --agent=false.
+	attachmentPermissions(t, `'messages.read'`)
+	t.Setenv(agentEnv, "1")
+	out.Reset()
+	if code := RunMailRead("messages", []string{"attachments", fmt.Sprint(id), "--out", target, "--agent=false", "--json"}, &out, &diag); code != 3 {
+		t.Fatalf("forced agent bypass: %d %s", code, &out)
 	}
 }
 

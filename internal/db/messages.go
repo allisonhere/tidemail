@@ -241,7 +241,7 @@ func (db *DB) searchScopedMessages(query string, unreadFirst, unreadOnly bool, l
 	clause := from + joins + ` WHERE ` + strings.Join(where, " AND ")
 	if scope != nil && scope.Dedupe {
 		original := clause
-		clause += " AND messages.id IN (SELECT MIN(messages.id) FROM " + original + " GROUP BY CASE WHEN trim(messages.message_id)='' THEN 'row:'||messages.id ELSE 'mid:'||lower(trim(messages.message_id,'<> ')) END)"
+		clause += " AND messages.id IN (SELECT MIN(messages.id) FROM " + original + " GROUP BY " + messageKeySQL + ")"
 		args = append(args, append([]any(nil), args...)...)
 	}
 	total := 0
@@ -319,8 +319,8 @@ func (db *DB) UpsertMessage(m Message) error {
 	_, err = tx.Exec(`
 		INSERT INTO messages
 			(mailbox_id, uid, message_id, in_reply_to, references_text, subject, from_addr, to_addr, cc_addr,
-			 reply_to, date, body_text, body_html, summary, flags, read, starred, has_attachment, headers)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 reply_to, date, body_text, body_html, summary, flags, read, starred, has_attachment, headers, raw_headers)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(mailbox_id, uid) DO UPDATE SET
 			message_id     = excluded.message_id,
 			in_reply_to    = excluded.in_reply_to,
@@ -336,10 +336,11 @@ func (db *DB) UpsertMessage(m Message) error {
 			flags          = excluded.flags,
 			starred        = excluded.starred,
 			has_attachment = excluded.has_attachment,
-			headers        = CASE WHEN excluded.headers != '' THEN excluded.headers ELSE headers END
+			headers        = CASE WHEN excluded.headers != '' THEN excluded.headers ELSE headers END,
+			raw_headers    = CASE WHEN excluded.raw_headers != '' THEN excluded.raw_headers ELSE raw_headers END
 	`, m.MailboxID, m.UID, m.MessageID, m.InReplyTo, m.References, m.Subject, m.From, m.To, m.CC,
 		m.ReplyTo, dateUnix, m.BodyText, m.BodyHTML, m.Summary,
-		string(flagsJSON), read, starred, att, m.Headers)
+		string(flagsJSON), read, starred, att, m.Headers, m.RawHeaders)
 	if err != nil {
 		return err
 	}
@@ -353,11 +354,6 @@ func (db *DB) UpsertMessage(m Message) error {
 	msgID := m.ID
 	if msgID == 0 {
 		if err := tx.QueryRow(`SELECT id FROM messages WHERE mailbox_id = ? AND uid = ?`, m.MailboxID, m.UID).Scan(&msgID); err != nil {
-			return err
-		}
-	}
-	if m.RawHeaders != "" {
-		if _, err := tx.Exec("UPDATE messages SET raw_headers=? WHERE id=?", m.RawHeaders, msgID); err != nil {
 			return err
 		}
 	}

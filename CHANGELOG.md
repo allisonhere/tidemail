@@ -55,8 +55,9 @@ All notable changes to TideMail are documented in this file.
   without marking the mail read. Under `--agent` it needs the new
   `attachments.read` capability, which is denied by default and not implied by
   `messages.read`. Files are never overwritten (`name-1.ext`), names are
-  reduced to a safe basename, and the fetch is refused unless the stored
-  mailbox UIDVALIDITY matches the server's.
+  cleaned with the same rules as `Ctrl+D` (`Report Q3.PDF` → `report-q3.pdf`,
+  names over 100 bytes shortened), and the fetch is refused unless the stored mailbox UIDVALIDITY
+  matches the server's.
 
 ### Changed
 
@@ -70,6 +71,10 @@ All notable changes to TideMail are documented in this file.
   cache of more than 2000 messages is rebuilt in the background in batches, so
   start-up is not delayed; search results fill in as it proceeds, and a command
   that exits early resumes the work on the next run.
+- Saving attachments with `Ctrl+D` keeps only the last part of a name that
+  contains a path (`../../etc/passwd` → `passwd`, previously `....etcpasswd`)
+  and removes leading dots, so an attachment such as `.zshenv` can no longer
+  create a hidden file.
 
 ## v1.10.2
 

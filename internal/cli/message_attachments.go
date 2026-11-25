@@ -13,11 +13,11 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/allisonhere/tidemail/internal/config"
 	"github.com/allisonhere/tidemail/internal/conversation"
 	"github.com/allisonhere/tidemail/internal/db"
+	"github.com/allisonhere/tidemail/internal/filename"
 	"github.com/allisonhere/tidemail/internal/imap"
 	"github.com/allisonhere/tidemail/internal/mailapp"
 )
@@ -29,7 +29,7 @@ func runMessageAttachments(args []string, out, errOut io.Writer, jsonMode bool) 
 	fs := flag.NewFlagSet("messages attachments", flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	fs.BoolVar(&jsonMode, "json", jsonMode, "Print a versioned JSON envelope")
-	agent := fs.Bool("agent", false, "Enforce the configured agent permissions")
+	agent := fs.Bool("agent", false, "Enforce attachments.read (also forced by "+agentEnv+"=1)")
 	dir := fs.String("out", "", "Required output directory (created if absent)")
 	fs.Usage = func() {
 		w := errOut
@@ -58,7 +58,7 @@ func runMessageAttachments(args []string, out, errOut io.Writer, jsonMode bool) 
 	if err != nil {
 		return fail("config_error", "Cannot load configuration.", 1)
 	}
-	if *agent && !mailapp.Allowed(cfg, "attachments.read") {
+	if agentMode(*agent) && !mailapp.Allowed(cfg, "attachments.read") {
 		return fail("permission_denied", "Agent capability attachments.read is not enabled in agent_permissions.", 3)
 	}
 	database, err := db.Open()
@@ -177,17 +177,8 @@ func fetchMessageAttachments(database *db.DB, cfg config.Config, m db.Message) (
 }
 
 func writeExportAttachment(dir, name string, data []byte) (string, error) {
-	// Treat both slash conventions as separators, even on Unix.
-	name = filepath.Base(strings.ReplaceAll(name, "\\", "/"))
-	name = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return '_'
-		}
-		return r
-	}, name)
-	if name == "" || name == "." || name == ".." || name == "/" {
-		name = "attachment"
-	}
+	// Clean it the way the TUI's Ctrl+D save does.
+	name = filename.Safe(name)
 	for n := 0; ; n++ {
 		candidate := name
 		if n > 0 {
