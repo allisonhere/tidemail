@@ -241,7 +241,7 @@ func (db *DB) searchScopedMessages(query string, unreadFirst, unreadOnly bool, l
 	clause := from + joins + ` WHERE ` + strings.Join(where, " AND ")
 	if scope != nil && scope.Dedupe {
 		original := clause
-		clause += " AND messages.id IN (SELECT MIN(messages.id) FROM " + original + " GROUP BY CASE WHEN trim(messages.message_id,'<> ')='' THEN 'row:'||messages.id ELSE 'mid:'||lower(trim(messages.message_id,'<> ')) END)"
+		clause += " AND messages.id IN (SELECT MIN(messages.id) FROM " + original + " GROUP BY " + messageKeySQL + ")"
 		args = append(args, append([]any(nil), args...)...)
 	}
 	total := 0

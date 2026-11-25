@@ -308,6 +308,12 @@ func TestReadThreadAndDedupe(t *testing.T) {
 		{MailboxID: archive, UID: 5, MessageID: "<later@test>", References: "<reply@test>", Subject: "Follow-up", Date: time.Unix(500, 0)},
 		// Contains "root@test" but is not part of the thread.
 		{MailboxID: archive, UID: 6, MessageID: "<xroot@test>", Subject: "Other", Date: time.Unix(600, 0)},
+		// Non-ASCII capitals: linked case-insensitively, as in the TUI.
+		{MailboxID: archive, UID: 7, MessageID: "<äbc@test>", References: "<later@test>", Subject: "Follow-up", Date: time.Unix(700, 0)},
+		{MailboxID: archive, UID: 8, MessageID: "<deep@test>", InReplyTo: "<ÄBC@test>", Subject: "Follow-up", Date: time.Unix(800, 0)},
+		// A Message-ID with inner whitespace is invalid, so --dedupe keeps both.
+		{MailboxID: archive, UID: 9, MessageID: "<a b@test>", Subject: "Invoice spaced", Date: time.Unix(900, 0)},
+		{MailboxID: archive, UID: 10, MessageID: "<a b@test>", Subject: "Invoice spaced", Date: time.Unix(1000, 0)},
 	} {
 		if err = d.UpsertMessage(m); err != nil {
 			t.Fatal(err)
@@ -344,11 +350,11 @@ func TestReadThreadAndDedupe(t *testing.T) {
 		t.Fatal("headers returned without flag")
 	}
 	thread := run("messages", "thread", fmt.Sprint(root), "--agent", "--json")
-	if thread["total"] != float64(3) || strings.Contains(fmt.Sprint(thread), "private body") || strings.Contains(fmt.Sprint(thread), "xroot") {
+	if thread["total"] != float64(5) || strings.Contains(fmt.Sprint(thread), "private body") || strings.Contains(fmt.Sprint(thread), "xroot") {
 		t.Fatal(thread)
 	}
 	page := run("messages", "search", "invoice", "--dedupe", "--limit", "1", "--offset", "1", "--json")
-	if page["total"] != float64(4) || len(page["items"].([]any)) != 1 {
+	if page["total"] != float64(6) || len(page["items"].([]any)) != 1 {
 		t.Fatal(page)
 	}
 	// Metadata thread access is distinct from read access.

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -9,7 +10,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/db"
 )
 
-// threadQueryChunk bounds the Message-IDs matched by one query.
+// threadQueryChunk bounds the row IDs read back by one query.
 const threadQueryChunk = 100
 
 // cachedThread uses the same header graph as the TUI, across all cached folders.
@@ -34,8 +35,9 @@ func cachedThread(database *db.DB, id int64, metadata func(db.Message) (map[stri
 		seen := map[string]bool{}
 		// Graph construction precedes dedupe so copies can contribute references.
 		for _, m := range thread.Messages {
-			key := conversation.NormalizeMessageID(m.MessageID)
-			if key != "" && seen[key] {
+			// The same rule as --dedupe on list and search.
+			key := db.MessageKey(m)
+			if seen[key] {
 				continue
 			}
 			seen[key] = true
@@ -56,63 +58,81 @@ func cachedThread(database *db.DB, id int64, metadata func(db.Message) (map[stri
 	return nil, fmt.Errorf("thread not found")
 }
 
-// threadCandidates returns the graph headers of the message and of every cached
-// message linked to it through Message-ID, In-Reply-To or References, directly
-// or transitively. Each round asks only for rows that mention a newly found ID,
-// so the whole cache is never loaded. The substring match can include a few
-// unrelated rows; BuildThreads then separates them, so the result is the same
-// as building threads over the whole cache.
+// threadCandidates reads the graph headers of every cached message in one
+// pass and returns the rows in the same connected component as the message.
+// BuildThreads groups messages by exactly these components (Message-ID,
+// In-Reply-To and References links), so threading the returned rows gives the
+// same thread as threading the whole cache. Only one key per row is kept during
+// the scan; full headers are read again for the component alone.
 func threadCandidates(database *db.DB, id int64) ([]db.Message, error) {
-	const columns = "SELECT id, message_id, in_reply_to, references_text, date FROM "
-	byID := map[int64]db.Message{}
-	known := map[string]bool{}
-	var frontier []string
-	add := func(rows []db.Message) {
-		for _, m := range rows {
-			if _, ok := byID[m.ID]; ok {
-				continue
+	parent := map[string]string{}
+	find := func(k string) string {
+		for {
+			p, ok := parent[k]
+			if !ok || p == k {
+				return k
 			}
-			byID[m.ID] = m
-			ids := append(conversation.MessageIDList(m.References), conversation.MessageIDList(m.InReplyTo)...)
-			if own := conversation.NormalizeMessageID(m.MessageID); own != "" {
-				ids = append(ids, own)
+			if gp := parent[p]; gp != "" {
+				parent[k] = gp
 			}
-			for _, key := range ids {
-				bare := strings.Trim(key, "<>")
-				if !known[bare] {
-					known[bare] = true
-					frontier = append(frontier, bare)
-				}
-			}
+			k = p
 		}
 	}
-	first, err := scanThreadRows(database, columns+"messages WHERE id = ?", id)
+	union := func(a, b string) {
+		ra, rb := find(a), find(b)
+		if ra != rb {
+			parent[rb] = ra
+		}
+	}
+	rowKeys := map[int64]string{}
+	rows, err := database.Query("SELECT id, message_id, in_reply_to, references_text FROM messages")
 	if err != nil {
 		return nil, err
 	}
-	add(first)
-	for len(frontier) > 0 {
-		batch := frontier[:min(len(frontier), threadQueryChunk)]
-		frontier = frontier[len(batch):]
-		where := make([]string, len(batch))
-		args := make([]any, len(batch))
-		for i, key := range batch {
-			where[i] = "instr(haystack, ?) > 0"
-			args[i] = key
+	for rows.Next() {
+		var m db.Message
+		if err = rows.Scan(&m.ID, &m.MessageID, &m.InReplyTo, &m.References); err != nil {
+			rows.Close()
+			return nil, err
 		}
-		rows, err := scanThreadRows(database, columns+"(SELECT *, lower(message_id || ' ' || in_reply_to || ' ' || references_text) AS haystack FROM messages) WHERE "+strings.Join(where, " OR "), args...)
+		// The same row key as BuildThreads uses for a message without an ID.
+		key := conversation.NormalizeMessageID(m.MessageID)
+		if key == "" {
+			key = "row:" + strconv.FormatInt(m.ID, 10)
+		}
+		rowKeys[m.ID] = key
+		for _, ref := range append(conversation.MessageIDList(m.References), conversation.MessageIDList(m.InReplyTo)...) {
+			union(key, ref)
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	key, ok := rowKeys[id]
+	if !ok {
+		return nil, nil
+	}
+	root := find(key)
+	var ids []any
+	for rowID, k := range rowKeys {
+		if find(k) == root {
+			ids = append(ids, rowID)
+		}
+	}
+	var messages []db.Message
+	for len(ids) > 0 {
+		batch := ids[:min(len(ids), threadQueryChunk)]
+		ids = ids[len(batch):]
+		found, err := scanThreadRows(database, "SELECT id, message_id, in_reply_to, references_text, date FROM messages WHERE id IN (?"+strings.Repeat(",?", len(batch)-1)+")", batch...)
 		if err != nil {
 			return nil, err
 		}
-		add(rows)
-	}
-	messages := make([]db.Message, 0, len(byID))
-	for _, m := range byID {
-		messages = append(messages, m)
+		messages = append(messages, found...)
 	}
 	return messages, nil
 }
-
 func scanThreadRows(database *db.DB, query string, args ...any) ([]db.Message, error) {
 	rows, err := database.Query(query, args...)
 	if err != nil {
