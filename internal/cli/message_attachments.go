@@ -177,9 +177,8 @@ func fetchMessageAttachments(database *db.DB, cfg config.Config, m db.Message) (
 }
 
 func writeExportAttachment(dir, name string, data []byte) (string, error) {
-	// Keep the last path element under either slash convention, even on Unix,
-	// then clean it the way the TUI's Ctrl+D save does (which caps the length).
-	name = filename.Safe(filepath.Base(strings.ReplaceAll(name, "\\", "/")))
+	// Clean it the way the TUI's Ctrl+D save does.
+	name = filename.Safe(name)
 	for n := 0; ; n++ {
 		candidate := name
 		if n > 0 {

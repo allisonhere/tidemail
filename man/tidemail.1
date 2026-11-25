@@ -376,8 +376,10 @@ configured account and known matching mailbox UIDVALIDITY; sync first if needed.
 .PP
 The required --out directory is created if absent. Files use private permissions
 (0600), safe basenames and numeric suffixes to preserve existing files and symlinks.
-Names are cleaned as the TUI saves them: lowercase, spaces become -, other
-punctuation except . and _ is dropped, and long names are cut to 100 bytes.
+Names are cleaned with the same rules as the TUI's attachment save: only the
+last path element is kept, letters are lowercased, spaces become -, punctuation
+other than ., _ and - is dropped, leading dots are removed, and names over 100
+bytes are shortened, keeping an extension of up to 10 bytes.
 JSON data contains id and items with name, absolute path, size, type and inline.
 No attachments yields an empty items array. Fetch failure writes no files; an
 output error may leave earlier files saved. Repeating export creates more files.

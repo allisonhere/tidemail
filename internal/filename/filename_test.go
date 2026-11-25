@@ -11,7 +11,11 @@ func TestSafeKeepsUnicode(t *testing.T) {
 		"报告 最终版.pdf":       "报告-最终版.pdf",
 		"Élodie CV.docx":   "élodie-cv.docx",
 		"Report 2026.PDF":  "report-2026.pdf",
-		"../../etc/passwd": "....etcpasswd",
+		"../../etc/passwd": "passwd",
+		`C:\Mail\a b.txt`:  "a-b.txt",
+		"dir/":             "attachment",
+		".zshenv":          "zshenv",
+		". - .bashrc":      "bashrc",
 		"..":               "attachment",
 		"?":                "attachment",
 	} {

@@ -9,11 +9,13 @@ import (
 )
 
 // Safe reduces an attachment name to a lowercase filename of letters, digits,
-// '.', '_' and '-', keeping non-ASCII letters, digits and marks. Whitespace runs
-// become one '-'; other characters, including path separators, are dropped.
-// It never returns "", "." or "..", and cuts long names to 100 bytes on a
-// UTF-8 boundary, keeping an extension of up to 10 bytes.
+// '.', '_' and '-', keeping non-ASCII letters, digits and marks. Only the last
+// element of a path is kept, under either slash convention. Whitespace runs
+// become one '-'; other characters are dropped, and so are leading dots, so a
+// name never creates a hidden file. It never returns "", and cuts long names to
+// 100 bytes on a UTF-8 boundary, keeping an extension of up to 10 bytes.
 func Safe(name string) string {
+	name = name[strings.LastIndexAny(name, `/\`)+1:]
 	var b strings.Builder
 	sep := func() {
 		if b.Len() > 0 {
@@ -36,8 +38,8 @@ func Safe(name string) string {
 			b.WriteRune(unicode.ToLower(r))
 		}
 	}
-	s := strings.Trim(b.String(), "-")
-	if s == "" || s == "." || s == ".." {
+	s := strings.TrimRight(strings.TrimLeft(b.String(), ".-"), "-")
+	if s == "" {
 		s = "attachment"
 	}
 	if len(s) > 100 {
