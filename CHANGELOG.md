@@ -61,6 +61,9 @@ All notable changes to TideMail are documented in this file.
 
 ### Changed
 
+- The People view's `A` key (Advanced CRM) now launches the `tidecontacts`
+  installed on your `$PATH`, so the version you installed is the one that runs.
+  The copy in the plugin directory is used only when none is installed.
 - **`messages list` and `messages search` now leave out Trash, Junk, Spam and
   Deleted folders by default** (detected by the `\Trash` / `\Junk` flags, then
   by name). Pass `--include-trash`, or name the folder with `--mailbox`, to get
