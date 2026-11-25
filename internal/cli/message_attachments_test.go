@@ -111,6 +111,13 @@ func TestMessageAttachmentsPermissionsAndCachedExport(t *testing.T) {
 	if code := RunMailRead("messages", []string{"read", fmt.Sprint(id), "--agent", "--json"}, &out, &diag); code != 3 {
 		t.Fatalf("attachment permission allowed body read: %d", code)
 	}
+	// Forced agent mode cannot be disabled by --agent=false.
+	attachmentPermissions(t, `'messages.read'`)
+	t.Setenv(agentEnv, "1")
+	out.Reset()
+	if code := RunMailRead("messages", []string{"attachments", fmt.Sprint(id), "--out", target, "--agent=false", "--json"}, &out, &diag); code != 3 {
+		t.Fatalf("forced agent bypass: %d %s", code, &out)
+	}
 }
 
 func TestMessageAttachmentsArgumentsAndEmpty(t *testing.T) {

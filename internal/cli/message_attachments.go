@@ -29,7 +29,7 @@ func runMessageAttachments(args []string, out, errOut io.Writer, jsonMode bool) 
 	fs := flag.NewFlagSet("messages attachments", flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	fs.BoolVar(&jsonMode, "json", jsonMode, "Print a versioned JSON envelope")
-	agent := fs.Bool("agent", false, "Enforce the configured agent permissions")
+	agent := fs.Bool("agent", false, "Enforce attachments.read (also forced by "+agentEnv+"=1)")
 	dir := fs.String("out", "", "Required output directory (created if absent)")
 	fs.Usage = func() {
 		w := errOut
@@ -58,7 +58,7 @@ func runMessageAttachments(args []string, out, errOut io.Writer, jsonMode bool) 
 	if err != nil {
 		return fail("config_error", "Cannot load configuration.", 1)
 	}
-	if *agent && !mailapp.Allowed(cfg, "attachments.read") {
+	if agentMode(*agent) && !mailapp.Allowed(cfg, "attachments.read") {
 		return fail("permission_denied", "Agent capability attachments.read is not enabled in agent_permissions.", 3)
 	}
 	database, err := db.Open()
