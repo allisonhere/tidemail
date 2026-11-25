@@ -89,6 +89,12 @@ All notable changes to TideMail are documented in this file.
   and removes leading dots, so an attachment such as `.zshenv` can no longer
   create a hidden file.
 
+### Fixed
+
+- A dialog opened over a message containing emoji (such as ☀️ or ▶️) no longer
+  draws with a ragged, shifted border. An emoji cut in half by the dialog's
+  edge is now drawn as a blank cell instead of moving the rest of the row.
+
 ## v1.10.2
 
 ### Added

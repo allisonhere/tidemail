@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
 )
 
 // renderCache is a single-entry, pointer-owned render stage. Keys describe
@@ -89,8 +88,7 @@ func (c *modalComposite) View(base, box string, width, height int, bg lipgloss.C
 		rows := strings.Split(background, "\n")
 		s := modalSlices{rows: strings.Split(clampView(background, width, height, bg), "\n"), left: make([]string, height), right: make([]string, height), foreground: make([]renderCache[string, string], height)}
 		for row := y; row < min(height, y+h); row++ {
-			s.left[row] = ansi.Cut(rows[row], 0, x)
-			s.right[row] = ansi.Cut(rows[row], x+w, width)
+			s.left[row], s.right[row] = cutAroundBox(rows[row], x, x+w, width, bg)
 		}
 		return s
 	})

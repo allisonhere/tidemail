@@ -9,6 +9,7 @@ import (
 	"github.com/allisonhere/tidemail/internal/plugin"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -386,6 +387,39 @@ func TestComposeBodyRectFromHitsMatchesLayout(t *testing.T) {
 		if !ok0 || !ok1 || x0 != x1 || y0 != y1 || w0 != w1 || h0 != h1 {
 			t.Fatalf("maximized=%v: layout rect (%d,%d %dx%d %v) != hit rect (%d,%d %dx%d %v)",
 				maximized, x0, y0, w0, h0, ok0, x1, y1, w1, h1, ok1)
+		}
+	}
+}
+
+// A wide emoji in the base (the reader body) straddling either edge of a modal
+// must not shift the modal's row: the box always starts at its own column.
+func TestOverlayAtWideGlyphStraddlingEdgesKeepsBoxColumn(t *testing.T) {
+	const width, height, boxX = 40, 8, 9
+	box := strings.Join([]string{"[" + strings.Repeat("=", 18) + "]", "[" + strings.Repeat(" ", 18) + "]", "[" + strings.Repeat("=", 18) + "]"}, "\n")
+	boxEnd := boxX + 20
+	var base []string
+	for shift := 0; shift < height; shift++ {
+		// Moves ☀️ across the left edge and 🟢 across the right edge.
+		base = append(base, strings.Repeat("a", 5+shift)+"☀️"+strings.Repeat("b", 16)+"🟢"+strings.Repeat("c", 20))
+	}
+	for _, overlayY := range []int{0, 3, 5} {
+		out := overlayAt(strings.Join(base, "\n"), box, boxX, overlayY, width, height, lipgloss.Color("#000000"), true)
+		for i, line := range strings.Split(out, "\n") {
+			if i < overlayY || i >= overlayY+3 {
+				continue
+			}
+			plain := ansi.Strip(line)
+			open := strings.Index(plain, "[")
+			closing := strings.Index(plain, "]")
+			if got := ansi.StringWidth(plain[:open]); got != boxX {
+				t.Fatalf("row %d: box starts at column %d, want %d: %q", i, got, boxX, plain)
+			}
+			if got := ansi.StringWidth(plain[:closing]); got != boxEnd-1 {
+				t.Fatalf("row %d: box ends at column %d, want %d: %q", i, got, boxEnd-1, plain)
+			}
+			if got := ansi.StringWidth(line); got != width {
+				t.Fatalf("row %d: width %d, want %d", i, got, width)
+			}
 		}
 	}
 }

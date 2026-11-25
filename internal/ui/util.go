@@ -182,6 +182,30 @@ func overlayOnBase(base, box string, width, height int, bg lipgloss.Color, shado
 	return overlayAt(base, box, overlayX, overlayY, width, height, bg, shadow)
 }
 
+// cutAroundBox returns the parts of a base row to the left of column boxX and
+// from column boxEnd to width, each exactly as many cells wide as its span.
+// ansi.Cut drops a wide grapheme (an emoji like ☀️ in the reader body) that
+// straddles a cut, so a bare Cut comes back a cell short: the modal row then
+// starts one column early and its border goes ragged. A blank cell stands in
+// for the dropped half-glyph instead, so the box always lands on its column.
+func cutAroundBox(line string, boxX, boxEnd, width int, bg lipgloss.Color) (string, string) {
+	pad := func(n int) string {
+		if n <= 0 {
+			return ""
+		}
+		return lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", n))
+	}
+	left := ansi.Cut(line, 0, boxX)
+	left += pad(boxX - ansi.StringWidth(left))
+	if boxEnd >= width {
+		return left, ""
+	}
+	// A glyph straddling boxEnd is dropped from the start of the right part.
+	right := ansi.Cut(line, boxEnd, width)
+	right = pad(width-boxEnd-ansi.StringWidth(right)) + right
+	return left, right
+}
+
 // overlayAt composites box over base with its top-left corner at (overlayX,
 // overlayY); the caller keeps it on screen.
 func overlayAt(base, box string, overlayX, overlayY, width, height int, bg lipgloss.Color, shadow bool) string {
@@ -214,8 +238,7 @@ func overlayAt(base, box string, overlayX, overlayY, width, height int, bg lipgl
 			result[y] = baseLine
 			continue
 		}
-		left := ansi.Cut(baseLine, 0, overlayX)
-		right := ansi.Cut(baseLine, rightStart, width)
+		left, right := cutAroundBox(baseLine, overlayX, rightStart, width, bg)
 		result[y] = left + boxLines[boxRow] + right
 	}
 	// Normalize every row to exactly width. ansi.Cut counts visual columns, and
