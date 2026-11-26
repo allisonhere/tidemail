@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/allisonhere/ripple"
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -465,38 +466,48 @@ func (c *ComposeModel) focusBodyAtStart() {
 // quotableText uses the reader's HTML-to-Markdown conversion, but stops before
 // terminal rendering so nested quotes keep their Markdown markers. It drops
 // link targets and reader-only markers and falls back to the stored plain body.
+//
+// Markdown escaping is off because people read this text in the editor and in
+// the plain-text part, where "john\_doe" is wrong. The cost is that literal
+// Markdown in the original can be formatted in the outgoing HTML.
 func quotableText(m db.Message) string {
 	text := ""
 	if m.BodyHTML != "" {
-		markdown := convertEmailHTMLToMarkdown(normalizeHTMLForRendering(m.BodyHTML), 76, nil, nil)
+		opts := &md.Options{EscapeMode: "disabled"}
+		markdown := convertEmailHTMLToMarkdown(normalizeHTMLForRendering(m.BodyHTML), 76, opts, nil, nil)
 		text = filterLinksFromMarkdown(stripGroupSentinels(markdown))
 	}
 	if strings.TrimSpace(text) == "" {
 		text = ansi.Strip(m.BodyText)
 	}
 	var out []string
-	blank := true // also trims leading blank lines
+	// A run of blank lines is held until the next text line, which drops runs
+	// at either end. A line holding only quote markers is blank too.
+	blank, blankLine, blankDepth := false, "", 0
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimRight(line, " \t")
-		t := strings.TrimSpace(line)
-		content := t
-		if _, body, quoted := splitQuotePrefix(t); quoted {
-			content = body
+		content := strings.TrimSpace(line)
+		depth := 0
+		if d, body, quoted := splitQuotePrefix(content); quoted {
+			depth, content = d, body
 		}
 		if imageOnlyLineRe.MatchString(content) {
 			continue
 		}
-		if t == "" {
-			if blank {
-				continue
+		if content == "" {
+			// Keep the shallowest line so a break between quotes survives.
+			if !blank || depth < blankDepth {
+				blank, blankLine, blankDepth = true, line, depth
 			}
-			blank = true
-		} else {
-			blank = false
+			continue
 		}
+		if blank && len(out) > 0 {
+			out = append(out, blankLine)
+		}
+		blank = false
 		out = append(out, line)
 	}
-	return strings.TrimRight(strings.Join(out, "\n"), "\n")
+	return strings.Join(out, "\n")
 }
 
 // imageOnlyLineRe matches a line that is just an image placeholder or a bare

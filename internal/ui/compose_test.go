@@ -1348,6 +1348,61 @@ func TestReplyHTMLDoesNotIncludeTerminalQuoteBars(t *testing.T) {
 	}
 }
 
+func TestQuotedHTMLTextIsNotEscaped(t *testing.T) {
+	account := config.AccountConfig{User: "me@example.com"}
+	const literal = `john_doe@example.com computed 2*3 [draft] in C:\temp`
+	original := db.Message{From: "sender@example.com", BodyHTML: "<p>" + literal + "</p>"}
+	for name, c := range map[string]ComposeModel{
+		"reply":   NewReply(original, account, nil, nil),
+		"forward": NewForward(original, account, nil, nil),
+	} {
+		c.toInput.SetValue("you@example.com")
+		if body := c.bodyInput.Value(); !strings.Contains(body, "> "+literal) {
+			t.Errorf("%s: compose body changed the text: %q", name, body)
+		}
+		_, cmd, _ := c.send()
+		if cmd == nil {
+			t.Fatalf("%s was not queued", name)
+		}
+		msg := cmd().(SendQueuedMsg).Msg
+		if !strings.Contains(msg.Body, "> "+literal) {
+			t.Errorf("%s: plain part changed the text: %q", name, msg.Body)
+		}
+		doc, err := goqueryDocument(msg.HTMLBody)
+		if err != nil {
+			t.Fatalf("%s: parse outgoing HTML: %v", name, err)
+		}
+		if got := doc.Find("blockquote").Text(); !strings.Contains(got, literal) {
+			t.Errorf("%s: HTML part changed the text: %q", name, got)
+		}
+	}
+}
+
+func TestQuotableTextCollapsesEmptyQuoteLines(t *testing.T) {
+	for name, tc := range map[string]struct{ html, want string }{
+		"image opens quote": {
+			`<blockquote><img src="x.png" alt="Chart"><p>text</p></blockquote>`,
+			"> text",
+		},
+		"image closes quote": {
+			`<blockquote><p>text</p><img src="x.png" alt="Chart"></blockquote><p>after</p>`,
+			"> text\n\nafter",
+		},
+		"image between paragraphs": {
+			`<blockquote><p>one</p><img src="x.png" alt="Chart"><p>two</p></blockquote>`,
+			"> one\n>\n> two",
+		},
+		"separate quotes": {
+			`<blockquote><p>one</p></blockquote><p><img src="x.png" alt="Chart"></p><blockquote><p>two</p></blockquote>`,
+			"> one\n\n> two",
+		},
+	} {
+		if got := quotableText(db.Message{BodyHTML: tc.html}); got != tc.want {
+			t.Errorf("%s: got %q; want %q", name, got, tc.want)
+		}
+	}
+}
+
 func TestForwardNamesNamelessInlineImage(t *testing.T) {
 	c := NewForward(db.Message{BodyText: "x", AttachmentData: []db.Attachment{
 		{ContentType: "image/png", Data: []byte{1, 2, 3}},

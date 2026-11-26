@@ -530,7 +530,7 @@ func renderHTMLBodyWithImages(html string, width int, th Theme, plainUI, filterL
 	}
 
 	var buttons []buttonLink
-	markdown := convertEmailHTMLToMarkdown(html, width, plans, &buttons)
+	markdown := convertEmailHTMLToMarkdown(html, width, nil, plans, &buttons)
 	if strings.TrimSpace(markdown) == "" {
 		return "", nil
 	}
@@ -562,10 +562,11 @@ func renderHTMLBodyWithImages(html string, width int, th Theme, plainUI, filterL
 }
 
 // convertEmailHTMLToMarkdown takes normalized HTML and preserves its structure
-// before the terminal renderer adds visual formatting. Pass nil for buttons
-// when the Markdown will not be rendered in the reader.
-func convertEmailHTMLToMarkdown(html string, width int, plans map[int]imagePlan, buttons *[]buttonLink) string {
-	converter := md.NewConverter("", true, nil)
+// before the terminal renderer adds visual formatting. Pass nil for opts to get
+// the converter defaults, and nil for buttons when the Markdown will not be
+// rendered in the reader.
+func convertEmailHTMLToMarkdown(html string, width int, opts *md.Options, plans map[int]imagePlan, buttons *[]buttonLink) string {
+	converter := md.NewConverter("", true, opts)
 	converter.Before(stripButtonMarkersFromDocument)
 	converter.AddRules(spanStyleRule())
 	converter.AddRules(buttonLinkRuleWithPlans(plans, buttons))
