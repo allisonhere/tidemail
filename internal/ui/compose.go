@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/allisonhere/ripple"
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -375,8 +376,8 @@ func newReplyBase(original db.Message, acfg config.AccountConfig, accounts []con
 	c.references = strings.TrimSpace(original.References + " " + original.MessageID)
 
 	// Quote the original body text
-	if plain := quotableText(original); plain != "" {
-		c.setInitialBody("", quoteReply(plain, original.From))
+	if text := quotableText(original); text != "" {
+		c.setInitialBody("", quoteReply(text, original.From))
 	}
 
 	// Park the body caret above the quote so typing lands there once focus
@@ -399,8 +400,8 @@ func NewForward(original db.Message, acfg config.AccountConfig, accounts []confi
 	c.subjectInput.SetValue(subject)
 
 	// Quote the original body text with a forward header
-	if plain := quotableText(original); plain != "" {
-		c.setInitialBody("", quoteForward(plain, original))
+	if text := quotableText(original); text != "" {
+		c.setInitialBody("", quoteForward(text, original))
 		c.moveBodyCursorToStart()
 	}
 
@@ -462,35 +463,51 @@ func (c *ComposeModel) focusBodyAtStart() {
 	c.bodyInput.EnterInsert()
 }
 
-// quotableText is the original message as plain text for quoting. It uses the
-// same HTML rendering the reader shows (so alt text, link targets and spacer
-// markup don't pile up as they do in tag-stripped text), falling back to the
-// stored plain body. Image-only lines and runs of blank lines are dropped.
+// quotableText uses the reader's HTML-to-Markdown conversion, but stops before
+// terminal rendering so nested quotes keep their Markdown markers. It drops
+// link targets and reader-only markers and falls back to the stored plain body.
+//
+// Markdown escaping is off because people read this text in the editor and in
+// the plain-text part, where "john\_doe" is wrong. The cost is that literal
+// Markdown in the original can be formatted in the outgoing HTML.
 func quotableText(m db.Message) string {
 	text := ""
 	if m.BodyHTML != "" {
-		text = ansi.Strip(renderHTMLBodyOpts(m.BodyHTML, 76, Theme{}, true, true))
+		opts := &md.Options{EscapeMode: "disabled"}
+		markdown := convertEmailHTMLToMarkdown(normalizeHTMLForRendering(m.BodyHTML), 76, opts, nil, nil)
+		text = filterLinksFromMarkdown(stripGroupSentinels(markdown))
 	}
 	if strings.TrimSpace(text) == "" {
 		text = ansi.Strip(m.BodyText)
 	}
 	var out []string
-	blank := true // also trims leading blank lines
+	// A run of blank lines is held until the next text line, which drops runs
+	// at either end. A line holding only quote markers is blank too.
+	blank, blankLine, blankDepth := false, "", 0
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimRight(line, " \t")
-		if t := strings.TrimSpace(line); imageOnlyLineRe.MatchString(t) {
-			continue
-		} else if t == "" {
-			if blank {
-				continue
-			}
-			blank = true
-		} else {
-			blank = false
+		content := strings.TrimSpace(line)
+		depth := 0
+		if d, body, quoted := splitQuotePrefix(content); quoted {
+			depth, content = d, body
 		}
+		if imageOnlyLineRe.MatchString(content) {
+			continue
+		}
+		if content == "" {
+			// Keep the shallowest line so a break between quotes survives.
+			if !blank || depth < blankDepth {
+				blank, blankLine, blankDepth = true, line, depth
+			}
+			continue
+		}
+		if blank && len(out) > 0 {
+			out = append(out, blankLine)
+		}
+		blank = false
 		out = append(out, line)
 	}
-	return strings.TrimRight(strings.Join(out, "\n"), "\n")
+	return strings.Join(out, "\n")
 }
 
 // imageOnlyLineRe matches a line that is just an image placeholder or a bare

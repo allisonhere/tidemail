@@ -96,6 +96,8 @@ All notable changes to TideMail are documented in this file.
 
 ### Fixed
 
+- Replies and inline forwards preserve nested quotes from HTML emails without
+  copying terminal quote bars into the outgoing message.
 - A dialog opened over a message containing emoji (such as ☀️ or ▶️) no longer
   draws with a ragged, shifted border. An emoji cut in half by the dialog's
   edge is now drawn as a blank cell instead of moving the rest of the row.
