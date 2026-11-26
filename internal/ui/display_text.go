@@ -21,6 +21,10 @@ func unescapeDisplayText(s string) string {
 	return strings.Join(strings.Fields(cleaned), " ")
 }
 
+// keycapMarks removes the combining marks that turn a digit, # or * into a
+// keycap emoji. The longer sequence must come first.
+var keycapMarks = strings.NewReplacer("\ufe0f\u20e3", "", "\u20e3", "")
+
 // normalizeHardBreaks neutralizes runes the line-based viewport layout can't
 // measure the way a terminal renders them. Terminals disagree with the width
 // libraries here on two fronts:
@@ -37,7 +41,12 @@ func unescapeDisplayText(s string) string {
 //
 // It runs on the fully assembled, ANSI-styled content, so it must not touch ESC
 // (U+001B) or any byte an SGR sequence uses; only the runes below are remapped.
+//
+// Keycap emoji ("1\ufe0f\u20e3") are the same problem at grapheme level: they
+// measure one cell but render two. They are reduced to their plain base
+// character.
 func normalizeHardBreaks(s string) string {
+	s = keycapMarks.Replace(s)
 	return strings.Map(func(r rune) rune {
 		switch r {
 		case 0x2028, // LINE SEPARATOR

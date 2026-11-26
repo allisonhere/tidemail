@@ -32,3 +32,13 @@ func TestNormalizeHardBreaks(t *testing.T) {
 		t.Errorf("normalizeHardBreaks mangled styled text: %q", got)
 	}
 }
+
+// Keycap emoji measure one cell but render two, so a full-width line holding one
+// wraps in the terminal and shifts the frame while scrolling.
+func TestNormalizeHardBreaksReducesKeycaps(t *testing.T) {
+	in := "1\ufe0f\u20e3 one 2\u20e3 two #\ufe0f\u20e3 \u2600\ufe0f"
+	want := "1 one 2 two # \u2600\ufe0f"
+	if got := normalizeHardBreaks(in); got != want {
+		t.Errorf("normalizeHardBreaks(%q) = %q, want %q", in, got, want)
+	}
+}
