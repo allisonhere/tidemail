@@ -1293,22 +1293,58 @@ func TestQuotedTextFromHTMLIsReadable(t *testing.T) {
 	msg := db.Message{
 		From:     "news@example.com",
 		BodyText: "Hello\nhttps://cdn.example.com/spacer.gif\nhttps://track.example.com/open?x=1\nWorld",
-		BodyHTML: `<p>Hello there</p><img src="https://cdn.example.com/hero.png"><p>World</p>`,
+		BodyHTML: `<p>Hello there</p><blockquote><img src="https://cdn.example.com/hero.png" alt="Product photo"><p>World <a href="https://track.example.com/open?x=1">Read more</a></p></blockquote>`,
 	}
 	for name, body := range map[string]string{
 		"reply":   NewReply(msg, config.AccountConfig{}, nil, nil).bodyInput.Value(),
 		"forward": NewForward(msg, config.AccountConfig{}, nil, nil).bodyInput.Value(),
 	} {
-		if !strings.Contains(body, "Hello there") || !strings.Contains(body, "World") {
-			t.Errorf("%s: missing text: %q", name, body)
+		for _, want := range []string{"Hello there", "World", "Read more"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s: missing %q: %q", name, want, body)
+			}
 		}
-		if strings.Contains(body, "spacer.gif") || strings.Contains(body, "track.example.com") || strings.Contains(body, "\n> \n> \n> \n") {
-			t.Errorf("%s: noise in quote: %q", name, body)
+		for _, noise := range []string{"spacer.gif", "track.example.com", "Product photo", "\n> \n> \n> \n"} {
+			if strings.Contains(body, noise) {
+				t.Errorf("%s: unexpected %q in quote: %q", name, noise, body)
+			}
 		}
 	}
 	plain := db.Message{From: "a@b.c", BodyText: "just text"}
 	if got := quotableText(plain); got != "just text" {
 		t.Errorf("plain text should be unchanged, got %q", got)
+	}
+}
+
+func TestReplyHTMLDoesNotIncludeTerminalQuoteBars(t *testing.T) {
+	account := config.AccountConfig{User: "me@example.com"}
+	olderQuote := strings.TrimSpace(strings.Repeat("Older quoted words are wrapped to fit the terminal. ", 15))
+	original := db.Message{
+		From:     "sender@example.com",
+		Subject:  "Example thread",
+		BodyHTML: "<p>Current reply.</p><blockquote><p>" + olderQuote + "</p></blockquote>",
+	}
+	reply := NewReply(original, account, nil, nil)
+	reply.bodyInput.SetValue("New reply.\n" + reply.bodyInput.Value())
+	reply, cmd, _ := reply.send()
+	if cmd == nil {
+		t.Fatalf("reply was not queued: %s", reply.statusMsg)
+	}
+	html := cmd().(SendQueuedMsg).Msg.HTMLBody
+	doc, err := goqueryDocument(html)
+	if err != nil {
+		t.Fatalf("parse outgoing HTML: %v", err)
+	}
+	if got := strings.TrimSpace(doc.Find("blockquote blockquote").Text()); got != olderQuote {
+		t.Errorf("nested quote text = %q; want %q", got, olderQuote)
+	}
+	for _, want := range []string{"New reply.", "Current reply."} {
+		if !strings.Contains(html, want) {
+			t.Errorf("outgoing HTML lost %q", want)
+		}
+	}
+	if count := strings.Count(html, "|"); count != 0 {
+		t.Errorf("outgoing HTML contains %d literal terminal quote bars; want none", count)
 	}
 }
 

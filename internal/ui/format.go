@@ -529,19 +529,11 @@ func renderHTMLBodyWithImages(html string, width int, th Theme, plainUI, filterL
 		}
 	}
 
-	converter := md.NewConverter("", true, nil)
-	converter.Before(stripButtonMarkersFromDocument)
-	converter.AddRules(spanStyleRule())
 	var buttons []buttonLink
-	converter.AddRules(buttonLinkRuleWithPlans(plans, &buttons))
-	converter.AddRules(imagePlaceholderRuleWithPlans(plans))
-	converter.AddRules(preformattedRule(width))
-	converter.AddRules(tableTextRule(width, plans))
-	markdown, err := converter.ConvertString(html)
-	if err != nil || strings.TrimSpace(markdown) == "" {
+	markdown := convertEmailHTMLToMarkdown(html, width, plans, &buttons)
+	if strings.TrimSpace(markdown) == "" {
 		return "", nil
 	}
-	markdown = stripEmailInvisibles(markdown)
 	if filterLinks {
 		markdown = filterLinksFromMarkdown(markdown)
 	}
@@ -567,6 +559,24 @@ func renderHTMLBodyWithImages(html string, width int, th Theme, plainUI, filterL
 		return "", nil
 	}
 	return rendered, nil
+}
+
+// convertEmailHTMLToMarkdown takes normalized HTML and preserves its structure
+// before the terminal renderer adds visual formatting. Pass nil for buttons
+// when the Markdown will not be rendered in the reader.
+func convertEmailHTMLToMarkdown(html string, width int, plans map[int]imagePlan, buttons *[]buttonLink) string {
+	converter := md.NewConverter("", true, nil)
+	converter.Before(stripButtonMarkersFromDocument)
+	converter.AddRules(spanStyleRule())
+	converter.AddRules(buttonLinkRuleWithPlans(plans, buttons))
+	converter.AddRules(imagePlaceholderRuleWithPlans(plans))
+	converter.AddRules(preformattedRule(width))
+	converter.AddRules(tableTextRule(width, plans))
+	markdown, err := converter.ConvertString(html)
+	if err != nil {
+		return ""
+	}
+	return stripEmailInvisibles(markdown)
 }
 
 func messageHeadingColor(th Theme) lipgloss.Color {

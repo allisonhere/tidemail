@@ -375,8 +375,8 @@ func newReplyBase(original db.Message, acfg config.AccountConfig, accounts []con
 	c.references = strings.TrimSpace(original.References + " " + original.MessageID)
 
 	// Quote the original body text
-	if plain := quotableText(original); plain != "" {
-		c.setInitialBody("", quoteReply(plain, original.From))
+	if text := quotableText(original); text != "" {
+		c.setInitialBody("", quoteReply(text, original.From))
 	}
 
 	// Park the body caret above the quote so typing lands there once focus
@@ -399,8 +399,8 @@ func NewForward(original db.Message, acfg config.AccountConfig, accounts []confi
 	c.subjectInput.SetValue(subject)
 
 	// Quote the original body text with a forward header
-	if plain := quotableText(original); plain != "" {
-		c.setInitialBody("", quoteForward(plain, original))
+	if text := quotableText(original); text != "" {
+		c.setInitialBody("", quoteForward(text, original))
 		c.moveBodyCursorToStart()
 	}
 
@@ -462,14 +462,14 @@ func (c *ComposeModel) focusBodyAtStart() {
 	c.bodyInput.EnterInsert()
 }
 
-// quotableText is the original message as plain text for quoting. It uses the
-// same HTML rendering the reader shows (so alt text, link targets and spacer
-// markup don't pile up as they do in tag-stripped text), falling back to the
-// stored plain body. Image-only lines and runs of blank lines are dropped.
+// quotableText uses the reader's HTML-to-Markdown conversion, but stops before
+// terminal rendering so nested quotes keep their Markdown markers. It drops
+// link targets and reader-only markers and falls back to the stored plain body.
 func quotableText(m db.Message) string {
 	text := ""
 	if m.BodyHTML != "" {
-		text = ansi.Strip(renderHTMLBodyOpts(m.BodyHTML, 76, Theme{}, true, true))
+		markdown := convertEmailHTMLToMarkdown(normalizeHTMLForRendering(m.BodyHTML), 76, nil, nil)
+		text = filterLinksFromMarkdown(stripGroupSentinels(markdown))
 	}
 	if strings.TrimSpace(text) == "" {
 		text = ansi.Strip(m.BodyText)
@@ -478,9 +478,15 @@ func quotableText(m db.Message) string {
 	blank := true // also trims leading blank lines
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimRight(line, " \t")
-		if t := strings.TrimSpace(line); imageOnlyLineRe.MatchString(t) {
+		t := strings.TrimSpace(line)
+		content := t
+		if _, body, quoted := splitQuotePrefix(t); quoted {
+			content = body
+		}
+		if imageOnlyLineRe.MatchString(content) {
 			continue
-		} else if t == "" {
+		}
+		if t == "" {
 			if blank {
 				continue
 			}
