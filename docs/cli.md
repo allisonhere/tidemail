@@ -170,8 +170,21 @@ plain-text message rows show date and display mailbox.
 Discover cached folders with `tidemail mailboxes list [--account ID] --json`.
 Each result includes account identity, raw `name`, `mailbox_display`, stored
 special-use flags, `cached` message count and cached `unread` count. These
-counts describe the local cache, not server coverage. Pagination and `--agent`
-are supported; agent access requires `messages.metadata`.
+counts describe the local cache. `server_count` is the number of messages the
+server held at the moment a TUI sync listed the folder, and `server_count_at`
+is that moment (RFC 3339, UTC). Both are null until a sync records them.
+
+A sync records them only if it finishes and removes from the cache every
+message the server no longer lists; a sync that fails, or cannot list the
+folder, leaves the previous values. When the server renumbers the folder (a
+new UIDVALIDITY), the old values are dropped with the cache and recorded again
+once the cache has been emptied. A folder's first sync caches only its newest
+messages, and mail that arrives, or that rules move away, after the listing
+also makes `cached` differ from `server_count`. The CLI does not sync, so the
+count can be out of date, and equal `cached` and `server_count` values do not
+prove the cache holds the same messages.
+Plain-text output adds `server:N as_of:TIME` when a count is known. Pagination
+and `--agent` are supported; agent access requires `messages.metadata`.
 
 ```bash
 tidemail messages list --mailbox "Course" --account work --limit 1000 --json

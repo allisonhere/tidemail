@@ -324,7 +324,11 @@ cached messages in scope.
 .PP
 mailboxes list [--account ID] lists cached folders with raw/display names,
 stored special-use flags and local cached/unread counts. Under --agent it
-requires messages.metadata. Counts do not indicate server coverage.
+requires messages.metadata. server_count is the number of messages the server
+held when a TUI sync last listed the folder and server_count_at is that moment
+(RFC 3339, UTC); both are null until a sync records them. The CLI does not
+sync, so the count may be out of date, and equal cached and server counts do
+not prove the cache is complete.
 
 .PP
 Message list/search accept --starred, --since YYYY-MM-DD (inclusive local

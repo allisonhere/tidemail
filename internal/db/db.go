@@ -386,6 +386,12 @@ func (db *DB) migrate() error {
 	db.Exec(`ALTER TABLE messages ADD COLUMN references_text TEXT NOT NULL DEFAULT ''`) //nolint:errcheck
 	db.Exec(`ALTER TABLE messages ADD COLUMN starred INTEGER NOT NULL DEFAULT 0`)       //nolint:errcheck
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_starred ON messages(starred)`)     //nolint:errcheck
+
+	// The server's message count at the last successful sync snapshot, and
+	// when it was taken (Unix seconds). Both NULL until a sync observes it.
+	db.Exec(`ALTER TABLE mailboxes ADD COLUMN server_count INTEGER`)    //nolint:errcheck
+	db.Exec(`ALTER TABLE mailboxes ADD COLUMN server_count_at INTEGER`) //nolint:errcheck
+
 	// Date-ordered pages across mailboxes (plugin queries) walk this index
 	// instead of sorting the whole table: ~140x faster at 50k messages.
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_date ON messages(date, id)`) //nolint:errcheck

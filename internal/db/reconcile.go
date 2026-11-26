@@ -1,5 +1,7 @@
 package db
 
+import "time"
+
 // Sync reconciliation: the incremental SINCE fetch only adds mail, so messages
 // removed server-side (archived or deleted from another client) linger locally.
 // After each sync the caller fetches the server's full UID set and calls
@@ -152,6 +154,13 @@ func (db *DB) SetMailboxUIDValidity(mailboxID int64, v uint32) error {
 	return err
 }
 
+// SetMailboxServerCount records how many messages the server reported for a
+// mailbox and when it reported them.
+func (db *DB) SetMailboxServerCount(mailboxID int64, count int, at time.Time) error {
+	_, err := db.Exec(`UPDATE mailboxes SET server_count = ?, server_count_at = ? WHERE id = ?`, count, at.Unix(), mailboxID)
+	return err
+}
+
 // ResetMailboxCache clears all cached messages, their delete-tombstones, and the
 // last-synced cursor for a mailbox. Used when UIDVALIDITY changes: every stored
 // UID is meaningless, so the mailbox is refetched from scratch on the next sync.
@@ -172,7 +181,7 @@ func (db *DB) ResetMailboxCache(mailboxID int64) error {
 	if _, err := tx.Exec(`DELETE FROM deleted_messages WHERE mailbox_id = ?`, mailboxID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE mailboxes SET last_synced = 0 WHERE id = ?`, mailboxID); err != nil {
+	if _, err := tx.Exec(`UPDATE mailboxes SET last_synced = 0, server_count = NULL, server_count_at = NULL WHERE id = ?`, mailboxID); err != nil {
 		return err
 	}
 	return tx.Commit()

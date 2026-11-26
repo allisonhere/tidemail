@@ -360,6 +360,9 @@ func readSuccess(out io.Writer, jsonMode bool, data any) int {
 				detail = fmt.Sprint(item["email"])
 				if display, ok := item["mailbox_display"]; ok {
 					detail = fmt.Sprintf("%s  cached:%v unread:%v", display, item["cached"], item["unread"])
+					if server := item["server_count"]; server != nil {
+						detail = fmt.Sprintf("%s server:%v as_of:%v", detail, server, item["server_count_at"])
+					}
 				}
 			}
 			if path, exists := item["path"]; exists {
