@@ -93,6 +93,15 @@ func (c *Client) Connect(ctx context.Context) error {
 		}
 	}
 	client := imapclient.New(conn, opts)
+	// Wait for the greeting before writing anything: QQ Mail's IMAP server
+	// (QQMail XMIMAP4Server) drops a command that arrives before its greeting
+	// has been processed and never answers it, so a pipelined LOGIN dies at the
+	// ctx deadline with only "login: unexpected EOF" to show for it.
+	if err := client.WaitGreeting(); err != nil {
+		client.Close()
+		c.netConn = nil
+		return fmt.Errorf("greeting: %w", err)
+	}
 
 	// Gmail / Outlook accounts with a refresh token authenticate over SASL
 	// XOAUTH2; everything else uses an app password over IMAP LOGIN (Gmail
