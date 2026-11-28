@@ -116,7 +116,35 @@ func (c *Client) Connect(ctx context.Context) error {
 		c.netConn = nil
 		return fmt.Errorf("login: %w", loginErr)
 	}
+	if err := announceID(client); err != nil {
+		client.Close()
+		c.netConn = nil
+		return fmt.Errorf("id: %w", err)
+	}
 	c.conn = client
+	return nil
+}
+
+// announceID introduces the client to servers that refuse to serve anonymous
+// ones. NetEase (163.com, 126.com, yeah.net) accepts LOGIN and then answers
+// every mailbox command with "NO ... Unsafe Login. Please contact
+// kefu@188.com for help" until the client has sent the RFC 2971 ID command, so
+// without this a 163 account connects and then fails to select any mailbox.
+//
+// The capability set is fetched explicitly: Coremail's greeting carries none,
+// and only servers that advertise ID can be sent the command — the rest would
+// answer BAD and fail the login for nothing.
+func announceID(client *imapclient.Client) error {
+	caps, err := client.Capability().Wait()
+	if err != nil {
+		return fmt.Errorf("capability: %w", err)
+	}
+	if !caps.Has(imap.CapID) {
+		return nil
+	}
+	if _, err := client.ID(&imap.IDData{Name: "TideMail"}).Wait(); err != nil {
+		return err
+	}
 	return nil
 }
 
